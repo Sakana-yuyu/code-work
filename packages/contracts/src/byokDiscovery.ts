@@ -54,6 +54,28 @@ export const ByokModelDiscoveryRequest = Schema.Struct({
 });
 export type ByokModelDiscoveryRequest = typeof ByokModelDiscoveryRequest.Type;
 
+export const ByokModelBenchmarkRequest = Schema.Struct({
+  instanceId: TrimmedNonEmptyString,
+  adapterId: TrimmedNonEmptyString,
+});
+export type ByokModelBenchmarkRequest = typeof ByokModelBenchmarkRequest.Type;
+
+export const ByokModelBenchmarkResult = Schema.Struct({
+  adapterId: TrimmedNonEmptyString,
+  modelId: TrimmedNonEmptyString,
+  /** 测速请求失败时只返回错误，不把 0 tok/s 当成有效结果。 */
+  error: Schema.optional(Schema.String),
+  firstTokenMs: NonNegativeInt,
+  firstResponseMs: NonNegativeInt,
+  totalMs: NonNegativeInt,
+  outputTokens: NonNegativeInt,
+  /** 上游未提供 usage 时为 true；此时 outputTokens 是本地估算值。 */
+  tokensEstimated: Schema.optional(Schema.Boolean),
+  visibleTokensPerSecond: Schema.Number,
+  tokensPerSecond: Schema.Number,
+});
+export type ByokModelBenchmarkResult = typeof ByokModelBenchmarkResult.Type;
+
 /**
  * One-shot model discovery for an adapter that has not been saved yet.
  * The API key is request-only: it must never appear in the result, cache, or

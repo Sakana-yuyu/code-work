@@ -27,6 +27,7 @@ import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsDelegationRouteImport } from './routes/settings.delegation'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
+import { Route as SettingsCliProxyRouteImport } from './routes/settings.cli-proxy'
 import { Route as SettingsByokRouteImport } from './routes/settings.byok'
 import { Route as SettingsAutomationsRouteImport } from './routes/settings.automations'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
@@ -127,6 +128,11 @@ const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
   path: '/connections',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsCliProxyRoute = SettingsCliProxyRouteImport.update({
+  id: '/cli-proxy',
+  path: '/cli-proxy',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsByokRoute = SettingsByokRouteImport.update({
   id: '/byok',
   path: '/byok',
@@ -187,6 +193,7 @@ export interface FileRoutesByFullPath {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/automations': typeof SettingsAutomationsRoute
   '/settings/byok': typeof SettingsByokRoute
+  '/settings/cli-proxy': typeof SettingsCliProxyRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/delegation': typeof SettingsDelegationRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -214,6 +221,7 @@ export interface FileRoutesByTo {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/automations': typeof SettingsAutomationsRoute
   '/settings/byok': typeof SettingsByokRoute
+  '/settings/cli-proxy': typeof SettingsCliProxyRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/delegation': typeof SettingsDelegationRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -244,6 +252,7 @@ export interface FileRoutesById {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/automations': typeof SettingsAutomationsRoute
   '/settings/byok': typeof SettingsByokRoute
+  '/settings/cli-proxy': typeof SettingsCliProxyRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/delegation': typeof SettingsDelegationRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -275,6 +284,7 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/automations'
     | '/settings/byok'
+    | '/settings/cli-proxy'
     | '/settings/connections'
     | '/settings/delegation'
     | '/settings/diagnostics'
@@ -302,6 +312,7 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/automations'
     | '/settings/byok'
+    | '/settings/cli-proxy'
     | '/settings/connections'
     | '/settings/delegation'
     | '/settings/diagnostics'
@@ -331,6 +342,7 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/automations'
     | '/settings/byok'
+    | '/settings/cli-proxy'
     | '/settings/connections'
     | '/settings/delegation'
     | '/settings/diagnostics'
@@ -486,6 +498,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsConnectionsRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/cli-proxy': {
+      id: '/settings/cli-proxy'
+      path: '/cli-proxy'
+      fullPath: '/settings/cli-proxy'
+      preLoaderRoute: typeof SettingsCliProxyRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/byok': {
       id: '/settings/byok'
       path: '/byok'
@@ -573,6 +592,7 @@ interface SettingsRouteChildren {
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsAutomationsRoute: typeof SettingsAutomationsRoute
   SettingsByokRoute: typeof SettingsByokRoute
+  SettingsCliProxyRoute: typeof SettingsCliProxyRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
   SettingsDelegationRoute: typeof SettingsDelegationRoute
   SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
@@ -592,6 +612,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsAutomationsRoute: SettingsAutomationsRoute,
   SettingsByokRoute: SettingsByokRoute,
+  SettingsCliProxyRoute: SettingsCliProxyRoute,
   SettingsConnectionsRoute: SettingsConnectionsRoute,
   SettingsDelegationRoute: SettingsDelegationRoute,
   SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,

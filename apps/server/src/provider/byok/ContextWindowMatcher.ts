@@ -45,7 +45,13 @@ export function matchContextWindows(
     const before = adapter.contextWindowTokens;
     const probedWindow = windowsByModelId.get(normalizeModelID(adapter.modelId));
     const catalogWindow = matchModelContext(adapter.modelId, CONTEXT_WINDOW_RULES).value;
-    const after = probedWindow ?? catalogWindow ?? before;
+    // 中转 /models 返回的是当前渠道的显式能力，优先采用；内置目录只负责
+    // 收敛明显过大的值，不能覆盖用户主动设置的更小窗口。
+    const after =
+      probedWindow ??
+      (catalogWindow !== undefined && (before <= 0 || catalogWindow < before)
+        ? catalogWindow
+        : before);
 
     if (after === before) {
       details.push({

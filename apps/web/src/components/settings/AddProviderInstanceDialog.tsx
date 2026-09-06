@@ -2,7 +2,7 @@
 
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { CheckIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ProviderInstanceId,
   ProviderDriverKind,
@@ -126,6 +126,7 @@ function validateInstanceId(id: string, existing: ReadonlySet<string>): string |
 }
 
 interface AddProviderInstanceDialogProps {
+  readonly initialDriver?: ProviderDriverKind;
   readonly open: boolean;
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
@@ -133,6 +134,7 @@ interface AddProviderInstanceDialogProps {
 }
 
 export function AddProviderInstanceDialog({
+  initialDriver = DEFAULT_DRIVER_KIND,
   open,
   environmentId,
   environmentLabel,
@@ -149,7 +151,7 @@ export function AddProviderInstanceDialog({
   const updateSettings = useUpdateEnvironmentSettings(environmentId, reportSettingsUpdateFailure);
 
   const [wizardStep, setWizardStep] = useState(0);
-  const [driver, setDriver] = useState<ProviderDriverKind>(DEFAULT_DRIVER_KIND);
+  const [driver, setDriver] = useState<ProviderDriverKind>(initialDriver);
   const [label, setLabel] = useState("");
   const [accentColor, setAccentColor] = useState<string>("");
   const [instanceIdOverride, setInstanceIdOverride] = useState<string | null>(null);
@@ -160,6 +162,18 @@ export function AddProviderInstanceDialog({
   // they update live so fixing the problem clears the message in place.
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // When dialog opens, reset wizard flow to initial state so opening with a new initialDriver is clean
+  useEffect(() => {
+    if (open) {
+      setWizardStep(0);
+      setDriver(initialDriver);
+      setLabel("");
+      setAccentColor("");
+      setInstanceIdOverride(null);
+      setHasAttemptedSubmit(false);
+    }
+  }, [open, initialDriver]);
 
   const existingIds = useMemo(
     () => new Set(Object.keys(settings.providerInstances ?? {})),
@@ -273,7 +287,14 @@ export function AddProviderInstanceDialog({
             className="space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5"
           >
             <AnimatedHeight>
-              <div className={cn("grid gap-2", wizardStep !== 0 && "hidden")}>
+              <div
+                className={cn(
+                  "grid gap-2 transition-opacity duration-200 ease-out",
+                  wizardStep !== 0 && "hidden",
+                  wizardStep === 0 &&
+                    "animate-in fade-in-50 duration-150 motion-reduce:animate-none",
+                )}
+              >
                 <div id="add-instance-driver-label" className="text-sm font-medium text-foreground">
                   {t("providerWizard.serviceLabel")}
                 </div>
@@ -336,90 +357,108 @@ export function AddProviderInstanceDialog({
                 </RadioGroup>
               </div>
 
-              <label className={cn("grid gap-2", wizardStep !== 1 && "hidden")}>
-                <span className="text-xs font-medium text-foreground">{t("displayName")}</span>
-                <Input
-                  className="bg-background"
-                  placeholder={t("eGWork")}
-                  value={label}
-                  onChange={(event) => setLabel(event.target.value)}
-                />
-                <span className="text-[11px] text-muted-foreground">
-                  {t("providerDisplayNameDescription")}
-                </span>
-              </label>
-
-              <label className={cn("grid gap-2", wizardStep !== 1 && "hidden")}>
-                <span className="text-xs font-medium text-foreground">
-                  {t("providerInstanceId")}
-                </span>
-                <Input
-                  className="bg-background"
-                  placeholder={t("providerInstanceIdPlaceholder", { driver: String(driver) })}
-                  value={instanceId}
-                  onChange={(event) => {
-                    setInstanceIdOverride(event.target.value);
-                  }}
-                  aria-invalid={showInstanceIdError}
-                />
-                {showInstanceIdError ? (
-                  <span className="text-[11px] text-destructive">{instanceIdError}</span>
-                ) : (
-                  <span className="text-[11px] text-muted-foreground">
-                    {t("providerInstanceIdDescription")}
-                  </span>
+              <div
+                className={cn(
+                  "grid gap-4 transition-opacity duration-200 ease-out",
+                  wizardStep !== 1 && "hidden",
+                  wizardStep === 1 &&
+                    "animate-in fade-in-50 duration-150 motion-reduce:animate-none",
                 )}
-              </label>
-
-              <div className={cn("grid gap-2", wizardStep !== 1 && "hidden")}>
-                <span className="text-xs font-medium text-foreground">{t("accentColor")}</span>
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <input
-                    type="color"
-                    value={normalizeProviderAccentColor(accentColor) ?? PROVIDER_ACCENT_SWATCHES[0]}
-                    onChange={(event) => setAccentColor(event.target.value)}
-                    aria-label={t("providerInstanceAccentColor")}
-                    className="h-8 w-10 cursor-pointer rounded-xl border border-input bg-background p-0.5"
+              >
+                <label className="grid gap-2">
+                  <span className="text-xs font-medium text-foreground">{t("displayName")}</span>
+                  <Input
+                    className="bg-background"
+                    placeholder={t("eGWork")}
+                    value={label}
+                    onChange={(event) => setLabel(event.target.value)}
                   />
-                  <div className="flex flex-wrap gap-1.5">
-                    {PROVIDER_ACCENT_SWATCHES.map((swatch) => {
-                      const selected = accentColor.toLowerCase() === swatch;
-                      return (
-                        <button
-                          key={swatch}
-                          type="button"
-                          className={cn(
-                            "size-6 cursor-pointer rounded-full border transition",
-                            selected
-                              ? "scale-110 border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background"
-                              : "border-black/10 hover:scale-105 dark:border-white/20",
-                          )}
-                          style={{ backgroundColor: swatch }}
-                          onClick={() => setAccentColor(swatch)}
-                          aria-label={t("useAccent", { swatch: swatch })}
-                        />
-                      );
-                    })}
+                  <span className="text-[11px] text-muted-foreground">
+                    {t("providerDisplayNameDescription")}
+                  </span>
+                </label>
+
+                <label className="grid gap-2">
+                  <span className="text-xs font-medium text-foreground">
+                    {t("providerInstanceId")}
+                  </span>
+                  <Input
+                    className="bg-background"
+                    placeholder={t("providerInstanceIdPlaceholder", { driver: String(driver) })}
+                    value={instanceId}
+                    onChange={(event) => {
+                      setInstanceIdOverride(event.target.value);
+                    }}
+                    aria-invalid={showInstanceIdError}
+                  />
+                  {showInstanceIdError ? (
+                    <span className="text-[11px] text-destructive">{instanceIdError}</span>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground">
+                      {t("providerInstanceIdDescription")}
+                    </span>
+                  )}
+                </label>
+
+                <div className="grid gap-2">
+                  <span className="text-xs font-medium text-foreground">{t("accentColor")}</span>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <input
+                      type="color"
+                      value={
+                        normalizeProviderAccentColor(accentColor) ?? PROVIDER_ACCENT_SWATCHES[0]
+                      }
+                      onChange={(event) => setAccentColor(event.target.value)}
+                      aria-label={t("providerInstanceAccentColor")}
+                      className="h-8 w-10 cursor-pointer rounded-xl border border-input bg-background p-0.5"
+                    />
+                    <div className="flex flex-wrap gap-1.5">
+                      {PROVIDER_ACCENT_SWATCHES.map((swatch) => {
+                        const selected = accentColor.toLowerCase() === swatch;
+                        return (
+                          <button
+                            key={swatch}
+                            type="button"
+                            className={cn(
+                              "size-6 cursor-pointer rounded-full border transition",
+                              selected
+                                ? "scale-110 border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background"
+                                : "border-black/10 hover:scale-105 dark:border-white/20",
+                            )}
+                            style={{ backgroundColor: swatch }}
+                            onClick={() => setAccentColor(swatch)}
+                            aria-label={t("useAccent", { swatch: swatch })}
+                          />
+                        );
+                      })}
+                    </div>
+                    {accentColor ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs text-muted-foreground"
+                        onClick={() => setAccentColor("")}
+                      >
+                        {t("clear")}
+                      </Button>
+                    ) : null}
                   </div>
-                  {accentColor ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 px-2 text-xs text-muted-foreground"
-                      onClick={() => setAccentColor("")}
-                    >
-                      {t("clear")}
-                    </Button>
-                  ) : null}
+                  <span className="text-[11px] text-muted-foreground">
+                    {t("optionalMarkerShownInThePicker")}
+                  </span>
                 </div>
-                <span className="text-[11px] text-muted-foreground">
-                  {t("optionalMarkerShownInThePicker")}
-                </span>
               </div>
 
               {driverSettingsFields.length > 0 ? (
-                <div className={cn("grid gap-4", wizardStep !== 2 && "hidden")}>
+                <div
+                  className={cn(
+                    "grid gap-4 transition-opacity duration-200 ease-out",
+                    wizardStep !== 2 && "hidden",
+                    wizardStep === 2 &&
+                      "animate-in fade-in-50 duration-150 motion-reduce:animate-none",
+                  )}
+                >
                   <ProviderSettingsForm
                     definition={driverOption}
                     value={configDraft}
@@ -428,13 +467,20 @@ export function AddProviderInstanceDialog({
                     onChange={setConfigDraft}
                   />
                 </div>
-              ) : wizardStep === 2 ? (
-                <div className="grid gap-2">
+              ) : (
+                <div
+                  className={cn(
+                    "grid gap-2 transition-opacity duration-200 ease-out",
+                    wizardStep !== 2 && "hidden",
+                    wizardStep === 2 &&
+                      "animate-in fade-in-50 duration-150 motion-reduce:animate-none",
+                  )}
+                >
                   <p className="text-sm text-muted-foreground">
                     {t("thisDriverHasNoRequiredConfigurationYouCanAddTheInstanceNow")}
                   </p>
                 </div>
-              ) : null}
+              )}
             </AnimatedHeight>
           </div>
 

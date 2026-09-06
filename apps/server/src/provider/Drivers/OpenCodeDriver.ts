@@ -43,6 +43,7 @@ import {
 import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
+  applyRoutedProviderAvailability,
   ensureGatewayToken,
   gatewayAdapterRoutes,
   openCodeGatewayConfigContent,
@@ -128,6 +129,14 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
       const serverSettings = yield* ServerSettingsService;
       const secretStore = yield* ServerSecretStore;
       const eventLoggers = yield* ProviderEventLoggers;
+      if (config.routeThroughByok === true && config.serverUrl?.trim()) {
+        return yield* new ProviderDriverError({
+          driver: DRIVER_KIND,
+          instanceId,
+          detail:
+            "外部 OpenCode 服务需要在其运行环境配置模型线路；本地 BYOK 设置无法接管远端进程。请关闭接管或清空服务地址以使用本程序托管的 OpenCode。",
+        });
+      }
       const baseProcessEnv = mergeProviderInstanceEnvironment(environment);
       // Gateway routing injects a `byok_gateway` provider into OpenCode's
       // config content; opencode discovers its models through its own
@@ -140,7 +149,13 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
                 existingContent: baseProcessEnv.OPENCODE_CONFIG_CONTENT,
                 origin: gatewayOrigin(serverConfig.port),
                 token: yield* ensureGatewayToken(secretStore),
-                routes: gatewayAdapterRoutes(yield* serverSettings.getSettings.pipe(Effect.orDie)),
+                routes: gatewayAdapterRoutes(
+                  yield* serverSettings.getSettings.pipe(Effect.orDie),
+                  config.byokSourceInstanceId,
+                ),
+                ...(config.byokSourceInstanceId === undefined
+                  ? {}
+                  : { sourceInstanceId: config.byokSourceInstanceId }),
               }),
             }
           : baseProcessEnv;
@@ -188,7 +203,14 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
               enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
             }).pipe(
               Effect.provideService(HttpClient.HttpClient, httpClient),
-              Effect.flatMap((enrichedSnapshot) => publishSnapshot(enrichedSnapshot)),
+              Effect.flatMap((enrichedSnapshot) =>
+                publishSnapshot(
+                  // 网关接管时 auth 由网关提供；原生登录探测不得把实例标记为不可用。
+                  config.routeThroughByok === true
+                    ? applyRoutedProviderAvailability(enrichedSnapshot)
+                    : enrichedSnapshot,
+                ),
+              ),
             ),
         },
       ).pipe(

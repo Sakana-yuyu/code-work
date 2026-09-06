@@ -65,6 +65,34 @@ const runDiscover = async (
     ),
   );
 
+const runBenchmark = async (
+  settings: typeof DEFAULT_SERVER_SETTINGS,
+  fetchImplementation: typeof globalThis.fetch,
+  input: { instanceId: string; adapterId: string },
+) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* make;
+      return yield* service.benchmark(input);
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          Layer.succeed(ServerSettings.ServerSettingsService, {
+            start: Effect.void,
+            ready: Effect.void,
+            getSettings: Effect.succeed(settings),
+            updateSettings: () => Effect.succeed(settings),
+            streamChanges: Stream.empty,
+            subscribeChanges: Effect.succeed(Stream.empty),
+          }),
+          FetchHttpClient.layer.pipe(
+            Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchImplementation)),
+          ),
+        ),
+      ),
+    ),
+  );
+
 const runContextWindowMatch = async (
   settings: typeof DEFAULT_SERVER_SETTINGS,
   fetchImplementation: typeof globalThis.fetch,
@@ -189,6 +217,65 @@ describe("ByokModelDiscoveryService", () => {
     ]);
     expect(requested?.url).toBe("https://discovery.test/models");
     expect(requested?.headers.get("authorization")).toBe("Bearer sk-test-key");
+  });
+
+  it("uses provider usage for benchmark throughput when the relay returns it", async () => {
+    let requestedBody = "";
+    const fetch = asFetch(async (_input, init) => {
+      requestedBody = init?.body === undefined ? "" : await new Response(init.body).text();
+      return new Response(
+        [
+          'data: {"choices":[{"delta":{"content":"1 2 3"},"finish_reason":"stop"}]}',
+          "",
+          'data: {"choices":[],"usage":{"completion_tokens":42}}',
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
+    });
+    const result = await runBenchmark(
+      makeSettings("instance-benchmark", [adapter({ id: "benchmark", modelId: "deepseek-v4" })]),
+      fetch,
+      { instanceId: "instance-benchmark", adapterId: "benchmark" },
+    );
+    expect(result.outputTokens).toBe(42);
+    expect(result.tokensEstimated).toBe(false);
+    expect(requestedBody).toContain('"max_tokens":4096');
+    expect(requestedBody).toContain('"stream_options":{"include_usage":true}');
+  });
+
+  it("uses Anthropic output_tokens for benchmark throughput", async () => {
+    const fetch = asFetch(
+      async () =>
+        new Response(
+          [
+            'data: {"type":"content_block_delta","delta":{"text":"1 2 3"}}',
+            "",
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":37}}',
+            "",
+            'data: {"type":"message_stop"}',
+            "",
+          ].join("\n"),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+    );
+    const result = await runBenchmark(
+      makeSettings("instance-anthropic-benchmark", [
+        adapter({
+          id: "anthropic-benchmark",
+          protocol: "anthropic",
+          baseURL: "https://api.anthropic.com",
+          modelId: "claude-sonnet",
+        }),
+      ]),
+      fetch,
+      { instanceId: "instance-anthropic-benchmark", adapterId: "anthropic-benchmark" },
+    );
+    expect(result.outputTokens).toBe(37);
+    expect(result.tokensEstimated).toBe(false);
+    expect(result.tokensPerSecond).toBeGreaterThan(0);
   });
 
   it("rejects missing credentials and manual-only adapters", async () => {

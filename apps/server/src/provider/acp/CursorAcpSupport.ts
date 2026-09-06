@@ -23,6 +23,10 @@ export interface CursorAcpRuntimeInput extends Omit<
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
   readonly cursorSettings: CursorAcpRuntimeCursorSettings | null | undefined;
   readonly environment?: NodeJS.ProcessEnv;
+  readonly acpCommand?: string;
+  readonly acpArgs?: ReadonlyArray<string>;
+  readonly authMethodId?: string;
+  readonly clientName?: string;
 }
 
 export interface CursorAcpModelSelectionErrorContext {
@@ -65,8 +69,19 @@ export const makeCursorAcpRuntime = (
     const acpContext = yield* Layer.build(
       AcpSessionRuntime.layer({
         ...input,
-        spawn: buildCursorAcpSpawnInput(input.cursorSettings, input.cwd, input.environment),
-        authMethodId: "cursor_login",
+        spawn: input.acpCommand
+          ? {
+              command: input.acpCommand,
+              args: input.acpArgs ?? ["acp"],
+              cwd: input.cwd,
+              ...(input.environment ? { env: input.environment } : {}),
+            }
+          : buildCursorAcpSpawnInput(input.cursorSettings, input.cwd, input.environment),
+        authMethodId: input.authMethodId ?? "cursor_login",
+        clientInfo: {
+          name: input.clientName ?? input.clientInfo.name,
+          version: input.clientInfo.version,
+        },
         clientCapabilities,
       }).pipe(
         Layer.provide(

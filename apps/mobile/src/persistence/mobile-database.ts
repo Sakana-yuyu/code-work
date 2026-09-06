@@ -16,7 +16,13 @@ const LEGACY_CACHE_DIRECTORIES = [
   "connection-vcs-refs",
 ] as const;
 
-export const ClientCacheKind = Schema.Literals(["shell", "thread", "server-config", "vcs-refs"]);
+export const ClientCacheKind = Schema.Literals([
+  "shell",
+  "thread",
+  "server-config",
+  "vcs-refs",
+  "byok-benchmark",
+]);
 export type ClientCacheKind = typeof ClientCacheKind.Type;
 
 export interface ClientCacheSummaryRow {

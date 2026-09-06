@@ -7,8 +7,9 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="theme-color" content="#0a0a0a" />
-    <link rel="icon" href="/favicon.ico" sizes="48x48" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- ?v= 图标设计世代号（scripts/export-brand-icons.ts 的 DESIGN_GENERATION）；换图标时同步 +1，否则浏览器继续用旧 favicon 缓存 -->
+    <link rel="icon" href="/favicon.ico?v=26" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=26" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <script>
       (() => {
@@ -490,7 +491,7 @@
     <div id="root">
       <div id="boot-shell">
         <div id="boot-shell-card" aria-label="Code Work splash screen">
-          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="Code Work" />
+          <img id="boot-shell-logo" src="/apple-touch-icon.png?v=26" alt="Code Work" />
         </div>
       </div>
     </div>

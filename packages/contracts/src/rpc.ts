@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
+import { CliProxyError, CliProxyRequest, CliProxyResult } from "./cliProxy.ts";
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
@@ -237,6 +238,8 @@ import {
   ByokDraftModelDiscoveryRequest,
   ByokDraftModelDiscoveryResult,
   ByokModelDiscoveryRequest,
+  ByokModelBenchmarkRequest,
+  ByokModelBenchmarkResult,
   ByokModelDiscoveryResult,
   ByokSupplierCatalogEntry,
 } from "./byokDiscovery.ts";
@@ -435,6 +438,7 @@ export const WS_METHODS = {
   serverUpdateProvider: "server.updateProvider",
   serverInstallProvider: "server.installProvider",
   serverStartProviderLogin: "server.startProviderLogin",
+  serverCliProxy: "server.cliProxy",
   serverUpdateServer: "server.updateServer",
   serverUpdateServerWithProgress: "server.updateServerWithProgress",
   serverUpsertKeybinding: "server.upsertKeybinding",
@@ -447,6 +451,7 @@ export const WS_METHODS = {
   serverRefreshMcpServer: "server.refreshMcpServer",
   serverGetByokSupplierCatalog: "server.getByokSupplierCatalog",
   serverDiscoverByokModels: "server.discoverByokModels",
+  serverBenchmarkByokModel: "server.benchmarkByokModel",
   serverMatchByokContextWindows: "server.matchByokContextWindows",
   serverDiscoverByokDraftModels: "server.discoverByokDraftModels",
   serverGetByokBalance: "server.getByokBalance",
@@ -615,6 +620,12 @@ export const WsServerStartProviderLoginRpc = Rpc.make(WS_METHODS.serverStartProv
   error: Schema.Union([TerminalError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
+export const WsServerCliProxyRpc = Rpc.make(WS_METHODS.serverCliProxy, {
+  payload: CliProxyRequest,
+  success: CliProxyResult,
+  error: Schema.Union([CliProxyError, EnvironmentAuthorizationError]),
+});
+
 export const WsServerUpdateServerRpc = Rpc.make(WS_METHODS.serverUpdateServer, {
   payload: ServerSelfUpdateInput,
   success: ServerSelfUpdateResult,
@@ -684,6 +695,12 @@ export const WsServerGetByokSupplierCatalogRpc = Rpc.make(WS_METHODS.serverGetBy
 export const WsServerDiscoverByokModelsRpc = Rpc.make(WS_METHODS.serverDiscoverByokModels, {
   payload: ByokModelDiscoveryRequest,
   success: ByokModelDiscoveryResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerBenchmarkByokModelRpc = Rpc.make(WS_METHODS.serverBenchmarkByokModel, {
+  payload: ByokModelBenchmarkRequest,
+  success: ByokModelBenchmarkResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -1885,6 +1902,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpdateProviderRpc,
   WsServerInstallProviderRpc,
   WsServerStartProviderLoginRpc,
+  WsServerCliProxyRpc,
   WsServerUpdateServerRpc,
   WsServerUpdateServerWithProgressRpc,
   WsServerUpsertKeybindingRpc,
@@ -1897,6 +1915,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRefreshMcpServerRpc,
   WsServerGetByokSupplierCatalogRpc,
   WsServerDiscoverByokModelsRpc,
+  WsServerBenchmarkByokModelRpc,
   WsServerMatchByokContextWindowsRpc,
   WsServerDiscoverByokDraftModelsRpc,
   WsServerGetByokBalanceRpc,

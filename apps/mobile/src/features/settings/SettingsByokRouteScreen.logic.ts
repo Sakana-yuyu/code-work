@@ -148,6 +148,12 @@ export function readByokModelAdapters(config: unknown): ReadonlyArray<ByokModelA
   });
 }
 
+export function byokBenchmarkFingerprint(
+  adapter: Pick<ByokModelAdapter, "protocol" | "baseURL" | "modelId">,
+): string {
+  return `${adapter.protocol}\u0000${adapter.baseURL.trim()}\u0000${adapter.modelId.trim()}`;
+}
+
 export function readByokPromptTemplate(config: unknown): ByokPromptTemplateConfig {
   const value = readByokConfigRecord(config)["promptTemplate"];
   if (!isRecord(value)) return DEFAULT_BYOK_PROMPT_TEMPLATE;

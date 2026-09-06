@@ -11,7 +11,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   ByokContextWindowMatchResult,
   ByokDiscoveredModel,
@@ -57,6 +57,73 @@ import { useAtomCommand } from "../../state/use-atom-command";
 export type { ByokModelAdapter };
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
+
+type ByokBenchmarkResult = {
+  readonly tokensPerSecond: number;
+  readonly visibleTokensPerSecond?: number;
+  readonly totalMs: number;
+  readonly tokensEstimated?: boolean;
+  readonly fingerprint: string;
+};
+
+function benchmarkFingerprint(adapter: Pick<ByokModelAdapter, "protocol" | "baseURL" | "modelId">) {
+  return `${adapter.protocol}\u0000${adapter.baseURL.trim()}\u0000${adapter.modelId.trim()}`;
+}
+
+export function retainCurrentBenchmarkResults(
+  benchmark: Readonly<Record<string, ByokBenchmarkResult>>,
+  adapters: ReadonlyArray<ByokModelAdapter>,
+): Record<string, ByokBenchmarkResult> {
+  const fingerprints = new Map(
+    adapters.map((adapter) => [adapter.id, benchmarkFingerprint(adapter)]),
+  );
+  return Object.fromEntries(
+    Object.entries(benchmark).filter(
+      ([adapterId, result]) => fingerprints.get(adapterId) === result.fingerprint,
+    ),
+  );
+}
+
+export function removeBenchmarkResult(
+  benchmark: Readonly<Record<string, ByokBenchmarkResult>>,
+  adapterId: string,
+): Record<string, ByokBenchmarkResult> {
+  if (!(adapterId in benchmark)) return { ...benchmark };
+  const next = { ...benchmark };
+  delete next[adapterId];
+  return next;
+}
+
+function sameRelayConnection(left: ByokModelAdapter, right: ByokModelAdapter): boolean {
+  return (
+    left.protocol === right.protocol &&
+    left.baseURL.trim() === right.baseURL.trim() &&
+    (left.groupName?.trim() ?? "") === (right.groupName?.trim() ?? "")
+  );
+}
+
+export function retainCurrentContextMatches(
+  matches: Readonly<Record<string, ByokContextWindowMatchResult>>,
+  adapters: ReadonlyArray<ByokModelAdapter>,
+): Record<string, ByokContextWindowMatchResult> {
+  const adaptersById = new Map(adapters.map((adapter) => [adapter.id, adapter]));
+  return Object.fromEntries(
+    Object.entries(matches).filter(([adapterId, result]) => {
+      const representative = adaptersById.get(adapterId);
+      if (!representative) return false;
+      const expected = adapters
+        .filter((adapter) => sameRelayConnection(adapter, representative))
+        .map(
+          (adapter) => `${adapter.id}\u0000${adapter.modelId}\u0000${adapter.contextWindowTokens}`,
+        )
+        .sort();
+      const actual = result.details
+        .map((detail) => `${detail.adapterId}\u0000${detail.modelId}\u0000${detail.before}`)
+        .sort();
+      return JSON.stringify(actual) === JSON.stringify(expected);
+    }),
+  );
+}
 
 export type ByokSupplierTemplateId = "custom" | string;
 
@@ -425,11 +492,34 @@ export function ByokModelAdaptersSection({
   );
   const [discovery, setDiscovery] = useState<Record<string, ByokModelDiscoveryResult>>({});
   const [discoveryErrors, setDiscoveryErrors] = useState<Record<string, string>>({});
+  const [discoveryLatency, setDiscoveryLatency] = useState<Record<string, number>>({});
+  const [benchmark, setBenchmark] = useState<Record<string, ByokBenchmarkResult>>({});
+  const [benchmarkErrors, setBenchmarkErrors] = useState<Record<string, string>>({});
+  const [benchmarking, setBenchmarking] = useState<string | null>(null);
+  const [benchmarkAll, setBenchmarkAll] = useState(false);
+  const benchmarkAdapterKey = useMemo(
+    () =>
+      adapters
+        .map((adapter) => `${adapter.id}\u0000${benchmarkFingerprint(adapter)}`)
+        .join("\u0001"),
+    [adapters],
+  );
+  const contextAdapterKey = useMemo(
+    () =>
+      adapters
+        .map(
+          (adapter) =>
+            `${adapter.id}\u0000${adapter.protocol}\u0000${adapter.baseURL.trim()}\u0000${adapter.groupName?.trim() ?? ""}\u0000${adapter.modelId}\u0000${adapter.contextWindowTokens}`,
+        )
+        .join("\u0001"),
+    [adapters],
+  );
   const [selectedModels, setSelectedModels] = useState<Record<string, ReadonlyArray<string>>>({});
   const [contextMatches, setContextMatches] = useState<
     Record<string, ByokContextWindowMatchResult>
   >({});
   const discoverCommand = useAtomCommand(byokEnvironment.discoverModels, { reportFailure: false });
+  const benchmarkCommand = useAtomCommand(byokEnvironment.benchmarkModel, { reportFailure: false });
   const matchContextWindowsCommand = useAtomCommand(byokEnvironment.matchContextWindows, {
     reportFailure: false,
   });
@@ -447,6 +537,50 @@ export function ByokModelAdaptersSection({
   const [draftModelPickerSearch, setDraftModelPickerSearch] = useState("");
   const [manualModelDialogOpen, setManualModelDialogOpen] = useState(false);
   const [manualModelInput, setManualModelInput] = useState("");
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(
+        `codework:byok-benchmark:${environmentId}:${instanceId}`,
+      );
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, ByokBenchmarkResult>;
+        setBenchmark(retainCurrentBenchmarkResults(parsed, adapters));
+      } else setBenchmark({});
+    } catch {
+      // 本地测速缓存损坏时忽略，不能阻塞供应商页面。
+      setBenchmark({});
+    }
+  }, [benchmarkAdapterKey, environmentId, instanceId]);
+  useEffect(() => {
+    const key = `codework:byok-benchmark:${environmentId}:${instanceId}`;
+    if (Object.keys(benchmark).length === 0) {
+      window.localStorage.removeItem(key);
+      return;
+    }
+    window.localStorage.setItem(key, JSON.stringify(benchmark));
+  }, [benchmark, environmentId, instanceId]);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(
+        `codework:byok-context:${environmentId}:${instanceId}`,
+      );
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, ByokContextWindowMatchResult>;
+        setContextMatches(retainCurrentContextMatches(parsed, adapters));
+      } else setContextMatches({});
+    } catch {
+      // 本地上下文缓存损坏时忽略，在线匹配仍可重新获取。
+      setContextMatches({});
+    }
+  }, [contextAdapterKey, environmentId, instanceId]);
+  useEffect(() => {
+    const key = `codework:byok-context:${environmentId}:${instanceId}`;
+    if (Object.keys(contextMatches).length === 0) {
+      window.localStorage.removeItem(key);
+      return;
+    }
+    window.localStorage.setItem(key, JSON.stringify(contextMatches));
+  }, [contextMatches, environmentId, instanceId]);
   const filteredDraftModels = useMemo(
     () => filterDiscoveredModels(draftDiscovery?.models ?? [], draftModelPickerSearch),
     [draftDiscovery?.models, draftModelPickerSearch],
@@ -636,6 +770,7 @@ export function ByokModelAdaptersSection({
   };
 
   const discoverModels = async (adapter: ByokModelAdapter) => {
+    const startedAt = performance.now();
     setDiscoveringAdapterId(adapter.id);
     setDiscovery((current) => {
       const next = { ...current };
@@ -660,9 +795,59 @@ export function ByokModelAdaptersSection({
         return;
       }
       setDiscovery((current) => ({ ...current, [adapter.id]: result.value }));
+      setDiscoveryLatency((current) => ({
+        ...current,
+        [adapter.id]: Math.round(performance.now() - startedAt),
+      }));
       setSelectedModels((current) => ({ ...current, [adapter.id]: [] }));
     } finally {
       setDiscoveringAdapterId(null);
+    }
+  };
+
+  const benchmarkModel = async (adapter: ByokModelAdapter) => {
+    setBenchmarking(adapter.id);
+    setBenchmark((current) => removeBenchmarkResult(current, adapter.id));
+    setBenchmarkErrors((current) => {
+      const next = { ...current };
+      delete next[adapter.id];
+      return next;
+    });
+    try {
+      const result = await benchmarkCommand({
+        environmentId: environmentId as never,
+        input: { instanceId, adapterId: adapter.id },
+      });
+      if (AsyncResult.isSuccess(result) && result.value.error === undefined) {
+        setBenchmark((current) => ({
+          ...current,
+          [adapter.id]: {
+            totalMs: result.value.totalMs,
+            tokensPerSecond: result.value.tokensPerSecond,
+            visibleTokensPerSecond: result.value.visibleTokensPerSecond,
+            fingerprint: benchmarkFingerprint(adapter),
+            ...(result.value.tokensEstimated === undefined
+              ? {}
+              : { tokensEstimated: result.value.tokensEstimated }),
+          },
+        }));
+      } else
+        setBenchmarkErrors((current) => ({
+          ...current,
+          [adapter.id]: t("byokAdapters.benchmarkFailed"),
+        }));
+    } finally {
+      setBenchmarking(null);
+    }
+  };
+
+  const benchmarkAllModels = async (models: ReadonlyArray<ByokModelAdapter>) => {
+    if (benchmarkAll) return;
+    setBenchmarkAll(true);
+    try {
+      for (const model of models) await benchmarkModel(model);
+    } finally {
+      setBenchmarkAll(false);
     }
   };
 
@@ -675,19 +860,28 @@ export function ByokModelAdaptersSection({
       });
       if (!AsyncResult.isSuccess(result)) return;
 
-      setContextMatches((current) => ({ ...current, [adapter.id]: result.value }));
       const nextWindowByAdapterId = new Map(
         result.value.details
           .filter((detail) => detail.before !== detail.after)
           .map((detail) => [detail.adapterId, detail.after]),
       );
-      if (nextWindowByAdapterId.size === 0) return;
-      onChange(
-        adapters.map((current) => {
-          const contextWindowTokens = nextWindowByAdapterId.get(current.id);
-          return contextWindowTokens === undefined ? current : { ...current, contextWindowTokens };
-        }),
-      );
+      if (nextWindowByAdapterId.size > 0) {
+        const saved = await onChange(
+          adapters.map((current) => {
+            const contextWindowTokens = nextWindowByAdapterId.get(current.id);
+            return contextWindowTokens === undefined
+              ? current
+              : { ...current, contextWindowTokens };
+          }),
+        );
+        if (!saved) {
+          setError(t("settingsSaveTryAgain"));
+          return;
+        }
+      }
+      setContextMatches((current) => ({ ...current, [adapter.id]: result.value }));
+    } catch {
+      setError(t("settingsSaveTryAgain"));
     } finally {
       setMatchingContextAdapterId(null);
     }
@@ -1548,6 +1742,23 @@ export function ByokModelAdaptersSection({
                     ? t("byokAdapters.discovering")
                     : t("byokAdapters.discoverModels")}
                 </Button>
+                {discoveryLatency[selectedRelayAdapter.id] !== undefined ? (
+                  <span className="px-1 text-[10px] text-muted-foreground">
+                    {discoveryLatency[selectedRelayAdapter.id]} {t("byokAdapters.milliseconds")}
+                  </span>
+                ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[10px]"
+                  onClick={() => void benchmarkAllModels(selectedRelay.adapters)}
+                  disabled={benchmarkAll || benchmarking !== null}
+                >
+                  {benchmarkAll
+                    ? t("byokAdapters.benchmarkingAll")
+                    : t("byokAdapters.benchmarkAll")}
+                </Button>
                 <Button
                   type="button"
                   size="sm"
@@ -1563,26 +1774,62 @@ export function ByokModelAdaptersSection({
                 </Button>
               </div>
 
-              <div className="divide-y divide-border/60 border-y border-border/60">
+              <div className="grid gap-2 sm:grid-cols-2">
                 {selectedRelay.adapters.map((adapter) => (
                   <div
                     key={adapter.id}
-                    className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 py-2"
+                    className="grid min-h-24 gap-2 rounded-lg border border-border/70 bg-muted/10 p-3 shadow-xs"
                   >
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                      <span className="min-w-0 truncate text-xs text-foreground/90">
-                        {adapter.displayName || adapter.modelId}
-                      </span>
-                      <code className="min-w-0 truncate text-[10px] text-muted-foreground">
-                        {adapter.modelId}
-                      </code>
-                      <span className="text-[10px] text-muted-foreground/80">
-                        {t("byokAdapters.contextWindowShort", {
-                          count: adapter.contextWindowTokens,
-                        })}
-                      </span>
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="block truncate text-xs font-medium text-foreground">
+                          {adapter.displayName || adapter.modelId}
+                        </span>
+                        <code className="mt-1 block truncate text-[10px] text-muted-foreground">
+                          {adapter.modelId}
+                        </code>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost-muted"
+                          className="h-6 px-1.5 text-[10px]"
+                          onClick={() => void benchmarkModel(adapter)}
+                          disabled={benchmarking !== null}
+                        >
+                          {benchmarking === adapter.id
+                            ? t("byokAdapters.benchmarking")
+                            : t("byokAdapters.benchmark")}
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-0.5">
+                    <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-2">
+                      <div className="flex min-w-0 items-center gap-2 text-[10px] text-muted-foreground">
+                        <span>
+                          {t("byokAdapters.contextWindowShort", {
+                            count: adapter.contextWindowTokens,
+                          })}
+                        </span>
+                        {benchmark[adapter.id] ? (
+                          <span className="font-medium text-foreground">
+                            {t("byokAdapters.totalTokensPerSecond", {
+                              value: benchmark[adapter.id]!.tokensPerSecond,
+                            })}
+                            {benchmark[adapter.id]!.visibleTokensPerSecond === undefined
+                              ? ` ${t("byokAdapters.tokensPerSecond")}`
+                              : ` · ${t("byokAdapters.visibleTokensPerSecond", {
+                                  value: benchmark[adapter.id]!.visibleTokensPerSecond,
+                                })}`}
+                            {benchmark[adapter.id]!.tokensEstimated
+                              ? t("byokAdapters.estimated")
+                              : ""}
+                          </span>
+                        ) : null}
+                        {benchmarkErrors[adapter.id] ? (
+                          <span className="text-destructive">{benchmarkErrors[adapter.id]}</span>
+                        ) : null}
+                      </div>
                       <Tooltip>
                         <TooltipTrigger
                           render={

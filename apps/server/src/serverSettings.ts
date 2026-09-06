@@ -229,7 +229,17 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
       redactMcpServerConfig(config),
     ]),
   );
-  return { ...settings, providerInstances, mcpServers };
+  // 本地账号凭据存放在 ServerSecretStore；credentialRef 也是服务端内部索引，
+  // 不应通过通用 settings RPC 暴露给 Web/Mobile。保留空字段以满足现有契约。
+  const localAccountPool = {
+    ...settings.localAccountPool,
+    accounts: Object.fromEntries(
+      Object.entries(settings.localAccountPool.accounts).map(([id, account]) => {
+        return [id, { ...account, credentialRef: "" }];
+      }),
+    ),
+  } as ServerSettings["localAccountPool"];
+  return { ...settings, providerInstances, localAccountPool, mcpServers };
 }
 
 export class ServerSettingsService extends Context.Service<
@@ -244,9 +254,9 @@ export class ServerSettingsService extends Context.Service<
     /** Read the current settings. */
     readonly getSettings: Effect.Effect<ServerSettings, ServerSettingsError>;
 
-    /** Patch settings and persist. Returns the new full settings object. */
+    /** 更新并持久化设置；函数式 patch 需保持纯函数，CAS 重试会基于最新的脱敏配置重新计算。 */
     readonly updateSettings: (
-      patch: ServerSettingsPatch,
+      patch: ServerSettingsPatch | ((current: ServerSettings) => ServerSettingsPatch),
     ) => Effect.Effect<ServerSettings, ServerSettingsUpdateError>;
 
     /** Stream of settings change events. */
@@ -279,6 +289,7 @@ const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
         : {}),
     });
     const currentSettingsRef = yield* Ref.make<ServerSettings>(initialSettings);
+    const writeSemaphore = yield* Semaphore.make(1);
 
     return {
       start: Effect.void,
@@ -286,10 +297,16 @@ const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
       getSettings: Ref.get(currentSettingsRef).pipe(Effect.map(resolveTextGenerationProvider)),
       updateSettings: (patch) =>
         Ref.get(currentSettingsRef).pipe(
-          Effect.map((currentSettings) => applyServerSettingsPatch(currentSettings, patch)),
+          Effect.map((currentSettings) =>
+            applyServerSettingsPatch(
+              currentSettings,
+              typeof patch === "function" ? patch(currentSettings) : patch,
+            ),
+          ),
           Effect.flatMap(normalizeServerSettings),
           Effect.tap((nextSettings) => Ref.set(currentSettingsRef, nextSettings)),
           Effect.map(resolveTextGenerationProvider),
+          writeSemaphore.withPermit,
         ),
       streamChanges: Stream.empty,
       subscribeChanges: Effect.succeed(Stream.empty),
@@ -306,6 +323,10 @@ const PersistedOptionalProviderSettings = Schema.Struct({
     Schema.Struct({
       cursor: Schema.optionalKey(Schema.Struct({ enabled: Schema.optionalKey(Schema.Boolean) })),
       grok: Schema.optionalKey(Schema.Struct({ enabled: Schema.optionalKey(Schema.Boolean) })),
+      kimi: Schema.optionalKey(Schema.Struct({ enabled: Schema.optionalKey(Schema.Boolean) })),
+      antigravity: Schema.optionalKey(
+        Schema.Struct({ enabled: Schema.optionalKey(Schema.Boolean) }),
+      ),
       opencode: Schema.optionalKey(Schema.Struct({ enabled: Schema.optionalKey(Schema.Boolean) })),
     }),
   ),
@@ -334,6 +355,8 @@ function restoreUsedProviders(
       instance.enabled === undefined &&
       (instance.driver === "cursor" ||
         instance.driver === "grok" ||
+        instance.driver === "kimi" ||
+        instance.driver === "antigravity" ||
         instance.driver === "opencode") &&
       usedProviderInstances.has(instanceId)
         ? { ...instance, enabled: true }
@@ -352,6 +375,14 @@ function restoreUsedProviders(
       grok: {
         ...settings.providers.grok,
         enabled: persisted.providers?.grok?.enabled ?? usedProviders.has("grok"),
+      },
+      kimi: {
+        ...settings.providers.kimi,
+        enabled: persisted.providers?.kimi?.enabled ?? usedProviders.has("kimi"),
+      },
+      antigravity: {
+        ...settings.providers.antigravity,
+        enabled: persisted.providers?.antigravity?.enabled ?? usedProviders.has("antigravity"),
       },
       opencode: {
         ...settings.providers.opencode,
@@ -403,6 +434,8 @@ const PERSISTED_SERVER_SETTINGS_DEFAULTS = {
     ...DEFAULT_SERVER_SETTINGS.providers,
     cursor: { ...DEFAULT_SERVER_SETTINGS.providers.cursor, enabled: undefined },
     grok: { ...DEFAULT_SERVER_SETTINGS.providers.grok, enabled: undefined },
+    kimi: { ...DEFAULT_SERVER_SETTINGS.providers.kimi, enabled: undefined },
+    antigravity: { ...DEFAULT_SERVER_SETTINGS.providers.antigravity, enabled: undefined },
     opencode: { ...DEFAULT_SERVER_SETTINGS.providers.opencode, enabled: undefined },
   },
 };
@@ -492,13 +525,13 @@ const make = Effect.gen(function* () {
         provider_name AS "providerName",
         provider_instance_id AS "providerInstanceId"
       FROM projection_thread_sessions
-      WHERE provider_name IN ('cursor', 'grok', 'opencode')
+      WHERE provider_name IN ('cursor', 'grok', 'kimi', 'antigravity', 'opencode')
       UNION
       SELECT DISTINCT
         provider_name AS "providerName",
         provider_instance_id AS "providerInstanceId"
       FROM provider_session_runtime
-      WHERE provider_name IN ('cursor', 'grok', 'opencode')
+      WHERE provider_name IN ('cursor', 'grok', 'kimi', 'antigravity', 'opencode')
     `.pipe(
       Effect.mapError(
         (cause) =>
@@ -1415,15 +1448,15 @@ const make = Effect.gen(function* () {
       Effect.flatMap(materializeByokSecrets),
       Effect.map(resolveTextGenerationProvider),
     ),
-    updateSettings: (patch) =>
+    updateSettings: (update) =>
       writeSemaphore.withPermits(1)(
         Effect.gen(function* () {
           let currentSnapshot = yield* loadSettingsFromDisk;
           yield* Cache.set(settingsCache, cacheKey, currentSnapshot);
-          let prepared = yield* prepareSettingsUpdate(currentSnapshot.settings, patch);
-          yield* originCommitHook({ settingsPath, patch, token: currentSnapshot.token });
-
           while (true) {
+            const patch = typeof update === "function" ? update(currentSnapshot.settings) : update;
+            const prepared = yield* prepareSettingsUpdate(currentSnapshot.settings, patch);
+            yield* originCommitHook({ settingsPath, patch, token: currentSnapshot.token });
             const committed = yield* commitServerSettingsOriginCas({
               settingsPath,
               expectedToken: currentSnapshot.token,
@@ -1454,7 +1487,6 @@ const make = Effect.gen(function* () {
             if (committed._tag === "Conflict") {
               currentSnapshot = yield* hydrateSettingsOrigin(committed.snapshot);
               yield* Cache.set(settingsCache, cacheKey, currentSnapshot);
-              prepared = yield* prepareSettingsUpdate(currentSnapshot.settings, patch);
               continue;
             }
 

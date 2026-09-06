@@ -17,27 +17,45 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Dialog, DialogPopup, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
 import { TerminalViewport } from "../ThreadTerminalDrawer";
+import { AnimatedHeight } from "../AnimatedHeight";
 import { t } from "~/i18n";
 import { randomUUID } from "../../lib/utils";
 
+const EMPTY_SHARED_INSTANCES: ReadonlyArray<{ instanceId: ProviderInstanceId; label: string }> = [];
+
 type ConnectionMode = "native" | "api" | "gateway";
+const supportsApiConnection = (driver: string): boolean =>
+  driver === "codex" || driver === "claudeAgent" || driver === "kimi";
+const supportsGatewayConnection = (driver: string): boolean =>
+  driver === "codex" || driver === "claudeAgent" || driver === "grok" || driver === "opencode";
 const apiNames = (driver: string, bearer = false) =>
   driver === "codex"
     ? { url: "CODEWORK_CODEX_BASE_URL", key: "CODEWORK_CODEX_API_KEY" }
-    : { url: "ANTHROPIC_BASE_URL", key: bearer ? "ANTHROPIC_AUTH_TOKEN" : "ANTHROPIC_API_KEY" };
+    : driver === "kimi"
+      ? { url: "KIMI_BASE_URL", key: "KIMI_API_KEY" }
+      : driver === "antigravity"
+        ? { url: "AGY_BASE_URL", key: "AGY_API_KEY" }
+        : {
+            url: "ANTHROPIC_BASE_URL",
+            key: bearer ? "ANTHROPIC_AUTH_TOKEN" : "ANTHROPIC_API_KEY",
+          };
 
 export function providerConnectionMode(instance: ProviderInstanceConfig): ConnectionMode {
   const config = instance.config as Record<string, unknown> | null;
-  if (config?.routeThroughByok === true) return "gateway";
+  if (supportsGatewayConnection(instance.driver) && config?.routeThroughByok === true)
+    return "gateway";
   const key = apiNames(instance.driver).key;
-  return instance.environment?.some(
-    (entry) =>
-      (entry.name === key ||
-        (instance.driver === "claudeAgent" && entry.name === "ANTHROPIC_AUTH_TOKEN")) &&
-      (entry.value || entry.valueRedacted),
+  if (
+    supportsApiConnection(instance.driver) &&
+    instance.environment?.some(
+      (entry) =>
+        (entry.name === key ||
+          (instance.driver === "claudeAgent" && entry.name === "ANTHROPIC_AUTH_TOKEN")) &&
+        (entry.value || entry.valueRedacted),
+    )
   )
-    ? "api"
-    : "native";
+    return "api";
+  return "native";
 }
 
 export function withProviderConnection(
@@ -46,6 +64,7 @@ export function withProviderConnection(
   url: string,
   key: string,
   bearer = false,
+  sourceInstanceId?: ProviderInstanceId,
 ): ProviderInstanceConfig {
   const names = apiNames(instance.driver, bearer);
   const current = instance.environment ?? [];
@@ -69,7 +88,9 @@ export function withProviderConnection(
       ? [names.url, names.key, "OPENAI_API_KEY", "OPENAI_BASE_URL"]
       : instance.driver === "claudeAgent"
         ? [names.url, "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"]
-        : [];
+        : instance.driver === "kimi"
+          ? [names.url, names.key]
+          : [];
   const environment = current.filter((entry) => !managed.includes(entry.name));
   if (mode === "api") {
     environment.push({ name: names.url, value: url.trim().replace(/\/+$/, ""), sensitive: false });
@@ -88,9 +109,15 @@ export function withProviderConnection(
       environment.push({ name: "CLAUDE_CODE_OAUTH_TOKEN", value: "", sensitive: true });
     }
   }
+  const config: Record<string, unknown> = {
+    ...(instance.config as Record<string, unknown>),
+    routeThroughByok: mode === "gateway" && supportsGatewayConnection(instance.driver),
+  };
+  if (sourceInstanceId) config.byokSourceInstanceId = sourceInstanceId;
+  else delete config.byokSourceInstanceId;
   return {
     ...instance,
-    config: { ...(instance.config as object), routeThroughByok: mode === "gateway" },
+    config,
     environment,
   };
 }
@@ -101,7 +128,8 @@ export function ProviderConnectionSection({
   instance,
   onUpdate,
   onManageChannels,
-  sharedChannels,
+  renderSharedChannels,
+  sharedInstances = EMPTY_SHARED_INSTANCES,
 }: {
   environmentId: string;
   instanceId: ProviderInstanceId;
@@ -112,8 +140,9 @@ export function ProviderConnectionSection({
     | AtomCommandResult<unknown, unknown>
     | null
     | PromiseLike<AtomCommandResult<unknown, unknown> | null>;
-  onManageChannels?: (() => void) | undefined;
-  sharedChannels?: ReactNode;
+  onManageChannels?: ((instanceId?: ProviderInstanceId) => void) | undefined;
+  renderSharedChannels?: ((instanceId: string) => ReactNode) | undefined;
+  sharedInstances?: ReadonlyArray<{ instanceId: ProviderInstanceId; label: string }> | undefined;
 }) {
   const environmentId = EnvironmentId.make(rawEnvironmentId);
   const [bearer, setBearer] = useState(
@@ -124,10 +153,18 @@ export function ProviderConnectionSection({
   );
   const names = apiNames(instance.driver, bearer);
   const [mode, setMode] = useState(() => providerConnectionMode(instance));
+  const savedSource = (instance.config as { byokSourceInstanceId?: ProviderInstanceId } | undefined)
+    ?.byokSourceInstanceId;
+  const [sourceInstanceId, setSourceInstanceId] = useState(savedSource);
+  useEffect(() => setSourceInstanceId(savedSource), [savedSource]);
   const [url, setUrl] = useState(
     () =>
       instance.environment?.find((entry) => entry.name === names.url)?.value ||
-      (instance.driver === "codex" ? "https://api.openai.com/v1" : "https://api.anthropic.com"),
+      (instance.driver === "codex"
+        ? "https://api.openai.com/v1"
+        : instance.driver === "kimi"
+          ? "https://api.kimi.com/coding"
+          : "https://api.anthropic.com"),
   );
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -139,7 +176,13 @@ export function ProviderConnectionSection({
   const refresh = useAtomCommand(serverEnvironment.refreshProviders);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const threadId = ThreadId.make(`provider-login:${instanceId}`);
-  const canDirect = instance.driver === "codex" || instance.driver === "claudeAgent";
+  const canDirect = supportsApiConnection(instance.driver);
+  const canGateway = supportsGatewayConnection(instance.driver);
+  const canLogin =
+    canDirect ||
+    instance.driver === "grok" ||
+    instance.driver === "kimi" ||
+    instance.driver === "antigravity";
   const storedKey = instance.environment?.some(
     (entry) => entry.name === names.key && (entry.value || entry.valueRedacted),
   );
@@ -166,7 +209,7 @@ export function ProviderConnectionSection({
     setBusy(true);
     setFeedback(null);
     try {
-      const next = withProviderConnection(instance, mode, url, key, bearer);
+      const next = withProviderConnection(instance, mode, url, key, bearer, sourceInstanceId);
       const result = await onUpdate(next);
       if (result !== null && result._tag !== "Success") throw new Error(t("settingsSaveTryAgain"));
       setKey("");
@@ -234,7 +277,13 @@ export function ProviderConnectionSection({
         role="group"
         aria-label={t("providerConnection.method")}
       >
-        {(["native", ...(canDirect ? ["api"] : []), "gateway"] as ConnectionMode[]).map((value) => (
+        {(
+          [
+            "native",
+            ...(canDirect ? ["api"] : []),
+            ...(canGateway ? ["gateway"] : []),
+          ] as ConnectionMode[]
+        ).map((value) => (
           <Button
             key={value}
             size="sm"
@@ -251,77 +300,120 @@ export function ProviderConnectionSection({
           </Button>
         ))}
       </div>
-      {mode === "api" ? (
-        <div className="grid min-w-0 gap-3">
-          {instance.driver === "claudeAgent" && (
-            <label className="space-y-1.5 text-xs font-medium">
-              <span>{t("providerConnection.authHeader")}</span>
+      <AnimatedHeight>
+        <div className="space-y-3">
+          {mode === "api" ? (
+            <div className="grid min-w-0 gap-3 animate-in fade-in-50 duration-150 motion-reduce:animate-none">
+              {instance.driver === "claudeAgent" && (
+                <label className="space-y-1.5 text-xs font-medium">
+                  <span>{t("providerConnection.authHeader")}</span>
+                  <select
+                    value={bearer ? "bearer" : "key"}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setBearer(event.target.value === "bearer");
+                      setKey("");
+                      setFeedback(null);
+                    }}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="key">{t("providerConnection.apiKeyOption")}</option>
+                    <option value="bearer">{t("providerConnection.bearerOption")}</option>
+                  </select>
+                </label>
+              )}
+              <label className="space-y-1.5 text-xs font-medium">
+                <span>{t("providerConnection.url")}</span>
+                <Input
+                  type="url"
+                  autoComplete="off"
+                  value={url}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setUrl(event.target.value);
+                    setFeedback(null);
+                  }}
+                  placeholder="https://api.example.com/v1"
+                />
+              </label>
+              <label className="space-y-1.5 text-xs font-medium">
+                <span>{t("providerConnection.apiKeyHeader")}</span>
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={key}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setKey(event.target.value);
+                    setFeedback(null);
+                  }}
+                  placeholder={t(
+                    storedKey ? "providerConnection.keySaved" : "providerConnection.keyPlaceholder",
+                  )}
+                />
+              </label>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t(
+                  instance.driver === "codex"
+                    ? "providerConnection.responsesHint"
+                    : instance.driver === "kimi"
+                      ? "providerConnection.kimiHint"
+                      : "providerConnection.anthropicHint",
+                )}
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs leading-relaxed text-muted-foreground animate-in fade-in-50 duration-150 motion-reduce:animate-none">
+              {t(
+                mode === "native"
+                  ? "providerConnection.nativeHint"
+                  : "providerConnection.gatewayHint",
+              )}
+            </p>
+          )}
+          {instance.driver === "opencode" &&
+          (instance.config as { serverUrl?: string } | undefined)?.serverUrl ? (
+            <p className="text-xs text-muted-foreground">{t("cliProxy.openCodeHint")}</p>
+          ) : null}
+          {mode === "gateway" && (
+            <label className="block space-y-1.5 text-xs font-medium animate-in fade-in-50 duration-150 motion-reduce:animate-none">
+              <span>{t("cliProxy.sharedRoute")}</span>
               <select
-                value={bearer ? "bearer" : "key"}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={sourceInstanceId ?? ""}
                 disabled={busy}
                 onChange={(event) => {
-                  setBearer(event.target.value === "bearer");
-                  setKey("");
+                  setSourceInstanceId(
+                    sharedInstances.find((item) => item.instanceId === event.target.value)
+                      ?.instanceId,
+                  );
                   setFeedback(null);
                 }}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <option value="key">API Key (x-api-key)</option>
-                <option value="bearer">Bearer Token (Authorization)</option>
+                <option value="">{t("cliProxy.allRoutes")}</option>
+                {sourceInstanceId &&
+                  !sharedInstances.some((item) => item.instanceId === sourceInstanceId) && (
+                    <option value={sourceInstanceId}>
+                      {t("cliProxy.missingRoute", { id: sourceInstanceId })}
+                    </option>
+                  )}
+                {sharedInstances.map((item) => (
+                  <option key={item.instanceId} value={item.instanceId}>
+                    {item.label}
+                  </option>
+                ))}
               </select>
+              <p className="font-normal text-muted-foreground">{t("cliProxy.sharedHint")}</p>
             </label>
           )}
-          <label className="space-y-1.5 text-xs font-medium">
-            <span>{t("providerConnection.url")}</span>
-            <Input
-              type="url"
-              autoComplete="off"
-              value={url}
-              disabled={busy}
-              onChange={(event) => {
-                setUrl(event.target.value);
-                setFeedback(null);
-              }}
-              placeholder="https://api.example.com/v1"
-            />
-          </label>
-          <label className="space-y-1.5 text-xs font-medium">
-            <span>API Key</span>
-            <Input
-              type="password"
-              autoComplete="new-password"
-              value={key}
-              disabled={busy}
-              onChange={(event) => {
-                setKey(event.target.value);
-                setFeedback(null);
-              }}
-              placeholder={t(
-                storedKey ? "providerConnection.keySaved" : "providerConnection.keyPlaceholder",
-              )}
-            />
-          </label>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {t(
-              instance.driver === "codex"
-                ? "providerConnection.responsesHint"
-                : "providerConnection.anthropicHint",
-            )}
-          </p>
+          {mode === "gateway" && renderSharedChannels?.(sourceInstanceId ?? "")}
         </div>
-      ) : (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {t(
-            mode === "native" ? "providerConnection.nativeHint" : "providerConnection.gatewayHint",
-          )}
-        </p>
-      )}
-      {mode === "gateway" && sharedChannels}
+      </AnimatedHeight>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" disabled={busy || session !== null} onClick={() => void save()}>
           {t(busy ? "saving" : "save")}
         </Button>
-        {mode === "native" && canDirect && (
+        {mode === "native" && canLogin && (
           <Button
             size="sm"
             variant="outline"
@@ -332,7 +424,7 @@ export function ProviderConnectionSection({
             {t("providerConnection.login")}
           </Button>
         )}
-        {mode === "native" && instance.driver === "codex" && (
+        {mode === "native" && (instance.driver === "codex" || instance.driver === "grok") && (
           <Button
             size="sm"
             variant="outline"
@@ -343,7 +435,7 @@ export function ProviderConnectionSection({
           </Button>
         )}
         {mode === "gateway" && onManageChannels && (
-          <Button size="sm" variant="outline" onClick={onManageChannels}>
+          <Button size="sm" variant="outline" onClick={() => onManageChannels(sourceInstanceId)}>
             {t("providerConnection.manageChannels")}
           </Button>
         )}
@@ -359,7 +451,7 @@ export function ProviderConnectionSection({
       {feedback && (
         <p
           role="status"
-          className={`text-xs leading-relaxed ${feedback.error ? "text-destructive" : "text-muted-foreground"}`}
+          className={`text-xs leading-relaxed transition-opacity duration-150 animate-in fade-in-50 motion-reduce:animate-none ${feedback.error ? "text-destructive" : "text-muted-foreground"}`}
         >
           {feedback.text}
         </p>

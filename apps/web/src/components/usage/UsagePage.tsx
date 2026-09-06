@@ -34,8 +34,10 @@ import { UsageActivityHeatmap } from "./UsageActivityHeatmap";
 import { UsageModelDonut } from "./UsageModelDonut";
 import { UsageModelTrendChart, type UsageModelSeries } from "./UsageModelTrendChart";
 import { UsagePlanView } from "./UsagePlanView";
+import { UsageLocalPoolPanel } from "./UsageLocalPoolPanel";
 import { UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
 import { useByokBalanceDashboards } from "../../state/byokBalance";
+import { useLocalPoolUsage } from "../../state/localPoolUsage";
 import { t, useResolvedLanguage } from "../../i18n";
 import {
   modelColor,
@@ -80,6 +82,7 @@ export function UsagePage() {
   // primary one: worktree servers resolve the same BYOK config, so the merge
   // claims each (instance, adapter) pair once.
   const byok = useByokBalanceDashboards();
+  const pool = useLocalPoolUsage();
   const activityDays = useMemo(
     () => enumerateDays(activityWindow.sinceDay, activityWindow.untilDay),
     [activityWindow.sinceDay, activityWindow.untilDay],
@@ -186,6 +189,7 @@ export function UsagePage() {
     const nextWindow = makeWindow(windowDays, undefined, isPast24Hours ? "hour" : "day");
     activity.refresh();
     byok.refresh();
+    pool.refresh();
     if (
       nextWindow.sinceDay === window.sinceDay &&
       nextWindow.untilDay === window.untilDay &&
@@ -382,6 +386,7 @@ export function UsagePage() {
                     />
 
                     {activityModules}
+                    <UsageLocalPoolPanel />
                     <section
                       className={cn(
                         USAGE_CARD_CLASS,

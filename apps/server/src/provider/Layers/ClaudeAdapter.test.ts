@@ -1661,6 +1661,10 @@ describe("ClaudeAdapterLive", () => {
         assert.equal(event.value.payload.state, "failed");
         assert.match(event.value.payload.errorMessage ?? "", /maximum agent turns/);
       }
+      // 终态回执到达时必须已清理轮次，配置切换不再依赖后续事件。
+      const settled = (yield* adapter.listSessions())[0];
+      assert.equal(settled?.status, "ready");
+      assert.equal(settled?.activeTurnId, undefined);
       const nextTurn = yield* adapter.sendTurn({ threadId: THREAD_ID, input: "继续" });
       assert.ok(nextTurn.turnId);
     }).pipe(

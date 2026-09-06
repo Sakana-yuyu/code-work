@@ -1,3 +1,6 @@
+// @effect-diagnostics globalDateInEffect:off
+// @effect-diagnostics globalDate:off
+// @effect-diagnostics globalErrorInEffectFailure:off
 import type {
   ByokContextWindowMatchRequest,
   ByokContextWindowMatchResult,
@@ -7,6 +10,8 @@ import type {
   ByokModelDiscoveryErrorCode,
   ByokModelDiscoveryResult,
   ByokModelDiscoveryRequest,
+  ByokModelBenchmarkRequest,
+  ByokModelBenchmarkResult,
   ByokSupplierCatalogEntry,
   ByokModelAdapter,
   ServerSettings as ServerSettingsContract,
@@ -27,6 +32,8 @@ import {
 import { publicSupplierCatalog } from "./SupplierCatalogTransport.ts";
 import { supplierTemplate } from "./SupplierCatalog.ts";
 import { matchContextWindows } from "./ContextWindowMatcher.ts";
+import { streamChat } from "../Layers/byokChatClient.ts";
+import * as Stream from "effect/Stream";
 import { fetchByokCatalog } from "./byokHttp.ts";
 import type { ByokHttpError } from "./byokHttp.ts";
 
@@ -37,6 +44,16 @@ interface CacheEntry {
 }
 
 const CACHE_TTL_MS = 60_000;
+const BENCHMARK_TIMEOUT_MS = 45_000;
+const BENCHMARK_OPENAI_MAX_OUTPUT_TOKENS = 4_096;
+const BENCHMARK_ANTHROPIC_MAX_OUTPUT_TOKENS = 65_536;
+
+const estimateBenchmarkTextTokens = (text: string): number =>
+  Math.max(
+    1,
+    text.trim().split(/\s+/u).filter(Boolean).length +
+      Math.round(text.replace(/\s+/gu, "").length / 8),
+  );
 const cacheRef = Effect.runSync(Ref.make(new Map<string, CacheEntry>()));
 
 type ModelDiscoveryTarget = Pick<
@@ -269,6 +286,13 @@ const discoverTarget = (target: ModelDiscoveryTarget) =>
   });
 
 export interface ByokModelDiscoveryService {
+  readonly benchmark: (
+    input: ByokModelBenchmarkRequest,
+  ) => Effect.Effect<
+    ByokModelBenchmarkResult,
+    never,
+    HttpClient.HttpClient | ServerSettings.ServerSettingsService
+  >;
   readonly discover: (
     input: ByokModelDiscoveryRequest,
   ) => Effect.Effect<
@@ -332,6 +356,95 @@ export const make = Effect.gen(function* () {
       Effect.catch((error) => Effect.succeed(resultError(input, "service", "invalid_payload"))),
     );
 
+  const benchmark = (input: ByokModelBenchmarkRequest) => {
+    let resolvedModelId = input.adapterId;
+    return Effect.gen(function* () {
+      const settings = yield* serverSettings.getSettings;
+      const adapter = adapterFromSettings(settings, input);
+      if (!adapter) throw new Error("模型适配器不存在");
+      resolvedModelId = adapter.modelId;
+      const started = Date.now();
+      let firstToken = 0;
+      let firstResponse = 0;
+      let output = "";
+      let measuredOutputTokens: number | undefined;
+      yield* streamChat(yield* Effect.service(HttpClient.HttpClient), {
+        protocol: adapter.protocol,
+        baseURL: adapter.baseURL,
+        apiKey: adapter.apiKey,
+        modelId: adapter.modelId,
+        messages: [
+          {
+            role: "user",
+            content:
+              "Output the numbers 1 through 120 separated by a single space. No commas, no newlines, no explanation.",
+          },
+        ],
+        includeUsage: true,
+        maxOutputTokens:
+          adapter.protocol === "anthropic"
+            ? BENCHMARK_ANTHROPIC_MAX_OUTPUT_TOKENS
+            : BENCHMARK_OPENAI_MAX_OUTPUT_TOKENS,
+        signal: AbortSignal.timeout(BENCHMARK_TIMEOUT_MS),
+      }).pipe(
+        Stream.runForEach((event) =>
+          Effect.sync(() => {
+            if (event.type === "text" || event.type === "reasoning" || event.type === "tool_call") {
+              if (firstResponse === 0) firstResponse = Date.now() - started;
+            }
+            if (event.type === "text") {
+              if (firstToken === 0) firstToken = Date.now() - started;
+              output += event.text;
+            }
+            if (event.type === "completed" && event.outputTokens !== undefined) {
+              measuredOutputTokens = event.outputTokens;
+            }
+          }),
+        ),
+        Effect.mapError(() => new Error("模型测速请求失败")),
+      );
+      const totalMs = Math.max(1, Date.now() - started);
+      // 上游没有 usage 时才退回本地估算；结果会显式标记，避免把估算冒充真实吞吐。
+      const outputTokens = measuredOutputTokens ?? estimateBenchmarkTextTokens(output);
+      const firstResponseMs = firstResponse || firstToken || totalMs;
+      const generationMs = Math.max(1, totalMs - firstResponseMs);
+      const tokensPerSecond = Math.round(((outputTokens * 1000) / generationMs) * 100) / 100;
+      const visibleOutputTokens =
+        output.trim().length > 0 ? estimateBenchmarkTextTokens(output) : 0;
+      const visibleStartMs = firstToken || firstResponse || totalMs;
+      const visibleGenerationMs = Math.max(1, totalMs - visibleStartMs);
+      return {
+        adapterId: input.adapterId,
+        modelId: adapter.modelId,
+        firstTokenMs: firstToken || totalMs,
+        firstResponseMs,
+        totalMs,
+        outputTokens,
+        tokensEstimated: measuredOutputTokens === undefined,
+        tokensPerSecond,
+        visibleTokensPerSecond:
+          visibleOutputTokens === 0
+            ? 0
+            : Math.round(((visibleOutputTokens * 1000) / visibleGenerationMs) * 100) / 100,
+      } satisfies ByokModelBenchmarkResult;
+    }).pipe(
+      Effect.catch(() =>
+        Effect.succeed({
+          adapterId: input.adapterId,
+          modelId: resolvedModelId,
+          error: "模型测速请求失败",
+          firstTokenMs: 0,
+          firstResponseMs: 0,
+          totalMs: 0,
+          outputTokens: 0,
+          tokensEstimated: true,
+          visibleTokensPerSecond: 0,
+          tokensPerSecond: 0,
+        }),
+      ),
+    );
+  };
+
   const discoverDraft = (input: ByokDraftModelDiscoveryRequest) =>
     discoverTarget(targetFromDraft(input));
 
@@ -355,6 +468,7 @@ export const make = Effect.gen(function* () {
 
   return {
     discover,
+    benchmark,
     matchContextWindows: matchContextWindowsForRelay,
     discoverDraft,
     catalog: publicSupplierCatalog(),

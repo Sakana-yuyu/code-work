@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { EventId, type OrchestrationThreadActivity, TurnId } from "@codework/contracts";
 
-import { deriveLatestContextWindowSnapshot, formatContextWindowTokens } from "./contextWindow";
+import {
+  deriveLatestAccountQuotaSnapshot,
+  deriveLatestContextWindowSnapshot,
+  formatContextWindowTokens,
+} from "./contextWindow";
 
 function makeActivity(id: string, kind: string, payload: unknown): OrchestrationThreadActivity {
   return {
@@ -82,5 +86,27 @@ describe("contextWindow", () => {
 
     expect(snapshot?.usedTokens).toBe(81_659);
     expect(snapshot?.totalProcessedTokens).toBe(748_126);
+  });
+
+  it("derives official account quota windows without inventing missing values", () => {
+    const snapshot = deriveLatestAccountQuotaSnapshot([
+      makeActivity("activity-1", "account.rate-limits.updated", {
+        rateLimits: {
+          primary: { usedPercent: 18, resetsAt: "2026-03-23T01:00:00.000Z" },
+          secondary: { utilization: 0.25, remaining: 750 },
+        },
+      }),
+    ]);
+
+    expect(snapshot).toMatchObject({ balance: null, unlimited: false });
+    expect(snapshot?.windows).toEqual([
+      {
+        label: "primary",
+        usedPercentage: 18,
+        remaining: null,
+        resetAt: "2026-03-23T01:00:00.000Z",
+      },
+      { label: "secondary", usedPercentage: 25, remaining: 750, resetAt: null },
+    ]);
   });
 });

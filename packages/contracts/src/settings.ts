@@ -28,6 +28,7 @@ import {
   CompositionMcpServerId,
   isMulticaSecretName,
 } from "./compositionRuntime.ts";
+import { LocalAccountPoolSettings } from "./localAccount.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -378,6 +379,9 @@ export const CodexSettings = makeProviderSettingsSchema(
         description: "Additional CLI arguments passed to codex app-server on session start.",
       }),
     ),
+    byokSourceInstanceId: Schema.optional(ProviderInstanceId).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
     routeThroughByok: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({
@@ -473,6 +477,9 @@ export const ClaudeSettings = makeProviderSettingsSchema(
         providerSettingsForm: { placeholder: "20", clearWhenEmpty: "omit" },
       }),
     ),
+    byokSourceInstanceId: Schema.optional(ProviderInstanceId).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
     routeThroughByok: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({
@@ -533,6 +540,52 @@ export const CursorSettings = makeProviderSettingsSchema(
 );
 export type CursorSettings = typeof CursorSettings.Type;
 
+/** Kimi CLI：官方 `kimi acp` 标准 ACP 入口。 */
+export const KimiSettings = makeProviderSettingsSchema(
+  {
+    enabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    binaryPath: makeBinaryPathSetting("kimi").pipe(
+      Schema.annotateKey({
+        title: "Binary path",
+        description: "Path to the Kimi CLI binary.",
+        providerSettingsForm: { placeholder: "kimi", clearWhenEmpty: "omit" },
+      }),
+    ),
+    customModels: Schema.Array(Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+  },
+  { order: ["binaryPath"] },
+);
+export type KimiSettings = typeof KimiSettings.Type;
+
+/** Antigravity CLI：官方 `agy -p` headless 入口。 */
+export const AntigravitySettings = makeProviderSettingsSchema(
+  {
+    enabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    binaryPath: makeBinaryPathSetting("agy").pipe(
+      Schema.annotateKey({
+        title: "Binary path",
+        description: "Path to the Antigravity CLI binary.",
+        providerSettingsForm: { placeholder: "agy", clearWhenEmpty: "omit" },
+      }),
+    ),
+    customModels: Schema.Array(Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+  },
+  { order: ["binaryPath"] },
+);
+export type AntigravitySettings = typeof AntigravitySettings.Type;
+
 export const GrokSettings = makeProviderSettingsSchema(
   {
     // Off by default (like Cursor and OpenCode): the binding is not yet
@@ -547,6 +600,9 @@ export const GrokSettings = makeProviderSettingsSchema(
         description: "Path to the Grok CLI binary.",
         providerSettingsForm: { placeholder: "grok", clearWhenEmpty: "omit" },
       }),
+    ),
+    byokSourceInstanceId: Schema.optional(ProviderInstanceId).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     routeThroughByok: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(false)),
@@ -608,6 +664,9 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
           clearWhenEmpty: "omit",
         },
       }),
+    ),
+    byokSourceInstanceId: Schema.optional(ProviderInstanceId).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     routeThroughByok: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(false)),
@@ -985,6 +1044,8 @@ export const ServerSettings = Schema.Struct({
     claudeAgent: ClaudeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     cursor: CursorSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     grok: GrokSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    kimi: KimiSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    antigravity: AntigravitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     byok: ByokSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
@@ -996,6 +1057,8 @@ export const ServerSettings = Schema.Struct({
   providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /** 本机官方账号池；账号凭据不进入 settings.json。 */
+  localAccountPool: LocalAccountPoolSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /** MCP 运行时配置；secret value 由 serverSettings 在持久化和回传时处理。 */
   mcpServers: Schema.Record(CompositionMcpServerId, CompositionMcpRuntimeServerConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
@@ -1121,6 +1184,7 @@ const CodexSettingsPatch = Schema.Struct({
   shadowHomePath: Schema.optionalKey(TrimmedString),
   launchArgs: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+  byokSourceInstanceId: Schema.optional(ProviderInstanceId),
   routeThroughByok: Schema.optionalKey(Schema.Boolean),
 });
 
@@ -1137,6 +1201,7 @@ const ClaudeSettingsPatch = Schema.Struct({
   autoCompactWindow: Schema.optionalKey(
     TrimmedString.check(Schema.isPattern(CLAUDE_AUTO_COMPACT_WINDOW_PATTERN)),
   ),
+  byokSourceInstanceId: Schema.optional(ProviderInstanceId),
   routeThroughByok: Schema.optionalKey(Schema.Boolean),
 });
 
@@ -1151,7 +1216,20 @@ const GrokSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+  byokSourceInstanceId: Schema.optional(ProviderInstanceId),
   routeThroughByok: Schema.optionalKey(Schema.Boolean),
+});
+
+const KimiSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(TrimmedString),
+  customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
+const AntigravitySettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(TrimmedString),
+  customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
 const OpenCodeSettingsPatch = Schema.Struct({
@@ -1160,6 +1238,7 @@ const OpenCodeSettingsPatch = Schema.Struct({
   serverUrl: Schema.optionalKey(TrimmedString),
   serverPassword: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+  byokSourceInstanceId: Schema.optional(ProviderInstanceId),
   routeThroughByok: Schema.optionalKey(Schema.Boolean),
 });
 
@@ -1210,6 +1289,8 @@ export const ServerSettingsPatch = Schema.Struct({
       claudeAgent: Schema.optionalKey(ClaudeSettingsPatch),
       cursor: Schema.optionalKey(CursorSettingsPatch),
       grok: Schema.optionalKey(GrokSettingsPatch),
+      kimi: Schema.optionalKey(KimiSettingsPatch),
+      antigravity: Schema.optionalKey(AntigravitySettingsPatch),
       opencode: Schema.optionalKey(OpenCodeSettingsPatch),
       byok: Schema.optionalKey(ByokSettingsPatch),
     }),
@@ -1219,6 +1300,7 @@ export const ServerSettingsPatch = Schema.Struct({
   // patches risk leaving driver-specific config in a half-merged state.
   // The web UI sends a fully-formed map every time it edits this field.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
+  localAccountPool: Schema.optionalKey(LocalAccountPoolSettings),
   /**
    * 非空时启用 Multica 局部 mutation 模式：`providerInstances` 只能携带 listed 的
    * Multica 实例；listed 但省略的实例表示删除，任何其它实例条目都会被服务端拒绝。

@@ -18,7 +18,6 @@
  */
 import type { ByokSettings, ModelCapabilities, ServerProviderModel } from "@codework/contracts";
 import { createModelCapabilities } from "@codework/shared/model";
-import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -180,7 +179,6 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
   }
 
   // 同一中转的模型通道共用一次目录探测，避免重复请求和重复模型快照。
-  const failures: Array<string> = [];
   const discoveredModels: ServerProviderModel[] = [];
   const configuredModelsByRelay = new Set(
     byokSettings.adapters.map((adapter) => `${relayKey(adapter)}\u0000${adapter.modelId.trim()}`),
@@ -198,11 +196,7 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
     const probeExit = yield* Effect.exit(
       probeOpenaiAdapter(httpClient, { baseURL: adapter.baseURL, apiKey: adapter.apiKey }),
     );
-    if (probeExit._tag === "Failure") {
-      const failure = Cause.squash(probeExit.cause);
-      const detail = typeof failure === "string" ? failure : String(failure ?? "");
-      failures.push(`${adapter.displayName}: ${detail}`);
-    } else {
+    if (probeExit._tag === "Success") {
       for (const modelId of probeExit.value) {
         const normalizedModelId = modelId.trim();
         if (normalizedModelId.length === 0) continue;
@@ -227,7 +221,6 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
   }
 
   const models = byokModelsFromSettings(byokSettings, discoveredModels);
-  const keyCheckFailed = failures.length > 0;
   return buildServerProvider({
     presentation: BYOK_PRESENTATION,
     enabled: true,
@@ -236,17 +229,12 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
     probe: {
       installed: true,
       version: null,
-      status: keyCheckFailed ? "warning" : "ready",
-      auth: keyCheckFailed
-        ? { status: "unknown", type: "byok" }
-        : { status: "authenticated", type: "byok" },
-      message: keyCheckFailed
-        ? `${byokSettings.adapters.length} model adapter${
-            byokSettings.adapters.length === 1 ? "" : "s"
-          } configured. Key check failed for: ${failures.join("; ")}`
-        : `${byokSettings.adapters.length} model adapter${
-            byokSettings.adapters.length === 1 ? "" : "s"
-          } configured.`,
+      // 模型列表接口不是所有兼容网关都开放；不要把 /models 检查失败误报成全局不可用。
+      status: "ready",
+      auth: { status: "authenticated", type: "byok" },
+      message: `${byokSettings.adapters.length} model adapter${
+        byokSettings.adapters.length === 1 ? "" : "s"
+      } configured.`,
     },
   });
 });

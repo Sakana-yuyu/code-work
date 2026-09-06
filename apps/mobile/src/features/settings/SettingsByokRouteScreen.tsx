@@ -5,6 +5,7 @@ import type {
   ByokDiscoveredModel,
   ByokDraftModelDiscoveryResult,
   ByokModelAdapter,
+  ByokModelBenchmarkResult,
   ByokSupplierCatalogEntry,
   EnvironmentId,
   ProviderInstanceConfig,
@@ -12,8 +13,8 @@ import type {
   ServerSettings,
 } from "@codework/contracts";
 import { Atom } from "effect/unstable/reactivity";
-import { useNavigation } from "@react-navigation/native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Platform, Pressable, RefreshControl, ScrollView, Switch, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -29,6 +30,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsEnvironmentPicker } from "./components/SettingsEnvironmentPicker";
 import {
   adapterFormFromAdapter,
+  byokBenchmarkFingerprint,
   buildByokAdapter,
   createByokProviderInstance,
   DEFAULT_BYOK_PROMPT_TEMPLATE,
@@ -40,19 +42,29 @@ import {
   readByokPromptTemplate,
   type MobileByokAdapterForm,
 } from "./SettingsByokRouteScreen.logic";
+import {
+  loadByokBenchmarkCache,
+  saveByokBenchmarkCache,
+  type MobileByokBenchmarkEntry,
+} from "./byokBenchmarkCache";
 
 const EMPTY_SERVER_SETTINGS_ATOM = Atom.make<ServerSettings | null>(null).pipe(
   Atom.withLabel("mobile-byok:settings:empty"),
 );
 const EMPTY_PROVIDER_INSTANCES: Readonly<Record<ProviderInstanceId, ProviderInstanceConfig>> = {};
 
-export function SettingsByokRouteScreen() {
+export function SettingsByokRouteScreen({
+  route,
+}: StaticScreenProps<{ environmentId?: EnvironmentId | undefined } | undefined>) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { environments } = useEnvironments();
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<EnvironmentId | null>(
-    () => environments[0]?.environmentId ?? null,
+    () => route.params?.environmentId ?? environments[0]?.environmentId ?? null,
   );
+  useEffect(() => {
+    if (route.params?.environmentId) setSelectedEnvironmentId(route.params.environmentId);
+  }, [route.params?.environmentId]);
   const environmentId = selectedEnvironmentId;
   const settings = useAtomValue(
     environmentId === null
@@ -285,6 +297,13 @@ function ByokInstanceCard(props: {
   const [balanceByAdapterId, setBalanceByAdapterId] = useState<
     Readonly<Record<string, ByokBalanceResult>>
   >({});
+  const [benchmarkByAdapterId, setBenchmarkByAdapterId] = useState<
+    Readonly<Record<string, MobileByokBenchmarkEntry>>
+  >({});
+  const [benchmarkErrors, setBenchmarkErrors] = useState<Readonly<Record<string, boolean>>>({});
+  const [benchmarkingAdapterId, setBenchmarkingAdapterId] = useState<string | null>(null);
+  const benchmarkCacheKey = `${String(props.environmentId)}\u0000${props.instanceId}`;
+  const loadedBenchmarkCacheKey = useRef<string | null>(null);
   const [importYaml, setImportYaml] = useState("");
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState<string | null>(null);
@@ -303,6 +322,54 @@ function ByokInstanceCard(props: {
     reportFailure: false,
   });
   const balanceCommand = useAtomCommand(byokEnvironment.balance, { reportFailure: false });
+  const benchmarkCommand = useAtomCommand(byokEnvironment.benchmarkModel, {
+    reportFailure: false,
+  });
+  const adapterFingerprintKey = adapters
+    .map((adapter) => `${adapter.id}\u0000${byokBenchmarkFingerprint(adapter)}`)
+    .join("\u0001");
+
+  useEffect(() => {
+    let cancelled = false;
+    loadedBenchmarkCacheKey.current = null;
+    setBenchmarkByAdapterId({});
+    const currentFingerprints = new Map(
+      adapters.map((adapter) => [adapter.id, byokBenchmarkFingerprint(adapter)]),
+    );
+    void loadByokBenchmarkCache(props.environmentId, props.instanceId).then((cached) => {
+      if (cancelled) return;
+      setBenchmarkByAdapterId(
+        Object.fromEntries(
+          Object.entries(cached).filter(
+            ([adapterId, entry]) => currentFingerprints.get(adapterId) === entry.fingerprint,
+          ),
+        ),
+      );
+      loadedBenchmarkCacheKey.current = benchmarkCacheKey;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [adapterFingerprintKey, benchmarkCacheKey, props.environmentId, props.instanceId]);
+
+  useEffect(() => {
+    const currentFingerprints = new Map(
+      adapters.map((adapter) => [adapter.id, byokBenchmarkFingerprint(adapter)]),
+    );
+    setBenchmarkByAdapterId((current) => {
+      const next = Object.fromEntries(
+        Object.entries(current).filter(
+          ([adapterId, entry]) => currentFingerprints.get(adapterId) === entry.fingerprint,
+        ),
+      );
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+  }, [adapterFingerprintKey]);
+
+  useEffect(() => {
+    if (loadedBenchmarkCacheKey.current !== benchmarkCacheKey) return;
+    void saveByokBenchmarkCache(props.environmentId, props.instanceId, benchmarkByAdapterId);
+  }, [benchmarkByAdapterId, benchmarkCacheKey, props.environmentId, props.instanceId]);
 
   const saveInstance = useCallback(
     async (nextInstance: ProviderInstanceConfig): Promise<boolean> => {
@@ -489,6 +556,36 @@ function ByokInstanceCard(props: {
     [balanceCommand, props.environmentId, props.instanceId],
   );
 
+  const benchmarkAdapter = useCallback(
+    async (adapter: ByokModelAdapter) => {
+      setBenchmarkingAdapterId(adapter.id);
+      setBenchmarkErrors((current) => {
+        const next = { ...current };
+        delete next[adapter.id];
+        return next;
+      });
+      const result = await benchmarkCommand({
+        environmentId: props.environmentId,
+        input: { instanceId: props.instanceId, adapterId: adapter.id },
+      });
+      if (result._tag === "Success" && result.value.error === undefined) {
+        setBenchmarkByAdapterId((current) => ({
+          ...current,
+          [adapter.id]: { fingerprint: byokBenchmarkFingerprint(adapter), result: result.value },
+        }));
+      } else {
+        setBenchmarkErrors((current) => ({ ...current, [adapter.id]: true }));
+        setBenchmarkByAdapterId((current) => {
+          const next = { ...current };
+          delete next[adapter.id];
+          return next;
+        });
+      }
+      setBenchmarkingAdapterId(null);
+    },
+    [benchmarkCommand, props.environmentId, props.instanceId],
+  );
+
   const importAdaptersCommand = useAtomCommand(byokEnvironment.importAdapters, {
     reportFailure: false,
   });
@@ -610,14 +707,18 @@ function ByokInstanceCard(props: {
               key={adapter.id}
               adapter={adapter}
               balance={balanceByAdapterId[adapter.id]}
+              benchmark={benchmarkByAdapterId[adapter.id]?.result}
+              benchmarkFailed={benchmarkErrors[adapter.id] === true}
               discovery={discoveryByAdapterId[adapter.id]}
               discovering={discoveringAdapterId === adapter.id}
               matching={matchingAdapterId === adapter.id}
+              benchmarking={benchmarkingAdapterId === adapter.id}
               disabled={saving}
               onEdit={() => openEditAdapter(adapter)}
               onDelete={() => deleteAdapter(adapter)}
               onDiscover={() => void discoverAdapterModels(adapter)}
               onMatchContext={() => void matchContextWindows(adapter)}
+              onBenchmark={() => void benchmarkAdapter(adapter)}
               onBalance={() => void queryBalance(adapter)}
               onSelectModel={(model) => {
                 void updateConfig(
@@ -816,17 +917,21 @@ function ByokInstanceCard(props: {
 function AdapterCard(props: {
   readonly adapter: ByokModelAdapter;
   readonly balance?: ByokBalanceResult;
+  readonly benchmark?: ByokModelBenchmarkResult;
+  readonly benchmarkFailed: boolean;
   readonly discovery?: {
     readonly models: ReadonlyArray<ByokDiscoveredModel>;
     readonly error?: string;
   };
   readonly discovering: boolean;
   readonly matching: boolean;
+  readonly benchmarking: boolean;
   readonly disabled: boolean;
   readonly onEdit: () => void;
   readonly onDelete: () => void;
   readonly onDiscover: () => void;
   readonly onMatchContext: () => void;
+  readonly onBenchmark: () => void;
   readonly onBalance: () => void;
   readonly onSelectModel: (model: ByokDiscoveredModel) => void;
 }) {
@@ -866,12 +971,35 @@ function AdapterCard(props: {
           onPress={props.onMatchContext}
         />
         <ActionButton
+          label={props.benchmarking ? t("byokMobile.benchmarking") : t("byokMobile.benchmark")}
+          disabled={props.disabled || props.benchmarking}
+          onPress={props.onBenchmark}
+        />
+        <ActionButton
           label={t("byokMobile.balance")}
           disabled={props.disabled}
           onPress={props.onBalance}
         />
         <ActionButton label={t("delete")} disabled={props.disabled} onPress={props.onDelete} />
       </View>
+      {props.benchmark === undefined ? null : (
+        <View className="rounded-[16px] bg-subtle p-3">
+          <Text className="text-sm text-foreground">
+            {t("byokMobile.totalTokensPerSecond", {
+              value: props.benchmark.tokensPerSecond,
+            })}
+            {` · ${t("byokMobile.visibleTokensPerSecond", {
+              value: props.benchmark.visibleTokensPerSecond,
+            })}`}
+            {props.benchmark.tokensEstimated === true
+              ? ` · ${t("byokMobile.benchmarkEstimated")}`
+              : ""}
+          </Text>
+        </View>
+      )}
+      {props.benchmarkFailed ? (
+        <Text className="text-xs text-danger-foreground">{t("byokMobile.benchmarkFailed")}</Text>
+      ) : null}
       {props.discovery?.error === undefined && (props.discovery?.models.length ?? 0) > 0 ? (
         <View className="gap-2 rounded-[16px] bg-subtle p-3">
           <Text className="text-xs font-codework-medium text-foreground">

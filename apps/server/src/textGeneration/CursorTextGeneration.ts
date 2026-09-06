@@ -38,6 +38,13 @@ const isTextGenerationError = Schema.is(TextGenerationError);
 export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(function* (
   cursorSettings: CursorSettings,
   environment?: NodeJS.ProcessEnv,
+  options?: {
+    readonly acpCommand?: string;
+    readonly acpArgs?: ReadonlyArray<string>;
+    readonly acpAuthMethodId?: string;
+    readonly clientName?: string;
+    readonly supportsModelSelection?: boolean;
+  },
 ) {
   const crypto = yield* Crypto.Crypto;
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -68,6 +75,10 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
         childProcessSpawner: commandSpawner,
         cwd,
         clientInfo: { name: "code-work-git-text", version: "0.0.0" },
+        ...(options?.acpCommand ? { acpCommand: options.acpCommand } : {}),
+        ...(options?.acpArgs ? { acpArgs: options.acpArgs } : {}),
+        ...(options?.acpAuthMethodId ? { authMethodId: options.acpAuthMethodId } : {}),
+        ...(options?.clientName ? { clientName: options.clientName } : {}),
       }).pipe(Effect.provideService(Crypto.Crypto, crypto));
 
       yield* runtime.handleSessionUpdate((notification) => {
@@ -85,20 +96,22 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       const promptResult = yield* Effect.gen(function* () {
         yield* runtime.start();
         yield* Effect.ignore(runtime.setMode("ask"));
-        yield* applyCursorAcpModelSelection({
-          runtime,
-          model: modelSelection.model,
-          selections: modelSelection.options,
-          mapError: ({ cause, configId, step }) =>
-            new TextGenerationError({
-              operation,
-              detail:
-                step === "set-config-option"
-                  ? `Failed to set Cursor ACP config option "${configId}" for text generation.`
-                  : "Failed to set Cursor ACP base model for text generation.",
-              cause,
-            }),
-        });
+        if (options?.supportsModelSelection ?? true) {
+          yield* applyCursorAcpModelSelection({
+            runtime,
+            model: modelSelection.model,
+            selections: modelSelection.options,
+            mapError: ({ cause, configId, step }) =>
+              new TextGenerationError({
+                operation,
+                detail:
+                  step === "set-config-option"
+                    ? `Failed to set ACP config option "${configId}" for text generation.`
+                    : "Failed to set ACP base model for text generation.",
+                cause,
+              }),
+          });
+        }
 
         return yield* runtime.prompt({
           prompt: [{ type: "text", text: prompt }],

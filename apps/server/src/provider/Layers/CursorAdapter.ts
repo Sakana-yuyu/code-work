@@ -88,7 +88,6 @@ import { resolveCursorAcpBaseModelId } from "./CursorProvider.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 
-const PROVIDER = ProviderDriverKind.make("cursor");
 const CURSOR_RESUME_VERSION = 1 as const;
 const ACP_PLAN_MODE_ALIASES = ["plan", "architect"];
 const ACP_IMPLEMENT_MODE_ALIASES = ["code", "agent", "default", "chat", "implement"];
@@ -101,6 +100,13 @@ function encodeJsonStringForDiagnostics(input: unknown): string | undefined {
 }
 
 export interface CursorAdapterLiveOptions {
+  /** 可复用标准 ACP 会话编排，但把事件/校验归属到另一个官方 ACP CLI。 */
+  readonly provider?: ProviderDriverKind;
+  readonly acpCommand?: string;
+  readonly acpArgs?: ReadonlyArray<string>;
+  readonly acpAuthMethodId?: string;
+  readonly acpClientName?: string;
+  readonly supportsModelSelection?: boolean;
   readonly environment?: NodeJS.ProcessEnv;
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
@@ -121,6 +127,8 @@ export interface CursorAdapterLiveOptions {
    * the latest snapshot so the closure isn't stale.
    */
   readonly resolveSettings?: Effect.Effect<CursorSettings>;
+  /** 每个 ACP session 启动前解析一次环境，供本地 Cursor 账号池注入单账号凭据。 */
+  readonly resolveSessionEnvironment?: () => Effect.Effect<NodeJS.ProcessEnv | undefined>;
 }
 
 interface PendingApproval {
@@ -300,13 +308,14 @@ function applyRequestedSessionConfiguration<E>(input: {
         readonly options?: ReadonlyArray<ProviderOptionSelection> | null | undefined;
       }
     | undefined;
+  readonly supportsModelSelection: boolean;
   readonly mapError: (context: {
     readonly cause: import("effect-acp/errors").AcpError;
     readonly method: "session/set_config_option" | "session/set_mode";
   }) => E;
 }): Effect.Effect<void, E> {
   return Effect.gen(function* () {
-    if (input.modelSelection) {
+    if (input.supportsModelSelection && input.modelSelection) {
       yield* applyCursorAcpModelSelection({
         runtime: input.runtime,
         model: input.modelSelection.model,
@@ -360,6 +369,7 @@ export function makeCursorAdapter(
   options?: CursorAdapterLiveOptions,
 ) {
   return Effect.gen(function* () {
+    const PROVIDER = options?.provider ?? ProviderDriverKind.make("cursor");
     const boundInstanceId = options?.instanceId ?? ProviderInstanceId.make("cursor");
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -756,11 +766,18 @@ export function makeCursorAdapter(
             : cursorSettings;
 
           const mcpSession = McpProviderSession.readMcpProviderSession(input.threadId);
+          const sessionEnvironment = options?.resolveSessionEnvironment
+            ? yield* options.resolveSessionEnvironment()
+            : options?.environment;
           const acp = yield* makeCursorAcpRuntime({
             cursorSettings: effectiveCursorSettings,
-            ...(options?.environment ? { environment: options.environment } : {}),
+            ...(sessionEnvironment ? { environment: sessionEnvironment } : {}),
             childProcessSpawner,
             cwd,
+            ...(options?.acpCommand ? { acpCommand: options.acpCommand } : {}),
+            ...(options?.acpArgs ? { acpArgs: options.acpArgs } : {}),
+            ...(options?.acpAuthMethodId ? { authMethodId: options.acpAuthMethodId } : {}),
+            ...(options?.acpClientName ? { clientName: options.acpClientName } : {}),
             ...(resumeSessionId ? { resumeSessionId } : {}),
             clientInfo: { name: "code-work", version: "0.0.0" },
             ...(toolBrokerBinding === undefined
@@ -1316,6 +1333,7 @@ export function makeCursorAdapter(
             runtimeMode: input.runtimeMode,
             interactionMode: undefined,
             modelSelection: cursorModelSelection,
+            supportsModelSelection: options?.supportsModelSelection ?? true,
             mapError: ({ cause, method }) =>
               mapAcpToAdapterError(PROVIDER, input.threadId, method, cause),
           });
@@ -1515,6 +1533,7 @@ export function makeCursorAdapter(
                     model,
                     options: turnModelSelection?.options,
                   },
+            supportsModelSelection: options?.supportsModelSelection ?? true,
             mapError: ({ cause, method }) =>
               mapAcpToAdapterError(PROVIDER, input.threadId, method, cause),
           });

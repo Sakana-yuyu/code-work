@@ -79,6 +79,7 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
+import * as CliProxy from "./provider/CliProxy.ts";
 import { startProviderLogin } from "./provider/providerLogin.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
@@ -867,6 +868,7 @@ const makeWsRpcLayer = (
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
+      const cliProxy = yield* CliProxy.CliProxy;
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
@@ -2170,6 +2172,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.serverProbe, Effect.succeed({}), {
             "rpc.aggregate": "server",
           }),
+        [WS_METHODS.serverCliProxy]: (input) =>
+          observeRpcEffect(WS_METHODS.serverCliProxy, cliProxy.handle(input), {
+            "rpc.aggregate": "server",
+          }),
         [WS_METHODS.serverGetConfig]: (_input) =>
           observeRpcEffect(WS_METHODS.serverGetConfig, loadServerConfig, {
             "rpc.aggregate": "server",
@@ -2346,6 +2352,12 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.serverDiscoverByokModels,
             byokModelDiscovery.discover(input),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverBenchmarkByokModel]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverBenchmarkByokModel,
+            byokModelDiscovery.benchmark(input),
             { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverMatchByokContextWindows]: (input) =>
@@ -4024,6 +4036,7 @@ const makeWsRpcLayer = (
 
 export const websocketRpcRouteLayer = Layer.unwrap(
   Effect.gen(function* () {
+    const cliProxy = yield* CliProxy.CliProxy;
     const previewAutomationBroker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
     const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     const pullRequests = yield* PullRequestService.PullRequestService;
@@ -4054,6 +4067,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
         }).pipe(
           Effect.provide(
             makeWsRpcLayer(session, clientOrigin, previewAutomationBroker).pipe(
+              Layer.provide(Layer.succeed(CliProxy.CliProxy, cliProxy)),
               Layer.provideMerge(RpcSerialization.layerJson),
               Layer.provide(ProviderMaintenanceRunner.layer),
               Layer.provide(Layer.succeed(ServerSelfUpdate.ServerSelfUpdate, serverSelfUpdate)),
@@ -4097,4 +4111,4 @@ export const websocketRpcRouteLayer = Layer.unwrap(
       ),
     );
   }),
-);
+).pipe(Layer.provide(CliProxy.layer));

@@ -52,9 +52,16 @@ export function localizeProviderMessage(message: string | null | undefined): str
     /^(\d+) model adapters? configured\. Key check failed for: (.+)$/,
   );
   if (adaptersKeyCheckMatch) {
+    const failures = adaptersKeyCheckMatch[2] ?? "未知检查错误";
+    if (/\b401\b|unauthorized|authentication|鉴权/iu.test(failures)) {
+      return t("providerAdaptersKeyCheckUnauthorized", {
+        count: Number(adaptersKeyCheckMatch[1]),
+        failures,
+      });
+    }
     return t("providerAdaptersKeyCheckFailed", {
       count: Number(adaptersKeyCheckMatch[1]),
-      failures: adaptersKeyCheckMatch[2],
+      failures,
     });
   }
   const adapterMatch = message.match(/^(\d+) model adapters? configured\.?$/);

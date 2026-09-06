@@ -16,6 +16,7 @@ import {
   KeyboardIcon,
   Link2Icon,
   NetworkIcon,
+  RouteIcon,
   PackageIcon,
   PaletteIcon,
   SearchIcon,
@@ -61,6 +62,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/appearance": PaletteIcon,
   "/settings/keybindings": KeyboardIcon,
   "/settings/providers": BotIcon,
+  "/settings/cli-proxy": RouteIcon,
   "/settings/integrations": BlocksIcon,
   "/settings/runtime": ServerCogIcon,
   "/settings/delegation": NetworkIcon,
@@ -87,6 +89,7 @@ const STANDARD_SETTINGS_PATHS = [
 
 const FACILITY_SETTINGS_PATHS = [
   "/settings/providers",
+  "/settings/cli-proxy",
   "/settings/runtime",
   "/settings/delegation",
   "/settings/squads",

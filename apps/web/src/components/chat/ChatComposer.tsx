@@ -143,6 +143,7 @@ import { threadGoalEnvironment, useThreadGoal } from "../../state/threadGoal";
 import { useSpecWorkflowController } from "../../state/specWorkflow";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useLocalPluginAttachmentPaletteItems } from "../../localPlugins/adapters/useLocalPluginAttachmentPaletteItems";
+import { useByokBalanceDashboards } from "../../state/byokBalance";
 
 type ComposerCommandMenuPosition = {
   bottom: number;
@@ -270,7 +271,11 @@ import type { UnifiedSettings } from "@codework/contracts/settings";
 import type { SessionPhase, Thread } from "../../types";
 import type { PendingUserInputDraftAnswer } from "../../pendingUserInput";
 import type { PendingApproval, PendingUserInput } from "../../session-logic";
-import type { ContextWindowSnapshot } from "../../lib/contextWindow";
+import {
+  deriveLatestAccountQuotaSnapshot,
+  type AccountQuotaSnapshot,
+  type ContextWindowSnapshot,
+} from "../../lib/contextWindow";
 import {
   formatProviderSkillDisplayName,
   getProviderSlashCommandsForSlashMenu,
@@ -403,8 +408,6 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 
 const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
   compact: boolean;
-  activeContextWindow: ContextWindowSnapshot | null;
-  activeThreadModelDisplayName: string | null;
   isPreparingWorktree: boolean;
   pendingAction: {
     questionIndex: number;
@@ -426,21 +429,9 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => Promise<boolean> | boolean;
   onImplementPlanInNewThread: () => void;
-  onCompactContext?: (() => void) | undefined;
-  compactDisabled: boolean;
-  compactDisabledReason: string | null;
 }) {
   return (
     <>
-      {props.activeContextWindow ? (
-        <ContextWindowMeter
-          usage={props.activeContextWindow}
-          modelDisplayName={props.activeThreadModelDisplayName}
-          onCompact={props.onCompactContext}
-          compactDisabled={props.compactDisabled}
-          compactDisabledReason={props.compactDisabledReason}
-        />
-      ) : null}
       {props.isPreparingWorktree ? (
         <span className="text-secondary-label text-xs">{t("preparingWorktree2")}</span>
       ) : null}
@@ -1136,6 +1127,35 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     () => resolveContextWindowModelDisplayName(activeThreadModelSelection, modelOptionsByInstance),
     [activeThreadModelSelection, modelOptionsByInstance],
   );
+  const byokBalances = useByokBalanceDashboards();
+  const accountQuota = useMemo(() => {
+    const official = deriveLatestAccountQuotaSnapshot(activeThread?.activities ?? []);
+    if (official) return official;
+    const dashboard = byokBalances.environments.find(
+      (environment) => environment.environmentId === environmentId,
+    )?.dashboard;
+    const instance = dashboard?.instances.find(
+      (candidate) => candidate.instanceId === selectedInstanceId,
+    );
+    const balance = instance?.adapters.find((adapter) => adapter.balance.supported)?.balance;
+    if (!balance) return null;
+    return {
+      windows: balance.windows.map((window) => ({
+        label: window.label,
+        usedPercentage:
+          window.usedFraction === undefined
+            ? window.limit && window.used !== undefined
+              ? (window.used / window.limit) * 100
+              : null
+            : window.usedFraction * 100,
+        remaining: window.remaining ?? null,
+        resetAt: window.resetsAt ?? null,
+      })),
+      balance: balance.remaining ?? null,
+      currency: balance.currency || null,
+      unlimited: balance.unlimited,
+    } satisfies AccountQuotaSnapshot;
+  }, [activeThread?.activities, byokBalances.environments, environmentId, selectedInstanceId]);
 
   // ------------------------------------------------------------------
   // Composer-local state
@@ -3792,6 +3812,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onEditGoalInComposer={editGoalInComposer}
                     specWorkflow={specWorkflowControl}
                   />
+                  <ContextWindowMeter
+                    usage={activeContextWindow}
+                    modelDisplayName={activeThreadModelDisplayName}
+                    accountQuota={accountQuota}
+                    {...(selectedProvider === "claudeAgent"
+                      ? {
+                          onCompact: compactThreadContext,
+                          compactDisabled:
+                            compactDisabled || noProviderAvailable || isSendBusy || isConnecting,
+                          compactDisabledReason: resolvedCompactDisabledReason,
+                        }
+                      : {})}
+                  />
                   {noProviderAvailable ? (
                     <Button
                       type="button"
@@ -3891,8 +3924,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   {showMobilePendingAnswerActions ? null : inlineStashBadge}
                   <ComposerFooterPrimaryActions
                     compact={isComposerPrimaryActionsCompact}
-                    activeContextWindow={activeContextWindow}
-                    activeThreadModelDisplayName={activeThreadModelDisplayName}
                     pendingAction={pendingPrimaryAction}
                     isRunning={phase === "running"}
                     showPlanFollowUpPrompt={
@@ -3914,13 +3945,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                     onInterrupt={handleInterruptPrimaryAction}
                     onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
-                    compactDisabled={
-                      compactDisabled || noProviderAvailable || isSendBusy || isConnecting
-                    }
-                    compactDisabledReason={resolvedCompactDisabledReason}
-                    {...(selectedProvider === "claudeAgent"
-                      ? { onCompactContext: compactThreadContext }
-                      : {})}
                   />
                 </div>
               </div>

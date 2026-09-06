@@ -53,6 +53,7 @@ export function createByokEnvironmentAtoms<R, E>(
   const contextWindowMatchScheduler = createAtomCommandScheduler();
   const draftDiscoveryScheduler = createAtomCommandScheduler();
   const balanceScheduler = createAtomCommandScheduler();
+  const benchmarkScheduler = createAtomCommandScheduler();
   return {
     supplierCatalog: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:byok:supplier-catalog",
@@ -73,6 +74,16 @@ export function createByokEnvironmentAtoms<R, E>(
             input.adapterId,
             input.forceRefresh === true,
           ]),
+      },
+    }),
+    benchmarkModel: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:byok:benchmark-model",
+      tag: WS_METHODS.serverBenchmarkByokModel,
+      scheduler: benchmarkScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.instanceId, input.adapterId]),
       },
     }),
     matchContextWindows: createEnvironmentRpcCommand(runtime, {
@@ -1260,6 +1271,10 @@ export function createServerEnvironmentAtoms<R, E>(
     startProviderLogin: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:start-provider-login",
       tag: WS_METHODS.serverStartProviderLogin,
+    }),
+    cliProxy: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:cli-proxy",
+      tag: WS_METHODS.serverCliProxy,
     }),
     updateServer,
     upsertKeybinding: createEnvironmentRpcCommand(runtime, {

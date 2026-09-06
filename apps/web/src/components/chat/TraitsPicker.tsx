@@ -622,7 +622,10 @@ export const TraitsPicker = memo(function TraitsPicker({
     ultrathinkPromptControlled && effortDescriptor?.id === primarySelectDescriptor?.id
       ? "ultrathink"
       : getDescriptorStringValue(effortDescriptor ?? null);
-  const labelClassName = cn("min-w-0 truncate", useSlider && "effort-tone min-w-[5.5ch]");
+  const labelClassName = cn(
+    "min-w-0 truncate",
+    useSlider && "effort-tone min-w-[5.5ch] text-secondary-label",
+  );
   const Trigger = useSlider ? PopoverTrigger : MenuTrigger;
   const Picker = useSlider ? Popover : Menu;
   const content = (

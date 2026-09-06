@@ -7,8 +7,11 @@ import {
   filterSupplierTemplates,
   groupByokModelAdapters,
   readByokModelAdapters,
+  removeBenchmarkResult,
+  retainCurrentContextMatches,
+  retainCurrentBenchmarkResults,
 } from "./ByokModelAdaptersSection";
-import type { ByokModelAdapter } from "@codework/contracts";
+import type { ByokContextWindowMatchResult, ByokModelAdapter } from "@codework/contracts";
 
 describe("BYOK supplier templates", () => {
   it("keeps custom as the only local template", () => {
@@ -210,5 +213,130 @@ describe("groupByokModelAdapters", () => {
       { protocol: "openai", baseURL: "https://relay.example/v1", adapters: [openai] },
       { protocol: "anthropic", baseURL: "https://relay.example/v1", adapters: [anthropic] },
     ]);
+  });
+});
+
+describe("retainCurrentBenchmarkResults", () => {
+  const adapter = (modelId: string, baseURL = "https://relay.example/v1"): ByokModelAdapter => ({
+    id: "adapter-1",
+    displayName: modelId,
+    protocol: "openai",
+    baseURL,
+    apiKey: "",
+    balanceAccessToken: "",
+    modelId,
+    contextWindowTokens: 128_000,
+  });
+
+  it("drops results measured against a different model or relay", () => {
+    const current = adapter("deepseek-v4");
+    expect(
+      retainCurrentBenchmarkResults(
+        {
+          "adapter-1": {
+            tokensPerSecond: 120,
+            totalMs: 1000,
+            fingerprint: "openai\u0000https://relay.example/v1\u0000old-model",
+          },
+        },
+        [current],
+      ),
+    ).toEqual({});
+  });
+
+  it("keeps a result when the adapter identity still matches", () => {
+    const current = adapter("deepseek-v4");
+    expect(
+      retainCurrentBenchmarkResults(
+        {
+          "adapter-1": {
+            tokensPerSecond: 120,
+            totalMs: 1000,
+            fingerprint: "openai\u0000https://relay.example/v1\u0000deepseek-v4",
+          },
+        },
+        [current],
+      ),
+    ).toMatchObject({ "adapter-1": { tokensPerSecond: 120 } });
+  });
+
+  it("removes the previous result before a fresh measurement", () => {
+    expect(
+      removeBenchmarkResult(
+        {
+          "adapter-1": {
+            tokensPerSecond: 120,
+            totalMs: 1000,
+            fingerprint: "openai\u0000https://relay.example/v1\u0000deepseek-v4",
+          },
+          "adapter-2": {
+            tokensPerSecond: 80,
+            totalMs: 1500,
+            fingerprint: "openai\u0000https://relay.example/v1\u0000deepseek-v3",
+          },
+        },
+        "adapter-1",
+      ),
+    ).toEqual({
+      "adapter-2": {
+        tokensPerSecond: 80,
+        totalMs: 1500,
+        fingerprint: "openai\u0000https://relay.example/v1\u0000deepseek-v3",
+      },
+    });
+  });
+});
+
+describe("retainCurrentContextMatches", () => {
+  const adapter = (
+    id: string,
+    modelId: string,
+    contextWindowTokens = 128_000,
+  ): ByokModelAdapter => ({
+    id,
+    displayName: modelId,
+    protocol: "openai",
+    baseURL: "https://relay.example/v1",
+    apiKey: "",
+    balanceAccessToken: "",
+    modelId,
+    contextWindowTokens,
+  });
+
+  const result = (before: number): ByokContextWindowMatchResult => ({
+    adapterId: "adapter-1",
+    total: 1,
+    fromCatalog: 0,
+    fromProbe: 1,
+    unchanged: 0,
+    details: [
+      {
+        adapterId: "adapter-1",
+        modelId: "deepseek-v4",
+        source: "probe",
+        before,
+        after: 256_000,
+      },
+    ],
+  });
+
+  it("drops a context diagnosis after the model or configured window changes", () => {
+    expect(
+      retainCurrentContextMatches({ "adapter-1": result(128_000) }, [
+        adapter("adapter-1", "deepseek-v5"),
+      ]),
+    ).toEqual({});
+    expect(
+      retainCurrentContextMatches({ "adapter-1": result(128_000) }, [
+        adapter("adapter-1", "deepseek-v4", 64_000),
+      ]),
+    ).toEqual({});
+  });
+
+  it("keeps a diagnosis when the complete relay model set still matches", () => {
+    const current = [adapter("adapter-1", "deepseek-v4")];
+    expect(retainCurrentContextMatches({ "adapter-1": result(128_000) }, current)).toMatchObject({
+      "adapter-1": { total: 1 },
+    });
   });
 });

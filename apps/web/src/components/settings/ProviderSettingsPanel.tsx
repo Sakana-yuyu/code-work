@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { Link } from "@tanstack/react-router";
 import { localizedConnectionStatusText } from "~/lib/localizedConnectionStatus";
 import { safeErrorLogAttributes } from "@codework/client-runtime/errors";
 import {
@@ -34,7 +35,7 @@ import {
   ServerCogIcon,
   TerminalIcon,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { isDesktopLocalConnectionTarget } from "../../connection/desktopLocal";
 import { isElectron } from "../../env";
@@ -223,7 +224,13 @@ function EnvironmentUnavailableRow({
   );
 }
 
-export function ProviderSettingsPanel() {
+export function ProviderSettingsPanel({
+  initialEnvironmentId,
+  initialInstanceId,
+}: {
+  readonly initialEnvironmentId?: EnvironmentId;
+  readonly initialInstanceId?: ProviderInstanceId | undefined;
+} = {}) {
   const { environments, isReady } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const options = useMemo(
@@ -234,8 +241,11 @@ export function ProviderSettingsPanel() {
   // device that drops out of the catalog falls back without erasing the pick —
   // if it reappears (e.g. after a reconnect) the selection is restored.
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<EnvironmentId | null>(
-    primaryEnvironmentId,
+    initialEnvironmentId ?? primaryEnvironmentId,
   );
+  useEffect(() => {
+    if (initialEnvironmentId !== undefined) setSelectedEnvironmentId(initialEnvironmentId);
+  }, [initialEnvironmentId]);
   const effectiveEnvironmentId = resolveSelectedProviderEnvironmentId(
     options,
     selectedEnvironmentId,
@@ -313,6 +323,7 @@ export function ProviderSettingsPanel() {
           key={selectedEnvironment.environmentId}
           environment={selectedEnvironment}
           deviceTabs={deviceTabs}
+          initialInstanceId={initialInstanceId}
         />
       ) : null}
     </SettingsPageContainer>
@@ -322,9 +333,11 @@ export function ProviderSettingsPanel() {
 function SelectedEnvironmentProviderSettings({
   environment,
   deviceTabs,
+  initialInstanceId,
 }: {
   readonly environment: EnvironmentPresentation;
   readonly deviceTabs?: ReactNode;
+  readonly initialInstanceId?: ProviderInstanceId | undefined;
 }) {
   const isPrimary = environment.entry.target._tag === "PrimaryConnectionTarget";
   if (isPrimary) {
@@ -336,22 +349,35 @@ function SelectedEnvironmentProviderSettings({
           environment={environment}
           operateAccess="granted"
           deviceTabs={deviceTabs}
+          initialInstanceId={initialInstanceId}
         />
       );
     }
     return (
-      <PrimarySessionGatedProviderSettings environment={environment} deviceTabs={deviceTabs} />
+      <PrimarySessionGatedProviderSettings
+        environment={environment}
+        deviceTabs={deviceTabs}
+        initialInstanceId={initialInstanceId}
+      />
     );
   }
-  return <RemoteSessionGatedProviderSettings environment={environment} deviceTabs={deviceTabs} />;
+  return (
+    <RemoteSessionGatedProviderSettings
+      environment={environment}
+      deviceTabs={deviceTabs}
+      initialInstanceId={initialInstanceId}
+    />
+  );
 }
 
 function PrimarySessionGatedProviderSettings({
   environment,
   deviceTabs,
+  initialInstanceId,
 }: {
   readonly environment: EnvironmentPresentation;
   readonly deviceTabs?: ReactNode;
+  readonly initialInstanceId?: ProviderInstanceId | undefined;
 }) {
   const primarySessionState = usePrimarySessionState();
   const operateAccess = resolvePrimaryOperateAccess({
@@ -366,6 +392,7 @@ function PrimarySessionGatedProviderSettings({
       environment={environment}
       operateAccess={operateAccess}
       deviceTabs={deviceTabs}
+      initialInstanceId={initialInstanceId}
     />
   );
 }
@@ -373,9 +400,11 @@ function PrimarySessionGatedProviderSettings({
 function RemoteSessionGatedProviderSettings({
   environment,
   deviceTabs,
+  initialInstanceId,
 }: {
   readonly environment: EnvironmentPresentation;
   readonly deviceTabs?: ReactNode;
+  readonly initialInstanceId?: ProviderInstanceId | undefined;
 }) {
   const sessionState = useEnvironmentSessionState(environment.environmentId);
   const operateAccess = resolveRemoteOperateAccess({
@@ -388,6 +417,7 @@ function RemoteSessionGatedProviderSettings({
       environment={environment}
       operateAccess={operateAccess}
       deviceTabs={deviceTabs}
+      initialInstanceId={initialInstanceId}
     />
   );
 }
@@ -396,10 +426,12 @@ function AccessGatedProviderSettings({
   environment,
   operateAccess,
   deviceTabs,
+  initialInstanceId,
 }: {
   readonly environment: EnvironmentPresentation;
   readonly operateAccess: ProviderOperateAccess;
   readonly deviceTabs?: ReactNode;
+  readonly initialInstanceId?: ProviderInstanceId | undefined;
 }) {
   const access = classifyProviderEnvironmentAccess({
     connectionPhase: environment.connection.phase,
@@ -421,6 +453,7 @@ function AccessGatedProviderSettings({
       environmentLabel={environment.label}
       readOnly={access.kind === "read-only"}
       deviceTabs={deviceTabs}
+      initialInstanceId={initialInstanceId}
     />
   );
 }
@@ -430,10 +463,12 @@ export function EnvironmentProviderSettings({
   environmentLabel,
   readOnly = false,
   deviceTabs,
+  initialInstanceId,
 }: {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
   readonly deviceTabs?: ReactNode;
+  readonly initialInstanceId?: ProviderInstanceId | undefined;
   /**
    * Render the full provider layout, greyed out and inert, when this session's
    * credential lacks `orchestration:operate` on the environment. Showing the
@@ -466,7 +501,13 @@ export function EnvironmentProviderSettings({
   });
   const [isRefreshingProviders, setIsRefreshingProviders] = useState(false);
   const [isAddInstanceDialogOpen, setIsAddInstanceDialogOpen] = useState(false);
-  const [selectedInstanceId, setSelectedInstanceId] = useState<ProviderInstanceId | null>(null);
+  const [newInstanceDriver, setNewInstanceDriver] = useState(ProviderDriverKind.make("codex"));
+  const [selectedInstanceId, setSelectedInstanceId] = useState<ProviderInstanceId | null>(
+    initialInstanceId ?? null,
+  );
+  useEffect(() => {
+    if (initialInstanceId !== undefined) setSelectedInstanceId(initialInstanceId);
+  }, [initialInstanceId]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const advancedVisible = readOnly || advancedOpen;
   const [updatingProviderDrivers, setUpdatingProviderDrivers] = useState<
@@ -839,7 +880,6 @@ export function EnvironmentProviderSettings({
       favorite.provider === row.instanceId ? Result.succeed(favorite.model) : Result.failVoid,
     );
     const resetLabel = driverOption?.label ?? String(row.driver);
-    const sharedChannelRow = rows.find((candidate) => candidate.driver === "byok");
 
     return (
       <ProviderInstanceCard
@@ -850,8 +890,17 @@ export function EnvironmentProviderSettings({
         driverOption={driverOption}
         liveProvider={liveProvider}
         mode={mode}
-        sharedChannels={
-          mode === "editor" && sharedChannelRow ? (
+        sharedInstances={rows
+          .filter((candidate) => candidate.driver === "byok")
+          .map((candidate) => ({
+            instanceId: candidate.instanceId,
+            label: candidate.instance.displayName || candidate.instanceId,
+          }))}
+        renderSharedChannels={(sourceInstanceId) => {
+          const sharedChannelRow = rows.find(
+            (candidate) => candidate.driver === "byok" && candidate.instanceId === sourceInstanceId,
+          );
+          return mode === "editor" && sharedChannelRow ? (
             <div className="min-w-0 rounded-lg border border-border/60 bg-background p-3">
               <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
                 {t("providerConnection.sharedEditHint", {
@@ -872,14 +921,21 @@ export function EnvironmentProviderSettings({
                 }}
               />
             </div>
-          ) : undefined
-        }
+          ) : null;
+        }}
         selected={mode === "list" && selectedRow?.instanceId === row.instanceId}
         onSelect={mode === "list" ? () => setSelectedInstanceId(row.instanceId) : undefined}
-        onManageChannels={() => {
-          const byokRow = rows.find((candidate) => candidate.driver === "byok");
+        onManageChannels={(sourceInstanceId) => {
+          const byokRow = rows.find(
+            (candidate) =>
+              candidate.driver === "byok" &&
+              (!sourceInstanceId || candidate.instanceId === sourceInstanceId),
+          );
           if (byokRow) setSelectedInstanceId(byokRow.instanceId);
-          else setIsAddInstanceDialogOpen(true);
+          else {
+            setNewInstanceDriver(ProviderDriverKind.make("byok"));
+            setIsAddInstanceDialogOpen(true);
+          }
         }}
         guideTarget={
           mode === "list" && String(row.driver) === "byok" ? "providers-byok-instance" : undefined
@@ -964,7 +1020,14 @@ export function EnvironmentProviderSettings({
     <>
       <ProviderSettingsPageHeader providersEmpty={!hasConfiguredProviderInstances(settings)}>
         {!readOnly ? (
-          <Button size="compact" variant="outline" onClick={() => setIsAddInstanceDialogOpen(true)}>
+          <Button
+            size="compact"
+            variant="outline"
+            onClick={() => {
+              setNewInstanceDriver(ProviderDriverKind.make("codex"));
+              setIsAddInstanceDialogOpen(true);
+            }}
+          >
             <PlusIcon className="size-3.5" />
             {t("addProviderInstance")}
           </Button>
@@ -984,6 +1047,24 @@ export function EnvironmentProviderSettings({
             )}
           />
         ) : null}
+        <SettingsRow
+          title={t("settings.cliProxy")}
+          description={t("settings.cliProxyDescription")}
+          control={
+            <Button
+              size="sm"
+              variant="outline"
+              render={
+                <Link
+                  to="/settings/cli-proxy"
+                  search={{ environmentId: String(environmentId), providerInstanceId: undefined }}
+                />
+              }
+            >
+              {t("settings.openCliProxy")}
+            </Button>
+          }
+        />
         <div className="@container/providers space-y-1">
           <div className="overflow-hidden rounded-xl border border-border/70 @xl/providers:grid @xl/providers:grid-cols-[14rem_minmax(0,1fr)] @4xl/providers:grid-cols-[18rem_minmax(0,1fr)]">
             <div className="@container/provider-list border-b border-border/70 bg-muted/10 @xl/providers:border-r @xl/providers:border-b-0">
@@ -1123,6 +1204,7 @@ export function EnvironmentProviderSettings({
 
       {isAddInstanceDialogOpen ? (
         <AddProviderInstanceDialog
+          initialDriver={newInstanceDriver}
           open
           environmentId={environmentId}
           environmentLabel={environmentLabel}

@@ -1,6 +1,4 @@
-import { causeErrorTag } from "@codework/shared/observability";
 import { GrokSettings, ProviderDriverKind, type ServerProvider } from "@codework/contracts";
-import * as NodeOS from "node:os";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -18,6 +16,7 @@ import { makeGrokTextGeneration } from "../../textGeneration/GrokTextGeneration.
 import { ProviderDriverError } from "../Errors.ts";
 import {
   BYOK_GATEWAY_TOKEN_ENV,
+  applyRoutedProviderAvailability,
   ensureGatewayToken,
   gatewayAdapterRoutes,
   gatewayOrigin,
@@ -40,6 +39,7 @@ import {
 } from "../ProviderDriver.ts";
 import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
+import { isDefaultGrokHome, resolveGrokHome } from "../grokHome.ts";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   makeProviderMaintenanceCapabilities,
@@ -125,8 +125,22 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
       const secretStore = yield* ServerSecretStore;
       const fileSystem = yield* FileSystem.FileSystem;
       const pathService = yield* Path.Path;
-      const baseProcessEnv = mergeProviderInstanceEnvironment(environment);
+      const inheritedEnv = mergeProviderInstanceEnvironment(environment);
       const routed = config.routeThroughByok === true;
+      const grokHome = resolveGrokHome({
+        stateDir: serverConfig.stateDir,
+        instanceId,
+        routed,
+        explicitHome: inheritedEnv.GROK_HOME,
+      });
+      if (routed && isDefaultGrokHome(grokHome)) {
+        return yield* new ProviderDriverError({
+          driver: DRIVER_KIND,
+          instanceId,
+          detail: "Grok 代理接管需要独立 GROK_HOME，不能写入个人默认账号目录。",
+        });
+      }
+      const baseProcessEnv = { ...inheritedEnv, GROK_HOME: grokHome };
       // The grok CLI reads the gateway key from the env var that the managed
       // config.toml block references via `env_key`.
       const processEnv = routed
@@ -151,27 +165,26 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
         env: processEnv,
       });
 
-      // Routed mode materializes the gateway as `[model."…"]` tables inside
-      // the user's real ~/.grok/config.toml (the CLI has no base-url env var
-      // and no config-path override). Runs on every driver build and snapshot
-      // refresh; idempotent — only writes when the merged content differs.
+      // 官方 GROK_HOME 同时隔离配置、认证和会话；只维护隔离目录中的模型块。
       const reconcileGrokRoutedConfigFile = Effect.gen(function* () {
-        const configFilePath = pathService.join(NodeOS.homedir(), ".grok", "config.toml");
+        if (isDefaultGrokHome(grokHome)) return;
+        const configFilePath = pathService.join(grokHome, "config.toml");
         const existing = yield* fileSystem
           .readFileString(configFilePath)
-          .pipe(Effect.orElseSucceed(() => undefined));
+          .pipe(
+            Effect.catch((error) =>
+              error.reason._tag === "NotFound" ? Effect.succeed(undefined) : Effect.fail(error),
+            ),
+          );
         if (existing === undefined && config.routeThroughByok !== true) return;
         let managedBlock: string | null = null;
         if (config.routeThroughByok === true) {
-          const currentSettings = yield* serverSettings.getSettings.pipe(
-            Effect.orElseSucceed(() => undefined),
+          const currentSettings = yield* serverSettings.getSettings;
+          managedBlock = grokGatewayConfigBlock(
+            gatewayOrigin(serverConfig.port),
+            gatewayAdapterRoutes(currentSettings, config.byokSourceInstanceId),
+            config.byokSourceInstanceId,
           );
-          if (currentSettings !== undefined) {
-            managedBlock = grokGatewayConfigBlock(
-              gatewayOrigin(serverConfig.port),
-              gatewayAdapterRoutes(currentSettings),
-            );
-          }
         }
         const merged = mergeGrokManagedConfig(existing, managedBlock);
         if (merged === (existing ?? "")) return;
@@ -180,10 +193,14 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
           Effect.provideService(Path.Path, pathService),
         );
       }).pipe(
-        Effect.catchCause((cause) =>
-          Effect.logWarning("Failed to reconcile the routed Grok config.toml block", {
-            errorTag: causeErrorTag(cause),
-          }),
+        Effect.mapError(
+          (cause) =>
+            new ProviderDriverError({
+              driver: DRIVER_KIND,
+              instanceId,
+              detail: "无法保存 Grok 独立代理配置。",
+              cause,
+            }),
         ),
         Effect.asVoid,
       );
@@ -224,7 +241,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
           if (settings.provider.routeThroughByok !== true) {
             // Reconcile on disable as well: the managed block must be stripped
             // from config.toml even though the models stay grok's own.
-            return reconcileGrokRoutedConfigFile.pipe(Effect.andThen(baseEnrich));
+            return reconcileGrokRoutedConfigFile.pipe(Effect.andThen(baseEnrich), Effect.orDie);
           }
           // Routed models come from the live BYOK adapters, not grok's own
           // catalog, so resolve them per snapshot.
@@ -240,18 +257,25 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
                   ).pipe(
                     Effect.provideService(HttpClient.HttpClient, httpClient),
                     Effect.flatMap((enrichedSnapshot) =>
-                      publishSnapshot({
-                        ...enrichedSnapshot,
-                        models: routedServerProviderModels(currentSettings, "openai"),
-                        auth: {
-                          status: "authenticated" as const,
-                          type: "byok",
-                          label: "BYOK Gateway",
-                        },
-                      }),
+                      publishSnapshot(
+                        applyRoutedProviderAvailability({
+                          ...enrichedSnapshot,
+                          models: routedServerProviderModels(
+                            currentSettings,
+                            "openai",
+                            config.byokSourceInstanceId,
+                          ),
+                          auth: {
+                            status: "authenticated" as const,
+                            type: "byok",
+                            label: "BYOK Gateway",
+                          },
+                        }),
+                      ),
                     ),
                   ),
             ),
+            Effect.orDie,
           );
         },
       }).pipe(

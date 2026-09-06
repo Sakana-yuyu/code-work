@@ -6,6 +6,7 @@ export type SettingsPath =
   | "/settings/appearance"
   | "/settings/keybindings"
   | "/settings/providers"
+  | "/settings/cli-proxy"
   | "/settings/integrations"
   | "/settings/runtime"
   | "/settings/delegation"
@@ -39,6 +40,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/appearance": "appearance",
   "/settings/keybindings": "settings.keybindings",
   "/settings/providers": "settings.providers",
+  "/settings/cli-proxy": "settings.cliProxy",
   "/settings/integrations": "settings.integrations",
   "/settings/runtime": "settings.runtime",
   "/settings/delegation": "settings.delegation",
@@ -59,6 +61,12 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
  * here once instead of separately in the panel and the index.
  */
 export const SETTINGS_SEARCH_ITEMS = [
+  {
+    id: "cli-proxy",
+    title: "settings.cliProxy",
+    to: "/settings/cli-proxy",
+    keywords: ["CPA", "Sub2API", "BYOK", "账号池", "切号", "代理", "cli"],
+  },
   {
     id: "composition-squads",
     title: "squadBuilder.title",

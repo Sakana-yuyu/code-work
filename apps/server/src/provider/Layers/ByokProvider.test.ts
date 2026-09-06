@@ -80,7 +80,7 @@ describe("checkByokProviderStatus", () => {
     ]);
   });
 
-  it("shows a warning and unknown authentication when the key check fails", async () => {
+  it("does not mark the provider unavailable when a compatible gateway rejects /models", async () => {
     const fetch = asFetch(
       async () =>
         new Response(JSON.stringify({ error: "invalid api key" }), {
@@ -97,9 +97,9 @@ describe("checkByokProviderStatus", () => {
       ),
     );
 
-    expect(result.status).toBe("warning");
-    expect(result.auth).toEqual({ status: "unknown", type: "byok" });
-    expect(result.message).toContain("Key check failed for:");
+    expect(result.status).toBe("ready");
+    expect(result.auth).toEqual({ status: "authenticated", type: "byok" });
+    expect(result.message).toContain("configured");
   });
 });
 

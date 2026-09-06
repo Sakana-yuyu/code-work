@@ -1,20 +1,38 @@
+// @effect-diagnostics nodeBuiltinImport:off - 使用真实 TCP 上游验证网络转发。
 import { describe, expect, it } from "vite-plus/test";
+import * as NodeHttp from "node:http";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
+import { FetchHttpClient, HttpRouter } from "effect/unstable/http";
 
-import type { ServerSettings } from "@codework/contracts";
+import {
+  DEFAULT_SERVER_SETTINGS,
+  type ServerProvider,
+  type ServerSettings,
+} from "@codework/contracts";
+import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
+import { layerTest } from "../../serverSettings.ts";
 
 import {
   anthropicGatewayEnv,
+  applyRoutedProviderAvailability,
+  byokGatewayRouteLayer,
+  extractGatewayUsageLine,
   gatewayAdapterRoutes,
   gatewayCodexConfigArgs,
   gatewayOrigin,
   grokGatewayConfigBlock,
   joinAnthropicTarget,
   joinOpenAITarget,
+  isRetryableLocalGatewayStatus,
   mergeGrokManagedConfig,
   openCodeGatewayConfigContent,
   pickGatewayAdapter,
   routedServerProviderModels,
   rewriteGatewayModel,
+  tapGatewayUsageStream,
+  type GatewayUsageTotals,
 } from "./modelGateway.ts";
 
 const settingsWithInstances = (
@@ -44,6 +62,21 @@ const adapter = (overrides: Record<string, unknown> = {}): Record<string, unknow
 });
 
 describe("gatewayAdapterRoutes", () => {
+  it("旧版 BYOK 配置仍可路由，显式停用优先于旧配置", () => {
+    const legacy = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providers: { ...DEFAULT_SERVER_SETTINGS.providers, byok: byokConfig([adapter()]) },
+    } as ServerSettings;
+    expect(gatewayAdapterRoutes(legacy, "byok").map((route) => route.id)).toEqual(["adapter-1"]);
+    expect(
+      gatewayAdapterRoutes({
+        ...legacy,
+        ...settingsWithInstances({
+          byok: { driver: "byok", enabled: false, config: byokConfig([adapter()]) },
+        }),
+      }),
+    ).toEqual([]);
+  });
   it("用上游模型名替换内部渠道 ID，保留流式请求和其他字段", () => {
     const body = {
       model: "adapter-id[1m]",
@@ -109,6 +142,129 @@ describe("gatewayAdapterRoutes", () => {
 
     expect(routes).toEqual([]);
   });
+
+  it("publishes a local official-account route without an external relay", () => {
+    const settings = {
+      ...settingsWithInstances({
+        codex: { driver: "codex", enabled: true, config: {} },
+      }),
+      localAccountPool: {
+        accounts: {
+          personal: {
+            id: "personal",
+            provider: "codex",
+            displayName: "Personal",
+            credentialRef: "secret",
+            enabled: true,
+            models: ["gpt-5.4"],
+          },
+        },
+        strategy: "round-robin",
+        providerInstances: { codex: ["personal"] },
+      },
+    } as ServerSettings;
+    const route = gatewayAdapterRoutes(settings, "codex")[0];
+    expect(route?.supplierID).toBe("codework-local-account");
+    expect(route?.localProvider).toBe("codex");
+    expect(route?.id).toBe("local:codex:codex:gpt-5.4");
+    expect(
+      pickGatewayAdapter(
+        gatewayAdapterRoutes(settings, "codex"),
+        "openai",
+        "local:codex:codex:gpt-5.4",
+      )?.localProvider,
+    ).toBe("codex");
+    expect(
+      pickGatewayAdapter(gatewayAdapterRoutes(settings, "codex"), "openai", "gpt-5.4"),
+    ).toBeUndefined();
+  });
+  it("旧版 providers.codex 只有默认实例时也能发布本地账号路由", () => {
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providerInstances: {},
+      providers: { ...DEFAULT_SERVER_SETTINGS.providers, codex: { enabled: true } },
+      localAccountPool: {
+        accounts: {
+          personal: {
+            id: "personal",
+            provider: "codex",
+            displayName: "Personal",
+            credentialRef: "secret",
+            enabled: true,
+            models: ["gpt-5.4"],
+          },
+        },
+        strategy: "round-robin",
+        providerInstances: { codex: ["personal"] },
+      },
+    } as unknown as ServerSettings;
+    expect(gatewayAdapterRoutes(settings, "codex").map((route) => route.id)).toEqual([
+      "local:codex:codex:gpt-5.4",
+    ]);
+  });
+
+  it("没有声明模型的官方 OAuth 账号会按请求模型生成本地路由", () => {
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providerInstances: {
+        codex: { driver: "codex", enabled: true, config: {} },
+      },
+      localAccountPool: {
+        accounts: {
+          oauth: {
+            id: "oauth",
+            provider: "codex",
+            authKind: "oauth",
+            displayName: "OAuth",
+            credentialRef: "oauth-secret",
+            enabled: true,
+            models: [],
+          },
+        },
+        strategy: "round-robin",
+        providerInstances: { codex: ["oauth"] },
+      },
+    } as unknown as ServerSettings;
+
+    const routes = gatewayAdapterRoutes(settings, "codex", "gpt-5.4");
+    expect(routes.map((route) => route.id)).toEqual(["local:codex:codex:gpt-5.4"]);
+    expect(pickGatewayAdapter(routes, "openai", "local:codex:codex:gpt-5.4")?.localProvider).toBe(
+      "codex",
+    );
+  });
+  it("不为 OpenCode 发布无法使用 Codex OAuth 的 Chat Completions 路由", () => {
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providerInstances: { opencode: { driver: "opencode", enabled: true, config: {} } },
+      localAccountPool: {
+        accounts: {
+          oauth: {
+            id: "oauth",
+            provider: "codex",
+            authKind: "oauth",
+            displayName: "OAuth",
+            credentialRef: "oauth-secret",
+            enabled: true,
+            models: ["oauth-model"],
+          },
+          api: {
+            id: "api",
+            provider: "codex",
+            authKind: "api-key",
+            displayName: "API",
+            credentialRef: "api-secret",
+            enabled: true,
+            models: ["api-model"],
+          },
+        },
+        strategy: "round-robin",
+        providerInstances: { opencode: ["oauth", "api"] },
+      },
+    } as unknown as ServerSettings;
+    expect(gatewayAdapterRoutes(settings, "opencode").map((route) => route.modelId)).toEqual([
+      "api-model",
+    ]);
+  });
 });
 
 describe("pickGatewayAdapter", () => {
@@ -161,6 +317,13 @@ describe("target joins", () => {
   });
 });
 
+describe("local gateway failover", () => {
+  it("只对鉴权、限流和服务端失败换号", () => {
+    expect([401, 403, 429, 500, 503].every(isRetryableLocalGatewayStatus)).toBe(true);
+    expect([200, 400, 404].some(isRetryableLocalGatewayStatus)).toBe(false);
+  });
+});
+
 describe("injection builders", () => {
   it("builds claude env vars from the loopback origin", () => {
     expect(anthropicGatewayEnv(gatewayOrigin(3773), "tok")).toEqual({
@@ -178,6 +341,7 @@ describe("injection builders", () => {
       'model_providers.byok_gateway.base_url="http://127.0.0.1:3773/byok-gw/openai/v1"',
     );
     expect(args).toContain('model_providers.byok_gateway.wire_api="responses"');
+    expect(args).toContain("model_providers.byok_gateway.requires_openai_auth=false");
   });
 
   it("merges the gateway provider into opencode config content", () => {
@@ -274,6 +438,39 @@ describe("routedServerProviderModels", () => {
   });
 });
 
+describe("applyRoutedProviderAvailability", () => {
+  const base = {
+    displayName: "Codex",
+    enabled: true,
+    installed: true,
+    status: "error" as const,
+    checkedAt: "2026-09-06T00:00:00.000Z",
+    models: [],
+  };
+  it("网关接管时原生登录探测不再把实例标记为不可用", () => {
+    const snapshot = applyRoutedProviderAvailability({
+      ...base,
+      message: "Codex CLI is not authenticated. Run `codex login` and try again.",
+      auth: { status: "unauthenticated" as const },
+    } as unknown as ServerProvider);
+    expect(snapshot.status).toBe("ready");
+    expect(snapshot.message).toBeUndefined();
+    expect(snapshot.auth).toEqual({ status: "unauthenticated" });
+  });
+  it("未安装或已停用的实例保持探测结果", () => {
+    const notInstalled = applyRoutedProviderAvailability({
+      ...base,
+      installed: false,
+    } as unknown as ServerProvider);
+    expect(notInstalled.status).toBe("error");
+    const disabled = applyRoutedProviderAvailability({
+      ...base,
+      status: "disabled",
+    } as unknown as ServerProvider);
+    expect(disabled.status).toBe("disabled");
+  });
+});
+
 describe("grokGatewayConfigBlock", () => {
   it("emits one quoted model table per openai adapter with the gateway endpoint", () => {
     const routes = gatewayAdapterRoutes(
@@ -334,5 +531,212 @@ describe("mergeGrokManagedConfig", () => {
     expect(stripped).not.toContain("MANAGED");
 
     expect(mergeGrokManagedConfig(undefined, null)).toBe("");
+  });
+});
+
+it("共享线路严格隔离，真实 HTTP 转发保留模型映射、流和限流错误", async () => {
+  const calls: {
+    url: string;
+    authorization: string | undefined;
+    apiKey: string | string[] | undefined;
+    body: unknown;
+  }[] = [];
+  const upstream = NodeHttp.createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    calls.push({
+      url: request.url ?? "",
+      authorization: request.headers.authorization,
+      apiKey: request.headers["x-api-key"],
+      body: JSON.parse(Buffer.concat(chunks).toString()),
+    });
+    if (request.url?.includes("limited")) {
+      response.writeHead(429, {
+        "content-type": "application/json",
+        "retry-after": "7",
+        "x-request-id": "fixture-request",
+      });
+      response.end('{"error":{"message":"rate limited"}}');
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write('data: {"delta":"hello"}\n\n');
+    response.end("data: [DONE]\n\n");
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const address = upstream.address();
+  if (address === null || typeof address === "string") throw new Error("测试端口未绑定");
+  const baseURL = `http://127.0.0.1:${address.port}/v1`;
+  const settings = settingsWithInstances({
+    team: {
+      driver: "byok",
+      enabled: true,
+      config: byokConfig([
+        adapter({
+          id: "same-id",
+          protocol: "openai",
+          baseURL,
+          modelId: "team-model",
+          apiKey: "team-key",
+        }),
+        adapter({
+          id: "claude-id",
+          baseURL: baseURL.replace(/\/v1$/, ""),
+          modelId: "claude-model",
+          apiKey: "claude-key",
+        }),
+      ]),
+    },
+    personal: {
+      driver: "byok",
+      enabled: true,
+      config: byokConfig([
+        adapter({
+          id: "same-id",
+          protocol: "openai",
+          baseURL,
+          modelId: "personal-model",
+          apiKey: "personal-key",
+        }),
+        adapter({ id: "private-id", protocol: "openai", baseURL }),
+      ]),
+    },
+  });
+  const unused = () => Effect.die("不应调用此密钥操作");
+  const token = Buffer.alloc(32, 1).toString("hex");
+  const { handler, dispose } = HttpRouter.toWebHandler(
+    byokGatewayRouteLayer.pipe(
+      Layer.provideMerge(
+        Layer.mergeAll(
+          FetchHttpClient.layer,
+          layerTest({ ...DEFAULT_SERVER_SETTINGS, ...settings }),
+          Layer.succeed(ServerSecretStore, {
+            get: unused,
+            set: unused,
+            create: unused,
+            remove: unused,
+            getOrCreateRandom: () => Effect.succeed(Buffer.alloc(32, 1)),
+          }),
+        ),
+      ),
+    ),
+    { disableLogger: true },
+  );
+  const request = (path: string, model?: string, authorized = true) =>
+    handler(
+      new Request(`http://localhost/byok-gw/${path}`, {
+        method: model === undefined ? "GET" : "POST",
+        headers: {
+          ...(authorized ? { authorization: `Bearer ${token}` } : {}),
+          "content-type": "application/json",
+        },
+        ...(model === undefined
+          ? {}
+          : { body: JSON.stringify({ model, stream: true, input: "test" }) }),
+      }),
+    );
+  try {
+    expect((await request("openai/source/team/v1/models", undefined, false)).status).toBe(401);
+    expect(await (await request("openai/source/team/v1/models")).json()).toMatchObject({
+      data: [{ id: "same-id" }],
+    });
+    expect((await request("openai/source/team/v1/responses", "private-id")).status).toBe(404);
+    expect((await request("openai/source/missing/v1/responses", "same-id")).status).toBe(404);
+    expect(calls).toHaveLength(0);
+    const response = await request("openai/source/personal/v1/responses?beta=1", "same-id");
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(await response.text()).toBe('data: {"delta":"hello"}\n\ndata: [DONE]\n\n');
+    expect(calls[0]).toEqual({
+      url: "/v1/responses?beta=1",
+      authorization: "Bearer personal-key",
+      apiKey: undefined,
+      body: { model: "personal-model", stream: true, input: "test" },
+    });
+    const limited = await request("openai/source/team/v1/limited", "same-id");
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("retry-after")).toBe("7");
+    expect(limited.headers.get("x-request-id")).toBe("fixture-request");
+    expect(await limited.json()).toEqual({ error: { message: "rate limited" } });
+    await (await request("anthropic/source/team/v1/messages", "claude-id[1m]")).text();
+    expect(calls[2]).toMatchObject({
+      url: "/v1/messages",
+      authorization: undefined,
+      apiKey: "claude-key",
+      body: { model: "claude-model" },
+    });
+    expect(anthropicGatewayEnv("http://localhost", "key", "team").ANTHROPIC_BASE_URL).toBe(
+      "http://localhost/byok-gw/anthropic/source/team",
+    );
+    expect(gatewayCodexConfigArgs("http://localhost", "team")).toContain(
+      'model_providers.byok_gateway.base_url="http://localhost/byok-gw/openai/source/team/v1"',
+    );
+  } finally {
+    await dispose();
+    upstream.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      upstream.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+});
+
+describe("extractGatewayUsageLine", () => {
+  it("解析 Anthropic message_start/message_delta，忽略其余事件", () => {
+    expect(
+      extractGatewayUsageLine(
+        "anthropic",
+        JSON.stringify({
+          type: "message_start",
+          message: {
+            usage: {
+              input_tokens: 10,
+              cache_read_input_tokens: 5,
+              cache_creation_input_tokens: 2,
+              output_tokens: 0,
+            },
+          },
+        }),
+      ),
+    ).toEqual({ inputTokens: 17, outputTokens: 0 });
+    expect(
+      extractGatewayUsageLine(
+        "anthropic",
+        JSON.stringify({ type: "message_delta", usage: { output_tokens: 42 } }),
+      ),
+    ).toEqual({ inputTokens: 0, outputTokens: 42 });
+    expect(extractGatewayUsageLine("anthropic", JSON.stringify({ type: "ping" }))).toBeUndefined();
+  });
+  it("解析 OpenAI chat usage 与 Responses API response.usage", () => {
+    expect(
+      extractGatewayUsageLine(
+        "openai",
+        JSON.stringify({ usage: { prompt_tokens: 8, completion_tokens: 4 } }),
+      ),
+    ).toEqual({ inputTokens: 8, outputTokens: 4 });
+    expect(
+      extractGatewayUsageLine(
+        "openai",
+        JSON.stringify({ response: { usage: { input_tokens: 9, output_tokens: 3 } } }),
+      ),
+    ).toEqual({ inputTokens: 9, outputTokens: 3 });
+    expect(extractGatewayUsageLine("openai", '"partial json"')).toBeUndefined();
+  });
+  it("tapGatewayUsageStream 原样透传字节并统计跨块的 SSE 行", async () => {
+    const seen: GatewayUsageTotals[] = [];
+    const chunks = [
+      new TextEncoder().encode('data: {"type":"message_start","message":{"usage":{"inp'),
+      new TextEncoder().encode(
+        'ut_tokens":12}}}\n\ndata: {"type":"message_delta","usage":{"output_tok',
+      ),
+      new TextEncoder().encode('ens":7}}\n\ndata: [DONE]\n\n'),
+    ];
+    const passthrough = await Effect.runPromise(
+      Stream.runCollect(
+        tapGatewayUsageStream(Stream.fromIterable(chunks), "anthropic", (totals) =>
+          seen.push(totals),
+        ),
+      ),
+    );
+    expect(Array.from(passthrough)).toEqual(chunks);
+    expect(seen).toEqual([{ inputTokens: 12, outputTokens: 7 }]);
   });
 });

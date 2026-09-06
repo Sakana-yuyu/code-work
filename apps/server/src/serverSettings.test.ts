@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   CompositionMcpServerId,
   DEFAULT_SERVER_SETTINGS,
+  LocalAccountId,
   multicaProviderInstanceRevision,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -191,6 +192,35 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         clientSnapshot.mcpServers[localToolsKey]?.environment[0]?.valueRedacted,
         true,
       );
+
+      const withLocalAccount = yield* serverSettings.updateSettings({
+        localAccountPool: {
+          accounts: {
+            ["codex-test" as LocalAccountId]: {
+              id: "codex-test" as LocalAccountId,
+              provider: "codex",
+              authKind: "oauth",
+              displayName: "Codex Test",
+              credentialRef: "local-account-secret-ref",
+              enabled: true,
+              models: ["gpt-5.4"],
+            },
+          },
+          strategy: "round-robin",
+          providerInstances: {},
+        },
+      });
+      const redactedLocal = ServerSettingsModule.redactServerSettingsForClient(withLocalAccount);
+      assert.strictEqual(
+        redactedLocal.localAccountPool.accounts["codex-test" as LocalAccountId]?.credentialRef,
+        "",
+      );
+      assert.strictEqual(
+        ServerSettingsModule.redactServerSettingsForClient(withLocalAccount).localAccountPool
+          .accounts["codex-test" as LocalAccountId]?.displayName,
+        "Codex Test",
+      );
+      assert.doesNotThrow(() => Schema.encodeUnknownSync(ServerSettings)(redactedLocal));
 
       const rotated = yield* serverSettings.updateSettings({
         mcpServers: {
@@ -739,6 +769,29 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect("restores usage for Kimi and Antigravity instances", () =>
+    Effect.gen(function* () {
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      yield* fileSystem.writeFileString(
+        serverConfig.settingsPath,
+        '{"providerInstances":{"kimi_work":{"driver":"kimi","config":{}},"antigravity_work":{"driver":"antigravity","config":{}}}}',
+      );
+      yield* recordProviderUsage("kimi", "kimi_work");
+      yield* recordProviderUsage("antigravity", "antigravity_work");
+
+      const settings = yield* serverSettings.getSettings;
+
+      assert.isTrue(settings.providers.kimi.enabled);
+      assert.isTrue(settings.providers.antigravity.enabled);
+      assert.isTrue(settings.providerInstances[ProviderInstanceId.make("kimi_work")]?.enabled);
+      assert.isTrue(
+        settings.providerInstances[ProviderInstanceId.make("antigravity_work")]?.enabled,
+      );
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("preserves explicit provider disables in existing settings files", () =>
     Effect.gen(function* () {
       const serverConfig = yield* ServerConfig.ServerConfig;
@@ -746,7 +799,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
       yield* fileSystem.writeFileString(
         serverConfig.settingsPath,
-        '{"providers":{"grok":{"enabled":false},"opencode":{"enabled":false},"cursor":{"enabled":false}},"providerInstances":{"grok":{"driver":"grok","enabled":false,"config":{}},"opencode":{"driver":"opencode","config":{"enabled":false}},"cursor":{"driver":"cursor","enabled":false,"config":{}}}}',
+        '{"providers":{"grok":{"enabled":false},"kimi":{"enabled":false},"antigravity":{"enabled":false},"opencode":{"enabled":false},"cursor":{"enabled":false}},"providerInstances":{"grok":{"driver":"grok","enabled":false,"config":{}},"kimi":{"driver":"kimi","enabled":false,"config":{}},"antigravity":{"driver":"antigravity","enabled":false,"config":{}},"opencode":{"driver":"opencode","config":{"enabled":false}},"cursor":{"driver":"cursor","enabled":false,"config":{}}}}',
       );
       yield* recordProviderUsage("grok");
       yield* recordProviderUsage("opencode");
@@ -755,9 +808,13 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       const settings = yield* serverSettings.getSettings;
 
       assert.isFalse(settings.providers.grok.enabled);
+      assert.isFalse(settings.providers.kimi.enabled);
+      assert.isFalse(settings.providers.antigravity.enabled);
       assert.isFalse(settings.providers.opencode.enabled);
       assert.isFalse(settings.providers.cursor.enabled);
       assert.isFalse(settings.providerInstances[ProviderInstanceId.make("grok")]?.enabled);
+      assert.isFalse(settings.providerInstances[ProviderInstanceId.make("kimi")]?.enabled);
+      assert.isFalse(settings.providerInstances[ProviderInstanceId.make("antigravity")]?.enabled);
       assert.isFalse(settings.providerInstances[ProviderInstanceId.make("opencode")]?.enabled);
       assert.isFalse(settings.providerInstances[ProviderInstanceId.make("cursor")]?.enabled);
     }).pipe(Effect.provide(makeServerSettingsLayer())),
@@ -1132,6 +1189,12 @@ it.layer(NodeServices.layer)("server settings", (it) => {
             enabled: false,
           },
           grok: {
+            enabled: false,
+          },
+          kimi: {
+            enabled: false,
+          },
+          antigravity: {
             enabled: false,
           },
           opencode: {
@@ -1759,6 +1822,43 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       const currentInstance = current.providerInstances[instanceId]!;
       assert.equal((currentInstance.config as { readonly version?: string }).version, "v2");
     }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("函数式 patch 在 CAS 重试时基于最新实例表重新计算", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const barrier = yield* makeOriginCommitBarrier;
+        const { runtimeA, runtimeB } = yield* buildSharedServerSettingsServices(barrier.hook);
+        const otherId = ProviderInstanceId.make("concurrent-codex");
+        const addedId = ProviderInstanceId.make("added-codex");
+        const ownId = ProviderInstanceId.make("own-codex");
+        const instance = {
+          driver: ProviderDriverKind.make("codex"),
+          enabled: true,
+          config: {},
+        };
+        yield* runtimeB.updateSettings({
+          providerInstances: { [otherId]: { ...instance, displayName: "原配置" } },
+        });
+        const updating = yield* Effect.forkScoped(
+          runtimeA.updateSettings((current) => ({
+            providerInstances: { ...current.providerInstances, [ownId]: instance },
+          })),
+        );
+        yield* barrier.awaitPrepared;
+        yield* runtimeB.updateSettings({
+          providerInstances: {
+            [otherId]: { ...instance, displayName: "并发编辑" },
+            [addedId]: instance,
+          },
+        });
+        yield* barrier.release;
+        const saved = yield* Fiber.join(updating);
+        assert.equal(saved.providerInstances[otherId]?.displayName, "并发编辑");
+        assert.deepEqual(saved.providerInstances[addedId], instance);
+        assert.deepEqual(saved.providerInstances[ownId], instance);
+      }),
+    ).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
   it.effect("以磁盘事实拒绝跨 Runtime 的陈旧 Multica 更新", () =>

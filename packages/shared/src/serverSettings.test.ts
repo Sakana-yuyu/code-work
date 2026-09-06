@@ -1,6 +1,7 @@
 import {
   DEFAULT_SERVER_SETTINGS,
   CompositionMcpServerId,
+  LocalAccountId,
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
@@ -41,6 +42,83 @@ describe("serverSettings helpers", () => {
     const next = applyServerSettingsPatch(current, { mcpServers: {} });
 
     expect(next.mcpServers).toEqual({});
+  });
+
+  it("preserves local account secret references from a redacted settings snapshot", () => {
+    const accountId = "codex-test" as LocalAccountId;
+    const current = {
+      ...DEFAULT_SERVER_SETTINGS,
+      localAccountPool: {
+        ...DEFAULT_SERVER_SETTINGS.localAccountPool,
+        accounts: {
+          [accountId]: {
+            id: accountId,
+            provider: "codex" as const,
+            displayName: "Codex Test",
+            credentialRef: "local-account-secret-ref",
+            enabled: true,
+            models: ["gpt-5.4"],
+          },
+        },
+      },
+    };
+    const next = applyServerSettingsPatch(current, {
+      localAccountPool: {
+        ...current.localAccountPool,
+        accounts: {
+          [accountId]: { ...current.localAccountPool.accounts[accountId]!, credentialRef: "" },
+        },
+      },
+    });
+    expect(next.localAccountPool.accounts[accountId]?.credentialRef).toBe(
+      "local-account-secret-ref",
+    );
+    const withoutSecret = applyServerSettingsPatch(current, {
+      localAccountPool: {
+        ...current.localAccountPool,
+        accounts: {
+          ...current.localAccountPool.accounts,
+          ["untrusted-empty" as LocalAccountId]: {
+            id: "untrusted-empty" as LocalAccountId,
+            provider: "codex",
+            displayName: "Untrusted",
+            credentialRef: "",
+            enabled: true,
+            models: ["gpt-5.4"],
+          },
+        },
+      },
+    });
+    expect(
+      withoutSecret.localAccountPool.accounts["untrusted-empty" as LocalAccountId],
+    ).toBeUndefined();
+  });
+
+  it("replaces the local account map so deleted accounts stay deleted", () => {
+    const accountId = LocalAccountId.make("codex-delete");
+    const current = {
+      ...DEFAULT_SERVER_SETTINGS,
+      localAccountPool: {
+        ...DEFAULT_SERVER_SETTINGS.localAccountPool,
+        accounts: {
+          [accountId]: {
+            id: accountId,
+            provider: "codex" as const,
+            displayName: "Codex Delete",
+            credentialRef: "secret-ref",
+            enabled: true,
+            models: [],
+          },
+        },
+      },
+    };
+    const next = applyServerSettingsPatch(current, {
+      localAccountPool: {
+        ...current.localAccountPool,
+        accounts: {},
+      },
+    });
+    expect(next.localAccountPool.accounts).toEqual({});
   });
 
   it("normalizes optional persisted strings", () => {

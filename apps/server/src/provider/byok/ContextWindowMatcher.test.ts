@@ -36,23 +36,23 @@ describe("ContextWindowMatcher", () => {
     });
   });
 
-  it("converges a smaller stored window to the catalog value when explicitly matched", () => {
+  it("preserves a smaller stored window when explicitly matched against the catalog", () => {
     const result = matchContextWindows([adapter({ contextWindowTokens: 200_000 })]);
 
     expect(result.details).toEqual([
       {
         adapterId: "adapter-1",
         modelId: "gpt-5.6-luna",
-        source: "catalog",
+        source: "unchanged",
         before: 200_000,
-        after: 272_000,
+        after: 200_000,
       },
     ]);
-    expect(result.fromCatalog).toBe(1);
-    expect(result.unchanged).toBe(0);
+    expect(result.fromCatalog).toBe(0);
+    expect(result.unchanged).toBe(1);
   });
 
-  it("corrects legacy DeepSeek aliases from 128K to 1M", () => {
+  it("does not overwrite a smaller DeepSeek window from the built-in catalog", () => {
     const result = matchContextWindows([
       adapter({ id: "deepseek-chat", modelId: "deepseek-chat", contextWindowTokens: 128_000 }),
       adapter({
@@ -63,15 +63,15 @@ describe("ContextWindowMatcher", () => {
     ]);
 
     expect(result).toMatchObject({
-      fromCatalog: 2,
-      unchanged: 0,
+      fromCatalog: 0,
+      unchanged: 2,
       details: [
-        { adapterId: "deepseek-chat", source: "catalog", before: 128_000, after: 1_000_000 },
+        { adapterId: "deepseek-chat", source: "unchanged", before: 128_000, after: 128_000 },
         {
           adapterId: "deepseek-reasoner",
-          source: "catalog",
+          source: "unchanged",
           before: 128_000,
-          after: 1_000_000,
+          after: 128_000,
         },
       ],
     });

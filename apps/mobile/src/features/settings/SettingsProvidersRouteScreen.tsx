@@ -1,6 +1,11 @@
 import { useAtomValue } from "@effect/atom-react";
-import { ProviderDriverKind } from "@codework/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  AuthTerminalOperateScope,
+  ProviderDriverKind,
+} from "@codework/contracts";
 import type {
+  AuthSessionState,
   EnvironmentId,
   ProviderInstanceConfig,
   ProviderInstanceId,
@@ -23,6 +28,8 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { t } from "../../i18n";
 import { useEnvironments } from "../../state/environments";
 import { serverEnvironment } from "../../state/server";
+import { environmentSession } from "../../state/session";
+import { CliProxySettingsSection } from "./CliProxySettingsSection";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsEnvironmentPicker } from "./components/SettingsEnvironmentPicker";
 import { SettingsSection } from "./components/SettingsSection";
@@ -33,9 +40,11 @@ import {
   materializeProviderInstances,
   providerEnabled,
   providerFields,
+  providerSupportsSharedRoute,
   readProviderConfigBoolean,
   readProviderConfigString,
   updateProviderConfig,
+  readProviderConfigRecord,
   type MobileProviderDriver,
   type MobileProviderField,
   type MobileProviderRow,
@@ -47,6 +56,8 @@ const EMPTY_SERVER_SETTINGS_ATOM = Atom.make<ServerSettings | null>(null).pipe(
 const EMPTY_SERVER_PROVIDERS_ATOM = Atom.make<ReadonlyArray<ServerProvider>>([]).pipe(
   Atom.withLabel("mobile-providers:providers:empty"),
 );
+const EMPTY_SESSION_ATOM = Atom.make<AuthSessionState | null>(null);
+
 export function SettingsProvidersRouteScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -55,6 +66,24 @@ export function SettingsProvidersRouteScreen() {
     () => environments[0]?.environmentId ?? null,
   );
   const environmentId = selectedEnvironmentId;
+  const connected =
+    environments.find((item) => item.environmentId === environmentId)?.connection.phase ===
+    "connected";
+  const session = useAtomValue(
+    environmentId === null
+      ? EMPTY_SESSION_ATOM
+      : environmentSession.sessionStateValueAtom(environmentId),
+  );
+  const authenticated = session?.authenticated === true;
+  const canOperate =
+    connected && authenticated && session?.scopes?.includes(AuthOrchestrationOperateScope) === true;
+  const canManageCliProxy =
+    connected && authenticated && session?.scopes?.includes(AuthTerminalOperateScope) === true;
+  const manageRoutes = () =>
+    navigation.navigate("SettingsSheet", {
+      screen: "SettingsContent",
+      params: { screen: "SettingsByok", params: { environmentId: environmentId ?? undefined } },
+    });
   const settings = useAtomValue(
     environmentId === null
       ? EMPTY_SERVER_SETTINGS_ATOM
@@ -79,6 +108,7 @@ export function SettingsProvidersRouteScreen() {
   });
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Readonly<Record<string, ProviderInstanceConfig>>>({});
   const [newDriver, setNewDriver] = useState<MobileProviderDriver>(MOBILE_PROVIDER_DRIVERS[0]);
   const [newInstanceId, setNewInstanceId] = useState("");
@@ -107,7 +137,7 @@ export function SettingsProvidersRouteScreen() {
 
   const saveProviderInstances = useCallback(
     async (nextProviderInstances: ServerSettings["providerInstances"]): Promise<boolean> => {
-      if (environmentId === null) return false;
+      if (environmentId === null || !canOperate) return false;
       const result = await saveSettings({
         environmentId,
         input: { patch: { providerInstances: nextProviderInstances } },
@@ -120,9 +150,10 @@ export function SettingsProvidersRouteScreen() {
         return false;
       }
       setError(null);
+      setNotice(t("cliProxy.done"));
       return true;
     },
-    [environmentId, saveSettings],
+    [environmentId, saveSettings, canOperate],
   );
 
   const updateDraft = useCallback((row: MobileProviderRow, next: ProviderInstanceConfig) => {
@@ -205,7 +236,7 @@ export function SettingsProvidersRouteScreen() {
   );
 
   const runRefresh = useCallback(async () => {
-    if (environmentId === null) return;
+    if (environmentId === null || !canOperate) return;
     setPendingAction("refresh");
     setError(null);
     const result = await refreshProviders({ environmentId, input: {} });
@@ -214,11 +245,11 @@ export function SettingsProvidersRouteScreen() {
       setError(failure instanceof Error ? failure.message : t("providersMobile.refreshFailed"));
     }
     setPendingAction(null);
-  }, [environmentId, refreshProviders]);
+  }, [environmentId, refreshProviders, canOperate]);
 
   const runProviderAction = useCallback(
     async (row: MobileProviderRow, action: "update" | "install") => {
-      if (environmentId === null) return;
+      if (environmentId === null || !canOperate) return;
       setPendingAction(`${action}:${row.instanceId}`);
       setError(null);
       const command = action === "update" ? updateProvider : installProvider;
@@ -235,7 +266,7 @@ export function SettingsProvidersRouteScreen() {
       }
       setPendingAction(null);
     },
-    [environmentId, installProvider, updateProvider],
+    [environmentId, installProvider, updateProvider, canOperate],
   );
 
   return (
@@ -273,19 +304,30 @@ export function SettingsProvidersRouteScreen() {
             setSelectedEnvironmentId(next);
             setDrafts({});
             setError(null);
+            setNotice(null);
           }}
         />
         {environmentId === null ? (
           <StatusMessage text={t("providersMobile.noEnvironment")} />
         ) : null}
         {error === null ? null : <StatusMessage text={error} tone="danger" />}
+        {notice && !error ? <StatusMessage text={notice} /> : null}
+        {environmentId !== null && !canOperate && !canManageCliProxy ? (
+          <StatusMessage text={t("cliProxy.noAccess")} />
+        ) : null}
         {environmentId === null ? null : (
           <>
+            <CliProxySettingsSection
+              key={environmentId}
+              environmentId={environmentId}
+              readOnly={!canManageCliProxy}
+              onManageRoutes={manageRoutes}
+            />
             <AddProviderSection
               driver={newDriver}
               instanceId={newInstanceId}
               instanceName={newInstanceName}
-              disabled={pendingAction !== null}
+              disabled={pendingAction !== null || !canOperate}
               onDriverChange={setNewDriver}
               onInstanceIdChange={setNewInstanceId}
               onInstanceNameChange={setNewInstanceName}
@@ -303,9 +345,18 @@ export function SettingsProvidersRouteScreen() {
                     row={row}
                     draft={drafts[String(row.instanceId)]}
                     snapshot={snapshotByInstanceId.get(String(row.instanceId))}
-                    disabled={pendingAction !== null}
+                    sharedRows={rows.filter((item) => item.driver === "byok")}
+                    onManageRoutes={manageRoutes}
+                    disabled={pendingAction !== null || !canOperate}
                     onChange={(next) => updateDraft(row, next)}
                     onSave={() => void saveRow(row)}
+                    onCancel={() =>
+                      setDrafts((current) => {
+                        const next = { ...current };
+                        delete next[String(row.instanceId)];
+                        return next;
+                      })
+                    }
                     onDelete={() => deleteRow(row)}
                     onUpdate={() => void runProviderAction(row, "update")}
                     onInstall={() => void runProviderAction(row, "install")}
@@ -374,11 +425,14 @@ function AddProviderSection(props: {
 
 function ProviderCard(props: {
   readonly row: MobileProviderRow;
+  readonly sharedRows: ReadonlyArray<MobileProviderRow>;
+  readonly onManageRoutes: () => void;
   readonly draft: ProviderInstanceConfig | undefined;
   readonly snapshot: ServerProvider | undefined;
   readonly disabled: boolean;
   readonly onChange: (next: ProviderInstanceConfig) => void;
   readonly onSave: () => void;
+  readonly onCancel: () => void;
   readonly onDelete: () => void;
   readonly onUpdate: () => void;
   readonly onInstall: () => void;
@@ -463,6 +517,50 @@ function ProviderCard(props: {
           </Field>
         ))
       )}
+      {props.row.driver === "cursor" ? (
+        <Text className="text-xs text-foreground-muted">{t("cliProxy.cursorHint")}</Text>
+      ) : null}
+      {props.row.driver === "opencode" && readProviderConfigString(config, "serverUrl") ? (
+        <Text className="text-xs text-foreground-muted">{t("cliProxy.openCodeHint")}</Text>
+      ) : null}
+      {providerSupportsSharedRoute(props.row.driver) &&
+      readProviderConfigBoolean(config, "routeThroughByok") ? (
+        <Field label={t("cliProxy.sharedRoute")}>
+          <ChoiceGroup
+            values={[
+              { id: "", label: t("cliProxy.allRoutes") },
+              ...props.sharedRows.map((row) => ({
+                id: String(row.instanceId),
+                label: row.instance.displayName || String(row.instanceId),
+              })),
+            ]}
+            selectedId={readProviderConfigString(config, "byokSourceInstanceId")}
+            disabled={props.disabled}
+            onSelect={(id) => {
+              const next = readProviderConfigRecord(config);
+              if (id) next.byokSourceInstanceId = id;
+              else delete next.byokSourceInstanceId;
+              props.onChange({ ...instance, config: next });
+            }}
+          />
+          {readProviderConfigString(config, "byokSourceInstanceId") &&
+          !props.sharedRows.some(
+            (row) => row.instanceId === readProviderConfigString(config, "byokSourceInstanceId"),
+          ) ? (
+            <Text className="text-xs text-danger-foreground">
+              {t("cliProxy.missingRoute", {
+                id: readProviderConfigString(config, "byokSourceInstanceId"),
+              })}
+            </Text>
+          ) : null}
+          <Text className="text-xs text-foreground-muted">{t("cliProxy.sharedHint")}</Text>
+          <ActionButton
+            label={t("cliProxy.editRoute")}
+            disabled={props.disabled}
+            onPress={props.onManageRoutes}
+          />
+        </Field>
+      ) : null}
       {snapshot?.models.length ? (
         <View className="gap-2">
           <Text className="text-sm font-codework-medium text-foreground">
@@ -480,6 +578,9 @@ function ProviderCard(props: {
           emphasized={dirty}
           onPress={props.onSave}
         />
+        {dirty ? (
+          <ActionButton label={t("cancel")} disabled={props.disabled} onPress={props.onCancel} />
+        ) : null}
         {hasUpdate ? (
           <ActionButton
             label={t("providersMobile.update")}
@@ -561,6 +662,10 @@ function providerLabel(driver: string): string {
       return t("providersMobile.driverCursor");
     case "grok":
       return t("providersMobile.driverGrok");
+    case "kimi":
+      return "Kimi";
+    case "antigravity":
+      return "Antigravity";
     case "opencode":
       return t("providersMobile.driverOpenCode");
     default:

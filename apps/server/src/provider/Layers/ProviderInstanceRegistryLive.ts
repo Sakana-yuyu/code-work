@@ -50,6 +50,7 @@ import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import { buildUnavailableProviderSnapshot } from "../unavailableProviderSnapshot.ts";
@@ -62,6 +63,7 @@ import {
   type ProviderInstanceRegistryMutatorShape,
 } from "../Services/ProviderInstanceRegistryMutator.ts";
 import type { AnyProviderDriver, ProviderInstance } from "../ProviderDriver.ts";
+import { ProviderAdapterRequestError } from "../Errors.ts";
 
 /**
  * Live registry entry: the materialized `ProviderInstance` + the fresh
@@ -82,6 +84,8 @@ interface RegistryState {
   readonly entries: Ref.Ref<ReadonlyMap<ProviderInstanceId, LiveEntry>>;
   readonly unavailable: Ref.Ref<ReadonlyMap<ProviderInstanceId, ServerProvider>>;
   readonly changes: PubSub.PubSub<void>;
+  readonly pending: Set<ProviderInstanceId>;
+  readonly activeCalls: Map<ProviderInstanceId, number>;
 }
 
 /**
@@ -221,12 +225,35 @@ const makeReconcile = <R>(input: {
   readonly state: RegistryState;
   readonly driversById: ReadonlyMap<ProviderDriverKind, AnyProviderDriver<R>>;
   readonly parentScope: Scope.Scope;
+  readonly decorate: (live: LiveEntry) => Effect.Effect<LiveEntry>;
 }): ((configMap: ProviderInstanceConfigMap) => Effect.Effect<void, never, R>) => {
-  const { state, driversById, parentScope } = input;
+  const { state, driversById, parentScope, decorate } = input;
   return (configMap: ProviderInstanceConfigMap) =>
     Effect.gen(function* () {
       const previousEntries = yield* Ref.get(state.entries);
       const previousUnavailable = yield* Ref.get(state.unavailable);
+      const previousPending = new Set(state.pending);
+      state.pending.clear();
+      // 只暂缓忙碌实例；下一次配置覆盖旧目标，删除操作也等待当前轮次结束。
+      const effectiveConfigMap = { ...configMap };
+      for (const [instanceId, live] of previousEntries) {
+        const requested = configMap[instanceId];
+        if (requested !== undefined && entryEqual(live.entry, requested)) continue;
+        const sessions = yield* live.instance.adapter.listSessions();
+        if (
+          (state.activeCalls.get(instanceId) ?? 0) > 0 ||
+          sessions.some(
+            (session) =>
+              session.activeTurnId !== undefined ||
+              session.status === "running" ||
+              session.status === "connecting",
+          )
+        ) {
+          state.pending.add(instanceId);
+          effectiveConfigMap[instanceId] = live.entry;
+        }
+      }
+      configMap = effectiveConfigMap;
       const nextRaw = Object.entries(configMap);
       const nextKeys = new Set<ProviderInstanceId>(
         nextRaw.map(([raw]) => ProviderInstanceId.make(raw)),
@@ -281,7 +308,7 @@ const makeReconcile = <R>(input: {
           entry,
         });
         if (result.kind === "live") {
-          builtEntries.set(instanceId, result.live);
+          builtEntries.set(instanceId, yield* decorate(result.live));
         } else {
           builtUnavailable.set(instanceId, result.snapshot);
         }
@@ -314,7 +341,10 @@ const makeReconcile = <R>(input: {
       yield* Ref.set(state.entries, builtEntries);
       yield* Ref.set(state.unavailable, builtUnavailable);
 
-      if (entriesChanged || unavailableChanged) {
+      const pendingChanged =
+        previousPending.size !== state.pending.size ||
+        [...previousPending].some((id) => !state.pending.has(id));
+      if (entriesChanged || unavailableChanged || pendingChanged) {
         yield* PubSub.publish(state.changes, undefined);
       }
     });
@@ -369,14 +399,107 @@ export const makeProviderInstanceRegistry = <R>(input: {
     const changes = yield* PubSub.unbounded<void>();
     yield* Effect.addFinalizer(() => PubSub.shutdown(changes));
 
-    const state: RegistryState = { entries, unavailable, changes };
-    const reconcileWithR = makeReconcile({ state, driversById, parentScope });
+    const state: RegistryState = {
+      entries,
+      unavailable,
+      changes,
+      pending: new Set(),
+      activeCalls: new Map(),
+    };
+    const gate = yield* Semaphore.make(1);
+    const wake = yield* PubSub.unbounded<void>();
+    yield* Effect.addFinalizer(() => PubSub.shutdown(wake));
+    let desiredConfig = input.configMap;
+    const wakeSubscription = yield* PubSub.subscribe(wake);
+    const decorate = (live: LiveEntry): Effect.Effect<LiveEntry> =>
+      Effect.sync(() => {
+        const original = live.instance;
+        const id = original.instanceId;
+        const annotate = (snapshot: ServerProvider): ServerProvider =>
+          state.pending.has(id)
+            ? {
+                ...snapshot,
+                message: [snapshot.message, "配置已保存，等待当前轮次结束后生效。"]
+                  .filter(Boolean)
+                  .join(" "),
+              }
+            : snapshot;
+        const guard = <A, E>(operation: Effect.Effect<A, E>, method: string) =>
+          Effect.acquireUseRelease(
+            gate.withPermits(1)(
+              Effect.gen(function* () {
+                const current = (yield* Ref.get(entries)).get(id);
+                if (current?.scope !== live.scope || state.pending.has(id)) {
+                  return yield* new ProviderAdapterRequestError({
+                    provider: original.driverKind,
+                    method,
+                    detail: "供应商配置正在切换，请等待当前轮次结束后重试。",
+                  });
+                }
+                state.activeCalls.set(id, (state.activeCalls.get(id) ?? 0) + 1);
+              }),
+            ),
+            () => operation,
+            () =>
+              Effect.gen(function* () {
+                state.activeCalls.set(id, Math.max(0, (state.activeCalls.get(id) ?? 1) - 1));
+                if (state.pending.has(id)) yield* PubSub.publish(wake, undefined);
+              }),
+          );
+        // 部分 Adapter 的事件源是单消费者 Queue，必须旁观原流而不能另开消费者抢走事件。
+        const streamEvents = original.adapter.streamEvents.pipe(
+          Stream.tap((event) =>
+            state.pending.has(id) &&
+            (event.type === "turn.completed" ||
+              event.type === "turn.aborted" ||
+              event.type === "session.exited" ||
+              event.type === "session.state.changed")
+              ? PubSub.publish(wake, undefined)
+              : Effect.void,
+          ),
+        );
+        const { subscribeChanges: _subscribeChanges, ...snapshot } = original.snapshot;
+        return {
+          ...live,
+          instance: {
+            ...original,
+            snapshot: {
+              ...snapshot,
+              getSnapshot: original.snapshot.getSnapshot.pipe(Effect.map(annotate)),
+              refresh: original.snapshot.refresh.pipe(Effect.map(annotate)),
+              streamChanges: original.snapshot.streamChanges.pipe(Stream.map(annotate)),
+            },
+            adapter: {
+              ...original.adapter,
+              streamEvents,
+              startSession: (input) => guard(original.adapter.startSession(input), "startSession"),
+              sendTurn: (input) => guard(original.adapter.sendTurn(input), "sendTurn"),
+            },
+          },
+        };
+      });
+    const reconcileWithR = makeReconcile({ state, driversById, parentScope, decorate });
     const reconcile: ProviderInstanceRegistryMutatorShape["reconcile"] = (configMap) =>
-      reconcileWithR(configMap).pipe(Effect.provideContext(driverContext));
+      gate.withPermits(1)(
+        Effect.suspend(() => {
+          desiredConfig = configMap;
+          return reconcileWithR(configMap).pipe(Effect.provideContext(driverContext));
+        }),
+      );
 
     // Hydrate the initial configMap synchronously so callers can read
     // `listInstances` immediately after this effect completes.
     yield* reconcile(input.configMap);
+    yield* Stream.fromSubscription(wakeSubscription).pipe(
+      Stream.runForEach(() =>
+        gate.withPermits(1)(
+          Effect.suspend(() =>
+            reconcileWithR(desiredConfig).pipe(Effect.provideContext(driverContext)),
+          ),
+        ),
+      ),
+      Effect.forkScoped,
+    );
 
     const registry: ProviderInstanceRegistryShape = {
       getInstance: (id) => Ref.get(entries).pipe(Effect.map((map) => map.get(id)?.instance)),

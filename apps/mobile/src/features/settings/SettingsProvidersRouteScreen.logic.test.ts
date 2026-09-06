@@ -9,6 +9,7 @@ import {
   buildMobileProviderRows,
   materializeProviderInstances,
   providerFields,
+  providerSupportsSharedRoute,
   updateProviderConfig,
 } from "./SettingsProvidersRouteScreen.logic";
 
@@ -68,5 +69,14 @@ describe("移动端 Provider 设置逻辑", () => {
     expect(
       updateProviderConfig({ routeThroughByok: true }, routeThroughByok!, false),
     ).toBeUndefined();
+  });
+
+  it("只为服务端已适配的 CLI 显示共享线路", () => {
+    expect(providerSupportsSharedRoute("codex")).toBe(true);
+    expect(providerSupportsSharedRoute("claudeAgent")).toBe(true);
+    expect(providerSupportsSharedRoute("grok")).toBe(true);
+    expect(providerSupportsSharedRoute("opencode")).toBe(true);
+    expect(providerSupportsSharedRoute("kimi")).toBe(false);
+    expect(providerSupportsSharedRoute("antigravity")).toBe(false);
   });
 });

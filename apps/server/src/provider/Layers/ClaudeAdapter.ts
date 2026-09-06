@@ -2397,6 +2397,18 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       rawPayload: result ?? { status },
     });
 
+    const updatedAt = yield* nowIso;
+    context.turnState = undefined;
+    context.session = {
+      ...context.session,
+      status: "ready",
+      activeTurnId: undefined,
+      updatedAt,
+      ...(status === "failed" && errorMessage ? { lastError: errorMessage } : {}),
+    };
+    yield* updateResumeCursor(context);
+
+    // 终态只在会话状态和恢复游标就绪后发布，账号切换可据此安全重建。
     const stamp = yield* makeEventStamp();
     yield* offerRuntimeEvent({
       type: "turn.completed",
@@ -2417,17 +2429,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       },
       providerRefs: nativeProviderRefs(context),
     });
-
-    const updatedAt = yield* nowIso;
-    context.turnState = undefined;
-    context.session = {
-      ...context.session,
-      status: "ready",
-      activeTurnId: undefined,
-      updatedAt,
-      ...(status === "failed" && errorMessage ? { lastError: errorMessage } : {}),
-    };
-    yield* updateResumeCursor(context);
   });
 
   const handleStreamEvent = Effect.fn("handleStreamEvent")(function* (

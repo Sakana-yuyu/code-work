@@ -44,16 +44,19 @@
  */
 import {
   defaultInstanceIdForDriver,
+  resolveProviderInstanceEnabled,
   type ProviderInstanceConfig,
   type ProviderInstanceConfigMap,
   ServerSettings,
 } from "@codework/contracts";
+import * as NodeCrypto from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { BUILT_IN_DRIVERS, type BuiltInDriversEnv } from "../builtInDrivers.ts";
+import { gatewayAdapterRoutes } from "../byok/modelGateway.ts";
 import { ProviderInstanceRegistry } from "../Services/ProviderInstanceRegistry.ts";
 import { ProviderInstanceRegistryMutator } from "../Services/ProviderInstanceRegistryMutator.ts";
 import { ProviderInstanceRegistryMutableLayer } from "./ProviderInstanceRegistryLive.ts";
@@ -98,6 +101,46 @@ export const deriveProviderInstanceConfigMap = (
     merged[instanceId] = {
       driver: driver.driverKind,
       config: legacyConfig,
+    };
+  }
+
+  for (const [instanceId, entry] of Object.entries(merged)) {
+    if (!["codex", "claudeAgent", "grok", "opencode"].includes(entry.driver)) continue;
+    const config = entry.config;
+    if (
+      config === null ||
+      typeof config !== "object" ||
+      Array.isArray(config) ||
+      !("routeThroughByok" in config) ||
+      config.routeThroughByok !== true
+    ) {
+      continue;
+    }
+    const sourceId =
+      "byokSourceInstanceId" in config && typeof config.byokSourceInstanceId === "string"
+        ? config.byokSourceInstanceId
+        : undefined;
+    const source = sourceId === undefined ? undefined : merged[sourceId];
+    const routes = gatewayAdapterRoutes(settings, sourceId).filter(
+      (route) => route.protocol === (entry.driver === "claudeAgent" ? "anthropic" : "openai"),
+    );
+    // 来源变化沿用 Registry 的忙碌延迟更新；摘要仅供内存比较，driver 解码会剥离此字段。
+    const fingerprint = NodeCrypto.createHash("sha256")
+      .update(
+        JSON.stringify({
+          sourceEnabled:
+            sourceId === undefined
+              ? undefined
+              : source?.driver === "byok"
+                ? resolveProviderInstanceEnabled(source)
+                : null,
+          routes,
+        }),
+      )
+      .digest("hex");
+    merged[instanceId] = {
+      ...entry,
+      config: { ...config, __byokSourceFingerprint: fingerprint },
     };
   }
 

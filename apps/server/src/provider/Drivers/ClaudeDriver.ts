@@ -47,6 +47,7 @@ import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   anthropicGatewayEnv,
+  applyRoutedProviderAvailability,
   ensureGatewayToken,
   gatewayOrigin,
   routedServerProviderModels,
@@ -150,6 +151,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
               ...anthropicGatewayEnv(
                 gatewayOrigin(serverConfig.port),
                 yield* ensureGatewayToken(secretStore),
+                config.byokSourceInstanceId,
               ),
             }
           : baseProcessEnv;
@@ -241,17 +243,25 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
               return serverSettings.getSettings.pipe(
                 Effect.orElseSucceed(() => undefined),
                 Effect.flatMap((currentSettings) =>
-                  publishSnapshot({
-                    ...enrichedSnapshot,
-                    ...(currentSettings === undefined
-                      ? {}
-                      : { models: routedServerProviderModels(currentSettings, "anthropic") }),
-                    auth: {
-                      status: "authenticated" as const,
-                      type: "byok",
-                      label: "BYOK Gateway",
-                    },
-                  }),
+                  publishSnapshot(
+                    applyRoutedProviderAvailability({
+                      ...enrichedSnapshot,
+                      ...(currentSettings === undefined
+                        ? {}
+                        : {
+                            models: routedServerProviderModels(
+                              currentSettings,
+                              "anthropic",
+                              config.byokSourceInstanceId,
+                            ),
+                          }),
+                      auth: {
+                        status: "authenticated" as const,
+                        type: "byok",
+                        label: "BYOK Gateway",
+                      },
+                    }),
+                  ),
                 ),
               );
             }),

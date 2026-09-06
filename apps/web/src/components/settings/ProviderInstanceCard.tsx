@@ -471,8 +471,11 @@ interface ProviderInstanceCardProps {
   readonly guideTarget?: string | undefined;
   readonly readOnly?: boolean | undefined;
   readonly onUpdate: ProviderSettingsUpdate;
-  readonly onManageChannels?: (() => void) | undefined;
-  readonly sharedChannels?: ReactNode;
+  readonly onManageChannels?: ((instanceId?: ProviderInstanceId) => void) | undefined;
+  readonly renderSharedChannels?: ((instanceId: string) => ReactNode) | undefined;
+  readonly sharedInstances?:
+    | ReadonlyArray<{ instanceId: ProviderInstanceId; label: string }>
+    | undefined;
   /**
    * Pass `undefined` to hide the delete button entirely. Built-in default
    * instance slots use `undefined` — they can't be deleted without losing
@@ -532,7 +535,8 @@ export function ProviderInstanceCard({
   readOnly = false,
   onUpdate,
   onManageChannels,
-  sharedChannels,
+  renderSharedChannels,
+  sharedInstances,
   onDelete,
   headerAction,
   hiddenModels,
@@ -596,9 +600,14 @@ export function ProviderInstanceCard({
     ? instance.driver
     : null;
   const visibleTab = driverOption === undefined ? "configuration" : activeTab;
-  const hasConnectionSection = ["codex", "claudeAgent", "grok", "opencode"].includes(
-    instance.driver,
-  );
+  const hasConnectionSection = [
+    "codex",
+    "claudeAgent",
+    "grok",
+    "kimi",
+    "antigravity",
+    "opencode",
+  ].includes(instance.driver);
 
   const customModels = readConfigStringArray(instance.config, "customModels");
   // Server-returned models may lag behind settings writes. Treat probe
@@ -981,7 +990,17 @@ export function ProviderInstanceCard({
         aria-disabled={readOnly || undefined}
         className={cn("px-4 py-5", readOnly && "opacity-50 select-none")}
       >
-        <div className="space-y-5" hidden={visibleTab !== "configuration"}>
+        <div
+          className={cn(
+            "space-y-5 transition-opacity duration-200 ease-out",
+            visibleTab !== "configuration" && "hidden",
+            visibleTab === "configuration" &&
+              "animate-in fade-in-50 duration-150 motion-reduce:animate-none",
+          )}
+        >
+          {instance.driver === "cursor" ? (
+            <p className="text-xs text-muted-foreground">{t("cliProxy.cursorHint")}</p>
+          ) : null}
           {hasConnectionSection && (
             <ProviderConnectionSection
               environmentId={environmentId}
@@ -989,7 +1008,8 @@ export function ProviderInstanceCard({
               instance={instance}
               onUpdate={onUpdate}
               onManageChannels={onManageChannels}
-              sharedChannels={sharedChannels}
+              renderSharedChannels={renderSharedChannels}
+              sharedInstances={sharedInstances}
             />
           )}
           <div>
@@ -1039,7 +1059,9 @@ export function ProviderInstanceCard({
           {driverOption ? (
             <ProviderSettingsForm
               definition={driverOption}
-              hiddenFields={hasConnectionSection ? ["routeThroughByok"] : undefined}
+              hiddenFields={
+                hasConnectionSection ? ["routeThroughByok", "byokSourceInstanceId"] : undefined
+              }
               value={instance.config}
               idPrefix={`provider-instance-${instanceId}`}
               variant="card"
@@ -1058,7 +1080,14 @@ export function ProviderInstanceCard({
           ) : null}
         </div>
         {driverOption !== undefined ? (
-          <div hidden={visibleTab !== "models"}>
+          <div
+            className={cn(
+              "transition-opacity duration-200 ease-out",
+              visibleTab !== "models" && "hidden",
+              visibleTab === "models" &&
+                "animate-in fade-in-50 duration-150 motion-reduce:animate-none",
+            )}
+          >
             <ProviderModelsSection
               instanceId={instanceId}
               driverKind={driverKind}

@@ -46,6 +46,7 @@ import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   BYOK_GATEWAY_TOKEN_ENV,
+  applyRoutedProviderAvailability,
   ensureGatewayToken,
   gatewayCodexConfigArgs,
   gatewayOrigin,
@@ -144,9 +145,10 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
               // 会话、健康检查和标题生成必须使用同一网关覆盖。
               CODEWORK_CODEX_LAUNCH_ARGS: [
                 baseProcessEnv.CODEWORK_CODEX_LAUNCH_ARGS?.trim() || config.launchArgs,
-                ...gatewayCodexConfigArgs(gatewayOrigin(serverConfig.port)).map((arg) =>
-                  JSON.stringify(arg),
-                ),
+                ...gatewayCodexConfigArgs(
+                  gatewayOrigin(serverConfig.port),
+                  config.byokSourceInstanceId,
+                ).map((arg) => JSON.stringify(arg)),
               ]
                 .filter(Boolean)
                 .join(" "),
@@ -241,17 +243,25 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
               return serverSettings.getSettings.pipe(
                 Effect.orElseSucceed(() => undefined),
                 Effect.flatMap((currentSettings) =>
-                  publishSnapshot({
-                    ...enrichedSnapshot,
-                    ...(currentSettings === undefined
-                      ? {}
-                      : { models: routedServerProviderModels(currentSettings, "openai") }),
-                    auth: {
-                      status: "authenticated" as const,
-                      type: "byok",
-                      label: "BYOK Gateway",
-                    },
-                  }),
+                  publishSnapshot(
+                    applyRoutedProviderAvailability({
+                      ...enrichedSnapshot,
+                      ...(currentSettings === undefined
+                        ? {}
+                        : {
+                            models: routedServerProviderModels(
+                              currentSettings,
+                              "openai",
+                              config.byokSourceInstanceId,
+                            ),
+                          }),
+                      auth: {
+                        status: "authenticated" as const,
+                        type: "byok",
+                        label: "BYOK Gateway",
+                      },
+                    }),
+                  ),
                 ),
               );
             }),

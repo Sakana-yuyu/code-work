@@ -43,6 +43,8 @@ export const MOBILE_PROVIDER_DRIVERS = [
   "claudeAgent",
   "cursor",
   "grok",
+  "kimi",
+  "antigravity",
   "opencode",
 ] as const;
 
@@ -93,6 +95,12 @@ const PROVIDER_FIELDS: Readonly<Record<MobileProviderDriver, ReadonlyArray<Mobil
       FIELD("binaryPath", "providersMobile.binaryPath", "providersMobile.binaryPathPlaceholder"),
       FIELD("routeThroughByok", "providersMobile.routeThroughByok", null, "switch"),
     ],
+    kimi: [
+      FIELD("binaryPath", "providersMobile.binaryPath", "providersMobile.binaryPathPlaceholder"),
+    ],
+    antigravity: [
+      FIELD("binaryPath", "providersMobile.binaryPath", "providersMobile.binaryPathPlaceholder"),
+    ],
     opencode: [
       FIELD("binaryPath", "providersMobile.binaryPath", "providersMobile.binaryPathPlaceholder"),
       FIELD("serverUrl", "providersMobile.serverUrl", "providersMobile.serverUrlPlaceholder"),
@@ -110,6 +118,12 @@ export function providerFields(driver: string): ReadonlyArray<MobileProviderFiel
   return PROVIDER_FIELDS[driver as MobileProviderDriver] ?? [];
 }
 
+export function providerSupportsSharedRoute(driver: string): boolean {
+  return (
+    driver === "codex" || driver === "claudeAgent" || driver === "grok" || driver === "opencode"
+  );
+}
+
 export function providerDisplayNameKey(
   driver: string,
 ): "codex" | "claude" | "cursor" | "grok" | "opencode" | null {
@@ -122,6 +136,8 @@ export function providerDisplayNameKey(
       return "cursor";
     case "grok":
       return "grok";
+    case "antigravity":
+      return null;
     case "opencode":
       return "opencode";
     default:

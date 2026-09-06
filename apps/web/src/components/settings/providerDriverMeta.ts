@@ -4,11 +4,21 @@ import {
   CodexSettings,
   CursorSettings,
   GrokSettings,
+  KimiSettings,
+  AntigravitySettings,
   OpenCodeSettings,
   ProviderDriverKind,
 } from "@codework/contracts";
 import type * as Schema from "effect/Schema";
-import { ClaudeAI, CursorIcon, GrokIcon, type Icon, OpenAI, OpenCodeIcon } from "../Icons";
+import {
+  AntigravityIcon,
+  ClaudeAI,
+  CursorIcon,
+  GrokIcon,
+  type Icon,
+  OpenAI,
+  OpenCodeIcon,
+} from "../Icons";
 import { t } from "~/i18n/runtime";
 
 type ProviderSettingsSchema = {
@@ -74,6 +84,22 @@ export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = 
       return t("interface.early-access");
     },
     settingsSchema: GrokSettings,
+  },
+  {
+    value: ProviderDriverKind.make("kimi"),
+    label: "Kimi",
+    icon: OpenCodeIcon,
+    get badgeLabel() {
+      return "ACP";
+    },
+    settingsSchema: KimiSettings,
+  },
+  {
+    value: ProviderDriverKind.make("antigravity"),
+    label: "Antigravity",
+    icon: AntigravityIcon,
+    badgeLabel: "CLI",
+    settingsSchema: AntigravitySettings,
   },
   {
     value: ProviderDriverKind.make("opencode"),

@@ -59,7 +59,11 @@ import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
 import * as GitHubCli from "./sourceControl/GitHubCli.ts";
 import * as GitLabCli from "./sourceControl/GitLabCli.ts";
 import * as TextGeneration from "./textGeneration/TextGeneration.ts";
-import { byokGatewayRouteLayer } from "./provider/byok/modelGateway.ts";
+import {
+  byokGatewayRouteLayer,
+  cliProxyGatewayRouteLayer,
+  cliProxyManagementRouteLayer,
+} from "./provider/byok/modelGateway.ts";
 import { ProviderInstanceRegistryHydrationLive } from "./provider/Layers/ProviderInstanceRegistryHydration.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
@@ -837,6 +841,8 @@ export const makeRoutesLayer = Layer.mergeAll(
     ),
     otlpTracesProxyRouteLayer,
     byokGatewayRouteLayer,
+    cliProxyGatewayRouteLayer,
+    cliProxyManagementRouteLayer,
     healthzRouteLayer,
     assetRouteLayer,
     attachmentUploadRouteLayer,

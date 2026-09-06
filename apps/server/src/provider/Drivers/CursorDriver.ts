@@ -23,6 +23,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { makeCursorTextGeneration } from "../../textGeneration/CursorTextGeneration.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeCursorAdapter } from "../Layers/CursorAdapter.ts";
@@ -40,6 +41,11 @@ import {
 } from "../ProviderDriver.ts";
 import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
+import {
+  cursorCredentialEnvironment,
+  ensureLocalAccountCredential,
+  pickLocalAccount,
+} from "../LocalAccountPool.ts";
 import {
   makeProviderMaintenanceCapabilities,
   type ProviderMaintenanceCapabilitiesResolver,
@@ -86,6 +92,7 @@ export type CursorDriverEnv =
   | Path.Path
   | ProviderEventLoggers
   | ServerConfig
+  | ServerSecretStore
   | ServerSettingsService;
 
 const withInstanceIdentity =
@@ -120,8 +127,34 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
       const path = yield* Path.Path;
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService;
+      const secretStore = yield* ServerSecretStore;
       const eventLoggers = yield* ProviderEventLoggers;
       const processEnv = mergeProviderInstanceEnvironment(environment);
+      const resolveSessionEnvironment = (): Effect.Effect<
+        NodeJS.ProcessEnv | undefined,
+        never,
+        never
+      > =>
+        Effect.gen(function* () {
+          const settings = yield* serverSettings.getSettings.pipe(
+            Effect.catch(() => Effect.succeed(undefined)),
+          );
+          if (settings === undefined) return processEnv;
+          const accountIds = settings.localAccountPool?.providerInstances[instanceId] ?? [];
+          const account = pickLocalAccount(settings, "cursor", accountIds);
+          if (account === undefined) return processEnv;
+          const credential = yield* ensureLocalAccountCredential(
+            account,
+            secretStore,
+            httpClient,
+          ).pipe(
+            // ACP 的 startSession 合约不携带账号池错误类型；令牌不可用时
+            // 保留原生登录环境，让 Cursor 自己报告认证错误。
+            Effect.catch(() => Effect.succeed(undefined)),
+          );
+          if (credential === undefined) return processEnv;
+          return { ...processEnv, ...cursorCredentialEnvironment(credential) };
+        });
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,
@@ -142,6 +175,7 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
         environment: processEnv,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
         instanceId,
+        resolveSessionEnvironment,
       });
       const textGeneration = yield* makeCursorTextGeneration(effectiveConfig, processEnv);
 

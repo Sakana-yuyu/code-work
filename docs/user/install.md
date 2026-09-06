@@ -54,15 +54,17 @@ yay -S codework-nightly-bin
 Code Work drives provider CLIs; it does not ship them. Install the CLI for each provider you want
 to use, then authenticate it.
 
-| Provider   | CLI                                                   | Default binary | Log in with           |
-| ---------- | ----------------------------------------------------- | -------------- | --------------------- |
-| Codex      | [Codex CLI](https://developers.openai.com/codex/cli)  | `codex`        | `codex login`         |
-| Claude     | [Claude Code](https://claude.com/product/claude-code) | `claude`       | `claude auth login`   |
-| Cursor     | [Cursor CLI](https://cursor.com/cli)                  | `cursor-agent` | `agent login`         |
-| Grok Build | [Grok Build CLI](https://x.ai/cli)                    | `grok`         | `grok login`          |
-| OpenCode   | [OpenCode](https://opencode.ai)                       | `opencode`     | `opencode auth login` |
+| Provider    | CLI                                                              | Default binary | Log in with           |
+| ----------- | ---------------------------------------------------------------- | -------------- | --------------------- |
+| Codex       | [Codex CLI](https://developers.openai.com/codex/cli)             | `codex`        | `codex login`         |
+| Claude      | [Claude Code](https://claude.com/product/claude-code)            | `claude`       | `claude auth login`   |
+| Cursor      | [Cursor CLI](https://cursor.com/cli)                             | `cursor-agent` | `agent login`         |
+| Grok Build  | [Grok Build CLI](https://x.ai/cli)                               | `grok`         | `grok login`          |
+| OpenCode    | [OpenCode](https://opencode.ai)                                  | `opencode`     | `opencode auth login` |
+| Kimi        | [Kimi CLI](https://moonshotai.github.io/kimi-code/)              | `kimi`         | `kimi login`          |
+| Antigravity | [Antigravity CLI](https://antigravity.google/docs/cli/headless/) | `agy`          | 运行 `agy` 完成登录   |
 
-Codex and Claude are on by default. Cursor, Grok Build, and OpenCode are off by default; turn
+Codex and Claude are on by default. Cursor, Grok Build, Kimi, Antigravity, and OpenCode are off by default; turn
 them on in **Settings** → the provider's card when you want to use them.
 
 Cursor is the one to watch: install Cursor CLI, which provides the `cursor-agent` binary that
@@ -71,6 +73,10 @@ Code Work looks for, but authenticate with `agent login`, not `cursor-agent logi
 Grok models that support adjustable reasoning show a **Reasoning** control beside the model picker.
 The available levels and default come from the installed Grok Build CLI, so they can vary by model
 and CLI version.
+
+Kimi uses its official ACP entrypoint (`kimi acp`) for Code Work sessions. Run `kimi login` once
+on the server machine; the provider card reports whether the CLI is installed, while the first ACP
+session confirms the account state.
 
 Run the login command on the machine running the Code Work server, not on the device you browse
 from.
@@ -87,6 +93,10 @@ on the server machine and re-checks the CLI when the install finishes:
   Windows, bash elsewhere).
 - Grok Build installs through the official installer scripts from x.ai (PowerShell on native
   Windows, bash on macOS/Linux).
+- Kimi installs through the official installer scripts from code.kimi.com (PowerShell on native
+  Windows, bash on macOS/Linux).
+- Antigravity installs through the official installer scripts from antigravity.google
+  (PowerShell on native Windows, bash on macOS/Linux).
 
 The button is hidden when the server has no usable install channel for that platform (for
 example, `npm` missing). Install failures show the underlying output on the provider row.

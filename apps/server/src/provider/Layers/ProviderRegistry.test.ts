@@ -341,7 +341,10 @@ function makeMutableServerSettingsService(
       updateSettings: (patch) =>
         Effect.gen(function* () {
           const current = yield* Ref.get(settingsRef);
-          const next = applyServerSettingsPatch(current, patch);
+          const next = applyServerSettingsPatch(
+            current,
+            typeof patch === "function" ? patch(current) : patch,
+          );
           encodeServerSettings(next);
           yield* Ref.set(settingsRef, next);
           yield* PubSub.publish(changes, next);
@@ -1753,11 +1756,13 @@ it.layer(
             );
 
             assert.deepStrictEqual(providers.map((provider) => provider.instanceId).toSorted(), [
+              "antigravity",
               "byok",
               "claudeAgent",
               "codex",
               "cursor",
               "grok",
+              "kimi",
               "opencode",
             ]);
             assert.strictEqual(cursorProvider?.enabled, false);

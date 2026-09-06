@@ -46,6 +46,16 @@ describe("ContextWindowMeter", () => {
     expect(markup).not.toContain(t("compactContext"));
   });
 
+  it("keeps a visible pending ring before the first usage event", () => {
+    const markup = renderToStaticMarkup(<ContextWindowMeter usage={null} />);
+
+    expect(markup).toContain('data-context-window-meter="true"');
+    expect(markup).toContain('data-context-window-value="pending"');
+    expect(markup.match(/<circle/g)).toHaveLength(2);
+    expect(markup).not.toContain("circle-dashed");
+    expect(markup).toContain(t("contextWindowNotAvailable"));
+  });
+
   it("explains why the compact action is disabled", () => {
     const markup = renderToStaticMarkup(
       <ContextWindowMeter

@@ -1,5 +1,13 @@
 import { ProviderDriverKind } from "@codework/contracts";
-import { ClaudeAI, CursorIcon, GrokIcon, Icon, OpenAI, OpenCodeIcon } from "../Icons";
+import {
+  AntigravityIcon,
+  ClaudeAI,
+  CursorIcon,
+  GrokIcon,
+  Icon,
+  OpenAI,
+  OpenCodeIcon,
+} from "../Icons";
 import { PROVIDER_OPTIONS } from "../../session-logic";
 
 export const PROVIDER_ICON_BY_PROVIDER: Partial<Record<ProviderDriverKind, Icon>> = {
@@ -8,6 +16,8 @@ export const PROVIDER_ICON_BY_PROVIDER: Partial<Record<ProviderDriverKind, Icon>
   [ProviderDriverKind.make("opencode")]: OpenCodeIcon,
   [ProviderDriverKind.make("cursor")]: CursorIcon,
   [ProviderDriverKind.make("grok")]: GrokIcon,
+  [ProviderDriverKind.make("kimi")]: OpenCodeIcon,
+  [ProviderDriverKind.make("antigravity")]: AntigravityIcon,
   [ProviderDriverKind.make("byok")]: CursorIcon,
 };
 

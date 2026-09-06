@@ -418,6 +418,66 @@ describe("byokChatClient provider errors", () => {
   );
 });
 
+describe("byokChatClient usage metadata", () => {
+  it("保留 OpenAI 流终态中的真实生成 token 数", async () => {
+    const { client } = makeClient(
+      [
+        'data: {"choices":[{"delta":{"content":"done"}}]}',
+        "",
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"completion_tokens":42,"completion_tokens_details":{"reasoning_tokens":7}}}',
+        "",
+      ].join("\n"),
+    );
+    await expect(runEvents(client, baseErrorInput)).resolves.toEqual([
+      { type: "text", text: "done" },
+      { type: "completed", finishReason: "stop", outputTokens: 42, reasoningTokens: 7 },
+    ]);
+  });
+
+  it("在测速模式下读取 finish 后的 OpenAI usage chunk", async () => {
+    const { client } = makeClient(
+      [
+        'data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}',
+        "",
+        'data: {"choices":[],"usage":{"completion_tokens":42}}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    );
+    await expect(runEvents(client, { ...baseErrorInput, includeUsage: true })).resolves.toEqual([
+      { type: "text", text: "done" },
+      { type: "completed", finishReason: "stop" },
+      { type: "completed", finishReason: "stop", outputTokens: 42 },
+    ]);
+  });
+
+  it("读取 Anthropic message_delta 中的真实生成 token 数", async () => {
+    const { client } = makeClient(
+      [
+        'data: {"type":"content_block_delta","delta":{"text":"done"}}',
+        "",
+        'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":37}}',
+        "",
+        'data: {"type":"message_stop"}',
+        "",
+      ].join("\n"),
+    );
+    await expect(
+      runEvents(client, {
+        ...baseErrorInput,
+        protocol: "anthropic",
+        baseURL: "https://api.anthropic.com",
+        includeUsage: true,
+      }),
+    ).resolves.toContainEqual({
+      type: "completed",
+      finishReason: "end_turn",
+      outputTokens: 37,
+    });
+  });
+});
+
 describe("byokChatClient multimodal parts", () => {
   const imageMessage = {
     role: "user" as const,

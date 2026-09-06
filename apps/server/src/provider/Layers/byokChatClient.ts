@@ -70,7 +70,13 @@ export const byokAdapterForModel = (
 export type ByokChatEvent =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "reasoning"; readonly text: string }
-  | { readonly type: "completed"; readonly finishReason: string }
+  | {
+      readonly type: "completed";
+      readonly finishReason: string;
+      /** 上游在流终态中提供的生成 token 数；没有 usage 时保持未设置。 */
+      readonly outputTokens?: number;
+      readonly reasoningTokens?: number;
+    }
   | {
       readonly type: "tool_call";
       readonly toolCallId: string;
@@ -154,6 +160,10 @@ export interface ByokStreamChatInput {
   readonly systemPrompt?: string | undefined;
   /** Optional abort signal; when it fires the stream ends immediately. */
   readonly signal?: AbortSignal | undefined;
+  /** 测速时允许读取 OpenAI 的终态 usage chunk；普通对话保持原有终态语义。 */
+  readonly includeUsage?: boolean | undefined;
+  /** 独立测速的输出上限；普通对话不设置此字段，保持供应商默认行为。 */
+  readonly maxOutputTokens?: number | undefined;
 }
 
 const byokErrorDetail = (cause: unknown): string => {
@@ -635,12 +645,14 @@ type AnthropicStreamEvent = ByokChatEvent | AnthropicToolCallJsonEvent | ByokStr
 type OpenAiStreamState = {
   readonly toolCalls: OpenAiToolCallAccumulator;
   readonly terminalSeen: boolean;
+  readonly terminalFinishReason?: string;
   readonly toolNames: ReadonlyMap<string, string>;
 };
 
 type AnthropicStreamState = {
   readonly toolCalls: AnthropicToolCallAccumulator;
   readonly stopReason: string | undefined;
+  readonly usage: { readonly outputTokens?: number; readonly reasoningTokens?: number } | undefined;
   readonly terminalSeen: boolean;
 };
 
@@ -681,6 +693,7 @@ const missingTerminalEvent = (protocol: ByokModelAdapter["protocol"]): ByokStrea
 const terminalEventForFinishReason = (
   protocol: ByokModelAdapter["protocol"],
   finishReason: string,
+  usage?: { readonly outputTokens?: number; readonly reasoningTokens?: number },
 ): ByokTerminalEvent => {
   const normalized = finishReason.trim().toLowerCase();
   if (outputTruncationFinishReasons.has(normalized)) {
@@ -690,12 +703,59 @@ const terminalEventForFinishReason = (
     );
   }
   if (successfulFinishReasons[protocol].has(normalized)) {
-    return { type: "completed", finishReason };
+    return {
+      type: "completed",
+      finishReason,
+      ...(usage?.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
+      ...(usage?.reasoningTokens !== undefined ? { reasoningTokens: usage.reasoningTokens } : {}),
+    };
   }
   return streamErrorEvent(
     "provider_error",
     `${protocol} provider stream ended with unsupported finish reason ${finishReason}.`,
   );
+};
+
+const nonNegativeInteger = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+
+const usageFromPayload = (
+  protocol: ByokModelAdapter["protocol"],
+  payload: Record<string, unknown>,
+): { readonly outputTokens?: number; readonly reasoningTokens?: number } | undefined => {
+  const usage =
+    protocol === "openai"
+      ? isRecord(payload.usage)
+        ? payload.usage
+        : undefined
+      : protocol === "anthropic"
+        ? isRecord(payload.usage)
+          ? payload.usage
+          : undefined
+        : protocol === "gemini" && isRecord(payload.usageMetadata)
+          ? payload.usageMetadata
+          : undefined;
+  if (usage === undefined) return undefined;
+  const outputTokens = nonNegativeInteger(
+    protocol === "openai"
+      ? usage.completion_tokens
+      : protocol === "anthropic"
+        ? usage.output_tokens
+        : usage.candidatesTokenCount,
+  );
+  const details =
+    protocol === "openai" && isRecord(usage.completion_tokens_details)
+      ? usage.completion_tokens_details
+      : undefined;
+  const reasoningTokens = nonNegativeInteger(
+    protocol === "openai" ? details?.reasoning_tokens : usage.thoughtsTokenCount,
+  );
+  return outputTokens === undefined && reasoningTokens === undefined
+    ? undefined
+    : {
+        ...(outputTokens === undefined ? {} : { outputTokens }),
+        ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+      };
 };
 
 const openAiFinishReason = (payload: Record<string, unknown>): string | undefined => {
@@ -722,10 +782,11 @@ const geminiFinishReason = (payload: Record<string, unknown>): string | undefine
 const isProtocolTransportTerminator = (
   protocol: ByokModelAdapter["protocol"],
   item: ByokSseItem,
+  waitForUsage = false,
 ): boolean => {
   if (item.type === "done") return true;
   if (item.type !== "payload") return false;
-  if (protocol === "openai") return openAiFinishReason(item.payload) !== undefined;
+  if (protocol === "openai") return !waitForUsage && openAiFinishReason(item.payload) !== undefined;
   if (protocol === "anthropic") return item.payload.type === "message_stop";
   return geminiFinishReason(item.payload) !== undefined;
 };
@@ -981,6 +1042,8 @@ export const streamChat = (
                 }
               : {}),
             stream: true,
+            ...(input.maxOutputTokens === undefined ? {} : { max_tokens: input.maxOutputTokens }),
+            ...(input.includeUsage ? { stream_options: { include_usage: true } } : {}),
           }),
         )
       : input.protocol === "gemini"
@@ -1008,6 +1071,9 @@ export const streamChat = (
               ...(systemPrompt.length > 0
                 ? { systemInstruction: { parts: [{ text: systemPrompt }] } }
                 : {}),
+              ...(input.maxOutputTokens === undefined
+                ? {}
+                : { generationConfig: { maxOutputTokens: input.maxOutputTokens } }),
             }),
           )
         : HttpClientRequest.post(anthropicUrl(input.baseURL)).pipe(
@@ -1026,7 +1092,7 @@ export const streamChat = (
                     })),
                   }
                 : {}),
-              max_tokens: 8192,
+              max_tokens: input.maxOutputTokens ?? 8192,
               stream: true,
             }),
           );
@@ -1077,7 +1143,9 @@ export const streamChat = (
         }),
       );
     }),
-    Stream.takeUntil((item) => isProtocolTransportTerminator(input.protocol, item)),
+    Stream.takeUntil((item) =>
+      isProtocolTransportTerminator(input.protocol, item, input.includeUsage === true),
+    ),
     Stream.concat(Stream.succeed({ type: "eof" } as ByokSseItem)),
   );
 
@@ -1099,7 +1167,14 @@ export const streamChat = (
           if (finishReason === undefined) return [state, events];
           return [
             { terminalSeen: true },
-            [...events, terminalEventForFinishReason("gemini", finishReason)],
+            [
+              ...events,
+              terminalEventForFinishReason(
+                "gemini",
+                finishReason,
+                usageFromPayload("gemini", item.payload),
+              ),
+            ],
           ];
         },
       );
@@ -1127,6 +1202,7 @@ export const streamChat = (
       (): AnthropicStreamState => ({
         toolCalls: new Map<number, AnthropicToolCallState>(),
         stopReason: undefined,
+        usage: undefined,
         terminalSeen: false,
       }),
       (state, item): readonly [AnthropicStreamState, ReadonlyArray<AnthropicStreamEvent>] => {
@@ -1137,20 +1213,21 @@ export const streamChat = (
 
         const toolCalls = anthropicToolCallStateForPayload(state.toolCalls, item.payload);
         const stopReason = anthropicStopReason(item.payload) ?? state.stopReason;
+        const usage = usageFromPayload("anthropic", item.payload) ?? state.usage;
         const events = eventsFromSsePayload("anthropic", item.payload);
         if (item.payload.type !== "message_stop") {
-          return [{ toolCalls, stopReason, terminalSeen: false }, events];
+          return [{ toolCalls, stopReason, usage, terminalSeen: false }, events];
         }
         if (stopReason === undefined) {
           return [
-            { toolCalls, stopReason, terminalSeen: true },
+            { toolCalls, stopReason, usage, terminalSeen: true },
             [...events, missingTerminalEvent("anthropic")],
           ];
         }
 
-        const terminalEvent = terminalEventForFinishReason("anthropic", stopReason);
+        const terminalEvent = terminalEventForFinishReason("anthropic", stopReason, usage);
         return [
-          { toolCalls: new Map(), stopReason, terminalSeen: true },
+          { toolCalls: new Map(), stopReason, usage, terminalSeen: true },
           [
             ...events,
             ...(terminalEvent.type === "completed" ? anthropicToolCallJsonEvents(toolCalls) : []),
@@ -1205,7 +1282,22 @@ export const streamChat = (
       toolNames: openAiToolNameMap(input.tools),
     }),
     (state, item): readonly [OpenAiStreamState, ReadonlyArray<OpenAiStreamEvent>] => {
-      if (state.terminalSeen) return [state, []];
+      if (state.terminalSeen) {
+        if (input.includeUsage !== true || item.type !== "payload") return [state, []];
+        const usage = usageFromPayload("openai", item.payload);
+        return usage === undefined
+          ? [state, []]
+          : [
+              state,
+              [
+                {
+                  type: "completed",
+                  finishReason: state.terminalFinishReason ?? "stop",
+                  ...usage,
+                },
+              ],
+            ];
+      }
       if (item.type !== "payload") {
         return [{ ...state, terminalSeen: true }, [missingTerminalEvent("openai")]];
       }
@@ -1233,9 +1325,18 @@ export const streamChat = (
         toolCalls.size > 0 && finishReason.trim().toLowerCase() === "stop"
           ? "tool_calls"
           : finishReason;
-      const terminalEvent = terminalEventForFinishReason("openai", normalizedFinishReason);
+      const terminalEvent = terminalEventForFinishReason(
+        "openai",
+        normalizedFinishReason,
+        usageFromPayload("openai", item.payload),
+      );
       return [
-        { toolCalls: new Map(), terminalSeen: true, toolNames: state.toolNames },
+        {
+          toolCalls: new Map(),
+          terminalSeen: true,
+          terminalFinishReason: normalizedFinishReason,
+          toolNames: state.toolNames,
+        },
         [
           ...events,
           ...(terminalEvent.type === "completed" ? openaiToolCallJsonEvents(toolCalls) : []),

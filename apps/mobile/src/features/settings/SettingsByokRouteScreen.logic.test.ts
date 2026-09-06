@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   adapterFormFromAdapter,
+  byokBenchmarkFingerprint,
   buildByokAdapter,
   createByokProviderInstance,
   normalizeByokInstanceId,
@@ -68,5 +69,28 @@ describe("移动端 BYOK 设置逻辑", () => {
       displayName: "主模型",
       enabled: true,
     });
+  });
+
+  it("测速指纹区分协议、地址和模型并忽略地址两端空格", () => {
+    expect(
+      byokBenchmarkFingerprint({
+        protocol: "openai",
+        baseURL: " https://example.com/v1 ",
+        modelId: "model-a",
+      }),
+    ).toBe("openai\u0000https://example.com/v1\u0000model-a");
+    expect(
+      byokBenchmarkFingerprint({
+        protocol: "openai",
+        baseURL: "https://example.com/v1",
+        modelId: "model-b",
+      }),
+    ).not.toBe(
+      byokBenchmarkFingerprint({
+        protocol: "openai",
+        baseURL: "https://example.com/v1",
+        modelId: "model-a",
+      }),
+    );
   });
 });

@@ -6,6 +6,8 @@
 
 一个跨平台的 AI 编程工作台：把编码代理、终端、代码变更和远程环境放进同一个可审查的工作流。
 
+简体中文 | [English](./README.en-US.md) | [日本語](./README.ja.md)
+
 </div>
 
 ## 项目定位
@@ -13,6 +15,81 @@
 Code Work 面向需要长时间使用编码代理的开发者，提供统一的 Web、桌面和移动端工作台。它连接你本机已经安装并完成登录的 Codex、Claude、Cursor、Grok Build 与 OpenCode，让项目、线程、权限、终端、代码变更和远程控制保持在同一个工作流中。
 
 Code Work 不捆绑这些 Provider，也不代替它们管理订阅或账号；它负责把不同 Provider 的能力组织成一致的项目工作流。你可以在本机运行，也可以通过配对链接从另一台电脑或手机连接到运行服务的机器。
+
+## 工作原理
+
+Code Work 自己不实现模型调用：它启动、监视并驱动各家官方 CLI 子进程，把它们的私有协议**翻译成统一的编排事件流**，以事件溯源方式持久化，再推送给所有在线客户端。因此 Web、桌面、手机看到的是同一个会话，回合结束后还会打一个 checkpoint（隐藏 git ref），消息可以编辑重发、可以回滚。
+
+```mermaid
+graph LR
+    subgraph Clients["客户端（3 个表面）"]
+        direction LR
+        W["Web"]:::client
+        D["Desktop"]:::client
+        M["Mobile"]:::client
+    end
+
+    W -->|"类型化 RPC + 状态流（直连 / Tailscale / Connect 隧道）"| GW["WS 服务层"]:::cmd
+    D --> GW
+    M --> GW
+
+    GW --> CMD["命令 Command"]:::cmd
+    CMD --> DEC["决策器 Decider（纯函数）"]:::cmd
+    DEC --> EVT["事件 Event"]:::event
+    EVT --> DB[("事件溯源存储 SQLite")]:::store
+    EVT --> PRJ["投影器 Projector：派生 UI 读模型"]:::store
+    EVT --> REC["反应器 Reactor：队列 + 回执"]:::cmd
+    REC -->|"回执确认里程碑"| EVT
+
+    EVT --> ADP["适配器 Adapter"]:::cmd
+    ADP -->|"stdio / ACP / HTTP 驱动 CLI 子进程"| CLIS
+    CLIS -->|"私有协议翻译成统一事件"| ADP
+
+    subgraph CLIS["官方 CLI 子进程（真正干活的 Agent）"]
+        direction LR
+        C1["codex"]:::cli
+        C2["claude"]:::cli
+        C3["cursor-agent"]:::cli
+        C4["grok"]:::cli
+        C5["opencode / kimi / agy"]:::cli
+    end
+
+    PRJ -->|"状态推送"| GW
+    GW -->|"同一会话广播给所有客户端"| Clients
+    REC --> CHK["Checkpoint：回合末隐藏 git ref，可 diff / 回滚"]:::gate
+
+    classDef client fill:#ede7f6,stroke:#4527a0,color:#000
+    classDef cmd fill:#e1f5fe,stroke:#01579b,color:#000
+    classDef event fill:#e8f5e9,stroke:#1b5e20,color:#000
+    classDef store fill:#fff3e0,stroke:#e65100,color:#000
+    classDef gate fill:#fff9c4,stroke:#f57f17,color:#000
+    classDef cli fill:#fce4ec,stroke:#880e4f,color:#000
+```
+
+一次对话回合的流转：
+
+```mermaid
+graph LR
+    U["用户输入（任意客户端）"]:::cmd --> C["WS 命令"]:::cmd
+    C --> EVT["命令写入并产生事件"]:::cmd
+    EVT --> PRJ["投影更新，客户端实时可见"]:::store
+    EVT --> AD["适配器把回合发给 CLI 子进程"]:::cmd
+    AD --> S["CLI 流式输出 token / 工具调用"]:::cmd
+    S --> APP{"需要用户审批?"}:::gate
+    APP -->|"是"| WAIT["审批请求推给客户端，等待决定"]:::gate
+    WAIT -->|"批准 / 拒绝"| S
+    APP -->|"否"| R["统一事件 + 回执确认里程碑"]:::cmd
+    R --> CKPT{"回合末 Checkpoint"}:::gate
+    CKPT -->|"记录隐藏 git ref"| END["可 diff、可编辑重发、可回滚"]:::store
+
+    classDef cmd fill:#e1f5fe,stroke:#01579b,color:#000
+    classDef gate fill:#fff9c4,stroke:#f57f17,color:#000
+    classDef store fill:#fff3e0,stroke:#e65100,color:#000
+```
+
+模型流量也可以不走出各家 CLI 自己的账号：设置里的「自定义模型服务（BYOK）」「CPA 兼容线路」和「本地官方账号池」是三条可共享给任意 Provider 实例的流量出口，由本机 BYOK 网关（`/byok-gw/{protocol}/*`，带令牌鉴权）按模型 slug 严格匹配转发，凭据只保存在服务端 secret store，不会出现在设置文件、页面或日志里。详见 [BYOK 与自定义模型服务](./docs/user/byok.md)。
+
+架构与术语的完整说明见 [docs/internals/glossary.md](./docs/internals/glossary.md)。
 
 ## 项目结构
 

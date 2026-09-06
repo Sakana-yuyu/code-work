@@ -364,8 +364,9 @@ export const ProviderRegistryLive = Layer.effect(
         provider.instanceId,
         provider.driver,
       );
-      // The install channel is platform-gated (e.g. Grok Build's bash-only
-      // installer), so the affordance only appears where it can actually run.
+      // The install channel is platform-gated (a driver may declare a variant
+      // for only one platform), so the affordance only appears where it can
+      // actually run.
       const installVariant =
         capabilities.install === null
           ? null
@@ -626,7 +627,8 @@ export const ProviderRegistryLive = Layer.effect(
         // subscription race without putting external work on the registry
         // or HTTP server construction path.
         yield* Effect.forEach(
-          newlyAdded,
+          // 配置待生效时实例身份不变，仍需重新读取提示；此处不触发外部探测。
+          [...nextByInstance],
           ([, instance]) =>
             Effect.gen(function* () {
               const source = buildSnapshotSource(instance);

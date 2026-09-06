@@ -8,6 +8,7 @@ import { ServerConfig } from "../config.ts";
 import { TerminalManager } from "../terminal/Manager.ts";
 import { mergeProviderInstanceEnvironment } from "./ProviderInstanceEnvironment.ts";
 import { expandHomePath } from "../pathExpansion.ts";
+import { resolveGrokHome } from "./grokHome.ts";
 
 const LoginConfig = Schema.Struct({
   binaryPath: Schema.optional(Schema.String),
@@ -22,6 +23,12 @@ export function providerLoginCommand(driver: string, deviceCode: boolean) {
       return { binary: "codex", args: deviceCode ? ["login", "--device-auth"] : ["login"] };
     case "claudeAgent":
       return { binary: "claude", args: ["auth", "login"] };
+    case "grok":
+      return { binary: "grok", args: deviceCode ? ["login", "--device-auth"] : ["login"] };
+    case "kimi":
+      return { binary: "kimi", args: ["login"] };
+    case "antigravity":
+      return { binary: "agy", args: [] };
     default:
       return null;
   }
@@ -69,6 +76,14 @@ export const startProviderLogin = Effect.fn("startProviderLogin")(function* (inp
     "ANTHROPIC_BASE_URL",
     "CLAUDE_CODE_OAUTH_TOKEN",
     "CURSOR_API_KEY",
+    "CURSOR_AUTH_TOKEN",
+    "XAI_API_KEY",
+    "GROK_API_KEY",
+    "KIMI_API_KEY",
+    "KIMI_BASE_URL",
+    "AGY_API_KEY",
+    "AGY_BASE_URL",
+    "CODEWORK_BYOK_GATEWAY_TOKEN",
   ]) {
     environment[key] = "";
   }
@@ -80,10 +95,18 @@ export const startProviderLogin = Effect.fn("startProviderLogin")(function* (inp
     environment[driver === "codex" ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR"] =
       expandHomePath(loginHome);
   }
+  if (driver === "grok") {
+    environment.GROK_HOME = resolveGrokHome({
+      stateDir: server.stateDir,
+      instanceId: input.instanceId,
+      routed: false,
+      explicitHome: environment.GROK_HOME,
+    });
+  }
   const resolved = yield* resolveSpawnCommand(
     config.binaryPath?.trim() || command.binary,
     command.args,
-    { env: environment },
+    { env: environment, extendEnv: true },
   );
   const env = Object.fromEntries(
     Object.entries(environment).filter(

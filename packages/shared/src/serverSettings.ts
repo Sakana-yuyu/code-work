@@ -171,8 +171,28 @@ export function applyServerSettingsPatch(
           }
         : undefined;
   const next = deepMerge(current, patchForMerge);
+  // settings RPC 回传的本地账号 credentialRef 已脱敏为空串；客户端提交其它设置时，
+  // 不能让这份回传快照覆盖服务端仍在使用的 SecretStore 索引。
+  // localAccountPool 在契约中是完整替换，不能深合并，否则删除的账号会被当前快照重新带回。
+  const localAccountPoolPatch = patch.localAccountPool;
+  const localAccountPoolSource = localAccountPoolPatch ?? next.localAccountPool;
+  const localAccountPool = {
+    ...localAccountPoolSource,
+    accounts: Object.fromEntries(
+      Object.entries(localAccountPoolSource.accounts).flatMap(([id, account]) => {
+        const currentAccount =
+          current.localAccountPool.accounts[id as keyof typeof current.localAccountPool.accounts];
+        const restored =
+          account.credentialRef.length > 0 || currentAccount === undefined
+            ? account
+            : { ...account, credentialRef: currentAccount.credentialRef };
+        return restored.credentialRef.length > 0 ? [[id, restored] as const] : [];
+      }),
+    ),
+  };
   const nextWithReplacementsBase = {
     ...next,
+    localAccountPool,
     ...(backgroundActivity !== undefined
       ? {
           backgroundActivity: {

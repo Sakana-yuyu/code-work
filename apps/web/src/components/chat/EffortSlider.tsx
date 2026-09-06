@@ -187,13 +187,13 @@ export function EffortSlider({
             className="effort-slider-cover"
             style={{ transform: `translateX(calc(14px + (100% - 28px) * ${progress}))` }}
           />
-          <div className="absolute inset-x-3.5 inset-y-0 flex items-center justify-between">
+          <div className="absolute inset-x-3.5 inset-y-0 z-10 flex items-center justify-between">
             {descriptor.options.map((option, optionIndex) => (
               <span
                 key={option.id}
                 className={cn(
                   "size-1 rounded-full",
-                  optionIndex <= index ? "bg-white/40" : "bg-foreground/20",
+                  optionIndex <= index ? "bg-white/60" : "bg-foreground/35",
                 )}
               />
             ))}
