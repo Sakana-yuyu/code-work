@@ -1564,7 +1564,14 @@ it.layer(
           const initialCodex = initialProviders.find((provider) => provider.instanceId === "codex");
           assert.strictEqual(initialCodex?.status, "error");
           assert.strictEqual(initialCodex?.installed, false);
-          assert.deepStrictEqual(spawnedCommands, [firstMissing]);
+          // Kimi/Antigravity probe even while disabled to report install
+          // state, so scope the assertion to this test's synthetic binaries.
+          assert.deepStrictEqual(
+            spawnedCommands.filter(
+              (command) => command === firstMissing || command === secondMissing,
+            ),
+            [firstMissing],
+          );
 
           // Drive a settings change. The Hydration layer's
           // `SettingsWatcherLive` consumes this via its pre-acquired
@@ -1603,7 +1610,12 @@ it.layer(
           });
 
           const reprobedCodex = refreshed.find((provider) => provider.instanceId === "codex");
-          assert.deepStrictEqual(spawnedCommands, [firstMissing, secondMissing]);
+          assert.deepStrictEqual(
+            spawnedCommands.filter(
+              (command) => command === firstMissing || command === secondMissing,
+            ),
+            [firstMissing, secondMissing],
+          );
           assert.strictEqual(reprobedCodex?.status, "error");
           assert.strictEqual(reprobedCodex?.installed, false);
         }).pipe(Effect.provide(runtimeServices));

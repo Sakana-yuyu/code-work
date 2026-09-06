@@ -20,6 +20,7 @@ import type { Dispatch, SetStateAction } from "react";
  *   return {
  *     ...actual,
  *     useCallback: reactHookHarness.useCallback,
+ *     useEffect: reactHookHarness.useEffect,
  *     useMemo: reactHookHarness.useMemo,
  *     useRef: reactHookHarness.useRef,
  *     useState: reactHookHarness.useState,
@@ -50,6 +51,11 @@ export function createReactHookHarness() {
     useCallback<T>(callback: T): T {
       nextIndex();
       return callback;
+    },
+    // No commit phase exists when components run as plain functions, so
+    // effects only occupy their call-order slot and never execute.
+    useEffect(_effect: unknown): void {
+      nextIndex();
     },
     useMemo<T>(factory: () => T): T {
       nextIndex();
