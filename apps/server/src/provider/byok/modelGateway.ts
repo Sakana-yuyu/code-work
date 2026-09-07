@@ -1445,9 +1445,14 @@ const cliProxyManagementHandler = (
           ? "fill-first"
           : body.strategy === "round-robin"
             ? "round-robin"
-            : undefined;
+            : body.strategy === "weighted-round-robin"
+              ? "weighted-round-robin"
+              : undefined;
       if (strategy === undefined)
-        return managementError(400, "strategy 必须是 round-robin 或 fill-first。");
+        return managementError(
+          400,
+          "strategy 必须是 round-robin、fill-first 或 weighted-round-robin。",
+        );
       yield* setLocalAccountPoolStrategy(settingsService, strategy).pipe(
         Effect.mapError((error) => new CliProxyManagementError({ message: error.message })),
       );
@@ -1463,12 +1468,11 @@ const cliProxyManagementHandler = (
           ? "fill-first"
           : requested === "round-robin"
             ? "round-robin"
-            : undefined;
+            : requested === "weighted-round-robin"
+              ? "weighted-round-robin"
+              : undefined;
       if (strategy === undefined)
-        return managementError(
-          400,
-          "仅支持 round-robin 或 fill-first；weighted-round-robin 尚未移植。",
-        );
+        return managementError(400, "仅支持 round-robin、fill-first 或 weighted-round-robin。");
       yield* setLocalAccountPoolStrategy(settingsService, strategy).pipe(
         Effect.mapError((error) => new CliProxyManagementError({ message: error.message })),
       );

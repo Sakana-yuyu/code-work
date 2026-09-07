@@ -4,6 +4,12 @@ export const supplierDisplayName = (entry: {
   readonly displayName?: string | undefined;
 }): string => entry.displayName ?? entry.instanceId;
 
+/** 默认模型优先显示名称（如 BYOK 适配器名），旧数据没有名称时回退原始 id。 */
+export const supplierDefaultModelLabel = (entry: {
+  readonly defaultModelId?: string | undefined;
+  readonly defaultModelName?: string | undefined;
+}): string | undefined => entry.defaultModelName ?? entry.defaultModelId;
+
 /** 启用态徽标 i18n 键。 */
 export const supplierEnabledLabelKey = (enabled: boolean): string =>
   enabled ? "supplierRegistry.enabled" : "supplierRegistry.disabled";

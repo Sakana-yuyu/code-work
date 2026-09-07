@@ -604,6 +604,43 @@ describe("byokChatClient existing protocols", () => {
   });
 });
 
+describe("byokChatClient request correlation", () => {
+  it("sends the request id as x-request-id on every protocol", async () => {
+    for (const protocol of ["openai", "gemini", "anthropic"] as const) {
+      const sseText =
+        protocol === "openai"
+          ? 'data: {"choices":[{"delta":{"content":"hey"}}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'
+          : protocol === "gemini"
+            ? GEMINI_SSE
+            : 'data: {"type":"content_block_delta","delta":{"text":"yo"}}\n\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\ndata: {"type":"message_stop"}\n\n';
+      const { client, captured } = makeClient(sseText);
+      await runEvents(client, {
+        protocol,
+        baseURL: protocol === "anthropic" ? "https://api.anthropic.com" : "https://example.com/v1",
+        apiKey: "k",
+        modelId: "m",
+        messages: [{ role: "user", content: "hi" }],
+        requestId: "req-correlation-1",
+      });
+      expect(captured[0]?.headers["x-request-id"]).toBe("req-correlation-1");
+    }
+  });
+
+  it("omits x-request-id when no request id is provided", async () => {
+    const { client, captured } = makeClient(
+      'data: {"choices":[{"delta":{"content":"hey"}}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+    );
+    await runEvents(client, {
+      protocol: "openai",
+      baseURL: "https://api.openai.com/v1",
+      apiKey: "k",
+      modelId: "gpt",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(captured[0]?.headers["x-request-id"]).toBeUndefined();
+  });
+});
+
 describe("byokChatClient provider terminal events", () => {
   it("rejects malformed SSE JSON as an invalid response", async () => {
     const { client } = makeClient("data: not-json\n\n");

@@ -161,6 +161,12 @@ export interface CodexSessionRuntimeOptions {
   readonly resumeCursor?: CodexResumeCursor;
   readonly appServerArgs?: ReadonlyArray<string>;
   /**
+   * Whether the session's MCP config granted the index capability. Derived
+   * from the issued credential rather than the setting, so the developer
+   * instructions only describe tools the turn actually has.
+   */
+  readonly indexToolsAvailable?: boolean;
+  /**
    * Extra argv appended after every spawn (e.g. BYOK gateway `-c` overrides).
    * Kept apart from `launchArgs` so shell-style tokenizing cannot strip the
    * TOML quoting these overrides rely on.
@@ -570,6 +576,7 @@ function buildCodexCollaborationMode(input: {
   readonly model?: string;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort;
   readonly browserToolsAvailable?: boolean;
+  readonly indexToolsAvailable?: boolean;
 }): EffectCodexSchema.V2TurnStartParams__CollaborationMode | undefined {
   if (input.interactionMode === undefined) {
     return undefined;
@@ -585,6 +592,7 @@ function buildCodexCollaborationMode(input: {
         input.interactionMode,
         { model, reasoningEffort },
         input.browserToolsAvailable ?? true,
+        input.indexToolsAvailable ?? false,
       ),
     },
   };
@@ -604,6 +612,8 @@ export function buildTurnStartParams(input: {
   readonly interactionMode?: ProviderInteractionMode;
   /** Defaults to true so callers that predate the agent-access gate are unchanged. */
   readonly browserToolsAvailable?: boolean;
+  /** Whether this session's MCP config granted the index capability. */
+  readonly indexToolsAvailable?: boolean;
 }): Effect.Effect<
   CodexTurnStartParamsWithCollaborationMode,
   CodexErrors.CodexAppServerProtocolParseError
@@ -625,6 +635,7 @@ export function buildTurnStartParams(input: {
     ...(input.model ? { model: input.model } : {}),
     ...(input.effort ? { effort: input.effort } : {}),
     browserToolsAvailable: input.browserToolsAvailable ?? true,
+    indexToolsAvailable: input.indexToolsAvailable ?? false,
   });
 
   return decodeCodexTurnStartParamsWithCollaborationMode({
@@ -2130,6 +2141,7 @@ export const makeCodexSessionRuntime = (
             // setting, so the prompt describes the tools this turn actually
             // has even if the setting changed after the session started.
             browserToolsAvailable: hasConfiguredMcpServer(options.appServerArgs),
+            indexToolsAvailable: options.indexToolsAvailable ?? false,
           });
           const method = input.reviewTarget ? "review/start" : "turn/start";
           const rawResponse = input.reviewTarget

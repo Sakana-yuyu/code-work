@@ -1,12 +1,16 @@
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
 import { ProviderInstanceId } from "./providerInstance.ts";
-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 export const LocalAccountId = TrimmedNonEmptyString.check(Schema.isMaxLength(96)).pipe(
   Schema.brand("LocalAccountId"),
 );
 export type LocalAccountId = typeof LocalAccountId.Type;
+
+/** 加权轮询权重；与客户端输入上限一致，防止异常配置展开过多调度槽位。 */
+export const LocalAccountWeight = NonNegativeInt.check(Schema.isLessThanOrEqualTo(99));
+export type LocalAccountWeight = typeof LocalAccountWeight.Type;
 
 export const LocalAccountProvider = Schema.Literals(["codex", "claude", "xai", "cursor"]);
 export type LocalAccountProvider = typeof LocalAccountProvider.Type;
@@ -25,6 +29,8 @@ export const LocalAccount = Schema.Struct({
   credentialRef: Schema.Union([TrimmedNonEmptyString, Schema.Literal("")]),
   enabled: Schema.Boolean,
   models: Schema.Array(TrimmedNonEmptyString),
+  /** weighted-round-robin 的调度权重；缺省或小于 1 时按 1 处理。 */
+  weight: Schema.optional(LocalAccountWeight),
 });
 export type LocalAccount = typeof LocalAccount.Type;
 
@@ -35,14 +41,26 @@ export const LocalAccountSummary = Schema.Struct({
   displayName: TrimmedNonEmptyString,
   enabled: Schema.Boolean,
   models: Schema.Array(TrimmedNonEmptyString),
+  weight: Schema.optional(LocalAccountWeight),
 });
 export type LocalAccountSummary = typeof LocalAccountSummary.Type;
+
+/**
+ * round-robin 轮询全部账号；fill-first 固定先用第一个可用账号；
+ * weighted-round-robin 按 weight 比例扩展开来轮询，权重越大分到的调用越多。
+ */
+export const LocalAccountPoolStrategy = Schema.Literals([
+  "round-robin",
+  "fill-first",
+  "weighted-round-robin",
+]);
+export type LocalAccountPoolStrategy = typeof LocalAccountPoolStrategy.Type;
 
 export const LocalAccountPoolSettings = Schema.Struct({
   accounts: Schema.Record(LocalAccountId, LocalAccount).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
-  strategy: Schema.Literals(["round-robin", "fill-first"]).pipe(
+  strategy: LocalAccountPoolStrategy.pipe(
     Schema.withDecodingDefault(Effect.succeed("round-robin" as const)),
   ),
   /** 将请求绑定到当前对话时传入的 Provider 实例；空值表示只作为本地 API 代理。 */

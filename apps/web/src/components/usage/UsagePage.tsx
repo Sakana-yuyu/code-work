@@ -34,6 +34,7 @@ import { UsageActivityHeatmap } from "./UsageActivityHeatmap";
 import { UsageModelDonut } from "./UsageModelDonut";
 import { UsageModelTrendChart, type UsageModelSeries } from "./UsageModelTrendChart";
 import { UsagePlanView } from "./UsagePlanView";
+import { UsageSubscriptionPanel } from "./UsageSubscriptionPanel";
 import { UsageLocalPoolPanel } from "./UsageLocalPoolPanel";
 import { UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
 import { useByokBalanceDashboards } from "../../state/byokBalance";
@@ -348,16 +349,19 @@ export function UsagePage() {
               activitySettling ? (
                 <ActivitySkeleton />
               ) : (
-                <UsagePlanView
-                  providers={activity.merged.providers}
-                  daily={activity.merged.daily}
-                  days={activityDays}
-                  untilDay={activityWindow.untilDay}
-                  byokEnvironments={byok.environments}
-                  byok={byok.merged}
-                  byokPending={byok.isPending}
-                  onQueryBalance={byok.queryBalance}
-                />
+                <>
+                  <UsageSubscriptionPanel />
+                  <UsagePlanView
+                    providers={activity.merged.providers}
+                    daily={activity.merged.daily}
+                    days={activityDays}
+                    untilDay={activityWindow.untilDay}
+                    byokEnvironments={byok.environments}
+                    byok={byok.merged}
+                    byokPending={byok.isPending}
+                    onQueryBalance={byok.queryBalance}
+                  />
+                </>
               )
             ) : view === "tasks" ? (
               <div className="flex min-w-0 flex-col gap-6">

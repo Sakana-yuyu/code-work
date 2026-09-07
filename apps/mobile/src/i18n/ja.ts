@@ -1,5 +1,5 @@
 /**
- * Japanese catalog (2400/2400 keys). Missing keys fall back to
+ * Japanese catalog (2410/2410 keys). Missing keys fall back to
  * English at runtime. Filled in translation chunks; keep ids in sync with
  * messages.ts.
  */
@@ -46,6 +46,9 @@ export const ja: Record<string, string> = {
   "cliProxy.strategy": "アカウント選択",
   "cliProxy.roundRobin": "ラウンドロビン",
   "cliProxy.fillFirst": "現在のアカウントを優先",
+  "cliProxy.weightedRoundRobin": "重み付きラウンドロビン",
+  "cliProxy.weight": "重み",
+  "cliProxy.weightFor": "{{name}} の重み",
   "cliProxy.saveConfig": "設定を保存",
   "cliProxy.start": "組み込みサービス",
   "cliProxy.stop": "組み込みサービス",
@@ -1201,6 +1204,13 @@ export const ja: Record<string, string> = {
   "byokBalanceMobile.health.empty": "空",
   "byokBalanceMobile.health.unsupported": "非対応",
   "byokBalanceMobile.health.error": "エラー",
+  "usageAccountQuotaMobile.title": "サブスクリプション使用枠",
+  "usageAccountQuotaMobile.window.fiveHours": "5時間ウィンドウ",
+  "usageAccountQuotaMobile.window.sevenDays": "7日間ウィンドウ",
+  "usageAccountQuotaMobile.resetsAt": "{{value1}} にリセット",
+  "usageAccountQuotaMobile.updatedAt": "更新: {{value1}}",
+  "usageAccountQuotaMobile.unknown": "報告なし",
+  "usageAccountQuotaMobile.usedSuffix": "使用済み",
   "threadGoal.title": "スレッドゴール",
   "threadGoal.mobileDescription":
     "このゴールは接続中の Code Work サーバーに保存され、デスクトップクライアントと共有されます。",

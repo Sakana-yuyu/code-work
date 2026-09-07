@@ -16,6 +16,7 @@ export type CompositionSupplierInstanceInput = {
   /** Provider 实例的账号延续身份（driverKind:instance:<id>），即 Supplier 的账号锚点。 */
   readonly continuationKey: string;
   readonly defaultModelId?: string | undefined;
+  readonly defaultModelName?: string | undefined;
 };
 
 /** 与 Provider 实例关联的 Agent Driver 档案按 `provider:<instanceId>` 约定派生。 */
@@ -50,6 +51,9 @@ export const projectCompositionSupplierRegistry = (input: {
       enabled: instance.enabled,
       continuationKey: instance.continuationKey,
       ...(instance.defaultModelId === undefined ? {} : { defaultModelId: instance.defaultModelId }),
+      ...(instance.defaultModelName === undefined
+        ? {}
+        : { defaultModelName: instance.defaultModelName }),
       ...(profile === undefined
         ? {}
         : {

@@ -11,6 +11,23 @@ For browser work, first call \`preview_status\`. If no automation-capable previe
 Do not switch to global browser skills, Chrome, Node REPL browser automation, standalone Playwright, or agent-browser merely because the preview is initially closed or a first call fails. Use an alternative browser system only when the Code Work preview tools are absent, the user explicitly requests another browser, or \`preview_open\` returns an explicit unsupported/unavailable error. A failed Code Work preview tool call should be inspected and retried with corrected arguments when the error is actionable.
 `;
 
+const CODEWORK_INDEX_TOOL_INSTRUCTIONS = `
+
+## Code Work symbol index
+
+You are running inside Code Work. The \`code-work\` MCP server exposes \`index_search\` and \`index_file_symbols\` over a prebuilt declaration index of this project. Prefer \`index_search\` to locate where a symbol (class, function, type, route) is defined, and \`index_file_symbols\` to outline a file's structure before reading it.
+
+This is a declaration index, not a content search: it answers "where is X defined / what does this file contain", not "which files mention X". For textual occurrences use your regular search tools.
+`;
+
+/**
+ * Like the browser block, the index block is omitted when the session wasn't
+ * granted the index capability — describing tools that aren't in the turn's
+ * tool list would just invite failed calls.
+ */
+const indexToolInstructions = (indexToolsAvailable: boolean): string =>
+  indexToolsAvailable ? CODEWORK_INDEX_TOOL_INSTRUCTIONS : "";
+
 /**
  * The browser block is omitted entirely when the preview tools aren't attached.
  * Describing `preview_*` tools that aren't in the turn's tool list would be
@@ -23,6 +40,7 @@ const browserToolInstructions = (browserToolsAvailable: boolean): string =>
 
 export const codexPlanModeDeveloperInstructions = (
   browserToolsAvailable: boolean,
+  indexToolsAvailable = false,
 ): string => `<collaboration_mode># Plan Mode (Conversational)
 
 You work in 3 phases, and you should *chat your way* to a great plan before finalizing it. A great plan is very detailed-intent- and implementation-wise-so that it can be handed to another engineer or agent to be implemented right away. It must be **decision complete**, where the implementer does not need to make any decisions.
@@ -151,11 +169,12 @@ Do not ask "should I proceed?" in the final output. The user can easily switch o
 Only produce at most one \`<proposed_plan>\` block per turn, and only when you are presenting a complete spec.
 
 If the user stays in Plan mode and asks for revisions after a prior \`<proposed_plan>\`, any new \`<proposed_plan>\` must be a complete replacement. If the user indicates that the prior plan is not acceptable but does not provide enough information to produce a complete replacement, address the concern and continue planning without producing a \`<proposed_plan>\` block. If the follow-up neither requires changes nor calls the plan into question (e.g. clarifying question), answer it before the block, then reproduce the prior \`<proposed_plan>\` unchanged.
-${browserToolInstructions(browserToolsAvailable)}
+${browserToolInstructions(browserToolsAvailable)}${indexToolInstructions(indexToolsAvailable)}
 </collaboration_mode>`;
 
 export const codexDefaultModeDeveloperInstructions = (
   browserToolsAvailable: boolean,
+  indexToolsAvailable = false,
 ): string => `<collaboration_mode># Collaboration Mode: Default
 
 You are now in Default mode. Any previous instructions for other modes (e.g. Plan mode) are no longer active.
@@ -167,7 +186,7 @@ Your active mode changes only when new developer instructions with a different \
 Use the \`request_user_input\` tool only when it is listed in the available tools for this turn.
 
 In Default mode, strongly prefer making reasonable assumptions and executing the user's request rather than stopping to ask questions. If you absolutely must ask a question because the answer cannot be discovered from local context and a reasonable assumption would be risky, ask the user directly with a concise plain-text question. Never write a multiple choice question as a textual assistant message.
-${browserToolInstructions(browserToolsAvailable)}
+${browserToolInstructions(browserToolsAvailable)}${indexToolInstructions(indexToolsAvailable)}
 </collaboration_mode>`;
 
 export interface CodexRuntimeInfo {
@@ -189,11 +208,13 @@ export function buildCodexDeveloperInstructions(
    * setting, so the prompt cannot claim tools the turn doesn't have.
    */
   browserToolsAvailable = true,
+  /** Same rule as `browserToolsAvailable`, for the `index_*` symbol tools. */
+  indexToolsAvailable = false,
 ): string {
   const base =
     interactionMode === "plan"
-      ? codexPlanModeDeveloperInstructions(browserToolsAvailable)
-      : codexDefaultModeDeveloperInstructions(browserToolsAvailable);
+      ? codexPlanModeDeveloperInstructions(browserToolsAvailable, indexToolsAvailable)
+      : codexDefaultModeDeveloperInstructions(browserToolsAvailable, indexToolsAvailable);
   return `${base}
 
 <runtime_info>In case you're asked: you are running in Code Work through the Codex harness, as ${toSingleLine(runtime.model)} with ${toSingleLine(runtime.reasoningEffort)} reasoning effort. No need to mention this otherwise.</runtime_info>`;

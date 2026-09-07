@@ -5,6 +5,7 @@ import {
   type CliProxyRequest,
   type CliProxyResult,
   type EnvironmentId,
+  type LocalAccountPoolStrategy,
 } from "@codework/contracts";
 import { squashAtomCommandFailure } from "@codework/client-runtime/state/runtime";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
@@ -24,7 +25,7 @@ export function CliProxySettingsSection({
 }) {
   const command = useAtomCommand(serverEnvironment.cliProxy, { reportFailure: false });
   const [status, setStatus] = useState<CliProxyResult | null>(null);
-  const [strategy, setStrategy] = useState<"round-robin" | "fill-first">("round-robin");
+  const [strategy, setStrategy] = useState<LocalAccountPoolStrategy>("round-robin");
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const [feedback, setFeedback] = useState<{ error: boolean; text: string } | null>(null);
@@ -41,7 +42,7 @@ export function CliProxySettingsSection({
   const [localContent, setLocalContent] = useState("");
   const [localModels, setLocalModels] = useState("");
   const [localInstanceId, setLocalInstanceId] = useState("");
-  const [localStrategy, setLocalStrategy] = useState<"round-robin" | "fill-first">("round-robin");
+  const [localStrategy, setLocalStrategy] = useState<LocalAccountPoolStrategy>("round-robin");
   const [externalKeyName, setExternalKeyName] = useState("");
   const [issuedExternalKey, setIssuedExternalKey] = useState("");
 
@@ -108,10 +109,16 @@ export function CliProxySettingsSection({
         ) : null}
         <Field label={t("cliProxy.strategy")}>
           <View className="flex-row flex-wrap gap-2">
-            {(["round-robin", "fill-first"] as const).map((value) => (
+            {(["round-robin", "fill-first", "weighted-round-robin"] as const).map((value) => (
               <Action
                 key={value}
-                label={t(value === "round-robin" ? "cliProxy.roundRobin" : "cliProxy.fillFirst")}
+                label={t(
+                  value === "round-robin"
+                    ? "cliProxy.roundRobin"
+                    : value === "fill-first"
+                      ? "cliProxy.fillFirst"
+                      : "cliProxy.weightedRoundRobin",
+                )}
                 selected={value === strategy}
                 disabled={disabled}
                 onPress={() => setStrategy(value)}
@@ -227,9 +234,27 @@ export function CliProxySettingsSection({
               key={account.id}
               className="flex-row items-center justify-between gap-2 rounded-2xl border border-border-subtle p-3"
             >
-              <Text className="text-xs text-foreground">
+              <Text className="flex-1 text-xs text-foreground" numberOfLines={1}>
                 {account.displayName} · {account.provider}
               </Text>
+              {localStrategy === "weighted-round-robin" ? (
+                <TextInput
+                  defaultValue={String(account.weight ?? 1)}
+                  editable={!disabled}
+                  keyboardType="number-pad"
+                  accessibilityLabel={t("cliProxy.weightFor", { name: account.displayName })}
+                  className="w-12 rounded-lg border border-border-subtle px-2 py-1 text-center text-xs text-foreground"
+                  onEndEditing={(event) => {
+                    const weight = Number.parseInt(event.nativeEvent.text, 10);
+                    if (!Number.isFinite(weight)) return;
+                    void run({
+                      action: "setLocalAccountWeight",
+                      id: account.id,
+                      weight: Math.min(99, Math.max(1, weight)),
+                    });
+                  }}
+                />
+              ) : null}
               <View className="flex-row gap-2">
                 <Action
                   label={account.enabled ? t("cliProxy.disable") : t("cliProxy.enable")}
@@ -252,10 +277,16 @@ export function CliProxySettingsSection({
           ))}
           <Field label={t("localAccountPool.strategy")}>
             <View className="flex-row flex-wrap gap-2">
-              {(["round-robin", "fill-first"] as const).map((value) => (
+              {(["round-robin", "fill-first", "weighted-round-robin"] as const).map((value) => (
                 <Action
                   key={value}
-                  label={t(value === "round-robin" ? "cliProxy.roundRobin" : "cliProxy.fillFirst")}
+                  label={t(
+                    value === "round-robin"
+                      ? "cliProxy.roundRobin"
+                      : value === "fill-first"
+                        ? "cliProxy.fillFirst"
+                        : "cliProxy.weightedRoundRobin",
+                  )}
                   selected={localStrategy === value}
                   disabled={disabled}
                   onPress={() => {

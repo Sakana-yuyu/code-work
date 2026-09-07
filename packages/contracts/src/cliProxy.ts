@@ -2,7 +2,12 @@ import * as Schema from "effect/Schema";
 
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
-import { LocalAccountProvider, LocalAccountSummary } from "./localAccount.ts";
+import {
+  LocalAccountPoolStrategy,
+  LocalAccountProvider,
+  LocalAccountSummary,
+  LocalAccountWeight,
+} from "./localAccount.ts";
 
 /** 外部 Agent 使用的本地账号池访问凭据摘要；明文 key 只在创建/轮换结果中返回一次。 */
 export const CliProxyExternalGatewayKey = Schema.Struct({
@@ -33,7 +38,7 @@ export const CliProxyAccount = Schema.Struct({
 export type CliProxyAccount = typeof CliProxyAccount.Type;
 
 export const CliProxyConfig = Schema.Struct({
-  strategy: Schema.Literals(["round-robin", "fill-first"]),
+  strategy: LocalAccountPoolStrategy,
 });
 export type CliProxyConfig = typeof CliProxyConfig.Type;
 
@@ -50,6 +55,8 @@ export const CliProxyAccountUsage = Schema.Struct({
   inputTokens: NonNegativeInt,
   outputTokens: NonNegativeInt,
   lastUsedAt: Schema.NullOr(Schema.String),
+  /** 账号冷却截止（unix ms），仅在冷却仍有效时出现。 */
+  cooldownUntilUnixMs: Schema.optional(NonNegativeInt),
 });
 export type CliProxyAccountUsage = typeof CliProxyAccountUsage.Type;
 
@@ -95,7 +102,12 @@ export const CliProxyRequest = Schema.Union([
   }),
   Schema.Struct({
     action: Schema.Literal("setLocalAccountPoolStrategy"),
-    strategy: Schema.Literals(["round-robin", "fill-first"]),
+    strategy: LocalAccountPoolStrategy,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("setLocalAccountWeight"),
+    id: TrimmedNonEmptyString,
+    weight: LocalAccountWeight,
   }),
   Schema.Struct({
     action: Schema.Literal("publishLocalAccountPool"),
@@ -126,7 +138,7 @@ export const CliProxyResult = Schema.Struct({
   baseUrl: Schema.String,
   accounts: Schema.Array(CliProxyAccount),
   localAccounts: Schema.optional(Schema.Array(LocalAccountSummary)),
-  localStrategy: Schema.optional(Schema.Literals(["round-robin", "fill-first"])),
+  localStrategy: Schema.optional(LocalAccountPoolStrategy),
   externalGateway: Schema.optional(CliProxyExternalGateway),
   connectedInstanceId: Schema.optional(ProviderInstanceId),
   accountUsage: Schema.optional(Schema.Array(CliProxyAccountUsage)),

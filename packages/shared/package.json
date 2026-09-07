@@ -255,6 +255,10 @@
       "types": "./src/byokBalanceMerge.ts",
       "import": "./src/byokBalanceMerge.ts"
     },
+    "./accountQuotaMerge": {
+      "types": "./src/accountQuotaMerge.ts",
+      "import": "./src/accountQuotaMerge.ts"
+    },
     "./claudeCompaction": {
       "types": "./src/claudeCompaction.ts",
       "import": "./src/claudeCompaction.ts"

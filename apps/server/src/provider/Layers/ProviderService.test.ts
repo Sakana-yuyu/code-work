@@ -217,6 +217,7 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
     provider,
     capabilities: {
       sessionModelSwitch: "in-session",
+      ...(provider === CURSOR_DRIVER ? {} : { threadRollback: true }),
     },
     startSession,
     sendTurn,
@@ -930,6 +931,27 @@ it.effect(
 );
 
 routing.layer("ProviderServiceLive routing", (it) => {
+  it.effect("未声明真实回退能力时拒绝回退调用", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const session = yield* provider.startSession(asThreadId("thread-no-rollback"), {
+        provider: CURSOR_DRIVER,
+        providerInstanceId: ProviderInstanceId.make("cursor"),
+        threadId: asThreadId("thread-no-rollback"),
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      const result = yield* provider
+        .rollbackConversation({ threadId: session.threadId, numTurns: 1 })
+        .pipe(Effect.result);
+      assert.equal(result._tag, "Failure");
+      if (result._tag === "Failure") {
+        assert.match(result.failure.message, /不支持.*回退/u);
+      }
+      yield* provider.stopSession({ threadId: session.threadId });
+    }),
+  );
+
   it.effect("routes provider operations and rollback conversation", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;

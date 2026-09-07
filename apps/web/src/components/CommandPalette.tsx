@@ -35,11 +35,13 @@ import {
 import { useNavigate, useParams } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import {
+  ActivityIcon,
   ArrowLeftIcon,
   CornerLeftUpIcon,
   FileSearchIcon,
   FolderIcon,
   FolderPlusIcon,
+  GaugeIcon,
   LinkIcon,
   MessageSquareIcon,
   PaletteIcon,
@@ -1679,6 +1681,41 @@ function OpenCommandPaletteDialog(props: {
     icon: <SettingsIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
       await navigate({ to: "/settings" });
+    },
+  });
+
+  // 账号池与诊断是排障高频入口，命令面板直达，免去先开设置再找侧栏。
+  actionItems.push({
+    kind: "action",
+    value: "action:cli-proxy",
+    searchTerms: ["account", "pool", "proxy", "provider", "账号池", "账号", "代理"],
+    title: t("commandPalette.openCliProxy"),
+    icon: <ServerIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({
+        to: "/settings/cli-proxy",
+        search: { environmentId: undefined, providerInstanceId: undefined },
+      });
+    },
+  });
+  actionItems.push({
+    kind: "action",
+    value: "action:usage",
+    searchTerms: ["usage", "tokens", "cost", "pool usage", "用量", "token", "统计"],
+    title: t("commandPalette.openUsage"),
+    icon: <GaugeIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/usage" });
+    },
+  });
+  actionItems.push({
+    kind: "action",
+    value: "action:diagnostics",
+    searchTerms: ["diagnostics", "traces", "provider events", "诊断", "追踪", "事件"],
+    title: t("commandPalette.openDiagnostics"),
+    icon: <ActivityIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/settings/diagnostics" });
     },
   });
 

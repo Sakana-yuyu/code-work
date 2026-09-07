@@ -388,12 +388,16 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
     ) {
       let assistantText = "";
       let reasoningText = "";
+      // 一次流式请求一个关联 id：随 x-request-id 发给供应商，事件里透出，
+      // 供应商侧日志与本端 provider 事件日志靠它互相对上。
+      const providerRequestId = yield* randomUUIDv4;
       const effectiveMessages = yield* applyVisionDelegation(ctx, adapter, messages);
       const stream = streamChat(httpClient, {
         protocol: adapter.protocol,
         baseURL: adapter.baseURL,
         apiKey: adapter.apiKey,
         modelId: adapter.modelId,
+        requestId: providerRequestId,
         messages: effectiveMessages,
         ...(systemPrompt.trim().length > 0 ? { systemPrompt } : {}),
       });
@@ -422,6 +426,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
                 provider: PROVIDER,
                 threadId: ctx.session.threadId,
                 turnId,
+                providerRefs: { providerRequestId },
                 payload: { streamKind: "reasoning_text", delta: event.text },
               });
               return;
@@ -434,6 +439,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               provider: PROVIDER,
               threadId: ctx.session.threadId,
               turnId,
+              providerRefs: { providerRequestId },
               payload: { streamKind: "assistant_text", delta: event.text },
             });
           }),
@@ -461,6 +467,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           provider: PROVIDER,
           threadId: ctx.session.threadId,
           turnId,
+          providerRefs: { providerRequestId },
           payload: { message: detail, class: "provider_error" },
         });
         yield* emit({
@@ -469,6 +476,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           provider: PROVIDER,
           threadId: ctx.session.threadId,
           turnId,
+          providerRefs: { providerRequestId },
           payload: { state: "failed", errorMessage: detail },
         });
         return;
@@ -486,6 +494,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         provider: PROVIDER,
         threadId: ctx.session.threadId,
         turnId,
+        providerRefs: { providerRequestId },
         payload: { state: "completed" },
       });
     });

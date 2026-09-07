@@ -1737,6 +1737,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
                   "-c",
                   'mcp_servers.code-work.bearer_token_env_var="CODEWORK_MCP_BEARER_TOKEN"',
                 ],
+                indexToolsAvailable: mcpSession.capabilities.includes("index"),
               }
             : {}),
         };
@@ -2051,6 +2052,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
+      threadRollback: true,
     },
     startSession,
     sendTurn,

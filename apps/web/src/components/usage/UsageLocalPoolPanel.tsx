@@ -60,6 +60,24 @@ export function UsageLocalPoolPanel() {
                 {entry.failed > 0 ? (
                   <span className="shrink-0 tabular-nums text-destructive">
                     {t("usage.poolUsage.failed", { countValue: formatCount(entry.failed) })}
+                    {entry.requests > 0
+                      ? " " +
+                        t("usage.poolUsage.failedRatio", {
+                          value: `${((entry.failed / entry.requests) * 100).toFixed(1)}%`,
+                        })
+                      : ""}
+                  </span>
+                ) : null}
+                {entry.cooldownUntilUnixMs !== undefined &&
+                entry.cooldownUntilUnixMs > Date.now() ? (
+                  <span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-600 tabular-nums dark:text-amber-400">
+                    {t("usage.poolUsage.cooldownUntil", {
+                      value: formatDateTimeShort(
+                        new Date(entry.cooldownUntilUnixMs).toISOString(),
+                        undefined,
+                        language,
+                      ),
+                    })}
                   </span>
                 ) : null}
                 <span className="shrink-0 tabular-nums text-muted-foreground">

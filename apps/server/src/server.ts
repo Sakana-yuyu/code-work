@@ -172,6 +172,8 @@ import * as ResourceMonitorBinary from "./resourceTelemetry/ResourceMonitorBinar
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
+import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers/ProjectionSnapshotQuery.ts";
+import * as CodeIndex from "./codeIndex/CodeIndexService.ts";
 import {
   clearPersistedServerRuntimeState,
   makePersistedServerRuntimeState,
@@ -695,7 +697,7 @@ const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(OrchestrationLayerLive),
 );
 
-const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = ReactorLayerLive.pipe(
+const RuntimeCoreDependenciesIndexLive = ReactorLayerLive.pipe(
   // Core Services
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(CheckpointingLayerLive),
@@ -705,6 +707,12 @@ const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ProviderRuntimeLayerLive),
   Layer.provideMerge(Layer.mergeAll(TerminalLayerLive, PreviewLayerLive)),
   Layer.provideMerge(PreviewAutomationBrokerLayerLive),
+  // 代码索引的 WS RPC 与 MCP toolkit 共用同一个 CodeIndexRootMap 实例
+  // （一个 sqlite、一套 watcher）。
+  Layer.provideMerge(CodeIndex.CodeIndexServerLive),
+);
+
+const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = RuntimeCoreDependenciesIndexLive.pipe(
   Layer.provideMerge(CompositionMcpRuntimeServiceLayerLive),
   Layer.provideMerge(
     Layer.mergeAll(
@@ -858,13 +866,14 @@ export const makeRoutesLayer = Layer.mergeAll(
     Layer.provide(ServerSettings.layer),
     Layer.provide(WorkspacePaths.layer),
     Layer.provide(FetchHttpClient.layer),
+    Layer.provide(OrchestrationProjectionSnapshotQueryLive),
   ),
   CompositionRuntimeMcpServer.layer.pipe(
     Layer.provide(CompositionRuntimeMcpSessionRegistryLayerLive),
     Layer.provide(CompositionRuntimeToolBridgeLayerLive),
   ),
 ).pipe(
-  // Both transports consume the same service instance, so caches single-flight across clients
+  // Both transports consume the same instance, so caches single-flight across clients
   // and mutations observed on WebSocket invalidate patches subsequently read over HTTP.
   Layer.provide(PullRequestServiceLive),
   Layer.provide(ServerSelfUpdate.layer),

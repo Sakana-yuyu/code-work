@@ -187,6 +187,10 @@
       "types": "./src/state/threadGoal.ts",
       "default": "./src/state/threadGoal.ts"
     },
+    "./thread-goal-format": {
+      "types": "./src/threadGoalFormat.ts",
+      "default": "./src/threadGoalFormat.ts"
+    },
     "./state/spec-workflow": {
       "types": "./src/state/spec-workflow.ts",
       "default": "./src/state/spec-workflow.ts"

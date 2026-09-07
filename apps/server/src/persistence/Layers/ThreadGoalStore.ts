@@ -133,6 +133,7 @@ export const ThreadGoalStoreLive = Layer.effect(
           token_budget = excluded.token_budget,
           tokens_used = excluded.tokens_used,
           time_used_seconds = excluded.time_used_seconds,
+          created_at_unix_ms = excluded.created_at_unix_ms,
           updated_at_unix_ms = excluded.updated_at_unix_ms,
           active_started_at_unix_ms = excluded.active_started_at_unix_ms,
           revision = excluded.revision
@@ -231,6 +232,18 @@ export const ThreadGoalStoreLive = Layer.effect(
             );
           }
           const row = yield* decodeRow("ThreadGoalStore.setStatus.read", existing.value);
+          if (
+            (input.expectedGoalId !== undefined && input.expectedGoalId !== row.goalId) ||
+            (input.expectedStatus !== undefined && input.expectedStatus !== row.status) ||
+            (input.expectedTokensUsed !== undefined && input.expectedTokensUsed !== row.tokensUsed)
+          ) {
+            return yield* makeDomainError(
+              "stale-version",
+              input.threadId,
+              "Goal 或状态已变化，拒绝旧用量覆盖。",
+              row.goalId,
+            );
+          }
           if (row.status === "complete" && input.status !== "complete") {
             return yield* makeDomainError(
               "invalid-transition",
@@ -239,7 +252,14 @@ export const ThreadGoalStoreLive = Layer.effect(
               row.goalId,
             );
           }
-          if (input.status === "active" && row.status !== "active" && row.status !== "paused") {
+          // usageLimited 是用户可手动恢复的限制态（例如上调预算后继续），
+          // 与 paused 一样允许切回 active。
+          if (
+            input.status === "active" &&
+            row.status !== "active" &&
+            row.status !== "paused" &&
+            row.status !== "usageLimited"
+          ) {
             return yield* makeDomainError(
               "invalid-transition",
               input.threadId,
@@ -260,8 +280,11 @@ export const ThreadGoalStoreLive = Layer.effect(
           }
           const activeStartedAtUnixMs =
             input.status === "active"
-              ? row.status === "active" && row.activeStartedAtUnixMs !== null
-                ? row.activeStartedAtUnixMs
+              ? row.status === "active" &&
+                row.activeStartedAtUnixMs !== null &&
+                input.timeUsedSeconds === undefined
+                ? // 已结算的整秒推进起点，保留不足一秒的余量，避免频繁用量更新漏计。
+                  row.activeStartedAtUnixMs + (timeUsedSeconds - row.timeUsedSeconds) * 1_000
                 : now
               : null;
           const next = {
@@ -306,6 +329,18 @@ export const ThreadGoalStoreLive = Layer.effect(
               return yield* makeDomainError("goal-not-found", threadId, "线程没有可清除的 Goal。");
             }
             const decoded = yield* decodeRow("ThreadGoalStore.clear.decode", row.value);
+            if (
+              typeof input !== "string" &&
+              input.expectedGoalId !== undefined &&
+              input.expectedGoalId !== decoded.goalId
+            ) {
+              return yield* makeDomainError(
+                "stale-version",
+                threadId,
+                "Goal 已替换，拒绝清除新的目标。",
+                decoded.goalId,
+              );
+            }
             yield* query("ThreadGoalStore.clear.delete", deleteRow({ threadId }));
             return {
               type: "cleared" as const,

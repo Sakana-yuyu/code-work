@@ -78,6 +78,13 @@ synchronization.
 3. [`CheckpointReactor`][checkpoint] captures workspace checkpoints on turn start and completion, and
    performs reverts.
 
+Conversation rollback is fail-closed: an adapter must declare `threadRollback: true` only when it
+restores the provider's real conversation context. Codex is currently the only built-in adapter that
+does so. Before changing files, `CheckpointReactor` excludes active work in the same Git worktree and
+captures a recovery checkpoint plus the original Git index. Provider rollback and the local history
+commit cannot form one transaction, so failures keep the recovery references and require the caller
+to verify provider context before retrying.
+
 ### Buffered assistant delivery
 
 A thread in `buffered` assistant delivery mode accumulates assistant text instead of streaming each

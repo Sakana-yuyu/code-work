@@ -23,12 +23,14 @@ import {
 } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { it as effectIt } from "@effect/vitest";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -41,6 +43,8 @@ import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Lay
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
 import { ThreadGoalStoreLive } from "../../persistence/Layers/ThreadGoalStore.ts";
 import { ThreadGoalStore } from "../../persistence/Services/ThreadGoalStore.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
+import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import {
   ProviderService,
   type ProviderServiceShape,
@@ -66,11 +70,13 @@ import * as Clock from "effect/Clock";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as GitWorkflowService from "../../git/GitWorkflowService.ts";
+import * as WorkspaceOperationLock from "../WorkspaceOperationLock.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asApprovalRequestId = (value: string): ApprovalRequestId => ApprovalRequestId.make(value);
 const asMessageId = (value: string): MessageId => MessageId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
+const isWorkspaceBusyError = Schema.is(WorkspaceOperationLock.WorkspaceBusyError);
 
 const deriveServerPathsSync = (baseDir: string, devUrl: URL | undefined) =>
   Effect.runSync(deriveServerPaths(baseDir, devUrl).pipe(Effect.provide(NodeServices.layer)));
@@ -96,7 +102,12 @@ async function waitFor(
 
 describe("ProviderCommandReactor", () => {
   let runtime: ManagedRuntime.ManagedRuntime<
-    OrchestrationEngineService | ProviderCommandReactor | ProjectionSnapshotQuery | ThreadGoalStore,
+    | OrchestrationEngineService
+    | ProviderCommandReactor
+    | ProjectionSnapshotQuery
+    | ThreadGoalStore
+    | ProjectionTurnRepository
+    | WorkspaceOperationLock.WorkspaceOperationLock,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -159,6 +170,7 @@ describe("ProviderCommandReactor", () => {
     >;
     readonly interruptTurnEffect?: () => Effect.Effect<void, ProviderAdapterRequestError>;
     readonly stopSessionEffect?: () => Effect.Effect<void, ProviderAdapterRequestError>;
+    readonly turnStartEventGate?: Effect.Effect<void>;
     readonly startSessionEffect?: (
       session: ProviderSession,
     ) => Effect.Effect<ProviderSession, ProviderAdapterRequestError>;
@@ -406,7 +418,13 @@ describe("ProviderCommandReactor", () => {
             return engine.dispatch(command);
           },
           get streamDomainEvents() {
-            return engine.streamDomainEvents;
+            return engine.streamDomainEvents.pipe(
+              Stream.tap((event) =>
+                event.type === "thread.turn-start-requested"
+                  ? (input?.turnStartEventGate ?? Effect.void)
+                  : Effect.void,
+              ),
+            );
           },
           latestSequence: engine.latestSequence,
         } satisfies OrchestrationEngineService["Service"];
@@ -414,7 +432,9 @@ describe("ProviderCommandReactor", () => {
     ).pipe(Layer.provide(orchestrationLayer));
     const layer = ProviderCommandReactorLive.pipe(
       Layer.provideMerge(reactorOrchestrationLayer),
+      Layer.provideMerge(WorkspaceOperationLock.layer),
       Layer.provideMerge(projectionSnapshotLayer),
+      Layer.provideMerge(ProjectionTurnRepositoryLive.pipe(Layer.provide(SqlitePersistenceMemory))),
       Layer.provideMerge(
         ThreadGoalStoreLive.pipe(
           Layer.provideMerge(SqlitePersistenceMemory),
@@ -455,6 +475,10 @@ describe("ProviderCommandReactor", () => {
     const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
     const reactor = await runtime.runPromise(Effect.service(ProviderCommandReactor));
     const goalStore = await runtime.runPromise(Effect.service(ThreadGoalStore));
+    const turns = await runtime.runPromise(Effect.service(ProjectionTurnRepository));
+    const workspaceLock = await runtime.runPromise(
+      Effect.service(WorkspaceOperationLock.WorkspaceOperationLock),
+    );
     const runEffect = <A, E>(effect: Effect.Effect<A, E>) => runtime!.runPromise(effect);
 
     await Effect.runPromise(
@@ -539,10 +563,13 @@ describe("ProviderCommandReactor", () => {
       generateBranchName,
       generateThreadTitle,
       runtimeSessions,
+      providerService: service,
       stateDir,
       drain,
       runEffect,
       goalStore,
+      turns,
+      workspaceLock,
       get titleRegenerationCompletionDispatchAttempts() {
         return titleRegenerationCompletionDispatchAttempts;
       },
@@ -588,6 +615,286 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.status).toBe("starting");
     expect(thread?.session?.runtimeMode).toBe("approval-required");
   });
+
+  for (const status of ["usageLimited", "budgetLimited"] as const) {
+    effectIt.effect(`Goal ${status} 时拒绝继续发送且保留到限状态`, () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() => createHarness());
+        const threadId = ThreadId.make("thread-1");
+        yield* harness.engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make(`ready-${status}`),
+          threadId,
+          session: {
+            threadId,
+            status: "ready",
+            providerName: "codex",
+            runtimeMode: "approval-required",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          },
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+        yield* harness.goalStore.set({ threadId, objective: "有限预算执行", tokenBudget: 100 });
+        yield* harness.goalStore.setStatus({ threadId, status, tokensUsed: 100 });
+        yield* harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.make(`start-${status}`),
+          threadId,
+          message: {
+            messageId: asMessageId(`message-${status}`),
+            role: "user",
+            text: "continue",
+            attachments: [],
+          },
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+        yield* Effect.promise(harness.drain);
+        const goal = yield* harness.goalStore.get(threadId);
+        expect(Option.isSome(goal) && goal.value.status).toBe(status);
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        const thread = (yield* Effect.promise(harness.readModel)).threads.find(
+          (entry) => entry.id === threadId,
+        );
+        expect(thread?.session?.status).toBe("ready");
+        expect(
+          thread?.activities.some((activity) => activity.kind === "provider.turn.start.failed"),
+        ).toBe(true);
+      }),
+    );
+  }
+
+  effectIt.effect("已接受的排队消息遇到短暂回退占用后仍只发送一次", () =>
+    Effect.gen(function* () {
+      const eventGate = yield* Deferred.make<void>();
+      const attempted = yield* Deferred.make<void>();
+      const sent = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          turnStartEventGate: Deferred.await(eventGate),
+          sendTurnEffect: () =>
+            Deferred.succeed(sent, undefined).pipe(
+              Effect.as({ threadId: ThreadId.make("thread-1"), turnId: asTurnId("queued-turn") }),
+            ),
+        }),
+      );
+      yield* harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("accepted-before-revert"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("accepted-message"),
+          role: "user",
+          text: "already accepted",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      const originalWithLock = harness.workspaceLock.withLock;
+      vi.spyOn(harness.workspaceLock, "withLock").mockImplementation(
+        <A, E, R>(cwd: string, effect: Effect.Effect<A, E, R>) =>
+          originalWithLock(cwd, effect).pipe(
+            Effect.tapError((error) =>
+              isWorkspaceBusyError(error) ? Deferred.succeed(attempted, undefined) : Effect.void,
+            ),
+          ),
+      );
+      yield* harness.workspaceLock.withRevertLock(
+        "/tmp/provider-project",
+        Effect.gen(function* () {
+          yield* Deferred.succeed(eventGate, undefined);
+          yield* Deferred.await(attempted);
+          expect(harness.sendTurn).not.toHaveBeenCalled();
+        }),
+      );
+      yield* Deferred.await(sent);
+      yield* Effect.promise(harness.drain);
+      expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+    }),
+  );
+
+  for (const rejectAdditionalSessionQuery of [false, true]) {
+    effectIt.effect(
+      `会话启动期间预算耗尽时结束待发送状态${rejectAdditionalSessionQuery ? "（不重复查询服务商状态）" : ""}`,
+      () =>
+        Effect.gen(function* () {
+          const entered = yield* Deferred.make<void>();
+          const release = yield* Deferred.make<void>();
+          const harness = yield* Effect.promise(() =>
+            createHarness({
+              startSessionEffect: (session) =>
+                Deferred.succeed(entered, undefined).pipe(
+                  Effect.andThen(Deferred.await(release)),
+                  Effect.as(session),
+                ),
+            }),
+          );
+          const threadId = ThreadId.make("thread-1");
+          yield* harness.goalStore.set({ threadId, objective: "启动期间到限", tokenBudget: 100 });
+          const failure = yield* harness.engine.streamDomainEvents.pipe(
+            Stream.filter(
+              (event) =>
+                event.type === "thread.activity-appended" &&
+                event.payload.activity.kind === "provider.turn.start.failed",
+            ),
+            Stream.runHead,
+            Effect.forkChild({ startImmediately: true }),
+          );
+          yield* harness.engine.dispatch({
+            type: "thread.turn.start",
+            commandId: CommandId.make("budget-during-start"),
+            threadId,
+            message: {
+              messageId: asMessageId("budget-during-start"),
+              role: "user",
+              text: "continue",
+              attachments: [],
+            },
+            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+            runtimeMode: "approval-required",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          });
+          yield* Deferred.await(entered);
+          if (rejectAdditionalSessionQuery) {
+            const listSessions = harness.providerService.listSessions;
+            vi.spyOn(harness.providerService, "listSessions")
+              .mockReturnValue(Effect.die(new Error("预算拒绝不应再次查询服务商会话")))
+              .mockImplementationOnce(listSessions);
+          }
+          yield* harness.goalStore.setStatus({ threadId, status: "usageLimited", tokensUsed: 100 });
+          yield* Deferred.succeed(release, undefined);
+          yield* Fiber.join(failure);
+          const thread = (yield* Effect.promise(harness.readModel)).threads.find(
+            (entry) => entry.id === threadId,
+          )!;
+          expect(harness.sendTurn).not.toHaveBeenCalled();
+          expect(thread.session?.status).toBe("ready");
+          const goal = yield* harness.goalStore.get(threadId);
+          expect(Option.isSome(goal) && goal.value.status).toBe("usageLimited");
+          expect(
+            Option.isNone(yield* harness.turns.getPendingTurnStartByThreadId({ threadId })),
+          ).toBe(true);
+        }),
+    );
+  }
+
+  effectIt.effect("实际发送前遇到回退占用时保留请求且不重复准备会话", () =>
+    Effect.gen(function* () {
+      const sending = yield* Deferred.make<void>();
+      const releaseSend = yield* Deferred.make<void>();
+      const attempted = yield* Deferred.make<void>();
+      const sent = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          sendTurnEffect: () =>
+            Deferred.succeed(sent, undefined).pipe(
+              Effect.as({ threadId: ThreadId.make("thread-1"), turnId: asTurnId("delayed-send") }),
+            ),
+        }),
+      );
+      const original = harness.workspaceLock.withLock;
+      let attempts = 0;
+      vi.spyOn(harness.workspaceLock, "withLock").mockImplementation(
+        <A, E, R>(cwd: string, effect: Effect.Effect<A, E, R>) => {
+          attempts++;
+          const gate =
+            attempts === 3
+              ? Deferred.succeed(sending, undefined).pipe(
+                  Effect.andThen(Deferred.await(releaseSend)),
+                )
+              : Effect.void;
+          return gate.pipe(
+            Effect.andThen(original(cwd, effect)),
+            Effect.tapError((error) =>
+              isWorkspaceBusyError(error) ? Deferred.succeed(attempted, undefined) : Effect.void,
+            ),
+          );
+        },
+      );
+      yield* harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("delayed-send"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("delayed-send"),
+          role: "user",
+          text: "continue",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Deferred.await(sending);
+      yield* Effect.promise(harness.drain);
+      yield* harness.workspaceLock.withRevertLock(
+        "/tmp/provider-project",
+        Effect.gen(function* () {
+          yield* Deferred.succeed(releaseSend, undefined);
+          yield* Deferred.await(attempted);
+          expect(harness.sendTurn).not.toHaveBeenCalled();
+        }),
+      );
+      yield* Deferred.await(sent);
+      expect(harness.startSession).toHaveBeenCalledTimes(1);
+      expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+    }),
+  );
+
+  effectIt.effect("长时间发送期间仍接受追加输入和中断", () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const steered = yield* Deferred.make<void>();
+      const interrupted = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      let sendCount = 0;
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          sendTurnEffect: () =>
+            Effect.gen(function* () {
+              sendCount++;
+              if (sendCount === 1) {
+                yield* Deferred.succeed(entered, undefined);
+                yield* Deferred.await(release);
+              } else {
+                yield* Deferred.succeed(steered, undefined);
+              }
+              return { threadId: ThreadId.make("thread-1"), turnId: asTurnId("long-turn") };
+            }),
+          interruptTurnEffect: () => Deferred.succeed(interrupted, undefined).pipe(Effect.asVoid),
+        }),
+      );
+      const send = (id: string) =>
+        harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.make(id),
+          threadId: ThreadId.make("thread-1"),
+          message: { messageId: asMessageId(id), role: "user", text: id, attachments: [] },
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+      yield* send("long-first");
+      yield* Deferred.await(entered);
+      yield* Effect.gen(function* () {
+        yield* send("long-steer");
+        yield* Deferred.await(steered);
+        yield* harness.engine.dispatch({
+          type: "thread.turn.interrupt",
+          commandId: CommandId.make("long-interrupt"),
+          threadId: ThreadId.make("thread-1"),
+          createdAt: "2026-01-01T00:00:01.000Z",
+        });
+        yield* Deferred.await(interrupted);
+        expect(sendCount).toBe(2);
+      }).pipe(Effect.ensuring(Deferred.succeed(release, undefined)));
+    }),
+  );
 
   it("injects the active thread Goal into the provider request without changing history", async () => {
     const harness = await createHarness();
@@ -639,14 +946,20 @@ describe("ProviderCommandReactor", () => {
     ).toBe(false);
   });
 
-  it("有活动 Goal 时仍将 Codex review 原样发送", async () => {
-    const harness = await createHarness();
-    const threadId = ThreadId.make("thread-1");
-    await harness.runEffect(
-      harness.goalStore.set({ threadId, objective: "完成开发", tokenBudget: null }),
-    );
-    await harness.runEffect(
-      harness.engine.dispatch({
+  effectIt.effect("有活动 Goal 时仍将 Codex review 原样发送", () =>
+    Effect.gen(function* () {
+      const sent = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          sendTurnEffect: () =>
+            Deferred.succeed(sent, undefined).pipe(
+              Effect.as({ threadId: ThreadId.make("thread-1"), turnId: asTurnId("review-turn") }),
+            ),
+        }),
+      );
+      const threadId = ThreadId.make("thread-1");
+      yield* harness.goalStore.set({ threadId, objective: "完成开发", tokenBudget: null });
+      yield* harness.engine.dispatch({
         type: "thread.turn.start",
         commandId: CommandId.make("cmd-review-goal"),
         threadId,
@@ -659,11 +972,12 @@ describe("ProviderCommandReactor", () => {
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
         createdAt: "2026-01-01T00:00:00.000Z",
-      }),
-    );
-    await harness.drain();
-    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({ input: "/review" });
-  });
+      });
+      yield* Effect.promise(harness.drain);
+      yield* Deferred.await(sent);
+      expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({ input: "/review" });
+    }),
+  );
 
   it("pauses a Goal when provider turn start fails after Goal activation", async () => {
     const harness = await createHarness({

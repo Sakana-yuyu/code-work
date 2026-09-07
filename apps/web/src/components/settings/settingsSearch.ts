@@ -305,6 +305,24 @@ export const SETTINGS_SEARCH_ITEMS = [
     targetId: "browser",
   },
   {
+    id: "code-index",
+    title: "codeIndex.title",
+    to: "/settings/integrations",
+    targetId: "code-index",
+    keywords: [
+      "index",
+      "code index",
+      "symbol",
+      "symbols",
+      "declaration",
+      "索引",
+      "代码索引",
+      "符号",
+      "声明",
+      "检索",
+    ],
+  },
+  {
     id: "browser-default-viewport",
     title: "settings.defaultBrowserViewport",
     to: "/settings/integrations",
@@ -356,6 +374,21 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "archive",
     title: "archivedThreads",
     to: "/settings/archived",
+  },
+  {
+    id: "supplier-registry",
+    title: "supplierRegistry.title",
+    to: "/settings/integrations",
+    keywords: [
+      "supplier",
+      "registry",
+      "provider instance",
+      "agent profile",
+      "supplier",
+      "注册表",
+      "实例",
+      "档案",
+    ],
   },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
 

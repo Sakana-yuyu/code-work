@@ -46,7 +46,9 @@ export interface ServerDerivedPaths {
   readonly environmentIdPath: string;
   readonly serverRuntimeStatePath: string;
   readonly localPoolUsagePath: string;
+  readonly accountQuotaPath: string;
   readonly secretsDir: string;
+  readonly codeIndexDir: string;
 }
 
 export interface DeriveServerPathsOptions {
@@ -133,7 +135,9 @@ export const deriveServerPaths = Effect.fn(function* (
     environmentIdPath: join(stateDir, "environment-id"),
     serverRuntimeStatePath: join(stateDir, "server-runtime.json"),
     localPoolUsagePath: join(stateDir, "local-pool-usage.json"),
+    accountQuotaPath: join(stateDir, "account-quota.json"),
     secretsDir: join(stateDir, "secrets"),
+    codeIndexDir: join(stateDir, "index"),
   };
 });
 
@@ -152,6 +156,7 @@ export const ensureServerDirectories = Effect.fn(function* (derivedPaths: Server
       fs.makeDirectory(path.dirname(derivedPaths.keybindingsConfigPath), { recursive: true }),
       fs.makeDirectory(path.dirname(derivedPaths.settingsPath), { recursive: true }),
       fs.makeDirectory(derivedPaths.providerStatusCacheDir, { recursive: true }),
+      fs.makeDirectory(derivedPaths.codeIndexDir, { recursive: true }),
       fs.makeDirectory(path.dirname(derivedPaths.anonymousIdPath), { recursive: true }),
       fs.makeDirectory(path.dirname(derivedPaths.serverRuntimeStatePath), { recursive: true }),
     ],

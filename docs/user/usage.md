@@ -104,7 +104,11 @@ Above the provider breakdown, the page keeps a rolling year of activity:
 
 ## Personal plan
 
-The **Personal plan** tab has two sections:
+The **Personal plan** tab leads with **Subscription quota**: the official 5-hour and 7-day rolling
+windows that Codex and Claude Code report for your signed-in subscriptions, with usage bars, reset
+times, and the plan name. The providers publish these windows themselves while threads run, so the
+section appears after the first turn on a subscription account — no credentials are read and no
+billing API is called. The same section is available on the mobile usage screen. Below it:
 
 - **Subscriptions** gives Claude Code, Codex, and Grok Build one card each with lifetime tokens,
   sessions, active days, and streaks, derived from the same transcript scan as the app-usage tab.

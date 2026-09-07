@@ -3,7 +3,7 @@ import type { UsageProviderKind } from "@codework/contracts";
 import { ClaudeAI, GrokIcon, type Icon, OpenAI } from "../Icons";
 import { t } from "~/i18n/runtime";
 
-type UsageProviderPresentation = {
+export type UsageProviderPresentation = {
   readonly label: string;
   readonly color: string;
   readonly mark: Icon;

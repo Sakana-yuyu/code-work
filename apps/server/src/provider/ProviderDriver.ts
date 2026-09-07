@@ -89,6 +89,8 @@ export interface ProviderInstance {
       readonly signal?: AbortSignal | undefined;
     }) => Effect.Effect<ByokAgentModelDriver, CompositionAgentServiceError>;
     readonly defaultModelId?: string | undefined;
+    /** 与 defaultModelId 配对的展示名；注册表等只读界面优先显示它。 */
+    readonly defaultModelName?: string | undefined;
   };
 }
 

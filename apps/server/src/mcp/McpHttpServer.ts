@@ -17,6 +17,8 @@ import { CanvasToolkit } from "./toolkits/canvas/tools.ts";
 import { CanvasToolkitHandlersLive } from "./toolkits/canvas/handlers.ts";
 import { ImagegenToolkit } from "./toolkits/imagegen/tools.ts";
 import { ImagegenToolkitHandlersLive } from "./toolkits/imagegen/handlers.ts";
+import { IndexToolkit } from "./toolkits/index/tools.ts";
+import { IndexToolkitHandlersLive } from "./toolkits/index/handlers.ts";
 import {
   PreviewSnapshotToolkitHandlersLive,
   PreviewStandardToolkitHandlersLive,
@@ -228,6 +230,10 @@ export const ImagegenToolkitRegistrationLive = McpServer.toolkit(ImagegenToolkit
   Layer.provide(ImagegenToolkitHandlersLive),
 );
 
+export const IndexToolkitRegistrationLive = McpServer.toolkit(IndexToolkit).pipe(
+  Layer.provide(IndexToolkitHandlersLive),
+);
+
 const McpTransportLive = McpServer.layerHttp({
   name: "Code Work",
   version: packageJson.version,
@@ -239,4 +245,5 @@ export const layer = Layer.mergeAll(
   PreviewToolkitRegistrationLive,
   CanvasToolkitRegistrationLive,
   ImagegenToolkitRegistrationLive,
+  IndexToolkitRegistrationLive,
 ).pipe(Layer.provideMerge(McpTransportLive));

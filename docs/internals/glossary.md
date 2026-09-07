@@ -11,6 +11,7 @@ This is a living glossary for Code Work. It explains what common terms mean in t
 - [Orchestration](#orchestration)
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
+- [Code index](#code-index)
 
 ## Concepts
 
@@ -155,6 +156,14 @@ One model credential (protocol, base URL, stored key, model id) under a BYOK ins
 #### Gateway token
 
 The bearer token the gateway expects from harnesses, generated into the server secret store and delivered only through child-process environment variables.
+
+### Code index
+
+A per-workspace declaration index agents query through the `code-work` MCP tools (`index_search`, `index_file_symbols`). It is a disposable cache in its own sqlite file under the state dir — never event-sourced state, never file contents. The engine is the pure `extractSymbols` function, so a future tree-sitter engine replaces one module. See [code-index.md](./code-index.md); user-facing behavior in [../user/code-index.md](../user/code-index.md).
+
+#### rootKey
+
+The workspace root path an index row belongs to. Every `files`/`symbols` row and every `CodeIndexRoot` resource is keyed by it, so one store serves all projects without cross-project leaks.
 
 ## Practical Shortcuts
 

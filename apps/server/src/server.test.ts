@@ -104,6 +104,10 @@ const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function
 
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
+import * as CodeIndex from "./codeIndex/CodeIndexService.ts";
+import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers/ProjectionSnapshotQuery.ts";
+import * as ThreadBackgroundLiveness from "./orchestration/ThreadBackgroundLiveness.ts";
+import * as ThreadPlanProgress from "./orchestration/ThreadPlanProgress.ts";
 import { makeRoutesLayer } from "./server.ts";
 import {
   isThreadDetailEvent,
@@ -1027,6 +1031,26 @@ const buildAppUnderTest = (options?: {
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provideMerge(persistenceLayer),
       Layer.provide(layerConfig),
+      // 代码索引：store 需要派生路径配置，RootMap 需要真实 FileSystem。
+      Layer.provide(
+        CodeIndex.CodeIndexServerLive.pipe(
+          Layer.provide(layerConfig),
+          Layer.provide(NodeServices.layer),
+        ),
+      ),
+      Layer.provide(
+        OrchestrationProjectionSnapshotQueryLive.pipe(
+          Layer.provideMerge(persistenceLayer),
+          Layer.provideMerge(ThreadBackgroundLiveness.layer),
+          Layer.provideMerge(ThreadPlanProgress.layer),
+          Layer.provide(
+            Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({
+              resolve: () => Effect.succeed(null),
+              ...options?.layers?.repositoryIdentityResolver,
+            }),
+          ),
+        ),
+      ),
     );
 
     yield* Layer.build(appLayer);

@@ -1,10 +1,17 @@
+// @effect-diagnostics globalDate:off - 冷却断言对照墙上时间。
 import { describe, expect, it } from "vite-plus/test";
 import { ProviderDriverKind, ProviderInstanceId, type ServerSettings } from "@codework/contracts";
+import {
+  createLocalPoolUsageStore,
+  localPoolUsageStore,
+  parseLocalPoolUsageState,
+} from "./LocalPoolUsage.ts";
 import {
   credentialAuthKind,
   credentialToken,
   cursorCredentialEnvironment,
   localGatewayAdapters,
+  markLocalAccountFailure,
   parseLocalCredential,
   pickLocalAccount,
   refreshLocalPoolInstanceAdapters,
@@ -120,6 +127,38 @@ describe("LocalAccountPool", () => {
     const value = settings("round-robin");
     expect(pickLocalAccount(value, "codex")?.id).toBe("a");
     expect(pickLocalAccount(value, "codex")?.id).toBe("b");
+  });
+  it("weighted-round-robin 按权重比例分配调用", () => {
+    const base = settings("round-robin");
+    const poolAccounts = (
+      base.localAccountPool as { accounts: Record<string, Record<string, unknown>> }
+    ).accounts;
+    const weighted = {
+      ...base,
+      localAccountPool: {
+        ...(base.localAccountPool as Record<string, unknown>),
+        strategy: "weighted-round-robin",
+        accounts: { ...poolAccounts, a: { ...poolAccounts.a, weight: 3 } },
+      },
+    } as unknown as ServerSettings;
+    const picks = Array.from({ length: 4 }, () => pickLocalAccount(weighted, "codex")?.id);
+    expect(picks.filter((picked) => picked === "a")).toHaveLength(3);
+    expect(picks.filter((picked) => picked === "b")).toHaveLength(1);
+  });
+  it("钳制损坏配置中的超大权重", () => {
+    const base = settings("round-robin");
+    const poolAccounts = (
+      base.localAccountPool as { accounts: Record<string, Record<string, unknown>> }
+    ).accounts;
+    const weighted = {
+      ...base,
+      localAccountPool: {
+        ...(base.localAccountPool as Record<string, unknown>),
+        strategy: "weighted-round-robin",
+        accounts: { ...poolAccounts, a: { ...poolAccounts.a, weight: Number.MAX_SAFE_INTEGER } },
+      },
+    } as unknown as ServerSettings;
+    expect(pickLocalAccount(weighted, "codex")?.id).toBe("a");
   });
   it("supports scoped account ids", () => {
     expect(pickLocalAccount(settings("fill-first"), "codex", ["b"])?.id).toBe("b");
@@ -267,5 +306,23 @@ describe("LocalAccountPool", () => {
       },
     } as unknown as ServerSettings;
     expect(refreshLocalPoolInstanceAdapters(value)).toBeUndefined();
+  });
+  it("markLocalAccountFailure 冷却被选账号，冷却随快照跨重启保留", () => {
+    const value = settings("round-robin");
+    try {
+      markLocalAccountFailure("a", 429);
+      expect(localPoolUsageStore.cooldownUntilUnixMs("a")).toBeGreaterThan(Date.now());
+      expect(pickLocalAccount(value, "codex")?.id).toBe("b");
+      expect(pickLocalAccount(value, "codex")?.id).toBe("b");
+      // 模拟重启：脏快照落盘 → 新存储水合 → 冷却仍然有效。
+      const snapshot = localPoolUsageStore.takeDirtySnapshot();
+      const restored = createLocalPoolUsageStore();
+      restored.hydrate(parseLocalPoolUsageState(JSON.stringify(snapshot))!);
+      expect(restored.cooldownUntilUnixMs("a")).toBeGreaterThan(Date.now());
+    } finally {
+      localPoolUsageStore.setCooldown("a", null);
+    }
+    expect(localPoolUsageStore.cooldownUntilUnixMs("a") ?? 0).toBeLessThanOrEqual(Date.now());
+    expect(pickLocalAccount(value, "codex")?.id).toBe("a");
   });
 });

@@ -3,6 +3,10 @@ import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { CliProxyError, CliProxyRequest, CliProxyResult } from "./cliProxy.ts";
 
+import { ProviderEventQueryInput, ProviderEventQueryResult } from "./providerEventQuery.ts";
+import { AccountQuotaRequest, AccountQuotaResult } from "./accountQuota.ts";
+import { CodeIndexStatusInput, CodeIndexStatusResult } from "./codeIndex.ts";
+
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
   AuthAccessStreamError,
@@ -509,6 +513,8 @@ export const WS_METHODS = {
   serverSupplierUpdateCredential: "server.supplierUpdateCredential",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
+  serverQueryProviderEvents: "server.queryProviderEvents",
+  serverCodeIndexStatus: "server.codeIndexStatus",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverGetResourceTelemetryHistory: "server.getResourceTelemetryHistory",
@@ -518,6 +524,7 @@ export const WS_METHODS = {
   serverReportHostPowerState: "server.reportHostPowerState",
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
+  serverGetAccountQuota: "server.getAccountQuota",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -1161,6 +1168,18 @@ export const WsServerGetTraceDiagnosticsRpc = Rpc.make(WS_METHODS.serverGetTrace
   error: EnvironmentAuthorizationError,
 });
 
+export const WsServerQueryProviderEventsRpc = Rpc.make(WS_METHODS.serverQueryProviderEvents, {
+  payload: ProviderEventQueryInput,
+  success: ProviderEventQueryResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerCodeIndexStatusRpc = Rpc.make(WS_METHODS.serverCodeIndexStatus, {
+  payload: CodeIndexStatusInput,
+  success: CodeIndexStatusResult,
+  error: EnvironmentAuthorizationError,
+});
+
 export const WsServerGetProcessDiagnosticsRpc = Rpc.make(WS_METHODS.serverGetProcessDiagnostics, {
   payload: Schema.Struct({}),
   success: ServerProcessDiagnosticsResult,
@@ -1195,6 +1214,12 @@ export const WsServerGetUsageSummaryRpc = Rpc.make(WS_METHODS.serverGetUsageSumm
   payload: UsageSummaryInput,
   success: UsageSummary,
   error: Schema.Union([EnvironmentAuthorizationError, UsageReadError]),
+});
+
+export const WsServerGetAccountQuotaRpc = Rpc.make(WS_METHODS.serverGetAccountQuota, {
+  payload: AccountQuotaRequest,
+  success: AccountQuotaResult,
+  error: EnvironmentAuthorizationError,
 });
 
 export const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess, {
@@ -1972,11 +1997,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerSupplierUpdateCredentialRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerGetTraceDiagnosticsRpc,
+  WsServerQueryProviderEventsRpc,
+  WsServerCodeIndexStatusRpc,
   WsServerGetProcessDiagnosticsRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerGetResourceTelemetryHistoryRpc,
   WsServerRetryResourceTelemetryRpc,
   WsServerGetUsageSummaryRpc,
+  WsServerGetAccountQuotaRpc,
   WsServerSignalProcessRpc,
   WsServerReportClientActivityRpc,
   WsServerReportHostPowerStateRpc,

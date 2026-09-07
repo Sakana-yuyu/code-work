@@ -13,6 +13,7 @@ import {
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useMemo, useState } from "react";
 import type {
+  ByokBalanceAdapterHealth,
   ByokContextWindowMatchResult,
   ByokDiscoveredModel,
   ByokDraftModelDiscoveryResult,
@@ -47,6 +48,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { t } from "~/i18n";
 import { byokEnvironment } from "../../state/server";
+import { useByokBalanceDashboards } from "../../state/byokBalance";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { useAtomCommand } from "../../state/use-atom-command";
 
@@ -167,6 +169,14 @@ const PROTOCOL_LABEL_KEYS: Readonly<Record<ByokModelAdapter["protocol"], string>
   openai: "byokAdapters.protocolOpenai",
   anthropic: "byokAdapters.protocolAnthropic",
   gemini: "byokAdapters.protocolGemini",
+};
+
+/** 余额健康四态 → i18n（与用量页余额仪表盘共用同一组 key）。 */
+const HEALTH_LABEL_KEYS: Readonly<Record<ByokBalanceAdapterHealth, string>> = {
+  ok: "byokBalance.health.ok",
+  empty: "byokBalance.health.empty",
+  unsupported: "byokBalance.health.unsupported",
+  error: "byokBalance.health.error",
 };
 
 type BalanceProfile = NonNullable<ByokModelAdapter["balanceProfile"]>;
@@ -586,6 +596,16 @@ export function ByokModelAdaptersSection({
     [draftDiscovery?.models, draftModelPickerSearch],
   );
   const adapterGroups = useMemo(() => groupByokModelAdapters(adapters), [adapters]);
+  // 余额健康（ok/empty/unsupported/error 四态）按「接口+适配器」对上卡片，
+  // 与用量页余额仪表盘同源；没有上报时卡片保持无徽章。
+  const byokBalance = useByokBalanceDashboards();
+  const healthByRelay = useMemo(() => {
+    const map = new Map<string, ByokBalanceAdapterHealth>();
+    for (const entry of byokBalance.merged.adapters) {
+      map.set(`${entry.adapterId}\u0000${entry.baseURL}`, entry.health);
+    }
+    return map;
+  }, [byokBalance.merged.adapters]);
   const selectedRelay = useMemo(() => {
     if (relayDetailsTarget === null) return null;
     return (
@@ -1672,6 +1692,29 @@ export function ByokModelAdaptersSection({
                   <Badge variant="outline" size="sm" className="shrink-0">
                     {t(PROTOCOL_LABEL_KEYS[relay.protocol])}
                   </Badge>
+                  {(() => {
+                    const health = healthByRelay.get(
+                      `${connectionAdapter.id}\u0000${relay.baseURL}`,
+                    );
+                    if (health === undefined) return null;
+                    return (
+                      <span className="flex shrink-0 items-center gap-1">
+                        <span
+                          className={cn(
+                            "size-1.5 rounded-full",
+                            health === "ok"
+                              ? "bg-emerald-500"
+                              : health === "error"
+                                ? "bg-red-500"
+                                : health === "empty"
+                                  ? "bg-amber-500"
+                                  : "bg-muted-foreground/50",
+                          )}
+                        />
+                        {t(HEALTH_LABEL_KEYS[health])}
+                      </span>
+                    );
+                  })()}
                   <span>
                     {connectionAdapter.apiKeyRedacted
                       ? t("byokAdapters.apiKeyStoredShort")
@@ -1716,6 +1759,29 @@ export function ByokModelAdaptersSection({
                 <Badge variant="outline" size="sm">
                   {t(PROTOCOL_LABEL_KEYS[selectedRelay.protocol])}
                 </Badge>
+                {(() => {
+                  const health = healthByRelay.get(
+                    `${selectedRelayAdapter.id}\u0000${selectedRelay.baseURL}`,
+                  );
+                  if (health === undefined) return null;
+                  return (
+                    <span className="flex shrink-0 items-center gap-1">
+                      <span
+                        className={cn(
+                          "size-1.5 rounded-full",
+                          health === "ok"
+                            ? "bg-emerald-500"
+                            : health === "error"
+                              ? "bg-red-500"
+                              : health === "empty"
+                                ? "bg-amber-500"
+                                : "bg-muted-foreground/50",
+                        )}
+                      />
+                      {t(HEALTH_LABEL_KEYS[health])}
+                    </span>
+                  );
+                })()}
                 <span>
                   {selectedRelayAdapter.apiKeyRedacted
                     ? t("byokAdapters.apiKeyStoredShort")
@@ -1839,7 +1905,8 @@ export function ByokModelAdaptersSection({
                               variant="ghost-muted"
                               onClick={() => {
                                 setRelayDetailsTarget(null);
-                                editing === adapter.id ? closeForm() : openEdit(adapter);
+                                if (editing === adapter.id) closeForm();
+                                else openEdit(adapter);
                               }}
                               aria-label={`${t("byokAdapters.editAdapter")}: ${adapter.displayName}`}
                             >

@@ -47,6 +47,9 @@ export interface ThreadGoalStatusUpdateInput {
   readonly status: ThreadGoalStatus;
   readonly timeUsedSeconds?: number;
   readonly tokensUsed?: number;
+  readonly expectedGoalId?: string;
+  readonly expectedStatus?: ThreadGoalStatus;
+  readonly expectedTokensUsed?: number;
 }
 
 export interface ThreadGoalStoreShape {
@@ -60,7 +63,7 @@ export interface ThreadGoalStoreShape {
     input: ThreadGoalStatusUpdateInput,
   ) => Effect.Effect<ThreadGoal, ThreadGoalStoreError>;
   readonly clear: (
-    input: ThreadGoalClearInput | string,
+    input: (ThreadGoalClearInput & { readonly expectedGoalId?: string }) | string,
   ) => Effect.Effect<Extract<ThreadGoalEvent, { readonly type: "cleared" }>, ThreadGoalStoreError>;
   readonly subscribe: (threadId: string) => Effect.Effect<Stream.Stream<ThreadGoalEvent>, never>;
 }

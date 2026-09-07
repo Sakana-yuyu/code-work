@@ -62,6 +62,7 @@ import { type EventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
+import type { McpCapability } from "../../mcp/McpInvocationContext.ts";
 import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 const isModelSelection = Schema.is(ModelSelection);
@@ -236,7 +237,8 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   /**
    * 为每个 Provider 会话附加 code-work MCP。Canvas 是代码分析能力，不能
-   * 跟随浏览器权限一起关闭；浏览器关闭时只授予 canvas 能力。
+   * 跟随浏览器权限一起关闭；浏览器关闭时只授予 canvas 能力。代码索引
+   * 跟随服务器设置开关。
    */
   const agentBrowserAccessEnabled = serverSettings.getSettings.pipe(
     Effect.map((settings) => settings.enableAgentBrowserAccess),
@@ -247,12 +249,19 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       ).pipe(Effect.as(false)),
     ),
   );
+  const codeIndexEnabled = serverSettings.getSettings.pipe(
+    Effect.map((settings) => settings.codeIndexEnabled),
+    Effect.catch(() => Effect.succeed(false)),
+  );
 
   const prepareMcpSession = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) =>
     Effect.gen(function* () {
-      const capabilities = (yield* agentBrowserAccessEnabled)
-        ? (["preview", "canvas"] as const)
-        : (["canvas"] as const);
+      const capabilities: Array<McpCapability> = (yield* agentBrowserAccessEnabled)
+        ? ["preview", "canvas"]
+        : ["canvas"];
+      if (yield* codeIndexEnabled) {
+        capabilities.push("index");
+      }
       const credential = yield* issueMcpCredential({
         threadId,
         providerInstanceId,
@@ -1142,6 +1151,12 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         operation: "ProviderService.rollbackConversation",
         allowRecovery: true,
       });
+      if (routed.adapter.capabilities.threadRollback !== true) {
+        return yield* new ProviderValidationError({
+          operation: "ProviderService.rollbackConversation",
+          issue: `${routed.adapter.provider} 当前不支持可靠的会话回退，原会话已保留。`,
+        });
+      }
       metricProvider = routed.adapter.provider;
       yield* Effect.annotateCurrentSpan({
         "provider.operation": "rollback-conversation",

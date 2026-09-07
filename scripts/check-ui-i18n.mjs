@@ -119,6 +119,7 @@ const SAME_VALUE_EXEMPTIONS = new Set([
   "DeepSeek Chat",
   "Antigravity",
   "Aqua",
+  "C:\\workspace",
   "Azure DevOps",
   "CLion",
   "DataGrip",

@@ -12,26 +12,30 @@ import {
   isToolLifecycleItemType,
   ThreadId,
   type ThreadGoal,
-  type ThreadTokenUsageSnapshot,
+  ThreadTokenUsageSnapshot,
   TurnId,
   type OrchestrationCheckpointSummary,
   type OrchestrationProposedPlan,
   type OrchestrationThread,
   type OrchestrationThreadActivity,
   type ProviderRuntimeEvent,
+  type ProviderSession,
 } from "@codework/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@codework/shared/DrainableWorker";
 import * as NodeCrypto from "node:crypto";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
+import { accountQuotaStore } from "../../usage/AccountQuota.ts";
 import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { parseGoalCompletion, scanGoalMarkers } from "../../composition/CompositionGoalLoop.ts";
@@ -809,6 +813,31 @@ export function runtimeEventToActivities(
       ];
     }
 
+    case "account.rate-limits.updated": {
+      // 订阅额度的「最新态」：stable-id 活动原地替换，不随回合累积；
+      // payload 里带上 provider，客户端跨线程聚合时才分得清来源。
+      const { rateLimits } = event.payload;
+      if (
+        rateLimits === null ||
+        typeof rateLimits !== "object" ||
+        Object.keys(rateLimits as Record<string, unknown>).length === 0
+      ) {
+        return [];
+      }
+      return [
+        {
+          id: EventId.make(`account-quota:${event.threadId}`),
+          createdAt: event.createdAt,
+          tone: "info",
+          kind: "account.rate-limits.updated",
+          summary: "Account rate limits updated",
+          payload: { rateLimits, provider: event.provider },
+          turnId: toTurnId(event.turnId) ?? null,
+          ...maybeSequence,
+        },
+      ];
+    }
+
     case "item.updated": {
       if (!isToolLifecycleItemType(event.payload.itemType)) {
         return [];
@@ -1176,14 +1205,31 @@ const make = Effect.gen(function* () {
   // Goal 自动收敛：终帧完整文本出现显式标记时报告 Goal 终态并剥离标记（聊天流
   // 不暴露内部标记）。已流式发出的前缀不回改；complete 优先于取消。
   type AssistantGoalTermination = {
+    readonly goalId: ThreadGoal["goalId"];
     readonly cleanText: string;
     readonly status: "complete" | "paused";
     readonly summary: string;
   };
+  const pendingGoalTerminations = new Map<string, AssistantGoalTermination>();
 
   const summarizeGoalCompletion = (text: string, reason?: string): string => {
     const candidate = (reason ?? text).replace(/\s+/g, " ").trim();
     return truncateDetail(candidate.split(/[。！？.!?]/u, 1)[0]?.trim() || "目标已完成", 120);
+  };
+
+  // 活动摘要直接带出真实用时/用量：goal.completed 在时间线里只渲染摘要文本，
+  // 三端共用，不为此新增展示组件。
+  const goalCompletionUsageSuffix = (goal: Pick<ThreadGoal, "timeUsedSeconds" | "tokensUsed">) => {
+    const seconds = Math.max(0, Math.floor(goal.timeUsedSeconds));
+    const parts: string[] = [];
+    if (seconds > 0) {
+      const minutes = Math.floor(seconds / 60);
+      parts.push(minutes > 0 ? `用时 ${minutes} 分 ${seconds % 60} 秒` : `用时 ${seconds} 秒`);
+    }
+    if (goal.tokensUsed > 0) {
+      parts.push(`用量 ${goal.tokensUsed} tokens`);
+    }
+    return parts.length > 0 ? `（${parts.join(" · ")}）` : "";
   };
 
   const resolveAssistantGoalTermination = (
@@ -1211,6 +1257,7 @@ const make = Effect.gen(function* () {
             const completion = scan.complete ? parseGoalCompletion(text) : undefined;
             return Effect.succeed(
               Option.some({
+                goalId: goal.goalId,
                 cleanText: scan.text,
                 status: scan.complete ? ("complete" as const) : ("paused" as const),
                 summary: summarizeGoalCompletion(scan.text, completion?.reason),
@@ -1228,16 +1275,32 @@ const make = Effect.gen(function* () {
     termination: AssistantGoalTermination,
   ) => {
     if (Option.isNone(threadGoalStore)) return Effect.void;
+    const terminationTurnId = event.turnId;
+    if (
+      termination.status === "complete" &&
+      event.type !== "turn.completed" &&
+      terminationTurnId !== undefined
+    ) {
+      return Effect.sync(() =>
+        pendingGoalTerminations.set(providerTurnKey(threadId, terminationTurnId), termination),
+      );
+    }
     return threadGoalStore.value.get(threadId).pipe(
       Effect.flatMap(
         Option.match({
           onNone: () => Effect.void,
           onSome: (goal) =>
             Effect.gen(function* () {
+              if (goal.goalId !== termination.goalId) return;
               if (termination.status !== "complete") {
                 if (goal.status !== termination.status) {
                   yield* threadGoalStore.value
-                    .setStatus({ threadId, status: termination.status })
+                    .setStatus({
+                      threadId,
+                      status: termination.status,
+                      expectedGoalId: goal.goalId,
+                      expectedStatus: goal.status,
+                    })
                     .pipe(Effect.asVoid);
                 }
                 return;
@@ -1249,6 +1312,8 @@ const make = Effect.gen(function* () {
                   : yield* threadGoalStore.value.setStatus({
                       threadId,
                       status: "complete",
+                      expectedGoalId: goal.goalId,
+                      expectedStatus: goal.status,
                     });
               // 稳定 command/activity id 让 item.completed 与 turn.completed 的重复扫描幂等。
               yield* orchestrationEngine.dispatch({
@@ -1261,7 +1326,7 @@ const make = Effect.gen(function* () {
                   id: EventId.make(`goal-completed:${threadId}:${completedGoal.goalId}`),
                   tone: "info",
                   kind: "goal.completed",
-                  summary: `${termination.summary}目标已完成`,
+                  summary: `${termination.summary}目标已完成${goalCompletionUsageSuffix(completedGoal)}`,
                   payload: {
                     goalId: completedGoal.goalId,
                     summary: termination.summary,
@@ -1273,7 +1338,10 @@ const make = Effect.gen(function* () {
                 },
                 createdAt: event.createdAt,
               });
-              yield* threadGoalStore.value.clear(threadId);
+              yield* threadGoalStore.value.clear({
+                threadId,
+                expectedGoalId: completedGoal.goalId,
+              });
             }),
         }),
       ),
@@ -1466,7 +1534,7 @@ const make = Effect.gen(function* () {
 
   // 回合正常结束时 goal 若仍为 active（本轮未声明完成/取消）则转为 paused，
   // 使目标条与 agent 实际运行状态一致；下一回合开始时由 reactor 自动恢复。
-  const pauseThreadGoalIfActive = (threadId: ThreadId) => {
+  const pauseThreadGoalIfActive = (threadId: ThreadId, expectedGoalId?: ThreadGoal["goalId"]) => {
     if (Option.isNone(threadGoalStore)) {
       return Effect.void;
     }
@@ -1475,8 +1543,16 @@ const make = Effect.gen(function* () {
         Option.match({
           onNone: () => Effect.void,
           onSome: (goal) =>
-            goal.status === "active"
-              ? threadGoalStore.value.pause(threadId).pipe(Effect.asVoid)
+            goal.status === "active" &&
+            (expectedGoalId === undefined || goal.goalId === expectedGoalId)
+              ? threadGoalStore.value
+                  .setStatus({
+                    threadId,
+                    status: "paused",
+                    expectedGoalId: goal.goalId,
+                    expectedStatus: "active",
+                  })
+                  .pipe(Effect.asVoid)
               : Effect.void,
         }),
       ),
@@ -1492,6 +1568,160 @@ const make = Effect.gen(function* () {
       }),
     );
   };
+
+  // usedTokens 是上下文占用；实际成本优先使用 provider 的累计处理量。
+  // 重启复用已有活动中的基线，首次请求从零计费，旧快照不能回退高水位。
+  const goalUsageCursorSchema = Schema.Struct({
+    ...ThreadTokenUsageSnapshot.fields,
+    goalUsageCounterKey: Schema.optional(Schema.String),
+    goalUsageProcessedTokens: Schema.optional(Schema.Number),
+  });
+  const nativeThreadSchema = Schema.Struct({ threadId: Schema.String });
+  const lastSeenThreadTokens = new Map<ThreadId, typeof goalUsageCursorSchema.Type>();
+  const usageSessions = new Map<ThreadId, ProviderSession | undefined>();
+  const accumulateThreadGoalTokens = Effect.fn("accumulateThreadGoalTokens")(
+    function* (
+      event: Extract<ProviderRuntimeEvent, { type: "thread.token-usage.updated" }>,
+      activeTurnId: TurnId | null,
+    ) {
+      if (Option.isNone(threadGoalStore)) return true;
+      const threadId = event.threadId;
+      if (!usageSessions.has(threadId)) {
+        const sessions = yield* providerService.listSessions();
+        usageSessions.set(
+          threadId,
+          sessions.find((entry) => entry.threadId === threadId),
+        );
+      }
+      const session = usageSessions.get(threadId);
+      if (
+        session &&
+        (session.provider !== event.provider ||
+          (event.providerInstanceId !== undefined &&
+            session.providerInstanceId !== undefined &&
+            event.providerInstanceId !== session.providerInstanceId))
+      )
+        return false;
+      const nativeThread = Schema.decodeUnknownOption(nativeThreadSchema)(event.raw?.payload);
+      // Codex 的累计值属于原生线程，恢复同一线程不能归零；Claude 重建 query 后归零。
+      const counterScope =
+        event.provider === "codex"
+          ? (Option.getOrUndefined(nativeThread)?.threadId ?? threadId)
+          : (session?.createdAt ?? "unknown");
+      const counterKey = `${event.providerInstanceId ?? session?.providerInstanceId ?? event.provider}:${counterScope}`;
+      let previous = lastSeenThreadTokens.get(threadId);
+      if (previous === undefined) {
+        const thread = yield* resolveThreadDetail(threadId);
+        for (const activity of (thread?.activities ?? []).toReversed()) {
+          if (activity.kind !== "context-window.updated") continue;
+          const usage = Schema.decodeUnknownOption(goalUsageCursorSchema)(activity.payload);
+          if (Option.isSome(usage)) {
+            // 旧版活动尚无代际字段；早于 Claude query 创建时间的账单不能作为新 query 基线。
+            if (
+              !(
+                event.provider === "claudeAgent" &&
+                usage.value.goalUsageCounterKey === undefined &&
+                session !== undefined &&
+                activity.createdAt < session.createdAt
+              )
+            ) {
+              previous = usage.value;
+            }
+            break;
+          }
+        }
+      }
+      if (
+        previous?.goalUsageCounterKey !== undefined &&
+        previous.goalUsageCounterKey !== counterKey
+      )
+        previous = undefined;
+      const previousTokens =
+        previous?.goalUsageProcessedTokens ??
+        previous?.totalProcessedTokens ??
+        previous?.usedTokens ??
+        0;
+      const processedTokens =
+        event.payload.usage.totalProcessedTokens ??
+        previous?.totalProcessedTokens ??
+        event.payload.usage.usedTokens;
+      if (
+        event.payload.usage.totalProcessedTokens !== undefined &&
+        processedTokens < previousTokens
+      )
+        return false;
+      const delta = Math.max(0, processedTokens - previousTokens);
+      const cursor = {
+        ...event.payload.usage,
+        // 压缩事件可能只带上下文占用，保留已知账单高水位供重启恢复。
+        ...(previous?.totalProcessedTokens !== undefined &&
+        event.payload.usage.totalProcessedTokens === undefined
+          ? { totalProcessedTokens: previous.totalProcessedTokens }
+          : {}),
+        goalUsageProcessedTokens: Math.max(processedTokens, previousTokens),
+        goalUsageCounterKey: counterKey,
+      };
+      let goalOption = yield* threadGoalStore.value.get(threadId);
+      while (Option.isSome(goalOption)) {
+        const goal = goalOption.value;
+        // usageLimited 到 provider 真正停止之间的尾部用量仍属于当前 Goal。
+        if (delta > 0 && (goal.status === "active" || goal.status === "usageLimited")) {
+          const tokensUsed = goal.tokensUsed + delta;
+          const status =
+            goal.tokenBudget !== null && tokensUsed >= goal.tokenBudget
+              ? "usageLimited"
+              : goal.status;
+          const updated = yield* threadGoalStore.value
+            .setStatus({
+              threadId,
+              status,
+              tokensUsed,
+              expectedGoalId: goal.goalId,
+              expectedStatus: goal.status,
+              expectedTokensUsed: goal.tokensUsed,
+            })
+            .pipe(
+              Effect.catchTag("ThreadGoalStoreDomainError", (error) =>
+                error.code === "stale-version" ? Effect.succeed(undefined) : Effect.fail(error),
+              ),
+            );
+          if (updated === undefined) {
+            const latest = yield* threadGoalStore.value.get(threadId);
+            if (
+              Option.isSome(latest) &&
+              latest.value.goalId === goal.goalId &&
+              latest.value.status === goal.status
+            ) {
+              goalOption = latest;
+              continue;
+            }
+            break;
+          }
+          // 记账已成功，中断请求失败也不能在下一份账单重复记入同一增量。
+          lastSeenThreadTokens.set(threadId, cursor);
+          if (updated !== undefined && status === "usageLimited" && activeTurnId !== null) {
+            yield* orchestrationEngine.dispatch({
+              type: "thread.turn.interrupt",
+              commandId: CommandId.make(`provider:goal-budget:${goal.goalId}:${activeTurnId}`),
+              threadId,
+              turnId: activeTurnId,
+              createdAt: event.createdAt,
+            });
+          }
+        }
+        break;
+      }
+      lastSeenThreadTokens.set(threadId, cursor);
+      return true;
+    },
+    Effect.catchCause((cause) => {
+      if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
+      return Effect.logWarning(
+        "provider runtime ingestion failed to accumulate thread Goal token usage",
+        { cause: Cause.pretty(cause) },
+      ).pipe(Effect.as(true));
+    }),
+  );
 
   const flushBufferedAssistantMessage = (input: {
     event: ProviderRuntimeEvent;
@@ -1882,6 +2112,9 @@ const make = Effect.gen(function* () {
       const now = event.createdAt;
       const eventTurnId = toTurnId(event.turnId);
       const activeTurnId = thread.session?.activeTurnId ?? null;
+      if (event.type === "session.started" || event.type === "session.exited") {
+        usageSessions.delete(thread.id);
+      }
       const pendingTurnStart = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
         threadId: thread.id,
       });
@@ -2285,11 +2518,24 @@ const make = Effect.gen(function* () {
             turnId,
             updatedAt: now,
           });
-          yield* pauseThreadGoalIfActive(thread.id);
+          const pendingGoalKey = providerTurnKey(thread.id, turnId);
+          const pendingGoal = pendingGoalTerminations.get(pendingGoalKey);
+          pendingGoalTerminations.delete(pendingGoalKey);
+          if (pendingGoal !== undefined && shouldApplyThreadLifecycle) {
+            yield* applyAssistantGoalTermination(thread.id, event, pendingGoal);
+          }
+          yield* pauseThreadGoalIfActive(thread.id, pendingGoal?.goalId);
         }
       }
 
+      if (event.type === "thread.token-usage.updated") {
+        if (conflictsWithActiveTurn || !(yield* accumulateThreadGoalTokens(event, activeTurnId)))
+          return;
+      }
+
       if (event.type === "turn.aborted") {
+        if (eventTurnId !== undefined)
+          pendingGoalTerminations.delete(providerTurnKey(thread.id, eventTurnId));
         yield* pauseThreadGoalIfActive(thread.id);
       }
 
@@ -2430,6 +2676,12 @@ const make = Effect.gen(function* () {
         case "session.exited":
           threadBackgroundLiveness.clearThreadLiveness(thread.id);
           break;
+        case "account.rate-limits.updated": {
+          // 顺路投喂订阅额度单例（纯同步，不参与编排）；转活动走 runtimeEventToActivities。
+          const quotaNow = yield* Clock.currentTimeMillis;
+          accountQuotaStore.update(event.provider, event.payload.rateLimits, quotaNow);
+          break;
+        }
         default:
           break;
       }
@@ -2443,7 +2695,15 @@ const make = Effect.gen(function* () {
         }
       }
 
-      const activities = runtimeEventToActivities(event, taskTitle);
+      const activities = runtimeEventToActivities(event, taskTitle).map((activity) => {
+        const cursor =
+          event.type === "thread.token-usage.updated"
+            ? lastSeenThreadTokens.get(thread.id)
+            : undefined;
+        return cursor && activity.kind === "context-window.updated"
+          ? { ...activity, payload: cursor }
+          : activity;
+      });
       yield* Effect.forEach(activities, (activity) =>
         providerCommandId(event, "thread-activity-append").pipe(
           Effect.flatMap((commandId) =>

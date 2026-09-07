@@ -133,6 +133,18 @@ Control settings**.
 
 ## Requirements & Troubleshooting
 
+### 检查点回退
+
+从对话中回退到之前的检查点，会同时撤回后续文件改动和模型对话上下文。
+当前仅 Codex 会话支持这项完整回退；其他运行时会明确提示不支持，并保留工作区。
+同一工作区有正在启动、执行或排队的回合时，需要先停止或等待这些回合结束。
+回退执行期间发送的新消息会被拒绝，操作结束后可以重新发送。
+
+回退前会保存当前文件和暂存状态。模型回退失败时，会尝试恢复这些状态并显示失败原因；
+如果恢复失败，或模型已回退但对话记录保存失败，提示中会保留恢复位置。
+请求超时也可能发生在模型已经回退之后；出现失败提示时，请先核对文件与模型上下文，
+避免直接重试造成再次回退。
+
 **Git is required** – Code Work uses Git for all local operations. Ensure `git` is installed on your server.
 
 **Server-side setup** – Authentication happens on the machine running Code Work (the server), not your local browser. If you're using a hosted or team instance, your administrator may have already configured providers.

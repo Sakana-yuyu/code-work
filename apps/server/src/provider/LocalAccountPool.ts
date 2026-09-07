@@ -9,6 +9,7 @@ import {
   type LocalAccount,
   type LocalAccountAuthKind,
   type LocalAccountId,
+  type LocalAccountPoolStrategy,
   type ProviderInstanceConfig,
   type ServerSettings,
 } from "@codework/contracts";
@@ -20,6 +21,7 @@ import * as Semaphore from "effect/Semaphore";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import type { ServerSettingsService } from "../serverSettings.ts";
+import { localPoolUsageStore } from "./LocalPoolUsage.ts";
 
 const decodeProvider = (value: string): LocalAccountProvider | undefined =>
   value === "codex" || value === "claude" || value === "xai" || value === "cursor"
@@ -151,7 +153,9 @@ export const credentialAuthKind = (credential: Record<string, unknown>): LocalAc
 };
 
 const cursor = new Map<string, number>();
-const cooldownUntil = new Map<string, number>();
+const MAX_LOCAL_ACCOUNT_WEIGHT = 99;
+// 冷却截止存在 localPoolUsageStore 里（随 local-pool-usage.json 持久化），
+// 服务器重启后限流账号不会立刻被再次选中。
 const needsRefresh = new Set<string>();
 const refreshLocks = new Map<string, Semaphore.Semaphore>();
 
@@ -178,25 +182,36 @@ export const pickLocalAccount = (
       account.provider === provider &&
       account.enabled &&
       (model === undefined || account.models.length === 0 || account.models.includes(model)) &&
-      (cooldownUntil.get(String(account.id)) ?? 0) <= now,
+      (localPoolUsageStore.cooldownUntilUnixMs(String(account.id)) ?? 0) <= now,
   );
   if (all.length === 0) return undefined;
   if (pool.strategy === "fill-first") return all[0];
   // ponytail: 以账号子集隔离轮询游标，避免不同 CLI 池共享偏移；账号数量较少，排序扫描成本可忽略。
-  const cursorKey = `${provider}:${all
+  // weighted-round-robin 把账号按权重展开成重复槽位后轮询，权重越大分到的调用越多；
+  // 权重缺省或小于 1 时按 1 处理，避免权重 0 造成账号不可见。
+  const slots =
+    pool.strategy === "weighted-round-robin"
+      ? all.flatMap((account) =>
+          Array.from(
+            { length: Math.min(MAX_LOCAL_ACCOUNT_WEIGHT, Math.max(1, account.weight ?? 1)) },
+            () => account,
+          ),
+        )
+      : all;
+  const cursorKey = `${pool.strategy}:${provider}:${all
     .map((account) => String(account.id))
     .sort()
     .join(",")}`;
   const offset = cursor.get(cursorKey) ?? 0;
-  cursor.set(cursorKey, (offset + 1) % all.length);
-  return all[offset % all.length];
+  cursor.set(cursorKey, (offset + 1) % slots.length);
+  return slots[offset % slots.length];
 };
 
 /** 上游限流/鉴权失败只冷却当前账号，避免把整个账号池判死。 */
 export const markLocalAccountFailure = (id: string, status: number): void => {
   if (status === 401) needsRefresh.add(id);
   if (status === 401 || status === 403 || status === 429 || status >= 500) {
-    cooldownUntil.set(id, Date.now() + (status === 429 ? 60_000 : 15_000));
+    localPoolUsageStore.setCooldown(id, Date.now() + (status === 429 ? 60_000 : 15_000));
   }
 };
 
@@ -388,7 +403,7 @@ export const importLocalAccount = (
       models,
     };
     needsRefresh.delete(id);
-    cooldownUntil.delete(id);
+    localPoolUsageStore.setCooldown(id, null);
     const settingsSave = yield* settings
       .updateSettings((current) => {
         const previousAccount = current.localAccountPool.accounts[localAccountId];
@@ -566,7 +581,7 @@ export const setLocalAccountsEnabled = (
 
 export const setLocalAccountPoolStrategy = (
   settings: ServerSettingsService["Service"],
-  strategy: "round-robin" | "fill-first",
+  strategy: LocalAccountPoolStrategy,
 ): Effect.Effect<void, LocalAccountError> =>
   settings
     .updateSettings((current) => ({
@@ -574,6 +589,33 @@ export const setLocalAccountPoolStrategy = (
     }))
     .pipe(
       Effect.mapError(() => new LocalAccountError({ detail: "更新本地账号池策略失败。" })),
+      Effect.asVoid,
+    );
+
+export const setLocalAccountWeight = (
+  settings: ServerSettingsService["Service"],
+  id: LocalAccountId,
+  weight: number,
+): Effect.Effect<void, LocalAccountError> =>
+  settings
+    .updateSettings((current) => {
+      const account = current.localAccountPool.accounts[id];
+      if (account === undefined) return current;
+      return {
+        localAccountPool: {
+          ...current.localAccountPool,
+          accounts: {
+            ...current.localAccountPool.accounts,
+            [id]: {
+              ...account,
+              weight: Math.min(MAX_LOCAL_ACCOUNT_WEIGHT, Math.max(1, Math.trunc(weight))),
+            },
+          },
+        },
+      };
+    })
+    .pipe(
+      Effect.mapError(() => new LocalAccountError({ detail: "更新本地账号权重失败。" })),
       Effect.asVoid,
     );
 

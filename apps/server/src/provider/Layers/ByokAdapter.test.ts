@@ -3,6 +3,7 @@ import { ByokSettings, ProviderInstanceId, ThreadId } from "@codework/contracts"
 import { createModelSelection } from "@codework/shared/model";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -145,6 +146,81 @@ describe("ByokAdapter", () => {
             payload: expect.objectContaining({ delta: "已读取仓库代码，开始审查。" }),
           }),
           expect.objectContaining({ type: "turn.completed", payload: { state: "completed" } }),
+        ]),
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-test-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
+  it.effect("图片流式回合把 x-request-id 关联 id 透传到事件里", () => {
+    const capturedHeaders: Array<Record<string, string>> = [];
+    const responses = [
+      sse(
+        { choices: [{ delta: { content: "看图回答。", finish_reason: null } }] },
+        { choices: [{ delta: {}, finish_reason: "stop" }] },
+      ),
+    ];
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        capturedHeaders.push({ ...(request.headers as Record<string, string>) });
+        const body = responses.shift();
+        if (body === undefined) throw new Error("收到未预期的 BYOK 请求");
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(body, { headers: { "content-type": "text/event-stream" } }),
+        );
+      }),
+    );
+    const attachmentId = "byokimg-11111111-2222-4333-8444-555555555555";
+
+    return Effect.gen(function* () {
+      const serverConfig = yield* ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      yield* fileSystem.makeDirectory(serverConfig.attachmentsDir, { recursive: true });
+      yield* fileSystem.writeFile(
+        `${serverConfig.attachmentsDir}/${attachmentId}.png`,
+        new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+      );
+
+      const adapter = yield* makeByokAdapter(settings, { instanceId });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* adapter.startSession({
+        threadId,
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      yield* adapter.sendTurn({
+        threadId,
+        input: "看看这张图",
+        attachments: [
+          { type: "image", id: attachmentId, name: "dot.png", mimeType: "image/png", sizeBytes: 4 },
+        ],
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+
+      const headerRequestId = capturedHeaders[0]?.["x-request-id"];
+      expect(headerRequestId).toBeTruthy();
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "content.delta",
+            providerRefs: { providerRequestId: headerRequestId },
+          }),
+          expect.objectContaining({
+            type: "turn.completed",
+            payload: { state: "completed" },
+            providerRefs: { providerRequestId: headerRequestId },
+          }),
         ]),
       );
     }).pipe(

@@ -17,6 +17,8 @@ export interface LocalPoolUsageEntry {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly lastUsedAt: string | null;
+  /** 当前冷却截止（unix ms）；未冷却时是过期时间或 undefined。 */
+  readonly cooldownUntilUnixMs?: number | undefined;
 }
 
 export interface LocalPoolUsageAccountState {
@@ -26,6 +28,7 @@ export interface LocalPoolUsageAccountState {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly lastUsedAt: string | null;
+  readonly cooldownUntilUnixMs?: number | undefined;
 }
 
 export interface LocalPoolUsageState {
@@ -38,6 +41,10 @@ export interface LocalPoolUsageStore {
   readonly recordRequest: (accountId: string, provider: string, ok: boolean) => void;
   /** 一次流结束后累积的 token 统计。 */
   readonly recordTokens: (accountId: string, inputTokens: number, outputTokens: number) => void;
+  /** 记录/清除账号冷却（unix ms；null 清除）。随脏快照持久化，重启后仍生效。 */
+  readonly setCooldown: (accountId: string, untilUnixMs: number | null) => void;
+  /** 该账号当前冷却截止；未冷却时为 undefined。 */
+  readonly cooldownUntilUnixMs: (accountId: string) => number | undefined;
   readonly list: () => ReadonlyArray<LocalPoolUsageEntry>;
   readonly serialize: () => LocalPoolUsageState;
   readonly hydrate: (state: LocalPoolUsageState) => void;
@@ -97,6 +104,30 @@ export const createLocalPoolUsageStore = (): LocalPoolUsageStore => {
         inputTokens: current.inputTokens + Math.max(0, Math.trunc(inputTokens)),
         outputTokens: current.outputTokens + Math.max(0, Math.trunc(outputTokens)),
       })),
+    setCooldown: (accountId, untilUnixMs) => {
+      if (accounts.has(accountId)) {
+        mutate(accountId, accounts.get(accountId)?.provider ?? "", (current) => ({
+          ...current,
+          ...(untilUnixMs === null
+            ? { cooldownUntilUnixMs: undefined }
+            : { cooldownUntilUnixMs: untilUnixMs }),
+        }));
+        return;
+      }
+      // 冷却先于首次请求到达（如刷新凭据 401）时也建最小条目，让冷却跨重启生效。
+      if (untilUnixMs === null) return;
+      accounts.set(accountId, {
+        provider: "",
+        requests: 0,
+        failed: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        lastUsedAt: null,
+        cooldownUntilUnixMs: untilUnixMs,
+      });
+      dirty = true;
+    },
+    cooldownUntilUnixMs: (accountId) => accounts.get(accountId)?.cooldownUntilUnixMs,
     list: () =>
       [...accounts.entries()]
         .map(
@@ -108,6 +139,9 @@ export const createLocalPoolUsageStore = (): LocalPoolUsageStore => {
             inputTokens: state.inputTokens,
             outputTokens: state.outputTokens,
             lastUsedAt: state.lastUsedAt,
+            ...(state.cooldownUntilUnixMs === undefined
+              ? {}
+              : { cooldownUntilUnixMs: state.cooldownUntilUnixMs }),
           }),
         )
         .sort((left, right) => right.requests - left.requests || left.id.localeCompare(right.id)),
@@ -116,9 +150,14 @@ export const createLocalPoolUsageStore = (): LocalPoolUsageStore => {
       accounts: Object.fromEntries(accounts.entries()),
     }),
     // 水合按字段取最大值合并：网关可能在启动水合前已经记了请求，不能覆盖。
+    // 冷却截止也是单调的：只前进不后退，过期值由读取方用当前时间过滤。
     hydrate: (state) => {
       for (const [id, incoming] of Object.entries(state.accounts ?? {})) {
         const current = accounts.get(id);
+        const cooldownUntilUnixMs = Math.max(
+          current?.cooldownUntilUnixMs ?? 0,
+          incoming.cooldownUntilUnixMs ?? 0,
+        );
         accounts.set(id, {
           provider: incoming.provider,
           requests: Math.max(current?.requests ?? 0, incoming.requests),
@@ -126,6 +165,7 @@ export const createLocalPoolUsageStore = (): LocalPoolUsageStore => {
           inputTokens: Math.max(current?.inputTokens ?? 0, incoming.inputTokens),
           outputTokens: Math.max(current?.outputTokens ?? 0, incoming.outputTokens),
           lastUsedAt: incoming.lastUsedAt ?? current?.lastUsedAt ?? null,
+          ...(cooldownUntilUnixMs > 0 ? { cooldownUntilUnixMs } : {}),
         });
       }
     },

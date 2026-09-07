@@ -72,7 +72,9 @@ import {
   WorkspaceScriptRpcError,
   WS_METHODS,
   WsRpcGroup,
+  type CodeIndexProjectStatus,
 } from "@codework/contracts";
+import * as CodeIndex from "./codeIndex/CodeIndexService.ts";
 import { resolveServerBackgroundActivitySettings } from "@codework/shared/backgroundActivitySettings";
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
@@ -167,7 +169,9 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as UsageService from "./usage/UsageService.ts";
+import { accountQuotaStore, layer as AccountQuotaLayer } from "./usage/AccountQuota.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
+import * as ProviderEventQuery from "./diagnostics/ProviderEventQuery.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
@@ -3156,6 +3160,7 @@ const makeWsRpcLayer = (
                       enabled: instance.enabled,
                       continuationKey: instance.continuationIdentity.continuationKey,
                       defaultModelId: instance.composition?.defaultModelId,
+                      defaultModelName: instance.composition?.defaultModelName,
                     })),
                     profiles,
                     nowUnixMs,
@@ -3242,6 +3247,77 @@ const makeWsRpcLayer = (
               "rpc.aggregate": "server",
             },
           ),
+        [WS_METHODS.serverQueryProviderEvents]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverQueryProviderEvents,
+            ProviderEventQuery.readProviderEvents({
+              providerLogsDir: config.providerLogsDir,
+            })(input),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverCodeIndexStatus]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverCodeIndexStatus,
+            Effect.gen(function* () {
+              const serverSettings = yield* ServerSettings.ServerSettingsService;
+              const enabled = yield* serverSettings.getSettings.pipe(
+                Effect.map((settings) => settings.codeIndexEnabled),
+                Effect.catch(() => Effect.succeed(false)),
+              );
+              const projects: CodeIndexProjectStatus[] = [];
+              if (!enabled) {
+                return { enabled, projects };
+              }
+              const shellSnapshot = yield* projectionSnapshotQuery.getShellSnapshot().pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning("code index status: shell snapshot load failed", { cause }),
+                ),
+                Effect.orElseSucceed(() => ({
+                  projects: [],
+                  threads: [],
+                  snapshotSequence: 0,
+                  updatedAt: "",
+                })),
+              );
+              const codeIndexRoots = yield* CodeIndex.CodeIndexRootMap;
+              for (const project of shellSnapshot.projects) {
+                // 逐项目打开会触发首扫；单项目打开失败不应拖垮整个状态行。
+                const index = yield* Effect.gen(function* () {
+                  const indexRoot = yield* CodeIndex.CodeIndexRoot;
+                  return yield* indexRoot.status();
+                }).pipe(Effect.provide(codeIndexRoots.get(project.workspaceRoot)), Effect.option);
+                if (Option.isNone(index)) {
+                  projects.push({
+                    projectId: project.id,
+                    workspaceRoot: project.workspaceRoot,
+                    state: "idle",
+                    fileCount: 0,
+                    symbolCount: 0,
+                    lastIndexedAt: null,
+                  });
+                  continue;
+                }
+                const status = index.value;
+                projects.push({
+                  projectId: project.id,
+                  workspaceRoot: project.workspaceRoot,
+                  state: status.state,
+                  fileCount: status.fileCount,
+                  symbolCount: status.symbolCount,
+                  lastIndexedAt:
+                    status.lastIndexedAtUnixMs === null
+                      ? null
+                      : DateTime.formatIso(DateTime.makeUnsafe(status.lastIndexedAtUnixMs)),
+                });
+              }
+              return { enabled: true, projects };
+            }),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
         [WS_METHODS.serverGetProcessDiagnostics]: (_input) =>
           observeRpcEffect(WS_METHODS.serverGetProcessDiagnostics, processDiagnostics.read, {
             "rpc.aggregate": "server",
@@ -3266,6 +3342,14 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.serverGetUsageSummary, usage.readSummary(input), {
             "rpc.aggregate": "server",
           }),
+        [WS_METHODS.serverGetAccountQuota]: () =>
+          observeRpcEffect(
+            WS_METHODS.serverGetAccountQuota,
+            Effect.map(Clock.currentTimeMillis, (now) => accountQuotaStore.snapshot(now)),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) =>
           observeRpcEffect(WS_METHODS.serverRetryResourceTelemetry, resourceTelemetry.retry, {
             "rpc.aggregate": "server",
@@ -4111,4 +4195,4 @@ export const websocketRpcRouteLayer = Layer.unwrap(
       ),
     );
   }),
-).pipe(Layer.provide(CliProxy.layer));
+).pipe(Layer.provide(CliProxy.layer), Layer.provide(AccountQuotaLayer));

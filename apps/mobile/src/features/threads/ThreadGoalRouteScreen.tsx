@@ -1,5 +1,9 @@
 import type { ThreadGoalStatus } from "@codework/contracts";
-import { EnvironmentId, ThreadId } from "@codework/contracts";
+import { CommandId, EnvironmentId, MessageId, ThreadId } from "@codework/contracts";
+import {
+  formatThreadGoalTokens,
+  threadGoalProgressPercent,
+} from "@codework/client-runtime/thread-goal-format";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -17,6 +21,8 @@ import { AppText as Text, AppTextInput as TextInput } from "../../components/App
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { t } from "../../i18n";
+import { makeQueuedMessageMetadata } from "../../lib/commandMetadata";
+import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import { useThreadGoalController } from "../../state/threadGoal";
 import { SettingsSection } from "../settings/components/SettingsSection";
 
@@ -106,6 +112,28 @@ export function ThreadGoalRouteScreen({ route }: StaticScreenProps<ThreadGoalRou
     ]);
   }, [controller.clear, runAction]);
 
+  // 恢复目标必须同时启动一个真实回合，不能只把状态改成 active（与 web 一致）。
+  const resumeAndRun = useCallback(() => {
+    void runAction(async () => {
+      const currentGoal = controller.goal;
+      if (currentGoal === null) return false;
+      const objectiveText = currentGoal.objective.trim();
+      if (objectiveText.length === 0) return false;
+      if (!(await controller.resume())) return false;
+      const metadata = makeQueuedMessageMetadata();
+      enqueueThreadOutboxMessage({
+        environmentId,
+        threadId,
+        messageId: MessageId.make(metadata.messageId),
+        commandId: CommandId.make(metadata.commandId),
+        text: objectiveText,
+        attachments: [],
+        createdAt: metadata.createdAt,
+      }).catch(() => setLocalError(t("threadGoal.error.failed")));
+      return true;
+    });
+  }, [controller, environmentId, runAction, threadId]);
+
   const goal = controller.goal;
   const displayedDuration = goal
     ? goal.timeUsedSeconds +
@@ -185,12 +213,12 @@ export function ThreadGoalRouteScreen({ route }: StaticScreenProps<ThreadGoalRou
                   onPress={() => void runAction(controller.pause)}
                 />
               ) : null}
-              {goal?.status === "paused" ? (
+              {goal?.status === "paused" || goal?.status === "usageLimited" ? (
                 <ActionButton
                   disabled={working}
                   emphasized
                   label={t("threadGoal.resume")}
-                  onPress={() => void runAction(controller.resume)}
+                  onPress={resumeAndRun}
                 />
               ) : null}
               {goal !== null ? (
@@ -219,9 +247,32 @@ export function ThreadGoalRouteScreen({ route }: StaticScreenProps<ThreadGoalRou
                 label={t("threadGoal.duration")}
                 value={formatDuration(displayedDuration)}
               />
-              <DetailRow label={t("threadGoal.usage")} value={String(goal.tokensUsed)} />
+              <DetailRow
+                label={t("threadGoal.usage")}
+                value={formatThreadGoalTokens(goal.tokensUsed)}
+              />
               {goal.tokenBudget !== null ? (
-                <DetailRow label={t("threadGoal.budget")} value={String(goal.tokenBudget)} />
+                <>
+                  <DetailRow
+                    label={t("threadGoal.budget")}
+                    value={formatThreadGoalTokens(goal.tokenBudget)}
+                  />
+                  <View
+                    className="mt-1 h-1 w-full overflow-hidden rounded-full bg-foreground/10"
+                    accessibilityRole="progressbar"
+                  >
+                    <View
+                      className={
+                        goal.tokensUsed >= goal.tokenBudget
+                          ? "h-full rounded-full bg-danger-foreground"
+                          : "h-full rounded-full bg-foreground/60"
+                      }
+                      style={{
+                        width: `${threadGoalProgressPercent(goal.tokensUsed, goal.tokenBudget)}%`,
+                      }}
+                    />
+                  </View>
+                </>
               ) : null}
             </View>
           </SettingsSection>

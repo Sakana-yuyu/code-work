@@ -12,6 +12,11 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import {
+  formatThreadGoalTokens,
+  threadGoalProgressPercent,
+} from "@codework/client-runtime/thread-goal-format";
+
 import { t } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
@@ -139,6 +144,8 @@ export function ThreadGoalStatusBar({
   const displayedTimeUsedSeconds = goal
     ? displayedThreadGoalSeconds(goal, clockNow, goalSnapshotAnchorRef.current.receivedAt)
     : 0;
+  const isOverBudget =
+    goal !== null && goal.tokenBudget !== null && goal.tokensUsed >= goal.tokenBudget;
   const canEditObjective = goal === null || goal.status !== "complete";
 
   const beginEditing = () => {
@@ -295,6 +302,24 @@ export function ThreadGoalStatusBar({
                 </span>
               </>
             ) : null}
+            {goal !== null && (goal.tokenBudget !== null || goal.tokensUsed > 0) ? (
+              <>
+                <span className="shrink-0 text-muted-foreground/70" aria-hidden="true">
+                  •
+                </span>
+                <span
+                  className={cn(
+                    "shrink-0 tabular-nums",
+                    isOverBudget ? "text-destructive" : "text-muted-foreground/80",
+                  )}
+                >
+                  {formatThreadGoalTokens(goal.tokensUsed)}
+                  {goal.tokenBudget !== null
+                    ? ` / ${formatThreadGoalTokens(goal.tokenBudget)}`
+                    : null}
+                </span>
+              </>
+            ) : null}
           </div>
           {goal !== null ? (
             <Button
@@ -320,7 +345,7 @@ export function ThreadGoalStatusBar({
               <PauseIcon />
             </Button>
           ) : null}
-          {goal?.status === "paused" ? (
+          {goal?.status === "paused" || goal?.status === "usageLimited" ? (
             <Button
               type="button"
               size="icon-xs"
@@ -375,12 +400,31 @@ export function ThreadGoalStatusBar({
             {t("threadGoal.duration")}: {formatThreadGoalDuration(displayedTimeUsedSeconds)}
           </span>
           <span className="ms-3">
-            {t("threadGoal.usage")}: {goal.tokensUsed}
+            {t("threadGoal.usage")}: {formatThreadGoalTokens(goal.tokensUsed)}
           </span>
           {goal.tokenBudget !== null ? (
             <span className="ms-3">
-              {t("threadGoal.budget")}: {goal.tokenBudget}
+              {t("threadGoal.budget")}: {formatThreadGoalTokens(goal.tokenBudget)}
             </span>
+          ) : null}
+          {goal.tokenBudget !== null ? (
+            <div
+              className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={goal.tokenBudget}
+              aria-valuenow={Math.min(goal.tokensUsed, goal.tokenBudget)}
+            >
+              <div
+                className={cn(
+                  "h-full rounded-full",
+                  isOverBudget ? "bg-destructive" : "bg-foreground/60",
+                )}
+                style={{
+                  width: `${threadGoalProgressPercent(goal.tokensUsed, goal.tokenBudget)}%`,
+                }}
+              />
+            </div>
           ) : null}
         </div>
       ) : null}

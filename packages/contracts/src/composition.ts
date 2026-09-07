@@ -803,6 +803,8 @@ export const CompositionSupplierRegistryEntry = Schema.Struct({
   enabled: Schema.Boolean,
   continuationKey: TrimmedNonEmptyString,
   defaultModelId: Schema.optional(TrimmedNonEmptyString),
+  /** 默认模型的展示名（如 BYOK 适配器 displayName）；缺省时客户端回退显示 id。 */
+  defaultModelName: Schema.optional(TrimmedNonEmptyString),
   profile: Schema.optional(CompositionSupplierRegistryProfileLink),
 });
 export type CompositionSupplierRegistryEntry = typeof CompositionSupplierRegistryEntry.Type;

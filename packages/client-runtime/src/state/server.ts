@@ -1214,6 +1214,11 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:trace-diagnostics",
       tag: WS_METHODS.serverGetTraceDiagnostics,
     }),
+    providerEvents: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:provider-events",
+      tag: WS_METHODS.serverQueryProviderEvents,
+      staleTimeMs: 5_000,
+    }),
     processDiagnostics: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:process-diagnostics",
       tag: WS_METHODS.serverGetProcessDiagnostics,
@@ -1238,6 +1243,18 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:usage-summary",
       tag: WS_METHODS.serverGetUsageSummary,
       staleTimeMs: 60_000,
+    }),
+    // 订阅额度是回合结束才更新的最新态，读侧不必激进轮询。
+    accountQuota: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:account-quota",
+      tag: WS_METHODS.serverGetAccountQuota,
+      staleTimeMs: 30_000,
+    }),
+    // 索引状态行只在设置页按需刷新；短 staleTime 让「刷新」按钮即时生效。
+    codeIndexStatus: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:code-index-status",
+      tag: WS_METHODS.serverCodeIndexStatus,
+      staleTimeMs: 5_000,
     }),
     configProjection,
     welcome: createEnvironmentRpcSubscriptionAtomFamily(runtime, {

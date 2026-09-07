@@ -26,7 +26,9 @@ import type { ReactNode } from "react";
 
 import { ScreenRotationIcon } from "~/browser/ScreenRotationIcon";
 import { isElectron } from "../../env";
+import { CodeIndexSettingsSection } from "./CodeIndexSettings";
 import { McpServersSettings } from "./McpServersSettings";
+import { SupplierRegistrySettings } from "./SupplierRegistrySettings";
 
 import { Button } from "../ui/button";
 import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
@@ -480,6 +482,8 @@ export function IntegrationsSettingsPanel() {
         )}
       </SettingsSection>
       <McpServersSettings />
+      <CodeIndexSettingsSection />
+      <SupplierRegistrySettings />
     </SettingsPageContainer>
   );
 }

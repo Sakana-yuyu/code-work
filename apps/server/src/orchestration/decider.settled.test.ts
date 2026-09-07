@@ -79,6 +79,56 @@ function makeSession(status: OrchestrationSession["status"]): OrchestrationSessi
 }
 
 it.layer(NodeServices.layer)("settled thread decider", (it) => {
+  for (const status of ["starting", "running"] as const) {
+    it.effect(`检查点回退拒绝 ${status} 会话`, () =>
+      Effect.gen(function* () {
+        const result = yield* decideOrchestrationCommand({
+          command: {
+            type: "thread.checkpoint.revert",
+            commandId: CommandId.make(`cmd-revert-${status}`),
+            threadId: ThreadId.make("thread-1"),
+            turnCount: 0,
+            createdAt: NOW,
+          },
+          readModel: makeReadModel(null, null, makeSession(status)),
+        }).pipe(Effect.result);
+        expect(result._tag).toBe("Failure");
+      }),
+    );
+  }
+
+  it.effect("检查点回退拒绝未被会话接管的排队消息", () =>
+    Effect.gen(function* () {
+      const result = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.checkpoint.revert",
+          commandId: CommandId.make("cmd-revert-queued"),
+          threadId: ThreadId.make("thread-1"),
+          turnCount: 0,
+          createdAt: NOW,
+        },
+        readModel: makeReadModel(
+          null,
+          null,
+          null,
+          [],
+          [
+            {
+              id: MessageId.make("queued"),
+              role: "user",
+              text: "queued",
+              turnId: null,
+              streaming: false,
+              createdAt: NOW,
+              updatedAt: NOW,
+            },
+          ],
+        ),
+      }).pipe(Effect.result);
+      expect(result._tag).toBe("Failure");
+    }),
+  );
+
   it.effect("settles awake threads without a redundant wake and re-emits idempotently", () =>
     Effect.gen(function* () {
       const event = yield* decideOrchestrationCommand({

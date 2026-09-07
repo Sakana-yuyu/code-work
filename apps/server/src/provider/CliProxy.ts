@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off - 冷却截止是否仍有效按墙上时间判断。
 import {
   ByokSettings,
   CliProxyError,
@@ -6,6 +7,7 @@ import {
   resolveProviderInstanceEnabled,
   type CliProxyRequest,
   type CliProxyResult,
+  type LocalAccountId,
   type LocalAccountProvider,
   type ProviderInstanceConfig,
   type ServerSettings,
@@ -27,6 +29,7 @@ import {
   setLocalAccountsEnabled,
   setLocalAccountEnabled,
   setLocalAccountPoolStrategy,
+  setLocalAccountWeight,
 } from "./LocalAccountPool.ts";
 import {
   localPoolUsageStore,
@@ -256,6 +259,11 @@ export const makeCliProxyService = (
             Effect.mapError(safeError),
           );
           break;
+        case "setLocalAccountWeight":
+          yield* setLocalAccountWeight(settings, request.id as LocalAccountId, request.weight).pipe(
+            Effect.mapError(safeError),
+          );
+          break;
         case "importLocalAccount":
           yield* importLocalAccount(settings, secretStore, request).pipe(
             Effect.mapError(
@@ -476,9 +484,15 @@ export const makeCliProxyService = (
         },
         ...(connectedInstanceId === undefined ? {} : { connectedInstanceId }),
         // 已删除账号的历史计数继续留在存储里，但状态里只展示仍存在的账号。
+        // 冷却只在仍有效时透出，过期时间戳对客户端是噪音。
         accountUsage: localPoolUsageStore
           .list()
-          .filter((entry) => localAccounts.some((account) => String(account.id) === entry.id)),
+          .filter((entry) => localAccounts.some((account) => String(account.id) === entry.id))
+          .map(({ cooldownUntilUnixMs, ...usage }) =>
+            cooldownUntilUnixMs !== undefined && cooldownUntilUnixMs > Date.now()
+              ? { ...usage, cooldownUntilUnixMs }
+              : usage,
+          ),
       } satisfies CliProxyResult;
     });
 

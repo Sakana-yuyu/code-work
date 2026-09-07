@@ -3,6 +3,7 @@ import {
   CommandId,
   EventId,
   type ModelSelection,
+  type MessageId,
   type OrchestrationEvent,
   ProviderDriverKind,
   type ProjectId,
@@ -54,8 +55,18 @@ import { ThreadGoalStore } from "../../persistence/Services/ThreadGoalStore.ts";
 import { SpecWorkflowCapabilityStore } from "../../persistence/Services/SpecWorkflowCapabilityStore.ts";
 import { SpecWorkflowService } from "../../specWorkflow/SpecWorkflowService.ts";
 import { formatSpecWorkflowSelectedInput } from "../../specWorkflow/SpecWorkflowAgentProtocol.ts";
+import { WorkspaceOperationLock } from "../WorkspaceOperationLock.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
+class ThreadGoalBudgetExhaustedError extends Schema.TaggedErrorClass<ThreadGoalBudgetExhaustedError>()(
+  "ThreadGoalBudgetExhaustedError",
+  {},
+) {
+  override get message() {
+    return "任务目标预算已耗尽，请增加预算或清除目标后再启动下一轮。";
+  }
+}
+const isThreadGoalBudgetExhaustedError = Schema.is(ThreadGoalBudgetExhaustedError);
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -83,10 +94,18 @@ function formatThreadGoalProviderInput(
   // Codex update_plan 式收尾机制：是否达成由模型在回合末自报显式标记，
   // 服务端在回合终帧扫描标记并自动收敛 Goal 状态（见 ProviderRuntimeIngestion）。
   // “发送目标”会以目标文本本身发起首轮回合，此时不再重复 [User Request] 段。
+  const goalStatusLabels: Record<ThreadGoal["status"], string> = {
+    active: "执行中",
+    paused: "已暂停",
+    blocked: "需要处理",
+    usageLimited: "已达 token 预算上限（已暂停执行）",
+    budgetLimited: "已达预算上限（已暂停执行）",
+    complete: "已完成",
+  };
   const lines = [
     "[Thread Goal]",
     `目标：${goal.objective}`,
-    `状态：${goal.status === "active" ? "执行中" : goal.status === "paused" ? "已暂停" : goal.status}`,
+    `状态：${goalStatusLabels[goal.status]}`,
     `累计用时：${goal.timeUsedSeconds} 秒`,
     `token 用量：${goal.tokensUsed}${goal.tokenBudget === null ? "" : ` / ${goal.tokenBudget}`}`,
     "",
@@ -342,6 +361,7 @@ const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerService = yield* ProviderService;
+  const workspaceLock = yield* WorkspaceOperationLock;
   const threadGoalStore = yield* Effect.serviceOption(ThreadGoalStore);
   const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
@@ -374,9 +394,19 @@ const make = Effect.gen(function* () {
     return Effect.gen(function* () {
       const current = yield* threadGoalStore.value.get(threadId);
       if (Option.isNone(current) || current.value.status === status) return;
-      yield* status === "active"
-        ? threadGoalStore.value.resume(threadId)
-        : threadGoalStore.value.pause(threadId);
+      // 只有 paused 会在新一轮用户输入时自动恢复；usageLimited（预算到限）、
+      // blocked（需要处理）与 complete 必须由用户显式恢复或清除。
+      if (
+        status === "active" ? current.value.status !== "paused" : current.value.status !== "active"
+      )
+        return;
+      yield* threadGoalStore.value.setStatus({
+        threadId,
+        status,
+        expectedGoalId: current.value.goalId,
+        expectedStatus: current.value.status,
+        expectedTokensUsed: current.value.tokensUsed,
+      });
     }).pipe(
       Effect.catchCause((cause) => {
         if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
@@ -388,6 +418,19 @@ const make = Effect.gen(function* () {
       }),
     );
   };
+
+  const checkThreadGoalBudget = Effect.fn("checkThreadGoalBudget")(function* (threadId: ThreadId) {
+    if (Option.isNone(threadGoalStore)) return;
+    const goal = yield* threadGoalStore.value.get(threadId);
+    if (
+      Option.isSome(goal) &&
+      (goal.value.status === "usageLimited" ||
+        goal.value.status === "budgetLimited" ||
+        (goal.value.tokenBudget !== null && goal.value.tokensUsed >= goal.value.tokenBudget))
+    ) {
+      return yield* new ThreadGoalBudgetExhaustedError();
+    }
+  });
 
   const appendProviderFailureActivity = (input: {
     readonly threadId: ThreadId;
@@ -402,6 +445,7 @@ const make = Effect.gen(function* () {
     readonly turnId: TurnId | null;
     readonly createdAt: string;
     readonly requestId?: string;
+    readonly messageId?: MessageId;
   }) =>
     Effect.all({
       commandId: serverCommandId("provider-failure-activity"),
@@ -420,6 +464,7 @@ const make = Effect.gen(function* () {
             payload: {
               detail: input.detail,
               ...(input.requestId ? { requestId: input.requestId } : {}),
+              ...(input.messageId ? { messageId: input.messageId } : {}),
             },
             turnId: input.turnId,
             createdAt: input.createdAt,
@@ -968,11 +1013,14 @@ const make = Effect.gen(function* () {
         : input.modelSelection;
 
     return {
-      threadId: input.threadId,
-      ...(turnInput ? { input: turnInput } : {}),
-      ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
-      ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),
-      ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
+      providerSessionReady: activeSession?.status === "ready",
+      request: {
+        threadId: input.threadId,
+        ...(turnInput ? { input: turnInput } : {}),
+        ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
+        ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),
+        ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
+      },
     };
   });
 
@@ -1252,130 +1300,205 @@ const make = Effect.gen(function* () {
     processThreadTitleRegenerationSafely,
   );
 
+  const processTurnStartRequestedUnlocked = Effect.fn("processTurnStartRequestedUnlocked")(
+    function* (
+      event: Extract<ProviderIntentEvent, { type: "thread.turn-start-requested" }>,
+      cwd: string,
+    ) {
+      const key = turnStartKeyForEvent(event);
+      if (yield* hasHandledTurnStartRecently(key)) {
+        return;
+      }
+
+      const thread = yield* resolveThread(event.payload.threadId);
+      if (!thread) {
+        return;
+      }
+
+      const message = thread.messages.find((entry) => entry.id === event.payload.messageId);
+      if (!message || message.role !== "user") {
+        yield* appendProviderFailureActivity({
+          threadId: event.payload.threadId,
+          kind: "provider.turn.start.failed",
+          summary: "Provider turn start failed",
+          detail: `User message '${event.payload.messageId}' was not found for turn start request.`,
+          messageId: event.payload.messageId,
+          turnId: null,
+          createdAt: event.payload.createdAt,
+        });
+        return;
+      }
+
+      yield* ensureThreadWorktree(thread);
+
+      const isFirstUserMessageTurn =
+        thread.messages.filter((entry) => entry.role === "user").length === 1;
+      if (isFirstUserMessageTurn) {
+        const project = yield* resolveProject(thread.projectId);
+        const generationCwd =
+          resolveThreadWorkspaceCwd({
+            thread,
+            projects: project ? [project] : [],
+          }) ?? process.cwd();
+        const generationInput = {
+          messageText: message.text,
+          ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
+          ...(event.payload.titleSeed !== undefined ? { titleSeed: event.payload.titleSeed } : {}),
+        };
+
+        yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
+          threadId: event.payload.threadId,
+          branch: thread.branch,
+          worktreePath: thread.worktreePath,
+          ...generationInput,
+        }).pipe(Effect.forkScoped);
+
+        if (canReplaceThreadTitle(thread.title, event.payload.titleSeed)) {
+          yield* maybeGenerateThreadTitleForFirstTurn({
+            threadId: event.payload.threadId,
+            cwd: generationCwd,
+            ...generationInput,
+          }).pipe(Effect.forkScoped);
+        }
+      }
+
+      let providerSessionReady = false;
+      const handleTurnStartFailure = (cause: Cause.Cause<unknown>) => {
+        if (Cause.hasInterruptsOnly(cause)) {
+          return Effect.void;
+        }
+        const detail = formatFailureDetail(cause);
+        if (isThreadGoalBudgetExhaustedError(cause.reasons.find(Cause.isFailReason)?.error)) {
+          return Effect.gen(function* () {
+            const latest = yield* resolveThread(thread.id);
+            // 只结束本请求创建的待启动状态，不能覆盖正在执行的追加输入。
+            if (
+              providerSessionReady &&
+              latest?.session?.status === "starting" &&
+              latest.session.activeTurnId === null &&
+              latest.messages.findLast((entry) => entry.role === "user")?.id ===
+                event.payload.messageId
+            ) {
+              yield* setThreadSession({
+                threadId: thread.id,
+                session: { ...latest.session, status: "ready" },
+                createdAt: event.payload.createdAt,
+              });
+            }
+            yield* appendProviderFailureActivity({
+              threadId: event.payload.threadId,
+              kind: "provider.turn.start.failed",
+              summary: "任务目标预算已耗尽",
+              detail,
+              messageId: event.payload.messageId,
+              turnId: null,
+              createdAt: event.payload.createdAt,
+            });
+          });
+        }
+        return setThreadSessionErrorOnTurnStartFailure({
+          threadId: event.payload.threadId,
+          detail,
+          createdAt: event.payload.createdAt,
+        }).pipe(
+          Effect.ensuring(
+            syncThreadGoalStatus(event.payload.threadId, "paused").pipe(
+              Effect.catchCause(() => Effect.void),
+            ),
+          ),
+          Effect.flatMap(() =>
+            appendProviderFailureActivity({
+              threadId: event.payload.threadId,
+              kind: "provider.turn.start.failed",
+              summary: "Provider turn start failed",
+              detail,
+              messageId: event.payload.messageId,
+              turnId: null,
+              createdAt: event.payload.createdAt,
+            }),
+          ),
+          Effect.asVoid,
+        );
+      };
+
+      const recoverTurnStartFailure = (cause: Cause.Cause<unknown>) =>
+        handleTurnStartFailure(cause).pipe(
+          Effect.catchCause((recoveryCause) =>
+            Effect.logWarning("provider command reactor failed to recover turn start failure", {
+              eventType: event.type,
+              threadId: event.payload.threadId,
+              cause: Cause.pretty(recoveryCause),
+              originalCause: Cause.pretty(cause),
+            }),
+          ),
+        );
+
+      // 先把暂停中的 Goal 恢复为本轮执行态，再读取上下文，避免模型看到过期的 paused 状态。
+      const budgetAvailable = yield* checkThreadGoalBudget(thread.id).pipe(
+        Effect.as(true),
+        Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(false))),
+      );
+      if (!budgetAvailable) return;
+      yield* syncThreadGoalStatus(event.payload.threadId, "active");
+
+      const sendTurnRequest = yield* buildSendTurnRequestForThread({
+        threadId: event.payload.threadId,
+        messageText: message.text,
+        ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
+        ...(event.payload.modelSelection !== undefined
+          ? { modelSelection: event.payload.modelSelection }
+          : {}),
+        interactionMode: event.payload.interactionMode,
+        createdAt: event.payload.createdAt,
+      }).pipe(
+        Effect.map(Option.some),
+        Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(Option.none()))),
+      );
+
+      if (Option.isNone(sendTurnRequest)) {
+        return;
+      }
+      providerSessionReady = sendTurnRequest.value.providerSessionReady;
+
+      const send = workspaceLock.withLock(
+        cwd,
+        Effect.gen(function* () {
+          // 会话启动及排队等待期间可能收到预算事件，实际发送前再读一次。
+          yield* checkThreadGoalBudget(thread.id);
+          yield* providerService.sendTurn(sendTurnRequest.value.request);
+        }),
+      );
+      const sendWhenAvailable: typeof send = send.pipe(
+        Effect.catchTag("WorkspaceBusyError", (error) =>
+          workspaceLock
+            .waitUntilAvailable(error.cwd)
+            .pipe(Effect.andThen(Effect.suspend(() => sendWhenAvailable))),
+        ),
+      );
+      yield* sendWhenAvailable.pipe(Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
+    },
+  );
+
   const processTurnStartRequested = Effect.fn("processTurnStartRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.turn-start-requested" }>,
   ) {
-    const key = turnStartKeyForEvent(event);
-    if (yield* hasHandledTurnStartRecently(key)) {
-      return;
-    }
-
-    const thread = yield* resolveThread(event.payload.threadId);
-    if (!thread) {
-      return;
-    }
-
-    const message = thread.messages.find((entry) => entry.id === event.payload.messageId);
-    if (!message || message.role !== "user") {
-      yield* appendProviderFailureActivity({
-        threadId: event.payload.threadId,
-        kind: "provider.turn.start.failed",
-        summary: "Provider turn start failed",
-        detail: `User message '${event.payload.messageId}' was not found for turn start request.`,
-        turnId: null,
-        createdAt: event.payload.createdAt,
-      });
-      return;
-    }
-
-    yield* ensureThreadWorktree(thread);
-
-    const isFirstUserMessageTurn =
-      thread.messages.filter((entry) => entry.role === "user").length === 1;
-    if (isFirstUserMessageTurn) {
+    const start = Effect.gen(function* () {
+      const thread = yield* resolveThread(event.payload.threadId);
+      if (!thread) return;
       const project = yield* resolveProject(thread.projectId);
-      const generationCwd =
-        resolveThreadWorkspaceCwd({
-          thread,
-          projects: project ? [project] : [],
-        }) ?? process.cwd();
-      const generationInput = {
-        messageText: message.text,
-        ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
-        ...(event.payload.titleSeed !== undefined ? { titleSeed: event.payload.titleSeed } : {}),
-      };
-
-      yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
-        threadId: event.payload.threadId,
-        branch: thread.branch,
-        worktreePath: thread.worktreePath,
-        ...generationInput,
-      }).pipe(Effect.forkScoped);
-
-      if (canReplaceThreadTitle(thread.title, event.payload.titleSeed)) {
-        yield* maybeGenerateThreadTitleForFirstTurn({
-          threadId: event.payload.threadId,
-          cwd: generationCwd,
-          ...generationInput,
-        }).pipe(Effect.forkScoped);
-      }
-    }
-
-    const handleTurnStartFailure = (cause: Cause.Cause<unknown>) => {
-      if (Cause.hasInterruptsOnly(cause)) {
-        return Effect.void;
-      }
-      const detail = formatFailureDetail(cause);
-      return setThreadSessionErrorOnTurnStartFailure({
-        threadId: event.payload.threadId,
-        detail,
-        createdAt: event.payload.createdAt,
-      }).pipe(
-        Effect.ensuring(
-          syncThreadGoalStatus(event.payload.threadId, "paused").pipe(
-            Effect.catchCause(() => Effect.void),
-          ),
-        ),
-        Effect.flatMap(() =>
-          appendProviderFailureActivity({
-            threadId: event.payload.threadId,
-            kind: "provider.turn.start.failed",
-            summary: "Provider turn start failed",
-            detail,
-            turnId: null,
-            createdAt: event.payload.createdAt,
-          }),
-        ),
-        Effect.asVoid,
-      );
-    };
-
-    const recoverTurnStartFailure = (cause: Cause.Cause<unknown>) =>
-      handleTurnStartFailure(cause).pipe(
-        Effect.catchCause((recoveryCause) =>
-          Effect.logWarning("provider command reactor failed to recover turn start failure", {
-            eventType: event.type,
-            threadId: event.payload.threadId,
-            cause: Cause.pretty(recoveryCause),
-            originalCause: Cause.pretty(cause),
-          }),
-        ),
-      );
-
-    // 先把暂停中的 Goal 恢复为本轮执行态，再读取上下文，避免模型看到过期的 paused 状态。
-    yield* syncThreadGoalStatus(event.payload.threadId, "active");
-
-    const sendTurnRequest = yield* buildSendTurnRequestForThread({
-      threadId: event.payload.threadId,
-      messageText: message.text,
-      ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
-      ...(event.payload.modelSelection !== undefined
-        ? { modelSelection: event.payload.modelSelection }
-        : {}),
-      interactionMode: event.payload.interactionMode,
-      createdAt: event.payload.createdAt,
-    }).pipe(
-      Effect.map(Option.some),
-      Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(Option.none()))),
+      const cwd =
+        resolveThreadWorkspaceCwd({ thread, projects: project ? [project] : [] }) ?? process.cwd();
+      yield* workspaceLock.withLock(cwd, processTurnStartRequestedUnlocked(event, cwd));
+    });
+    const startWhenAvailable: typeof start = start.pipe(
+      Effect.catchTag("WorkspaceBusyError", (error) =>
+        workspaceLock
+          .waitUntilAvailable(error.cwd)
+          .pipe(Effect.andThen(Effect.suspend(() => startWhenAvailable))),
+      ),
     );
-
-    if (Option.isNone(sendTurnRequest)) {
-      return;
-    }
-
-    yield* providerService
-      .sendTurn(sendTurnRequest.value)
-      .pipe(Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
+    // 回退在锁内发现已落库的 pending 后立即退出；保留 worker 顺序，避免并发启动会话。
+    yield* startWhenAvailable;
   });
 
   const processTurnInterruptRequested = Effect.fn("processTurnInterruptRequested")(function* (
@@ -1621,10 +1744,17 @@ const make = Effect.gen(function* () {
           return;
         }
         const cachedModelSelection = threadModelSelections.get(event.payload.threadId);
-        yield* ensureSessionForThread(
-          event.payload.threadId,
-          event.occurredAt,
-          cachedModelSelection !== undefined ? { modelSelection: cachedModelSelection } : {},
+        const project = yield* resolveProject(thread.projectId);
+        const cwd =
+          resolveThreadWorkspaceCwd({ thread, projects: project ? [project] : [] }) ??
+          process.cwd();
+        yield* workspaceLock.withLock(
+          cwd,
+          ensureSessionForThread(
+            event.payload.threadId,
+            event.occurredAt,
+            cachedModelSelection !== undefined ? { modelSelection: cachedModelSelection } : {},
+          ),
         );
         return;
       }

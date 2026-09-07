@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off - 冷却断言对照墙上时间。
 import { describe, expect, it } from "vite-plus/test";
 import { createLocalPoolUsageStore, parseLocalPoolUsageState } from "./LocalPoolUsage.ts";
 
@@ -48,5 +49,18 @@ describe("LocalPoolUsage", () => {
     expect(parseLocalPoolUsageState("not json")).toBeUndefined();
     expect(parseLocalPoolUsageState("[1]")).toBeUndefined();
     expect(parseLocalPoolUsageState('{"accounts":[]}')).toBeUndefined();
+  });
+  it("setCooldown 记录并清除冷却，快照可跨存储往返", () => {
+    const store = createLocalPoolUsageStore();
+    store.setCooldown("fresh", Date.now() + 60_000);
+    expect(store.cooldownUntilUnixMs("fresh")).toBeGreaterThan(Date.now());
+    // 冷却先于首次请求到达时也建最小条目，冷却随落盘恢复。
+    expect(store.list()[0]).toMatchObject({ id: "fresh", requests: 0, provider: "" });
+    const snapshot = store.takeDirtySnapshot();
+    const restored = createLocalPoolUsageStore();
+    restored.hydrate(parseLocalPoolUsageState(JSON.stringify(snapshot))!);
+    expect(restored.cooldownUntilUnixMs("fresh")).toBe(store.cooldownUntilUnixMs("fresh"));
+    store.setCooldown("fresh", null);
+    expect(store.cooldownUntilUnixMs("fresh") ?? 0).toBeLessThanOrEqual(0);
   });
 });

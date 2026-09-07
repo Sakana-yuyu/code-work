@@ -539,6 +539,36 @@ describe("Code Work browser developer instructions", () => {
   });
 });
 
+describe("Code Work symbol index developer instructions", () => {
+  it("describes the index tools only when the session holds the index capability", () => {
+    const runtime = { model: "gpt-5.3-codex", reasoningEffort: "high" };
+    const withIndex = buildCodexDeveloperInstructions("default", runtime, true, true);
+    NodeAssert.match(withIndex, /index_search/);
+    NodeAssert.match(withIndex, /index_file_symbols/);
+    NodeAssert.match(withIndex, /declaration index/);
+
+    // Default stays off so legacy callers never promise tools they lack.
+    const withoutIndex = buildCodexDeveloperInstructions("default", runtime, true);
+    NodeAssert.doesNotMatch(withoutIndex, /index_search/);
+    NodeAssert.doesNotMatch(withoutIndex, /index_file_symbols/);
+    // The browser block is independent of the index capability.
+    NodeAssert.match(withoutIndex, /preview_open/);
+
+    for (const instructions of [
+      codexDefaultModeDeveloperInstructions(true, true),
+      codexPlanModeDeveloperInstructions(true, true),
+    ]) {
+      NodeAssert.match(instructions, /index_search/);
+    }
+    for (const instructions of [
+      codexDefaultModeDeveloperInstructions(true, false),
+      codexPlanModeDeveloperInstructions(true, false),
+    ]) {
+      NodeAssert.doesNotMatch(instructions, /index_search/);
+    }
+  });
+});
+
 describe("hasConfiguredMcpServer", () => {
   it("detects inline Codex MCP configuration arguments", () => {
     NodeAssert.equal(hasConfiguredMcpServer(undefined), false);

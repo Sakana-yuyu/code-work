@@ -160,6 +160,7 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
         composition: {
           modelDescriptors: listByokCompositionModelDescriptors(effectiveConfig),
           defaultModelId: effectiveConfig.adapters[0]?.id,
+          defaultModelName: effectiveConfig.adapters[0]?.displayName,
           resolveModelDriver: ({ modelId, signal }) => {
             const modelAdapter = byokCompositionAdapterForModel(effectiveConfig, modelId);
             if (modelAdapter === undefined) {

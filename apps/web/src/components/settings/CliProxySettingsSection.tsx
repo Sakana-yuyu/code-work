@@ -29,6 +29,7 @@ import {
   type CliProxyRequest,
   type CliProxyResult,
   type EnvironmentId,
+  type LocalAccountPoolStrategy,
   type LocalAccountSummary,
 } from "@codework/contracts";
 
@@ -112,7 +113,7 @@ export function CliProxySettingsSection({
     session.data?.scopes?.includes(AuthTerminalOperateScope) !== true;
   const command = useAtomCommand(serverEnvironment.cliProxy, { reportFailure: false });
   const [status, setStatus] = useState<CliProxyResult | null>(null);
-  const [strategy, setStrategy] = useState<"round-robin" | "fill-first">("round-robin");
+  const [strategy, setStrategy] = useState<LocalAccountPoolStrategy>("round-robin");
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const [feedback, setFeedback] = useState<{ error: boolean; text: string } | null>(null);
@@ -129,7 +130,7 @@ export function CliProxySettingsSection({
   const [localInstanceId, setLocalInstanceId] = useState("");
   const [localModels, setLocalModels] = useState("");
   const [localApiKey, setLocalApiKey] = useState("");
-  const [localStrategy, setLocalStrategy] = useState<"round-robin" | "fill-first">("round-robin");
+  const [localStrategy, setLocalStrategy] = useState<LocalAccountPoolStrategy>("round-robin");
   const [externalKeyName, setExternalKeyName] = useState("");
   const [issuedExternalKey, setIssuedExternalKey] = useState("");
   const [query, setQuery] = useState("");
@@ -697,13 +698,14 @@ export function CliProxySettingsSection({
               value={localStrategy}
               disabled={disabled}
               onChange={(event) => {
-                const next = event.target.value === "fill-first" ? "fill-first" : "round-robin";
+                const next = event.target.value as LocalAccountPoolStrategy;
                 setLocalStrategy(next);
                 void run({ action: "setLocalAccountPoolStrategy", strategy: next });
               }}
             >
               <option value="round-robin">{t("cliProxy.roundRobin")}</option>
               <option value="fill-first">{t("cliProxy.fillFirst")}</option>
+              <option value="weighted-round-robin">{t("cliProxy.weightedRoundRobin")}</option>
             </select>
           </label>
           <Button
@@ -777,6 +779,29 @@ export function CliProxySettingsSection({
                       <Badge size="sm" variant="outline">
                         {providerName(account.provider)}
                       </Badge>
+                      {localStrategy === "weighted-round-robin" ? (
+                        <label className="flex h-6 items-center gap-1 rounded-md border border-input bg-background px-1.5 text-xs">
+                          <span className="text-muted-foreground">{t("cliProxy.weight")}</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={99}
+                            defaultValue={account.weight ?? 1}
+                            disabled={disabled}
+                            aria-label={t("cliProxy.weightFor", { name: account.displayName })}
+                            className="w-10 bg-transparent text-right font-medium tabular-nums outline-none"
+                            onChange={(event) => {
+                              const weight = Number.parseInt(event.target.value, 10);
+                              if (!Number.isFinite(weight)) return;
+                              void run({
+                                action: "setLocalAccountWeight",
+                                id: account.id,
+                                weight: Math.min(99, Math.max(1, weight)),
+                              });
+                            }}
+                          />
+                        </label>
+                      ) : null}
                     </div>
                     <p className="mt-1 break-all text-xs text-muted-foreground">
                       {t("cliProxy.localAccountId", { id: account.id })}
@@ -958,12 +983,11 @@ export function CliProxySettingsSection({
                 className="h-8 rounded-md border border-input bg-background px-2"
                 value={strategy}
                 disabled={disabled}
-                onChange={(event) =>
-                  setStrategy(event.target.value === "fill-first" ? "fill-first" : "round-robin")
-                }
+                onChange={(event) => setStrategy(event.target.value as LocalAccountPoolStrategy)}
               >
                 <option value="round-robin">{t("cliProxy.roundRobin")}</option>
                 <option value="fill-first">{t("cliProxy.fillFirst")}</option>
+                <option value="weighted-round-robin">{t("cliProxy.weightedRoundRobin")}</option>
               </select>
             </label>
             <div className="flex items-end gap-2">

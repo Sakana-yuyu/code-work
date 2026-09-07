@@ -1,5 +1,5 @@
 /**
- * Japanese catalog (5140/5140 keys). Missing keys fall back to
+ * Japanese catalog (5200/5201 keys). Missing keys fall back to
  * English at runtime. Filled in translation chunks; keep ids in sync with
  * messages.ts.
  */
@@ -47,6 +47,84 @@ export const ja: Record<string, string> = {
   "cliProxy.strategy": "アカウント選択",
   "cliProxy.roundRobin": "ラウンドロビン",
   "cliProxy.fillFirst": "現在のアカウントを優先",
+  "cliProxy.weightedRoundRobin": "重み付きラウンドロビン",
+  "Maximum agent turns": "最大エージェントターン数",
+  "Model to use when the primary model is unavailable. It must be accessible with this provider's credentials. Leave empty to use Claude's default.":
+    "メインモデルが利用できないときに使用するモデル。このプロバイダーの資格情報でアクセスできる必要があります。空欄では Claude のデフォルトを使用します。",
+  "providerConnection.anthropicHint":
+    "Anthropic Messages 互換エンドポイントを使用します。保存するとキーは安全に保管されますが、上流のクォータやモデルアクセスは検証されません。",
+  "providerConnection.api": "URL / API Key",
+  "providerConnection.authHeader": "認証ヘッダー",
+  "providerConnection.description":
+    "この CLI の接続方法を選択します。資格情報はこのサーバー環境に保存されます。接続を変更する前に、実行中のタスクが完了するのをお待ちください。",
+  "providerConnection.deviceLogin": "Codex デバイスコード サインイン",
+  "providerConnection.gateway": "共有チャネル",
+  "providerConnection.gatewayHint":
+    "有効なカスタムモデルチャネルから URL・キー・モデルを再利用します。Codex は OpenAI Responses 互換チャネル、Claude は Anthropic Messages 互換チャネルを使用します。他の CLI は対応するプロトコルを使います。OAuth アカウントはベンダー間で共有されません。",
+  "providerConnection.invalidUrl":
+    "資格情報・クエリパラメーター・フラグメントを含まない HTTP(S) ベース URL を入力してください。",
+  "providerConnection.keyPlaceholder": "API キーを入力",
+  "providerConnection.keyRequired": "保存前に API キーを入力してください。",
+  "providerConnection.keySaved": "キーを保存しました · 空欄のままなら変更されません",
+  "providerConnection.kimiHint":
+    "Kimi の OpenAI 互換 Coding API エンドポイントを使用します。保存するとキーは安全に保管されますが、上流のクォータやモデルアクセスは検証されません。",
+  "providerConnection.login": "CLI でサインイン",
+  "providerConnection.loginFailed":
+    "CLI サインインを開始できませんでした。CLI のインストールと設定されたバイナリパスを確認して再試行してください。",
+  "providerConnection.loginHint":
+    "以下の公式 CLI でサインインを完了してください。必要ならブラウザーでリンクを開いてください。このウィンドウを閉じると処理がキャンセルされ、ターミナル履歴は削除されます（アカウントは影響を受けません）。終了後にステータスを更新します。",
+  "providerConnection.manageChannels": "共有 URL / キー / モデルを管理",
+  "providerConnection.method": "接続方式",
+  "providerConnection.native": "ネイティブアカウント",
+  "providerConnection.nativeHint":
+    "CLI 固有のアカウントと設定を使用します。このモードで保存すると、このインスタンスの明示的な API キー上書きは削除されますが、CLI アカウントからはログアウトしません。",
+  "providerConnection.responsesHint":
+    "Codex には Responses API が必要です。保存するとキーは安全に保管されますが、上流のクォータやモデルアクセスは検証されません。",
+  "providerConnection.saved":
+    "接続を保存しました。新しい設定でプロバイダーインスタンスを再構築します。CLI の状態を確認するにはステータスを更新してください。",
+  "providerConnection.sharedEditHint":
+    "共有チャネルのソース: {{name}}。ここでの編集は、これらのチャネルを使う他の CLI にも影響します。リクエストを経由させる前に、モデルサービスインスタンスを有効化してください。",
+  "providerConnection.title": "接続とサインイン",
+  "providerConnection.url": "API ベース URL",
+  "providerEvents.title": "プロバイダイベントログ",
+  "providerEvents.description":
+    "スレッドに記録されたプロバイダイベント（native/canonical ストリーム）を、マスキング済み・読み取り専用で表示します。診断専用で、再生や状態変更の操作はありません。",
+  "providerEvents.thread": "スレッド",
+  "providerEvents.pickThread": "スレッドを選択…",
+  "providerEvents.pickThreadHint": "上でスレッドを選ぶとプロバイダイベントを確認できます。",
+  "providerEvents.streamLabel": "ストリーム",
+  "providerEvents.stream.all": "すべてのストリーム",
+  "providerEvents.stream.canonical": "標準",
+  "providerEvents.stream.native": "ネイティブ",
+  "providerEvents.stream.orchestration": "オーケストレーション",
+  "providerEvents.refresh": "イベントを更新",
+  "providerEvents.loadFailed": "プロバイダイベントの読み込みに失敗しました。",
+  "providerEvents.truncated":
+    "表示より多くのイベントがあります。件数を増やすかストリームで絞り込んでください。",
+  "providerEvents.unknownType": "（不明なタイプ）",
+  "providerEvents.loading": "イベントを読み込み中…",
+  "providerEvents.empty": "このスレッドのプロバイダイベントはまだありません。",
+  "cliProxy.weight": "重み",
+  "cliProxy.weightFor": "{{name}} の重み",
+  "Review changes with Codex": "Codex で変更をレビュー",
+  "Review instructions (optional; defaults to uncommitted changes)":
+    "レビュー指示（任意。未指定では未コミットの変更をレビュー）",
+  "session.claudeMaxTurnsReached":
+    "Claude が最大エージェントターン数に達しました。続けるにはメッセージを送信するか、プロバイダー設定で上限を調整してください。",
+  "settings.localSaveFailed":
+    "変更はこのウィンドウでは反映されていますが、保存できませんでした。再試行すると再起動後も保持されます。",
+  "supplierRegistry.title": "サプライヤーレジストリ",
+  "supplierRegistry.description":
+    "各プロバイダーインスタンスのアカウント紐付けと派生エージェントプロファイルの読み取り専用ビュー。",
+  "supplierRegistry.noEnvironment": "サーバーに接続するとサプライヤーレジストリを表示できます。",
+  "supplierRegistry.pending": "サプライヤーレジストリを読み込み中…",
+  "supplierRegistry.error": "サプライヤーレジストリの読み込みに失敗しました",
+  "supplierRegistry.noData": "サプライヤーインスタンスはまだありません。",
+  "supplierRegistry.defaultModel": "デフォルトモデル",
+  "supplierRegistry.profile": "エージェントプロファイル",
+  "supplierRegistry.orphanProfiles": "孤立したエージェントプロファイル",
+  "supplierRegistry.enabled": "有効",
+  "supplierRegistry.disabled": "無効",
   "cliProxy.saveConfig": "設定を保存",
   "cliProxy.start": "組み込みサービス",
   "cliProxy.stop": "組み込みサービス",
@@ -160,54 +238,9 @@ export const ja: Record<string, string> = {
     "Cursor のカスタムエンドポイントには専用の互換ブリッジが必要です。通常の CPA / Sub2API の URL は直接使用できません。",
   "cliProxy.openCodeHint":
     "外部 OpenCode サーバーを使用中です。経路はそのサーバーで設定してください。ローカル設定で外部プロセスは変更できません。",
-  "Maximum agent turns": "最大エージェントターン数",
-  "Model to use when the primary model is unavailable. It must be accessible with this provider's credentials. Leave empty to use Claude's default.":
-    "メインモデルが利用できないときに使用するモデル。このプロバイダーの資格情報でアクセスできる必要があります。空欄では Claude のデフォルトを使用します。",
-  "providerConnection.anthropicHint":
-    "Anthropic Messages 互換エンドポイントを使用します。保存するとキーは安全に保管されますが、上流のクォータやモデルアクセスは検証されません。",
-  "providerConnection.api": "URL / API Key",
   "providerConnection.apiKeyHeader": "API Key",
   "providerConnection.apiKeyOption": "API Key (x-api-key)",
-  "providerConnection.authHeader": "認証ヘッダー",
   "providerConnection.bearerOption": "Bearer Token (Authorization)",
-  "providerConnection.description":
-    "この CLI の接続方法を選択します。資格情報はこのサーバー環境に保存されます。接続を変更する前に、実行中のタスクが完了するのをお待ちください。",
-  "providerConnection.deviceLogin": "Codex デバイスコード サインイン",
-  "providerConnection.gateway": "共有チャネル",
-  "providerConnection.gatewayHint":
-    "有効なカスタムモデルチャネルから URL・キー・モデルを再利用します。Codex は OpenAI Responses 互換チャネル、Claude は Anthropic Messages 互換チャネルを使用します。他の CLI は対応するプロトコルを使います。OAuth アカウントはベンダー間で共有されません。",
-  "providerConnection.invalidUrl":
-    "資格情報・クエリパラメーター・フラグメントを含まない HTTP(S) ベース URL を入力してください。",
-  "providerConnection.keyPlaceholder": "API キーを入力",
-  "providerConnection.keyRequired": "保存前に API キーを入力してください。",
-  "providerConnection.keySaved": "キーを保存しました · 空欄のままなら変更されません",
-  "providerConnection.kimiHint":
-    "Kimi の OpenAI 互換 Coding API エンドポイントを使用します。保存するとキーは安全に保管されますが、上流のクォータやモデルアクセスは検証されません。",
-  "providerConnection.login": "CLI でサインイン",
-  "providerConnection.loginFailed":
-    "CLI サインインを開始できませんでした。CLI のインストールと設定されたバイナリパスを確認して再試行してください。",
-  "providerConnection.loginHint":
-    "以下の公式 CLI でサインインを完了してください。必要ならブラウザーでリンクを開いてください。このウィンドウを閉じると処理がキャンセルされ、ターミナル履歴は削除されます（アカウントは影響を受けません）。終了後にステータスを更新します。",
-  "providerConnection.manageChannels": "共有 URL / キー / モデルを管理",
-  "providerConnection.method": "接続方式",
-  "providerConnection.native": "ネイティブアカウント",
-  "providerConnection.nativeHint":
-    "CLI 固有のアカウントと設定を使用します。このモードで保存すると、このインスタンスの明示的な API キー上書きは削除されますが、CLI アカウントからはログアウトしません。",
-  "providerConnection.responsesHint":
-    "Codex には Responses API が必要です。保存するとキーは安全に保管されますが、上流のクォータやモデルアクセスは検証されません。",
-  "providerConnection.saved":
-    "接続を保存しました。新しい設定でプロバイダーインスタンスを再構築します。CLI の状態を確認するにはステータスを更新してください。",
-  "providerConnection.sharedEditHint":
-    "共有チャネルのソース: {{name}}。ここでの編集は、これらのチャネルを使う他の CLI にも影響します。リクエストを経由させる前に、モデルサービスインスタンスを有効化してください。",
-  "providerConnection.title": "接続とサインイン",
-  "providerConnection.url": "API ベース URL",
-  "Review changes with Codex": "Codex で変更をレビュー",
-  "Review instructions (optional; defaults to uncommitted changes)":
-    "レビュー指示（任意。未指定では未コミットの変更をレビュー）",
-  "session.claudeMaxTurnsReached":
-    "Claude が最大エージェントターン数に達しました。続けるにはメッセージを送信するか、プロバイダー設定で上限を調整してください。",
-  "settings.localSaveFailed":
-    "変更はこのウィンドウでは反映されていますが、保存できませんでした。再試行すると再起動後も保持されます。",
   "specWorkflow.choose": "工程を選択",
   "specWorkflow.chooseDescription":
     "選択するとチップが表示されます。依頼を送信すると実行し、選択した工程の完了後に停止します。",
@@ -2065,6 +2098,9 @@ export const ja: Record<string, string> = {
   "commandPalette.searchProjectContentsPlaceholder": "プロジェクトの内容を検索…",
   "commandPalette.openInManager": "{{manager}} で開く",
   "commandPalette.openSettings": "設定を開く",
+  "commandPalette.openCliProxy": "アカウントプール設定を開く",
+  "commandPalette.openUsage": "使用量を開く",
+  "commandPalette.openDiagnostics": "診断を開く",
   "commandPalette.openWslFolder": "WSL フォルダーを開く",
   "commandPalette.placeholderRootBrowse": "プロジェクトのパスを入力 (例: ~/projects/my-app)",
   "commandPalette.placeholderSearch": "検索...",
@@ -2122,6 +2158,8 @@ export const ja: Record<string, string> = {
     "ゲートウェイがアカウントごとに呼び出しとトークンを集計します。トークンはストリーミング応答から収集され、サーバー再起動後も保持されます。",
   "usage.poolUsage.requests": "{{countValue}} 回の呼び出し",
   "usage.poolUsage.failed": "{{countValue}} 回失敗",
+  "usage.poolUsage.failedRatio": "失敗率 {{value}}",
+  "usage.poolUsage.cooldownUntil": "{{value}} までクールダウン",
   "usage.poolUsage.tokens": "入力 {{input}} · 出力 {{output}}",
   "usage.poolUsage.loading": "読み込み中…",
   "usage.past30Days": "30 日間",
@@ -2152,6 +2190,22 @@ export const ja: Record<string, string> = {
   "usage.relativeToday": "今日",
   "usage.relativeYesterday": "昨日",
   "settings.addProjectStartsIn": "プロジェクト追加の開始場所",
+  "codeIndex.title": "コードインデックス",
+  "codeIndex.explanation":
+    "各プロジェクトの宣言インデックスを構築し、エージェントがシンボル定義やファイル構造を即座に把握できるようにします。新規・変更ファイルは自動的に取り込まれます。",
+  "codeIndex.toggle": "コードインデックスを有効化",
+  "codeIndex.toggleDescription":
+    "有効にすると、エージェントは code-work MCP のインデックスツール（index_search、index_file_symbols）でシンボルを照会できます。",
+  "codeIndex.appliesToNewSessions":
+    "エージェントは次のセッションからインデックスツールを利用できます。",
+  "codeIndex.state.idle": "アイドル",
+  "codeIndex.state.indexing": "インデックス中",
+  "codeIndex.state.off": "インデックスは無効",
+  "codeIndex.projectStats": "{{files}} ファイル · {{symbols}} シンボル",
+  "codeIndex.lastIndexed": "{{time}} に索引付け",
+  "codeIndex.neverIndexed": "未索引",
+  "codeIndex.noProjects": "索引対象のプロジェクトはありません。",
+  "codeIndex.refresh": "索引状態を更新",
   "settings.agentBrowserAccess": "エージェントのブラウザアクセス",
   "settings.appearance": "外観",
   "settings.archive": "アーカイブ",
@@ -3385,6 +3439,20 @@ export const ja: Record<string, string> = {
   accountQuotaBalance: "残高 {{value1}}",
   accountQuotaUsedSuffix: "使用済み",
   accountQuotaRemaining: "残り {{value1}}",
+  "usageAccountQuota.title": "サブスクリプション使用枠",
+  "usageAccountQuota.description":
+    "スレッド実行中に Provider CLI が報告した 5時間/7日間のウィンドウ",
+  "usageAccountQuota.refresh": "使用枠を更新",
+  "usageAccountQuota.window.fiveHours": "5時間ウィンドウ",
+  "usageAccountQuota.window.sevenDays": "7日間ウィンドウ",
+  "usageAccountQuota.resetsAt": "{{value1}} にリセット",
+  "usageAccountQuota.updatedAt": "更新: {{value1}}",
+  "usageAccountQuota.unknown": "報告なし",
+  "relativeTime.justNow": "たった今",
+  "relativeTime.ago": "前",
+  "relativeTime.left": "後",
+  "relativeTime.expired": "期限切れ",
+  "relativeTime.soon": "まもなく",
   controlsWhetherBackgroundWorkMayRunAfterASubscribedIntervalFires:
     "サブスクライブされたインターバルの発火後にバックグラウンド処理を実行できるかどうかを制御します。",
   conversations: "{{value1}} 件の会話",
@@ -3423,7 +3491,7 @@ export const ja: Record<string, string> = {
   ctrlEnterToSend: "⌘/Ctrl+Enter で送信",
   customHexAccentColor: "カスタム HEX アクセントカラー",
   customSourceControlWritingInstructions: "ソース管理のカスタム書き込み指示",
-  cWorkspace: "C:\\\\workspace",
+  cWorkspace: "C:\\workspace",
   danger: "危険",
   decreaseFetchInterval: "フェッチ間隔を短縮",
   decreaseProviderHealthCheckInterval: "プロバイダーのヘルスチェック間隔を短縮",

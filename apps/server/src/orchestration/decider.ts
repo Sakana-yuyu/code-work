@@ -104,7 +104,7 @@ function hasOpenBlockingRequest(thread: {
  * as long as the skew lasts, extending the block far past the intended two
  * minutes.
  */
-function threadHasQueuedTurnStart(
+export function threadHasQueuedTurnStart(
   thread: {
     readonly messages: ReadonlyArray<{ readonly role: string; readonly createdAt: string }>;
     readonly latestTurn: {
@@ -1114,11 +1114,22 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.checkpoint.revert": {
-      yield* requireThread({
+      const thread = yield* requireThread({
         readModel,
         command,
         threadId: command.threadId,
       });
+      if (
+        thread.session?.status === "starting" ||
+        thread.session?.status === "running" ||
+        thread.session?.activeTurnId != null ||
+        threadHasQueuedTurnStart(thread, command.createdAt)
+      ) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `任务 ${command.threadId} 正在运行或排队，无法回退检查点。`,
+        });
+      }
       return {
         ...(yield* withEventBase({
           aggregateKind: "thread",

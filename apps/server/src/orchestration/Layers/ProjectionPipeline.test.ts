@@ -26,6 +26,7 @@ import {
 import { OrchestrationEventStore } from "../../persistence/Services/OrchestrationEventStore.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
+import * as WorkspaceOperationLock from "../WorkspaceOperationLock.ts";
 import {
   ORCHESTRATION_PROJECTOR_NAMES,
   OrchestrationProjectionPipelineLive,
@@ -2629,6 +2630,56 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
 it.layer(makeProjectionPipelinePrefixedTestLayer("codework-pending-turn-terminal-test-"))(
   "OrchestrationProjectionPipeline pending turn cleanup",
   (it) => {
+    it.effect("重放发送失败只清理消息标识匹配的排队记录", () =>
+      Effect.gen(function* () {
+        const pipeline = yield* OrchestrationProjectionPipeline;
+        const events = yield* OrchestrationEventStore;
+        const sql = yield* SqlClient.SqlClient;
+        const createdAt = "2026-01-01T00:00:00.000Z";
+        for (const matches of [true, false]) {
+          const threadId = ThreadId.make(`rejected-pending-${matches}`);
+          const messageId = MessageId.make(`pending-message-${matches}`);
+          const common = {
+            aggregateKind: "thread" as const,
+            aggregateId: threadId,
+            occurredAt: createdAt,
+            commandId: null,
+            causationEventId: null,
+            correlationId: null,
+            metadata: {},
+          };
+          yield* events.append({
+            ...common,
+            type: "thread.turn-start-requested",
+            eventId: EventId.make(`pending-${matches}`),
+            payload: { threadId, messageId, runtimeMode: "approval-required", createdAt },
+          });
+          yield* events.append({
+            ...common,
+            type: "thread.activity-appended",
+            eventId: EventId.make(`rejected-${matches}`),
+            payload: {
+              threadId,
+              activity: {
+                id: EventId.make(`rejected-activity-${matches}`),
+                kind: "provider.turn.start.failed",
+                tone: "error",
+                summary: "预算已耗尽",
+                turnId: null,
+                createdAt,
+                payload: { messageId: matches ? messageId : "older-message" },
+              },
+            },
+          });
+        }
+        yield* pipeline.bootstrap;
+        const pending = yield* sql<{ readonly threadId: string }>`
+          SELECT thread_id AS "threadId" FROM projection_turns
+          WHERE turn_id IS NULL AND thread_id LIKE 'rejected-pending-%'
+        `;
+        assert.deepEqual(pending, [{ threadId: "rejected-pending-false" }]);
+      }),
+    );
     it.effect("clears pending turn starts when startup reaches a terminal session state", () =>
       Effect.gen(function* () {
         const projectionPipeline = yield* OrchestrationProjectionPipeline;
@@ -2687,6 +2738,7 @@ it.layer(makeProjectionPipelinePrefixedTestLayer("codework-pending-turn-terminal
           FROM projection_turns
           WHERE turn_id IS NULL
             AND state = 'pending'
+            AND thread_id LIKE 'thread-terminal-%'
         `;
         assert.deepEqual(pendingRows, []);
       }),
@@ -2825,6 +2877,7 @@ it.effect("restores pending turn-start metadata across projection pipeline resta
 
 const engineLayer = it.layer(
   OrchestrationEngineLive.pipe(
+    Layer.provide(WorkspaceOperationLock.layer),
     Layer.provide(OrchestrationProjectionSnapshotQueryLive),
     Layer.provide(ThreadBackgroundLiveness.layer),
     Layer.provide(ThreadPlanProgress.layer),

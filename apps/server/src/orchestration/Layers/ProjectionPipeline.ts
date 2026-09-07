@@ -1187,6 +1187,21 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       "applyThreadTurnsProjection",
     )(function* (event, _attachmentSideEffects) {
       switch (event.type) {
+        case "thread.activity-appended": {
+          if (event.payload.activity.kind !== "provider.turn.start.failed") return;
+          const payload = event.payload.activity.payload;
+          if (typeof payload !== "object" || payload === null || !("messageId" in payload)) return;
+          const pending = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
+            threadId: event.payload.threadId,
+          });
+          // 失败事件只结算对应请求；迟到的失败不能删除后续追加输入的排队记录。
+          if (Option.isSome(pending) && pending.value.messageId === payload.messageId) {
+            yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
+              threadId: event.payload.threadId,
+            });
+          }
+          return;
+        }
         case "thread.turn-start-requested": {
           yield* projectionTurnRepository.replacePendingTurnStart({
             threadId: event.payload.threadId,

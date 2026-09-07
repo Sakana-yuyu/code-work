@@ -12,6 +12,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import { ThreadGoalStore, ThreadGoalStoreDomainError } from "../Services/ThreadGoalStore.ts";
 import { SqlitePersistenceMemory, makeSqlitePersistenceLive } from "./Sqlite.ts";
@@ -34,6 +35,67 @@ const threadId = ThreadId.make("thread-goal-test");
 const isThreadGoalStoreDomainError = Schema.is(ThreadGoalStoreDomainError);
 
 memoryLayer("ThreadGoalStore", (it) => {
+  it.effect("active 用量更新只结算一次耗时，频繁更新保留不足一秒的区间", () =>
+    Effect.gen(function* () {
+      const store = yield* ThreadGoalStore;
+      yield* store.set({ threadId, objective: "校验计时区间" });
+      yield* TestClock.adjust("10 seconds");
+      const first = yield* store.setStatus({ threadId, status: "active", tokensUsed: 100 });
+      yield* TestClock.adjust("10 seconds");
+      const second = yield* store.setStatus({ threadId, status: "active", tokensUsed: 200 });
+      assert.deepEqual([first.timeUsedSeconds, second.timeUsedSeconds], [10, 20]);
+      yield* TestClock.adjust("500 millis");
+      yield* store.setStatus({ threadId, status: "active", tokensUsed: 300 });
+      yield* TestClock.adjust("500 millis");
+      assert.equal((yield* store.pause(threadId)).timeUsedSeconds, 21);
+      yield* TestClock.adjust("10 seconds");
+      assert.equal((yield* store.resume(threadId)).timeUsedSeconds, 21);
+    }),
+  );
+
+  it.effect("旧 Goal 或旧状态的异步用量更新不能覆盖新状态", () =>
+    Effect.gen(function* () {
+      const store = yield* ThreadGoalStore;
+      const goal = yield* store.set({ threadId, objective: "旧目标" });
+      yield* store.pause(threadId);
+      const staleStatus = yield* store
+        .setStatus({
+          threadId,
+          status: "active",
+          tokensUsed: 100,
+          expectedGoalId: goal.goalId,
+          expectedStatus: "active",
+          expectedTokensUsed: 0,
+        })
+        .pipe(Effect.flip);
+      assert.equal(
+        isThreadGoalStoreDomainError(staleStatus) ? staleStatus.code : undefined,
+        "stale-version",
+      );
+      const replacement = yield* store.set({ threadId, objective: "新目标" });
+      const staleGoal = yield* store
+        .setStatus({
+          threadId,
+          status: "usageLimited",
+          tokensUsed: 200,
+          expectedGoalId: goal.goalId,
+        })
+        .pipe(Effect.flip);
+      assert.equal(
+        isThreadGoalStoreDomainError(staleGoal) ? staleGoal.code : undefined,
+        "stale-version",
+      );
+      const staleClear = yield* store
+        .clear({ threadId, expectedGoalId: goal.goalId })
+        .pipe(Effect.flip);
+      assert.equal(
+        isThreadGoalStoreDomainError(staleClear) ? staleClear.code : undefined,
+        "stale-version",
+      );
+      assert.deepEqual(Option.getOrThrow(yield* store.get(threadId)), replacement);
+    }),
+  );
+
   it.effect("set 首次生成稳定服务端 goalId，相同输入幂等且不同目标重置", () =>
     Effect.gen(function* () {
       const store = yield* ThreadGoalStore;
@@ -47,6 +109,7 @@ memoryLayer("ThreadGoalStore", (it) => {
         objective: "Ship the native goal experience",
         tokenBudget: 10_000,
       });
+      yield* TestClock.adjust("1 second");
       const replaced = yield* store.set({
         threadId,
         objective: "Ship the second goal",
@@ -87,6 +150,29 @@ memoryLayer("ThreadGoalStore", (it) => {
         : yield* Effect.die("expected invalid-transition domain error");
       assert.equal(staleResumeError.code, "invalid-transition");
       assert.equal(stalePauseError.code, "invalid-transition");
+    }),
+  );
+
+  it.effect("usageLimited 允许手动恢复为 active，blocked 不允许", () =>
+    Effect.gen(function* () {
+      const store = yield* ThreadGoalStore;
+      yield* store.set({ threadId, objective: "Recover from usage limit", tokenBudget: 100 });
+
+      const limited = yield* store.setStatus({
+        threadId,
+        status: "usageLimited",
+        tokensUsed: 120,
+      });
+      assert.equal(limited.status, "usageLimited");
+      assert.equal(limited.tokensUsed, 120);
+      const recovered = yield* store.resume(threadId);
+      assert.equal(recovered.status, "active");
+      // 恢复后用量保留，不因状态切换清零。
+      assert.equal(recovered.tokensUsed, 120);
+
+      yield* store.setStatus({ threadId, status: "blocked" });
+      const blockedResume = yield* store.resume(threadId).pipe(Effect.flip);
+      assert.isTrue(isThreadGoalStoreDomainError(blockedResume));
     }),
   );
 

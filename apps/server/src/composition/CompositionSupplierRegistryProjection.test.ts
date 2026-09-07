@@ -41,6 +41,7 @@ describe("projectCompositionSupplierRegistry", () => {
           enabled: true,
           continuationKey: "byok:instance:instance-byok-1",
           defaultModelId: "openrouter/auto",
+          defaultModelName: "OpenRouter Auto",
         },
         {
           instanceId: "instance-provider-1",
@@ -73,6 +74,7 @@ describe("projectCompositionSupplierRegistry", () => {
     assert.equal(byok?.enabled, true);
     assert.equal(byok?.continuationKey, "byok:instance:instance-byok-1");
     assert.equal(byok?.defaultModelId, "openrouter/auto");
+    assert.equal(byok?.defaultModelName, "OpenRouter Auto");
     assert.deepEqual(byok?.profile, {
       agentId: "provider:instance-byok-1",
       runtimeId: "byok:instance-byok-1",

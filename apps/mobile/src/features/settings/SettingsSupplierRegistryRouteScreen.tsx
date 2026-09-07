@@ -15,6 +15,7 @@ import { t } from "../../i18n";
 import {
   formatOrphanProfilesWarning,
   formatSupplierProfileSummary,
+  supplierDefaultModelLabel,
   supplierDisplayName,
   supplierEnabledLabelKey,
 } from "./SettingsSupplierRegistryRouteScreen.logic";
@@ -111,9 +112,9 @@ export function SettingsSupplierRegistryRouteScreen() {
                 <Text className="font-mono text-xs text-foreground-muted" numberOfLines={1}>
                   {supplier.continuationKey}
                 </Text>
-                {supplier.defaultModelId === undefined ? null : (
+                {supplierDefaultModelLabel(supplier) === undefined ? null : (
                   <Text className="text-sm text-foreground-muted">
-                    {`${t("supplierRegistry.defaultModel")}: ${supplier.defaultModelId}`}
+                    {`${t("supplierRegistry.defaultModel")}: ${supplierDefaultModelLabel(supplier)}`}
                   </Text>
                 )}
                 {supplier.profile === undefined ? null : (

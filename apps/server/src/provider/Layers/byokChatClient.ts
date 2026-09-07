@@ -148,6 +148,11 @@ export interface ByokStreamChatInput {
   readonly baseURL: string;
   readonly apiKey: string;
   readonly modelId: string;
+  /**
+   * 本端为单次请求生成的关联 id，作为 x-request-id 头随请求发出；上游日志、
+   * 排障工单与本端 provider 事件通过它互相对上。
+   */
+  readonly requestId?: string | undefined;
   readonly messages: ReadonlyArray<ByokChatMessage>;
   /** 向 agent loop 模型声明的规范工具。 */
   readonly tools?: ReadonlyArray<ByokToolDescriptor>;
@@ -1097,8 +1102,16 @@ export const streamChat = (
             }),
           );
 
+  // 三种协议统一挂 x-request-id；供应商不识别也会原样记进自己的日志，便于互查。
+  const correlatedRequestEffect = Effect.map(
+    requestEffect,
+    input.requestId === undefined
+      ? (request: HttpClientRequest.HttpClientRequest) => request
+      : HttpClientRequest.setHeader("x-request-id", input.requestId),
+  );
+
   const sseItems: Stream.Stream<ByokSseItem, ByokEngineError> = HttpClientResponse.stream(
-    Effect.flatMap(requestEffect, (prepared) => httpClient.execute(prepared)).pipe(
+    Effect.flatMap(correlatedRequestEffect, (prepared) => httpClient.execute(prepared)).pipe(
       Effect.mapError((cause) => toEngineError(cause, "transport_error")),
       Effect.flatMap((response) =>
         response.status >= 200 && response.status < 300

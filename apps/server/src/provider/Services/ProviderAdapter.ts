@@ -68,6 +68,8 @@ export interface ProviderAdapterCapabilities {
    * Declares whether changing the model on an existing session is supported.
    */
   readonly sessionModelSwitch: ProviderSessionModelSwitchMode;
+  /** 只有真正恢复模型对话上下文的实现才能声明；未声明时拒绝回退。 */
+  readonly threadRollback?: boolean;
   /** 只有真实注册宿主工具回调的 Adapter 才能声明这些 canonical tools。 */
   readonly toolBrokerCanonicalTools?: ReadonlyArray<string>;
 }

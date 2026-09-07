@@ -34,7 +34,7 @@ import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { it as effectIt } from "@effect/vitest";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
@@ -51,7 +51,11 @@ import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
 import * as ThreadBackgroundLiveness from "../ThreadBackgroundLiveness.ts";
 import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
-import { ProviderRuntimeIngestionLive } from "./ProviderRuntimeIngestion.ts";
+import * as WorkspaceOperationLock from "../WorkspaceOperationLock.ts";
+import {
+  ProviderRuntimeIngestionLive,
+  runtimeEventToActivities,
+} from "./ProviderRuntimeIngestion.ts";
 import { DEFAULT_THREAD_TITLE } from "../threadTitles.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeIngestion.ts";
@@ -238,6 +242,7 @@ describe("ProviderRuntimeIngestion", () => {
   }
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     if (scope) {
       await Effect.runPromise(Scope.close(scope, Exit.void));
     }
@@ -277,6 +282,7 @@ describe("ProviderRuntimeIngestion", () => {
       // engine, and the snapshot query (reader).
       Layer.provideMerge(ThreadBackgroundLiveness.layer),
       Layer.provideMerge(ThreadPlanProgress.layer),
+      Layer.provideMerge(WorkspaceOperationLock.layer),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(
         ThreadGoalStoreLive.pipe(
@@ -358,6 +364,7 @@ describe("ProviderRuntimeIngestion", () => {
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
       emit: provider.emit,
       setProviderSession: provider.setSession,
+      providerService: provider.service,
       goalStore,
       drain,
     };
@@ -2035,6 +2042,590 @@ describe("ProviderRuntimeIngestion", () => {
     expect(goal.status).toBe("paused");
   });
 
+  effectIt.effect("预算按累计处理量计算，超限请求中断并记录停止前的最终用量", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("turn-budget-stop");
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      const usage = (eventId: string, usedTokens: number, totalProcessedTokens: number) => ({
+        type: "thread.token-usage.updated",
+        eventId: asEventId(eventId),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt,
+        threadId,
+        turnId,
+        payload: { usage: { usedTokens, totalProcessedTokens } },
+      });
+      harness.emit(usage("budget-before", 1000, 10000));
+      yield* Effect.promise(() => harness.drain());
+      yield* harness.goalStore.set({ threadId, objective: "准确限制预算", tokenBudget: 1500 });
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("budget-start"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt,
+        threadId,
+        turnId,
+      });
+      harness.emit(usage("budget-crossed", 1100, 12100));
+      yield* Effect.promise(() => harness.drain());
+      expect(Option.getOrThrow(yield* harness.goalStore.get(threadId))).toMatchObject({
+        tokensUsed: 2100,
+        status: "usageLimited",
+      });
+      harness.emit(usage("budget-final", 500, 12300));
+      harness.emit({
+        type: "turn.completed",
+        eventId: asEventId("budget-ended"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt,
+        threadId,
+        turnId,
+        payload: { state: "interrupted" },
+      });
+      yield* Effect.promise(() => harness.drain());
+      expect(Option.getOrThrow(yield* harness.goalStore.get(threadId))).toMatchObject({
+        tokensUsed: 2300,
+        status: "usageLimited",
+      });
+      harness.emit(usage("budget-late-final", 550, 12400));
+      yield* Effect.promise(() => harness.drain());
+      expect(Option.getOrThrow(yield* harness.goalStore.get(threadId))).toMatchObject({
+        tokensUsed: 2400,
+        status: "usageLimited",
+      });
+      const events = yield* Stream.runCollect(harness.engine.readEvents(0));
+      expect(
+        Array.from(events).filter((event) => event.type === "thread.turn-interrupt-requested"),
+      ).toMatchObject([{ payload: { threadId, turnId } }]);
+    }),
+  );
+
+  effectIt.effect("首次用量也计入预算，重复和较旧快照不重复记账", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const threadId = asThreadId("thread-1");
+      yield* harness.goalStore.set({ threadId, objective: "首个请求也计费" });
+      for (const [eventId, totalProcessedTokens] of [
+        ["first", 1200],
+        ["first", 1200],
+        ["older", 1000],
+        ["next", 1500],
+      ] as const) {
+        harness.emit({
+          type: "thread.token-usage.updated",
+          eventId: asEventId(eventId),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          threadId,
+          payload: { usage: { usedTokens: 300, totalProcessedTokens } },
+        });
+      }
+      yield* Effect.promise(() => harness.drain());
+      expect(Option.getOrThrow(yield* harness.goalStore.get(threadId)).tokensUsed).toBe(1500);
+    }),
+  );
+
+  effectIt.effect("缺少累计量的压缩快照仍显示上下文，恢复累计量后不重复计费", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const threadId = asThreadId("thread-1");
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      yield* harness.goalStore.set({ threadId, objective: "压缩后继续计费" });
+      for (const [eventId, usage] of [
+        ["before-compact", { usedTokens: 1000, totalProcessedTokens: 2000 }],
+        ["after-compact", { usedTokens: 50 }],
+      ] as const) {
+        harness.emit({
+          type: "thread.token-usage.updated",
+          eventId: asEventId(eventId),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: eventId === "after-compact" ? "2026-01-01T00:00:01.000Z" : createdAt,
+          threadId,
+          payload: { usage },
+        });
+      }
+      yield* Effect.promise(() => harness.drain());
+      const thread = (yield* Effect.promise(() => harness.readModel())).threads.find(
+        (entry) => entry.id === threadId,
+      );
+      expect(
+        thread?.activities.findLast((entry) => entry.kind === "context-window.updated")?.payload,
+      ).toMatchObject({ usedTokens: 50 });
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId("after-compact-more"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt,
+        threadId,
+        payload: { usage: { usedTokens: 100, totalProcessedTokens: 2500 } },
+      });
+      yield* Effect.promise(() => harness.drain());
+      expect(Option.getOrThrow(yield* harness.goalStore.get(threadId)).tokensUsed).toBe(2500);
+    }),
+  );
+
+  effectIt.effect.each(["codex", "claudeAgent"] as const)(
+    "%s 会话重建按真实计数范围恢复预算",
+    (providerName) =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() => createHarness());
+        const threadId = asThreadId("thread-1");
+        const createdAt = "2026-01-01T00:00:00.000Z";
+        const provider = ProviderDriverKind.make(providerName);
+        const listSessions = vi.spyOn(harness.providerService, "listSessions");
+        yield* harness.goalStore.set({ threadId, objective: "会话恢复计费" });
+        const emit = (id: string, totalProcessedTokens: number) =>
+          harness.emit({
+            type: "thread.token-usage.updated",
+            eventId: asEventId(id),
+            provider,
+            threadId,
+            createdAt,
+            payload: { usage: { usedTokens: 100, totalProcessedTokens } },
+            raw: { source: "provider", payload: { threadId: "native-thread-1" } },
+          });
+        harness.setProviderSession({
+          provider,
+          threadId,
+          status: "ready",
+          runtimeMode: "approval-required",
+          createdAt,
+          updatedAt: createdAt,
+        });
+        emit("session-first", 1000);
+        yield* Effect.promise(() => harness.drain());
+        const firstQueryCount = listSessions.mock.calls.length;
+        emit("session-first-replay", 1000);
+        yield* Effect.promise(() => harness.drain());
+        expect(listSessions.mock.calls.length).toBe(firstQueryCount);
+        harness.setProviderSession({
+          provider,
+          threadId,
+          status: "ready",
+          runtimeMode: "approval-required",
+          createdAt: "2026-01-01T01:00:00.000Z",
+          updatedAt: "2026-01-01T01:00:00.000Z",
+        });
+        harness.emit({
+          type: "session.started",
+          eventId: asEventId("rebuilt-session"),
+          provider,
+          threadId,
+          createdAt: "2026-01-01T01:00:00.000Z",
+          payload: {},
+        });
+        emit("session-second", providerName === "codex" ? 1200 : 200);
+        yield* Effect.promise(() => harness.drain());
+        expect(listSessions.mock.calls.length).toBe(firstQueryCount + 1);
+        expect(Option.getOrThrow(yield* harness.goalStore.get(threadId)).tokensUsed).toBe(1200);
+      }),
+  );
+
+  effectIt.effect("从已持久化上下文恢复用量基线，重放后继续统计", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const threadId = asThreadId("thread-1");
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      yield* harness.goalStore.set({ threadId, objective: "恢复预算" });
+      yield* harness.goalStore.setStatus({ threadId, status: "active", tokensUsed: 400 });
+      yield* harness.engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.make("persisted-usage"),
+        threadId,
+        createdAt,
+        activity: {
+          id: asEventId("persisted-usage"),
+          createdAt,
+          tone: "info",
+          kind: "context-window.updated",
+          summary: "Context window updated",
+          payload: { usedTokens: 1000, totalProcessedTokens: 10000 },
+          turnId: null,
+        },
+      });
+      for (const [eventId, totalProcessedTokens] of [
+        ["persisted-usage", 10000],
+        ["after-restart", 12100],
+      ] as const) {
+        harness.emit({
+          type: "thread.token-usage.updated",
+          eventId: asEventId(eventId),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt,
+          threadId,
+          payload: { usage: { usedTokens: 1100, totalProcessedTokens } },
+        });
+      }
+      yield* Effect.promise(() => harness.drain());
+      expect(Option.getOrThrow(yield* harness.goalStore.get(threadId)).tokensUsed).toBe(2500);
+    }),
+  );
+
+  effectIt.effect("记账后的中断请求失败不会让下一份账单重复累计", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("interrupt-failure-turn");
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      yield* harness.goalStore.set({
+        threadId,
+        objective: "中断失败也只记一次账",
+        tokenBudget: 500,
+      });
+      const originalDispatch = harness.engine.dispatch;
+      let attempts = 0;
+      vi.spyOn(harness.engine, "dispatch").mockImplementation((command) => {
+        if (command.type === "thread.turn.interrupt" && ++attempts === 1)
+          return Effect.die(new Error("模拟中断请求失败"));
+        return originalDispatch(command);
+      });
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("interrupt-failure-start"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt,
+        threadId,
+        turnId,
+      });
+      for (const totalProcessedTokens of [1000, 1500]) {
+        harness.emit({
+          type: "thread.token-usage.updated",
+          eventId: asEventId(`interrupt-failure-${totalProcessedTokens}`),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt,
+          threadId,
+          turnId,
+          payload: { usage: { usedTokens: 100, totalProcessedTokens } },
+        });
+      }
+      yield* Effect.promise(() => harness.drain());
+      expect(Option.getOrThrow(yield* harness.goalStore.get(threadId)).tokensUsed).toBe(1500);
+      expect(attempts).toBe(2);
+    }),
+  );
+
+  effectIt.effect("旧版 Claude 活动没有计数代际时，新 query 不继承旧累计量", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const threadId = asThreadId("thread-1");
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      yield* harness.goalStore.set({ threadId, objective: "升级后继续记账" });
+      yield* harness.goalStore.setStatus({ threadId, status: "active", tokensUsed: 500 });
+      yield* harness.engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.make("legacy-claude-usage"),
+        threadId,
+        createdAt,
+        activity: {
+          id: asEventId("legacy-claude-usage"),
+          createdAt,
+          tone: "info",
+          kind: "context-window.updated",
+          summary: "Context window updated",
+          payload: { usedTokens: 1000, totalProcessedTokens: 10000 },
+          turnId: null,
+        },
+      });
+      const restartedAt = "2026-01-01T01:00:00.000Z";
+      harness.setProviderSession({
+        provider: ProviderDriverKind.make("claudeAgent"),
+        threadId,
+        status: "ready",
+        runtimeMode: "approval-required",
+        createdAt: restartedAt,
+        updatedAt: restartedAt,
+      });
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId("new-claude-query"),
+        provider: ProviderDriverKind.make("claudeAgent"),
+        createdAt: restartedAt,
+        threadId,
+        payload: { usage: { usedTokens: 100, totalProcessedTokens: 300 } },
+      });
+      yield* Effect.promise(() => harness.drain());
+      expect(Option.getOrThrow(yield* harness.goalStore.get(threadId)).tokensUsed).toBe(800);
+    }),
+  );
+
+  effectIt.effect("完成结算期间替换的 Goal 不会被旧结算清除或暂停", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("goal-replaced-at-settlement");
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      yield* harness.goalStore.set({ threadId, objective: "待完成的旧目标" });
+      const originalDispatch = harness.engine.dispatch;
+      vi.spyOn(harness.engine, "dispatch").mockImplementation((command) =>
+        command.type === "thread.activity.append" && command.activity.kind === "goal.completed"
+          ? harness.goalStore.set({ threadId, objective: "结算中新增的目标" }).pipe(
+              Effect.orDie,
+              Effect.flatMap(() => originalDispatch(command)),
+            )
+          : originalDispatch(command),
+      );
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("goal-replace-start"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt,
+        threadId,
+        turnId,
+      });
+      harness.emit({
+        type: "content.delta",
+        eventId: asEventId("goal-replace-text"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt,
+        threadId,
+        turnId,
+        itemId: asItemId("goal-replace-item"),
+        payload: { streamKind: "assistant_text", delta: "完成 [[GOAL_COMPLETE: 已验证]]" },
+      });
+      harness.emit({
+        type: "item.completed",
+        eventId: asEventId("goal-replace-item-end"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt,
+        threadId,
+        turnId,
+        itemId: asItemId("goal-replace-item"),
+        payload: { itemType: "assistant_message", status: "completed" },
+      });
+      harness.emit({
+        type: "turn.completed",
+        eventId: asEventId("goal-replace-end"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt,
+        threadId,
+        turnId,
+        payload: { state: "completed" },
+      });
+      yield* Effect.promise(() => harness.drain());
+      expect(Option.getOrThrow(yield* harness.goalStore.get(threadId))).toMatchObject({
+        objective: "结算中新增的目标",
+        status: "active",
+        tokensUsed: 0,
+      });
+    }),
+  );
+
+  effectIt.effect("does not count pre-goal token usage into a goal set mid-session", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const now = "2026-01-01T00:00:00.000Z";
+      const threadId = asThreadId("thread-1");
+
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId("evt-goal-pre-usage"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        payload: { usage: { usedTokens: 5000 } },
+      });
+      yield* Effect.promise(() => harness.drain());
+
+      yield* harness.goalStore.set({
+        threadId,
+        objective: "Keep the migration reversible",
+        tokenBudget: null,
+      });
+
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId("evt-goal-post-usage"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        payload: { usage: { usedTokens: 5400 } },
+      });
+
+      yield* Effect.promise(() => harness.drain());
+      expect(Option.getOrThrow(yield* harness.goalStore.get(threadId)).tokensUsed).toBe(400);
+    }),
+  );
+
+  effectIt.effect(
+    "keeps the usage baseline while the Goal is paused and counts again after resume",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() => createHarness());
+        const now = "2026-01-01T00:00:00.000Z";
+        const threadId = asThreadId("thread-1");
+        yield* harness.goalStore.set({
+          threadId,
+          objective: "Keep the migration reversible",
+          tokenBudget: null,
+        });
+
+        harness.emit({
+          type: "turn.started",
+          eventId: asEventId("evt-goal-baseline-turn-started"),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: now,
+          threadId,
+          turnId: asTurnId("turn-goal-baseline"),
+        });
+        yield* Effect.promise(() =>
+          waitForThread(
+            harness.readModel,
+            (thread) =>
+              thread.session?.status === "running" &&
+              thread.session?.activeTurnId === "turn-goal-baseline",
+          ),
+        );
+        harness.emit({
+          type: "thread.token-usage.updated",
+          eventId: asEventId("evt-goal-baseline-usage"),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: now,
+          threadId,
+          payload: { usage: { usedTokens: 1000 } },
+        });
+
+        harness.emit({
+          type: "turn.completed",
+          eventId: asEventId("evt-goal-baseline-turn-completed"),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: now,
+          threadId,
+          turnId: asTurnId("turn-goal-baseline"),
+          payload: { state: "completed" },
+        });
+        yield* Effect.promise(() =>
+          waitForThread(harness.readModel, (thread) => thread.session?.activeTurnId === null),
+        );
+        const paused = Option.getOrThrow(yield* harness.goalStore.get(threadId));
+        expect(paused).toMatchObject({ status: "paused", tokensUsed: 1000 });
+
+        harness.emit({
+          type: "thread.token-usage.updated",
+          eventId: asEventId("evt-goal-paused-usage"),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: now,
+          threadId,
+          payload: { usage: { usedTokens: 1250 } },
+        });
+        yield* Effect.promise(() => harness.drain());
+        expect(Option.getOrThrow(yield* harness.goalStore.get(threadId)).tokensUsed).toBe(1000);
+
+        yield* harness.goalStore.resume(threadId);
+        harness.emit({
+          type: "thread.token-usage.updated",
+          eventId: asEventId("evt-goal-resumed-usage"),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: now,
+          threadId,
+          payload: { usage: { usedTokens: 1300 } },
+        });
+
+        yield* Effect.promise(() => harness.drain());
+        expect(Option.getOrThrow(yield* harness.goalStore.get(threadId)).tokensUsed).toBe(1050);
+      }),
+  );
+
+  effectIt.effect("carries accumulated usage into the goal.completed activity", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const now = "2026-01-01T00:00:00.000Z";
+      const threadId = asThreadId("thread-1");
+      yield* harness.goalStore.set({
+        threadId,
+        objective: "Keep the migration reversible",
+        tokenBudget: null,
+      });
+
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("evt-goal-usage-complete-turn-started"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId: asTurnId("turn-goal-usage-complete"),
+      });
+      yield* Effect.promise(() =>
+        waitForThread(
+          harness.readModel,
+          (thread) =>
+            thread.session?.status === "running" &&
+            thread.session?.activeTurnId === "turn-goal-usage-complete",
+        ),
+      );
+
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId("evt-goal-usage-complete-1"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        payload: { usage: { usedTokens: 1000 } },
+      });
+      harness.emit({
+        type: "content.delta",
+        eventId: asEventId("evt-goal-usage-complete-delta"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId: asTurnId("turn-goal-usage-complete"),
+        itemId: asItemId("item-goal-usage-complete"),
+        payload: {
+          streamKind: "assistant_text",
+          delta: "迁移完成 [[GOAL_COMPLETE: 全部测试通过]]",
+        },
+      });
+      harness.emit({
+        type: "item.completed",
+        eventId: asEventId("evt-goal-usage-complete-item"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId: asTurnId("turn-goal-usage-complete"),
+        itemId: asItemId("item-goal-usage-complete"),
+        payload: {
+          itemType: "assistant_message",
+          status: "completed",
+        },
+      });
+
+      yield* Effect.promise(() => harness.drain());
+      expect(Option.isSome(yield* harness.goalStore.get(threadId))).toBe(true);
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId("evt-goal-usage-complete-2"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        payload: { usage: { usedTokens: 1600 } },
+      });
+      harness.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-goal-usage-complete-ended"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId: asTurnId("turn-goal-usage-complete"),
+        payload: { state: "completed" },
+      });
+
+      const completedThread = yield* Effect.promise(() =>
+        waitForThread(harness.readModel, (entry) =>
+          entry.activities.some(
+            (activity) =>
+              activity.kind === "goal.completed" &&
+              (activity.payload as { tokensUsed?: number }).tokensUsed === 1600,
+          ),
+        ),
+      );
+      const activity = completedThread.activities.find((entry) => entry.kind === "goal.completed");
+      expect(activity?.payload).toMatchObject({ tokensUsed: 1600 });
+      // 摘要带出真实用量，三端时间线零改动可见。
+      expect(activity?.summary).toContain("用量 1600 tokens");
+    }),
+  );
+
   it("settles the thread and Goal together when a turn is aborted", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
@@ -2145,13 +2736,24 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(message?.text).toBe("迁移完成");
 
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-goal-marker-turn-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-goal-marker"),
+      payload: { state: "completed" },
+    });
+
     const completedThread = await waitForThread(harness.readModel, (entry) =>
       entry.activities.some((activity) => activity.kind === "goal.completed"),
     );
     expect(
       completedThread.activities.find((activity) => activity.kind === "goal.completed"),
     ).toMatchObject({
-      summary: "全部测试通过目标已完成",
+      // 摘要可能带实时用时后缀（真实时钟驱动），只断言稳定前缀。
+      summary: expect.stringMatching(/^全部测试通过目标已完成/),
       payload: { summary: "全部测试通过" },
     });
     expect(
@@ -3487,6 +4089,14 @@ describe("ProviderRuntimeIngestion", () => {
   it("projects Claude usage snapshots with context window into normalized thread activities", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
+    harness.setProviderSession({
+      provider: ProviderDriverKind.make("claudeAgent"),
+      threadId: asThreadId("thread-1"),
+      status: "ready",
+      runtimeMode: "approval-required",
+      createdAt: now,
+      updatedAt: now,
+    });
 
     harness.emit({
       type: "thread.token-usage.updated",
@@ -3966,5 +4576,47 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(thread.session?.status).toBe("error");
     expect(thread.session?.lastError).toBe("runtime still processed");
+  });
+});
+
+describe("runtimeEventToActivities account rate limits", () => {
+  const makeQuotaEvent = (eventId: string, rateLimits: unknown): ProviderRuntimeEvent => ({
+    type: "account.rate-limits.updated",
+    eventId: asEventId(eventId),
+    provider: ProviderDriverKind.make("codex"),
+    createdAt: "2026-01-01T00:00:00.000Z",
+    threadId: asThreadId("thread-1"),
+    payload: { rateLimits },
+  });
+
+  it("maps rate limit events to a stable latest-state activity carrying the provider", () => {
+    const rateLimits = {
+      primary: { usedPercent: 42, resetsAt: 1767225600, windowDurationMins: 300 },
+    };
+    const activities = runtimeEventToActivities(makeQuotaEvent("evt-quota-1", rateLimits));
+
+    expect(activities).toHaveLength(1);
+    const activity = activities[0];
+    expect(activity?.kind).toBe("account.rate-limits.updated");
+    expect(activity?.id).toBe(asEventId("account-quota:thread-1"));
+    const payload = activity?.payload as { provider?: string; rateLimits?: unknown } | undefined;
+    expect(payload?.provider).toBe("codex");
+    expect(payload?.rateLimits).toEqual(rateLimits);
+  });
+
+  it("keeps the stable id across events so ticks replace instead of accumulate", () => {
+    const first = runtimeEventToActivities(
+      makeQuotaEvent("evt-quota-first", { primary: { usedPercent: 10 } }),
+    );
+    const second = runtimeEventToActivities(
+      makeQuotaEvent("evt-quota-second", { primary: { usedPercent: 20 } }),
+    );
+
+    expect(first[0]?.id).toBe(second[0]?.id);
+    expect(first[0]?.id).not.toBe(asEventId("evt-quota-second"));
+  });
+
+  it("skips empty rate limit payloads", () => {
+    expect(runtimeEventToActivities(makeQuotaEvent("evt-quota-empty", {}))).toHaveLength(0);
   });
 });

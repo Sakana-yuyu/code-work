@@ -20,12 +20,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../components/AppText";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
+import { useAccountQuota } from "../../state/accountQuota";
 import {
   useByokBalanceDashboards,
   type EnvironmentByokBalanceStatus,
   type ByokBalanceQueryTarget,
 } from "../../state/byokBalance";
 import type { MergedByokAdapter, MergedByokPlans } from "@codework/shared/byokBalanceMerge";
+import type { MergedAccountQuotaProvider } from "@codework/shared/accountQuotaMerge";
+import type { AccountQuotaWindow } from "@codework/contracts";
 import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { SettingsSection } from "../settings/components/SettingsSection";
 import { UsageDailyChart } from "./UsageDailyChart";
@@ -54,6 +57,7 @@ export function UsageRouteScreen() {
   const isPast24Hours = windowDays === 1;
   const { merged, environments, isPending, isPartial, refresh } = useUsage(window);
   const byok = useByokBalanceDashboards();
+  const accountQuota = useAccountQuota();
 
   const days = useMemo(
     () => enumerateDays(window.sinceDay, window.untilDay),
@@ -165,6 +169,11 @@ export function UsageRouteScreen() {
             <ModelsSection merged={merged} />
           </>
         )}
+        <AccountQuotaSection
+          providers={accountQuota.providers}
+          hasData={accountQuota.hasData}
+          isPending={accountQuota.isPending}
+        />
         <ByokBalanceSection
           environments={byok.environments}
           adapters={byok.merged.adapters}
@@ -718,4 +727,117 @@ function UsageCoverageNotice(props: {
       ) : null}
     </View>
   );
+}
+
+/** 第一方订阅额度：CLI 没跑过回合就没有数据，安静地不渲染。 */
+function AccountQuotaSection(props: {
+  readonly providers: readonly MergedAccountQuotaProvider[];
+  readonly hasData: boolean;
+  readonly isPending: boolean;
+}) {
+  const language = useResolvedLanguage();
+  if (props.isPending || !props.hasData) {
+    return null;
+  }
+  return (
+    <SettingsSection title={t("usageAccountQuotaMobile.title")} card>
+      <View className="gap-3 p-4">
+        {props.providers.map((provider) => (
+          <View
+            key={`${provider.environmentId}:${provider.provider}`}
+            className="gap-2.5 rounded-[16px] bg-subtle p-3"
+          >
+            <View className="flex-row items-center gap-2">
+              <Text
+                className="min-w-0 flex-1 text-sm font-codework-medium text-foreground"
+                numberOfLines={1}
+              >
+                {accountQuotaProviderLabel(provider.provider)}
+              </Text>
+              {provider.planName === undefined ? null : (
+                <Text className="rounded-md bg-card px-1.5 py-0.5 text-2xs text-foreground-muted">
+                  {accountQuotaPlanLabel(provider.planName)}
+                </Text>
+              )}
+            </View>
+            {provider.windows.map((window) => (
+              <AccountQuotaWindowRow key={window.id} window={window} language={language} />
+            ))}
+            <Text className="text-[10px] text-foreground-tertiary">
+              {t("usageAccountQuotaMobile.updatedAt", {
+                value1: formatDateTimeShort(
+                  new Date(provider.updatedAtUnixMs).toISOString(),
+                  undefined,
+                  language,
+                ),
+              })}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </SettingsSection>
+  );
+}
+
+const ACCOUNT_QUOTA_VALUE_CLASSES: Readonly<Record<AccountQuotaWindow["status"], string>> = {
+  ok: "text-foreground",
+  warning: "text-warning-foreground",
+  exhausted: "text-danger-foreground",
+  unknown: "text-foreground-muted",
+};
+
+function AccountQuotaWindowRow(props: {
+  readonly window: AccountQuotaWindow;
+  readonly language: string;
+}) {
+  const window = props.window;
+  return (
+    <View className="gap-1">
+      <View className="flex-row items-baseline justify-between gap-3">
+        <Text className="min-w-0 flex-1 text-xs text-foreground-muted" numberOfLines={1}>
+          {accountQuotaWindowLabel(window)}
+        </Text>
+        <Text
+          className={`text-sm font-codework-medium tabular-nums ${ACCOUNT_QUOTA_VALUE_CLASSES[window.status]}`}
+        >
+          {window.usedFraction === undefined
+            ? t("usageAccountQuotaMobile.unknown")
+            : `${formatPercent(window.usedFraction, 0)} ${t("usageAccountQuotaMobile.usedSuffix")}`}
+        </Text>
+      </View>
+      {window.resetsAt === undefined ? null : (
+        <Text className="text-[10px] text-foreground-tertiary">
+          {t("usageAccountQuotaMobile.resetsAt", {
+            value1: formatDateTimeShort(window.resetsAt, undefined, props.language),
+          })}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function accountQuotaWindowLabel(window: AccountQuotaWindow): string {
+  switch (window.id) {
+    case "primary":
+    case "five_hour":
+      return t("usageAccountQuotaMobile.window.fiveHours");
+    case "secondary":
+    case "seven_day":
+      return t("usageAccountQuotaMobile.window.sevenDays");
+    default:
+      return window.label;
+  }
+}
+
+function accountQuotaProviderLabel(provider: string): string {
+  // 驱动 kind 与用量统计的 provider 口径差一个 Agent 后缀（claudeAgent）。
+  const key = provider.replace(/Agent$/i, "");
+  return key in PROVIDER_LABEL ? PROVIDER_LABEL[key as keyof typeof PROVIDER_LABEL] : provider;
+}
+
+/** planType 的原始 slug（self_serve_business_prolite）读起来像错误，展开后首字母大写。 */
+function accountQuotaPlanLabel(planName: string): string {
+  const expanded = planName.replaceAll("_", " ").trim();
+  if (expanded.length === 0) return planName;
+  return expanded.charAt(0).toUpperCase() + expanded.slice(1);
 }
