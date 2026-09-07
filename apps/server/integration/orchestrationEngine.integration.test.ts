@@ -870,13 +870,18 @@ it.live("reverts to an earlier checkpoint and trims checkpoint projections + git
         true,
       );
       assert.equal(
-        NodeFS.readFileSync(NodePath.join(harness.workspaceDir, "README.md"), "utf8"),
+        NodeFS.readFileSync(NodePath.join(harness.workspaceDir, "README.md"), "utf8").replaceAll(
+          "\r\n",
+          "\n",
+        ),
         "v2\n",
       );
-      assert.equal(
-        gitRefExists(harness.workspaceDir, checkpointRefForThreadTurn(THREAD_ID, 2)),
-        false,
+      const staleRefExists = yield* waitForSync(
+        () => gitRefExists(harness.workspaceDir, checkpointRefForThreadTurn(THREAD_ID, 2)),
+        (exists) => !exists,
+        "stale checkpoint ref cleanup",
       );
+      assert.equal(staleRefExists, false);
       assert.deepEqual(harness.adapterHarness!.getRollbackCalls(THREAD_ID), [1]);
 
       const checkpointRows = yield* harness.checkpointRepository.listByThreadId({
