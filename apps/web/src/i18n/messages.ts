@@ -2608,6 +2608,8 @@ export const en: Record<string, string> = {
     "{{count}} model adapter configured. Key check failed for: {{failures}}",
   providerAdaptersKeyCheckFailed_plural:
     "{{count}} model adapters configured. Key check failed for: {{failures}}",
+  providerAdaptersKeyCheckUnauthorized:
+    "{{count}} model adapters are configured; the model-list check returned 401 ({{failures}}). This does not mean model calls will fail: the service may allow real requests but not expose the /models check.",
   providerCheckedAt: "Checked {{value}}{{suffix}}",
   providerCheckedAt_plural: "Checked {{value}}{{suffix}}",
   providerCursorCliMissing:

@@ -72,6 +72,22 @@ const SOURCE_EXEMPTIONS = new Set([
   "Pocket Pi",
   "Ultrathink",
   "VS Code",
+  // Provider and protocol names are never translated.
+  "API Key",
+  "Antigravity",
+  "Claude",
+  "Codex",
+  "Cursor",
+  "Grok",
+  "Kimi",
+  "OAuth",
+  // Language self-names stay in their own language (cf. 日本語 below).
+  "English",
+  "中文",
+  // Model-name placeholder examples and CSS demo values are technical.
+  "gpt-5, claude-…",
+  "var(--app-theme-message-surface,var(--secondary))",
+  "var(--background)",
 ]);
 
 const SAME_VALUE_EXEMPTIONS = new Set([
@@ -84,6 +100,12 @@ const SAME_VALUE_EXEMPTIONS = new Set([
   "Tailscale IP",
   "Ultrathink",
   "WebSocket URL",
+  // Provider-connection auth option labels are protocol terms.
+  "URL / API Key",
+  "API Key (x-api-key)",
+  "Bearer Token (Authorization)",
+  // Reasoning-effort level name (cf. Ultrathink).
+  "Ultra",
   "ab",
   "codework",
   "ide_local",

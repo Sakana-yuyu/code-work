@@ -1,9 +1,13 @@
 /**
- * Japanese catalog (4781/4781 keys). Missing keys fall back to
+ * Japanese catalog (5140/5140 keys). Missing keys fall back to
  * English at runtime. Filled in translation chunks; keep ids in sync with
  * messages.ts.
  */
 export const ja: Record<string, string> = {
+  "effortPicker.labelLanguage": "強度ラベルの言語",
+  "Fallback model": "フォールバックモデル",
+  "Limit each request to 1–1000 tool-use rounds. Leave empty for no additional limit. This is not a token or spending limit.":
+    "各リクエストのツール使用ラウンド数を 1～1000 に制限します。空欄では追加制限なし。トークンや支出の上限ではありません。",
   "localAccountPool.title": "ローカル公式アカウントプール",
   "localAccountPool.description":
     "公式 CLI の認証情報をこのサーバーに取り込みます。認証情報はサーバーのシークレットストアで保管し、有効なアカウントをリクエストごとに切り替えます。CPA や Sub2API は不要です。",
@@ -156,9 +160,54 @@ export const ja: Record<string, string> = {
     "Cursor のカスタムエンドポイントには専用の互換ブリッジが必要です。通常の CPA / Sub2API の URL は直接使用できません。",
   "cliProxy.openCodeHint":
     "外部 OpenCode サーバーを使用中です。経路はそのサーバーで設定してください。ローカル設定で外部プロセスは変更できません。",
+  "Maximum agent turns": "最大エージェントターン数",
+  "Model to use when the primary model is unavailable. It must be accessible with this provider's credentials. Leave empty to use Claude's default.":
+    "メインモデルが利用できないときに使用するモデル。このプロバイダーの資格情報でアクセスできる必要があります。空欄では Claude のデフォルトを使用します。",
+  "providerConnection.anthropicHint":
+    "Anthropic Messages 互換エンドポイントを使用します。保存するとキーは安全に保管されますが、上流のクォータやモデルアクセスは検証されません。",
+  "providerConnection.api": "URL / API Key",
   "providerConnection.apiKeyHeader": "API Key",
   "providerConnection.apiKeyOption": "API Key (x-api-key)",
+  "providerConnection.authHeader": "認証ヘッダー",
   "providerConnection.bearerOption": "Bearer Token (Authorization)",
+  "providerConnection.description":
+    "この CLI の接続方法を選択します。資格情報はこのサーバー環境に保存されます。接続を変更する前に、実行中のタスクが完了するのをお待ちください。",
+  "providerConnection.deviceLogin": "Codex デバイスコード サインイン",
+  "providerConnection.gateway": "共有チャネル",
+  "providerConnection.gatewayHint":
+    "有効なカスタムモデルチャネルから URL・キー・モデルを再利用します。Codex は OpenAI Responses 互換チャネル、Claude は Anthropic Messages 互換チャネルを使用します。他の CLI は対応するプロトコルを使います。OAuth アカウントはベンダー間で共有されません。",
+  "providerConnection.invalidUrl":
+    "資格情報・クエリパラメーター・フラグメントを含まない HTTP(S) ベース URL を入力してください。",
+  "providerConnection.keyPlaceholder": "API キーを入力",
+  "providerConnection.keyRequired": "保存前に API キーを入力してください。",
+  "providerConnection.keySaved": "キーを保存しました · 空欄のままなら変更されません",
+  "providerConnection.kimiHint":
+    "Kimi の OpenAI 互換 Coding API エンドポイントを使用します。保存するとキーは安全に保管されますが、上流のクォータやモデルアクセスは検証されません。",
+  "providerConnection.login": "CLI でサインイン",
+  "providerConnection.loginFailed":
+    "CLI サインインを開始できませんでした。CLI のインストールと設定されたバイナリパスを確認して再試行してください。",
+  "providerConnection.loginHint":
+    "以下の公式 CLI でサインインを完了してください。必要ならブラウザーでリンクを開いてください。このウィンドウを閉じると処理がキャンセルされ、ターミナル履歴は削除されます（アカウントは影響を受けません）。終了後にステータスを更新します。",
+  "providerConnection.manageChannels": "共有 URL / キー / モデルを管理",
+  "providerConnection.method": "接続方式",
+  "providerConnection.native": "ネイティブアカウント",
+  "providerConnection.nativeHint":
+    "CLI 固有のアカウントと設定を使用します。このモードで保存すると、このインスタンスの明示的な API キー上書きは削除されますが、CLI アカウントからはログアウトしません。",
+  "providerConnection.responsesHint":
+    "Codex には Responses API が必要です。保存するとキーは安全に保管されますが、上流のクォータやモデルアクセスは検証されません。",
+  "providerConnection.saved":
+    "接続を保存しました。新しい設定でプロバイダーインスタンスを再構築します。CLI の状態を確認するにはステータスを更新してください。",
+  "providerConnection.sharedEditHint":
+    "共有チャネルのソース: {{name}}。ここでの編集は、これらのチャネルを使う他の CLI にも影響します。リクエストを経由させる前に、モデルサービスインスタンスを有効化してください。",
+  "providerConnection.title": "接続とサインイン",
+  "providerConnection.url": "API ベース URL",
+  "Review changes with Codex": "Codex で変更をレビュー",
+  "Review instructions (optional; defaults to uncommitted changes)":
+    "レビュー指示（任意。未指定では未コミットの変更をレビュー）",
+  "session.claudeMaxTurnsReached":
+    "Claude が最大エージェントターン数に達しました。続けるにはメッセージを送信するか、プロバイダー設定で上限を調整してください。",
+  "settings.localSaveFailed":
+    "変更はこのウィンドウでは反映されていますが、保存できませんでした。再試行すると再起動後も保持されます。",
   "specWorkflow.choose": "工程を選択",
   "specWorkflow.chooseDescription":
     "選択するとチップが表示されます。依頼を送信すると実行し、選択した工程の完了後に停止します。",
@@ -245,6 +294,10 @@ export const ja: Record<string, string> = {
     "1 つのメッセージに添付できる画像は {{countValue}} 枚までです。",
   "composer.imageNotReadable": "「{{name}}」を画像として読み取れませんでした。",
   "composer.imageTooLarge": "「{{name}}」は圧縮後も大きすぎて添付できません。",
+  "teamRuntime.conflict":
+    "このチームは別のデバイスで変更されました。下書きは保持されています。再度編集する前に最新の設定を再読み込みしてください。",
+  "teamRuntime.discardChanges": "保存されていないチームの変更を破棄しますか？",
+  "teamRuntime.reload": "最新の設定を再読み込み",
   "terminal.expiredContextNoun": "期限切れのターミナルコンテキスト",
   "terminal.expiredContextNoun_plural": "期限切れのターミナルコンテキスト",
   "terminal.terminalClosed": "ターミナルを閉じました",
@@ -308,6 +361,104 @@ export const ja: Record<string, string> = {
   "slowRpc.hideRequests": "リクエストを非表示",
   "slowRpc.showRequests": "リクエストを表示",
   showDetails: "詳細を表示",
+  "themeMedia.blur": "すりガラス / 背景ぼかし",
+  "themeMedia.border": "境界線の色",
+  "themeMedia.color": "背景色",
+  "themeMedia.contain": "全体表示",
+  "themeMedia.cover": "カバー",
+  "themeMedia.customized": "カスタマイズ済み",
+  "themeMedia.dim": "メディアオーバーレイ",
+  "themeMedia.exportBusy": "パッケージ化中…",
+  "themeMedia.exportHint":
+    "ローカル背景を含めるか選択してください。メディアパッケージは大きくなることがあり、あなたの非公開の画像や動画を含みます。",
+  "themeMedia.exportMedia": "ローカルの画像 / 動画を含める",
+  "themeMedia.exportSettings": "設定のみ（ローカルメディアなし）",
+  "themeMedia.exportTitle": "テーマをエクスポート",
+  "themeMedia.fit": "メディアの表示方法",
+  "themeMedia.formatDetails": "対応フォーマットとパフォーマンスの注意",
+  "themeMedia.formats":
+    "画像は最大 50 MB: PNG、JPEG、WebP、GIF、AVIF、SVG、BMP、ICO。HEIC/HEIF は自動変換を試みます。インポートした画像はリサイズされた静的背景になります。非対応のエンコーディングでは変換のヒントを表示します。",
+  "themeMedia.gradient": "グラデーション終端の色",
+  "themeMedia.imageSize":
+    "画像が空、50 MB 超、または 6400 万ピクセル超です。サイズを変更して再試行してください。",
+  "themeMedia.importPackage": "メディアパッケージをインポート",
+  "themeMedia.inherited": "全体 / 現在のテーマを継承",
+  "themeMedia.invalidSettings":
+    "テーマ背景の設定が無効です。領域・色・範囲・メディアソースを確認してください。",
+  "themeMedia.invalidUrl":
+    "資格情報・スクリプト・ローカルパスを含まない有効な HTTP または HTTPS の画像 URL を入力してください。",
+  "themeMedia.loadFailed":
+    "背景画像を読み込めませんでした。テーマの色を使用中です。URL・ネットワーク・ホットリンク保護を確認してください。",
+  "themeMedia.lowContrast":
+    "テキストのコントラストは約 {{ratio}}:1 で、4.5:1 を下回っています。背景を変更するか、この領域をリセットしてください。画像・動画の背景では変動することがあります。",
+  "themeMedia.missing":
+    "背景メディアが利用できません。テーマの色を使用中です。外観エディターでファイルを再選択してください。",
+  "themeMedia.more": "その他のサーフェス効果",
+  "themeMedia.mute": "背景音をミュート",
+  "themeMedia.muted": "ミュート中",
+  "themeMedia.noMedia": "背景メディアなし",
+  "themeMedia.opacity": "サーフェスの不透明度",
+  "themeMedia.packageInvalid":
+    "テーマパッケージが無効、大きすぎるか、未対応のアセットを含んでいます。再度エクスポートして再試行してください。",
+  "themeMedia.packageReady":
+    "テーマパッケージを読み込みました。追加して適用してください。動画は最初はミュートで始まります。",
+  "themeMedia.packageSingle": "メディアパッケージは一度に 1 つずつインポートします。",
+  "themeMedia.pause": "背景動画を一時停止",
+  "themeMedia.play": "背景動画を再生",
+  "themeMedia.playBlocked": "再生がブロックされました。再生をクリックして再試行してください。",
+  "themeMedia.preparing": "このクライアントでデコードと保存中…",
+  "themeMedia.previewHint":
+    "変更はその場でプレビューされます。保存すると保持され、キャンセルするとテーマに戻ります。",
+  "themeMedia.radius": "角の丸み",
+  "themeMedia.readability":
+    "この背景では視認性が低下する可能性があります。オーバーレイかサーフェスの不透明度を上げてください。エディターは読める状態を保つため、領域をリセットできます。",
+  "themeMedia.reduceHint":
+    "視覚効果を減らすが有効です。背景動画は既定で一時停止します。手動で再生できます。",
+  "themeMedia.region": "領域",
+  "themeMedia.region.assistantMessage": "アシスタントメッセージ",
+  "themeMedia.region.code": "コードブロック",
+  "themeMedia.region.composer": "入力欄",
+  "themeMedia.region.content": "会話とコンテンツ",
+  "themeMedia.region.global": "全体の背景",
+  "themeMedia.region.overlay": "メニュー・ダイアログ・ツールバー",
+  "themeMedia.region.sidebar": "サイドバー",
+  "themeMedia.region.userMessage": "ユーザーメッセージ",
+  "themeMedia.remove": "背景メディアを削除",
+  "themeMedia.removeWarning":
+    "このテーマを削除すると、他のテーマで使われていないローカルメディアも削除されます。後で復元したい場合は、先にメディアパッケージをエクスポートしてください。JSON だけではローカルメディアは復元できません。",
+  "themeMedia.resetField": "{{field}} をリセット",
+  "themeMedia.resetRegion": "領域をリセット",
+  "themeMedia.shadow": "影",
+  "themeMedia.shadow.medium": "ミディアム",
+  "themeMedia.shadow.none": "なし",
+  "themeMedia.shadow.soft": "ソフト",
+  "themeMedia.soundOn": "サウンド オン",
+  "themeMedia.storageFailed":
+    "背景メディアを保存できませんでした。クライアントのストレージとブラウザーの権限を確認して再試行してください。元のテーマは置き換えられていません。",
+  "themeMedia.title": "背景とサーフェス",
+  "themeMedia.unmute": "背景音を有効化",
+  "themeMedia.unsupportedImage":
+    "この画像をデコードできませんでした。PNG、JPEG、WebP に変換してください（PSD、RAW、一部の TIFF/HEIF は直接使用できません）。",
+  "themeMedia.unsupportedVideo":
+    "動画を読み込めないか、非対応のコーデックです。MP4 (H.264) または WebM に変換して再試行してください。",
+  "themeMedia.upload": "ローカルの画像 / 動画を選択",
+  "themeMedia.uploadImage": "ローカルの画像を選択",
+  "themeMedia.url": "画像 URL",
+  "themeMedia.urlWarning":
+    "外部画像はホストと通信し、IP アドレスが露呈します。リンクは期限切れや埋め込み拒否になることがあります。読み込みは URL を適用した後でのみ始まります。HTTPS ページでは HTTP 画像がブロックされる場合があります。",
+  "themeMedia.useUrl": "画像 URL を使用",
+  "themeMedia.videoBrief":
+    "動画: 既定ではミュート。GPU と電力を多く使用します。音声は明示的に有効化してください（最大 200 MB）。",
+  "themeMedia.videoControls": "背景動画のコントロール",
+  "themeMedia.videoGlobalOnly":
+    "動画は全体の背景でのみ選択できます。他の領域は重複再生を避けるため画像のみ対応しています。",
+  "themeMedia.videoSize":
+    "動画が空か、200 MB を超えています。トリミングまたは圧縮して再試行してください。",
+  "themeMedia.videoWarning":
+    "動画は最大 200 MB で、全体の背景でのみ再生され、最初はミュートです。再生は GPU 使用量と消費電力を増やし、バックグラウンドでは一時停止します。音声は明示的に有効化してください。再生はコーデックに依存します。",
+  "themeMedia.volume": "背景音量",
+  "themeMedia.x": "水平位置",
+  "themeMedia.y": "垂直位置",
   "timeline.runningProgram": "{{program}} を実行中",
   "timeline.runningCommand": "コマンドを実行中",
   "timeline.earlierLogEntries": "+{{count}} 件の過去のログエントリー",
@@ -1824,6 +1975,12 @@ export const ja: Record<string, string> = {
   wordWrap: "折り返し",
   wordWrapping: "折り返し",
   working: "作業中",
+  "workspace.changes": "Git 変更",
+  "workspace.files": "ファイルとエディター",
+  "workspace.quickOpen": "ファイルをクイックオープン",
+  "workspace.search": "プロジェクト内容を検索",
+  "workspace.terminal": "ターミナル",
+  "workspace.tools": "ワークスペース",
   wrapLongLinesInCodeBlocksTablesDiffsAndFilePreviewsByDefault:
     "デフォルトで、コードブロック・テーブル・diff・ファイルプレビューの長い行を折り返します。",
   write: "書き込み",

@@ -1,9 +1,12 @@
 /**
- * Japanese catalog (2265/2265 keys). Missing keys fall back to
+ * Japanese catalog (2400/2400 keys). Missing keys fall back to
  * English at runtime. Filled in translation chunks; keep ids in sync with
  * messages.ts.
  */
 export const ja: Record<string, string> = {
+  effortLabelLanguage: "強度ラベルの言語",
+  effortLabelLanguageDescription:
+    "推論強度のラベル表示を英語または中国語から選択します。この端末のみに適用され、モデルの動作は変わりません。",
   "localAccountPool.title": "ローカル公式アカウントプール",
   "localAccountPool.description":
     "公式 CLI の認証情報をサーバーに取り込みます。認証情報はサーバーのシークレットストアに保存し、有効なアカウントをリクエストごとに切り替えます。",
@@ -89,6 +92,22 @@ export const ja: Record<string, string> = {
     "Cursor のカスタムエンドポイントには専用の互換ブリッジが必要です。通常の CPA / Sub2API の URL は直接使用できません。",
   "cliProxy.openCodeHint":
     "外部 OpenCode サーバーを使用中です。経路はそのサーバーで設定してください。ローカル設定で外部プロセスは変更できません。",
+  "pairing.computerInstructions":
+    "パソコン側で「設定 → 接続」を開き、「ネットワークアクセス」を有効にしてペアリングリンクを作成します。両方のデバイスを同じ Wi-Fi に接続してから、QR コードをスキャンするか、完全なリンクを「ホスト」に貼り付けてください。",
+  "pairing.reconnect": "環境に再接続",
+  "pairing.remove": "環境を削除",
+  "pairing.retryInstructions":
+    "パソコン側で Code Work を開いたままにしてください。同じ Wi-Fi に接続しているか、ローカルネットワークの権限とファイアウォールの設定を確認し、新しいペアリングリンクを作成してください。localhost や 127.0.0.1 ではなく、パソコンの LAN アドレスを使用してください。",
+  preferencesSaveFailed: "設定を保存できませんでした。もう一度選択して再試行してください。",
+  "providersMobile.fallbackModel": "フォールバックモデル（同じ資格情報を使用）",
+  "providersMobile.fallbackModelPlaceholder": "例: sonnet。空欄では Claude のデフォルトを使用",
+  "providersMobile.maxTurns": "リクエストごとの最大エージェントターン数（1～1000）",
+  "providersMobile.maxTurnsPlaceholder": "例: 20。空欄では制限なし",
+  "Review changes with Codex": "Codex で変更をレビュー",
+  "Review instructions (optional; defaults to uncommitted changes)":
+    "レビュー指示（任意。未指定では未コミットの変更をレビュー）",
+  "session.claudeMaxTurnsReached":
+    "Claude が最大エージェントターン数に達しました。続けるにはメッセージを送信するか、プロバイダー設定で上限を調整してください。",
   "specWorkflow.choose": "工程を選択",
   "specWorkflow.chooseDescription":
     "選択するとチップが表示されます。依頼を送信すると実行し、選択した工程の完了後に停止します。",
