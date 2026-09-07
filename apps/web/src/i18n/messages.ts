@@ -977,8 +977,6 @@ export const en: Record<string, string> = {
   breakdown: "Breakdown",
   bringsBackTheBuildPlanToggleInTheComposerAlongWithThePlanAnd:
     "Brings back the Build/Plan toggle in the composer along with the /plan and /default commands and the Shift+Tab shortcut. While off, every thread runs in build mode.",
-  bringsBackTheOriginalSidebarWithPerProjectThreadTreesTheDefa:
-    "Brings back the original sidebar with per-project thread trees. The default sidebar shows one flat list: active work as rich cards, settled threads as compact rows.",
   browser: "Browser",
   byProvider: "by provider",
   cachedInput: "Cached input",
@@ -2168,7 +2166,6 @@ export const en: Record<string, string> = {
   settingsSaveFailed: "Could not save settings",
   settingsSaveTryAgain: "Check the connection and try again.",
   "settings.showSkillsInSlashMenu": "Show skills in slash menu",
-  "settings.sidebarLegacy": "Sidebar (legacy)",
   "settings.sourceControl": "Source Control",
   "settings.sourceControlSetting": "Source control",
   "settings.startFromOrigin": "Start from origin",
@@ -6745,8 +6742,6 @@ export const zhCN: Record<string, string> = {
   breakdown: "明细",
   bringsBackTheBuildPlanToggleInTheComposerAlongWithThePlanAnd:
     "在输入区恢复“构建/计划”切换，以及 /plan、/default 命令和 Shift+Tab 快捷键。关闭时，所有线程都以构建模式运行。",
-  bringsBackTheOriginalSidebarWithPerProjectThreadTreesTheDefa:
-    "恢复带分项目线程树的旧版侧边栏。默认侧边栏显示一个扁平列表：活跃工作为富卡片，已沉寂线程为紧凑行。",
   browser: "浏览器",
   byProvider: "（按供应商）",
   cachedInput: "缓存输入",
@@ -7837,7 +7832,6 @@ export const zhCN: Record<string, string> = {
   settingsSaveFailed: "设置保存失败",
   settingsSaveTryAgain: "请检查设备连接后重试。",
   "settings.showSkillsInSlashMenu": "在斜杠菜单中显示技能",
-  "settings.sidebarLegacy": "侧边栏（旧版）",
   "settings.sourceControl": "版本控制",
   "settings.sourceControlSetting": "源代码管理",
   "settings.startFromOrigin": "从 origin 创建",

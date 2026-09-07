@@ -869,8 +869,6 @@ export const ja: Record<string, string> = {
   breakdown: "内訳",
   bringsBackTheBuildPlanToggleInTheComposerAlongWithThePlanAnd:
     "入力欄の Build/Plan 切り替えと、/plan・/default コマンド、Shift+Tab ショートカットを復活させます。オフの場合、すべてのスレッドはビルドモードで実行されます。",
-  bringsBackTheOriginalSidebarWithPerProjectThreadTreesTheDefa:
-    "プロジェクトごとのスレッドツリーを持つ従来のサイドバーを復活させます。デフォルトのサイドバーは1つのフラットなリストで、アクティブな作業はリッチなカードとして、確定済みスレッドはコンパクトな行として表示されます。",
   browser: "ブラウザー",
   byProvider: "プロバイダー別",
   cachedInput: "キャッシュ済み入力",
@@ -2040,7 +2038,6 @@ export const ja: Record<string, string> = {
   settingsSaveFailed: "設定を保存できませんでした",
   settingsSaveTryAgain: "接続を確認して、もう一度お試しください。",
   "settings.showSkillsInSlashMenu": "スキルをスラッシュメニューに表示",
-  "settings.sidebarLegacy": "サイドバー（レガシー）",
   "settings.sourceControl": "ソース管理",
   "settings.sourceControlSetting": "ソース管理",
   "settings.startFromOrigin": "origin から開始",

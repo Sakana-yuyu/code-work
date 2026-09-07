@@ -237,11 +237,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
   },
   {
-    id: "legacy-sidebar",
-    title: "settings.sidebarLegacy",
-    to: "/settings/general",
-  },
-  {
     id: "keybindings",
     title: "settings.keybindings",
     to: "/settings/keybindings",

@@ -1837,10 +1837,7 @@ function AutoSettleDaysInput({
 
 // The legacy rows sit behind the fold, so a settings-search jump has to
 // expand the section before its target can mount and scroll.
-const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
-  "legacy-token-streaming",
-  "legacy-sidebar",
-]);
+const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set(["legacy-token-streaming"]);
 
 /**
  * Retired features kept only for users who still depend on them. Collapsed by
@@ -1902,19 +1899,6 @@ function LegacyFeaturesSection() {
                     })();
                   }}
                   aria-label={t("settings.streamTokenByTokenLegacy")}
-                />
-              }
-            />
-            <SettingsRow
-              {...searchableSetting("legacy-sidebar")}
-              description={t("bringsBackTheOriginalSidebarWithPerProjectThreadTreesTheDefa")}
-              control={
-                <Switch
-                  checked={settings.legacySidebarEnabled}
-                  onCheckedChange={(checked) =>
-                    updateSettings({ legacySidebarEnabled: Boolean(checked) })
-                  }
-                  aria-label={t("settings.sidebarLegacy")}
                 />
               }
             />
