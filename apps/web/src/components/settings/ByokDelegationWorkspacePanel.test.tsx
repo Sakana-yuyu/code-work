@@ -32,6 +32,10 @@ vi.mock("~/state/server", () => ({
   },
 }));
 
+vi.mock("~/state/byokBalance", () => ({
+  useByokBalanceDashboards: () => [],
+}));
+
 vi.mock("~/state/use-atom-command", () => ({
   useAtomCommand: () => vi.fn(),
 }));

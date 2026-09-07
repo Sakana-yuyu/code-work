@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@codework/contracts";
 import type { Thread } from "../types";
+import { getCurrentLanguage, setCurrentLanguage } from "../i18n/runtime";
 import {
   browseInputEndPaddingClass,
   buildBrowseGroups,
@@ -171,6 +172,8 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
 
 describe("buildThreadActionItems", () => {
   it("orders threads by most recent activity and formats timestamps from updatedAt", () => {
+    const previousLanguage = getCurrentLanguage();
+    setCurrentLanguage("en", false);
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-25T12:00:00.000Z"));
 
@@ -203,6 +206,7 @@ describe("buildThreadActionItems", () => {
       expect(items[1]?.timestamp).toBe("5d ago");
     } finally {
       vi.useRealTimers();
+      setCurrentLanguage(previousLanguage, false);
     }
   });
 

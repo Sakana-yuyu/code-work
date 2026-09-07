@@ -68,6 +68,17 @@ vi.mock("../../state/server", () => ({
     updateProvider: atoms.updateProvider,
     updateSettings: atoms.updateSettings,
   },
+  byokEnvironment: {
+    supplierCatalog: () => Symbol("supplierCatalog"),
+    discoverModels: Symbol("discoverModels"),
+    benchmarkModel: Symbol("benchmarkModel"),
+    matchContextWindows: Symbol("matchContextWindows"),
+    discoverDraftModels: Symbol("discoverDraftModels"),
+  },
+}));
+
+vi.mock("../../state/byokBalance", () => ({
+  useByokBalanceDashboards: () => [],
 }));
 
 vi.mock("../../state/use-atom-command", () => ({
