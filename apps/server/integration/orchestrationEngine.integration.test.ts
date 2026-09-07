@@ -1344,6 +1344,7 @@ it.live("reverts claudeAgent turns and rolls back provider conversation state", 
           commandId: "cmd-turn-start-claude-revert-1",
           messageId: "msg-user-claude-revert-1",
           text: "First Claude edit",
+          createdAt: "2026-02-24T10:14:00.000Z",
           modelSelection: {
             instanceId: ProviderInstanceId.make("claudeAgent"),
             model: "claude-sonnet-4-6",
@@ -1402,6 +1403,7 @@ it.live("reverts claudeAgent turns and rolls back provider conversation state", 
           commandId: "cmd-turn-start-claude-revert-2",
           messageId: "msg-user-claude-revert-2",
           text: "Second Claude edit",
+          createdAt: "2026-02-24T10:14:01.000Z",
         });
 
         yield* harness.waitForThread(
@@ -1409,7 +1411,15 @@ it.live("reverts claudeAgent turns and rolls back provider conversation state", 
           (entry) =>
             entry.latestTurn?.turnId === "turn-2" &&
             entry.checkpoints.length === 2 &&
-            entry.session?.providerName === "claudeAgent",
+            entry.session?.providerName === "claudeAgent" &&
+            entry.session.status === "ready" &&
+            entry.session.activeTurnId === null,
+        );
+        yield* harness.waitForReceipt(
+          (receipt): receipt is TurnProcessingQuiescedReceipt =>
+            receipt.type === "turn.processing.quiesced" &&
+            receipt.threadId === THREAD_ID &&
+            receipt.checkpointTurnCount === 2,
         );
 
         yield* harness.engine.dispatch({
