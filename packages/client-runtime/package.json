@@ -155,6 +155,30 @@
       "types": "./src/state/threads.ts",
       "default": "./src/state/threads.ts"
     },
+    "./state/use-atom-command": {
+      "types": "./src/state/use-atom-command.ts",
+      "default": "./src/state/use-atom-command.ts"
+    },
+    "./state/use-atom-query-runner": {
+      "types": "./src/state/use-atom-query-runner.ts",
+      "default": "./src/state/use-atom-query-runner.ts"
+    },
+    "./state/environment-query": {
+      "types": "./src/state/environment-query.ts",
+      "default": "./src/state/environment-query.ts"
+    },
+    "./state/environment-thread-view": {
+      "types": "./src/state/environment-thread-view.ts",
+      "default": "./src/state/environment-thread-view.ts"
+    },
+    "./state/spec-workflow-view": {
+      "types": "./src/state/spec-workflow-view.ts",
+      "default": "./src/state/spec-workflow-view.ts"
+    },
+    "./state/byok-balance": {
+      "types": "./src/state/byok-balance.ts",
+      "default": "./src/state/byok-balance.ts"
+    },
     "./state/thread-reducer": {
       "types": "./src/state/threadReducer.ts",
       "default": "./src/state/threadReducer.ts"
@@ -195,10 +219,13 @@
   "dependencies": {
     "@codework/contracts": "workspace:*",
     "@codework/shared": "workspace:*",
-    "effect": "catalog:"
+    "@effect/atom-react": "catalog:",
+    "effect": "catalog:",
+    "react": "19.2.6"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "@types/react": "~19.2.14",
     "vite-plus": "catalog:"
   }
 }

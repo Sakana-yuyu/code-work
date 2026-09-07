@@ -1,45 +1,18 @@
-import { useAtomValue } from "@effect/atom-react";
-import {
-  createEnvironmentThreadDetailAtoms,
-  createEnvironmentThreadShellAtoms,
-  createEnvironmentThreadStateAtoms,
-  EMPTY_ENVIRONMENT_THREAD_STATE,
-  type EnvironmentThreadState,
-  createThreadEnvironmentAtoms,
-} from "@codework/client-runtime/state/threads";
-import type { EnvironmentId, ThreadId } from "@codework/contracts";
-import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { createEnvironmentThreadView } from "@codework/client-runtime/state/environment-thread-view";
 
 import { environmentCatalog } from "../connection/catalog";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { environmentSnapshotAtom } from "./shell";
 
-export const threadEnvironment = createThreadEnvironmentAtoms(connectionAtomRuntime);
-export const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRuntime);
-export const environmentThreadDetails = createEnvironmentThreadDetailAtoms(
-  environmentThreads.stateAtom,
-);
-export const environmentThreadShells = createEnvironmentThreadShellAtoms({
+const view = createEnvironmentThreadView({
+  runtime: connectionAtomRuntime,
   catalogValueAtom: environmentCatalog.catalogValueAtom,
   snapshotAtom: environmentSnapshotAtom,
+  labelPrefix: "mobile",
 });
 
-const EMPTY_THREAD_STATE_ATOM = Atom.make(AsyncResult.success(EMPTY_ENVIRONMENT_THREAD_STATE)).pipe(
-  Atom.withLabel("mobile-environment-thread:empty"),
-);
-
-export function useEnvironmentThread(
-  environmentId: EnvironmentId | null,
-  threadId: ThreadId | null,
-): EnvironmentThreadState {
-  const result = useAtomValue(
-    environmentId !== null && threadId !== null
-      ? environmentThreads.stateAtom(environmentId, threadId)
-      : EMPTY_THREAD_STATE_ATOM,
-  );
-  return Option.getOrElse(
-    AsyncResult.value(result),
-    () => EMPTY_ENVIRONMENT_THREAD_STATE,
-  ) as EnvironmentThreadState;
-}
+export const threadEnvironment = view.threadEnvironment;
+export const environmentThreads = view.environmentThreads;
+export const environmentThreadDetails = view.environmentThreadDetails;
+export const environmentThreadShells = view.environmentThreadShells;
+export const useEnvironmentThread = view.useEnvironmentThread;

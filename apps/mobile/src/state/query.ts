@@ -1,38 +1,12 @@
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import * as Cause from "effect/Cause";
-import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { createEnvironmentQueryState } from "@codework/client-runtime/state/environment-query";
 
 import { t } from "../i18n/runtime";
 
-const EMPTY_ASYNC_RESULT_ATOM = Atom.make(AsyncResult.initial<never, never>(false)).pipe(
-  Atom.withLabel("mobile-environment-query:empty"),
-);
+const state = createEnvironmentQueryState({
+  labelPrefix: "mobile",
+  requestFailedKey: "errors.environmentRequestFailed",
+  t,
+});
 
-export interface EnvironmentQueryView<A> {
-  readonly data: A | null;
-  readonly error: string | null;
-  readonly isPending: boolean;
-  readonly refresh: () => void;
-}
-
-function formatError(cause: Cause.Cause<unknown>): string {
-  const error = Cause.squash(cause);
-  return error instanceof Error && error.message.trim().length > 0
-    ? error.message
-    : t("errors.environmentRequestFailed");
-}
-
-export function useEnvironmentQuery<A, E>(
-  atom: Atom.Atom<AsyncResult.AsyncResult<A, E>> | null,
-): EnvironmentQueryView<A> {
-  const selectedAtom = atom ?? EMPTY_ASYNC_RESULT_ATOM;
-  const result = useAtomValue(selectedAtom);
-  const refresh = useAtomRefresh(selectedAtom);
-  return {
-    data: Option.getOrNull(AsyncResult.value(result)),
-    error: result._tag === "Failure" ? formatError(result.cause) : null,
-    isPending: atom !== null && result.waiting,
-    refresh,
-  };
-}
+export const useEnvironmentQuery = state.useEnvironmentQuery;
+export type { EnvironmentQueryView } from "@codework/client-runtime/state/environment-query";
