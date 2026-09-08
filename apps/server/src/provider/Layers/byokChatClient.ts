@@ -67,16 +67,21 @@ export const byokAdapterForModel = (
 };
 
 /** One streaming chat chunk emitted by a BYOK model adapter. */
+export type ByokTokenUsage = {
+  readonly inputTokens?: number;
+  readonly cachedInputTokens?: number;
+  readonly outputTokens?: number;
+  readonly reasoningTokens?: number;
+  readonly totalTokens?: number;
+};
+
 export type ByokChatEvent =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "reasoning"; readonly text: string }
-  | {
+  | ({
       readonly type: "completed";
       readonly finishReason: string;
-      /** 上游在流终态中提供的生成 token 数；没有 usage 时保持未设置。 */
-      readonly outputTokens?: number;
-      readonly reasoningTokens?: number;
-    }
+    } & ByokTokenUsage)
   | {
       readonly type: "tool_call";
       readonly toolCallId: string;
@@ -657,7 +662,7 @@ type OpenAiStreamState = {
 type AnthropicStreamState = {
   readonly toolCalls: AnthropicToolCallAccumulator;
   readonly stopReason: string | undefined;
-  readonly usage: { readonly outputTokens?: number; readonly reasoningTokens?: number } | undefined;
+  readonly usage: ByokTokenUsage | undefined;
   readonly terminalSeen: boolean;
 };
 
@@ -698,7 +703,7 @@ const missingTerminalEvent = (protocol: ByokModelAdapter["protocol"]): ByokStrea
 const terminalEventForFinishReason = (
   protocol: ByokModelAdapter["protocol"],
   finishReason: string,
-  usage?: { readonly outputTokens?: number; readonly reasoningTokens?: number },
+  usage?: ByokTokenUsage,
 ): ByokTerminalEvent => {
   const normalized = finishReason.trim().toLowerCase();
   if (outputTruncationFinishReasons.has(normalized)) {
@@ -711,8 +716,7 @@ const terminalEventForFinishReason = (
     return {
       type: "completed",
       finishReason,
-      ...(usage?.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
-      ...(usage?.reasoningTokens !== undefined ? { reasoningTokens: usage.reasoningTokens } : {}),
+      ...usage,
     };
   }
   return streamErrorEvent(
@@ -727,7 +731,7 @@ const nonNegativeInteger = (value: unknown): number | undefined =>
 const usageFromPayload = (
   protocol: ByokModelAdapter["protocol"],
   payload: Record<string, unknown>,
-): { readonly outputTokens?: number; readonly reasoningTokens?: number } | undefined => {
+): ByokTokenUsage | undefined => {
   const usage =
     protocol === "openai"
       ? isRecord(payload.usage)
@@ -736,11 +740,20 @@ const usageFromPayload = (
       : protocol === "anthropic"
         ? isRecord(payload.usage)
           ? payload.usage
-          : undefined
+          : isRecord(payload.message) && isRecord(payload.message.usage)
+            ? payload.message.usage
+            : undefined
         : protocol === "gemini" && isRecord(payload.usageMetadata)
           ? payload.usageMetadata
           : undefined;
   if (usage === undefined) return undefined;
+  const inputTokens = nonNegativeInteger(
+    protocol === "openai"
+      ? usage.prompt_tokens
+      : protocol === "anthropic"
+        ? usage.input_tokens
+        : usage.promptTokenCount,
+  );
   const outputTokens = nonNegativeInteger(
     protocol === "openai"
       ? usage.completion_tokens
@@ -752,14 +765,39 @@ const usageFromPayload = (
     protocol === "openai" && isRecord(usage.completion_tokens_details)
       ? usage.completion_tokens_details
       : undefined;
+  const promptDetails =
+    protocol === "openai" && isRecord(usage.prompt_tokens_details)
+      ? usage.prompt_tokens_details
+      : undefined;
+  const cachedInputTokens = nonNegativeInteger(
+    protocol === "openai"
+      ? promptDetails?.cached_tokens
+      : protocol === "anthropic"
+        ? usage.cache_read_input_tokens
+        : usage.cachedContentTokenCount,
+  );
   const reasoningTokens = nonNegativeInteger(
     protocol === "openai" ? details?.reasoning_tokens : usage.thoughtsTokenCount,
   );
-  return outputTokens === undefined && reasoningTokens === undefined
+  const totalTokens = nonNegativeInteger(
+    protocol === "openai"
+      ? usage.total_tokens
+      : protocol === "gemini"
+        ? usage.totalTokenCount
+        : undefined,
+  );
+  return inputTokens === undefined &&
+    cachedInputTokens === undefined &&
+    outputTokens === undefined &&
+    reasoningTokens === undefined &&
+    totalTokens === undefined
     ? undefined
     : {
+        ...(inputTokens === undefined ? {} : { inputTokens }),
+        ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
         ...(outputTokens === undefined ? {} : { outputTokens }),
         ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+        ...(totalTokens === undefined ? {} : { totalTokens }),
       };
 };
 
@@ -1226,7 +1264,9 @@ export const streamChat = (
 
         const toolCalls = anthropicToolCallStateForPayload(state.toolCalls, item.payload);
         const stopReason = anthropicStopReason(item.payload) ?? state.stopReason;
-        const usage = usageFromPayload("anthropic", item.payload) ?? state.usage;
+        const currentUsage = usageFromPayload("anthropic", item.payload);
+        const usage =
+          currentUsage === undefined ? state.usage : { ...state.usage, ...currentUsage };
         const events = eventsFromSsePayload("anthropic", item.payload);
         if (item.payload.type !== "message_stop") {
           return [{ toolCalls, stopReason, usage, terminalSeen: false }, events];

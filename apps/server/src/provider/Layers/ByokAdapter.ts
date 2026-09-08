@@ -70,6 +70,7 @@ import {
   collectChatText,
   type ByokChatMessage,
   type ByokContentPart,
+  type ByokTokenUsage,
   runChatEvents,
   streamChat,
 } from "./byokChatClient.ts";
@@ -118,6 +119,7 @@ interface ByokSessionContext {
   turns: Array<ByokTurnSnapshot>;
   activeTurnId: TurnId | undefined;
   activeTurnFiber: Fiber.Fiber<void, unknown> | undefined;
+  totalProcessedTokens: number;
 }
 
 export interface ByokAdapterLiveOptions {
@@ -255,6 +257,54 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       ctx.turns.push({ id: turnId, items: [item] });
     };
 
+    const emitThreadTokenUsage = Effect.fn("byokEmitThreadTokenUsage")(function* (
+      ctx: ByokSessionContext,
+      turnId: TurnId,
+      adapter: ByokModelAdapter,
+      usage: ByokTokenUsage,
+    ) {
+      const activeTokens =
+        usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+      if (activeTokens <= 0) return;
+
+      const maxTokens = Math.max(1, Math.trunc(adapter.contextWindowTokens));
+      const usedTokens = Math.min(activeTokens, maxTokens);
+      ctx.totalProcessedTokens += activeTokens;
+      yield* emit({
+        ...(yield* makeEventStamp()),
+        type: "thread.token-usage.updated",
+        provider: PROVIDER,
+        threadId: ctx.session.threadId,
+        turnId,
+        payload: {
+          usage: {
+            usedTokens,
+            maxTokens,
+            ...(ctx.totalProcessedTokens > usedTokens
+              ? { totalProcessedTokens: ctx.totalProcessedTokens }
+              : {}),
+            ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
+            ...(usage.cachedInputTokens === undefined
+              ? {}
+              : { cachedInputTokens: usage.cachedInputTokens }),
+            ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
+            ...(usage.reasoningTokens === undefined
+              ? {}
+              : { reasoningOutputTokens: usage.reasoningTokens }),
+            lastUsedTokens: usedTokens,
+            ...(usage.inputTokens === undefined ? {} : { lastInputTokens: usage.inputTokens }),
+            ...(usage.cachedInputTokens === undefined
+              ? {}
+              : { lastCachedInputTokens: usage.cachedInputTokens }),
+            ...(usage.outputTokens === undefined ? {} : { lastOutputTokens: usage.outputTokens }),
+            ...(usage.reasoningTokens === undefined
+              ? {}
+              : { lastReasoningOutputTokens: usage.reasoningTokens }),
+          },
+        },
+      });
+    });
+
     const startSession: ByokAdapterShape["startSession"] = Effect.fn("byokStartSession")(
       function* (input) {
         if (input.provider !== undefined && input.provider !== PROVIDER) {
@@ -294,6 +344,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           turns: [],
           activeTurnId: undefined,
           activeTurnFiber: undefined,
+          totalProcessedTokens: 0,
         };
         sessions.set(input.threadId, ctx);
 
@@ -399,6 +450,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         modelId: adapter.modelId,
         requestId: providerRequestId,
         messages: effectiveMessages,
+        includeUsage: true,
         ...(systemPrompt.trim().length > 0 ? { systemPrompt } : {}),
       });
       const outcome = yield* Effect.exit(
@@ -412,6 +464,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               });
             }
             if (event.type === "completed") {
+              yield* emitThreadTokenUsage(ctx, turnId, adapter, event);
               return;
             }
             if (event.text.length === 0) {
@@ -569,6 +622,8 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
                   },
                 });
               }).pipe(Effect.orDie),
+            onModelUsage: (usage) =>
+              emitThreadTokenUsage(ctx, turnId, adapter, usage).pipe(Effect.orDie),
           },
           makeByokModelDriver(httpClient, {
             protocol: adapter.protocol,

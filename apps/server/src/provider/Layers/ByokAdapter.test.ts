@@ -230,4 +230,97 @@ describe("ByokAdapter", () => {
       Effect.provide(NodeServices.layer),
     );
   });
+
+  it.effect("BYOK Agent 把供应商用量上报为上下文窗口活动", () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        if (request.body instanceof HttpBody.Uint8Array) {
+          requests.push(decodeJson(decoder.decode(request.body.body)) as Record<string, unknown>);
+        }
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(
+            sse(
+              { choices: [{ delta: { content: "完成。" }, finish_reason: null }] },
+              { choices: [{ delta: {}, finish_reason: "stop" }] },
+              {
+                choices: [],
+                usage: {
+                  prompt_tokens: 1_200,
+                  completion_tokens: 300,
+                  total_tokens: 1_500,
+                  prompt_tokens_details: { cached_tokens: 200 },
+                },
+              },
+            ),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+        );
+      }),
+    );
+    const toolBroker = ToolBroker.ToolBroker.of({
+      invoke: (input) =>
+        Effect.succeed({
+          invocationId: `invocation-${input.toolCallId}`,
+          taskId: input.taskId,
+          runId: input.runId,
+          toolCallId: input.toolCallId,
+          canonicalToolName: input.canonicalToolName,
+          status: "succeeded" as const,
+          result: {},
+          startedAtUnixMs: 1,
+          finishedAtUnixMs: 2,
+        }),
+      cancel: () => Effect.void,
+    });
+
+    return Effect.gen(function* () {
+      const adapter = yield* makeByokAdapter(settings, { instanceId, toolBroker });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* adapter.startSession({
+        threadId,
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      yield* adapter.sendTurn({
+        threadId,
+        input: "回答问题",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+
+      expect(requests[0]).toMatchObject({ stream_options: { include_usage: true } });
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "thread.token-usage.updated",
+            payload: {
+              usage: {
+                usedTokens: 1_500,
+                maxTokens: 128_000,
+                inputTokens: 1_200,
+                cachedInputTokens: 200,
+                outputTokens: 300,
+                lastUsedTokens: 1_500,
+                lastInputTokens: 1_200,
+                lastCachedInputTokens: 200,
+                lastOutputTokens: 300,
+              },
+            },
+          }),
+        ]),
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-test-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(NodeServices.layer),
+    );
+  });
 });

@@ -630,7 +630,7 @@ describe("ByokAgentLoop", () => {
     }),
   );
 
-  it.effect("模型截断前逐段提交可恢复文本 checkpoint，且不执行未收口工具调用", () =>
+  it.effect("模型输出截断后携带部分回答续写一次", () =>
     Effect.gen(function* () {
       const checkpoints: Array<{
         readonly turn: number;
@@ -647,43 +647,59 @@ describe("ByokAgentLoop", () => {
           }),
         cancel: () => Effect.void,
       });
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
       const model: ByokAgentModelDriver = {
-        complete: () =>
-          Stream.fromIterable([
-            { type: "text_delta" as const, text: "部分" },
-            { type: "text_delta" as const, text: "输出" },
-          ]).pipe(
-            Stream.concat(
-              Stream.fail(
-                new ByokAgentModelError({
-                  code: "byok_engine_error",
-                  detail: "output truncated",
-                  reason: "output_truncated",
-                  retryable: false,
-                }),
-              ),
-            ),
-          ),
+        complete: (input) => {
+          modelInputs.push(input);
+          return modelInputs.length === 1
+            ? Stream.fromIterable([
+                { type: "text_delta" as const, text: "部分" },
+                { type: "text_delta" as const, text: "输出" },
+              ]).pipe(
+                Stream.concat(
+                  Stream.fail(
+                    new ByokAgentModelError({
+                      code: "byok_engine_error",
+                      detail: "output truncated",
+                      reason: "output_truncated",
+                      retryable: false,
+                    }),
+                  ),
+                ),
+              )
+            : Stream.fromIterable([
+                { type: "text_delta" as const, text: "继续完成" },
+                { type: "model_completed" as const },
+              ]);
+        },
       };
 
-      const error = yield* Effect.flip(
-        runByokAgentLoop(
-          {
-            ...baseInput,
-            onTextCheckpoint: (checkpoint) =>
-              Effect.sync(() => {
-                checkpoints.push(checkpoint);
-              }),
-          },
-          model,
-          broker,
-        ),
+      const result = yield* runByokAgentLoop(
+        {
+          ...baseInput,
+          onTextCheckpoint: (checkpoint) =>
+            Effect.sync(() => {
+              checkpoints.push(checkpoint);
+            }),
+        },
+        model,
+        broker,
       );
 
-      expect(error).toMatchObject({ reason: "output_truncated" });
+      expect(result.text).toBe("部分输出继续完成");
+      expect(modelInputs).toHaveLength(2);
+      expect(modelInputs[1]?.messages.slice(-2)).toEqual([
+        { role: "assistant", content: "部分输出" },
+        {
+          role: "user",
+          content:
+            "Continue exactly where the previous response stopped. Do not repeat prior text.",
+        },
+      ]);
       expect(checkpoints).toEqual([
         { turn: 1, chunkIndex: 0, delta: "部分", cumulativeUtf8Bytes: 6 },
         { turn: 1, chunkIndex: 1, delta: "输出", cumulativeUtf8Bytes: 12 },
+        { turn: 1, chunkIndex: 2, delta: "继续完成", cumulativeUtf8Bytes: 24 },
       ]);
       expect(brokerCalls).toBe(0);
     }),

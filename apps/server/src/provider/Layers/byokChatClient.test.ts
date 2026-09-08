@@ -439,7 +439,7 @@ describe("byokChatClient usage metadata", () => {
       [
         'data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}',
         "",
-        'data: {"choices":[],"usage":{"completion_tokens":42}}',
+        'data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":42,"total_tokens":162,"prompt_tokens_details":{"cached_tokens":20}}}',
         "",
         "data: [DONE]",
         "",
@@ -448,13 +448,22 @@ describe("byokChatClient usage metadata", () => {
     await expect(runEvents(client, { ...baseErrorInput, includeUsage: true })).resolves.toEqual([
       { type: "text", text: "done" },
       { type: "completed", finishReason: "stop" },
-      { type: "completed", finishReason: "stop", outputTokens: 42 },
+      {
+        type: "completed",
+        finishReason: "stop",
+        inputTokens: 120,
+        cachedInputTokens: 20,
+        outputTokens: 42,
+        totalTokens: 162,
+      },
     ]);
   });
 
   it("读取 Anthropic message_delta 中的真实生成 token 数", async () => {
     const { client } = makeClient(
       [
+        'data: {"type":"message_start","message":{"usage":{"input_tokens":120,"cache_read_input_tokens":20}}}',
+        "",
         'data: {"type":"content_block_delta","delta":{"text":"done"}}',
         "",
         'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":37}}',
@@ -473,6 +482,8 @@ describe("byokChatClient usage metadata", () => {
     ).resolves.toContainEqual({
       type: "completed",
       finishReason: "end_turn",
+      inputTokens: 120,
+      cachedInputTokens: 20,
       outputTokens: 37,
     });
   });

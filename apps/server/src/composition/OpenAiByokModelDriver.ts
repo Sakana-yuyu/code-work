@@ -55,7 +55,18 @@ const toToolDescriptor = (tool: ByokAgentTool): ByokToolDescriptor => tool;
 
 const toAgentModelEvent = (event: ByokChatEvent): ByokAgentModelEvent | undefined => {
   if (event.type === "reasoning") return undefined;
-  if (event.type === "completed") return { type: "model_completed" };
+  if (event.type === "completed") {
+    return {
+      type: "model_completed",
+      ...(event.inputTokens === undefined ? {} : { inputTokens: event.inputTokens }),
+      ...(event.cachedInputTokens === undefined
+        ? {}
+        : { cachedInputTokens: event.cachedInputTokens }),
+      ...(event.outputTokens === undefined ? {} : { outputTokens: event.outputTokens }),
+      ...(event.reasoningTokens === undefined ? {} : { reasoningTokens: event.reasoningTokens }),
+      ...(event.totalTokens === undefined ? {} : { totalTokens: event.totalTokens }),
+    };
+  }
   if (event.type === "text") return { type: "text_delta", text: event.text };
   return {
     type: "tool_call",
@@ -79,6 +90,7 @@ export const makeByokModelDriver = (
       messages: input.messages.map(toChatMessage),
       tools: input.tools.map(toToolDescriptor),
       agentLoop: true,
+      includeUsage: true,
       ...(options.systemPrompt !== undefined ? { systemPrompt: options.systemPrompt } : {}),
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
     }).pipe(

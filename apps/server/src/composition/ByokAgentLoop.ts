@@ -39,7 +39,15 @@ export type ByokAgentMessage =
 export type ByokAgentModelEvent =
   | { readonly type: "text_delta"; readonly text: string }
   | ({ readonly type: "tool_call" } & ByokAgentToolCall)
-  | { readonly type: "model_completed" };
+  | ({ readonly type: "model_completed" } & ByokAgentModelUsage);
+
+export type ByokAgentModelUsage = {
+  readonly inputTokens?: number;
+  readonly cachedInputTokens?: number;
+  readonly outputTokens?: number;
+  readonly reasoningTokens?: number;
+  readonly totalTokens?: number;
+};
 
 export class ByokAgentModelError extends Schema.TaggedErrorClass<ByokAgentModelError>()(
   "ByokAgentModelError",
@@ -127,6 +135,9 @@ export type ByokAgentLoopInput = {
     toolCall: ByokAgentToolCall,
     result: ToolBroker.ToolBrokerResult,
   ) => Effect.Effect<void, ByokAgentLoopCheckpointError>;
+  readonly onModelUsage?: (
+    usage: ByokAgentModelUsage,
+  ) => Effect.Effect<void, ByokAgentLoopCheckpointError>;
 };
 
 export type ByokAgentLoopResult = {
@@ -141,6 +152,8 @@ const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.
 const DEFAULT_MAX_CONTEXT_MESSAGES = 17;
 const DEFAULT_MAX_TOOL_RESULT_CHARS = 12_000;
 const DEFAULT_MAX_ROUNDS = 8;
+const OUTPUT_TRUNCATION_CONTINUATION_PROMPT =
+  "Continue exactly where the previous response stopped. Do not repeat prior text.";
 /** Hard ceiling for one agent-loop run's model round budget. */
 export const MAX_BYOK_AGENT_LOOP_ROUNDS = 128;
 const utf8Encoder = new TextEncoder();
@@ -282,6 +295,7 @@ export const runByokAgentLoop = (
     let checkpointChunkIndex = 0;
     let cumulativeUtf8Bytes = 0;
     let contextOverflowRecoveryUsed = false;
+    let outputTruncationRecoveryUsed = false;
     let transientRetryUsed = false;
 
     while (true) {
@@ -295,11 +309,20 @@ export const runByokAgentLoop = (
       // 先完整收集模型流，再执行工具；溢出恢复不会重放已产生副作用的工具调用。
       const complete = (modelMessages: ReadonlyArray<ByokAgentMessage>) => {
         let sawOutput = false;
+        let sawToolCall = false;
+        const textStart = text.length;
         return model.complete({ messages: modelMessages, tools: input.tools, turn: rounds }).pipe(
           Stream.tap((event) =>
             Effect.gen(function* () {
               if (event.type === "tool_call") {
                 sawOutput = true;
+                sawToolCall = true;
+                return;
+              }
+              if (event.type === "model_completed") {
+                if (input.onModelUsage !== undefined) {
+                  yield* input.onModelUsage(event);
+                }
                 return;
               }
               if (event.type !== "text_delta" || event.text.length === 0) return;
@@ -319,9 +342,21 @@ export const runByokAgentLoop = (
             }),
           ),
           Stream.runCollect,
-          Effect.map((events) => ({ _tag: "succeeded" as const, events, sawOutput })),
+          Effect.map((events) => ({
+            _tag: "succeeded" as const,
+            events,
+            sawOutput,
+            sawToolCall,
+            partialText: text.slice(textStart),
+          })),
           Effect.catchTag("ByokAgentModelError", (error) =>
-            Effect.succeed({ _tag: "failed" as const, error, sawOutput }),
+            Effect.succeed({
+              _tag: "failed" as const,
+              error,
+              sawOutput,
+              sawToolCall,
+              partialText: text.slice(textStart),
+            }),
           ),
         );
       };
@@ -333,6 +368,22 @@ export const runByokAgentLoop = (
           contextOverflowRecoveryUsed = true;
           modelMessages = contextOverflowRecoveryMessages(messages);
           messages.splice(0, messages.length, ...modelMessages);
+          completion = yield* complete(modelMessages);
+          continue;
+        }
+        if (
+          completion.error.reason === "output_truncated" &&
+          !outputTruncationRecoveryUsed &&
+          completion.sawOutput &&
+          !completion.sawToolCall &&
+          completion.partialText.trim().length > 0
+        ) {
+          outputTruncationRecoveryUsed = true;
+          modelMessages = [
+            ...modelMessages,
+            { role: "assistant", content: completion.partialText },
+            { role: "user", content: OUTPUT_TRUNCATION_CONTINUATION_PROMPT },
+          ];
           completion = yield* complete(modelMessages);
           continue;
         }
