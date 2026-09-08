@@ -3,6 +3,7 @@ import {
   COMPOSITION_AGENT_LOOP_MAX_TOOL_RESULT_CHARS,
   COMPOSITION_AGENT_LOOP_MIN_CONTEXT_MESSAGES,
   COMPOSITION_AGENT_LOOP_MIN_TOOL_RESULT_CHARS,
+  type RuntimeMode,
 } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -118,6 +119,8 @@ export type ByokAgentLoopInput = {
   readonly agentId: string;
   readonly runtimeId?: string;
   readonly threadId?: string;
+  /** 由服务端会话提供，不能从模型工具参数读取。 */
+  readonly runtimeMode?: RuntimeMode;
   readonly workspaceRoot: string;
   readonly prompt: string;
   readonly capabilityGrantIds: ReadonlyArray<string>;
@@ -454,6 +457,7 @@ export const runByokAgentLoop = (
           agentId: input.agentId,
           ...(input.runtimeId === undefined ? {} : { runtimeId: input.runtimeId }),
           ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+          ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
           toolCallId: event.toolCallId,
           canonicalToolName: event.canonicalToolName,
           arguments: event.arguments,

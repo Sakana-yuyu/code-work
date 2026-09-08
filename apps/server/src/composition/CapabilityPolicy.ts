@@ -1,6 +1,7 @@
 import type {
   CompositionCapabilityPolicyDecision,
   CompositionCapabilityDescriptor,
+  RuntimeMode,
 } from "@codework/contracts";
 import { ApprovalRequestId } from "@codework/contracts";
 import * as Context from "effect/Context";
@@ -23,7 +24,10 @@ export const CapabilityPolicyInput = Schema.Struct({
   idempotencyKey: Schema.String,
   approvalRequestId: Schema.optional(Schema.String),
 });
-export type CapabilityPolicyInput = typeof CapabilityPolicyInput.Type;
+export type CapabilityPolicyInput = typeof CapabilityPolicyInput.Type & {
+  /** 内部可信会话模式，不属于可解码的外部请求字段。 */
+  readonly runtimeMode?: RuntimeMode;
+};
 
 export class CapabilityNotGrantedError extends Schema.TaggedErrorClass<CapabilityNotGrantedError>()(
   "CapabilityNotGrantedError",
@@ -192,10 +196,15 @@ export const makeCompositionCapabilityPolicy = (
         return yield* new CapabilityNotGrantedError({ capabilityId: input.capabilityId });
       }
 
-      if (capability.approval === "never") {
+      if (capability.approval === "never" || input.runtimeMode === "full-access") {
         return {
           decision: "allow",
-          reasonCode: legacyGrant ? "legacy_capability_grant" : "capability_granted",
+          reasonCode:
+            capability.approval !== "never" && input.runtimeMode === "full-access"
+              ? "runtime_mode_full_access"
+              : legacyGrant
+                ? "legacy_capability_grant"
+                : "capability_granted",
           ...(validGrantExpiresAtUnixMs === undefined
             ? {}
             : { expiresAtUnixMs: validGrantExpiresAtUnixMs }),

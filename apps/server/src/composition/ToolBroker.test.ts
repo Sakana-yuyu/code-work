@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Stream from "effect/Stream";
 import * as PreviewAutomationBroker from "../mcp/PreviewAutomationBroker.ts";
 
 import * as ServerConfig from "../config.ts";
@@ -22,6 +23,7 @@ import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 import * as CompositionIdeSessionRegistry from "./CompositionIdeSessionRegistry.ts";
 import * as CompositionMcpToolRegistry from "./CompositionMcpToolRegistry.ts";
 import * as ToolBroker from "./ToolBroker.ts";
+import { runByokAgentLoop, type ByokAgentModelDriver } from "./ByokAgentLoop.ts";
 import * as ByokDelegationService from "../provider/byok/ByokDelegationService.ts";
 
 const previewInvocations: PreviewAutomationBroker.PreviewAutomationInvokeInput[] = [];
@@ -225,6 +227,91 @@ const makeTempDir = Effect.gen(function* () {
 });
 
 it.layer(TestLayer, { excludeTestServices: true })("shared canonical tools", (it) => {
+  for (const runtimeMode of [undefined, "full-access"] as const) {
+    it.effect(`${runtimeMode ?? "默认模式"} 从可信 loop 输入授权，模型参数不能替换模式`, () =>
+      Effect.gen(function* () {
+        const broker = yield* ToolBroker.ToolBroker;
+        const grantRegistry = yield* CapabilityGrantRegistry.CapabilityGrantRegistry;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        const suffix = runtimeMode ?? "default";
+        const grants = yield* grantRegistry.issue({
+          taskId: `task-mode-${suffix}`,
+          agentId: `agent-mode-${suffix}`,
+          capabilityIds: ["t3.workspace.write_file", "t3.terminal.exec"],
+        });
+        let modelCalls = 0;
+        const model: ByokAgentModelDriver = {
+          complete: () => {
+            modelCalls += 1;
+            return modelCalls === 1
+              ? Stream.fromIterable([
+                  {
+                    type: "tool_call" as const,
+                    toolCallId: "write-mode",
+                    canonicalToolName: "workspace.write_file",
+                    arguments: {
+                      cwd,
+                      relativePath: "mode.txt",
+                      contents: "模式授权写入",
+                      runtimeMode: runtimeMode === undefined ? "full-access" : "approval-required",
+                    },
+                  },
+                  {
+                    type: "tool_call" as const,
+                    toolCallId: "exec-mode",
+                    canonicalToolName: "terminal.exec",
+                    arguments: {
+                      cwd,
+                      terminalId: `mode-terminal-${suffix}`,
+                      command: process.execPath,
+                      args: ["-e", 'process.stdout.write("mode")'],
+                      runtimeMode: runtimeMode === undefined ? "full-access" : "approval-required",
+                    },
+                  },
+                  { type: "model_completed" as const },
+                ])
+              : Stream.succeed({ type: "model_completed" as const });
+          },
+        };
+
+        const result = yield* runByokAgentLoop(
+          {
+            taskId: `task-mode-${suffix}`,
+            runId: `run-mode-${suffix}`,
+            agentId: `agent-mode-${suffix}`,
+            workspaceRoot: cwd,
+            prompt: "写文件并执行命令",
+            capabilityGrantIds: grants.map((grant) => grant.grantId),
+            tools: [],
+            ...(runtimeMode === undefined ? {} : { runtimeMode }),
+          },
+          model,
+          broker,
+        );
+
+        expect(modelCalls).toBe(2);
+        const toolResults = result.messages.filter((message) => message.role === "tool");
+        expect(toolResults).toHaveLength(2);
+        for (const toolResult of toolResults) {
+          expect(toolResult.content).toContain(
+            runtimeMode === "full-access" ? '"status":"succeeded"' : "tool_approval_required",
+          );
+        }
+        const absolutePath = path.join(cwd, "mode.txt");
+        if (runtimeMode === "full-access") {
+          expect(yield* fileSystem.readFileString(absolutePath)).toBe("模式授权写入");
+        } else {
+          expect(yield* fileSystem.exists(absolutePath)).toBe(false);
+        }
+        expect(
+          executedCommands.filter((command) => command.threadId === `run-mode-${suffix}`),
+        ).toHaveLength(runtimeMode === "full-access" ? 1 : 0);
+      }),
+    );
+  }
+
   it.effect("routes terminal.open through the task-scoped terminal session", () =>
     Effect.gen(function* () {
       const broker = yield* ToolBroker.ToolBroker;

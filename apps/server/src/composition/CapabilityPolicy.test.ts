@@ -12,6 +12,86 @@ import { CapabilityNotGrantedError, makeCompositionCapabilityPolicy } from "./Ca
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 
 describe("CapabilityPolicy", () => {
+  effectIt.effect("只有可信 full-access 在有效授权后跳过写入和执行审批", () =>
+    Effect.gen(function* () {
+      const capabilityRegistry = makeCompositionCapabilityRegistry();
+      const grantRegistry = makeCapabilityGrantRegistry({ capabilityRegistry });
+      const policy = makeCompositionCapabilityPolicy({ capabilityRegistry, grantRegistry });
+      for (const [capabilityId, operation] of [
+        ["t3.workspace.write_file", "mutate"],
+        ["t3.terminal.exec", "execute"],
+      ] as const) {
+        const [grant] = yield* grantRegistry.issue({
+          taskId: "task-mode",
+          agentId: "agent-mode",
+          capabilityIds: [capabilityId],
+        });
+        for (const runtimeMode of [
+          undefined,
+          "approval-required",
+          "auto-accept-edits",
+          "auto",
+          "full-access",
+        ] as const) {
+          const decision = yield* policy.evaluate({
+            taskId: "task-mode",
+            runId: "run-mode",
+            agentId: "agent-mode",
+            capabilityId,
+            capabilityGrantIds: [grant!.grantId],
+            operation,
+            idempotencyKey: `${capabilityId}:${runtimeMode ?? "default"}`,
+            ...(runtimeMode === undefined ? {} : { runtimeMode }),
+          });
+          expect(decision.decision).toBe(
+            runtimeMode === "full-access" ? "allow" : "approval_required",
+          );
+        }
+      }
+    }),
+  );
+
+  effectIt.effect("full-access 仍拒绝缺失越权过期和撤销授权以及不支持的操作", () =>
+    Effect.gen(function* () {
+      let now = 1_000;
+      const capabilityRegistry = makeCompositionCapabilityRegistry();
+      const grantRegistry = makeCapabilityGrantRegistry({ capabilityRegistry, now: () => now });
+      const policy = makeCompositionCapabilityPolicy({ capabilityRegistry, grantRegistry });
+      const [grant] = yield* grantRegistry.issue({
+        taskId: "task-mode-guard",
+        agentId: "agent-mode-guard",
+        capabilityIds: ["t3.workspace.write_file"],
+        ttlMs: 100,
+      });
+      const input = {
+        taskId: "task-mode-guard",
+        runId: "run-mode-guard",
+        agentId: "agent-mode-guard",
+        capabilityId: "t3.workspace.write_file",
+        capabilityGrantIds: [grant!.grantId],
+        operation: "mutate" as const,
+        idempotencyKey: "mode-guard",
+        runtimeMode: "full-access" as const,
+      };
+
+      for (const denied of [
+        { ...input, capabilityGrantIds: [] },
+        { ...input, agentId: "another-agent" },
+        { ...input, operation: "execute" as const },
+        { ...input, capabilityId: "t3.missing", capabilityGrantIds: ["t3.missing"] },
+      ]) {
+        expect(yield* Effect.flip(policy.evaluate(denied))).toBeInstanceOf(
+          CapabilityNotGrantedError,
+        );
+      }
+      now = 1_100;
+      expect(yield* Effect.flip(policy.evaluate(input))).toBeInstanceOf(CapabilityNotGrantedError);
+      now = 1_000;
+      yield* grantRegistry.revoke({ grantId: grant!.grantId });
+      expect(yield* Effect.flip(policy.evaluate(input))).toBeInstanceOf(CapabilityNotGrantedError);
+    }),
+  );
+
   it("只允许当前 task/agent 的有效 grant，并返回过期时间", async () => {
     let now = 1000;
     const capabilityRegistry = makeCompositionCapabilityRegistry();

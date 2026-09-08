@@ -399,7 +399,10 @@ const CheckpointingLayerLive = Layer.empty.pipe(
   Layer.provideMerge(CheckpointStore.layer.pipe(Layer.provide(VcsDriverRegistryLayerLive))),
 );
 
-const PortScannerLayerLive = PortScanner.layer.pipe(Layer.provide(ProcessRunner.layer));
+const PortScannerLayerLive = PortScanner.layer.pipe(
+  Layer.provide(ProcessRunner.layer),
+  Layer.provide(NetService.layer),
+);
 
 const TerminalLayerLive = TerminalManager.layer.pipe(
   Layer.provide(PtyAdapterLive),
@@ -485,6 +488,7 @@ const CompositionToolBrokerLayerLive = CompositionToolBroker.persistentLayer.pip
   Layer.provideMerge(CompositionCapabilityRegistryLayerLive),
   Layer.provideMerge(WorkspaceFileSystemLayerLive),
   Layer.provideMerge(GitVcsDriver.layer),
+  Layer.provideMerge(TerminalLayerLive),
   // 启用 delegate_task 工具处理器：BYOK Agent Loop 内模型可自发委派子任务。
   Layer.provideMerge(ByokDelegationServiceLayerLive),
 );

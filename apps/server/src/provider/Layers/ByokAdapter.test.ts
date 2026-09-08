@@ -38,130 +38,168 @@ const sse = (...payloads: ReadonlyArray<unknown>): string =>
   [...payloads.map((payload) => `data: ${encodeJson(payload)}\n`), "data: [DONE]\n"].join("\n");
 
 describe("ByokAdapter", () => {
-  it.effect("普通项目线程通过 Agent Loop 调用代码审查工具", () => {
-    const requests: Array<Record<string, unknown>> = [];
-    const responses = [
-      sse({
-        choices: [
-          {
-            delta: {
-              tool_calls: [
-                {
-                  index: 0,
-                  id: "call-readme",
-                  function: {
-                    name: "workspace.read_file",
-                    arguments: encodeJson({ cwd: workspaceRoot, relativePath: "README.md" }),
+  for (const runtimeMode of [
+    "full-access",
+    "approval-required",
+    "auto-accept-edits",
+    "auto",
+  ] as const) {
+    it.effect(`普通项目线程按 ${runtimeMode} 权限提供工具`, () => {
+      const requests: Array<Record<string, unknown>> = [];
+      const responses = [
+        sse({
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call-readme",
+                    function: {
+                      name: "workspace.read_file",
+                      arguments: encodeJson({ cwd: workspaceRoot, relativePath: "README.md" }),
+                    },
                   },
-                },
-              ],
+                ],
+              },
+              finish_reason: "tool_calls",
             },
-            finish_reason: "tool_calls",
-          },
-        ],
-        usage: { prompt_tokens: 1_200, completion_tokens: 10, total_tokens: 1_210 },
-      }),
-      sse(
-        { choices: [{ delta: { content: "已读取仓库代码，开始审查。" }, finish_reason: null }] },
-        {
-          choices: [{ delta: {}, finish_reason: "stop" }],
-          usage: { prompt_tokens: 1_210, completion_tokens: 20, total_tokens: 1_230 },
-        },
-      ),
-    ];
-    const httpClient = HttpClient.make((request) =>
-      Effect.sync(() => {
-        if (request.body instanceof HttpBody.Uint8Array) {
-          requests.push(decodeJson(decoder.decode(request.body.body)) as Record<string, unknown>);
-        }
-        const body = responses.shift();
-        if (body === undefined) throw new Error("收到未预期的 BYOK 请求");
-        return HttpClientResponse.fromWeb(
-          request,
-          new Response(body, { headers: { "content-type": "text/event-stream" } }),
-        );
-      }),
-    );
-    const invocations: ToolBroker.ToolBrokerInput[] = [];
-    const toolBroker = ToolBroker.ToolBroker.of({
-      invoke: (input) =>
-        Effect.sync(() => {
-          invocations.push(input);
-          return {
-            invocationId: `invocation-${input.toolCallId}`,
-            taskId: input.taskId,
-            runId: input.runId,
-            toolCallId: input.toolCallId,
-            canonicalToolName: input.canonicalToolName,
-            status: "succeeded" as const,
-            result: { relativePath: "README.md", contents: "# Code Work" },
-            startedAtUnixMs: 1,
-            finishedAtUnixMs: 2,
-          };
+          ],
+          usage: { prompt_tokens: 1_200, completion_tokens: 10, total_tokens: 1_210 },
         }),
-      cancel: () => Effect.void,
+        sse(
+          { choices: [{ delta: { content: "已读取仓库代码，开始审查。" }, finish_reason: null }] },
+          {
+            choices: [{ delta: {}, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1_210, completion_tokens: 20, total_tokens: 1_230 },
+          },
+        ),
+      ];
+      const httpClient = HttpClient.make((request) =>
+        Effect.sync(() => {
+          if (request.body instanceof HttpBody.Uint8Array) {
+            requests.push(decodeJson(decoder.decode(request.body.body)) as Record<string, unknown>);
+          }
+          const body = responses.shift();
+          if (body === undefined) throw new Error("收到未预期的 BYOK 请求");
+          return HttpClientResponse.fromWeb(
+            request,
+            new Response(body, { headers: { "content-type": "text/event-stream" } }),
+          );
+        }),
+      );
+      const invocations: ToolBroker.ToolBrokerInput[] = [];
+      const toolBroker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            invocations.push(input);
+            return {
+              invocationId: `invocation-${input.toolCallId}`,
+              taskId: input.taskId,
+              runId: input.runId,
+              toolCallId: input.toolCallId,
+              canonicalToolName: input.canonicalToolName,
+              status: "succeeded" as const,
+              result: { relativePath: "README.md", contents: "# Code Work" },
+              startedAtUnixMs: 1,
+              finishedAtUnixMs: 2,
+            };
+          }),
+        cancel: () => Effect.void,
+      });
+
+      return Effect.gen(function* () {
+        const adapter = yield* makeByokAdapter(settings, { instanceId, toolBroker });
+        const eventsFiber = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "turn.completed"),
+          Stream.runCollect,
+          Effect.forkScoped,
+        );
+        yield* adapter.startSession({
+          threadId,
+          cwd: workspaceRoot,
+          runtimeMode,
+          modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+        });
+        yield* adapter.sendTurn({
+          threadId,
+          input: "审查当前项目有什么问题",
+          modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+        });
+        const events = Array.from(yield* Fiber.join(eventsFiber));
+
+        const usageEvents = events.filter((event) => event.type === "thread.token-usage.updated");
+        expect(usageEvents.map((event) => event.payload.usage.usedTokens)).toEqual([1_210, 1_230]);
+        expect(usageEvents[1]?.payload.usage.totalProcessedTokens).toBe(2_440);
+        expect(invocations).toHaveLength(1);
+        expect(invocations[0]).toMatchObject({
+          canonicalToolName: "workspace.read_file",
+          runtimeMode,
+          workspaceRoot,
+          threadId,
+          arguments: { cwd: workspaceRoot, relativePath: "README.md" },
+        });
+        if (runtimeMode === "full-access") {
+          expect(requests[0]).toMatchObject({
+            tools: expect.arrayContaining([
+              expect.objectContaining({
+                function: expect.objectContaining({
+                  name: "workspace_write_file",
+                  parameters: expect.objectContaining({
+                    required: ["cwd", "relativePath", "contents"],
+                  }),
+                }),
+              }),
+              expect.objectContaining({
+                function: expect.objectContaining({ name: "terminal_exec" }),
+              }),
+            ]),
+          });
+        } else {
+          for (const name of [
+            "workspace_write_file",
+            "terminal_exec",
+            "terminal_kill",
+            "terminal_close",
+          ]) {
+            expect(requests[0]).not.toMatchObject({
+              tools: expect.arrayContaining([
+                expect.objectContaining({ function: expect.objectContaining({ name }) }),
+              ]),
+            });
+          }
+        }
+        expect(requests[0]).toMatchObject({
+          tools: expect.arrayContaining([
+            expect.objectContaining({
+              function: expect.objectContaining({ name: "workspace_read_file" }),
+            }),
+            expect.objectContaining({ function: expect.objectContaining({ name: "git_status" }) }),
+            expect.objectContaining({ function: expect.objectContaining({ name: "git_diff" }) }),
+          ]),
+        });
+        expect(requests[1]).toMatchObject({
+          messages: expect.arrayContaining([
+            expect.objectContaining({ role: "tool", tool_call_id: "call-readme" }),
+          ]),
+        });
+        expect(events).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: "content.delta",
+              payload: expect.objectContaining({ delta: "已读取仓库代码，开始审查。" }),
+            }),
+            expect.objectContaining({ type: "turn.completed", payload: { state: "completed" } }),
+          ]),
+        );
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-test-" })),
+        Effect.provideService(HttpClient.HttpClient, httpClient),
+        Effect.provide(NodeServices.layer),
+      );
     });
-
-    return Effect.gen(function* () {
-      const adapter = yield* makeByokAdapter(settings, { instanceId, toolBroker });
-      const eventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.takeUntil((event) => event.type === "turn.completed"),
-        Stream.runCollect,
-        Effect.forkScoped,
-      );
-      yield* adapter.startSession({
-        threadId,
-        cwd: workspaceRoot,
-        runtimeMode: "full-access",
-        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
-      });
-      yield* adapter.sendTurn({
-        threadId,
-        input: "审查当前项目有什么问题",
-        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
-      });
-      const events = Array.from(yield* Fiber.join(eventsFiber));
-
-      const usageEvents = events.filter((event) => event.type === "thread.token-usage.updated");
-      expect(usageEvents.map((event) => event.payload.usage.usedTokens)).toEqual([1_210, 1_230]);
-      expect(usageEvents[1]?.payload.usage.totalProcessedTokens).toBe(2_440);
-      expect(invocations).toHaveLength(1);
-      expect(invocations[0]).toMatchObject({
-        canonicalToolName: "workspace.read_file",
-        workspaceRoot,
-        threadId,
-        arguments: { cwd: workspaceRoot, relativePath: "README.md" },
-      });
-      expect(requests[0]).toMatchObject({
-        tools: expect.arrayContaining([
-          expect.objectContaining({
-            function: expect.objectContaining({ name: "workspace_read_file" }),
-          }),
-          expect.objectContaining({ function: expect.objectContaining({ name: "git_status" }) }),
-          expect.objectContaining({ function: expect.objectContaining({ name: "git_diff" }) }),
-        ]),
-      });
-      expect(requests[1]).toMatchObject({
-        messages: expect.arrayContaining([
-          expect.objectContaining({ role: "tool", tool_call_id: "call-readme" }),
-        ]),
-      });
-      expect(events).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            type: "content.delta",
-            payload: expect.objectContaining({ delta: "已读取仓库代码，开始审查。" }),
-          }),
-          expect.objectContaining({ type: "turn.completed", payload: { state: "completed" } }),
-        ]),
-      );
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-test-" })),
-      Effect.provideService(HttpClient.HttpClient, httpClient),
-      Effect.provide(NodeServices.layer),
-    );
-  });
+  }
 
   it.effect("图片流式回合把 x-request-id 关联 id 透传到事件里", () => {
     const capturedHeaders: Array<Record<string, string>> = [];

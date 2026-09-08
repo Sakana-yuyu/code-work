@@ -133,6 +133,14 @@ const BYOK_PROJECT_TOOL_NAMES: ReadonlySet<string> = new Set([
   "git.diff",
   "canvas.create",
 ]);
+const BYOK_FULL_ACCESS_TOOL_NAMES: ReadonlySet<string> = new Set([
+  ...BYOK_PROJECT_TOOL_NAMES,
+  "workspace.write_file",
+  "terminal.exec",
+  "terminal.snapshot",
+  "terminal.kill",
+  "terminal.close",
+]);
 
 const renderAgentConversation = (messages: ReadonlyArray<ByokChatMessage>): string =>
   messages
@@ -176,11 +184,8 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
     const crypto = yield* Crypto.Crypto;
     const httpClient = yield* HttpClient.HttpClient;
     const fileSystem = yield* FileSystem.FileSystem;
-    const projectTools = listCompositionAgentTools().filter((tool) =>
-      BYOK_PROJECT_TOOL_NAMES.has(tool.canonicalToolName),
-    );
-    const projectCapabilityGrantIds = projectTools.map((tool) =>
-      compositionToolCapabilityId(tool.canonicalToolName),
+    const availableProjectTools = listCompositionAgentTools().filter((tool) =>
+      BYOK_FULL_ACCESS_TOOL_NAMES.has(tool.canonicalToolName),
     );
 
     // Fibers forked into this scope are interrupted when the adapter layer
@@ -567,11 +572,18 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       systemPrompt: string,
       toolBroker: ToolBroker["Service"],
     ) {
+      const projectTools = availableProjectTools.filter(
+        (tool) =>
+          ctx.session.runtimeMode === "full-access" ||
+          BYOK_PROJECT_TOOL_NAMES.has(tool.canonicalToolName),
+      );
       const effectiveMessages = yield* applyVisionDelegation(ctx, adapter, messages);
       const agentSystemPrompt = [
         systemPrompt,
+        "你正在 Code Work 中处理当前项目，可用操作以本轮工具清单为准。",
         `当前项目工作区根目录是：${ctx.cwd}`,
         "当用户要求审查、读取或分析代码时，先使用可用的工作区工具取得证据，不要声称没有项目上下文。",
+        "当用户要求创建或修改文件、执行命令时，使用本轮已授权工具完成操作。",
       ]
         .filter((part) => part.trim().length > 0)
         .join("\n\n");
@@ -585,8 +597,11 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             threadId: String(ctx.session.threadId),
             workspaceRoot: ctx.cwd,
             prompt: renderAgentConversation(effectiveMessages),
-            capabilityGrantIds: projectCapabilityGrantIds,
+            capabilityGrantIds: projectTools.map((tool) =>
+              compositionToolCapabilityId(tool.canonicalToolName),
+            ),
             tools: projectTools,
+            runtimeMode: ctx.session.runtimeMode,
             onTextCheckpoint: (checkpoint) =>
               Effect.gen(function* () {
                 appendTurnItem(ctx, turnId, { type: "text", text: checkpoint.delta });

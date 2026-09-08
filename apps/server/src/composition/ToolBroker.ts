@@ -20,6 +20,7 @@ import {
   type TerminalSessionSnapshot,
   TerminalWriteInput,
   type PreviewTabId,
+  type RuntimeMode,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -133,6 +134,8 @@ export type ToolBrokerInput = {
   readonly runtimeId?: string;
   readonly threadId?: string;
   readonly providerInstanceId?: string;
+  /** 仅接受可信调用方绑定的会话模式，arguments 中的同名字段不参与授权。 */
+  readonly runtimeMode?: RuntimeMode;
 };
 
 export type ToolBrokerResult = CompositionToolResult & {
@@ -855,6 +858,7 @@ const make = Effect.gen(function* () {
         operation: resolvedHandler.operation,
         idempotencyKey: input.idempotencyKey,
         approvalRequestId: input.approvalRequestId,
+        ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
       })
       .pipe(
         Effect.catchTags({

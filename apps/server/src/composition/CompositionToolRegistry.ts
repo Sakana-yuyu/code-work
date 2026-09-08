@@ -261,6 +261,77 @@ const agentToolSignatures: ReadonlyMap<
     },
   ],
   [
+    "workspace.write_file",
+    {
+      description: "在当前工作区创建或更新文件，contents 为完整文件内容。",
+      parameters: {
+        type: "object",
+        properties: {
+          cwd: { type: "string", description: "当前工作区根目录的绝对路径。" },
+          relativePath: { type: "string", description: "相对工作区根目录的文件路径。" },
+          contents: { type: "string", description: "要写入的完整文本内容。" },
+        },
+        required: ["cwd", "relativePath", "contents"],
+      },
+    },
+  ],
+  [
+    "terminal.exec",
+    {
+      description:
+        "在工作区终端启动程序，返回当前快照；后续用 terminal.snapshot 读取输出和退出状态。command 是程序名或绝对路径，参数单独传 args。PowerShell 脚本使用 command=powershell.exe、args=[-NoProfile,-Command,脚本内容]。",
+      parameters: {
+        type: "object",
+        properties: {
+          cwd: { type: "string", description: "当前工作区根目录的绝对路径。" },
+          terminalId: {
+            type: "string",
+            description: "本轮使用的终端标识，后续查看和停止时使用同一标识。",
+          },
+          command: {
+            type: "string",
+            description: "可执行程序名或绝对路径，不是包含参数的整行命令。",
+          },
+          args: { type: "array", items: { type: "string" }, description: "程序参数列表。" },
+        },
+        required: ["cwd", "terminalId", "command"],
+      },
+    },
+  ],
+  [
+    "terminal.snapshot",
+    {
+      description: "读取本轮终端的最新输出和退出状态。",
+      parameters: {
+        type: "object",
+        properties: { terminalId: { type: "string" } },
+        required: ["terminalId"],
+      },
+    },
+  ],
+  [
+    "terminal.kill",
+    {
+      description: "停止本轮指定终端中运行的进程。",
+      parameters: {
+        type: "object",
+        properties: { terminalId: { type: "string" } },
+        required: ["terminalId"],
+      },
+    },
+  ],
+  [
+    "terminal.close",
+    {
+      description: "关闭本轮指定终端并保留已有输出记录。",
+      parameters: {
+        type: "object",
+        properties: { terminalId: { type: "string" } },
+        required: ["terminalId"],
+      },
+    },
+  ],
+  [
     "git.status",
     {
       description: "读取当前工作区的 Git 分支、跟踪关系和工作树状态。",
