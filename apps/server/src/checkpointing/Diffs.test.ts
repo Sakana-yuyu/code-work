@@ -29,8 +29,8 @@ describe("parseTurnDiffFilesFromUnifiedDiff", () => {
     ].join("\n");
 
     expect(parseTurnDiffFilesFromUnifiedDiff(diff)).toEqual([
-      { path: "a.txt", additions: 2, deletions: 1 },
-      { path: "src/b.ts", additions: 0, deletions: 2 },
+      { path: "a.txt", kind: "modified", additions: 2, deletions: 1 },
+      { path: "src/b.ts", kind: "modified", additions: 0, deletions: 2 },
     ]);
   });
 
@@ -44,7 +44,7 @@ describe("parseTurnDiffFilesFromUnifiedDiff", () => {
     ].join("\n");
 
     expect(parseTurnDiffFilesFromUnifiedDiff(diff)).toEqual([
-      { path: "src/new.ts", additions: 0, deletions: 0 },
+      { path: "src/new.ts", kind: "renamed", additions: 0, deletions: 0 },
     ]);
   });
 
@@ -62,7 +62,53 @@ describe("parseTurnDiffFilesFromUnifiedDiff", () => {
     ].join("\r\n");
 
     expect(parseTurnDiffFilesFromUnifiedDiff(diff)).toEqual([
-      { path: "a.txt", additions: 2, deletions: 1 },
+      { path: "a.txt", kind: "modified", additions: 2, deletions: 1 },
+    ]);
+  });
+
+  it("保留新增和删除文件的真实类型", () => {
+    const diff = [
+      "diff --git a/new.html b/new.html",
+      "new file mode 100644",
+      "index 0000000..1111111",
+      "--- /dev/null",
+      "+++ b/new.html",
+      "@@ -0,0 +1 @@",
+      "+<p>new</p>",
+      "diff --git a/old.html b/old.html",
+      "deleted file mode 100644",
+      "index 2222222..0000000",
+      "--- a/old.html",
+      "+++ /dev/null",
+      "@@ -1 +0,0 @@",
+      "-<p>old</p>",
+      "",
+    ].join("\n");
+
+    expect(parseTurnDiffFilesFromUnifiedDiff(diff)).toEqual([
+      { path: "new.html", kind: "added", additions: 1, deletions: 0 },
+      { path: "old.html", kind: "deleted", additions: 0, deletions: 1 },
+    ]);
+  });
+
+  it("重命名并修改内容仍标记为 renamed", () => {
+    const diff = [
+      "diff --git a/old.html b/new.html",
+      "similarity index 75%",
+      "rename from old.html",
+      "rename to new.html",
+      "index 1111111..2222222 100644",
+      "--- a/old.html",
+      "+++ b/new.html",
+      "@@ -1,2 +1,2 @@",
+      " <main>",
+      "-old",
+      "+new",
+      "",
+    ].join("\n");
+
+    expect(parseTurnDiffFilesFromUnifiedDiff(diff)).toEqual([
+      { path: "new.html", kind: "renamed", additions: 1, deletions: 1 },
     ]);
   });
 });

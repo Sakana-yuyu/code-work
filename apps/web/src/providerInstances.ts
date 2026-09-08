@@ -27,6 +27,7 @@ import {
 } from "@codework/contracts";
 
 import { formatProviderDriverKindLabel } from "./providerModels";
+import { t } from "./i18n/runtime";
 
 /**
  * Local-only placeholder used while a draft has no provider it can safely
@@ -259,7 +260,16 @@ export function applyProviderInstanceSettings(
       : entry.isDefault
         ? (legacyProviders[entry.driverKind]?.enabled ?? entry.enabled)
         : false;
-    return enabled === entry.enabled ? entry : { ...entry, enabled };
+    // 仅翻译内置标签；即使用户显式取了相同英文名称，也按原文展示。
+    const displayName =
+      entry.driverKind === "byok" &&
+      !explicitInstance?.displayName?.trim() &&
+      entry.displayName === "Custom model service"
+        ? t("cursorByok")
+        : entry.displayName;
+    return enabled === entry.enabled && displayName === entry.displayName
+      ? entry
+      : { ...entry, enabled, displayName };
   });
 }
 

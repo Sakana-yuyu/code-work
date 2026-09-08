@@ -9,7 +9,11 @@ import {
   normalizeFileCommentRange,
   remapFileCommentAnnotations,
 } from "./fileCommentAnnotations";
-import { isMarkdownPreviewFile, setMarkdownTaskChecked } from "./filePreviewMode";
+import {
+  isHtmlPreviewFile,
+  isMarkdownPreviewFile,
+  setMarkdownTaskChecked,
+} from "./filePreviewMode";
 
 describe("file comment annotations", () => {
   it("normalizes and formats selected line ranges", () => {
@@ -58,7 +62,16 @@ describe("file comment annotations", () => {
   });
 });
 
-describe("isMarkdownPreviewFile", () => {
+describe("文件预览类型", () => {
+  it("只将 HTML 文档识别为网页预览，不把脚本或模板文件直接执行", () => {
+    for (const path of ["pelican_bike.html", "pages/index.HTM"]) {
+      expect(isHtmlPreviewFile(path)).toBe(true);
+    }
+    for (const path of ["index.html.ts", "page.jsx", "README.md", "template.html.txt"]) {
+      expect(isHtmlPreviewFile(path)).toBe(false);
+    }
+  });
+
   it("recognizes markdown and MDX files case-insensitively", () => {
     expect(isMarkdownPreviewFile("README.md")).toBe(true);
     expect(isMarkdownPreviewFile("docs/guide.MDX")).toBe(true);

@@ -1,8 +1,9 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { ChatAttachment, ModelSelection, ProviderInstanceId } from "@codework/contracts";
+import type { ChatAttachment, ModelSelection } from "@codework/contracts";
 import { TextGenerationError } from "@codework/contracts";
+import { createModelSelection, resolveSelectableModel } from "@codework/shared/model";
 
 import * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import type { ProviderInstance } from "../provider/ProviderDriver.ts";
@@ -135,40 +136,69 @@ type TextGenerationOp =
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
   operation: TextGenerationOp,
-  instanceId: ProviderInstanceId,
-): Effect.Effect<ProviderInstance["textGeneration"], TextGenerationError> =>
-  registry.getInstance(instanceId).pipe(
-    Effect.flatMap((instance) =>
-      instance
-        ? Effect.succeed(instance.textGeneration)
-        : Effect.fail(
-            new TextGenerationError({
-              operation,
-              detail: `No provider instance registered for id '${instanceId}'.`,
-            }),
-          ),
-    ),
-  );
+  selection: ModelSelection,
+): Effect.Effect<
+  {
+    textGeneration: ProviderInstance["textGeneration"];
+    modelSelection: ModelSelection;
+  },
+  TextGenerationError
+> =>
+  Effect.gen(function* () {
+    const instance = yield* registry.getInstance(selection.instanceId);
+    if (!instance) {
+      return yield* new TextGenerationError({
+        operation,
+        detail: `No provider instance registered for id '${selection.instanceId}'.`,
+      });
+    }
+    const snapshot = yield* instance.snapshot.getSnapshot;
+    let modelSelection = selection;
+    // 后台任务同样受共享渠道目录约束，不能把原生默认模型继续发给 BYOK 网关。
+    if (snapshot.auth.type === "byok") {
+      const model =
+        resolveSelectableModel(instance.driverKind, selection.model, snapshot.models) ??
+        snapshot.models[0]?.slug;
+      if (!model) {
+        return yield* new TextGenerationError({
+          operation,
+          detail: `No models are available in the BYOK channel for '${selection.instanceId}'.`,
+        });
+      }
+      if (model !== selection.model) {
+        modelSelection = createModelSelection(selection.instanceId, model);
+      }
+    }
+    return { textGeneration: instance.textGeneration, modelSelection };
+  });
 
 export const makeTextGenerationFromRegistry = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
 ): TextGeneration["Service"] =>
   TextGeneration.of({
     generateCommitMessage: (input) =>
-      resolveInstance(registry, "generateCommitMessage", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateCommitMessage(input)),
+      resolveInstance(registry, "generateCommitMessage", input.modelSelection).pipe(
+        Effect.flatMap(({ textGeneration, modelSelection }) =>
+          textGeneration.generateCommitMessage({ ...input, modelSelection }),
+        ),
       ),
     generatePrContent: (input) =>
-      resolveInstance(registry, "generatePrContent", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generatePrContent(input)),
+      resolveInstance(registry, "generatePrContent", input.modelSelection).pipe(
+        Effect.flatMap(({ textGeneration, modelSelection }) =>
+          textGeneration.generatePrContent({ ...input, modelSelection }),
+        ),
       ),
     generateBranchName: (input) =>
-      resolveInstance(registry, "generateBranchName", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateBranchName(input)),
+      resolveInstance(registry, "generateBranchName", input.modelSelection).pipe(
+        Effect.flatMap(({ textGeneration, modelSelection }) =>
+          textGeneration.generateBranchName({ ...input, modelSelection }),
+        ),
       ),
     generateThreadTitle: (input) =>
-      resolveInstance(registry, "generateThreadTitle", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input)),
+      resolveInstance(registry, "generateThreadTitle", input.modelSelection).pipe(
+        Effect.flatMap(({ textGeneration, modelSelection }) =>
+          textGeneration.generateThreadTitle({ ...input, modelSelection }),
+        ),
       ),
   });
 

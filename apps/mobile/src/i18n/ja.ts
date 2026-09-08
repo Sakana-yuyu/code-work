@@ -111,6 +111,8 @@ export const ja: Record<string, string> = {
     "レビュー指示（任意。未指定では未コミットの変更をレビュー）",
   "session.claudeMaxTurnsReached":
     "Claude が最大エージェントターン数に達しました。続けるにはメッセージを送信するか、プロバイダー設定で上限を調整してください。",
+  "session.byokMaxRoundsReached":
+    "BYOK がモデル呼び出しの上限 {{maxRounds}} 回に達したため停止しました。ツールの実行結果を確認してから、続きのメッセージを送信してください。",
   "specWorkflow.choose": "工程を選択",
   "specWorkflow.chooseDescription":
     "選択するとチップが表示されます。依頼を送信すると実行し、選択した工程の完了後に停止します。",
@@ -157,6 +159,8 @@ export const ja: Record<string, string> = {
   "session.turnFailed": "ターンが失敗しました",
   "session.noActiveProviderSession":
     "このスレッドにはアクティブなプロバイダーセッションが紐付けられていません。",
+  "session.cannotSwitchProvidersWhileRunning":
+    "タスクの実行中はランタイムを切り替えられません。完了するまで待つか、先に停止してください。",
   "session.cannotSwitchModelsAfterStart":
     "スレッド「{{threadId}}」は会話の開始後にモデルを切り替えられません。「{{model}}」を使用するには新しいスレッドを開始してください。",
   "session.activeSessionWithoutInstanceId":

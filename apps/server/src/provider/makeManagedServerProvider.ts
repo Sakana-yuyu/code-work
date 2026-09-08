@@ -33,6 +33,8 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
   readonly haveSettingsChanged: (previous: Settings, next: Settings) => boolean;
   readonly initialSnapshot: (settings: Settings) => Effect.Effect<ServerProvider>;
   readonly checkProvider: Effect.Effect<ServerProvider, ServerSettingsError>;
+  /** 在任何快照对外可见前应用模型路由等必要约束，不等待异步补充信息。 */
+  readonly prepareSnapshot?: (snapshot: ServerProvider) => Effect.Effect<ServerProvider>;
   readonly enrichSnapshot?: (input: {
     readonly settings: Settings;
     readonly snapshot: ServerProvider;
@@ -53,7 +55,10 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     PubSub.shutdown,
   );
   const initialSettings = yield* input.getSettings;
-  const initialSnapshot = yield* input.initialSnapshot(initialSettings);
+  const prepareSnapshot = input.prepareSnapshot ?? Effect.succeed;
+  const initialSnapshot = yield* input
+    .initialSnapshot(initialSettings)
+    .pipe(Effect.flatMap(prepareSnapshot));
   const snapshotStateRef = yield* Ref.make<ProviderSnapshotState>({
     snapshot: initialSnapshot,
     enrichmentGeneration: 0,
@@ -64,8 +69,9 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
 
   const publishEnrichedSnapshot = Effect.fn("publishEnrichedSnapshot")(function* (
     generation: number,
-    nextSnapshot: ServerProvider,
+    enrichedSnapshot: ServerProvider,
   ) {
+    const nextSnapshot = yield* prepareSnapshot(enrichedSnapshot);
     const snapshotToPublish = yield* Ref.modify(snapshotStateRef, (state) => {
       if (state.enrichmentGeneration !== generation || Equal.equals(state.snapshot, nextSnapshot)) {
         return [null, state] as const;
@@ -121,7 +127,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
       return yield* Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot));
     }
 
-    const nextSnapshot = yield* input.checkProvider;
+    const nextSnapshot = yield* input.checkProvider.pipe(Effect.flatMap(prepareSnapshot));
     const nextGeneration = yield* Ref.modify(snapshotStateRef, (state) => {
       const generation = input.enrichSnapshot
         ? state.enrichmentGeneration + 1

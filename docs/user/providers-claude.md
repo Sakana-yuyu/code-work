@@ -12,6 +12,8 @@ Common reasons:
 
 ## I Only Use One Claude Account
 
+“已禁用”表示 Claude 连接未启用，不代表本机没有安装 CLI。启用后会检测程序和登录状态；仅当检测确认 CLI 缺失或安装损坏，且当前平台支持自动安装时，才显示“安装 CLI”或修复入口。检测尚未完成时不会提示重新安装。
+
 在 **设置 → 供应商 → Claude → 配置 → 连接与登录** 中，可选择“原生账号”并点击“通过 CLI 登录”，在嵌入式终端中完成官方授权。登录使用该实例的 `CLAUDE_CONFIG_DIR`。关闭窗口取消本次登录进程并清理终端记录，不会注销已有账号；断线后最多保留 10 分钟。
 
 自定义服务可选择 **URL / API Key**，直接填写兼容 Anthropic Messages 的基础地址和密钥；支持 `x-api-key` 和 `Authorization: Bearer` 两种鉴权。例如使用要求 Bearer Token 的网关时，选择对应请求头，不必再手动拼环境变量。保存会屏蔽冲突的另一种鉴权和显式 OAuth Token，避免混用凭据；密钥留空保留已保存值。

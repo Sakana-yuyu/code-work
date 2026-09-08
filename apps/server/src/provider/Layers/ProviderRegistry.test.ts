@@ -54,7 +54,10 @@ import { readProviderStatusCache, resolveProviderStatusCachePath } from "../prov
 import type { ProviderInstance } from "../ProviderDriver.ts";
 import * as ProviderInstanceRegistry from "../Services/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../Services/ProviderRegistry.ts";
-import { makeManualOnlyProviderMaintenanceCapabilities } from "../providerMaintenance.ts";
+import {
+  makeManualOnlyProviderMaintenanceCapabilities,
+  makeProviderMaintenanceCapabilities,
+} from "../providerMaintenance.ts";
 const decodeServerSettings = Schema.decodeSync(ServerSettings);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const encodedDefaultServerSettings = encodeServerSettings(DEFAULT_SERVER_SETTINGS);
@@ -566,6 +569,34 @@ it.layer(
   });
 
   describe("ProviderRegistryLive", () => {
+    it("BYOK 目录替换旧快照，移除模型及切回原生时不复活旧条目", () => {
+      const native: ServerProvider = {
+        instanceId: ProviderInstanceId.make("codex"),
+        driver: ProviderDriverKind.make("codex"),
+        enabled: true,
+        installed: true,
+        version: null,
+        status: "ready",
+        auth: { status: "authenticated" },
+        checkedAt: "2026-09-08T00:00:00.000Z",
+        models: [{ slug: "gpt-6-astra", name: "GPT-6-Astra", isCustom: false, capabilities: null }],
+        slashCommands: [],
+        skills: [],
+      };
+      const routed: ServerProvider = {
+        ...native,
+        auth: { status: "authenticated", type: "byok" },
+        models: [{ slug: "gateway-model", name: "Gemini", isCustom: false, capabilities: null }],
+      };
+      for (const [previous, next] of [
+        [native, routed],
+        [routed, native],
+        [routed, { ...routed, models: [] }],
+      ] as const) {
+        assert.deepStrictEqual(mergeProviderSnapshot(previous, next), next);
+      }
+    });
+
     it("treats equal provider snapshots as unchanged", () => {
       const providers = [
         {
@@ -855,78 +886,99 @@ it.layer(
       ]);
     });
 
-    it.effect("does not run provider probes during layer construction", () =>
-      Effect.gen(function* () {
-        const codexDriver = ProviderDriverKind.make("codex");
-        const codexInstanceId = ProviderInstanceId.make("codex");
-        const initialProvider = {
-          instanceId: codexInstanceId,
-          driver: codexDriver,
-          status: "warning",
-          enabled: true,
-          installed: false,
-          auth: { status: "unknown" },
-          checkedAt: "2026-06-10T00:00:00.000Z",
-          version: null,
-          message: "Checking Codex provider status.",
-          models: [],
-          slashCommands: [],
-          skills: [],
-        } as const satisfies ServerProvider;
-        const refreshCalls = yield* Ref.make(0);
-        const instance = {
-          instanceId: codexInstanceId,
-          driverKind: codexDriver,
-          continuationIdentity: {
+    it.effect.each([
+      ["未检测", true, false, "warning", true, false],
+      ["已禁用", false, false, "disabled", true, false],
+      ["禁用后的旧错误", false, false, "error", true, false],
+      ["已安装", true, true, "ready", true, false],
+      ["已安装但执行失败", true, true, "error", true, false],
+      ["未安装或安装损坏", true, false, "error", true, true],
+      ["没有可用安装渠道", true, false, "error", false, false],
+    ] as const)(
+      "安装入口按探测状态决定，构建时不启动探测：%s",
+      ([label, enabled, installed, status, hasInstaller, expectedCanInstall]) =>
+        Effect.gen(function* () {
+          const codexDriver = ProviderDriverKind.make("codex");
+          const codexInstanceId = ProviderInstanceId.make("codex");
+          const initialProvider = {
+            instanceId: codexInstanceId,
+            driver: codexDriver,
+            status,
+            enabled,
+            installed,
+            canInstall: true,
+            auth: { status: "unknown" },
+            checkedAt: "2026-06-10T00:00:00.000Z",
+            version: null,
+            message: label,
+            models: [],
+            slashCommands: [],
+            skills: [],
+          } as const satisfies ServerProvider;
+          const refreshCalls = yield* Ref.make(0);
+          const instance = {
+            instanceId: codexInstanceId,
             driverKind: codexDriver,
-            continuationKey: "codex:instance:codex",
-          },
-          displayName: undefined,
-          enabled: true,
-          snapshot: {
-            maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
-              provider: codexDriver,
-              packageName: null,
-            }),
-            getSnapshot: Effect.succeed(initialProvider),
-            refresh: Ref.update(refreshCalls, (count) => count + 1).pipe(
-              Effect.andThen(Effect.never),
-            ),
-            streamChanges: Stream.empty,
-          },
-          adapter: {} as ProviderInstance["adapter"],
-          textGeneration: {} as ProviderInstance["textGeneration"],
-        } satisfies ProviderInstance;
-        const instanceRegistryLayer = Layer.succeed(
-          ProviderInstanceRegistry.ProviderInstanceRegistry,
-          {
-            getInstance: (instanceId) =>
-              Effect.succeed(instanceId === codexInstanceId ? instance : undefined),
-            listInstances: Effect.succeed([instance]),
-            listUnavailable: Effect.succeed([]),
-            streamChanges: Stream.empty,
-            subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), PubSub.subscribe),
-          },
-        );
-        const scope = yield* Scope.make();
-        yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
-        const runtimeServices = yield* Layer.build(
-          ProviderRegistryLive.pipe(
-            Layer.provideMerge(instanceRegistryLayer),
-            Layer.provideMerge(
-              ServerConfig.layerTest(process.cwd(), {
-                prefix: "codework-provider-registry-background-refresh-",
+            continuationIdentity: {
+              driverKind: codexDriver,
+              continuationKey: "codex:instance:codex",
+            },
+            displayName: undefined,
+            enabled,
+            snapshot: {
+              maintenanceCapabilities: makeProviderMaintenanceCapabilities({
+                provider: codexDriver,
+                packageName: "@openai/codex",
+                updateExecutable: hasInstaller ? "npm" : null,
+                updateArgs: ["install", "-g", "@openai/codex"],
+                updateLockKey: hasInstaller ? "npm-global" : null,
               }),
+              getSnapshot: Effect.succeed(initialProvider),
+              refresh: Ref.update(refreshCalls, (count) => count + 1).pipe(
+                Effect.as(initialProvider),
+              ),
+              streamChanges: Stream.empty,
+            },
+            adapter: {} as ProviderInstance["adapter"],
+            textGeneration: {} as ProviderInstance["textGeneration"],
+          } satisfies ProviderInstance;
+          const instanceRegistryLayer = Layer.succeed(
+            ProviderInstanceRegistry.ProviderInstanceRegistry,
+            {
+              getInstance: (instanceId) =>
+                Effect.succeed(instanceId === codexInstanceId ? instance : undefined),
+              listInstances: Effect.succeed([instance]),
+              listUnavailable: Effect.succeed([]),
+              streamChanges: Stream.empty,
+              subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), PubSub.subscribe),
+            },
+          );
+          const scope = yield* Scope.make();
+          yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
+          const runtimeServices = yield* Layer.build(
+            ProviderRegistryLive.pipe(
+              Layer.provideMerge(instanceRegistryLayer),
+              Layer.provideMerge(
+                ServerConfig.layerTest(process.cwd(), {
+                  prefix: "codework-provider-registry-background-refresh-",
+                }),
+              ),
+              Layer.provideMerge(NodeServices.layer),
             ),
-            Layer.provideMerge(NodeServices.layer),
-          ),
-        ).pipe(Scope.provide(scope));
-        yield* Effect.gen(function* () {
-          const registry = yield* ProviderRegistry.ProviderRegistry;
-          assert.deepStrictEqual(yield* registry.getProviders, [initialProvider]);
-          assert.strictEqual(yield* Ref.get(refreshCalls), 0);
-        }).pipe(Effect.provide(runtimeServices));
-      }),
+          ).pipe(Scope.provide(scope));
+          yield* Effect.gen(function* () {
+            const registry = yield* ProviderRegistry.ProviderRegistry;
+            assert.strictEqual(yield* Ref.get(refreshCalls), 0);
+            const { canInstall: _staleCanInstall, ...expectedProvider } = initialProvider;
+            assert.deepStrictEqual(yield* registry.refreshInstance(codexInstanceId), [
+              {
+                ...expectedProvider,
+                ...(expectedCanInstall ? { canInstall: true } : {}),
+              },
+            ]);
+            assert.strictEqual(yield* Ref.get(refreshCalls), 1);
+          }).pipe(Effect.provide(runtimeServices));
+        }),
     );
 
     it.effect("persists the merged snapshot when a live update has empty models", () =>

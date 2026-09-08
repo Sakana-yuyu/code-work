@@ -49,6 +49,11 @@ export const hydrateCachedProvider = (input: {
     return input.fallbackProvider;
   }
 
+  // 当前渠道配置优先于磁盘缓存，也不能在切回原生连接时恢复旧渠道。
+  if (input.fallbackProvider.auth.type === "byok" || input.cachedProvider.auth.type === "byok") {
+    return input.fallbackProvider;
+  }
+
   if (
     !input.fallbackProvider.enabled ||
     input.cachedProvider.enabled !== input.fallbackProvider.enabled

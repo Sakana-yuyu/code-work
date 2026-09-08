@@ -5,6 +5,32 @@ import { setCurrentLanguage, t } from "./runtime";
 afterEach(() => setCurrentLanguage("zh-CN"));
 
 describe("mobile i18n runtime", () => {
+  it("插值 BYOK 轮次上限错误", () => {
+    for (const language of ["zh-CN", "en", "ja"] as const) {
+      setCurrentLanguage(language);
+      const message = t("session.byokMaxRoundsReached", { maxRounds: 8 });
+      expect(message).toContain("8");
+      expect(message).not.toContain("{");
+    }
+  });
+
+  it("翻译运行中的运行器切换错误", () => {
+    for (const [language, expected] of [
+      [
+        "en",
+        "Cannot switch providers while a turn is running. Wait for it to finish or stop it first.",
+      ],
+      ["zh-CN", "当前任务正在运行，无法切换运行器。请等待完成或先停止后再切换。"],
+      [
+        "ja",
+        "タスクの実行中はランタイムを切り替えられません。完了するまで待つか、先に停止してください。",
+      ],
+    ] as const) {
+      setCurrentLanguage(language);
+      expect(t("session.cannotSwitchProvidersWhileRunning")).toBe(expected);
+    }
+  });
+
   it("switches languages and interpolates placeholders", () => {
     setCurrentLanguage("en");
     expect(t("interface.value-agent", { value1: 3 })).toBe("3 agent");

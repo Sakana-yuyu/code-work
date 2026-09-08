@@ -312,6 +312,7 @@ export const makeOrchestrationIntegrationHarness = (
       ProjectionPendingApprovalRepositoryLive,
       checkpointStoreLayer,
       providerLayer,
+      providerSessionDirectoryLayer,
       RuntimeReceiptBusTest,
     ).pipe(
       Layer.provideMerge(ThreadBackgroundLiveness.layer),

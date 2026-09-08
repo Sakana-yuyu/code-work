@@ -433,6 +433,8 @@ export const en: Record<string, string> = {
   "checkpoint.failedToRevert": "Failed to revert thread state.",
   "feedback.codexThreadIdCopyTarget": "Codex feedback thread ID",
   "modelPicker.startNewThreadToUseModel": "{{reason}} Start a new thread to use this model.",
+  "modelPicker.providerUnavailableInThread":
+    "The current task is running. Wait for it to finish or stop it before switching to {{providerName}}.",
   "modelPicker.disabledInSettings": "Disabled in settings.",
   "modelPicker.unavailable": "Unavailable",
   "modelPicker.limited": "Limited",
@@ -874,6 +876,8 @@ export const en: Record<string, string> = {
   "session.providerSessionError": "Provider session error",
   "session.turnFailed": "Turn failed",
   "session.noActiveProviderSession": "No active provider session is bound to this thread.",
+  "session.cannotSwitchProvidersWhileRunning":
+    "Cannot switch providers while a turn is running. Wait for it to finish or stop it first.",
   "session.cannotSwitchModelsAfterStart":
     "Thread '{{threadId}}' cannot switch models after the conversation has started. Start a new thread to use '{{model}}'.",
   "session.activeSessionWithoutInstanceId":
@@ -2741,6 +2745,8 @@ export const en: Record<string, string> = {
   "Fallback model": "Fallback model",
   "session.claudeMaxTurnsReached":
     "Claude reached the maximum agent turns. Send another message to continue, or adjust the limit in provider settings.",
+  "session.byokMaxRoundsReached":
+    "BYOK reached the limit of {{maxRounds}} model rounds and stopped. Review the tool results before sending another message.",
   "Review changes with Codex": "Review changes with Codex",
   "Review instructions (optional; defaults to uncommitted changes)":
     "Review instructions (optional; defaults to uncommitted changes)",
@@ -3924,6 +3930,9 @@ export const en: Record<string, string> = {
   showFileExplorer: "Show file explorer",
   showLink: "Show link",
   showMarkdownSource: "Show markdown source",
+  showHtmlSource: "Show HTML source",
+  showRenderedHtml: "Preview HTML page",
+  htmlFilePreview: "HTML preview: {{fileName}}",
   showMore2: "Show more (",
   showNewestActivityFirst: "Show newest activity first",
   showNewestCommentsFirst: "Show newest comments first",
@@ -6317,6 +6326,8 @@ export const zhCN: Record<string, string> = {
   "checkpoint.failedToRevert": "回退线程状态失败。",
   "feedback.codexThreadIdCopyTarget": "Codex 反馈线程 ID",
   "modelPicker.startNewThreadToUseModel": "{{reason}} 请新建线程以使用此模型。",
+  "modelPicker.providerUnavailableInThread":
+    "当前任务正在运行。请等待完成或先停止，再切换到 {{providerName}} 运行器。",
   "modelPicker.disabledInSettings": "已在设置中停用。",
   "modelPicker.noAvailableModels": "当前还没有可用模型。",
   "modelPicker.noAvailableModelsDescription":
@@ -6725,6 +6736,8 @@ export const zhCN: Record<string, string> = {
   "session.providerSessionError": "供应商会话错误",
   "session.turnFailed": "回合失败",
   "session.noActiveProviderSession": "该线程未绑定活动供应商会话。",
+  "session.cannotSwitchProvidersWhileRunning":
+    "当前任务正在运行，无法切换运行器。请等待完成或先停止后再切换。",
   "session.cannotSwitchModelsAfterStart":
     "线程“{{threadId}}”在对话开始后无法切换模型。请新建线程以使用“{{model}}”。",
   "session.activeSessionWithoutInstanceId": "线程“{{threadId}}”的活动供应商会话缺少供应商实例 ID。",
@@ -8450,6 +8463,8 @@ export const zhCN: Record<string, string> = {
   "Fallback model": "备用模型",
   "session.claudeMaxTurnsReached":
     "Claude 已达到最大自动执行轮次。可以发送后续消息继续，或在供应商设置中调整上限。",
+  "session.byokMaxRoundsReached":
+    "BYOK 已达到 {{maxRounds}} 轮模型调用上限并停止。请先检查工具执行结果，再发送后续消息。",
   "Review changes with Codex": "使用 Codex 审查代码变更",
   "Review instructions (optional; defaults to uncommitted changes)":
     "可选填写审查要求；默认审查未提交的变更",
@@ -9610,6 +9625,9 @@ export const zhCN: Record<string, string> = {
   showFileExplorer: "显示文件浏览器",
   showLink: "显示链接",
   showMarkdownSource: "显示 Markdown 源码",
+  showHtmlSource: "显示 HTML 源码",
+  showRenderedHtml: "预览 HTML 页面",
+  htmlFilePreview: "HTML 预览：{{fileName}}",
   showMore2: "显示更多（",
   showNewestActivityFirst: "首先显示最新活动",
   showNewestCommentsFirst: "首先显示最新评论",

@@ -142,6 +142,8 @@ export const en: Record<string, string> = {
   "session.providerSessionError": "Provider session error",
   "session.turnFailed": "Turn failed",
   "session.noActiveProviderSession": "No active provider session is bound to this thread.",
+  "session.cannotSwitchProvidersWhileRunning":
+    "Cannot switch providers while a turn is running. Wait for it to finish or stop it first.",
   "session.cannotSwitchModelsAfterStart":
     "Thread '{{threadId}}' cannot switch models after the conversation has started. Start a new thread to use '{{model}}'.",
   "session.activeSessionWithoutInstanceId":
@@ -1292,6 +1294,8 @@ export const en: Record<string, string> = {
   "providersMobile.fallbackModel": "Fallback model (same credentials)",
   "session.claudeMaxTurnsReached":
     "Claude reached the maximum agent turns. Send another message to continue, or adjust the limit in provider settings.",
+  "session.byokMaxRoundsReached":
+    "BYOK reached the limit of {{maxRounds}} model rounds and stopped. Review the tool results before sending another message.",
   "Review changes with Codex": "Review changes with Codex",
   "Review instructions (optional; defaults to uncommitted changes)":
     "Review instructions (optional; defaults to uncommitted changes)",
@@ -2759,6 +2763,8 @@ export const zhCN: Record<string, string> = {
   "session.providerSessionError": "供应商会话错误",
   "session.turnFailed": "回合失败",
   "session.noActiveProviderSession": "该线程未绑定活动供应商会话。",
+  "session.cannotSwitchProvidersWhileRunning":
+    "当前任务正在运行，无法切换运行器。请等待完成或先停止后再切换。",
   "session.cannotSwitchModelsAfterStart":
     "线程“{{threadId}}”在对话开始后无法切换模型。请新建线程以使用“{{model}}”。",
   "session.activeSessionWithoutInstanceId": "线程“{{threadId}}”的活动供应商会话缺少供应商实例 ID。",
@@ -3864,6 +3870,8 @@ export const zhCN: Record<string, string> = {
   "providersMobile.fallbackModel": "备用模型（使用同一凭据）",
   "session.claudeMaxTurnsReached":
     "Claude 已达到最大自动执行轮次。可以发送后续消息继续，或在供应商设置中调整上限。",
+  "session.byokMaxRoundsReached":
+    "BYOK 已达到 {{maxRounds}} 轮模型调用上限并停止。请先检查工具执行结果，再发送后续消息。",
   "Review changes with Codex": "使用 Codex 审查代码变更",
   "Review instructions (optional; defaults to uncommitted changes)":
     "可选填写审查要求；默认审查未提交的变更",

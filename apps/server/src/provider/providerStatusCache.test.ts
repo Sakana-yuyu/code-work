@@ -43,6 +43,26 @@ const makeProvider = (
 });
 
 it.layer(NodeServices.layer)("providerStatusCache", (it) => {
+  it("BYOK 启停和渠道切换不合并旧模型缓存", () => {
+    const native = makeProvider(CODEX_DRIVER, {
+      models: [{ slug: "gpt-6-astra", name: "GPT-6-Astra", isCustom: false, capabilities: null }],
+    });
+    const routed = makeProvider(CODEX_DRIVER, {
+      auth: { status: "authenticated", type: "byok" },
+      models: [{ slug: "gateway-model", name: "Gemini", isCustom: false, capabilities: null }],
+    });
+    for (const [cachedProvider, fallbackProvider] of [
+      [native, routed],
+      [routed, native],
+      [routed, { ...routed, models: [] }],
+    ] as const) {
+      assert.deepStrictEqual(
+        hydrateCachedProvider({ cachedProvider, fallbackProvider }),
+        fallbackProvider,
+      );
+    }
+  });
+
   it.effect("logs structural diagnostics without retaining invalid cache contents", () => {
     const messages: Array<unknown> = [];
     const logger = Logger.make<unknown, void>((options) => {

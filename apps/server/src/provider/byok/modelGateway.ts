@@ -302,6 +302,43 @@ export const applyRoutedProviderAvailability = <T extends ServerProvider>(snapsh
   return { ...rest, status: "ready" } as T;
 };
 
+/** 原生目录不能先发布再异步替换；读取渠道失败时保持空目录，避免误选。 */
+export const prepareRoutedProviderSnapshot = (
+  snapshot: ServerProvider,
+  config: {
+    readonly routeThroughByok: boolean;
+    readonly byokSourceInstanceId?: string | undefined;
+  },
+  getSettings: ServerSettingsService["Service"]["getSettings"],
+): Effect.Effect<ServerProvider> => {
+  if (!config.routeThroughByok) return Effect.succeed(snapshot);
+  return getSettings.pipe(
+    Effect.orElseSucceed(() => undefined),
+    Effect.map((settings) => {
+      const models = settings
+        ? routedServerProviderModels(
+            settings,
+            snapshot.driver === "claudeAgent" ? "anthropic" : "openai",
+            config.byokSourceInstanceId,
+          )
+        : [];
+      return applyRoutedProviderAvailability({
+        ...snapshot,
+        models:
+          snapshot.driver === "opencode"
+            ? models.map((model) => {
+                const slug = `${BYOK_GATEWAY_PROVIDER_ID}/${model.slug}`;
+                return (
+                  snapshot.models.find((existing) => existing.slug === slug) ?? { ...model, slug }
+                );
+              })
+            : models,
+        auth: { status: "authenticated", type: "byok", label: "BYOK Gateway" },
+      });
+    }),
+  );
+};
+
 /**
  * Anthropic clients append the full upstream path to the base URL, and
  * anthropic adapter base URLs do not end in `/v1`, so the path passes through

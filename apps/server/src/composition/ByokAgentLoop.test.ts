@@ -6,6 +6,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ToolBroker from "./ToolBroker.ts";
+import { listCompositionAgentTools } from "./CompositionToolRegistry.ts";
 import {
   ByokAgentModelError,
   ByokAgentLoopMaxRoundsError,
@@ -57,6 +58,140 @@ describe("byokAgentLoopMaxRounds (轮次预算归一化)", () => {
 });
 
 describe("ByokAgentLoop", () => {
+  it.effect("参数无效时提供现有签名，模型修正后只执行一次有效写入并结束", () =>
+    Effect.gen(function* () {
+      const writeTool = listCompositionAgentTools().find(
+        (tool) => tool.canonicalToolName === "workspace.write_file",
+      );
+      expect(writeTool).toBeDefined();
+      if (writeTool === undefined) return;
+      const calls: unknown[] = [];
+      let writes = 0;
+      const correctArguments = {
+        cwd: baseInput.workspaceRoot,
+        relativePath: "byok-full-access-check.txt",
+        contents: "蓝鹈鹕-8426",
+      };
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            calls.push(input.arguments);
+            if (calls.length === 1) {
+              return {
+                ...makeResult(input),
+                status: "failed" as const,
+                result: undefined,
+                errorCode: "tool_arguments_invalid",
+              };
+            }
+            expect(input.arguments).toEqual(correctArguments);
+            writes += 1;
+            return makeResult(input);
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          if (input.turn === 3)
+            return Stream.fromIterable([
+              { type: "text_delta", text: "文件已创建" },
+              { type: "model_completed" },
+            ]);
+          let argumentsValue: unknown = {
+            path: "byok-full-access-check.txt",
+            contents: "蓝鹈鹕-8426",
+          };
+          if (input.turn === 2) {
+            const feedback = input.messages.at(-1);
+            expect(feedback?.role).toBe("tool");
+            expect(decodeUnknownJson(feedback?.content ?? "{}")).toMatchObject({
+              status: "failed",
+              errorCode: "tool_arguments_invalid",
+              parameters: writeTool.parameters,
+              workspaceRoot: baseInput.workspaceRoot,
+              hint: expect.stringContaining("修正参数"),
+            });
+            argumentsValue = correctArguments;
+          }
+          return Stream.fromIterable([
+            {
+              type: "tool_call",
+              toolCallId: `write-${input.turn}`,
+              canonicalToolName: writeTool.canonicalToolName,
+              arguments: argumentsValue,
+            },
+            { type: "model_completed" },
+          ]);
+        },
+      };
+      const result = yield* runByokAgentLoop(
+        {
+          ...baseInput,
+          tools: [writeTool],
+          runtimeMode: "full-access",
+          capabilityGrantIds: ["t3.workspace.write_file"],
+        },
+        model,
+        broker,
+      );
+      expect(result).toMatchObject({ text: "文件已创建", rounds: 3 });
+      expect(calls).toHaveLength(2);
+      expect(calls[0]).toEqual({ path: "byok-full-access-check.txt", contents: "蓝鹈鹕-8426" });
+      expect(writes).toBe(1);
+    }),
+  );
+
+  it.effect("参数纠错签名超过结果预算时保留有界原始错误", () =>
+    Effect.gen(function* () {
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.succeed({
+            ...makeResult(input),
+            status: "failed" as const,
+            result: undefined,
+            errorCode: "tool_arguments_invalid",
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          if (input.turn === 2) {
+            const feedback = input.messages.at(-1);
+            expect(feedback?.content.length).toBeLessThanOrEqual(160);
+            expect(decodeUnknownJson(feedback?.content ?? "{}")).toEqual({
+              status: "failed",
+              errorCode: "tool_arguments_invalid",
+            });
+            return Stream.fromIterable([{ type: "model_completed" }]);
+          }
+          return Stream.fromIterable([
+            {
+              type: "tool_call",
+              toolCallId: "invalid-large-schema",
+              canonicalToolName: "workspace.read_file",
+              arguments: {},
+            },
+            { type: "model_completed" },
+          ]);
+        },
+      };
+      yield* runByokAgentLoop(
+        {
+          ...baseInput,
+          maxToolResultChars: 160,
+          tools: [
+            {
+              ...baseInput.tools[0]!,
+              parameters: { type: "object", description: "很长的签名".repeat(1_000) },
+            },
+          ],
+        },
+        model,
+        broker,
+      );
+    }),
+  );
+
   it("executes one tool call, deduplicates its terminal replay, reinjects the result, and continues", async () => {
     const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
     let brokerCalls = 0;

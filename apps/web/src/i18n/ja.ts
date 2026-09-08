@@ -111,6 +111,8 @@ export const ja: Record<string, string> = {
     "レビュー指示（任意。未指定では未コミットの変更をレビュー）",
   "session.claudeMaxTurnsReached":
     "Claude が最大エージェントターン数に達しました。続けるにはメッセージを送信するか、プロバイダー設定で上限を調整してください。",
+  "session.byokMaxRoundsReached":
+    "BYOK がモデル呼び出しの上限 {{maxRounds}} 回に達したため停止しました。ツールの実行結果を確認してから、続きのメッセージを送信してください。",
   "settings.localSaveFailed":
     "変更はこのウィンドウでは反映されていますが、保存できませんでした。再試行すると再起動後も保持されます。",
   "supplierRegistry.title": "サプライヤーレジストリ",
@@ -357,6 +359,8 @@ export const ja: Record<string, string> = {
   "feedback.codexThreadIdCopyTarget": "Codex フィードバックスレッド ID",
   "modelPicker.startNewThreadToUseModel":
     "{{reason}} このモデルを使用するには、新しいスレッドを開始してください。",
+  "modelPicker.providerUnavailableInThread":
+    "現在タスクを実行中です。完了するまで待つか停止してから、{{providerName}} ランタイムに切り替えてください。",
   "modelPicker.disabledInSettings": "設定で無効になっています。",
   "modelPicker.unavailable": "利用不可",
   "modelPicker.limited": "制限あり",
@@ -931,6 +935,8 @@ export const ja: Record<string, string> = {
   "session.turnFailed": "ターンが失敗しました",
   "session.noActiveProviderSession":
     "このスレッドにはアクティブなプロバイダーセッションが紐付いていません。",
+  "session.cannotSwitchProvidersWhileRunning":
+    "タスクの実行中はランタイムを切り替えられません。完了するまで待つか、先に停止してください。",
   "session.cannotSwitchModelsAfterStart":
     "スレッド「{{threadId}}」は会話の開始後にモデルを切り替えられません。「{{model}}」を使用するには新しいスレッドを開始してください。",
   "session.activeSessionWithoutInstanceId":
@@ -3975,6 +3981,9 @@ export const ja: Record<string, string> = {
   showFileExplorer: "エクスプローラーを表示",
   showLink: "リンクを表示",
   showMarkdownSource: "Markdown のソースを表示",
+  showHtmlSource: "HTML のソースを表示",
+  showRenderedHtml: "HTML ページをプレビュー",
+  htmlFilePreview: "HTML プレビュー：{{fileName}}",
   showMore2: "さらに表示 (",
   showNewestActivityFirst: "新しいアクティビティを先に表示",
   showNewestCommentsFirst: "新しいコメントを先に表示",

@@ -54,6 +54,7 @@ function readInstanceCustomModels(
   const instance = settings.providerInstances?.[instanceId];
   const config = instance?.config;
   if (config !== null && typeof config === "object") {
+    if ("routeThroughByok" in config && config.routeThroughByok === true) return [];
     const value = (config as Record<string, unknown>).customModels;
     if (Array.isArray(value)) {
       return value.filter((entry): entry is string => typeof entry === "string");
@@ -67,8 +68,10 @@ function readInstanceCustomModels(
   // so the record value must be optional-per-field rather than required.
   const legacyProviders = settings.providers as unknown as Record<
     string,
-    { readonly customModels?: ReadonlyArray<string> } | undefined
+    | { readonly customModels?: ReadonlyArray<string>; readonly routeThroughByok?: boolean }
+    | undefined
   >;
+  if (legacyProviders[driverKind]?.routeThroughByok === true) return [];
   return legacyProviders[driverKind]?.customModels ?? [];
 }
 

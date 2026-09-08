@@ -128,7 +128,7 @@ export type ByokAgentLoopInput = {
   readonly maxRounds?: number;
   /** 包含初始用户消息；工具调用与结果按两条完整消息计算。 */
   readonly maxContextMessages?: number;
-  /** 单条成功工具结果重新注入模型时允许的最大字符数。 */
+  /** 单条工具结果及参数纠错提示重新注入模型时允许的最大字符数。 */
   readonly maxToolResultChars?: number;
   readonly onTextCheckpoint?: (
     checkpoint: ByokAgentTextCheckpoint,
@@ -249,12 +249,26 @@ const truncatedToolResultContent = (
 const toolResultContent = (
   result: ToolBroker.ToolBrokerResult,
   maxToolResultChars: number,
+  input: Pick<ByokAgentLoopInput, "tools" | "workspaceRoot">,
 ): string => {
   if (result.status !== "succeeded") {
-    return encodeUnknownJson({
+    const error = {
       status: result.status,
       errorCode: result.errorCode ?? "tool_failed",
-    });
+    };
+    if (result.errorCode === "tool_arguments_invalid") {
+      const tool = input.tools.find((tool) => tool.canonicalToolName === result.canonicalToolName);
+      if (tool !== undefined) {
+        const feedback = encodeUnknownJson({
+          ...error,
+          parameters: tool.parameters,
+          workspaceRoot: input.workspaceRoot,
+          hint: "请按本轮工具签名修正参数；cwd（如有）必须等于 workspaceRoot。不要原样重复失败调用。",
+        });
+        if (feedback.length <= maxToolResultChars) return feedback;
+      }
+    }
+    return encodeUnknownJson(error);
   }
 
   const fullContent = encodeUnknownJson({ status: result.status, result: result.result });
@@ -472,7 +486,7 @@ export const runByokAgentLoop = (
           role: "tool",
           toolCallId: event.toolCallId,
           canonicalToolName: event.canonicalToolName,
-          content: toolResultContent(result, maxToolResultChars),
+          content: toolResultContent(result, maxToolResultChars, input),
         });
       }
 

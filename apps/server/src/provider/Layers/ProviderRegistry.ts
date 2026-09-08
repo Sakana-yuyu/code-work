@@ -132,7 +132,8 @@ export const mergeProviderSnapshot = (
   previousProvider: ServerProvider | undefined,
   nextProvider: ServerProvider,
 ): ServerProvider =>
-  !previousProvider
+  // 共享渠道目录具有完整性；启停路由或删除模型时不得保留旧目录。
+  !previousProvider || nextProvider.auth.type === "byok" || previousProvider.auth.type === "byok"
     ? nextProvider
     : {
         ...nextProvider,
@@ -373,7 +374,12 @@ export const ProviderRegistryLive = Layer.effect(
           : hostPlatform === "win32"
             ? capabilities.install.win32
             : capabilities.install.posix;
-      const canInstall = !baseProvider.installed && installVariant !== null;
+      // 禁用和待检测快照的 installed 也是 false，不能据此断言 CLI 缺失。
+      const canInstall =
+        baseProvider.enabled &&
+        baseProvider.status === "error" &&
+        !baseProvider.installed &&
+        installVariant !== null;
       const withInstallAffordances = {
         ...baseProvider,
         ...(actions?.install ? { installState: actions.install } : {}),

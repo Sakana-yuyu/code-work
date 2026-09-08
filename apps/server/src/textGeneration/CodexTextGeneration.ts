@@ -15,6 +15,7 @@ import {
 } from "@codework/contracts";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@codework/shared/git";
 import { resolveSpawnCommand } from "@codework/shared/shell";
+import { extractJsonObject } from "@codework/shared/schemaJson";
 
 import { resolveAttachmentPath } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
@@ -286,7 +287,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
               cause,
             }),
         ),
-        Effect.flatMap(decodeOutput),
+        Effect.flatMap((output) => decodeOutput(extractJsonObject(output))),
         Effect.catchTags({
           SchemaError: (cause) =>
             Effect.fail(

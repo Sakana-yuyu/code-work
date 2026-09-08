@@ -16,13 +16,12 @@ import { makeGrokTextGeneration } from "../../textGeneration/GrokTextGeneration.
 import { ProviderDriverError } from "../Errors.ts";
 import {
   BYOK_GATEWAY_TOKEN_ENV,
-  applyRoutedProviderAvailability,
+  prepareRoutedProviderSnapshot,
   ensureGatewayToken,
   gatewayAdapterRoutes,
   gatewayOrigin,
   grokGatewayConfigBlock,
   mergeGrokManagedConfig,
-  routedServerProviderModels,
 } from "../byok/modelGateway.ts";
 import { makeGrokAdapter } from "../Layers/GrokAdapter.ts";
 import {
@@ -41,7 +40,6 @@ import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import { isDefaultGrokHome, resolveGrokHome } from "../grokHome.ts";
 import {
-  enrichProviderSnapshotWithVersionAdvisory,
   makeProviderMaintenanceCapabilities,
   makeStaticProviderMaintenanceResolver,
   resolveProviderMaintenanceCapabilitiesEffect,
@@ -228,56 +226,23 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
         initialSnapshot: (settings) =>
           buildInitialGrokProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
         checkProvider,
-        enrichSnapshot: ({ settings, snapshot: currentSnapshot, publishSnapshot }) => {
-          const baseEnrich = Effect.suspend(() =>
-            enrichGrokSnapshot({
-              snapshot: currentSnapshot,
-              maintenanceCapabilities,
-              enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
-              publishSnapshot,
-              httpClient,
-            }),
-          );
-          if (settings.provider.routeThroughByok !== true) {
-            // Reconcile on disable as well: the managed block must be stripped
-            // from config.toml even though the models stay grok's own.
-            return reconcileGrokRoutedConfigFile.pipe(Effect.andThen(baseEnrich), Effect.orDie);
-          }
-          // Routed models come from the live BYOK adapters, not grok's own
-          // catalog, so resolve them per snapshot.
-          return reconcileGrokRoutedConfigFile.pipe(
-            Effect.andThen(serverSettings.getSettings.pipe(Effect.orElseSucceed(() => undefined))),
-            Effect.flatMap((currentSettings) =>
-              currentSettings === undefined
-                ? baseEnrich
-                : enrichProviderSnapshotWithVersionAdvisory(
-                    currentSnapshot,
-                    maintenanceCapabilities,
-                    { enableProviderUpdateChecks: settings.enableProviderUpdateChecks },
-                  ).pipe(
-                    Effect.provideService(HttpClient.HttpClient, httpClient),
-                    Effect.flatMap((enrichedSnapshot) =>
-                      publishSnapshot(
-                        applyRoutedProviderAvailability({
-                          ...enrichedSnapshot,
-                          models: routedServerProviderModels(
-                            currentSettings,
-                            "openai",
-                            config.byokSourceInstanceId,
-                          ),
-                          auth: {
-                            status: "authenticated" as const,
-                            type: "byok",
-                            label: "BYOK Gateway",
-                          },
-                        }),
-                      ),
-                    ),
-                  ),
+        prepareSnapshot: (snapshot) =>
+          prepareRoutedProviderSnapshot(snapshot, config, serverSettings.getSettings),
+        enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
+          reconcileGrokRoutedConfigFile.pipe(
+            Effect.andThen(
+              Effect.suspend(() =>
+                enrichGrokSnapshot({
+                  snapshot,
+                  maintenanceCapabilities,
+                  enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+                  publishSnapshot,
+                  httpClient,
+                }),
+              ),
             ),
             Effect.orDie,
-          );
-        },
+          ),
       }).pipe(
         Effect.mapError(
           (cause) =>

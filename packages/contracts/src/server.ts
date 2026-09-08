@@ -194,9 +194,8 @@ export const ServerProvider = Schema.Struct({
   skills: Schema.Array(ServerProviderSkill).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   versionAdvisory: Schema.optionalKey(ServerProviderVersionAdvisory),
   updateState: Schema.optionalKey(ServerProviderUpdateState),
-  // Server-derived install affordance: true only when the driver has a
-  // package-managed channel (npm global) and this snapshot is not installed.
-  // Optional for back-compat with older servers; absent means "no button".
+  // 服务端仅在供应商已启用、检测确认 CLI 缺失或损坏，且当前平台有安装渠道时提供安装入口。
+  // 禁用或待检测不代表未安装；兼容旧服务端，字段缺省时不显示按钮。
   canInstall: Schema.optionalKey(Schema.Boolean),
   // Live state of a one-click CLI install, same shape as `updateState`.
   installState: Schema.optionalKey(ServerProviderUpdateState),

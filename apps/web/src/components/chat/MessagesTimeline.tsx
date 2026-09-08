@@ -82,6 +82,8 @@ const EMPTY_LOCAL_PLUGIN_TIMELINE_ENTRIES: ReadonlyArray<EnabledLocalPluginTimel
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesCard } from "./ChangedFilesTree";
+import { resolveDiffPathForWorkspace } from "~/diffFileActions";
+import { useRightPanelStore } from "~/rightPanelStore";
 import { resolveCanvasReferenceForFiles } from "~/canvas";
 import { shouldAutoExpandChangedFiles } from "./changedFilesPresentation";
 import { keepTimelineEndVisibleAfterOverlayGrowth } from "./timelineScrollAnchoring";
@@ -154,6 +156,7 @@ interface TimelineRowSharedState {
   markdownCwd: string | undefined;
   resolvedTheme: "light" | "dark";
   workspaceRoot: string | undefined;
+  repositoryRoot: string | undefined;
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertUserMessage: (messageId: MessageId) => void;
@@ -248,6 +251,7 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
+  repositoryRoot?: string | undefined;
   skills?: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   anchorMessageId: MessageId | null;
   onAnchorReady: (messageId: MessageId, anchorIndex: number) => void;
@@ -296,6 +300,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   resolvedTheme,
   timestampFormat,
   workspaceRoot,
+  repositoryRoot,
   skills = EMPTY_TIMELINE_SKILLS,
   anchorMessageId,
   onAnchorReady,
@@ -555,6 +560,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       markdownCwd,
       resolvedTheme,
       workspaceRoot,
+      repositoryRoot,
       skills,
       activeThreadEnvironmentId,
       onRevertUserMessage,
@@ -575,6 +581,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       markdownCwd,
       resolvedTheme,
       workspaceRoot,
+      repositoryRoot,
       skills,
       activeThreadEnvironmentId,
       onRevertUserMessage,
@@ -1897,7 +1904,22 @@ function AssistantChangedFilesSectionInner({
   canvas: CanvasReference | null;
   onOpenCanvas: (canvas: CanvasReference) => void;
 }) {
+  const ctx = use(TimelineRowCtx);
   const activity = use(TimelineRowActivityCtx);
+  const openChangedFileInPanel = useCallback(
+    (filePath: string) => {
+      if (!ctx.threadRef) return false;
+      const relativePath = resolveDiffPathForWorkspace({
+        filePath,
+        workspaceRoot: ctx.workspaceRoot,
+        repositoryRoot: ctx.repositoryRoot,
+      });
+      if (relativePath === null) return false;
+      useRightPanelStore.getState().openFile(ctx.threadRef, relativePath);
+      return true;
+    },
+    [ctx.threadRef, ctx.workspaceRoot, ctx.repositoryRoot],
+  );
   const isLatestTurn = activity.latestTurnId === turnSummary.turnId;
   const persistedExpanded = useUiStateStore(
     (store) => store.threadChangedFilesExpandedById[routeThreadKey]?.[turnSummary.turnId],
@@ -1922,6 +1944,7 @@ function AssistantChangedFilesSectionInner({
       }
       onToggleAllDirectories={() => setAllDirectoriesExpanded((current) => !current)}
       onOpenTurnDiff={onOpenTurnDiff}
+      onOpenFile={ctx.threadRef ? openChangedFileInPanel : undefined}
       {...(canvas ? { canvas } : {})}
       onOpenCanvas={onOpenCanvas}
     />

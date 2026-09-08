@@ -9,6 +9,7 @@ import {
   ProviderRuntimeEvent,
   ProviderSession,
   ProviderInstanceId,
+  type OrchestrationCheckpointSummary,
 } from "@codework/contracts";
 import {
   CommandId,
@@ -64,6 +65,9 @@ import * as WorkspacePaths from "../../workspace/WorkspacePaths.ts";
 import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
 import { OrchestrationCommandInvariantError } from "../Errors.ts";
 import * as WorkspaceOperationLock from "../WorkspaceOperationLock.ts";
+import { ProviderSessionDirectory } from "../../provider/Services/ProviderSessionDirectory.ts";
+import { ProviderSessionDirectoryLive } from "../../provider/Layers/ProviderSessionDirectory.ts";
+import * as ProviderSessionRuntime from "../../persistence/ProviderSessionRuntime.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
@@ -157,13 +161,13 @@ async function waitForThread(
     readonly threads: ReadonlyArray<{
       readonly id: ThreadId;
       readonly latestTurn: { readonly turnId: string } | null;
-      readonly checkpoints: ReadonlyArray<{ readonly checkpointTurnCount: number }>;
+      readonly checkpoints: ReadonlyArray<OrchestrationCheckpointSummary>;
       readonly activities: ReadonlyArray<{ readonly kind: string }>;
     }>;
   }>,
   predicate: (thread: {
     latestTurn: { turnId: string } | null;
-    checkpoints: ReadonlyArray<{ checkpointTurnCount: number }>;
+    checkpoints: ReadonlyArray<OrchestrationCheckpointSummary>;
     activities: ReadonlyArray<{ kind: string }>;
   }) => boolean,
   timeoutMs = 15_000,
@@ -171,7 +175,7 @@ async function waitForThread(
   const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   const poll = async (): Promise<{
     latestTurn: { turnId: string } | null;
-    checkpoints: ReadonlyArray<{ checkpointTurnCount: number }>;
+    checkpoints: ReadonlyArray<OrchestrationCheckpointSummary>;
     activities: ReadonlyArray<{ kind: string }>;
   }> => {
     const snapshot = await readModel();
@@ -262,6 +266,7 @@ describe("CheckpointReactor", () => {
     | OrchestrationEngineService
     | CheckpointReactor
     | CheckpointStore.CheckpointStore
+    | ProviderSessionDirectory
     | ThreadBackgroundLiveness.ThreadBackgroundLivenessService
     | ProjectionSnapshotQuery,
     unknown
@@ -288,6 +293,7 @@ describe("CheckpointReactor", () => {
 
   async function createHarness(options?: {
     readonly hasSession?: boolean;
+    readonly historyReplay?: boolean;
     readonly seedFilesystemCheckpoints?: boolean;
     readonly projectWorkspaceRoot?: string;
     readonly threadWorktreePath?: string | null;
@@ -351,6 +357,9 @@ describe("CheckpointReactor", () => {
       Layer.provideMerge(WorkspaceOperationLock.layer),
       Layer.provideMerge(ThreadBackgroundLiveness.layer),
       Layer.provideMerge(projectionSnapshotLayer),
+      Layer.provideMerge(
+        ProviderSessionDirectoryLive.pipe(Layer.provide(ProviderSessionRuntime.layer)),
+      ),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(RuntimeReceiptBusLive),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
@@ -378,6 +387,20 @@ describe("CheckpointReactor", () => {
     const checkpointStore = await runtime.runPromise(
       Effect.service(CheckpointStore.CheckpointStore),
     );
+    const directory = await runtime.runPromise(Effect.service(ProviderSessionDirectory));
+    if (options?.historyReplay) {
+      await runtime.runPromise(
+        directory.upsert({
+          threadId: ThreadId.make("thread-1"),
+          provider: options.providerName ?? ProviderDriverKind.make("codex"),
+          providerInstanceId: ProviderInstanceId.make("codex"),
+          runtimeMode: "approval-required",
+          status: options.hasSession === false ? "stopped" : "running",
+          resumeCursor: null,
+          runtimePayload: { cwd, historyReplay: { pendingText: null } },
+        }),
+      );
+    }
     scope = await Effect.runPromise(Scope.make("sequential"));
     await Effect.runPromise(reactor.start().pipe(Scope.provide(scope)));
     const drain = () => Effect.runPromise(reactor.drain);
@@ -466,6 +489,7 @@ describe("CheckpointReactor", () => {
       engine,
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
       provider,
+      directory,
       backgroundLiveness,
       cwd,
       drain,
@@ -475,6 +499,8 @@ describe("CheckpointReactor", () => {
   it("captures pre-turn baseline on turn.started and post-turn checkpoint on turn.completed", async () => {
     const harness = await createHarness({ seedFilesystemCheckpoints: false });
     const createdAt = "2026-01-01T00:00:00.000Z";
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "deleted.html"), "removed content\n", "utf8");
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "old-name.html"), "renamed content\n", "utf8");
 
     await Effect.runPromise(
       harness.engine.dispatch({
@@ -509,6 +535,12 @@ describe("CheckpointReactor", () => {
     );
 
     NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "v2\n", "utf8");
+    NodeFS.rmSync(NodePath.join(harness.cwd, "deleted.html"));
+    NodeFS.renameSync(
+      NodePath.join(harness.cwd, "old-name.html"),
+      NodePath.join(harness.cwd, "new-name.html"),
+    );
+    NodeFS.writeFileSync(NodePath.join(harness.cwd, "added.html"), "brand new page\n", "utf8");
     harness.provider.emit({
       type: "turn.completed",
       eventId: EventId.make("evt-turn-completed-1"),
@@ -526,6 +558,14 @@ describe("CheckpointReactor", () => {
       (entry) => entry.latestTurn?.turnId === "turn-1" && entry.checkpoints.length === 1,
     );
     expect(thread.checkpoints[0]?.checkpointTurnCount).toBe(1);
+    expect(thread.checkpoints[0]?.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "README.md", kind: "modified" }),
+        expect.objectContaining({ path: "added.html", kind: "added" }),
+        expect.objectContaining({ path: "deleted.html", kind: "deleted" }),
+        expect.objectContaining({ path: "new-name.html", kind: "renamed" }),
+      ]),
+    );
     expect(
       gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0)),
     ).toBe(true);
@@ -1020,10 +1060,25 @@ describe("CheckpointReactor", () => {
     ).toBe(true);
   });
 
-  for (const failure of ["provider-failure", "unsupported-provider", "runtime-mismatch"] as const) {
+  for (const failure of [
+    "provider-failure",
+    "unsupported-provider",
+    "runtime-mismatch",
+    "replay-runtime-mismatch",
+    "replay-instance-mismatch",
+    "replay-cwd-mismatch",
+    "replay-active-missing-cwd",
+    "replay-malformed",
+  ] as const) {
     effectIt.effect(`回退 ${failure} 时保留工作区、暂存区和原有历史`, () =>
       Effect.gen(function* () {
-        const harness = yield* Effect.promise(() => createHarness());
+        const replay = failure.startsWith("replay-");
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            hasSession: !replay || failure === "replay-active-missing-cwd",
+            historyReplay: replay,
+          }),
+        );
         const threadId = ThreadId.make("thread-1");
         const createdAt = "2026-01-01T00:00:00.000Z";
         for (const turnCount of [1, 2]) {
@@ -1059,13 +1114,27 @@ describe("CheckpointReactor", () => {
           vi.spyOn(harness.provider.service, "getCapabilities").mockReturnValue(
             Effect.succeed({ sessionModelSwitch: "in-session", threadRollback: false }),
           );
-        } else {
+        } else if (failure === "runtime-mismatch") {
           const sessions = yield* harness.provider.service.listSessions();
           vi.spyOn(harness.provider.service, "listSessions").mockReturnValue(
             Effect.succeed(
               sessions.map((session) => ({ ...session, runtimeMode: "full-access" as const })),
             ),
           );
+        } else {
+          yield* harness.directory.upsert({
+            threadId,
+            provider: ProviderDriverKind.make("codex"),
+            ...(failure === "replay-runtime-mismatch" ? { runtimeMode: "full-access" } : {}),
+            ...(failure === "replay-instance-mismatch"
+              ? { providerInstanceId: ProviderInstanceId.make("another-codex") }
+              : {}),
+            ...(failure === "replay-cwd-mismatch"
+              ? { runtimePayload: { cwd: NodePath.join(harness.cwd, "..", "unbound") } }
+              : {}),
+            ...(failure === "replay-active-missing-cwd" ? { runtimePayload: { cwd: null } } : {}),
+            ...(failure === "replay-malformed" ? { runtimePayload: { historyReplay: {} } } : {}),
+          });
         }
         yield* harness.engine.dispatch({
           type: "thread.checkpoint.revert",
@@ -1095,6 +1164,9 @@ describe("CheckpointReactor", () => {
         ).toBe("keep me\n");
         expect(runGit(harness.cwd, ["diff", "--cached"])).toBe(originalIndex);
         expect(thread.checkpoints).toHaveLength(2);
+        if (failure !== "provider-failure") {
+          expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+        }
         expect(gitRefExists(harness.cwd, checkpointRefForThreadTurn(threadId, 2))).toBe(true);
       }),
     );
@@ -1166,6 +1238,133 @@ describe("CheckpointReactor", () => {
         }),
     );
   }
+
+  effectIt.effect("历史重建会话停止后仍可连续回退，并按线程查询能力", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness({ historyReplay: true }));
+      const threadId = ThreadId.make("thread-1");
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      const capabilities = vi.spyOn(harness.provider.service, "getCapabilities");
+      for (const turnCount of [1, 2]) {
+        yield* harness.engine.dispatch({
+          type: "thread.turn.diff.complete",
+          commandId: CommandId.make(`replay-diff-${turnCount}`),
+          threadId,
+          turnId: asTurnId(`turn-${turnCount}`),
+          completedAt: createdAt,
+          checkpointRef: checkpointRefForThreadTurn(threadId, turnCount),
+          status: "ready",
+          files: [],
+          checkpointTurnCount: turnCount,
+          createdAt,
+        });
+      }
+      harness.provider.rollbackConversation.mockImplementation(() =>
+        Effect.gen(function* () {
+          vi.spyOn(harness.provider.service, "listSessions").mockReturnValue(Effect.succeed([]));
+          yield* harness.directory.upsert({
+            threadId,
+            provider: ProviderDriverKind.make("codex"),
+            status: "stopped",
+            resumeCursor: null,
+          });
+        }),
+      );
+      for (const turnCount of [1, 0]) {
+        yield* harness.engine.dispatch({
+          type: "thread.checkpoint.revert",
+          commandId: CommandId.make(`replay-revert-${turnCount}`),
+          threadId,
+          turnCount,
+          createdAt,
+        });
+        yield* Effect.promise(harness.drain);
+        const thread = (yield* Effect.promise(harness.readModel)).threads.find(
+          (entry) => entry.id === threadId,
+        )!;
+        expect(thread.checkpoints).toHaveLength(turnCount);
+        expect(thread.activities.some((entry) => entry.kind === "checkpoint.revert.failed")).toBe(
+          false,
+        );
+        expect(
+          NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8").replaceAll(
+            "\r\n",
+            "\n",
+          ),
+        ).toBe(turnCount === 1 ? "v2\n" : "v1\n");
+      }
+      expect(
+        harness.provider.rollbackConversation.mock.calls.map(([input]) => input.numTurns),
+      ).toEqual([1, 1]);
+      expect(capabilities).toHaveBeenLastCalledWith(ProviderInstanceId.make("codex"), threadId);
+    }),
+  );
+
+  effectIt.effect("历史重建回退后本地提交失败时恢复文件和暂存区，保留完整历史", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness({ historyReplay: true }));
+      const threadId = ThreadId.make("thread-1");
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      yield* harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make("replay-failure-diff"),
+        threadId,
+        turnId: asTurnId("turn-2"),
+        completedAt: createdAt,
+        checkpointRef: checkpointRefForThreadTurn(threadId, 2),
+        status: "ready",
+        files: [],
+        checkpointTurnCount: 2,
+        createdAt,
+      });
+      NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "staged user edit\n");
+      runGit(harness.cwd, ["add", "README.md"]);
+      NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "unsaved user edit\n");
+      NodeFS.writeFileSync(NodePath.join(harness.cwd, "untracked.txt"), "keep me\n");
+      const originalIndex = runGit(harness.cwd, ["diff", "--cached"]);
+      const originalDispatch = harness.engine.dispatch;
+      vi.spyOn(harness.engine, "dispatch").mockImplementation((command, options) =>
+        command.type === "thread.revert.complete"
+          ? Effect.fail(
+              new OrchestrationCommandInvariantError({
+                commandType: command.type,
+                detail: "模拟本地提交失败",
+              }),
+            )
+          : originalDispatch(command, options),
+      );
+      yield* harness.engine.dispatch({
+        type: "thread.checkpoint.revert",
+        commandId: CommandId.make("replay-failure-revert"),
+        threadId,
+        turnCount: 0,
+        createdAt,
+      });
+      yield* Effect.promise(harness.drain);
+      const thread = (yield* Effect.promise(harness.readModel)).threads.find(
+        (entry) => entry.id === threadId,
+      )!;
+      expect(thread.checkpoints).toHaveLength(1);
+      expect(thread.activities.some((entry) => entry.kind === "checkpoint.revert.failed")).toBe(
+        true,
+      );
+      expect(harness.provider.rollbackConversation).toHaveBeenCalledTimes(1);
+      expect(
+        NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8").replaceAll(
+          "\r\n",
+          "\n",
+        ),
+      ).toBe("unsaved user edit\n");
+      expect(
+        NodeFS.readFileSync(NodePath.join(harness.cwd, "untracked.txt"), "utf8").replaceAll(
+          "\r\n",
+          "\n",
+        ),
+      ).toBe("keep me\n");
+      expect(runGit(harness.cwd, ["diff", "--cached"])).toBe(originalIndex);
+      expect(gitRefExists(harness.cwd, checkpointRefForThreadTurn(threadId, 2))).toBe(true);
+    }),
+  );
 
   effectIt.effect("后台子任务仍运行时拒绝回退", () =>
     Effect.gen(function* () {
@@ -1324,87 +1523,96 @@ describe("CheckpointReactor", () => {
     ).toBe(false);
   });
 
-  effectIt.effect("回退执行期间拒绝新 turn 且不写入会被截断的消息", () =>
-    Effect.gen(function* () {
-      const harness = yield* Effect.promise(() => createHarness());
-      const threadId = ThreadId.make("thread-1");
-      const createdAt = "2026-01-01T00:00:00.000Z";
-      const entered = yield* Deferred.make<void>();
-      const release = yield* Deferred.make<void>();
-      harness.provider.rollbackConversation.mockImplementation(() =>
+  for (const stoppedReplay of [false, true]) {
+    effectIt.effect(
+      `${stoppedReplay ? "停止的重建会话" : "原生会话"}回退执行期间拒绝新 turn 且不写入会被截断的消息`,
+      () =>
         Effect.gen(function* () {
-          yield* Deferred.succeed(entered, undefined);
-          yield* Deferred.await(release);
-        }),
-      );
-      yield* harness.engine.dispatch({
-        type: "thread.turn.diff.complete",
-        commandId: CommandId.make("race-diff"),
-        threadId,
-        turnId: asTurnId("turn-2"),
-        completedAt: createdAt,
-        checkpointRef: checkpointRefForThreadTurn(threadId, 2),
-        status: "ready",
-        files: [],
-        checkpointTurnCount: 2,
-        createdAt,
-      });
-      yield* harness.engine.dispatch({
-        type: "thread.checkpoint.revert",
-        commandId: CommandId.make("race-revert"),
-        threadId,
-        turnCount: 0,
-        createdAt,
-      });
-      yield* Deferred.await(entered);
-      try {
-        const moved = yield* harness.engine
-          .dispatch({
-            type: "thread.meta.update",
-            commandId: CommandId.make("race-move"),
+          const harness = yield* Effect.promise(() =>
+            createHarness({
+              hasSession: !stoppedReplay,
+              historyReplay: stoppedReplay,
+            }),
+          );
+          const threadId = ThreadId.make("thread-1");
+          const createdAt = "2026-01-01T00:00:00.000Z";
+          const entered = yield* Deferred.make<void>();
+          const release = yield* Deferred.make<void>();
+          harness.provider.rollbackConversation.mockImplementation(() =>
+            Effect.gen(function* () {
+              yield* Deferred.succeed(entered, undefined);
+              yield* Deferred.await(release);
+            }),
+          );
+          yield* harness.engine.dispatch({
+            type: "thread.turn.diff.complete",
+            commandId: CommandId.make("race-diff"),
             threadId,
-            worktreePath: NodePath.join(harness.cwd, "other-worktree"),
-          })
-          .pipe(Effect.result);
-        expect(moved._tag).toBe("Failure");
-        const movedProject = yield* harness.engine
-          .dispatch({
-            type: "project.meta.update",
-            commandId: CommandId.make("race-project-move"),
-            projectId: asProjectId("project-1"),
-            workspaceRoot: NodePath.join(harness.cwd, "other-project"),
-          })
-          .pipe(Effect.result);
-        expect(movedProject._tag).toBe("Failure");
-        const result = yield* harness.engine
-          .dispatch({
-            type: "thread.turn.start",
-            commandId: CommandId.make("race-start"),
-            threadId,
-            message: {
-              messageId: MessageId.make("race-message"),
-              role: "user",
-              text: "must not disappear",
-              attachments: [],
-            },
-            runtimeMode: "approval-required",
-            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+            turnId: asTurnId("turn-2"),
+            completedAt: createdAt,
+            checkpointRef: checkpointRefForThreadTurn(threadId, 2),
+            status: "ready",
+            files: [],
+            checkpointTurnCount: 2,
             createdAt,
-          })
-          .pipe(Effect.result);
-        expect(result._tag).toBe("Failure");
-        const thread = (yield* Effect.promise(harness.readModel)).threads.find(
-          (entry) => entry.id === threadId,
-        )!;
-        expect(thread.messages.some((entry) => entry.id === MessageId.make("race-message"))).toBe(
-          false,
-        );
-      } finally {
-        yield* Deferred.succeed(release, undefined);
-        yield* Effect.promise(harness.drain);
-      }
-    }),
-  );
+          });
+          yield* harness.engine.dispatch({
+            type: "thread.checkpoint.revert",
+            commandId: CommandId.make("race-revert"),
+            threadId,
+            turnCount: 0,
+            createdAt,
+          });
+          yield* Deferred.await(entered);
+          try {
+            const moved = yield* harness.engine
+              .dispatch({
+                type: "thread.meta.update",
+                commandId: CommandId.make("race-move"),
+                threadId,
+                worktreePath: NodePath.join(harness.cwd, "other-worktree"),
+              })
+              .pipe(Effect.result);
+            expect(moved._tag).toBe("Failure");
+            const movedProject = yield* harness.engine
+              .dispatch({
+                type: "project.meta.update",
+                commandId: CommandId.make("race-project-move"),
+                projectId: asProjectId("project-1"),
+                workspaceRoot: NodePath.join(harness.cwd, "other-project"),
+              })
+              .pipe(Effect.result);
+            expect(movedProject._tag).toBe("Failure");
+            const result = yield* harness.engine
+              .dispatch({
+                type: "thread.turn.start",
+                commandId: CommandId.make("race-start"),
+                threadId,
+                message: {
+                  messageId: MessageId.make("race-message"),
+                  role: "user",
+                  text: "must not disappear",
+                  attachments: [],
+                },
+                runtimeMode: "approval-required",
+                interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+                createdAt,
+              })
+              .pipe(Effect.result);
+            expect(result._tag).toBe("Failure");
+            const thread = (yield* Effect.promise(harness.readModel)).threads.find(
+              (entry) => entry.id === threadId,
+            )!;
+            expect(
+              thread.messages.some((entry) => entry.id === MessageId.make("race-message")),
+            ).toBe(false);
+          } finally {
+            yield* Deferred.succeed(release, undefined);
+            yield* Effect.promise(harness.drain);
+          }
+        }),
+    );
+  }
 
   effectIt.effect("同一工作区的另一任务运行时拒绝回退", () =>
     Effect.gen(function* () {

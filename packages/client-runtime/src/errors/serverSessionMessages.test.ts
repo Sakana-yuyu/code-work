@@ -3,6 +3,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { serverSessionErrorTranslation } from "./serverSessionMessages.ts";
 
 describe("serverSessionErrorTranslation", () => {
+  it("将运行中的运行器切换错误映射为可翻译提示", () => {
+    expect(
+      serverSessionErrorTranslation(
+        "Cannot switch providers while a turn is running. Wait for it to finish or stop it first.",
+      ),
+    ).toEqual({ key: "session.cannotSwitchProvidersWhileRunning", params: {} });
+  });
+
   it("把已知的服务端 lastError 原句映射为稳定 i18n key", () => {
     expect(
       serverSessionErrorTranslation(
@@ -30,6 +38,9 @@ describe("serverSessionErrorTranslation", () => {
   });
 
   it("模板句解析出插值参数", () => {
+    expect(
+      serverSessionErrorTranslation("BYOK agent loop exceeded the maximum of 8 model rounds."),
+    ).toEqual({ key: "session.byokMaxRoundsReached", params: { maxRounds: "8" } });
     expect(
       serverSessionErrorTranslation(
         "Thread 'thread-1' cannot switch models after the conversation has started. Start a new thread to use 'gpt-5-codex'.",

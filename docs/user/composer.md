@@ -10,6 +10,23 @@ becomes available after every upload finishes. Failed uploads can be retried or 
 On web and desktop, HEIC and HEIF photos are automatically converted to JPEG when you drag them into
 the composer or paste them into a message.
 
+## 对话自动标题
+
+首条消息发送后，Code Work 会使用“设置 → 通用 → 后台文本模型”生成左侧列表的简短标题，与聊天使用的 Agent 独立。所有 Agent 共用这条生成链路；手动修改的标题不会被自动覆盖。
+
+后台模型通过共享渠道连接时，只使用该渠道发布的模型。原先保存的模型不在当前渠道中时，会采用渠道列表中的第一个模型，不会继续请求原生默认模型。渠道没有模型时会保留现有标题。
+
+已有对话可从对话操作菜单选择“重新生成标题”，根据当前聊天记录更新总结。BYOK 直连生成标题会使用文字和附件名称等信息，不读取附件图片的像素内容。
+
+## HTML 文件预览
+
+在网页和桌面版中，点击聊天记录“已更改文件”里的 `.html` 或 `.htm` 文件，会在右侧文件面板直接显示页面。
+顶部的“显示 HTML 源码”与“预览 HTML 页面”按钮可以来回切换；“打开差异”仍用于查看本轮代码改动。
+带行号的文件定位会先显示源码，方便检查对应代码。
+
+此预览适合包含内联 CSS、SVG 和 JavaScript 的单文件页面，页面脚本与 Code Work 的登录态和父页面隔离。
+项目内相对引用的资源与需要构建服务的应用仍需通过项目开发服务器预览。超过文件读取上限的 HTML 会显示截断提示和源码，不执行不完整页面。
+
 ## 思考强度
 
 在网页或桌面版输入框底部，点击模型旁的强度标签，可以打开分档滑条。

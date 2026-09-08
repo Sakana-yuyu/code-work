@@ -7,6 +7,7 @@ import * as Path from "effect/Path";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import { createModelSelection } from "@codework/shared/model";
+import { isHostWindows } from "@codework/shared/hostProcess";
 import { expect } from "vite-plus/test";
 
 import { CodexSettings, ProviderInstanceId, TextGenerationError } from "@codework/contracts";
@@ -15,6 +16,7 @@ import * as ServerConfig from "../config.ts";
 import * as TextGeneration from "./TextGeneration.ts";
 import { makeCodexTextGeneration } from "./CodexTextGeneration.ts";
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
+const encodeFixtureJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 const DEFAULT_TEST_MODEL_SELECTION = createModelSelection(
   ProviderInstanceId.make("codex"),
@@ -45,133 +47,48 @@ function makeFakeCodexBinary(
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const binDir = path.join(dir, "bin");
-    const codexPath = path.join(binDir, "codex");
+    const isWindows = yield* isHostWindows;
+    const codexPath = path.join(binDir, isWindows ? "codex.cmd" : "codex");
+    const stubPath = path.join(binDir, "codex-stub.mjs");
     yield* fs.makeDirectory(binDir, { recursive: true });
-
+    // 用 Node 执行同一套断言，Windows 不直接运行无扩展名的 shell 脚本。
     yield* fs.writeFileString(
-      codexPath,
+      stubPath,
       [
-        "#!/bin/sh",
-        'original_args="$*"',
-        'output_path=""',
-        'seen_image="0"',
-        'seen_service_tier=""',
-        'seen_reasoning_effort=""',
-        "while [ $# -gt 0 ]; do",
-        '  if [ "$1" = "--image" ]; then',
-        "    shift",
-        '    if [ -n "$1" ]; then',
-        '      seen_image="1"',
-        "    fi",
-        "    shift",
-        "    continue",
-        "  fi",
-        '  if [ "$1" = "--config" ]; then',
-        "    shift",
-        '    case "$1" in',
-        "      service_tier=*)",
-        '        seen_service_tier="$1"',
-        "        ;;",
-        "    esac",
-        '    case "$1" in',
-        "      model_reasoning_effort=*)",
-        '        seen_reasoning_effort="$1"',
-        "        ;;",
-        "    esac",
-        "    shift",
-        "    continue",
-        "  fi",
-        '  if [ "$1" = "--output-last-message" ]; then',
-        "    shift",
-        '    output_path="$1"',
-        "    shift",
-        "    continue",
-        "  fi",
-        "  shift",
-        "done",
-        'stdin_content="$(cat)"',
-        ...(input.requireArg !== undefined
-          ? [
-              `case " $original_args " in *" ${input.requireArg} "*) ;; *)`,
-              `  printf "%s\\n" "missing arg: ${input.requireArg}" >&2`,
-              `  exit 8`,
-              "esac",
-            ]
-          : []),
-        ...(input.forbidArg !== undefined
-          ? [
-              `case " $original_args " in *" ${input.forbidArg} "*)`,
-              `  printf "%s\\n" "forbidden arg: ${input.forbidArg}" >&2`,
-              `  exit 9`,
-              "esac",
-            ]
-          : []),
-        ...(input.requireImage
-          ? [
-              'if [ "$seen_image" != "1" ]; then',
-              '  printf "%s\\n" "missing --image input" >&2',
-              `  exit 2`,
-              "fi",
-            ]
-          : []),
-        ...(input.requireServiceTier
-          ? [
-              `if [ "$seen_service_tier" != "service_tier=\\"${input.requireServiceTier}\\"" ]; then`,
-              '  printf "%s\\n" "unexpected service tier config: $seen_service_tier" >&2',
-              `  exit 5`,
-              "fi",
-            ]
-          : []),
-        ...(input.requireReasoningEffort !== undefined
-          ? [
-              `if [ "$seen_reasoning_effort" != "model_reasoning_effort=\\"${input.requireReasoningEffort}\\"" ]; then`,
-              '  printf "%s\\n" "unexpected reasoning effort config: $seen_reasoning_effort" >&2',
-              `  exit 6`,
-              "fi",
-            ]
-          : []),
-        ...(input.forbidReasoningEffort
-          ? [
-              'if [ -n "$seen_reasoning_effort" ]; then',
-              '  printf "%s\\n" "reasoning effort config should be omitted: $seen_reasoning_effort" >&2',
-              `  exit 7`,
-              "fi",
-            ]
-          : []),
-        ...(input.stdinMustContain !== undefined
-          ? [
-              // @effect-diagnostics-next-line preferSchemaOverJson:off
-              `if ! printf "%s" "$stdin_content" | grep -F -- ${JSON.stringify(input.stdinMustContain)} >/dev/null; then`,
-              '  printf "%s\\n" "stdin missing expected content" >&2',
-              `  exit 3`,
-              "fi",
-            ]
-          : []),
-        ...(input.stdinMustNotContain !== undefined
-          ? [
-              // @effect-diagnostics-next-line preferSchemaOverJson:off
-              `if printf "%s" "$stdin_content" | grep -F -- ${JSON.stringify(input.stdinMustNotContain)} >/dev/null; then`,
-              '  printf "%s\\n" "stdin contained forbidden content" >&2',
-              `  exit 4`,
-              "fi",
-            ]
-          : []),
-        ...(input.stderr !== undefined
-          ? [
-              // @effect-diagnostics-next-line preferSchemaOverJson:off
-              `printf "%s\\n" ${JSON.stringify(input.stderr)} >&2`,
-            ]
-          : []),
-        'if [ -n "$output_path" ]; then',
-        "  cat > \"$output_path\" <<'__CODEWORK_FAKE_CODEX_OUTPUT__'",
-        input.output,
-        "__CODEWORK_FAKE_CODEX_OUTPUT__",
-        "fi",
-        `exit ${input.exitCode ?? 0}`,
-        "",
+        'import { writeFileSync } from "node:fs";',
+        `const config = ${encodeFixtureJson(input)};`,
+        "const args = process.argv.slice(2);",
+        "const option = (key) => args[args.indexOf(key) + 1];",
+        'const configs = args.flatMap((arg, index) => arg === "--config" ? [args[index + 1]] : []);',
+        'const configValue = (key) => configs.find((value) => value?.startsWith(key + "="))?.slice(key.length + 1).replaceAll(\'"\', "");',
+        "const chunks = []; for await (const chunk of process.stdin) chunks.push(chunk);",
+        'const stdin = Buffer.concat(chunks).toString("utf8");',
+        "const fail = (message, code) => { process.stderr.write(message); process.exit(code); };",
+        'if (config.requireArg !== undefined && !args.includes(config.requireArg)) fail("missing arg", 8);',
+        'if (config.forbidArg !== undefined && args.includes(config.forbidArg)) fail("forbidden arg", 9);',
+        'if (config.requireImage && !args.includes("--image")) fail("missing --image input", 2);',
+        'if (config.requireServiceTier && configValue("service_tier") !== config.requireServiceTier) fail("unexpected service tier", 5);',
+        'if (config.requireReasoningEffort !== undefined && configValue("model_reasoning_effort") !== config.requireReasoningEffort) fail("unexpected reasoning effort", 6);',
+        'if (config.forbidReasoningEffort && configValue("model_reasoning_effort") !== undefined) fail("unexpected reasoning effort", 7);',
+        'if (config.stdinMustContain !== undefined && !stdin.includes(config.stdinMustContain)) fail("stdin missing expected content", 3);',
+        'if (config.stdinMustNotContain !== undefined && stdin.includes(config.stdinMustNotContain)) fail("stdin contained forbidden content", 4);',
+        'if (config.stderr) process.stderr.write(config.stderr + "\\n");',
+        'if (args.includes("--output-last-message")) writeFileSync(option("--output-last-message"), config.output);',
+        "process.exitCode = config.exitCode ?? 0;",
       ].join("\n"),
     );
-    yield* fs.chmod(codexPath, 0o755);
+    yield* fs.writeFileString(
+      codexPath,
+      isWindows
+        ? [
+            "@echo off",
+            '"' + process.execPath + '" "%~dp0codex-stub.mjs" %*',
+            "exit /b %ERRORLEVEL%",
+            "",
+          ].join("\r\n")
+        : ["#!/bin/sh", 'exec node "$(dirname "$0")/codex-stub.mjs" "$@"', ""].join("\n"),
+    );
+    if (!isWindows) yield* fs.chmod(codexPath, 0o755);
     return codexPath;
   });
 }
@@ -437,6 +354,21 @@ it.layer(CodexTextGenerationTestLayer)("CodexTextGeneration", (it) => {
           });
 
           expect(generated.title).toBe("New thread");
+        }),
+    ),
+  );
+
+  it.effect("共享模型返回带说明或代码围栏的 JSON 时仍能生成标题", () =>
+    withFakeCodexEnv(
+      { output: '生成的标题如下：\n```json\n{"title":"鹈鹕骑行二维动画"}\n```' },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const generated = yield* textGeneration.generateThreadTitle({
+            cwd: process.cwd(),
+            message: "创建骑行动画",
+            modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+          });
+          expect(generated.title).toBe("鹈鹕骑行二维动画");
         }),
     ),
   );

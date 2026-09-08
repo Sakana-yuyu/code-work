@@ -79,7 +79,9 @@ export function resolveSelectableModelSelection(
   return provider &&
     provider.enabled &&
     provider.installed &&
-    provider.auth.status !== "unauthenticated"
+    provider.auth.status !== "unauthenticated" &&
+    (provider.auth.type !== "byok" ||
+      provider.models.some((model) => model.slug === selection.model))
     ? selection
     : null;
 }
@@ -139,7 +141,7 @@ export function buildModelOptions(
     }
   }
 
-  if (fallbackModelSelection) {
+  if (fallbackModelSelection && resolveSelectableModelSelection(config, fallbackModelSelection)) {
     const key = `${fallbackModelSelection.instanceId}:${fallbackModelSelection.model}`;
     const existing = options.get(key);
     if (existing) {
@@ -186,4 +188,12 @@ export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyAr
     providerLabel: group.providerLabel,
     models: group.models,
   }));
+}
+
+export function getThreadProviderGroups(
+  groups: ReadonlyArray<ProviderGroup>,
+  currentInstanceId: string,
+  isRunning: boolean,
+): ReadonlyArray<ProviderGroup> {
+  return isRunning ? groups.filter((group) => group.providerKey === currentInstanceId) : groups;
 }

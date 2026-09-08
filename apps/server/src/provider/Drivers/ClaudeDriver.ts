@@ -47,10 +47,9 @@ import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   anthropicGatewayEnv,
-  applyRoutedProviderAvailability,
+  prepareRoutedProviderSnapshot,
   ensureGatewayToken,
   gatewayOrigin,
-  routedServerProviderModels,
 } from "../byok/modelGateway.ts";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
@@ -229,42 +228,14 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
               stampIdentity(ModelManifest.applyModelManifest(draft, manifest, DRIVER_KIND)),
           ),
         checkProvider,
+        prepareSnapshot: (snapshot) =>
+          prepareRoutedProviderSnapshot(snapshot, config, serverSettings.getSettings),
         enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
           enrichProviderSnapshotWithVersionAdvisory(snapshot, maintenanceCapabilities, {
             enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
           }).pipe(
             Effect.provideService(HttpClient.HttpClient, httpClient),
-            Effect.flatMap((enrichedSnapshot) => {
-              if (config.routeThroughByok !== true) {
-                return publishSnapshot(enrichedSnapshot);
-              }
-              // Routed models come from the live BYOK adapters, not the
-              // harness's own catalog, so resolve them per snapshot.
-              return serverSettings.getSettings.pipe(
-                Effect.orElseSucceed(() => undefined),
-                Effect.flatMap((currentSettings) =>
-                  publishSnapshot(
-                    applyRoutedProviderAvailability({
-                      ...enrichedSnapshot,
-                      ...(currentSettings === undefined
-                        ? {}
-                        : {
-                            models: routedServerProviderModels(
-                              currentSettings,
-                              "anthropic",
-                              config.byokSourceInstanceId,
-                            ),
-                          }),
-                      auth: {
-                        status: "authenticated" as const,
-                        type: "byok",
-                        label: "BYOK Gateway",
-                      },
-                    }),
-                  ),
-                ),
-              );
-            }),
+            Effect.flatMap(publishSnapshot),
           ),
       }).pipe(
         Effect.mapError(

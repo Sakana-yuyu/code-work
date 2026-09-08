@@ -161,6 +161,43 @@ const enrichedSnapshotSecond: ServerProvider = {
 };
 
 describe("makeManagedServerProvider", () => {
+  it.effect("发布前统一处理初始、刷新及异步补充的模型目录", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const releaseCheck = yield* Deferred.make<void>();
+        const releaseEnrichment = yield* Deferred.make<void>();
+        const onlyRoutedModels = (snapshot: ServerProvider) => ({ ...snapshot, models: [] });
+        const provider = yield* makeManagedServerProvider<TestSettings>({
+          maintenanceCapabilities,
+          getSettings: Effect.succeed({ enabled: true }),
+          streamSettings: Stream.empty,
+          haveSettingsChanged: () => false,
+          initialSnapshot: () => Effect.succeed(enrichedSnapshot),
+          checkProvider: Deferred.await(releaseCheck).pipe(Effect.as(enrichedSnapshot)),
+          prepareSnapshot: (snapshot) => Effect.succeed(onlyRoutedModels(snapshot)),
+          enrichSnapshot: ({ publishSnapshot }) =>
+            Deferred.await(releaseEnrichment).pipe(
+              Effect.andThen(publishSnapshot(enrichedSnapshotSecond)),
+            ),
+          refreshInterval: "1 hour",
+        });
+        assert.deepStrictEqual(yield* provider.getSnapshot, onlyRoutedModels(enrichedSnapshot));
+        const updatesFiber = yield* provider.streamChanges.pipe(
+          Stream.take(2),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* Effect.yieldNow;
+        yield* Deferred.succeed(releaseCheck, undefined);
+        yield* Deferred.succeed(releaseEnrichment, undefined);
+        assert.deepStrictEqual(Array.from(yield* Fiber.join(updatesFiber)), [
+          onlyRoutedModels(enrichedSnapshot),
+          onlyRoutedModels(enrichedSnapshotSecond),
+        ]);
+      }),
+    ).pipe(Effect.provide(AlwaysRunTestLayer)),
+  );
+
   it.effect(
     "runs the initial provider check in the background and streams the refreshed snapshot",
     () =>

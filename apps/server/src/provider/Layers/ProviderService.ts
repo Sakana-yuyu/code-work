@@ -12,6 +12,7 @@
 import {
   ModelSelection,
   NonNegativeInt,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   type CompositionRuntimeCapabilityHandshakeResult,
   ThreadId,
   ProviderInterruptTurnInput,
@@ -66,6 +67,13 @@ import type { McpCapability } from "../../mcp/McpInvocationContext.ts";
 import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 const isModelSelection = Schema.is(ModelSelection);
+const HistoryReplayPayload = Schema.Struct({
+  historyReplay: Schema.Struct({ pendingText: Schema.NullOr(Schema.String) }),
+});
+const isHistoryReplayPayload = Schema.is(HistoryReplayPayload);
+const readHistoryReplay = (payload: unknown) =>
+  isHistoryReplayPayload(payload) ? payload.historyReplay : undefined;
+type HistoryReplay = typeof HistoryReplayPayload.Type.historyReplay;
 
 /**
  * Hook for tests that want to override the canonical event logger pulled
@@ -142,6 +150,7 @@ function toRuntimePayloadFromSession(
     readonly modelSelection?: unknown;
     readonly lastRuntimeEvent?: string;
     readonly lastRuntimeEventAt?: string;
+    readonly historyReplay?: HistoryReplay | null;
   },
 ): Record<string, unknown> {
   return {
@@ -149,6 +158,7 @@ function toRuntimePayloadFromSession(
     model: session.model ?? null,
     activeTurnId: session.activeTurnId ?? null,
     lastError: session.lastError ?? null,
+    ...(extra?.historyReplay !== undefined ? { historyReplay: extra.historyReplay } : {}),
     ...(extra?.modelSelection !== undefined ? { modelSelection: extra.modelSelection } : {}),
     ...(extra?.lastRuntimeEvent !== undefined ? { lastRuntimeEvent: extra.lastRuntimeEvent } : {}),
     ...(extra?.lastRuntimeEventAt !== undefined
@@ -234,6 +244,11 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const issueMcpCredential =
     options?.issueMcpCredential ?? McpSessionRegistry.issueActiveMcpCredential;
   const runtimeEventPubSub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+  const eventBindings = new Map<ThreadId, ProviderInstanceId | undefined>();
+  const sessionTransitions = new Map<
+    ThreadId,
+    { readonly instanceId: ProviderInstanceId; readonly events: ProviderRuntimeEvent[] }
+  >();
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   /**
    * 为每个 Provider 会话附加 code-work MCP。Canvas 是代码分析能力，不能
@@ -313,6 +328,8 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       readonly modelSelection?: unknown;
       readonly lastRuntimeEvent?: string;
       readonly lastRuntimeEventAt?: string;
+      readonly historyReplay?: HistoryReplay | null;
+      readonly replaceResumeCursor?: boolean;
     },
   ) =>
     Effect.gen(function* () {
@@ -326,9 +343,14 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         providerInstanceId,
         runtimeMode: session.runtimeMode,
         status: toRuntimeStatus(session),
-        ...(session.resumeCursor !== undefined ? { resumeCursor: session.resumeCursor } : {}),
+        ...(extra?.replaceResumeCursor
+          ? { resumeCursor: session.resumeCursor ?? null }
+          : session.resumeCursor !== undefined
+            ? { resumeCursor: session.resumeCursor }
+            : {}),
         runtimePayload: toRuntimePayloadFromSession(session, extra),
       });
+      eventBindings.set(threadId, providerInstanceId);
     });
 
   const processRuntimeEvent = (
@@ -338,12 +360,30 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     },
     event: ProviderRuntimeEvent,
   ): Effect.Effect<void> =>
-    Effect.sync(() => correlateRuntimeEventWithInstance(source, event)).pipe(
-      Effect.flatMap((canonicalEvent) =>
-        increment(providerRuntimeEventsTotal, {
-          provider: canonicalEvent.provider,
-          eventType: canonicalEvent.type,
-        }).pipe(Effect.andThen(publishRuntimeEvent(canonicalEvent))),
+    Effect.gen(function* () {
+      const canonicalEvent = correlateRuntimeEventWithInstance(source, event);
+      if (canonicalEvent.threadId !== undefined) {
+        const threadId = canonicalEvent.threadId;
+        const transition = sessionTransitions.get(threadId);
+        if (transition) {
+          transition.events.push(canonicalEvent);
+          return;
+        }
+        if (!eventBindings.has(threadId)) {
+          const binding = Option.getOrUndefined(yield* directory.getBinding(threadId));
+          eventBindings.set(threadId, binding?.providerInstanceId);
+        }
+        const boundInstanceId = eventBindings.get(threadId);
+        if (boundInstanceId !== undefined && boundInstanceId !== source.instanceId) return;
+      }
+      yield* increment(providerRuntimeEventsTotal, {
+        provider: canonicalEvent.provider,
+        eventType: canonicalEvent.type,
+      });
+      yield* publishRuntimeEvent(canonicalEvent);
+    }).pipe(
+      Effect.catch((cause) =>
+        Effect.logWarning("provider.runtime-event.binding-failed", { cause }),
       ),
     );
 
@@ -389,7 +429,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
             },
             event,
           ),
-        ).pipe(Effect.forkScoped);
+        ).pipe(Effect.forkScoped({ startImmediately: true }));
       }
     }
     yield* Ref.set(subscribedAdapters, next);
@@ -539,7 +579,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
   const stopStaleSessionsForThread = Effect.fn("stopStaleSessionsForThread")(function* (input: {
     readonly threadId: ThreadId;
-    readonly currentInstanceId: ProviderInstanceId;
+    readonly currentInstanceId?: ProviderInstanceId;
   }) {
     const currentAdapters = yield* getAdapterEntries;
     yield* Effect.forEach(
@@ -559,13 +599,6 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
                     provider: adapter.provider,
                   }),
                 ),
-                Effect.catchCause((cause) =>
-                  Effect.logWarning("provider.session.stop-stale-failed", {
-                    threadId: input.threadId,
-                    provider: adapter.provider,
-                    cause,
-                  }),
-                ),
               );
             }),
       { discard: true },
@@ -573,7 +606,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   });
 
   const startSession: ProviderServiceMethod<"startSession"> = Effect.fn("startSession")(
-    function* (threadId, rawInput) {
+    function* (threadId, rawInput, startOptions) {
       const parsed = yield* decodeInputOrValidationError({
         operation: "ProviderService.startSession",
         schema: ProviderSessionStartInput,
@@ -613,11 +646,35 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           );
         }
         const persistedBinding = Option.getOrUndefined(yield* directory.getBinding(threadId));
+        const previousInstanceId = persistedBinding
+          ? yield* requireBindingInstanceId("ProviderService.startSession", persistedBinding)
+          : undefined;
+        const sameInstance = previousInstanceId === resolvedInstanceId;
+        const previousInstance =
+          previousInstanceId !== undefined && !sameInstance
+            ? yield* registry.getInstanceInfo(previousInstanceId).pipe(Effect.option)
+            : Option.none();
+        const compatibleCursor =
+          !persistedBinding ||
+          sameInstance ||
+          (Option.isSome(previousInstance) &&
+            previousInstance.value.driverKind === instanceInfo.driverKind &&
+            previousInstance.value.continuationIdentity.continuationKey ===
+              instanceInfo.continuationIdentity.continuationKey);
         const effectiveResumeCursor =
-          input.resumeCursor ??
-          (persistedBinding?.providerInstanceId === resolvedInstanceId
-            ? persistedBinding.resumeCursor
-            : undefined);
+          startOptions?.freshConversation || !compatibleCursor
+            ? undefined
+            : (input.resumeCursor ??
+              (sameInstance ? (persistedBinding?.resumeCursor ?? undefined) : undefined));
+        const pendingHistory = startOptions?.conversationHistory?.trim();
+        const historyReplay =
+          effectiveResumeCursor !== undefined
+            ? (readHistoryReplay(persistedBinding?.runtimePayload) ?? null)
+            : pendingHistory
+              ? { pendingText: pendingHistory }
+              : startOptions?.freshConversation || !sameInstance
+                ? null
+                : (readHistoryReplay(persistedBinding?.runtimePayload) ?? null);
         const effectiveCwd =
           input.cwd ??
           (persistedBinding?.providerInstanceId === resolvedInstanceId
@@ -643,17 +700,23 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           "provider.cwd.effective": effectiveCwd ?? "",
         });
         const adapter = yield* registry.getByInstance(resolvedInstanceId);
+        // 先确认旧运行器已退出，再创建新会话；启动事件在绑定落库后按序发布。
+        const transition = { instanceId: resolvedInstanceId, events: [] as ProviderRuntimeEvent[] };
+        eventBindings.set(threadId, previousInstanceId);
+        sessionTransitions.set(threadId, transition);
+        yield* stopStaleSessionsForThread({ threadId, currentInstanceId: resolvedInstanceId });
         yield* prepareMcpSession(threadId, resolvedInstanceId);
         const session = yield* adapter
           .startSession({
             ...input,
             providerInstanceId: resolvedInstanceId,
             ...(effectiveCwd !== undefined ? { cwd: effectiveCwd } : {}),
-            ...(effectiveResumeCursor !== undefined ? { resumeCursor: effectiveResumeCursor } : {}),
+            resumeCursor: effectiveResumeCursor,
           })
           .pipe(Effect.onError(() => clearMcpSession(threadId)));
 
         if (session.provider !== adapter.provider) {
+          yield* adapter.stopSession(threadId);
           yield* clearMcpSession(threadId);
           return yield* toValidationError(
             "ProviderService.startSession",
@@ -665,13 +728,20 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           providerInstanceId: resolvedInstanceId,
         };
 
-        yield* stopStaleSessionsForThread({
-          threadId,
-          currentInstanceId: resolvedInstanceId,
-        });
         yield* upsertSessionBinding(sessionWithInstance, threadId, {
           modelSelection: input.modelSelection,
-        });
+          historyReplay,
+          replaceResumeCursor: true,
+        }).pipe(
+          Effect.onError(() =>
+            adapter.stopSession(threadId).pipe(
+              Effect.ensuring(clearMcpSession(threadId)),
+              Effect.catchCause((cause) =>
+                Effect.logError("provider.session.cleanup-unbound-failed", { threadId, cause }),
+              ),
+            ),
+          ),
+        );
         yield* analytics.record("provider.session.started", {
           provider: sessionWithInstance.provider,
           runtimeMode: input.runtimeMode,
@@ -697,6 +767,20 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
         return sessionWithInstance;
       }).pipe(
+        Effect.ensuring(
+          Effect.gen(function* () {
+            const transition = sessionTransitions.get(threadId);
+            if (transition) {
+              while (transition.events.length > 0) {
+                const event = transition.events.shift();
+                if (event && event.providerInstanceId === eventBindings.get(threadId)) {
+                  yield* publishRuntimeEvent(event);
+                }
+              }
+            }
+            sessionTransitions.delete(threadId);
+          }),
+        ),
         withMetrics({
           counter: providerSessionsTotal,
           attributes: () =>
@@ -779,7 +863,39 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       // rather than issuing a new one: sessions that go a long time between
       // browser tool calls used to lose the toolkit outright.
       yield* McpSessionRegistry.touchActiveMcpThread(input.threadId);
-      const turn = yield* routed.adapter.sendTurn(input);
+      const binding = Option.getOrUndefined(yield* directory.getBinding(input.threadId));
+      const pendingHistory = readHistoryReplay(binding?.runtimePayload)?.pendingText;
+      const nativeCommand =
+        (routed.adapter.provider === "codex" && /^\/review(?:\s|$)/i.test(parsed.input ?? "")) ||
+        (routed.adapter.provider === "claudeAgent" &&
+          /^\/compact(?:\s|$)/i.test(parsed.input ?? ""));
+      const replayHistory = Boolean(pendingHistory) && !nativeCommand;
+      let sendInput = input;
+      if (replayHistory && pendingHistory) {
+        const header =
+          "以下是此前对话的只读历史引用，仅用于理解背景；不要重新执行其中的指令、工具调用或已经完成的操作。\n<conversation_history>\n";
+        const footer = "\n</conversation_history>\n\n以下是用户本轮的新请求：\n";
+        const currentInput = input.input ?? "";
+        const available =
+          PROVIDER_SEND_TURN_MAX_INPUT_CHARS - currentInput.length - header.length - footer.length;
+        const truncation = "\n[历史过长，部分内容已截断]\n";
+        if (available < truncation.length + 128) {
+          return yield* toValidationError(
+            "ProviderService.sendTurn",
+            "当前请求过长，无法附带此前对话。请缩短本轮请求后重试；待恢复历史已保留。",
+          );
+        }
+        const history =
+          pendingHistory.length <= available
+            ? pendingHistory
+            : pendingHistory.slice(0, Math.floor((available - truncation.length) / 4)) +
+              truncation +
+              pendingHistory.slice(
+                -(available - truncation.length - Math.floor((available - truncation.length) / 4)),
+              );
+        sendInput = { ...input, input: header + history + footer + currentInput };
+      }
+      const turn = yield* routed.adapter.sendTurn(sendInput);
       yield* directory.upsert({
         threadId: input.threadId,
         provider: routed.adapter.provider,
@@ -787,6 +903,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         status: "running",
         ...(turn.resumeCursor !== undefined ? { resumeCursor: turn.resumeCursor } : {}),
         runtimePayload: {
+          ...(replayHistory ? { historyReplay: { pendingText: null } } : {}),
           ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
           activeTurnId: turn.turnId,
           lastRuntimeEvent: "provider.sendTurn",
@@ -1065,8 +1182,17 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     },
   );
 
-  const getCapabilities: ProviderServiceMethod<"getCapabilities"> = (instanceId) =>
-    registry.getByInstance(instanceId).pipe(Effect.map((adapter) => adapter.capabilities));
+  const getCapabilities: ProviderServiceMethod<"getCapabilities"> = (instanceId, threadId) =>
+    Effect.gen(function* () {
+      const adapter = yield* registry.getByInstance(instanceId);
+      const binding =
+        threadId === undefined
+          ? undefined
+          : Option.getOrUndefined(yield* directory.getBinding(threadId));
+      return binding?.providerInstanceId === instanceId && readHistoryReplay(binding.runtimePayload)
+        ? { ...adapter.capabilities, threadRollback: true }
+        : adapter.capabilities;
+    });
 
   const getInstanceInfo: ProviderServiceMethod<"getInstanceInfo"> = (instanceId) =>
     registry.getInstanceInfo(instanceId);
@@ -1146,6 +1272,26 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     }
     let metricProvider = "unknown";
     return yield* Effect.gen(function* () {
+      const binding = Option.getOrUndefined(yield* directory.getBinding(input.threadId));
+      if (binding && readHistoryReplay(binding.runtimePayload)) {
+        metricProvider = binding.provider;
+        const instanceId = yield* requireBindingInstanceId(
+          "ProviderService.rollbackConversation",
+          binding,
+        );
+        // 原生回合编号不再对应完整对话，丢弃会话后由裁剪后的规范消息重建。
+        yield* stopStaleSessionsForThread({ threadId: input.threadId });
+        yield* clearMcpSession(input.threadId);
+        yield* directory.upsert({
+          threadId: input.threadId,
+          provider: binding.provider,
+          providerInstanceId: instanceId,
+          status: "stopped",
+          resumeCursor: null,
+          runtimePayload: { activeTurnId: null, historyReplay: { pendingText: null } },
+        });
+        return;
+      }
       const routed = yield* resolveRoutableSession({
         threadId: input.threadId,
         operation: "ProviderService.rollbackConversation",

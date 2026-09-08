@@ -2,12 +2,99 @@ import { setCurrentLanguage } from "~/i18n/runtime";
 
 setCurrentLanguage("en");
 
-import { TurnId } from "@codework/contracts";
+import { scopeThreadRef } from "@codework/client-runtime/environment";
+import { EnvironmentId, ThreadId, TurnId } from "@codework/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { ChangedFilesCard, ChangedFilesTree } from "./ChangedFilesTree";
+import { ChangedFilesCard, ChangedFilesTree, openChangedFile } from "./ChangedFilesTree";
+import { openDiffFilePrimaryAction } from "~/diffFileActions";
+import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 import { t } from "~/i18n";
+
+describe("变更文件点击入口", () => {
+  const threadRef = scopeThreadRef(
+    EnvironmentId.make("html-preview-environment"),
+    ThreadId.make("html-preview-thread"),
+  );
+  const turnId = TurnId.make("html-preview-turn");
+
+  beforeEach(() => useRightPanelStore.setState({ byThreadKey: {} }));
+
+  it.each(["pelican_bike.html", "pelican_bike.HTM"])(
+    "将 %s 打开到当前任务的文件面板",
+    (filePath) => {
+      const onOpenTurnDiff = vi.fn();
+      openChangedFile(`frontend/${filePath}`, {
+        turnId,
+        onOpenTurnDiff,
+        onOpenFile: (path) => {
+          openDiffFilePrimaryAction({
+            threadRef,
+            filePath: path,
+            activeCwd: "C:\\repo\\frontend",
+            repositoryRoot: "C:\\repo",
+            openInEditor: vi.fn(),
+          });
+          return true;
+        },
+      });
+      expect(
+        selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef),
+      ).toMatchObject({ isOpen: true, activeSurfaceId: `file:${filePath}` });
+      expect(onOpenTurnDiff).not.toHaveBeenCalled();
+    },
+  );
+
+  it("普通文件与缺少文件面板入口的 HTML 仍打开差异", () => {
+    const onOpenTurnDiff = vi.fn();
+    const onOpenFile = vi.fn(() => true);
+    openChangedFile("src/app.ts", { turnId, onOpenTurnDiff, onOpenFile });
+    openChangedFile("pelican_bike.html", { turnId, onOpenTurnDiff });
+    expect(onOpenTurnDiff.mock.calls).toEqual([
+      [turnId, "src/app.ts"],
+      [turnId, "pelican_bike.html"],
+    ]);
+    expect(onOpenFile).not.toHaveBeenCalled();
+  });
+
+  it.each(["removed.html", "removed.HTM"])("删除的 %s 仍打开差异", (filePath) => {
+    const onOpenTurnDiff = vi.fn();
+    const onOpenFile = vi.fn(() => true);
+    openChangedFile(filePath, { turnId, fileKind: "deleted", onOpenTurnDiff, onOpenFile });
+    expect(onOpenTurnDiff).toHaveBeenCalledWith(turnId, filePath);
+    expect(onOpenFile).not.toHaveBeenCalled();
+  });
+
+  it("文件路径无法在当前工作区打开时回退差异", () => {
+    const onOpenTurnDiff = vi.fn();
+    const onOpenFile = vi.fn(() => false);
+    openChangedFile("other-project/page.html", { turnId, onOpenTurnDiff, onOpenFile });
+    expect(onOpenFile).toHaveBeenCalledWith("other-project/page.html");
+    expect(onOpenTurnDiff).toHaveBeenCalledWith(turnId, "other-project/page.html");
+  });
+
+  it("Canvas 入口优先于文件预览", () => {
+    const canvas = {
+      canvasId: "pelican",
+      title: "鹈鹕动画",
+      relativePath: "artifacts/pelican.html",
+    };
+    const onOpenCanvas = vi.fn();
+    const onOpenFile = vi.fn(() => true);
+    const onOpenTurnDiff = vi.fn();
+    openChangedFile("artifacts\\pelican.html", {
+      turnId,
+      canvas,
+      onOpenCanvas,
+      onOpenFile,
+      onOpenTurnDiff,
+    });
+    expect(onOpenCanvas).toHaveBeenCalledWith(canvas);
+    expect(onOpenFile).not.toHaveBeenCalled();
+    expect(onOpenTurnDiff).not.toHaveBeenCalled();
+  });
+});
 
 describe("ChangedFilesCard", () => {
   it("keeps its compact header sticky while preserving singular labels", () => {

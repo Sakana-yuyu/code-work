@@ -58,6 +58,39 @@ function settingsWithProviderInstances(): UnifiedSettings {
 }
 
 describe("instance-scoped model selection", () => {
+  it("共享 BYOK 渠道不追加原生自定义模型，关闭路由后恢复", () => {
+    const instanceId = ProviderInstanceId.make("codex");
+    const entry = deriveProviderInstanceEntries([
+      provider({ instanceId, models: ["gateway-model"] }),
+    ])[0]!;
+    const settings: UnifiedSettings = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [instanceId]: {
+          driver: ProviderDriverKind.make("codex"),
+          config: { routeThroughByok: true, customModels: ["gpt-6-astra"] },
+        },
+      },
+    };
+    expect(getAppModelOptionsForInstance(settings, entry).map((model) => model.slug)).toEqual([
+      "gateway-model",
+    ]);
+    expect(
+      getAppModelOptionsForInstance(
+        {
+          ...settings,
+          providerInstances: {
+            [instanceId]: {
+              driver: ProviderDriverKind.make("codex"),
+              config: { routeThroughByok: false, customModels: ["gpt-6-astra"] },
+            },
+          },
+        },
+        entry,
+      ).map((model) => model.slug),
+    ).toEqual(["gateway-model", "gpt-6-astra"]);
+  });
+
   it("preserves server-provided legacy model metadata", () => {
     const baseProvider = provider({
       instanceId: "claudeAgent",

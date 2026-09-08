@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off - 使用真实 TCP 上游验证网络转发。
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "@effect/vitest";
 import * as NodeHttp from "node:http";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -8,6 +8,7 @@ import { FetchHttpClient, HttpRouter } from "effect/unstable/http";
 
 import {
   DEFAULT_SERVER_SETTINGS,
+  ServerSettingsError,
   type ServerProvider,
   type ServerSettings,
 } from "@codework/contracts";
@@ -29,6 +30,7 @@ import {
   mergeGrokManagedConfig,
   openCodeGatewayConfigContent,
   pickGatewayAdapter,
+  prepareRoutedProviderSnapshot,
   routedServerProviderModels,
   rewriteGatewayModel,
   tapGatewayUsageStream,
@@ -436,6 +438,74 @@ describe("routedServerProviderModels", () => {
     expect(models.find((model) => model.slug === "adapter-1")?.subProvider).toBe("DeepSeek官方");
     expect(models.find((model) => model.slug === "adapter-2")?.subProvider).toBeUndefined();
   });
+});
+
+describe("prepareRoutedProviderSnapshot", () => {
+  const native = {
+    driver: "codex",
+    installed: true,
+    status: "ready",
+    models: [{ slug: "gpt-6-astra", name: "GPT-6-Astra", isCustom: false, capabilities: null }],
+  } as unknown as ServerProvider;
+  const settings = settingsWithInstances({
+    selected: {
+      driver: "byok",
+      enabled: true,
+      config: byokConfig([
+        adapter({ id: "openai-route", protocol: "openai", modelId: "gemini-3.8-flash" }),
+        adapter({ id: "anthropic-route", protocol: "anthropic" }),
+      ]),
+    },
+    unrelated: {
+      driver: "byok",
+      enabled: true,
+      config: byokConfig([adapter({ id: "other-route", protocol: "openai" })]),
+    },
+  });
+  it.effect.each([
+    ["codex", "openai-route"],
+    ["claudeAgent", "anthropic-route"],
+    ["grok", "openai-route"],
+    ["opencode", "byok_gateway/openai-route"],
+  ])("%s 仅保留所选共享渠道与协议的模型", ([driver, slug]) =>
+    Effect.gen(function* () {
+      const result = yield* prepareRoutedProviderSnapshot(
+        { ...native, driver: driver as ServerProvider["driver"] },
+        { routeThroughByok: true, byokSourceInstanceId: "selected" },
+        Effect.succeed(settings),
+      );
+      expect(result.models.map((model) => model.slug)).toEqual([slug]);
+      expect(result.auth.type).toBe("byok");
+    }),
+  );
+  it.effect("原生连接保留目录，渠道缺失或读取失败时不回退原生模型", () =>
+    Effect.gen(function* () {
+      expect(
+        yield* prepareRoutedProviderSnapshot(
+          native,
+          { routeThroughByok: false },
+          Effect.succeed(settings),
+        ),
+      ).toBe(native);
+      for (const getSettings of [
+        Effect.succeed(settings),
+        Effect.fail(
+          new ServerSettingsError({
+            settingsPath: "/test/settings.json",
+            operation: "read-file",
+            cause: "test unavailable",
+          }),
+        ),
+      ]) {
+        const result = yield* prepareRoutedProviderSnapshot(
+          native,
+          { routeThroughByok: true, byokSourceInstanceId: "missing" },
+          getSettings,
+        );
+        expect(result.models).toEqual([]);
+      }
+    }),
+  );
 });
 
 describe("applyRoutedProviderAvailability", () => {

@@ -479,7 +479,13 @@ export function deriveLockedProvider(input: {
   selectedProvider: string | null;
   threadProvider: string | null;
 }): ProviderDriverKind | null {
-  if (!threadHasStarted(input.thread)) {
+  const sessionStatus = input.thread?.session?.status;
+  // 只在启动或执行期间锁定；已保存的历史不限制下一轮切换运行器。
+  if (
+    sessionStatus !== "starting" &&
+    sessionStatus !== "running" &&
+    input.thread?.latestTurn?.state !== "running"
+  ) {
     return null;
   }
   const sessionProvider = input.thread?.session?.providerName ?? null;

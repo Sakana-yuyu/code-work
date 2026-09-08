@@ -56,7 +56,11 @@ import {
 import { ControlPill } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
-import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
+import {
+  buildModelOptions,
+  getThreadProviderGroups,
+  groupByProvider,
+} from "../../lib/modelOptions";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import type { RemoteClientConnectionState } from "../../lib/connection";
@@ -645,11 +649,21 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     [props.serverConfig, currentModelSelection],
   );
   const providerGroups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
-  // An existing thread is bound to its harness: sessions can't move between
-  // provider instances, so the picker only offers the thread's own group.
+  // 仅在启动或执行期间保留当前运行器分组，空闲任务可保留聊天并切换运行器。
   const threadProviderGroups = useMemo(
-    () => providerGroups.filter((group) => group.providerKey === currentModelSelection.instanceId),
-    [providerGroups, currentModelSelection.instanceId],
+    () =>
+      getThreadProviderGroups(
+        providerGroups,
+        props.selectedThread.session?.providerInstanceId ?? currentModelSelection.instanceId,
+        showStopAction || props.selectedThread.latestTurn?.state === "running",
+      ),
+    [
+      providerGroups,
+      currentModelSelection.instanceId,
+      props.selectedThread.session?.providerInstanceId,
+      props.selectedThread.latestTurn?.state,
+      showStopAction,
+    ],
   );
   const currentModelOption =
     modelOptions.find(

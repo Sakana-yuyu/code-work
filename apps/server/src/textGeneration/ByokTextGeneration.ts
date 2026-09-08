@@ -14,12 +14,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/unstable/http";
 
-import {
-  TextGenerationError,
-  type ByokSettings,
-  type ChatAttachment,
-  type ModelSelection,
-} from "@codework/contracts";
+import { TextGenerationError, type ByokSettings, type ModelSelection } from "@codework/contracts";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@codework/shared/git";
 import { extractJsonObject } from "@codework/shared/schemaJson";
 
@@ -64,12 +59,8 @@ export const makeByokTextGeneration = Effect.fn("makeByokTextGeneration")(functi
     readonly prompt: string;
     readonly outputSchemaJson: S;
     readonly modelSelection: ModelSelection;
-    readonly attachments?: ReadonlyArray<ChatAttachment> | undefined;
   }) {
-    if (input.attachments && input.attachments.length > 0) {
-      return yield* fail(input.operation, "BYOK text generation does not support attachments.");
-    }
-
+    // 提示词已包含附件名称等元信息；不读取图片像素，也不因附图而拒绝文本生成。
     const adapter = byokAdapterForModel(byokSettings, input.modelSelection.model);
     if (adapter === undefined) {
       return yield* fail(
@@ -159,7 +150,6 @@ export const makeByokTextGeneration = Effect.fn("makeByokTextGeneration")(functi
         prompt,
         outputSchemaJson: outputSchema,
         modelSelection: input.modelSelection,
-        attachments: input.attachments,
       });
       return { branch: sanitizeBranchFragment(generated.branch) };
     });
@@ -176,7 +166,6 @@ export const makeByokTextGeneration = Effect.fn("makeByokTextGeneration")(functi
         prompt,
         outputSchemaJson: outputSchema,
         modelSelection: input.modelSelection,
-        attachments: input.attachments,
       });
       return { title: sanitizeThreadTitle(generated.title) };
     });

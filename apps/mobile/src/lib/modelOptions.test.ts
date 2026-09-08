@@ -5,11 +5,45 @@ import { ProviderInstanceId, type ServerConfig } from "@codework/contracts";
 import {
   buildModelOptions,
   groupByProvider,
+  getThreadProviderGroups,
   resolveDefaultableModelSelection,
   resolveSelectableModelSelection,
 } from "./modelOptions";
 
 describe("mobile model options", () => {
+  it("共享 BYOK 渠道不把历史原生模型补回列表或默认选择", () => {
+    const config = {
+      providers: [
+        {
+          instanceId: "codex",
+          driver: "codex",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated", type: "byok" },
+          models: [{ slug: "gateway-model", name: "Gemini", capabilities: null }],
+        },
+      ],
+    } as unknown as ServerConfig;
+    const selection = { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6-astra" };
+    expect(buildModelOptions(config, selection).map((model) => model.selection.model)).toEqual([
+      "gateway-model",
+    ]);
+    expect(resolveSelectableModelSelection(config, selection)).toBeNull();
+    expect(
+      resolveSelectableModelSelection(config, { ...selection, model: "gateway-model" }),
+    ).toEqual({ ...selection, model: "gateway-model" });
+  });
+
+  it("空闲的 BYOK 聊天可以选择 Codex 并保留完整模型分组", () => {
+    const groups = [
+      { providerKey: "byok", providerLabel: "BYOK", models: [] },
+      { providerKey: "codex", providerLabel: "Codex", models: [] },
+      { providerKey: "codex_personal", providerLabel: "Codex Personal", models: [] },
+    ];
+    expect(getThreadProviderGroups(groups, "byok", false)).toBe(groups);
+    expect(getThreadProviderGroups(groups, "byok", true)).toEqual([groups[0]]);
+  });
+
   it("groups models by provider and flags legacy entries", () => {
     const config = {
       providers: [

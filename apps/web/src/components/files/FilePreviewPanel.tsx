@@ -56,7 +56,11 @@ import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { projectFileCacheKey, projectFileEditorCacheKey } from "./fileContentRevision";
 import { fileBreadcrumbs } from "./filePath";
-import { isMarkdownPreviewFile, setMarkdownTaskChecked } from "./filePreviewMode";
+import {
+  isHtmlPreviewFile,
+  isMarkdownPreviewFile,
+  setMarkdownTaskChecked,
+} from "./filePreviewMode";
 import { FileSaveCoordinator } from "./fileSaveCoordinator";
 import {
   confirmProjectFileQueryData,
@@ -791,6 +795,7 @@ export default function FilePreviewPanel({
     false,
     Schema.Boolean,
   );
+  const [renderHtmlPreferred, setRenderHtmlPreferred] = useState(true);
   // Paired with the path on purpose: each file surface counts its reveals from
   // one, so a bare id would let a dismissed reveal on one file swallow the first
   // reveal on the next.
@@ -799,12 +804,21 @@ export default function FilePreviewPanel({
   );
   const breadcrumbRef = useRef<HTMLDivElement>(null);
   const isMarkdown = relativePath ? isMarkdownPreviewFile(relativePath) : false;
+  const isHtml = relativePath ? isHtmlPreviewFile(relativePath) : false;
   // A reveal still wins over the preference: the line only exists in the source.
-  const renderMarkdown =
-    isMarkdown &&
-    renderMarkdownPreferred &&
+  const renderDocument =
+    (isHtml
+      ? renderHtmlPreferred && !file.data?.truncated
+      : isMarkdown && renderMarkdownPreferred) &&
     (revealLine === null ||
       (handledReveal?.path === relativePath && handledReveal.requestId === revealRequestId));
+  const previewToggleLabel = isHtml
+    ? renderDocument
+      ? t("showHtmlSource")
+      : t("showRenderedHtml")
+    : renderDocument
+      ? t("showMarkdownSource")
+      : t("showRenderedMarkdown");
   const canOpenInBrowser =
     relativePath !== null && isPreviewSupportedInRuntime() && isBrowserPreviewFile(relativePath);
   const absolutePath = relativePath ? resolvePathLinkTarget(relativePath, cwd) : null;
@@ -915,34 +929,32 @@ export default function FilePreviewPanel({
               enableShortcut={false}
             />
           ) : null}
-          {isMarkdown ? (
+          {isMarkdown || isHtml ? (
             <Tooltip>
               <TooltipTrigger
                 render={
                   <Toggle
                     className="shrink-0"
-                    pressed={renderMarkdown}
+                    pressed={renderDocument}
+                    disabled={isHtml && file.data?.truncated === true}
                     onPressedChange={(pressed) => {
-                      setRenderMarkdownPreferred(pressed);
+                      if (isHtml) setRenderHtmlPreferred(pressed);
+                      else setRenderMarkdownPreferred(pressed);
                       setHandledReveal(
                         pressed && relativePath !== null
                           ? { path: relativePath, requestId: revealRequestId }
                           : null,
                       );
                     }}
-                    aria-label={
-                      renderMarkdown ? t("showMarkdownSource") : t("showRenderedMarkdown")
-                    }
+                    aria-label={previewToggleLabel}
                     variant="ghost"
                     size="sm"
                   >
-                    {renderMarkdown ? <Code2 className="size-3.5" /> : <Eye className="size-3.5" />}
+                    {renderDocument ? <Code2 className="size-3.5" /> : <Eye className="size-3.5" />}
                   </Toggle>
                 }
               />
-              <TooltipPopup>
-                {renderMarkdown ? t("showMarkdownSource") : t("showRenderedMarkdown")}
-              </TooltipPopup>
+              <TooltipPopup>{previewToggleLabel}</TooltipPopup>
             </Tooltip>
           ) : null}
           {canOpenInBrowser ? (
@@ -1015,7 +1027,17 @@ export default function FilePreviewPanel({
               <LoaderCircle className="size-5 animate-spin" />
             </div>
           ) : relativePath && file.data ? (
-            isMarkdown && renderMarkdown ? (
+            isHtml && renderDocument ? (
+              <iframe
+                key={relativePath}
+                title={t("htmlFilePreview", { fileName: relativePath })}
+                className="min-h-0 w-full flex-1 border-0 bg-white"
+                // 允许页面自身脚本，但隔离应用登录态、父页面和顶层导航。
+                sandbox="allow-scripts"
+                referrerPolicy="no-referrer"
+                srcDoc={file.data.contents}
+              />
+            ) : isMarkdown && renderDocument ? (
               <RenderedMarkdownSurface
                 environmentId={environmentId}
                 cwd={cwd}

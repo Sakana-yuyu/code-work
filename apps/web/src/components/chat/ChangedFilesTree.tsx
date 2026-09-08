@@ -22,6 +22,7 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { t } from "~/i18n";
 import { canvasReferenceFromArtifactPath } from "~/canvas";
+import { isHtmlPreviewFile } from "../files/filePreviewMode";
 import {
   changedFileName,
   selectChangedFilePreview,
@@ -29,6 +30,30 @@ import {
 } from "./changedFilesPresentation";
 
 const EMPTY_DIRECTORY_OVERRIDES: Record<string, boolean> = {};
+
+interface ChangedFileActions {
+  turnId: TurnId;
+  fileKind?: TurnDiffFileChange["kind"] | undefined;
+  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenFile?: ((filePath: string) => boolean) | undefined;
+  canvas?: CanvasReference | undefined;
+  onOpenCanvas?: ((canvas: CanvasReference) => void) | undefined;
+}
+
+export function openChangedFile(path: string, actions: ChangedFileActions): void {
+  if (
+    actions.canvas &&
+    actions.onOpenCanvas &&
+    normalizeFilePath(actions.canvas.relativePath) === normalizeFilePath(path)
+  ) {
+    actions.onOpenCanvas(actions.canvas);
+    return;
+  }
+  if (actions.fileKind !== "deleted" && isHtmlPreviewFile(path) && actions.onOpenFile?.(path)) {
+    return;
+  }
+  actions.onOpenTurnDiff(actions.turnId, path);
+}
 
 export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
   turnId: TurnId;
@@ -40,6 +65,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
   onExpandedChange: (expanded: boolean) => void;
   onToggleAllDirectories: () => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenFile?: ((filePath: string) => boolean) | undefined;
   canvas?: CanvasReference;
   onOpenCanvas?: (canvas: CanvasReference) => void;
 }) {
@@ -53,6 +79,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
     onExpandedChange,
     onToggleAllDirectories,
     onOpenTurnDiff,
+    onOpenFile,
     canvas,
     onOpenCanvas,
   } = props;
@@ -71,11 +98,15 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
   const canvasPath = resolvedCanvas ? normalizeFilePath(resolvedCanvas.relativePath) : null;
   const isCanvasFile = (path: string) => canvasPath === normalizeFilePath(path);
   const openFile = (path: string) => {
-    if (resolvedCanvas && onOpenCanvas && isCanvasFile(path)) {
-      onOpenCanvas(resolvedCanvas);
-      return;
-    }
-    onOpenTurnDiff(turnId, path);
+    openChangedFile(path, {
+      turnId,
+      fileKind: files.find((file) => normalizeFilePath(file.path) === normalizeFilePath(path))
+        ?.kind,
+      onOpenTurnDiff,
+      onOpenFile,
+      canvas: resolvedCanvas ?? undefined,
+      onOpenCanvas,
+    });
   };
   const openCanvas = resolvedCanvas && onOpenCanvas ? () => onOpenCanvas(resolvedCanvas) : null;
 
@@ -193,6 +224,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
           allDirectoriesExpanded={allDirectoriesExpanded}
           resolvedTheme={resolvedTheme}
           onOpenTurnDiff={onOpenTurnDiff}
+          onOpenFile={onOpenFile}
           {...(resolvedCanvas ? { canvas: resolvedCanvas } : {})}
           {...(onOpenCanvas ? { onOpenCanvas } : {})}
         />
@@ -261,6 +293,7 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   allDirectoriesExpanded: boolean;
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenFile?: ((filePath: string) => boolean) | undefined;
   canvas?: CanvasReference;
   onOpenCanvas?: (canvas: CanvasReference) => void;
 }) {
@@ -268,6 +301,7 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
     files,
     allDirectoriesExpanded,
     onOpenTurnDiff,
+    onOpenFile,
     resolvedTheme,
     turnId,
     canvas,
@@ -283,11 +317,15 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   const resolvedCanvas = canvas ?? detectedCanvas;
   const canvasPath = resolvedCanvas ? normalizeFilePath(resolvedCanvas.relativePath) : null;
   const openFile = (path: string) => {
-    if (resolvedCanvas && onOpenCanvas && canvasPath === normalizeFilePath(path)) {
-      onOpenCanvas(resolvedCanvas);
-      return;
-    }
-    onOpenTurnDiff(turnId, path);
+    openChangedFile(path, {
+      turnId,
+      fileKind: files.find((file) => normalizeFilePath(file.path) === normalizeFilePath(path))
+        ?.kind,
+      onOpenTurnDiff,
+      onOpenFile,
+      canvas: resolvedCanvas ?? undefined,
+      onOpenCanvas,
+    });
   };
   const treeNodes = useMemo(() => buildTurnDiffTree(files), [files]);
   const directoryPathsKey = useMemo(

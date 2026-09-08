@@ -18,6 +18,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import type * as PlatformError from "effect/PlatformError";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@codework/shared/DrainableWorker";
@@ -30,6 +31,7 @@ import {
 } from "../../checkpointing/Utils.ts";
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
+import { ProviderSessionDirectory } from "../../provider/Services/ProviderSessionDirectory.ts";
 import { CheckpointReactor, type CheckpointReactorShape } from "../Services/CheckpointReactor.ts";
 import { forkParked } from "../../serverActivation.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
@@ -48,6 +50,12 @@ import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionT
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+const decodeHistoryReplayRuntime = Schema.decodeUnknownOption(
+  Schema.Struct({
+    cwd: Schema.optional(Schema.Unknown),
+    historyReplay: Schema.Struct({ pendingText: Schema.NullOr(Schema.String) }),
+  }),
+);
 
 type ReactorInput =
   | {
@@ -92,6 +100,7 @@ const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerService = yield* ProviderService;
+  const providerSessionDirectory = yield* ProviderSessionDirectory;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
   const receiptBus = yield* RuntimeReceiptBus;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
@@ -188,6 +197,46 @@ const make = Effect.gen(function* () {
     return project ? [project] : [];
   });
 
+  const resolveRevertRuntimeForThread = Effect.fn("resolveRevertRuntimeForThread")(function* (
+    threadId: ThreadId,
+  ) {
+    const session = Option.getOrUndefined(yield* resolveSessionRuntimeForThread(threadId));
+    const thread = yield* resolveThreadDetail(threadId);
+    if (!thread) return Option.none();
+    const providerInstanceId =
+      session?.providerInstanceId ??
+      thread.session?.providerInstanceId ??
+      thread.modelSelection.instanceId;
+    const binding = Option.getOrUndefined(yield* providerSessionDirectory.getBinding(threadId));
+    const replayRuntime = Option.getOrUndefined(
+      decodeHistoryReplayRuntime(binding?.runtimePayload),
+    );
+    if (binding && replayRuntime) {
+      const cwd = typeof replayRuntime.cwd === "string" ? replayRuntime.cwd.trim() : "";
+      if (
+        !cwd ||
+        binding.providerInstanceId !== providerInstanceId ||
+        binding.runtimeMode === undefined ||
+        (session &&
+          (binding.provider !== session.provider ||
+            binding.runtimeMode !== session.runtimeMode ||
+            (yield* workspaceLock.key(cwd)) !== (yield* workspaceLock.key(session.cwd))))
+      ) {
+        return Option.none();
+      }
+      // 重建式回退会停止原生会话，连续回退仍按持久化绑定保护同一工作区。
+      return Option.some({
+        cwd,
+        runtimeMode: binding.runtimeMode,
+        providerInstanceId,
+        historyReplay: true,
+      });
+    }
+    return session
+      ? Option.some({ ...session, providerInstanceId, historyReplay: false })
+      : Option.none();
+  });
+
   const isGitWorkspace = (cwd: string) => isGitRepository(cwd);
 
   // Resolves the workspace CWD for checkpoint operations, preferring the
@@ -282,7 +331,7 @@ const make = Effect.gen(function* () {
         Effect.map((diff) =>
           parseTurnDiffFilesFromUnifiedDiff(diff).map((file) => ({
             path: file.path,
-            kind: "modified" as const,
+            kind: file.kind,
             additions: file.additions,
             deletions: file.deletions,
           })),
@@ -714,7 +763,7 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    const sessionRuntime = yield* resolveSessionRuntimeForThread(event.payload.threadId);
+    const sessionRuntime = yield* resolveRevertRuntimeForThread(event.payload.threadId);
     if (Option.isNone(sessionRuntime)) {
       yield* appendRevertFailureActivity({
         threadId: event.payload.threadId,
@@ -829,9 +878,8 @@ const make = Effect.gen(function* () {
     const rolledBackTurns = Math.max(0, currentTurnCount - event.payload.turnCount);
     if (rolledBackTurns > 0) {
       const capabilities = yield* providerService.getCapabilities(
-        sessionRuntime.value.providerInstanceId ??
-          thread.session?.providerInstanceId ??
-          thread.modelSelection.instanceId,
+        sessionRuntime.value.providerInstanceId,
+        thread.id,
       );
       if (capabilities.threadRollback !== true) {
         yield* appendRevertFailureActivity({
@@ -898,7 +946,7 @@ const make = Effect.gen(function* () {
         Effect.catchCause((cause) =>
           Effect.gen(function* () {
             let detail = Cause.pretty(cause);
-            if (!providerRolledBack) {
+            if (!providerRolledBack || sessionRuntime.value.historyReplay) {
               const recovered = yield* checkpointStore
                 .restoreCheckpoint({ cwd, checkpointRef: recoveryRef })
                 .pipe(
@@ -921,7 +969,9 @@ const make = Effect.gen(function* () {
                   ),
                 );
               detail += recovered
-                ? " 工作区与暂存区已恢复，本地对话记录保留；服务商回退结果可能不确定，请核对服务商上下文后再继续。"
+                ? providerRolledBack
+                  ? " 工作区与暂存区已恢复，本地对话记录保留；下次启动将按保留历史重建服务商会话。"
+                  : " 工作区与暂存区已恢复，本地对话记录保留；服务商回退结果可能不确定，请核对服务商上下文后再继续。"
                 : " 工作区恢复失败，需要人工恢复。";
             } else {
               detail +=
@@ -961,7 +1011,7 @@ const make = Effect.gen(function* () {
   const handleRevertRequested = Effect.fn("handleRevertRequested")(function* (
     event: Extract<OrchestrationEvent, { type: "thread.checkpoint-revert-requested" }>,
   ) {
-    const session = yield* resolveSessionRuntimeForThread(event.payload.threadId);
+    const session = yield* resolveRevertRuntimeForThread(event.payload.threadId);
     const operation = handleRevertRequestedUnlocked(event);
     return yield* Option.isSome(session)
       ? workspaceLock.withRevertLock(session.value.cwd, operation)

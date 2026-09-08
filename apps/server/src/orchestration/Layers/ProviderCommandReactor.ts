@@ -67,6 +67,8 @@ class ThreadGoalBudgetExhaustedError extends Schema.TaggedErrorClass<ThreadGoalB
   }
 }
 const isThreadGoalBudgetExhaustedError = Schema.is(ThreadGoalBudgetExhaustedError);
+const PROVIDER_SWITCH_WHILE_RUNNING_DETAIL =
+  "Cannot switch providers while a turn is running. Wait for it to finish or stop it first.";
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -150,6 +152,7 @@ const HANDLED_TURN_START_KEY_TTL = Duration.minutes(30);
 const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 const MAX_REGENERATION_ATTACHMENTS = 4;
 const MAX_THREAD_TITLE_CONTEXT_CHARS = 8_000;
+const MAX_PROVIDER_HISTORY_CONTEXT_CHARS = 64_000;
 const MAX_FIRST_USER_TITLE_CONTEXT_CHARS = 2_000;
 const THREAD_TITLE_CONTEXT_TRUNCATION_MARKER = "[Earlier content truncated]\n\n";
 const FIRST_USER_CONTEXT_TRUNCATION_MARKER = "\n[First user message truncated]";
@@ -220,11 +223,14 @@ function collectRecentThreadTitleContext(
   return { context, attachments: retainedAttachments, truncated };
 }
 
-function formatThreadTitleContext(messages: ReadonlyArray<ThreadTitleMessage>): {
+function formatThreadTitleContext(
+  messages: ReadonlyArray<ThreadTitleMessage>,
+  maxChars = MAX_THREAD_TITLE_CONTEXT_CHARS,
+): {
   readonly message: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
 } {
-  const recent = collectRecentThreadTitleContext(messages, MAX_THREAD_TITLE_CONTEXT_CHARS);
+  const recent = collectRecentThreadTitleContext(messages, maxChars);
   if (!recent.truncated) {
     return {
       message: recent.context,
@@ -240,17 +246,19 @@ function formatThreadTitleContext(messages: ReadonlyArray<ThreadTitleMessage>): 
     : undefined;
   if (!firstUserMessage || !firstUserSection) {
     return {
-      message: `${THREAD_TITLE_CONTEXT_TRUNCATION_MARKER}${recent.context}`,
+      message: `${THREAD_TITLE_CONTEXT_TRUNCATION_MARKER}${
+        collectRecentThreadTitleContext(
+          messages,
+          maxChars - THREAD_TITLE_CONTEXT_TRUNCATION_MARKER.length,
+        ).context
+      }`,
       attachments: recent.attachments.slice(-MAX_REGENERATION_ATTACHMENTS),
     };
   }
 
   const pinnedSection = limitFirstUserSection(firstUserSection);
   const recentContextBudget =
-    MAX_THREAD_TITLE_CONTEXT_CHARS -
-    pinnedSection.length -
-    "\n\n".length -
-    THREAD_TITLE_CONTEXT_TRUNCATION_MARKER.length;
+    maxChars - pinnedSection.length - "\n\n".length - THREAD_TITLE_CONTEXT_TRUNCATION_MARKER.length;
   const retainedRecent = collectRecentThreadTitleContext(messages, recentContextBudget);
   const pinnedAttachment = firstUserMessage.attachments?.[0];
   const recentAttachments = retainedRecent.attachments.filter(
@@ -266,6 +274,13 @@ function formatThreadTitleContext(messages: ReadonlyArray<ThreadTitleMessage>): 
       ),
     ],
   };
+}
+
+// 完整消息仍保留在原线程；仅限制发送给新运行器的引用上下文，避免切换时撑爆输入窗口。
+export function formatThreadConversationHistory(
+  messages: ReadonlyArray<ThreadTitleMessage>,
+): string {
+  return formatThreadTitleContext(messages, MAX_PROVIDER_HISTORY_CONTEXT_CHARS).message;
 }
 
 export function providerErrorLabel(value: string | undefined): string {
@@ -388,6 +403,7 @@ const make = Effect.gen(function* () {
     );
 
   const threadModelSelections = new Map<string, ModelSelection>();
+  const pendingTurnSends = new Map<ThreadId, number>();
 
   const syncThreadGoalStatus = (threadId: ThreadId, status: "active" | "paused") => {
     if (Option.isNone(threadGoalStore)) return Effect.void;
@@ -678,6 +694,8 @@ const make = Effect.gen(function* () {
     options?: {
       readonly modelSelection?: ModelSelection;
       readonly pendingTurnStart?: boolean;
+      readonly messageId?: MessageId;
+      readonly historySequence?: number;
     },
   ) {
     const thread = yield* resolveThread(threadId);
@@ -714,21 +732,24 @@ const make = Effect.gen(function* () {
       activeSession !== undefined &&
       activeSession.providerInstanceId !== undefined
         ? activeSession.providerInstanceId
-        : thread.modelSelection.instanceId;
+        : (thread.session?.providerInstanceId ?? thread.modelSelection.instanceId);
     const desiredModelSelection = requestedModelSelection ?? thread.modelSelection;
     const desiredInstanceId = desiredModelSelection.instanceId;
     const currentInfo = yield* providerService.getInstanceInfo(currentInstanceId).pipe(
-      Effect.mapError(
-        () =>
-          new ProviderAdapterRequestError({
-            provider: providerErrorLabelFromInstanceHint({
-              instanceId: String(currentInstanceId),
-              modelSelectionInstanceId: String(thread.modelSelection.instanceId),
-              sessionProvider: thread.session?.providerName ?? undefined,
-            }),
-            method: "thread.turn.start",
-            detail: `Thread '${threadId}' references unknown provider instance '${currentInstanceId}'. The instance is not configured in this build.`,
-          }),
+      Effect.catch(() =>
+        currentInstanceId !== desiredInstanceId
+          ? Effect.succeed(undefined)
+          : Effect.fail(
+              new ProviderAdapterRequestError({
+                provider: providerErrorLabelFromInstanceHint({
+                  instanceId: String(currentInstanceId),
+                  modelSelectionInstanceId: String(thread.modelSelection.instanceId),
+                  sessionProvider: thread.session?.providerName ?? undefined,
+                }),
+                method: "thread.turn.start",
+                detail: `Thread '${threadId}' references unknown provider instance '${currentInstanceId}'. The instance is not configured in this build.`,
+              }),
+            ),
       ),
     );
     const desiredInfo = yield* providerService.getInstanceInfo(desiredInstanceId).pipe(
@@ -782,28 +803,22 @@ const make = Effect.gen(function* () {
         requestedModelSelection,
       });
     }
+    const incompatibleSession =
+      currentInfo?.driverKind !== desiredInfo.driverKind ||
+      currentInfo?.continuationIdentity.continuationKey !==
+        desiredInfo.continuationIdentity.continuationKey;
     if (
-      thread.session !== null &&
-      requestedModelSelection !== undefined &&
-      requestedModelSelection.instanceId !== currentInstanceId
+      (currentInstanceId !== desiredInstanceId && (pendingTurnSends.get(threadId) ?? 0) > 0) ||
+      (incompatibleSession &&
+        (activeSession?.status === "running" ||
+          activeSession?.status === "connecting" ||
+          (thread.session?.status === "running" && thread.session.activeTurnId !== null)))
     ) {
-      if (currentInfo.driverKind !== desiredInfo.driverKind) {
-        return yield* new ProviderAdapterRequestError({
-          provider: preferredProvider,
-          method: "thread.turn.start",
-          detail: `Thread '${threadId}' is bound to driver '${currentInfo.driverKind}' and cannot switch to '${desiredInfo.driverKind}'.`,
-        });
-      }
-      if (
-        currentInfo.continuationIdentity.continuationKey !==
-        desiredInfo.continuationIdentity.continuationKey
-      ) {
-        return yield* new ProviderAdapterRequestError({
-          provider: preferredProvider,
-          method: "thread.turn.start",
-          detail: `Thread '${threadId}' cannot switch from instance '${currentInstanceId}' to '${desiredInstanceId}' because their provider resume state is incompatible.`,
-        });
-      }
+      return yield* new ProviderAdapterRequestError({
+        provider: preferredProvider,
+        method: "thread.turn.start",
+        detail: PROVIDER_SWITCH_WHILE_RUNNING_DETAIL,
+      });
     }
     const project = yield* resolveProject(thread.projectId);
     const effectiveCwd = resolveThreadWorkspaceCwd({
@@ -813,17 +828,52 @@ const make = Effect.gen(function* () {
 
     const startProviderSession = (input?: {
       readonly resumeCursor?: unknown;
-      readonly provider?: ProviderDriverKind;
+      readonly freshConversation?: boolean;
     }) =>
-      providerService.startSession(threadId, {
-        threadId,
-        ...(preferredProvider ? { provider: preferredProvider } : {}),
-        providerInstanceId: desiredInstanceId,
-        ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
-        ...(thread.title ? { title: thread.title } : {}),
-        modelSelection: desiredModelSelection,
-        ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
-        runtimeMode: desiredRuntimeMode,
+      Effect.gen(function* () {
+        const excludedMessageIds = new Set<MessageId>(
+          options?.messageId ? [options.messageId] : [],
+        );
+        if (options?.historySequence !== undefined) {
+          const latestSequence = yield* orchestrationEngine.latestSequence;
+          if (latestSequence > options.historySequence) {
+            // 消息展示按客户端时间排序；用已落库事件边界排除队列中的后续消息，不能依赖时间或 ID 顺序。
+            yield* orchestrationEngine
+              .readEvents(options.historySequence, latestSequence - options.historySequence)
+              .pipe(
+                Stream.runForEach((event) =>
+                  Effect.sync(() => {
+                    if (
+                      event.type === "thread.message-sent" &&
+                      event.payload.threadId === threadId
+                    ) {
+                      excludedMessageIds.add(event.payload.messageId);
+                    }
+                  }),
+                ),
+              );
+          }
+        }
+        return yield* providerService.startSession(
+          threadId,
+          {
+            threadId,
+            ...(preferredProvider ? { provider: preferredProvider } : {}),
+            providerInstanceId: desiredInstanceId,
+            ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
+            ...(thread.title ? { title: thread.title } : {}),
+            modelSelection: desiredModelSelection,
+            ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
+            runtimeMode: desiredRuntimeMode,
+          },
+          {
+            // 本轮消息已落库，不能同时作为历史和当前输入重复交给模型。
+            conversationHistory: formatThreadConversationHistory(
+              thread.messages.filter((message) => !excludedMessageIds.has(message.id)),
+            ),
+            freshConversation: incompatibleSession || input?.freshConversation === true,
+          },
+        );
       });
 
     const bindSessionToThread = (session: ProviderSession) =>
@@ -865,9 +915,7 @@ const make = Effect.gen(function* () {
       const modelChanged =
         requestedModelSelection !== undefined &&
         requestedModelSelection.model !== activeSession?.model;
-      const instanceChanged =
-        requestedModelSelection !== undefined &&
-        activeSession?.providerInstanceId !== requestedModelSelection.instanceId;
+      const instanceChanged = activeSession?.providerInstanceId !== desiredInstanceId;
       const shouldRestartForModelChange = modelChanged && sessionModelSwitch === "unsupported";
       const previousModelSelection = threadModelSelections.get(threadId);
       const shouldRestartForModelSelectionChange =
@@ -885,9 +933,10 @@ const make = Effect.gen(function* () {
         return existingSessionThreadId;
       }
 
-      const resumeCursor = shouldRestartForModelChange
-        ? undefined
-        : (activeSession?.resumeCursor ?? undefined);
+      const resumeCursor =
+        shouldRestartForModelChange || incompatibleSession
+          ? undefined
+          : (activeSession?.resumeCursor ?? undefined);
       yield* Effect.logInfo("provider command reactor restarting provider session", {
         threadId,
         existingSessionThreadId,
@@ -907,9 +956,10 @@ const make = Effect.gen(function* () {
         shouldRestartForModelSelectionChange,
         hasResumeCursor: resumeCursor !== undefined,
       });
-      const restartedSession = yield* startProviderSession(
-        resumeCursor !== undefined ? { resumeCursor } : undefined,
-      );
+      const restartedSession = yield* startProviderSession({
+        ...(resumeCursor !== undefined ? { resumeCursor } : {}),
+        freshConversation: shouldRestartForModelChange,
+      });
       yield* Effect.logInfo("provider command reactor restarted provider session", {
         threadId,
         previousSessionId: existingSessionThreadId,
@@ -930,6 +980,8 @@ const make = Effect.gen(function* () {
   const buildSendTurnRequestForThread = Effect.fnUntraced(function* (input: {
     readonly threadId: ThreadId;
     readonly messageText: string;
+    readonly messageId: MessageId;
+    readonly sequence: number;
     readonly attachments?: ReadonlyArray<ChatAttachment>;
     readonly modelSelection?: ModelSelection;
     readonly interactionMode?: "default" | "plan";
@@ -944,6 +996,8 @@ const make = Effect.gen(function* () {
     yield* ensureSessionForThread(input.threadId, input.createdAt, {
       ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
       pendingTurnStart: true,
+      messageId: input.messageId,
+      historySequence: input.sequence,
     });
     if (input.modelSelection !== undefined) {
       threadModelSelections.set(input.threadId, input.modelSelection);
@@ -1368,6 +1422,18 @@ const make = Effect.gen(function* () {
           return Effect.void;
         }
         const detail = formatFailureDetail(cause);
+        if (detail === PROVIDER_SWITCH_WHILE_RUNNING_DETAIL) {
+          // 拒绝追加的切换请求不能把仍在执行的原回合改成错误或暂停其目标。
+          return appendProviderFailureActivity({
+            threadId: event.payload.threadId,
+            kind: "provider.turn.start.failed",
+            summary: "Provider turn start failed",
+            detail,
+            messageId: event.payload.messageId,
+            turnId: null,
+            createdAt: event.payload.createdAt,
+          }).pipe(Effect.asVoid);
+        }
         if (isThreadGoalBudgetExhaustedError(cause.reasons.find(Cause.isFailReason)?.error)) {
           return Effect.gen(function* () {
             const latest = yield* resolveThread(thread.id);
@@ -1444,6 +1510,8 @@ const make = Effect.gen(function* () {
       const sendTurnRequest = yield* buildSendTurnRequestForThread({
         threadId: event.payload.threadId,
         messageText: message.text,
+        messageId: event.payload.messageId,
+        sequence: event.sequence,
         ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
         ...(event.payload.modelSelection !== undefined
           ? { modelSelection: event.payload.modelSelection }
@@ -1475,7 +1543,19 @@ const make = Effect.gen(function* () {
             .pipe(Effect.andThen(Effect.suspend(() => sendWhenAvailable))),
         ),
       );
-      yield* sendWhenAvailable.pipe(Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
+      // 实际发送在后台等待时也必须保留绑定，不能让后续选择把该请求送给另一个运行器。
+      pendingTurnSends.set(thread.id, (pendingTurnSends.get(thread.id) ?? 0) + 1);
+      yield* sendWhenAvailable.pipe(
+        Effect.catchCause(recoverTurnStartFailure),
+        Effect.ensuring(
+          Effect.sync(() => {
+            const remaining = (pendingTurnSends.get(thread.id) ?? 1) - 1;
+            if (remaining > 0) pendingTurnSends.set(thread.id, remaining);
+            else pendingTurnSends.delete(thread.id);
+          }),
+        ),
+        Effect.forkScoped,
+      );
     },
   );
 
@@ -1744,17 +1824,25 @@ const make = Effect.gen(function* () {
           return;
         }
         const cachedModelSelection = threadModelSelections.get(event.payload.threadId);
+        const boundInstanceId = thread.session.providerInstanceId;
+        if (
+          boundInstanceId !== undefined &&
+          ((cachedModelSelection ?? thread.modelSelection).instanceId !== boundInstanceId ||
+            thread.modelSelection.instanceId !== boundInstanceId)
+        ) {
+          // 模型选择已经保存但尚未发送时，留到 turn-start 统一切换并排除本轮消息。
+          return;
+        }
         const project = yield* resolveProject(thread.projectId);
         const cwd =
           resolveThreadWorkspaceCwd({ thread, projects: project ? [project] : [] }) ??
           process.cwd();
         yield* workspaceLock.withLock(
           cwd,
-          ensureSessionForThread(
-            event.payload.threadId,
-            event.occurredAt,
-            cachedModelSelection !== undefined ? { modelSelection: cachedModelSelection } : {},
-          ),
+          ensureSessionForThread(event.payload.threadId, event.occurredAt, {
+            ...(cachedModelSelection !== undefined ? { modelSelection: cachedModelSelection } : {}),
+            historySequence: event.sequence,
+          }),
         );
         return;
       }

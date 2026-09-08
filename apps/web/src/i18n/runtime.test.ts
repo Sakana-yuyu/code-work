@@ -9,6 +9,51 @@ afterEach(() => setCurrentLanguage("zh-CN"));
 const INTERNAL_CODENAMES = /cursor-byok|cursor byok|\btcode\b/i;
 
 describe("web i18n runtime", () => {
+  it("插值 BYOK 轮次上限错误", () => {
+    for (const language of ["zh-CN", "en", "ja"] as const) {
+      setCurrentLanguage(language);
+      const message = t("session.byokMaxRoundsReached", { maxRounds: 8 });
+      expect(message).toContain("8");
+      expect(message).not.toContain("{");
+    }
+  });
+
+  it("翻译运行中的运行器切换错误", () => {
+    for (const [language, expected] of [
+      [
+        "en",
+        "Cannot switch providers while a turn is running. Wait for it to finish or stop it first.",
+      ],
+      ["zh-CN", "当前任务正在运行，无法切换运行器。请等待完成或先停止后再切换。"],
+      [
+        "ja",
+        "タスクの実行中はランタイムを切り替えられません。完了するまで待つか、先に停止してください。",
+      ],
+    ] as const) {
+      setCurrentLanguage(language);
+      expect(t("session.cannotSwitchProvidersWhileRunning")).toBe(expected);
+    }
+  });
+
+  it("按当前语言插值模型选择器的供应商限制提示", () => {
+    for (const [language, expected] of [
+      [
+        "en",
+        "The current task is running. Wait for it to finish or stop it before switching to Codex Personal.",
+      ],
+      ["zh-CN", "当前任务正在运行。请等待完成或先停止，再切换到 Codex Personal 运行器。"],
+      [
+        "ja",
+        "現在タスクを実行中です。完了するまで待つか停止してから、Codex Personal ランタイムに切り替えてください。",
+      ],
+    ] as const) {
+      setCurrentLanguage(language);
+      expect(t("modelPicker.providerUnavailableInThread", { providerName: "Codex Personal" })).toBe(
+        expected,
+      );
+    }
+  });
+
   it("switches languages and interpolates complete messages", () => {
     setCurrentLanguage("en");
     expect(t("composer.promptTooLong", { count: 2, excess: 2, limit: 120_000 })).toBe(

@@ -14,7 +14,6 @@ import type {
 } from "@codework/contracts";
 import {
   ApprovalRequestId,
-  EnvironmentId,
   EventId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -929,6 +928,377 @@ it.effect(
       NodeFS.rmSync(tempDir, { recursive: true, force: true });
     }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+const historyRouting = makeProviderServiceLayer();
+it.effect("服务重建后从持久化绑定恢复尚未发送的历史", () => {
+  const first = makeFakeCodexAdapter();
+  const second = makeFakeCodexAdapter();
+  const layerFor = (adapter: typeof first.adapter) =>
+    makeProviderServiceLive().pipe(
+      Layer.provide(
+        Layer.succeed(
+          ProviderAdapterRegistry.ProviderAdapterRegistry,
+          makeAdapterRegistryMock({ [CODEX_DRIVER]: adapter }),
+        ),
+      ),
+      Layer.provide(ProviderSessionDirectoryLive),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(serverConfigTestLayer),
+      Layer.provide(AnalyticsService.layerTest),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+    );
+  return Effect.gen(function* () {
+    const threadId = asThreadId("thread-history-service-restart");
+    yield* Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      yield* provider.startSession(
+        threadId,
+        {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        },
+        { conversationHistory: "重启前已有的结论" },
+      );
+    }).pipe(Effect.provide(layerFor(first.adapter)));
+    yield* Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      yield* provider.sendTurn({ threadId, input: "重启后继续", attachments: [] });
+      assert.include(second.sendTurn.mock.lastCall?.[0].input ?? "", "重启前已有的结论");
+      yield* provider.sendTurn({ threadId, input: "之后的请求", attachments: [] });
+      assert.equal(second.sendTurn.mock.lastCall?.[0].input, "之后的请求");
+    }).pipe(Effect.provide(layerFor(second.adapter)));
+  }).pipe(
+    Effect.provide(ProviderSessionRuntime.layer.pipe(Layer.provide(SqlitePersistenceMemory))),
+  );
+});
+
+historyRouting.layer("ProviderServiceLive 历史重建", (it) => {
+  const routing = historyRouting;
+  it.effect("转接后丢弃旧实例晚到事件，停止失败仍保留旧实例收尾", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-history-event-switch");
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const nextEvent = yield* Stream.toPull(provider.streamEvents);
+      const firstEvent = yield* nextEvent.pipe(Effect.forkChild({ startImmediately: true }));
+      const completed = (eventId: string, targetThread = threadId): LegacyProviderRuntimeEvent => ({
+        type: "turn.completed",
+        eventId: asEventId(eventId),
+        provider: CODEX_DRIVER,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId: targetThread,
+        turnId: asTurnId("turn-switch-event"),
+        status: "completed",
+      });
+      routing.codex.stopSession.mockImplementationOnce(() =>
+        Effect.gen(function* () {
+          routing.codex.emit(completed("old-stop-failed"));
+          yield* Effect.yieldNow;
+          return yield* new ProviderAdapterRequestError({
+            provider: "codex",
+            method: "stopSession",
+            detail: "停止失败",
+          });
+        }),
+      );
+      const replacement = {
+        provider: CLAUDE_AGENT_DRIVER,
+        providerInstanceId: claudeAgentInstanceId,
+        threadId,
+        runtimeMode: "full-access" as const,
+      };
+      yield* provider
+        .startSession(threadId, replacement, { conversationHistory: "此前聊天" })
+        .pipe(Effect.result);
+      assert.deepEqual(
+        (yield* Fiber.join(firstEvent)).map((event) => event.eventId),
+        [asEventId("old-stop-failed")],
+      );
+      const followingEvent = yield* nextEvent.pipe(Effect.forkChild({ startImmediately: true }));
+      yield* provider.startSession(threadId, replacement, { conversationHistory: "此前聊天" });
+      routing.codex.emit(completed("stale-old-event"));
+      routing.codex.emit(completed("sentinel", asThreadId("unbound-sentinel")));
+      assert.deepEqual(
+        (yield* Fiber.join(followingEvent)).map((event) => event.eventId),
+        [asEventId("sentinel")],
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("历史拼接保留最新请求并遵守长度上限，compact 延后且失败不消费历史", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("thread-history-input-boundary");
+      const history = "历史".repeat(32_000);
+      yield* provider.startSession(
+        threadId,
+        {
+          provider: CLAUDE_AGENT_DRIVER,
+          providerInstanceId: claudeAgentInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        },
+        { conversationHistory: history },
+      );
+      yield* provider.sendTurn({ threadId, input: "/compact 保留最近结论", attachments: [] });
+      assert.equal(routing.claude.sendTurn.mock.lastCall?.[0].input, "/compact 保留最近结论");
+      const callsBefore = routing.claude.sendTurn.mock.calls.length;
+      const rejected = yield* provider
+        .sendTurn({ threadId, input: "新".repeat(120_000), attachments: [] })
+        .pipe(Effect.result);
+      assert.equal(rejected._tag, "Failure");
+      assert.equal(routing.claude.sendTurn.mock.calls.length, callsBefore);
+      assert.deepInclude(Option.getOrThrow(yield* directory.getBinding(threadId)).runtimePayload, {
+        historyReplay: { pendingText: history },
+      });
+      const latest = "新".repeat(115_000);
+      yield* provider.sendTurn({ threadId, input: latest, attachments: [] });
+      const actual = routing.claude.sendTurn.mock.lastCall?.[0].input ?? "";
+      assert.isAtMost(actual.length, 120_000);
+      assert.isTrue(actual.endsWith(latest));
+      assert.include(actual, "部分内容已截断");
+      assert.include(actual, "不要重新执行");
+    }),
+  );
+
+  it.effect("新会话绑定保存失败后停止未绑定运行器，旧绑定仍可恢复", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("thread-history-binding-failure");
+      const old = yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const write = vi.spyOn(directory, "upsert");
+      write.mockImplementationOnce(() =>
+        Effect.fail(
+          new ProviderValidationError({
+            operation: "test",
+            issue: "绑定保存失败",
+          }),
+        ),
+      );
+      const result = yield* provider
+        .startSession(
+          threadId,
+          {
+            provider: CLAUDE_AGENT_DRIVER,
+            providerInstanceId: claudeAgentInstanceId,
+            threadId,
+            runtimeMode: "full-access",
+          },
+          { conversationHistory: "旧聊天" },
+        )
+        .pipe(Effect.result);
+      write.mockRestore();
+      assert.equal(result._tag, "Failure");
+      assert.isFalse(yield* routing.claude.hasSession(threadId));
+      const binding = Option.getOrThrow(yield* directory.getBinding(threadId));
+      assert.equal(binding.providerInstanceId, codexInstanceId);
+      assert.deepEqual(binding.resumeCursor, old.resumeCursor);
+      yield* provider.sendTurn({ threadId, input: "重试原会话", attachments: [] });
+      assert.isTrue(yield* routing.codex.hasSession(threadId));
+    }),
+  );
+
+  it.effect("新会话历史持久化，失败和原生命令不消费，恢复后只发送一次", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("thread-history-replay");
+      yield* provider.startSession(
+        threadId,
+        {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        },
+        { conversationHistory: "用户：已有需求\n助手：已有结论", freshConversation: true },
+      );
+      assert.deepInclude(Option.getOrThrow(yield* directory.getBinding(threadId)).runtimePayload, {
+        historyReplay: { pendingText: "用户：已有需求\n助手：已有结论" },
+      });
+      const failedInput: ProviderSendTurnInput = { threadId, input: "继续", attachments: [] };
+      routing.codex.sendTurn.mockImplementationOnce(() =>
+        Effect.fail(
+          new ProviderAdapterRequestError({
+            provider: "codex",
+            method: "sendTurn",
+            detail: "尚未接受请求",
+          }),
+        ),
+      );
+      assert.equal((yield* provider.sendTurn(failedInput).pipe(Effect.result))._tag, "Failure");
+      yield* provider.sendTurn({ ...failedInput, input: "/review" });
+      assert.equal(routing.codex.sendTurn.mock.lastCall?.[0].input, "/review");
+      yield* routing.codex.stopSession(threadId);
+      yield* provider.sendTurn(failedInput);
+      const replayed = routing.codex.sendTurn.mock.lastCall?.[0].input ?? "";
+      assert.include(replayed, "已有需求");
+      assert.include(replayed, "已有结论");
+      assert.include(replayed, "继续");
+      const binding = Option.getOrThrow(yield* directory.getBinding(threadId));
+      assert.deepInclude(binding.runtimePayload, { historyReplay: { pendingText: null } });
+      yield* provider.sendTurn({ ...failedInput, input: "下一轮" });
+      assert.equal(routing.codex.sendTurn.mock.lastCall?.[0].input, "下一轮");
+    }),
+  );
+
+  it.effect("兼容恢复保留历史标记，强制新会话忽略旧游标并刷新待发送历史", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("thread-history-fresh");
+      const input = {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access" as const,
+      };
+      const first = yield* provider.startSession(threadId, input, {
+        conversationHistory: "旧历史",
+      });
+      yield* provider.sendTurn({ threadId, input: "首次", attachments: [] });
+      yield* provider.startSession(threadId, input, { conversationHistory: "不应重复的新文本" });
+      assert.deepEqual(
+        routing.codex.startSession.mock.lastCall?.[0].resumeCursor,
+        first.resumeCursor,
+      );
+      yield* provider.sendTurn({ threadId, input: "兼容续聊", attachments: [] });
+      assert.equal(routing.codex.sendTurn.mock.lastCall?.[0].input, "兼容续聊");
+      yield* provider.startSession(
+        threadId,
+        { ...input, resumeCursor: first.resumeCursor },
+        {
+          conversationHistory: "裁剪后历史",
+          freshConversation: true,
+        },
+      );
+      assert.equal(routing.codex.startSession.mock.lastCall?.[0].resumeCursor, undefined);
+      assert.deepInclude(Option.getOrThrow(yield* directory.getBinding(threadId)).runtimePayload, {
+        historyReplay: { pendingText: "裁剪后历史" },
+      });
+    }),
+  );
+
+  it.effect("不兼容实例不接收旧游标，空历史清除旧重建状态", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("thread-history-cross-instance");
+      const first = yield* provider.startSession(
+        threadId,
+        {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        },
+        { conversationHistory: "旧实例历史" },
+      );
+      yield* provider.startSession(threadId, {
+        provider: CLAUDE_AGENT_DRIVER,
+        providerInstanceId: claudeAgentInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+        resumeCursor: first.resumeCursor,
+      });
+      assert.equal(routing.claude.startSession.mock.lastCall?.[0].resumeCursor, undefined);
+      assert.deepInclude(Option.getOrThrow(yield* directory.getBinding(threadId)).runtimePayload, {
+        historyReplay: null,
+      });
+    }),
+  );
+
+  it.effect("重建过的线程回退清空原生游标，连续回退不调用原生回退", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("thread-history-rollback");
+      const instanceId = ProviderInstanceId.make("cursor");
+      yield* provider.startSession(
+        threadId,
+        {
+          provider: CURSOR_DRIVER,
+          providerInstanceId: instanceId,
+          threadId,
+          runtimeMode: "full-access",
+          cwd: "/tmp/history-rollback",
+        },
+        { conversationHistory: "之前的聊天" },
+      );
+      assert.equal((yield* provider.getCapabilities(instanceId)).threadRollback, undefined);
+      assert.equal((yield* provider.getCapabilities(instanceId, threadId)).threadRollback, true);
+      const callsBefore = routing.cursor.rollbackThread.mock.calls.length;
+      yield* provider.rollbackConversation({ threadId, numTurns: 2 });
+      yield* provider.rollbackConversation({ threadId, numTurns: 1 });
+      const binding = Option.getOrThrow(yield* directory.getBinding(threadId));
+      assert.equal(binding.status, "stopped");
+      assert.equal(binding.resumeCursor, null);
+      assert.deepInclude(binding.runtimePayload, { historyReplay: { pendingText: null } });
+      assert.equal(routing.cursor.rollbackThread.mock.calls.length, callsBefore);
+      assert.isFalse(yield* routing.cursor.hasSession(threadId));
+    }),
+  );
+
+  it.effect("旧会话停止失败时不启动替代实例且保留旧绑定", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("thread-switch-stop-failure");
+      const old = yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      routing.codex.stopSession.mockImplementationOnce(() =>
+        Effect.fail(
+          new ProviderAdapterRequestError({
+            provider: "codex",
+            method: "stopSession",
+            detail: "旧会话停止失败",
+          }),
+        ),
+      );
+      const startsBefore = routing.claude.startSession.mock.calls.length;
+      const result = yield* provider
+        .startSession(
+          threadId,
+          {
+            provider: CLAUDE_AGENT_DRIVER,
+            providerInstanceId: claudeAgentInstanceId,
+            threadId,
+            runtimeMode: "full-access",
+          },
+          { conversationHistory: "转接历史" },
+        )
+        .pipe(Effect.result);
+      assert.equal(result._tag, "Failure");
+      assert.equal(routing.claude.startSession.mock.calls.length, startsBefore);
+      const binding = Option.getOrThrow(yield* directory.getBinding(threadId));
+      assert.equal(binding.providerInstanceId, codexInstanceId);
+      assert.deepEqual(binding.resumeCursor, old.resumeCursor);
+    }),
+  );
+});
 
 routing.layer("ProviderServiceLive routing", (it) => {
   it.effect("未声明真实回退能力时拒绝回退调用", () =>

@@ -43,7 +43,7 @@ import {
 import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
-  applyRoutedProviderAvailability,
+  prepareRoutedProviderSnapshot,
   ensureGatewayToken,
   gatewayAdapterRoutes,
   openCodeGatewayConfigContent,
@@ -198,19 +198,14 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
           initialSnapshot: (settings) =>
             makePendingOpenCodeProvider(settings.provider).pipe(Effect.map(stampIdentity)),
           checkProvider,
+          prepareSnapshot: (snapshot) =>
+            prepareRoutedProviderSnapshot(snapshot, config, serverSettings.getSettings),
           enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
             enrichProviderSnapshotWithVersionAdvisory(snapshot, maintenanceCapabilities, {
               enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
             }).pipe(
               Effect.provideService(HttpClient.HttpClient, httpClient),
-              Effect.flatMap((enrichedSnapshot) =>
-                publishSnapshot(
-                  // 网关接管时 auth 由网关提供；原生登录探测不得把实例标记为不可用。
-                  config.routeThroughByok === true
-                    ? applyRoutedProviderAvailability(enrichedSnapshot)
-                    : enrichedSnapshot,
-                ),
-              ),
+              Effect.flatMap(publishSnapshot),
             ),
         },
       ).pipe(

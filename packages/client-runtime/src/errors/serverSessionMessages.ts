@@ -15,6 +15,11 @@ const EXACT_KEYS: ReadonlyArray<{
 }> = [
   {
     message:
+      "Cannot switch providers while a turn is running. Wait for it to finish or stop it first.",
+    key: "session.cannotSwitchProvidersWhileRunning",
+  },
+  {
+    message:
       "Claude reached the maximum agent turns. Send another message to continue, or adjust the limit in provider settings.",
     key: "session.claudeMaxTurnsReached",
   },
@@ -57,6 +62,11 @@ const TEMPLATE_KEYS: ReadonlyArray<{
   readonly key: string;
   readonly params: (matches: ReadonlyArray<string>) => Record<string, string>;
 }> = [
+  {
+    pattern: /^BYOK agent loop exceeded the maximum of (\d+) model rounds\.$/,
+    key: "session.byokMaxRoundsReached",
+    params: (m) => ({ maxRounds: m[1]! }),
+  },
   {
     pattern:
       /^Thread '([^']+)' cannot switch models after the conversation has started\. Start a new thread to use '([^']+)'\.$/,

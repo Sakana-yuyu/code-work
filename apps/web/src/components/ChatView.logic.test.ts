@@ -6,13 +6,16 @@ import {
   EnvironmentId,
   MessageId,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
   TurnId,
 } from "@codework/contracts";
+import { DEFAULT_UNIFIED_SETTINGS } from "@codework/contracts/settings";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { Thread, ThreadShell } from "../types";
+import { deriveEffectiveComposerModelState } from "../composerDraftStore";
 import {
   MAX_HIDDEN_MOUNTED_PREVIEW_THREADS,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
@@ -22,6 +25,7 @@ import {
   buildThreadTurnInterruptInput,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
+  deriveLockedProvider,
   dismissBranchMismatchForSession,
   ENVIRONMENT_RECONNECT_WARNING_GRACE_MS,
   getStartedThreadModelChangeBlockReason,
@@ -275,6 +279,99 @@ const readySession = {
   lastError: null,
   updatedAt: "2026-03-29T00:00:10.000Z",
 };
+
+describe("任务内切换运行器", () => {
+  const byokInstanceId = ProviderInstanceId.make("byok");
+  const codexInstanceId = ProviderInstanceId.make("codex");
+  const byokThread = makeThread({
+    modelSelection: { instanceId: byokInstanceId, model: "gemini-3.1-pro-preview" },
+    session: { ...readySession, providerName: "byok", providerInstanceId: byokInstanceId },
+    latestTurn: completedTurn,
+  });
+
+  it.each(["idle", "ready", "error", "stopped", "interrupted"] as const)(
+    "%s 状态保留历史并解除运行器锁定",
+    (status) => {
+      expect(
+        deriveLockedProvider({
+          thread: { ...byokThread, session: { ...byokThread.session!, status } },
+          selectedProvider: "codex",
+          threadProvider: "byok",
+        }),
+      ).toBeNull();
+    },
+  );
+
+  it.each(["running", "starting"] as const)("%s 状态仍锁定当前 BYOK 运行器", (status) => {
+    expect(
+      deriveLockedProvider({
+        thread: { ...byokThread, session: { ...byokThread.session!, status } },
+        selectedProvider: "codex",
+        threadProvider: "byok",
+      }),
+    ).toBe("byok");
+  });
+
+  it("启动请求已入队但会话尚未建立时仍锁定", () => {
+    expect(
+      deriveLockedProvider({
+        thread: {
+          ...byokThread,
+          session: null,
+          latestTurn: { ...completedTurn, state: "running", completedAt: null },
+        },
+        selectedProvider: "codex",
+        threadProvider: "byok",
+      }),
+    ).toBe("byok");
+  });
+
+  it("已有 Gemini 聊天选择 Codex 后，输入框采用新选择而非旧 BYOK 模型", () => {
+    const lockedProvider = deriveLockedProvider({
+      thread: byokThread,
+      selectedProvider: "codex",
+      threadProvider: "byok",
+    });
+    expect(lockedProvider).toBeNull();
+    const selectedProvider = lockedProvider ?? ProviderDriverKind.make("codex");
+    const providers = [
+      {
+        driver: ProviderDriverKind.make("byok"),
+        instanceId: byokInstanceId,
+        model: "gemini-3.1-pro-preview",
+      },
+      { driver: ProviderDriverKind.make("codex"), instanceId: codexInstanceId, model: "gpt-5.4" },
+    ].map(({ driver, instanceId, model }) => ({
+      driver,
+      instanceId,
+      enabled: true,
+      installed: true,
+      version: null,
+      status: "ready" as const,
+      auth: { status: "authenticated" as const },
+      checkedAt: now,
+      models: [{ slug: model, name: model, isCustom: false, capabilities: {} }],
+      slashCommands: [],
+      skills: [],
+    }));
+    expect(
+      deriveEffectiveComposerModelState({
+        draft: {
+          activeProvider: codexInstanceId,
+          modelSelectionByProvider: {
+            [codexInstanceId]: { instanceId: codexInstanceId, model: "gpt-5.4" },
+          },
+        },
+        providers,
+        selectedProvider,
+        selectedInstanceId: codexInstanceId,
+        threadModelSelection: byokThread.modelSelection,
+        projectModelSelection: null,
+        settings: DEFAULT_UNIFIED_SETTINGS,
+      }).selectedModel,
+    ).toBe("gpt-5.4");
+  });
+});
 
 describe("buildLoadingThreadFromShell", () => {
   it("preserves shell metadata and supplies empty detail collections", () => {

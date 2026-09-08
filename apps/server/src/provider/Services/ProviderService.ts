@@ -50,6 +50,11 @@ export interface ProviderServiceShape {
   readonly startSession: (
     threadId: ThreadId,
     input: ProviderSessionStartInput,
+    options?: {
+      /** 新运行器使用的只读历史引用；兼容的原生续聊不重复注入。 */
+      readonly conversationHistory?: string;
+      readonly freshConversation?: boolean;
+    },
   ) => Effect.Effect<ProviderSession, ProviderServiceError>;
 
   /**
@@ -99,6 +104,7 @@ export interface ProviderServiceShape {
    */
   readonly getCapabilities: (
     instanceId: ProviderInstanceId,
+    threadId?: ThreadId,
   ) => Effect.Effect<ProviderAdapterCapabilities, ProviderServiceError>;
 
   readonly getInstanceInfo: (

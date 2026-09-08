@@ -6,12 +6,12 @@ import * as NodeFS from "node:fs";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import { ChildProcessSpawner } from "effect/unstable/process";
 import { createModelSelection } from "@codework/shared/model";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import { expect } from "vite-plus/test";
 
 import { CursorSettings, ProviderInstanceId } from "@codework/contracts";
@@ -32,10 +32,39 @@ const CursorTextGenerationTestLayer = ServerConfig.ServerConfig.layerTest(proces
   prefix: "codework-cursor-text-generation-test-",
 }).pipe(Layer.provideMerge(NodeServices.layer));
 
-function makeAcpAgentWrapper(dir: string, env: Record<string, string>): string {
+function makeAcpAgentWrapper(
+  dir: string,
+  env: Record<string, string>,
+  platform: NodeJS.Platform,
+): string {
   const binDir = NodePath.join(dir, "bin");
   const agentPath = NodePath.join(binDir, "agent");
   NodeFS.mkdirSync(binDir, { recursive: true });
+  if (platform === "win32") {
+    // Windows 使用 cmd 启动 Node，测试配置在进程内注入，避免 shell 转义破坏 JSON。
+    const stubPath = NodePath.join(binDir, "agent-stub.mjs");
+    NodeFS.writeFileSync(
+      stubPath,
+      [
+        `Object.assign(process.env, ${JSON.stringify(env)});`,
+        `await import(${JSON.stringify(NodeURL.pathToFileURL(mockAgentPath).href)});`,
+      ].join("\n"),
+      "utf8",
+    );
+    const commandPath = `${agentPath}.cmd`;
+    NodeFS.writeFileSync(
+      commandPath,
+      [
+        "@echo off",
+        'if not "%~1"=="acp" exit /b 11',
+        `"${process.execPath}" "%~dp0agent-stub.mjs"`,
+        "exit /b %ERRORLEVEL%",
+        "",
+      ].join("\r\n"),
+      "utf8",
+    );
+    return commandPath;
+  }
   NodeFS.writeFileSync(
     agentPath,
     [
@@ -65,29 +94,11 @@ function withFakeAcpAgent<A, E, R>(
         NodeFS.rmSync(tempDir, { recursive: true, force: true });
       }),
     );
-    const agentPath = makeAcpAgentWrapper(tempDir, env);
+    const agentPath = makeAcpAgentWrapper(tempDir, env, yield* HostProcessPlatform);
     const config = decodeCursorSettings({ binaryPath: agentPath });
     const textGeneration = yield* makeCursorTextGeneration(config);
     return yield* effectFn(textGeneration);
   }).pipe(Effect.scoped);
-}
-
-function waitForFileContent(path: string): Effect.Effect<string> {
-  return Effect.gen(function* () {
-    const deadline = (yield* Clock.currentTimeMillis) + 5_000;
-    for (;;) {
-      const result = yield* Effect.exit(Effect.sync(() => NodeFS.readFileSync(path, "utf8")));
-      if (Exit.isSuccess(result)) {
-        return result.value;
-      }
-      {
-        if ((yield* Clock.currentTimeMillis) >= deadline) {
-          return yield* Effect.die(result.cause);
-        }
-      }
-      yield* Effect.sleep(25);
-    }
-  });
 }
 
 it.layer(CursorTextGenerationTestLayer)("CursorTextGeneration", (it) => {
@@ -236,41 +247,44 @@ it.layer(CursorTextGenerationTestLayer)("CursorTextGeneration", (it) => {
     ),
   );
 
-  it.effect("closes the ACP child process after text generation completes", () => {
-    const exitLogDir = NodeFS.mkdtempSync(
-      NodePath.join(NodeOS.tmpdir(), "codework-cursor-text-exit-log-"),
-    );
-    const exitLogPath = NodePath.join(exitLogDir, "exit.log");
+  it.effect("closes the ACP child process after text generation completes", () =>
+    Effect.gen(function* () {
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const handles: Array<ChildProcessSpawner.ChildProcessHandle> = [];
+      const observedSpawner = ChildProcessSpawner.make((command) =>
+        spawner
+          .spawn(command)
+          .pipe(Effect.tap((handle) => Effect.sync(() => handles.push(handle)))),
+      );
+      yield* withFakeAcpAgent(
+        {
+          CODEWORK_ACP_PROMPT_RESPONSE_TEXT:
+            '{"subject":"Close runtime after generation","body":""}',
+        },
+        (textGeneration) =>
+          Effect.gen(function* () {
+            const generated = yield* textGeneration.generateCommitMessage({
+              cwd: process.cwd(),
+              branch: "feature/cursor-runtime-close",
+              stagedSummary: "M apps/server/src/textGeneration/CursorTextGeneration.ts",
+              stagedPatch:
+                "diff --git a/apps/server/src/textGeneration/CursorTextGeneration.ts b/apps/server/src/textGeneration/CursorTextGeneration.ts",
+              modelSelection: {
+                instanceId: ProviderInstanceId.make("cursor"),
+                model: "composer-2",
+              },
+            });
 
-    return withFakeAcpAgent(
-      {
-        CODEWORK_ACP_EXIT_LOG_PATH: exitLogPath,
-        CODEWORK_ACP_PROMPT_RESPONSE_TEXT: JSON.stringify({
-          subject: "Close runtime after generation",
-          body: "",
-        }),
-      },
-      (textGeneration) =>
-        Effect.gen(function* () {
-          const generated = yield* textGeneration.generateCommitMessage({
-            cwd: process.cwd(),
-            branch: "feature/cursor-runtime-close",
-            stagedSummary: "M apps/server/src/textGeneration/CursorTextGeneration.ts",
-            stagedPatch:
-              "diff --git a/apps/server/src/textGeneration/CursorTextGeneration.ts b/apps/server/src/textGeneration/CursorTextGeneration.ts",
-            modelSelection: {
-              instanceId: ProviderInstanceId.make("cursor"),
-              model: "composer-2",
-            },
-          });
+            expect(generated.subject).toBe("Close runtime after generation");
 
-          expect(generated.subject).toBe("Close runtime after generation");
-
-          const exitLog = yield* waitForFileContent(exitLogPath);
-          expect(exitLog).toContain("exit:0");
-
-          NodeFS.rmSync(exitLogDir, { recursive: true, force: true });
-        }),
-    );
-  });
+            // 等待真实进程退出回执，兼容 Windows 不触发 SIGTERM 日志的终止方式。
+            expect(handles.length).toBeGreaterThan(0);
+            for (const handle of handles) {
+              yield* Effect.exit(handle.exitCode);
+              expect(yield* handle.isRunning).toBe(false);
+            }
+          }),
+      ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, observedSpawner));
+    }),
+  );
 });

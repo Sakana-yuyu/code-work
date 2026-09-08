@@ -1,5 +1,6 @@
 import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@codework/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+import { setCurrentLanguage } from "./i18n/runtime";
 import {
   applyProviderInstanceSettings,
   deriveProviderEntriesByEnvironment,
@@ -11,6 +12,8 @@ import {
   resolveSelectableProviderInstance,
   resolveProviderDriverKindForInstanceSelection,
 } from "./providerInstances";
+
+afterEach(() => setCurrentLanguage("zh-CN"));
 
 function provider(input: {
   provider: ProviderDriverKind;
@@ -96,6 +99,51 @@ describe("isProviderInstancePickerVisible", () => {
 });
 
 describe("applyProviderInstanceSettings", () => {
+  it("只翻译内置模型服务标签，保留显式名称与自定义实例名称", () => {
+    const entries = deriveProviderInstanceEntries([
+      provider({
+        provider: ProviderDriverKind.make("byok"),
+        instanceId: "byok",
+        displayName: "Custom model service",
+      }),
+      provider({
+        provider: ProviderDriverKind.make("byok"),
+        instanceId: "byok_personal",
+        displayName: "Personal model endpoint",
+      }),
+      provider({
+        provider: ProviderDriverKind.make("byok"),
+        instanceId: "byok_named",
+        displayName: "Custom model service",
+      }),
+    ]);
+    const settings = {
+      providerInstances: {
+        [ProviderInstanceId.make("byok_personal")]: {
+          driver: ProviderDriverKind.make("byok"),
+          displayName: "Personal model endpoint",
+          enabled: true,
+        },
+        [ProviderInstanceId.make("byok_named")]: {
+          driver: ProviderDriverKind.make("byok"),
+          displayName: "Custom model service",
+          enabled: true,
+        },
+      },
+      providers: {} as never,
+    };
+    for (const [language, expected] of [
+      ["en", "Custom model service"],
+      ["zh-CN", "自定义模型服务"],
+      ["ja", "カスタムモデルサービス"],
+    ] as const) {
+      setCurrentLanguage(language);
+      expect(
+        applyProviderInstanceSettings(entries, settings).map((entry) => entry.displayName),
+      ).toEqual([expected, "Personal model endpoint", "Custom model service"]);
+    }
+  });
+
   it("uses settings when a streamed snapshot still reports a disabled default as enabled", () => {
     const entries = deriveProviderInstanceEntries([
       provider({ provider: ProviderDriverKind.make("codex"), instanceId: "codex" }),
