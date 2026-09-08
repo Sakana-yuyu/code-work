@@ -571,11 +571,12 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       messages: ReadonlyArray<ByokChatMessage>,
       systemPrompt: string,
       toolBroker: ToolBroker["Service"],
+      isPlanMode: boolean,
     ) {
+      const runtimeMode = isPlanMode ? "approval-required" : ctx.session.runtimeMode;
       const projectTools = availableProjectTools.filter(
         (tool) =>
-          ctx.session.runtimeMode === "full-access" ||
-          BYOK_PROJECT_TOOL_NAMES.has(tool.canonicalToolName),
+          runtimeMode === "full-access" || BYOK_PROJECT_TOOL_NAMES.has(tool.canonicalToolName),
       );
       const effectiveMessages = yield* applyVisionDelegation(ctx, adapter, messages);
       const agentSystemPrompt = [
@@ -583,7 +584,9 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         "你正在 Code Work 中处理当前项目，可用操作以本轮工具清单为准。",
         `当前项目工作区根目录是：${ctx.cwd}`,
         "当用户要求审查、读取或分析代码时，先使用可用的工作区工具取得证据，不要声称没有项目上下文。",
-        "当用户要求创建或修改文件、执行命令时，使用本轮已授权工具完成操作。",
+        isPlanMode
+          ? "当前为计划模式，仅分析代码并给出计划，不执行文件修改或命令。"
+          : "当用户要求创建或修改文件、执行命令时，使用本轮已授权工具完成操作。",
       ]
         .filter((part) => part.trim().length > 0)
         .join("\n\n");
@@ -601,7 +604,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               compositionToolCapabilityId(tool.canonicalToolName),
             ),
             tools: projectTools,
-            runtimeMode: ctx.session.runtimeMode,
+            runtimeMode,
             onTextCheckpoint: (checkpoint) =>
               Effect.gen(function* () {
                 appendTurnItem(ctx, turnId, { type: "text", text: checkpoint.delta });
@@ -813,7 +816,15 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
 
       const turnEffect =
         options?.toolBroker !== undefined && text.length > 0 && attachments.length === 0
-          ? runAgentTurn(ctx, turnId, adapter, messages, systemPrompt, options.toolBroker)
+          ? runAgentTurn(
+              ctx,
+              turnId,
+              adapter,
+              messages,
+              systemPrompt,
+              options.toolBroker,
+              input.interactionMode === "plan",
+            )
           : runTurn(ctx, turnId, adapter, messages, systemPrompt);
       const fiber = yield* turnEffect.pipe(
         Effect.catchCause((cause) =>

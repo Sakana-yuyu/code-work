@@ -38,13 +38,14 @@ const sse = (...payloads: ReadonlyArray<unknown>): string =>
   [...payloads.map((payload) => `data: ${encodeJson(payload)}\n`), "data: [DONE]\n"].join("\n");
 
 describe("ByokAdapter", () => {
-  for (const runtimeMode of [
-    "full-access",
-    "approval-required",
-    "auto-accept-edits",
-    "auto",
+  for (const [runtimeMode, interactionMode] of [
+    ["full-access", "default"],
+    ["approval-required", "default"],
+    ["auto-accept-edits", "default"],
+    ["auto", "default"],
+    ["full-access", "plan"],
   ] as const) {
-    it.effect(`普通项目线程按 ${runtimeMode} 权限提供工具`, () => {
+    it.effect(`普通项目线程按 ${runtimeMode}/${interactionMode} 权限提供工具`, () => {
       const requests: Array<Record<string, unknown>> = [];
       const responses = [
         sse({
@@ -124,6 +125,7 @@ describe("ByokAdapter", () => {
         yield* adapter.sendTurn({
           threadId,
           input: "审查当前项目有什么问题",
+          interactionMode,
           modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
         });
         const events = Array.from(yield* Fiber.join(eventsFiber));
@@ -134,12 +136,12 @@ describe("ByokAdapter", () => {
         expect(invocations).toHaveLength(1);
         expect(invocations[0]).toMatchObject({
           canonicalToolName: "workspace.read_file",
-          runtimeMode,
+          runtimeMode: interactionMode === "plan" ? "approval-required" : runtimeMode,
           workspaceRoot,
           threadId,
           arguments: { cwd: workspaceRoot, relativePath: "README.md" },
         });
-        if (runtimeMode === "full-access") {
+        if (runtimeMode === "full-access" && interactionMode !== "plan") {
           expect(requests[0]).toMatchObject({
             tools: expect.arrayContaining([
               expect.objectContaining({
