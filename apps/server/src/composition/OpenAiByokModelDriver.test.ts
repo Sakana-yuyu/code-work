@@ -13,8 +13,9 @@ const decoder = new TextDecoder();
 const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 const encodeJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
-const makeClient = (sseText: string) => {
+const makeClient = (sseText: string | ReadonlyArray<string>) => {
   const captured: unknown[] = [];
+  let requestIndex = 0;
   const client = HttpClient.make((request) =>
     Effect.sync(() => {
       if (request.body instanceof HttpBody.Uint8Array) {
@@ -22,7 +23,10 @@ const makeClient = (sseText: string) => {
       }
       return HttpClientResponse.fromWeb(
         request,
-        new Response(sseText, { headers: { "content-type": "text/event-stream" } }),
+        new Response(
+          typeof sseText === "string" ? sseText : (sseText[requestIndex++] ?? sseText.at(-1)),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
       );
     }),
   );
@@ -232,7 +236,7 @@ describe("OpenAiByokModelDriver", () => {
 
   effectIt.effect("preserves output truncation as a non-retryable model error", () =>
     Effect.gen(function* () {
-      const { client } = makeClient(
+      const { client, captured } = makeClient(
         [
           'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}',
           "",
@@ -254,11 +258,179 @@ describe("OpenAiByokModelDriver", () => {
         reason: "output_truncated",
         retryable: false,
       });
+      expect(captured).toHaveLength(1);
+    }),
+  );
+
+  effectIt.effect("无可见输出的截断只恢复一次并保留成功请求的最终用量", () =>
+    Effect.gen(function* () {
+      const { client, captured } = makeClient([
+        'data: {"choices":[{"delta":{"reasoning_content":"思考中"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n',
+        [
+          'data: {"choices":[{"delta":{"content":"完成"},"finish_reason":"stop"}]}',
+          "",
+          'data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"completion_tokens_details":{"reasoning_tokens":10}}}',
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"),
+      ]);
+      const driver = makeOpenAiByokModelDriver(client, {
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "k",
+        modelId: "gpt",
+      });
+
+      const events = yield* Stream.runCollect(
+        driver.complete({ messages: [{ role: "user", content: "修复问题" }], tools: [], turn: 1 }),
+      );
+
+      expect(Array.from(events)).toEqual([
+        { type: "text_delta", text: "完成" },
+        {
+          type: "model_completed",
+          inputTokens: 100,
+          outputTokens: 20,
+          reasoningTokens: 10,
+          totalTokens: 120,
+        },
+      ]);
+      expect(captured).toHaveLength(2);
+      expect(captured[0]).not.toHaveProperty("max_tokens");
+      expect(captured[1]).toMatchObject({
+        max_tokens: 16_384,
+        messages: [{ role: "user", content: "修复问题" }],
+        stream_options: { include_usage: true },
+      });
+    }),
+  );
+
+  effectIt.effect("第二次无输出截断立即失败且不伪造完成事件", () =>
+    Effect.gen(function* () {
+      const { client, captured } = makeClient(
+        'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n',
+      );
+      const driver = makeOpenAiByokModelDriver(client, {
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "k",
+        modelId: "gpt",
+      });
+      const emitted: unknown[] = [];
+
+      const error = yield* Effect.flip(
+        driver.complete({ messages: [], tools: [], turn: 1 }).pipe(
+          Stream.runForEach((event) =>
+            Effect.sync(() => {
+              emitted.push(event);
+            }),
+          ),
+        ),
+      );
+
+      expect(error).toMatchObject({ reason: "output_truncated", retryable: false });
+      expect(captured).toHaveLength(2);
+      expect(emitted).toEqual([]);
+    }),
+  );
+
+  effectIt.effect("恢复输出预算不超过已知上下文窗口的一半", () =>
+    Effect.gen(function* () {
+      const { client, captured } = makeClient([
+        'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n',
+        'data: {"choices":[{"delta":{"content":"完成"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+      ]);
+      const driver = makeOpenAiByokModelDriver(client, {
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "k",
+        modelId: "gpt",
+        contextWindowTokens: 8_192,
+      });
+
+      yield* Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 }));
+
+      expect(captured).toHaveLength(2);
+      expect(captured[1]).toMatchObject({ max_tokens: 4_096 });
+    }),
+  );
+
+  effectIt.effect("供应商拒绝恢复输出参数时保留请求错误且不继续重试", () =>
+    Effect.gen(function* () {
+      let calls = 0;
+      const client = HttpClient.make((request) =>
+        Effect.sync(() =>
+          HttpClientResponse.fromWeb(
+            request,
+            ++calls === 1
+              ? new Response(
+                  'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n',
+                  { headers: { "content-type": "text/event-stream" } },
+                )
+              : new Response('{"error":{"message":"max_tokens exceeds output limit"}}', {
+                  status: 400,
+                  headers: { "content-type": "application/json" },
+                }),
+          ),
+        ),
+      );
+      const driver = makeOpenAiByokModelDriver(client, {
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "k",
+        modelId: "gpt",
+      });
+
+      const error = yield* Effect.flip(
+        Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 })),
+      );
+
+      expect(error).toMatchObject({ reason: "invalid_request", retryable: false });
+      expect(error.detail).toContain("exceeds output limit");
+      expect(calls).toBe(2);
     }),
   );
 });
 
 describe("ByokModelDriver", () => {
+  effectIt.effect("已经发出工具调用的流截断后不重放请求", () =>
+    Effect.gen(function* () {
+      const { client, captured } = makeClient(
+        [
+          'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"workspace.write_file","args":{"text":"内容"}}}]}}]}',
+          "",
+          'data: {"candidates":[{"content":{"parts":[]},"finishReason":"MAX_TOKENS"}]}',
+          "",
+        ].join("\n"),
+      );
+      const driver = makeByokModelDriver(client, {
+        protocol: "gemini",
+        baseURL: "https://generativelanguage.googleapis.com",
+        apiKey: "k",
+        modelId: "gemini-2.5-pro",
+      });
+      const emitted: unknown[] = [];
+
+      const error = yield* Effect.flip(
+        driver.complete({ messages: [], tools: [], turn: 1 }).pipe(
+          Stream.runForEach((event) =>
+            Effect.sync(() => {
+              emitted.push(event);
+            }),
+          ),
+        ),
+      );
+
+      expect(error).toMatchObject({ reason: "output_truncated", retryable: false });
+      expect(captured).toHaveLength(1);
+      expect(emitted).toEqual([
+        {
+          type: "tool_call",
+          toolCallId: "gemini-tool-workspace.write_file",
+          canonicalToolName: "workspace.write_file",
+          arguments: { text: "内容" },
+        },
+      ]);
+    }),
+  );
+
   effectIt.effect("maps Anthropic tool calls and sends canonical tool results", () =>
     Effect.gen(function* () {
       const { client, captured } = makeClient(

@@ -264,11 +264,18 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       usage: ByokTokenUsage,
     ) {
       const activeTokens =
-        usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
-      if (activeTokens <= 0) return;
+        usage.totalTokens ??
+        (usage.inputTokens !== undefined && usage.outputTokens !== undefined
+          ? usage.inputTokens + usage.outputTokens
+          : undefined);
+      if (activeTokens === undefined || !Number.isSafeInteger(activeTokens) || activeTokens < 0)
+        return;
 
-      const maxTokens = Math.max(1, Math.trunc(adapter.contextWindowTokens));
-      const usedTokens = Math.min(activeTokens, maxTokens);
+      const maxTokens =
+        Number.isSafeInteger(adapter.contextWindowTokens) && adapter.contextWindowTokens > 0
+          ? adapter.contextWindowTokens
+          : undefined;
+      const usedTokens = activeTokens;
       ctx.totalProcessedTokens += activeTokens;
       yield* emit({
         ...(yield* makeEventStamp()),
@@ -279,7 +286,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         payload: {
           usage: {
             usedTokens,
-            maxTokens,
+            ...(maxTokens === undefined ? {} : { maxTokens }),
             ...(ctx.totalProcessedTokens > usedTokens
               ? { totalProcessedTokens: ctx.totalProcessedTokens }
               : {}),
@@ -630,6 +637,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             baseURL: adapter.baseURL,
             apiKey: adapter.apiKey,
             modelId: adapter.modelId,
+            contextWindowTokens: adapter.contextWindowTokens,
             systemPrompt: agentSystemPrompt,
           }),
           toolBroker,

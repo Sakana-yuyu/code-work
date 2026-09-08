@@ -177,6 +177,7 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
                 baseURL: modelAdapter.baseURL,
                 apiKey: modelAdapter.apiKey,
                 modelId: modelAdapter.modelId,
+                contextWindowTokens: modelAdapter.contextWindowTokens,
                 ...(signal === undefined ? {} : { signal }),
               }),
             );

@@ -419,6 +419,23 @@ describe("byokChatClient provider errors", () => {
 });
 
 describe("byokChatClient usage metadata", () => {
+  it("Gemini 总量缺失时包含思考用量且不重复加缓存", async () => {
+    const { client } = makeClient(
+      'data: {"candidates":[{"content":{"parts":[{"text":"done"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":20,"thoughtsTokenCount":30,"cachedContentTokenCount":40}}\n\n',
+    );
+    await expect(
+      runEvents(client, { ...baseErrorInput, protocol: "gemini" }),
+    ).resolves.toContainEqual({
+      type: "completed",
+      finishReason: "STOP",
+      inputTokens: 100,
+      outputTokens: 20,
+      reasoningTokens: 30,
+      cachedInputTokens: 40,
+      totalTokens: 150,
+    });
+  });
+
   it("保留 OpenAI 流终态中的真实生成 token 数", async () => {
     const { client } = makeClient(
       [
@@ -434,10 +451,10 @@ describe("byokChatClient usage metadata", () => {
     ]);
   });
 
-  it("在测速模式下读取 finish 后的 OpenAI usage chunk", async () => {
+  it("合并 finish 后的 OpenAI usage chunk 并只完成一次", async () => {
     const { client } = makeClient(
       [
-        'data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}',
+        'data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}],"usage":{"prompt_tokens":120,"completion_tokens":42,"total_tokens":162}}',
         "",
         'data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":42,"total_tokens":162,"prompt_tokens_details":{"cached_tokens":20}}}',
         "",
@@ -447,7 +464,6 @@ describe("byokChatClient usage metadata", () => {
     );
     await expect(runEvents(client, { ...baseErrorInput, includeUsage: true })).resolves.toEqual([
       { type: "text", text: "done" },
-      { type: "completed", finishReason: "stop" },
       {
         type: "completed",
         finishReason: "stop",
@@ -462,7 +478,7 @@ describe("byokChatClient usage metadata", () => {
   it("读取 Anthropic message_delta 中的真实生成 token 数", async () => {
     const { client } = makeClient(
       [
-        'data: {"type":"message_start","message":{"usage":{"input_tokens":120,"cache_read_input_tokens":20}}}',
+        'data: {"type":"message_start","message":{"usage":{"input_tokens":120,"cache_read_input_tokens":20,"cache_creation_input_tokens":30}}}',
         "",
         'data: {"type":"content_block_delta","delta":{"text":"done"}}',
         "",
@@ -482,7 +498,7 @@ describe("byokChatClient usage metadata", () => {
     ).resolves.toContainEqual({
       type: "completed",
       finishReason: "end_turn",
-      inputTokens: 120,
+      inputTokens: 170,
       cachedInputTokens: 20,
       outputTokens: 37,
     });

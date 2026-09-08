@@ -170,9 +170,9 @@ export interface ByokStreamChatInput {
   readonly systemPrompt?: string | undefined;
   /** Optional abort signal; when it fires the stream ends immediately. */
   readonly signal?: AbortSignal | undefined;
-  /** 测速时允许读取 OpenAI 的终态 usage chunk；普通对话保持原有终态语义。 */
+  /** 读取 OpenAI finish 后的 usage chunk，合并后只上报一次完成事件。 */
   readonly includeUsage?: boolean | undefined;
-  /** 独立测速的输出上限；普通对话不设置此字段，保持供应商默认行为。 */
+  /** 单次请求的输出预算；未指定时沿用供应商默认值。 */
   readonly maxOutputTokens?: number | undefined;
 }
 
@@ -655,7 +655,8 @@ type AnthropicStreamEvent = ByokChatEvent | AnthropicToolCallJsonEvent | ByokStr
 type OpenAiStreamState = {
   readonly toolCalls: OpenAiToolCallAccumulator;
   readonly terminalSeen: boolean;
-  readonly terminalFinishReason?: string;
+  readonly pendingCompletion?: Extract<ByokChatEvent, { readonly type: "completed" }> | undefined;
+  readonly usage?: ByokTokenUsage | undefined;
   readonly toolNames: ReadonlyMap<string, string>;
 };
 
@@ -726,7 +727,7 @@ const terminalEventForFinishReason = (
 };
 
 const nonNegativeInteger = (value: unknown): number | undefined =>
-  typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 
 const usageFromPayload = (
   protocol: ByokModelAdapter["protocol"],
@@ -747,7 +748,7 @@ const usageFromPayload = (
           ? payload.usageMetadata
           : undefined;
   if (usage === undefined) return undefined;
-  const inputTokens = nonNegativeInteger(
+  const uncachedInputTokens = nonNegativeInteger(
     protocol === "openai"
       ? usage.prompt_tokens
       : protocol === "anthropic"
@@ -776,16 +777,29 @@ const usageFromPayload = (
         ? usage.cache_read_input_tokens
         : usage.cachedContentTokenCount,
   );
+  const inputTokens =
+    protocol === "anthropic" && uncachedInputTokens !== undefined
+      ? nonNegativeInteger(
+          uncachedInputTokens +
+            (cachedInputTokens ?? 0) +
+            (nonNegativeInteger(usage.cache_creation_input_tokens) ?? 0),
+        )
+      : uncachedInputTokens;
   const reasoningTokens = nonNegativeInteger(
     protocol === "openai" ? details?.reasoning_tokens : usage.thoughtsTokenCount,
   );
-  const totalTokens = nonNegativeInteger(
+  const reportedTotalTokens = nonNegativeInteger(
     protocol === "openai"
       ? usage.total_tokens
       : protocol === "gemini"
         ? usage.totalTokenCount
         : undefined,
   );
+  const totalTokens =
+    reportedTotalTokens ??
+    (protocol === "gemini" && inputTokens !== undefined && outputTokens !== undefined
+      ? nonNegativeInteger(inputTokens + outputTokens + (reasoningTokens ?? 0))
+      : undefined);
   return inputTokens === undefined &&
     cachedInputTokens === undefined &&
     outputTokens === undefined &&
@@ -1336,20 +1350,22 @@ export const streamChat = (
     }),
     (state, item): readonly [OpenAiStreamState, ReadonlyArray<OpenAiStreamEvent>] => {
       if (state.terminalSeen) {
-        if (input.includeUsage !== true || item.type !== "payload") return [state, []];
-        const usage = usageFromPayload("openai", item.payload);
-        return usage === undefined
-          ? [state, []]
-          : [
-              state,
-              [
-                {
-                  type: "completed",
-                  finishReason: state.terminalFinishReason ?? "stop",
-                  ...usage,
+        if (state.pendingCompletion === undefined) return [state, []];
+        if (item.type === "done" || item.type === "eof") {
+          return [{ ...state, pendingCompletion: undefined }, [state.pendingCompletion]];
+        }
+        return item.type === "payload"
+          ? [
+              {
+                ...state,
+                pendingCompletion: {
+                  ...state.pendingCompletion,
+                  ...usageFromPayload("openai", item.payload),
                 },
-              ],
-            ];
+              },
+              [],
+            ]
+          : [state, []];
       }
       if (item.type !== "payload") {
         return [{ ...state, terminalSeen: true }, [missingTerminalEvent("openai")]];
@@ -1369,31 +1385,32 @@ export const streamChat = (
         });
       }
       const events = eventsFromSsePayload("openai", item.payload);
+      const usage = { ...state.usage, ...usageFromPayload("openai", item.payload) };
       const finishReason = openAiFinishReason(item.payload);
       if (finishReason === undefined) {
-        return [{ toolCalls, terminalSeen: false, toolNames: state.toolNames }, events];
+        return [{ ...state, toolCalls, usage }, events];
       }
 
       const normalizedFinishReason =
         toolCalls.size > 0 && finishReason.trim().toLowerCase() === "stop"
           ? "tool_calls"
           : finishReason;
-      const terminalEvent = terminalEventForFinishReason(
-        "openai",
-        normalizedFinishReason,
-        usageFromPayload("openai", item.payload),
-      );
+      const terminalEvent = terminalEventForFinishReason("openai", normalizedFinishReason, usage);
+      const pendingCompletion =
+        input.includeUsage === true && terminalEvent.type === "completed"
+          ? terminalEvent
+          : undefined;
       return [
         {
           toolCalls: new Map(),
           terminalSeen: true,
-          terminalFinishReason: normalizedFinishReason,
+          pendingCompletion,
           toolNames: state.toolNames,
         },
         [
           ...events,
           ...(terminalEvent.type === "completed" ? openaiToolCallJsonEvents(toolCalls) : []),
-          terminalEvent,
+          ...(pendingCompletion === undefined ? [terminalEvent] : []),
         ],
       ];
     },

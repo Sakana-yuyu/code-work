@@ -705,6 +705,76 @@ describe("ByokAgentLoop", () => {
     }),
   );
 
+  for (const truncatedFirst of [true, false]) {
+    it.effect(`${truncatedFirst ? "截断续写后" : "已有正文后"}上下文溢出不重新回答`, () =>
+      Effect.gen(function* () {
+        let modelCalls = 0;
+        let brokerCalls = 0;
+        const checkpoints: Array<{ readonly delta: string; readonly chunkIndex: number }> = [];
+        const broker = ToolBroker.ToolBroker.of({
+          invoke: (input) =>
+            Effect.sync(() => {
+              brokerCalls += 1;
+              return makeResult(input);
+            }),
+          cancel: () => Effect.void,
+        });
+        const contextError = new ByokAgentModelError({
+          code: "context_overflow",
+          reason: "context_overflow",
+          detail: "context too large",
+          retryable: true,
+        });
+        const model: ByokAgentModelDriver = {
+          complete: () => {
+            modelCalls += 1;
+            if (modelCalls === 1) {
+              return Stream.succeed({ type: "text_delta" as const, text: "A" }).pipe(
+                Stream.concat(
+                  Stream.fail(
+                    truncatedFirst
+                      ? new ByokAgentModelError({
+                          code: "byok_engine_error",
+                          reason: "output_truncated",
+                          detail: "output truncated",
+                        })
+                      : contextError,
+                  ),
+                ),
+              );
+            }
+            if (truncatedFirst && modelCalls === 2) return Stream.fail(contextError);
+            return Stream.fromIterable([
+              { type: "text_delta" as const, text: "重新回答" },
+              { type: "model_completed" as const },
+            ]);
+          },
+        };
+
+        const error = yield* Effect.flip(
+          runByokAgentLoop(
+            {
+              ...baseInput,
+              onTextCheckpoint: (checkpoint) =>
+                Effect.sync(() => {
+                  checkpoints.push(checkpoint);
+                }),
+            },
+            model,
+            broker,
+          ),
+        );
+
+        expect(error).toBe(contextError);
+        expect(modelCalls).toBe(truncatedFirst ? 2 : 1);
+        expect(checkpoints).toEqual([
+          { turn: 1, chunkIndex: 0, delta: "A", cumulativeUtf8Bytes: 1 },
+        ]);
+        expect(brokerCalls).toBe(0);
+      }),
+    );
+  }
+
   for (const reason of ["output_truncated", "terminal_event_missing"] as const) {
     it.effect(`${reason} 即使误标为可重试也不会重放请求`, () =>
       Effect.gen(function* () {

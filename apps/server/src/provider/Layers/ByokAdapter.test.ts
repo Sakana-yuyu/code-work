@@ -59,10 +59,14 @@ describe("ByokAdapter", () => {
             finish_reason: "tool_calls",
           },
         ],
+        usage: { prompt_tokens: 1_200, completion_tokens: 10, total_tokens: 1_210 },
       }),
       sse(
         { choices: [{ delta: { content: "已读取仓库代码，开始审查。" }, finish_reason: null }] },
-        { choices: [{ delta: {}, finish_reason: "stop" }] },
+        {
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 1_210, completion_tokens: 20, total_tokens: 1_230 },
+        },
       ),
     ];
     const httpClient = HttpClient.make((request) =>
@@ -118,6 +122,9 @@ describe("ByokAdapter", () => {
       });
       const events = Array.from(yield* Fiber.join(eventsFiber));
 
+      const usageEvents = events.filter((event) => event.type === "thread.token-usage.updated");
+      expect(usageEvents.map((event) => event.payload.usage.usedTokens)).toEqual([1_210, 1_230]);
+      expect(usageEvents[1]?.payload.usage.totalProcessedTokens).toBe(2_440);
       expect(invocations).toHaveLength(1);
       expect(invocations[0]).toMatchObject({
         canonicalToolName: "workspace.read_file",
@@ -161,7 +168,10 @@ describe("ByokAdapter", () => {
     const responses = [
       sse(
         { choices: [{ delta: { content: "看图回答。", finish_reason: null } }] },
-        { choices: [{ delta: {}, finish_reason: "stop" }] },
+        {
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
+        },
       ),
     ];
     const httpClient = HttpClient.make((request) =>
@@ -210,6 +220,13 @@ describe("ByokAdapter", () => {
 
       const headerRequestId = capturedHeaders[0]?.["x-request-id"];
       expect(headerRequestId).toBeTruthy();
+      expect(events.filter((event) => event.type === "thread.token-usage.updated")).toMatchObject([
+        {
+          payload: {
+            usage: { usedTokens: 120, maxTokens: 128_000, inputTokens: 100, outputTokens: 20 },
+          },
+        },
+      ]);
       expect(events).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -231,96 +248,128 @@ describe("ByokAdapter", () => {
     );
   });
 
-  it.effect("BYOK Agent 把供应商用量上报为上下文窗口活动", () => {
-    const requests: Array<Record<string, unknown>> = [];
-    const httpClient = HttpClient.make((request) =>
-      Effect.sync(() => {
-        if (request.body instanceof HttpBody.Uint8Array) {
-          requests.push(decodeJson(decoder.decode(request.body.body)) as Record<string, unknown>);
-        }
-        return HttpClientResponse.fromWeb(
-          request,
-          new Response(
-            sse(
-              { choices: [{ delta: { content: "完成。" }, finish_reason: null }] },
-              { choices: [{ delta: {}, finish_reason: "stop" }] },
-              {
-                choices: [],
-                usage: {
-                  prompt_tokens: 1_200,
-                  completion_tokens: 300,
-                  total_tokens: 1_500,
-                  prompt_tokens_details: { cached_tokens: 200 },
+  for (const usageCase of [
+    {
+      name: "完整用量",
+      usage: {
+        prompt_tokens: 1_200,
+        completion_tokens: 300,
+        total_tokens: 1_500,
+        prompt_tokens_details: { cached_tokens: 200 },
+      },
+      contextWindowTokens: 128_000,
+      usedTokens: 1_500,
+    },
+    {
+      name: "只有输出时不伪造上下文",
+      usage: { completion_tokens: 300 },
+      contextWindowTokens: 128_000,
+      usedTokens: undefined,
+    },
+    {
+      name: "无效容量仍保留真实用量",
+      usage: { prompt_tokens: 1_200, completion_tokens: 300 },
+      contextWindowTokens: 0,
+      usedTokens: 1_500,
+    },
+    {
+      name: "保留零用量",
+      usage: { prompt_tokens: 0, completion_tokens: 0 },
+      contextWindowTokens: 128_000,
+      usedTokens: 0,
+    },
+  ]) {
+    it.effect(`BYOK Agent 上报上下文窗口活动：${usageCase.name}`, () => {
+      const requests: Array<Record<string, unknown>> = [];
+      const httpClient = HttpClient.make((request) =>
+        Effect.sync(() => {
+          if (request.body instanceof HttpBody.Uint8Array) {
+            requests.push(decodeJson(decoder.decode(request.body.body)) as Record<string, unknown>);
+          }
+          return HttpClientResponse.fromWeb(
+            request,
+            new Response(
+              sse(
+                { choices: [{ delta: { content: "完成。" }, finish_reason: null }] },
+                { choices: [{ delta: {}, finish_reason: "stop" }], usage: usageCase.usage },
+                {
+                  choices: [],
+                  usage: usageCase.usage,
                 },
-              },
+              ),
+              { headers: { "content-type": "text/event-stream" } },
             ),
-            { headers: { "content-type": "text/event-stream" } },
-          ),
-        );
-      }),
-    );
-    const toolBroker = ToolBroker.ToolBroker.of({
-      invoke: (input) =>
-        Effect.succeed({
-          invocationId: `invocation-${input.toolCallId}`,
-          taskId: input.taskId,
-          runId: input.runId,
-          toolCallId: input.toolCallId,
-          canonicalToolName: input.canonicalToolName,
-          status: "succeeded" as const,
-          result: {},
-          startedAtUnixMs: 1,
-          finishedAtUnixMs: 2,
+          );
         }),
-      cancel: () => Effect.void,
-    });
-
-    return Effect.gen(function* () {
-      const adapter = yield* makeByokAdapter(settings, { instanceId, toolBroker });
-      const eventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.takeUntil((event) => event.type === "turn.completed"),
-        Stream.runCollect,
-        Effect.forkScoped,
       );
-      yield* adapter.startSession({
-        threadId,
-        cwd: workspaceRoot,
-        runtimeMode: "full-access",
-        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
-      });
-      yield* adapter.sendTurn({
-        threadId,
-        input: "回答问题",
-        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
-      });
-      const events = Array.from(yield* Fiber.join(eventsFiber));
-
-      expect(requests[0]).toMatchObject({ stream_options: { include_usage: true } });
-      expect(events).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            type: "thread.token-usage.updated",
-            payload: {
-              usage: {
-                usedTokens: 1_500,
-                maxTokens: 128_000,
-                inputTokens: 1_200,
-                cachedInputTokens: 200,
-                outputTokens: 300,
-                lastUsedTokens: 1_500,
-                lastInputTokens: 1_200,
-                lastCachedInputTokens: 200,
-                lastOutputTokens: 300,
-              },
-            },
+      const toolBroker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.succeed({
+            invocationId: `invocation-${input.toolCallId}`,
+            taskId: input.taskId,
+            runId: input.runId,
+            toolCallId: input.toolCallId,
+            canonicalToolName: input.canonicalToolName,
+            status: "succeeded" as const,
+            result: {},
+            startedAtUnixMs: 1,
+            finishedAtUnixMs: 2,
           }),
-        ]),
+        cancel: () => Effect.void,
+      });
+
+      return Effect.gen(function* () {
+        const adapter = yield* makeByokAdapter(
+          {
+            ...settings,
+            adapters: settings.adapters.map((adapter) => ({
+              ...adapter,
+              contextWindowTokens: usageCase.contextWindowTokens,
+            })),
+          },
+          { instanceId, toolBroker },
+        );
+        const eventsFiber = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "turn.completed"),
+          Stream.runCollect,
+          Effect.forkScoped,
+        );
+        yield* adapter.startSession({
+          threadId,
+          cwd: workspaceRoot,
+          runtimeMode: "full-access",
+          modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+        });
+        yield* adapter.sendTurn({
+          threadId,
+          input: "回答问题",
+          modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+        });
+        const events = Array.from(yield* Fiber.join(eventsFiber));
+
+        expect(requests[0]).toMatchObject({ stream_options: { include_usage: true } });
+        const usageEvents = events.filter((event) => event.type === "thread.token-usage.updated");
+        if (usageCase.usedTokens === undefined) {
+          expect(usageEvents).toEqual([]);
+        } else {
+          expect(usageEvents).toHaveLength(1);
+          expect(usageEvents[0]?.payload.usage).toMatchObject({
+            usedTokens: usageCase.usedTokens,
+            lastUsedTokens: usageCase.usedTokens,
+            inputTokens: usageCase.usage.prompt_tokens,
+            outputTokens: usageCase.usage.completion_tokens,
+          });
+          expect(usageEvents[0]?.payload.usage.maxTokens).toBe(
+            usageCase.contextWindowTokens || undefined,
+          );
+          expect(usageEvents[0]?.payload.usage.totalProcessedTokens).toBeUndefined();
+        }
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-test-" })),
+        Effect.provideService(HttpClient.HttpClient, httpClient),
+        Effect.provide(NodeServices.layer),
       );
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-test-" })),
-      Effect.provideService(HttpClient.HttpClient, httpClient),
-      Effect.provide(NodeServices.layer),
-    );
-  });
+    });
+  }
 });

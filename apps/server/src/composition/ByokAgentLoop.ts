@@ -364,7 +364,12 @@ export const runByokAgentLoop = (
       let modelMessages = compactedMessages;
       let completion = yield* complete(modelMessages);
       while (completion._tag === "failed") {
-        if (completion.error.code === "context_overflow" && !contextOverflowRecoveryUsed) {
+        if (
+          completion.error.code === "context_overflow" &&
+          !contextOverflowRecoveryUsed &&
+          !outputTruncationRecoveryUsed &&
+          !completion.sawOutput
+        ) {
           contextOverflowRecoveryUsed = true;
           modelMessages = contextOverflowRecoveryMessages(messages);
           messages.splice(0, messages.length, ...modelMessages);
@@ -390,6 +395,7 @@ export const runByokAgentLoop = (
         const canceled =
           completion.error.reason === "canceled" || completion.error.code === "canceled";
         const terminalFailure =
+          completion.error.code === "context_overflow" ||
           completion.error.reason === "output_truncated" ||
           completion.error.reason === "terminal_event_missing";
         if (
