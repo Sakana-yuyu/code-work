@@ -29,7 +29,7 @@ import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import { t } from "../i18n.js";
 import { normalizeDesktopUpdateReleaseNotes } from "./releaseNotes.ts";
-import { resolveDefaultDesktopUpdateChannel } from "./updateChannels.ts";
+import { isBattleDesktopVersion, resolveDefaultDesktopUpdateChannel } from "./updateChannels.ts";
 import {
   createInitialDesktopUpdateState,
   reduceDesktopUpdateStateOnCheckFailure,
@@ -339,16 +339,25 @@ export const make = Effect.gen(function* () {
     channel: DesktopUpdateChannel,
   ) {
     yield* Effect.annotateCurrentSpan({ channel });
-    const allowsPrerelease = channel === "nightly";
-    yield* electronUpdater.setChannel(channel);
+    // 测试版（X.Y.Z-battle）跟随测试线：electron-updater 的 GitHub feed 只把
+    // updater.channel 等于版本预发布段的 Release 当作候选（GitHubProvider 的
+    // isNextPreRelease 分支），channel 停在 latest 会连候选都选不出来；
+    // battle.yml 不存在时靠 allowPrerelease 的 latest.yml 回退读清单，与
+    // nightly 走 nightly.yml→latest.yml 回退是同一条已验证路径。
+    const isNightly = channel === "nightly";
+    const updaterChannel: string =
+      !isNightly && isBattleDesktopVersion(environment.appVersion) ? "battle" : channel;
+    const allowsPrerelease = isNightly || updaterChannel === "battle";
+    yield* electronUpdater.setChannel(updaterChannel);
     yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
-    yield* electronUpdater.setAllowDowngrade(allowsPrerelease);
-    yield* electronUpdater.setFullChangelog(allowsPrerelease);
+    yield* electronUpdater.setAllowDowngrade(isNightly);
+    yield* electronUpdater.setFullChangelog(isNightly);
     yield* logUpdaterInfo("using update channel", {
       channel,
+      updaterChannel,
       allowPrerelease: allowsPrerelease,
-      allowDowngrade: allowsPrerelease,
-      fullChangelog: allowsPrerelease,
+      allowDowngrade: isNightly,
+      fullChangelog: isNightly,
     });
   });
 

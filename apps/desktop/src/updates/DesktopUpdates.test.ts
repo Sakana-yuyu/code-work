@@ -34,6 +34,7 @@ interface UpdatesHarnessOptions {
   readonly setDisableDifferentialDownload?: Effect.Effect<void>;
   readonly stopBackend?: Effect.Effect<void>;
   readonly env?: Record<string, string | undefined>;
+  readonly appVersion?: string;
 }
 
 const flushCallbacks = Effect.yieldNow;
@@ -42,6 +43,8 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
   let checkCount = 0;
   let allowDowngrade = false;
   let fullChangelog = false;
+  const updaterChannels: string[] = [];
+  const allowPrereleaseValues: boolean[] = [];
   const feedUrls: ElectronUpdater.ElectronUpdaterFeedUrl[] = [];
   const listeners = new Map<string, Set<(...args: readonly unknown[]) => void>>();
   const sentStates: DesktopUpdateState[] = [];
@@ -70,8 +73,14 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
       }),
     setAutoDownload: () => Effect.void,
     setAutoInstallOnAppQuit: () => Effect.void,
-    setChannel: () => Effect.void,
-    setAllowPrerelease: () => Effect.void,
+    setChannel: (channel) =>
+      Effect.sync(() => {
+        updaterChannels.push(channel);
+      }),
+    setAllowPrerelease: (value) =>
+      Effect.sync(() => {
+        allowPrereleaseValues.push(value);
+      }),
     allowDowngrade: Effect.sync(() => allowDowngrade),
     setAllowDowngrade: (value) =>
       Effect.sync(() => {
@@ -137,7 +146,7 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
     homeDirectory: `/tmp/codework-desktop-updates-home-${process.pid}`,
     platform: "darwin",
     processArch: "x64",
-    appVersion: "1.2.3",
+    appVersion: options.appVersion ?? "1.2.3",
     appPath: "/repo",
     isPackaged: true,
     resourcesPath: "/missing/resources",
@@ -215,6 +224,8 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
     checkCount: () => checkCount,
     feedUrls: () => feedUrls,
     fullChangelog: () => fullChangelog,
+    updaterChannels: () => updaterChannels,
+    allowPrereleaseValues: () => allowPrereleaseValues,
     listenerCount: () =>
       Array.from(listeners.values()).reduce(
         (total, eventListeners) => total + eventListeners.size,
@@ -355,6 +366,44 @@ describe("DesktopUpdates", () => {
           },
         ]);
         assert.deepEqual(harness.sentStates.at(-1)?.releaseNotes, state.releaseNotes);
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("configures a battle build to follow newer battle releases", () => {
+    const harness = makeHarness({ appVersion: "1.2.4-battle" });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+
+        // 测试版落在 latest 通道，但 updater 需要切到版本预发布段才能被
+        // GitHub feed 的预发布匹配选中，并放行预发布更新。
+        assert.deepEqual(harness.updaterChannels(), ["battle"]);
+        assert.deepEqual(harness.allowPrereleaseValues(), [true]);
+        assert.equal(harness.fullChangelog(), false);
+
+        harness.emit("update-available", { version: "1.2.5-battle" });
+        yield* flushCallbacks;
+
+        const state = yield* updates.getState;
+        assert.equal(state.status, "available");
+        assert.equal(state.availableVersion, "1.2.5-battle");
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("keeps stable builds pinned to the stable feed", () => {
+    const harness = makeHarness();
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+
+        assert.deepEqual(harness.updaterChannels(), ["latest"]);
+        assert.deepEqual(harness.allowPrereleaseValues(), [false]);
       }),
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });

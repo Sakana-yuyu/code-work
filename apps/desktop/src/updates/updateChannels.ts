@@ -2,8 +2,14 @@ import type { DesktopUpdateChannel } from "@codework/contracts";
 
 const NIGHTLY_VERSION_PATTERN = /-nightly\.\d{8}\.\d+$/;
 
+const BATTLE_VERSION_PATTERN = /-battle$/;
+
 export function isNightlyDesktopVersion(version: string): boolean {
   return NIGHTLY_VERSION_PATTERN.test(version);
+}
+
+export function isBattleDesktopVersion(version: string): boolean {
+  return BATTLE_VERSION_PATTERN.test(version);
 }
 
 export function resolveDefaultDesktopUpdateChannel(appVersion: string): DesktopUpdateChannel {
