@@ -36,6 +36,7 @@ import {
   onIdeSocketClose,
   relayoutWorkbenchPart,
   revealRemoteFile,
+  showWorkbenchTerminal,
   setRemoteWorkspaceFolder,
   trackActiveEditorSelection,
   type VscodeIdeRuntime,
@@ -46,6 +47,7 @@ import {
   codeossWorkbenchCommands,
   type CodeossCommand,
 } from "../codeossCommands";
+import { revealTerminalPanel } from "./panelVisibility";
 
 const openIde = createEnvironmentRpcCommand(connectionAtomRuntime, {
   label: "ide.open",
@@ -152,12 +154,18 @@ export default function VscodeWorkbench(props: {
       proxyOrigin: proxyOriginFromBaseUrl(baseUrl),
       onThemeSelected,
       onThemeSyncError: reportThemeSyncError,
-    }).then((runtime) => {
-      if (!cancelled) {
-        runtimeRef.current = runtime;
-        setBootstrapped(true);
-      }
-    });
+    })
+      .then((runtime) => {
+        if (!cancelled) {
+          runtimeRef.current = runtime;
+          setBootstrapped(true);
+        }
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        console.error("[codework-ide] workbench bootstrap failed", error);
+        setStatus({ phase: "error", message: t("ide.connectionFailed") });
+      });
     return () => {
       cancelled = true;
     };
@@ -289,6 +297,19 @@ export default function VscodeWorkbench(props: {
       window.removeEventListener("resize", relayoutAll);
       for (const disposable of disposables) disposable.dispose();
     };
+  }, [bootstrapped]);
+
+  // IDE 模式默认展示底部终端，保持 VS Code 工作区的主编辑区、文件树和
+  // 终端三块结构；对话模式不会挂载这个组件，因此不会改变对话布局。
+  useEffect(() => {
+    if (!bootstrapped || isPartVisibile(Parts.PANEL_PART)) return;
+    void revealTerminalPanel(false, showWorkbenchTerminal)
+      .then((revealed) => {
+        if (revealed) setPanelVisible(true);
+      })
+      .catch((error: unknown) => {
+        console.error("[codework-ide] terminal panel reveal failed", error);
+      });
   }, [bootstrapped]);
 
   // Workspace intents (header buttons, sidebar toggle) arrive as window

@@ -22,7 +22,10 @@ import { workbenchResourceUri } from "./resourceUri";
 import { registerExtension, ExtensionHostKind } from "@codingame/monaco-vscode-api/extensions";
 import { ColorThemeData } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/themes/common/colorThemeData";
 import { IConfigurationService } from "@codingame/monaco-vscode-api/vscode/vs/platform/configuration/common/configuration.service";
-import { ITerminalService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/terminal/browser/terminal.service";
+import {
+  ITerminalGroupService,
+  ITerminalService,
+} from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/terminal/browser/terminal.service";
 import { IExtensionService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/extensions/common/extensions.service";
 import { IExtensionResourceLoaderService } from "@codingame/monaco-vscode-api/vscode/vs/platform/extensionResourceLoader/common/extensionResourceLoader.service";
 import { IWorkingCopyBackupService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/workingCopy/common/workingCopyBackup.service";
@@ -31,11 +34,15 @@ import { createIndexedDbBackupStore, HotExitBackupService } from "./hotExitBacku
 import type { ThemeDefinition } from "../../../themePalette";
 import { APP_WORKBENCH_THEMES, startWorkbenchThemeSync } from "./themeSync";
 import { workbenchThemeDataUrl } from "./themeColors";
+import { registerAndWaitForExtension, runInBackground } from "./bootstrapLifecycle";
 
 import getBaseServiceOverride from "@codingame/monaco-vscode-base-service-override";
 import getEnvironmentServiceOverride from "@codingame/monaco-vscode-environment-service-override";
 import getExtensionsServiceOverride from "@codingame/monaco-vscode-extensions-service-override";
-import getFilesServiceOverride from "@codingame/monaco-vscode-files-service-override";
+import getFilesServiceOverride, {
+  registerCustomProvider,
+} from "@codingame/monaco-vscode-files-service-override";
+import { FetchFileSystemProvider } from "@codingame/monaco-vscode-extensions-service-override/vscode/vs/workbench/services/extensions/browser/webWorkerFileSystemProvider";
 import { IFileService } from "@codingame/monaco-vscode-api/vscode/vs/platform/files/common/files.service";
 import getHostServiceOverride from "@codingame/monaco-vscode-host-service-override";
 import getLayoutServiceOverride from "@codingame/monaco-vscode-layout-service-override";
@@ -237,6 +244,11 @@ export async function bootstrapVscodeIde(
 }
 
 async function doBootstrap(options: VscodeIdeBootstrapOptions): Promise<VscodeIdeRuntime> {
+  // 桌面资源也由浏览器读取。缺少此提供器时，上游等待扩展注册来激活协议，
+  // 而扩展注册又在等待中文包/主题资源，导致整个主题同步无法启动。
+  if (["codework:", "codework-dev:", "t3code:", "t3code-dev:"].includes(window.location.protocol)) {
+    registerCustomProvider(window.location.protocol.slice(0, -1), new FetchFileSystemProvider());
+  }
   window.MonacoEnvironment = {
     getWorker(_moduleId, label) {
       switch (label) {
@@ -416,8 +428,9 @@ async function doBootstrap(options: VscodeIdeBootstrapOptions): Promise<VscodeId
     },
   );
 
-  // 与工作台单例同寿命：切回对话或进入设置页后，主题同步仍然有效。
-  await initializeThemeSync(options).catch(options.onThemeSyncError);
+  // 主题同步依赖扩展注册；它不能阻塞工作台首屏，否则扩展宿主卡住时
+  // 用户只能看到“正在加载编辑器界面”，却无法使用编辑器本身。
+  runInBackground(() => initializeThemeSync(options), options.onThemeSyncError);
 
   // hot exit 调度面：接上工作副本服务的脏状态事件；卸载前补写一次在途脏内容。
   hotExit.attach(await getService(IWorkingCopyService));
@@ -705,9 +718,16 @@ export async function executeWorkbenchCommand(commandId: string): Promise<void> 
   await commands.executeCommand(commandId);
 }
 
+/** 展开 IDE 底部终端面板，但不负责创建或切换终端实例。 */
+export async function showWorkbenchTerminal(): Promise<void> {
+  const terminalGroup = await getService(ITerminalGroupService);
+  await terminalGroup.showPanel(false);
+}
+
 async function initializeThemeSync(options: VscodeIdeBootstrapOptions): Promise<void> {
   // 默认主题由扩展贡献；冷启动先等注册完成，避免空清单让整条主题同步失效。
-  await (await getService(IExtensionService)).whenInstalledExtensionsRegistered();
+  const extensionService = await getService(IExtensionService);
+  await extensionService.whenInstalledExtensionsRegistered();
   const themes = await getService(IWorkbenchThemeService);
   const configuration = await getService(IConfigurationService);
   const loader = await getService(IExtensionResourceLoaderService);
@@ -723,28 +743,31 @@ async function initializeThemeSync(options: VscodeIdeBootstrapOptions): Promise<
     }),
   );
   // 专用主题承载应用配色，不改写用户安装的主题；沿用上游默认代码高亮规则。
-  const extension = registerExtension(
-    {
-      name: "app-color-themes",
-      publisher: "codework",
-      version: "1.0.0",
-      engines: { vscode: "*" },
-      contributes: {
-        themes: definitions.map(({ appearance }) => ({
-          id: APP_WORKBENCH_THEMES[appearance],
-          label: APP_WORKBENCH_THEMES[appearance],
-          uiTheme: appearance === "dark" ? "vs-dark" : "vs",
-          path: `themes/${appearance}.json`,
-        })),
+  await registerAndWaitForExtension(extensionService, "codework.app-color-themes", async () => {
+    const extension = registerExtension(
+      {
+        name: "app-color-themes",
+        publisher: "codework",
+        version: "1.0.0",
+        engines: { vscode: "*" },
+        contributes: {
+          themes: definitions.map(({ appearance }) => ({
+            id: APP_WORKBENCH_THEMES[appearance],
+            label: APP_WORKBENCH_THEMES[appearance],
+            uiTheme: appearance === "dark" ? "vs-dark" : "vs",
+            path: `themes/${appearance}.json`,
+          })),
+        },
       },
-    },
-    ExtensionHostKind.LocalProcess,
-    { system: true },
-  );
-  for (const { appearance, tokens } of definitions) {
-    extension.registerFileUrl(`themes/${appearance}.json`, workbenchThemeDataUrl(tokens));
-  }
-  await extension.whenReady();
+      // 纯主题没有 Node 入口，使用当前文档已有的 Web Worker 宿主。
+      ExtensionHostKind.LocalWebWorker,
+      { system: true },
+    );
+    for (const { appearance, tokens } of definitions) {
+      extension.registerFileUrl(`themes/${appearance}.json`, workbenchThemeDataUrl(tokens));
+    }
+    await extension.whenReady();
+  });
   await startWorkbenchThemeSync(
     themes,
     configuration,

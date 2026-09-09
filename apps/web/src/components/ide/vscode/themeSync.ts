@@ -70,7 +70,7 @@ export async function startWorkbenchThemeSync(
   const snapshot = () => ({
     id: root.dataset.themeId,
     appearance: root.classList.contains("dark") ? ("dark" as const) : ("light" as const),
-    colors: workbenchColorsFromApp(getComputedStyle(root)),
+    colors: workbenchColorsFromApp(getComputedStyle(root), getThemeDecoration()),
   });
   const enqueue = (operation: () => Promise<void>) => {
     pending = pending

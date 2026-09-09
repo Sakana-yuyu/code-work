@@ -5,7 +5,12 @@ import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import type { IWorkbenchColorTheme } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/themes/common/workbenchThemeService";
 import type { IConfigurationChangeEvent } from "@codingame/monaco-vscode-api/vscode/vs/platform/configuration/common/configuration";
 import { ConfigurationTarget } from "@codingame/monaco-vscode-api/vscode/vs/platform/configuration/common/configuration";
-import { appThemeFromWorkbench, workbenchThemeAppId, workbenchThemeDataUrl } from "./themeColors";
+import {
+  appThemeFromWorkbench,
+  workbenchColorsFromApp,
+  workbenchThemeAppId,
+  workbenchThemeDataUrl,
+} from "./themeColors";
 import { APP_WORKBENCH_THEMES, startWorkbenchThemeSync } from "./themeSync";
 import { applyThemeDecoration } from "../../../themeDecoration";
 import type { ITerminalService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/terminal/browser/terminal.service";
@@ -129,6 +134,21 @@ afterEach(() => {
 });
 
 describe("IDE 与对话主题同步", () => {
+  it("浅色背景使用黑色活动栏图标，深色背景恢复白色，包括未选中状态", () => {
+    const style = { getPropertyValue: () => "#fafafa" };
+    const light = workbenchColorsFromApp(style);
+    expect(light["activityBar.foreground"]).toBe("#000000");
+    expect(light["activityBar.inactiveForeground"]).toBe("#000000");
+    const dark = workbenchColorsFromApp(style, { sidebar: { color: "#101010" } });
+    expect(dark["activityBar.foreground"]).toBe("#ffffff");
+    expect(dark["activityBar.inactiveForeground"]).toBe("#ffffff");
+    expect(workbenchColorsFromApp(style, { global: { opacity: 20 } })["terminal.background"]).toBe(
+      "#00000000",
+    );
+    expect(workbenchColorsFromApp(style, { sidebar: { opacity: 20 } })["terminal.background"]).toBe(
+      "#fafafa",
+    );
+  });
   it("首次初始化不等待隐藏终端，卸载后不再修改迟到的画布", async () => {
     const f = fixture();
     const options = { allowTransparency: false, theme: { background: "#ffffff" } };

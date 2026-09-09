@@ -1,7 +1,12 @@
 import type { IWorkbenchColorTheme } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/themes/common/workbenchThemeService";
 import { encodeBase64, VSBuffer } from "@codingame/monaco-vscode-api/vscode/vs/base/common/buffer";
 import { fnv1a32 } from "../../../lib/diffRendering";
-import { themeColorToHex, type ThemeDefinition } from "../../../themePalette";
+import {
+  themeColorToHex,
+  themeSurfaceContrastRatio,
+  type ThemeDefinition,
+} from "../../../themePalette";
+import type { ThemeDecoration } from "../../../themeDecoration";
 import { parseVsCodeThemeFile } from "../../../vscodeThemeImport";
 
 // 映射工作台界面颜色；文件图标和代码语法规则仍由各自的主题负责。
@@ -105,11 +110,31 @@ export function appThemeFromWorkbench(theme: IWorkbenchColorTheme): ThemeDefinit
   };
 }
 
-export function workbenchColorsFromApp(style: Pick<CSSStyleDeclaration, "getPropertyValue">) {
-  return Object.fromEntries(
+export function workbenchColorsFromApp(
+  style: Pick<CSSStyleDeclaration, "getPropertyValue">,
+  decoration: ThemeDecoration = {},
+) {
+  const colors = Object.fromEntries(
     Object.entries(WORKBENCH_COLOR_VARIABLES).flatMap(([key, variable]) => {
       const color = themeColorToHex(style.getPropertyValue(variable).trim());
       return color ? [[key, color]] : [];
     }),
   );
+  // 活动栏图标使用实际侧栏底色的黑/白对比色，不沿用可能过淡的未选中颜色。
+  const base = style.getPropertyValue("--sidebar").trim();
+  const surface = decoration.sidebar ?? decoration.global;
+  const contrast = (foreground: string) =>
+    themeSurfaceContrastRatio(
+      foreground,
+      surface?.color ?? base,
+      base,
+      surface?.opacity ?? 100,
+      surface?.gradient,
+    ) ?? 0;
+  const foreground = contrast("#000000") >= contrast("#ffffff") ? "#000000" : "#ffffff";
+  colors["activityBar.foreground"] = foreground;
+  colors["activityBar.inactiveForeground"] = foreground;
+  // xterm.refresh() 会重读主题；透明底色须进入内存主题，不能只改一次画布选项。
+  if (decoration.global || decoration.content) colors["terminal.background"] = "#00000000";
+  return colors;
 }

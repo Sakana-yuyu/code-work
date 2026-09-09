@@ -1,3 +1,14 @@
+/* 从应用图标重绘的单色水印；遮罩跟随主题文字色，避免上游深浅主题换回默认标志。 */
+.codework-vscode-workbench .editor-group-watermark .letterpress {
+  background-image: none !important;
+  background-color: color-mix(
+    in srgb,
+    var(--vscode-editor-foreground, var(--foreground)) 12%,
+    transparent
+  );
+  mask: url("./codework-watermark.svg") center / contain no-repeat;
+}
+
 /* 背景由 Code Work 的现有全局/内容层绘制；仅清除工作台重复底色，保持文字不透明。 */
 :is([data-theme-backdrop], [data-theme-regions~="content"], [data-theme-custom-sidebar])
   .codework-vscode-workbench {
@@ -17,9 +28,14 @@
     .editor-container,
     .editor-instance,
     .monaco-list-rows,
+    .pane-body,
+    .integrated-terminal,
+    .terminal-groups-container,
     .terminal-outer-container,
     .terminal-wrapper,
     .xterm,
+    .xterm-scrollable-element,
+    .xterm-screen,
     .xterm-viewport
   ) {
   background-color: transparent !important;
@@ -33,10 +49,22 @@
   backdrop-filter: blur(var(--theme-sidebar-blur));
 }
 
+/* 分区头（资源管理器/大纲/时间线）也透出侧栏背景，否则默认底色会盖住背景装饰。 */
+[data-theme-custom-sidebar]
+  .codework-vscode-workbench
+  [data-vscode-part="sidebar"]
+  :is(.part, .pane, .pane-header),
+[data-theme-custom-sidebar]
+  .codework-vscode-workbench
+  [data-vscode-part="activitybar"]
+  :is(.part, .pane-header) {
+  background-color: transparent !important;
+}
+
 [data-theme-custom-sidebar]
   .codework-vscode-workbench
   :is([data-vscode-part="sidebar"], [data-vscode-part="activitybar"])
-  :is(.part, .monaco-list-rows, .monaco-editor, .monaco-editor-background, .margin) {
+  :is(.monaco-list-rows, .monaco-editor, .monaco-editor-background, .margin) {
   background-color: transparent !important;
 }
 
