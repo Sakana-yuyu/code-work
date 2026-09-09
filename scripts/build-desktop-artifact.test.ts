@@ -534,6 +534,19 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         differentialPackage: true,
       });
       assert.equal((win.win as Record<string, unknown>).executableName, "CodeWork");
+      // electron-builder 自动拾取 buildResources 下的 installer.nsh 并在打包期
+      // 编译；makensis 只在真实 Windows 打包时运行，这里锁住目录补全钩子存在，
+      // 资源被误删或与上游模板冲突在测试期就暴露。
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const repoRoot = yield* path.fromFileUrl(new URL("..", import.meta.url));
+      const nsisHookScript = yield* fs.readFileString(
+        path.join(repoRoot, "apps/desktop/resources/installer.nsh"),
+      );
+      assert.match(nsisHookScript, /Function \.onVerifyInstDir/);
+      assert.match(nsisHookScript, /\$\{APP_FILENAME\}/);
+      // "选盘后自动填充子目录"依赖刷新目录页输入框（NSIS 目录页控件 1018）。
+      assert.match(nsisHookScript, /GetDlgItem \$R2 \$HWNDPARENT 1018/);
       // Native binaries and helper executables cannot load from inside an
       // asar; everything else stays packed. The Claude SDK platform packages
       // and .bin shims never ship.
