@@ -224,6 +224,7 @@ function ThemeLibraryCard({
                             <ThemePreviewCircle
                               colors={selected.preview.colors}
                               mode={selected.preview.mode}
+                              background={selected.preview.background}
                             />
                             {isActive ? (
                               <span
@@ -293,6 +294,7 @@ function ThemeLibraryCard({
                                       <ThemePreviewCircle
                                         colors={preview.colors}
                                         mode={preview.mode}
+                                        background={preview.background}
                                       />
                                     </span>
                                   </button>
@@ -1087,7 +1089,11 @@ export function ThemeLibrary({
                           key={preview.mode}
                         >
                           <span className="flex scale-75">
-                            <ThemePreviewCircle colors={preview.colors} mode={preview.mode} />
+                            <ThemePreviewCircle
+                              colors={preview.colors}
+                              mode={preview.mode}
+                              background={preview.background}
+                            />
                           </span>
                         </span>
                       ))}

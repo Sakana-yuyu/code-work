@@ -106,7 +106,7 @@ export function ThemeDecorationSync() {
   return null;
 }
 
-function useMediaSource(media?: ThemeMedia) {
+export function useMediaSource(media?: ThemeMedia) {
   const [result, setResult] = useState<{ key: string; url?: string; error?: string } | null>(null);
   const key = media ? `${media.source}:${media.value}` : "";
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { MoonIcon, SunIcon } from "lucide-react";
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import {
   STANDARD_THEME_PREVIEW_COLORS as SHARED_STANDARD_THEME_PREVIEW_COLORS,
   THEME_PREVIEW_RENDER_SPECS,
@@ -13,6 +13,8 @@ import {
   type ThemeDefinition,
 } from "../../themePalette";
 import { t } from "~/i18n";
+import type { ThemeSurface } from "../../themeDecoration";
+import { useMediaSource } from "./ThemeBackground";
 
 const THEME_PREVIEW_ROLES = [
   "sidebar",
@@ -27,6 +29,7 @@ type ThemePreviewRole = (typeof THEME_PREVIEW_ROLES)[number];
 type ThemeCardPreview = {
   mode: ThemeAppearance;
   colors: Readonly<Record<ThemePreviewRole, string>>;
+  background?: ThemeSurface | undefined;
 };
 export type ThemeCardDefinition = {
   id: string;
@@ -80,8 +83,12 @@ export function getThemeCardDefinition(theme: ThemeDefinition): ThemeCardDefinit
     label: theme.label,
     previews: getThemeModes(theme).map((mode) => {
       const colors = getThemeColorsForMode(theme, mode) ?? theme.colors;
+      const decoration = theme.decorations?.[mode] ?? theme.decorations?.[theme.appearance];
       return {
         mode,
+        background: [decoration?.global, decoration?.content, decoration?.sidebar].find(
+          (surface) => surface?.media?.kind === "image",
+        ),
         colors: {
           sidebar: colors.sidebar,
           canvas: colors.canvas,
@@ -132,33 +139,54 @@ function themePreviewEdgeShadow(mode: ThemeAppearance): string {
 export function ThemePreviewCircle({
   colors,
   mode,
+  background,
+  wide = false,
 }: {
   colors: ThemeCardPreviewColors;
   mode: ThemeAppearance;
+  background?: ThemeSurface | undefined;
+  wide?: boolean;
 }) {
+  const source = useMediaSource(background?.media);
+  const [failedSource, setFailedSource] = useState<string | null>(null);
   return (
     <span
       aria-hidden
-      className="relative block size-14 shrink-0 overflow-hidden rounded-full border-2 border-background"
+      className={cn(
+        "relative block shrink-0 overflow-hidden border-2 border-background",
+        wide ? "h-20 w-full rounded-lg" : "size-14 rounded-full",
+      )}
       style={{ boxShadow: themePreviewEdgeShadow(mode) }}
     >
       <span
-        className="absolute inset-0 rounded-full"
+        className="absolute inset-0 rounded-[inherit]"
         style={{
           ...getThemePreviewStyle(colors, mode),
           filter: `blur(${THEME_PREVIEW_RENDER_SPECS[mode].blurAt56Px}px)`,
           transform: `scale(${THEME_PREVIEW_RENDER_SPECS[mode].scale})`,
         }}
       />
+      {source?.url && source.url !== failedSource ? (
+        <img
+          alt=""
+          draggable={false}
+          decoding="async"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          className="absolute inset-0 size-full"
+          style={{
+            objectFit: background?.fit ?? "cover",
+            objectPosition: `${background?.x ?? 50}% ${background?.y ?? 50}%`,
+          }}
+          src={source.url}
+          onError={() => setFailedSource(source.url!)}
+        />
+      ) : null}
     </span>
   );
 }
 
-/**
- * A theme card's light and dark balls. Clicking a ball assigns that theme to
- * that half of the appearance mix; assigned balls carry a ring and a sun or
- * moon badge.
- */
+/** 图片主题显示缩略图；点击预览只切换对应外观，保留选中边框及日夜标记。 */
 export function ThemePreviewCircles({
   label,
   activeModes,
@@ -175,6 +203,7 @@ export function ThemePreviewCircles({
       {previews.map((preview) => {
         const mode = preview.mode;
         const isPicked = activeModes.includes(mode);
+        const hasImage = Boolean(preview.background);
         return (
           <Tooltip key={mode}>
             <TooltipTrigger
@@ -183,7 +212,8 @@ export function ThemePreviewCircles({
                   aria-label={t("useMode", { label: label, mode: mode })}
                   aria-pressed={isPicked}
                   className={cn(
-                    "relative flex size-[68px] shrink-0 transform-gpu cursor-pointer items-center justify-center rounded-full p-1 outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
+                    "relative flex transform-gpu cursor-pointer items-center justify-center p-1 outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
+                    hasImage ? "min-w-0 flex-1 rounded-xl" : "size-[68px] shrink-0 rounded-full",
                     isPicked && "hover:scale-100",
                   )}
                   onClick={(event) => {
@@ -192,12 +222,20 @@ export function ThemePreviewCircles({
                   }}
                   type="button"
                 >
-                  <ThemePreviewCircle colors={preview.colors} mode={mode} />
+                  <ThemePreviewCircle
+                    colors={preview.colors}
+                    mode={mode}
+                    background={preview.background}
+                    wide={hasImage}
+                  />
                   {isPicked ? (
                     <>
                       <span
                         aria-hidden
-                        className="pointer-events-none absolute inset-0 rounded-full"
+                        className={cn(
+                          "pointer-events-none absolute inset-0",
+                          hasImage ? "rounded-xl" : "rounded-full",
+                        )}
                         style={{ boxShadow: "inset 0 0 0 2px var(--ring)" }}
                       />
                       <span
