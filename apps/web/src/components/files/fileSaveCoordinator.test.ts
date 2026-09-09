@@ -14,6 +14,49 @@ function deferred() {
 }
 
 describe("FileSaveCoordinator", () => {
+  it("手动保存立即提交最新内容，不等待自动保存延迟", async () => {
+    vi.useFakeTimers();
+    const persist = vi.fn().mockResolvedValue(AsyncResult.success(undefined));
+    const coordinator = new FileSaveCoordinator({
+      debounceMs: 500,
+      persist,
+      onPendingChange: vi.fn(),
+      onConfirmed: vi.fn(),
+    });
+    coordinator.change("latest");
+    coordinator.flush();
+    expect(persist).toHaveBeenCalledExactlyOnceWith("latest");
+    await vi.runAllTimersAsync();
+    expect(persist).toHaveBeenCalledOnce();
+    coordinator.flush();
+    coordinator.dispose();
+    expect(persist).toHaveBeenCalledOnce();
+  });
+
+  it("写入过程中手动保存会串行提交后续修改，避免覆盖或等待防抖", async () => {
+    vi.useFakeTimers();
+    const firstWrite = deferred();
+    const persist = vi
+      .fn()
+      .mockReturnValueOnce(firstWrite.promise)
+      .mockResolvedValue(AsyncResult.success(undefined));
+    const coordinator = new FileSaveCoordinator({
+      debounceMs: 500,
+      persist,
+      onPendingChange: vi.fn(),
+      onConfirmed: vi.fn(),
+    });
+    coordinator.change("first");
+    coordinator.flush();
+    coordinator.change("latest");
+    coordinator.flush();
+    expect(persist).toHaveBeenCalledTimes(1);
+    firstWrite.resolve(AsyncResult.success(undefined));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(persist.mock.calls).toEqual([["first"], ["latest"]]);
+    await vi.runAllTimersAsync();
+    expect(persist).toHaveBeenCalledTimes(2);
+  });
   afterEach(() => {
     vi.useRealTimers();
   });

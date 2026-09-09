@@ -1,0 +1,65 @@
+/* 背景由 Code Work 的现有全局/内容层绘制；仅清除工作台重复底色，保持文字不透明。 */
+:is([data-theme-backdrop], [data-theme-regions~="content"], [data-theme-custom-sidebar])
+  .codework-vscode-workbench {
+  background: transparent;
+}
+
+:is([data-theme-backdrop], [data-theme-regions~="content"])
+  .codework-vscode-workbench
+  :is([data-vscode-part="editors"], [data-vscode-part="panel"])
+  :is(
+    .part,
+    .part > .content,
+    .monaco-editor,
+    .monaco-editor-background,
+    .margin,
+    .editor-group-container,
+    .editor-container,
+    .editor-instance,
+    .monaco-list-rows,
+    .terminal-outer-container,
+    .terminal-wrapper,
+    .xterm,
+    .xterm-viewport
+  ) {
+  background-color: transparent !important;
+}
+
+/* 文件树共用侧栏背景资源；没有自定义背景的主题仍用原生工作台底色。 */
+[data-theme-custom-sidebar] .codework-vscode-workbench .theme-ide-sidebar,
+[data-theme-custom-sidebar] .codework-vscode-workbench [data-vscode-part="activitybar"] {
+  background: var(--theme-sidebar-background);
+  border-color: var(--theme-sidebar-border);
+  backdrop-filter: blur(var(--theme-sidebar-blur));
+}
+
+[data-theme-custom-sidebar]
+  .codework-vscode-workbench
+  :is([data-vscode-part="sidebar"], [data-vscode-part="activitybar"])
+  :is(.part, .monaco-list-rows, .monaco-editor, .monaco-editor-background, .margin) {
+  background-color: transparent !important;
+}
+
+/* 标题、标签及状态栏沿用浮层配色；选区、悬停行和错误提示仍由上游绘制。 */
+:is([data-theme-backdrop], [data-theme-regions~="overlay"])
+  .codework-vscode-workbench
+  :is(.part.statusbar, .tabs-container, .title.tabs, .part > .title) {
+  background: var(--theme-overlay-background) !important;
+  border-color: var(--theme-overlay-border);
+}
+
+:is([data-theme-backdrop], [data-theme-regions~="overlay"])
+  .codework-vscode-workbench
+  .tabs-container
+  > .tab {
+  background-color: transparent !important;
+}
+
+/* 弹窗保留表面底色，不对整个工作台设置 opacity，避免影响字形、光标与命中区域。 */
+:is([data-theme-backdrop], [data-theme-regions~="overlay"])
+  .codework-vscode-workbench
+  :is(.monaco-menu .monaco-action-bar, .suggest-widget, .monaco-hover) {
+  background: var(--theme-overlay-background) !important;
+  border-color: var(--theme-overlay-border);
+  backdrop-filter: blur(var(--theme-overlay-blur));
+}

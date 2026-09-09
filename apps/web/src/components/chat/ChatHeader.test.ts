@@ -1,7 +1,65 @@
-import { EnvironmentId } from "@codework/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { EnvironmentId, ThreadId } from "@codework/contracts";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { resolveRenameCommit, shouldShowOpenInPicker } from "./ChatHeader";
+import { ChatHeader, resolveRenameCommit, shouldShowOpenInPicker } from "./ChatHeader";
+import { t } from "../../i18n";
+
+vi.mock("../../workspaceLayout", () => ({ useIdeViewportAvailable: () => true }));
+vi.mock("../../hooks/useCodeworkProjectFileScripts", () => ({
+  useCodeworkProjectFileScripts: () => [],
+}));
+vi.mock("../../hooks/useThreadActionMenu", () => ({
+  useThreadActionMenu: () => ({ openMenu: vi.fn(), closeMenu: vi.fn() }),
+}));
+vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
+vi.mock("../../state/environments", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../state/environments")>()),
+  usePrimaryEnvironmentId: () => null,
+}));
+vi.mock("../../remoteOpen", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../remoteOpen")>()),
+  useRemoteOpenState: () => ({ mode: "local-exec" }),
+}));
+
+it("项目尚未解析到时，对话和 IDE 的往返切换仍可点击", () => {
+  const action = vi.fn();
+  for (const workspaceLayout of ["chat", "ide"] as const) {
+    const markup = renderToStaticMarkup(
+      createElement(ChatHeader, {
+        activeThreadEnvironmentId: EnvironmentId.make("local"),
+        activeThreadId: ThreadId.make("draft-thread"),
+        activeThreadTitle: "新建线程",
+        isServerThread: false,
+        changeRequest: null,
+        activeProjectName: undefined,
+        activeProjectCwd: null,
+        activeProjectFaviconPath: null,
+        openInCwd: null,
+        activeProjectScripts: undefined,
+        preferredScriptId: null,
+        keybindings: [],
+        availableEditors: [],
+        rightPanelOpen: false,
+        workspaceLayout,
+        onWorkspaceLayoutChange: action,
+        gitCwd: null,
+        onNewThreadInProject: action,
+        onRunProjectScript: action,
+        onAddProjectScript: action,
+        onUpdateProjectScript: action,
+        onDeleteProjectScript: action,
+      }),
+    );
+    expect(markup.match(/aria-pressed="(?:true|false)"/g)).toHaveLength(2);
+    expect(markup).not.toContain('disabled=""');
+    expect(markup).toContain('aria-haspopup="menu"');
+    expect(markup).toContain(
+      `aria-label="${t("workspace.layout")}: ${t(workspaceLayout === "ide" ? "workspace.ideMode" : "workspace.chatMode")}"`,
+    );
+  }
+});
 
 describe("shouldShowOpenInPicker", () => {
   const primaryEnvironmentId = EnvironmentId.make("environment-primary");

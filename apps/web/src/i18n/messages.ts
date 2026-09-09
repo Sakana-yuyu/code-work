@@ -6,6 +6,41 @@
  * pluralizable messages use `key_plural` selected via a `count` param.
  */
 export const en: Record<string, string> = {
+  "ide.activityBar": "IDE activity bar",
+  "ide.explorer": "Explorer",
+  "ide.projectsAndChats": "Projects and conversations",
+  "ide.chooseProject": "Open a project",
+  "ide.chooseProjectDescription":
+    "Choose a project to open its files and editor. Your conversation draft will be kept.",
+  "ide.loadingProject": "Connecting to the environment and loading projects…",
+  "ide.projectEnvironmentUnavailable":
+    "The project environment is unavailable. Reconnect in Connections or choose another project.",
+  "ide.workspace": "Workspace",
+  "ide.workbenchTitle": "Code Work IDE",
+  "ide.extensions": "VS Code extensions",
+  "ide.preparing": "Preparing the editor and extension host…",
+  "ide.loadingWorkbench": "Loading the editor interface…",
+  "ide.themeSyncFailed":
+    "Theme sync failed. Your saved theme is still available; try selecting it again.",
+  "ide.languageReloadRequired":
+    "The IDE language has changed. Save your files, then reload to apply it.",
+  "ide.connectionFailed":
+    "Could not connect to the IDE. Check the environment connection and retry.",
+  "ide.commandFailed": "The IDE command failed. Reconnect and try again.",
+  "ide.retry": "Reconnect IDE",
+  "ide.sessionRebuildPaused":
+    "The IDE session dropped repeatedly, so automatic recovery paused. Reconnect to try again.",
+  "ide.sendSelectionToChat": "Add selected code to AI chat",
+  "ide.selectedCode": "Selected code",
+  "ide.cursorPosition": "Ln {{line}}, Col {{column}}",
+  "workspace.layout": "Workspace layout",
+  "workspace.chatMode": "Chat mode",
+  "workspace.chatShort": "Chat",
+  "workspace.ideMode": "IDE mode",
+  "workspace.ideModeDescription": "Files, editor, terminal and AI chat",
+  "workspace.ideNeedsSpace": "Close conversation split and widen the workspace to use IDE mode",
+  "workspace.toggleAiChat": "Toggle AI chat",
+  "workspace.chooseFile": "Select a file in the explorer to start editing",
   "localAccountPool.title": "Local official account pool",
   "localAccountPool.description":
     "Import an official CLI credential into this server. Code Work stores it in the server secret store and rotates enabled accounts for requests; CPA or Sub2API is not required.",
@@ -1761,6 +1796,7 @@ export const en: Record<string, string> = {
     "Select an existing thread or create a new one to get started.",
   selectAPullRequestFirst: "Select a pull request first",
   selectAtLeastOnePermission: "Select at least one permission.",
+  selectProjectToSend: "Select a project to send",
   sendActivityFromThisEnvironmentToYourMobileClientsForPushNot:
     "Send activity from this environment to your mobile clients for push notifications and Live Activities. Works without a Code Work Connect tunnel.",
   sendAMessageBeforeYouSubmitFeedback: "Send a message before you submit feedback.",
@@ -5924,6 +5960,36 @@ export const en: Record<string, string> = {
 };
 
 export const zhCN: Record<string, string> = {
+  "ide.activityBar": "IDE 活动栏",
+  "ide.explorer": "资源管理器",
+  "ide.projectsAndChats": "项目与对话",
+  "ide.chooseProject": "打开项目",
+  "ide.chooseProjectDescription": "选择项目，打开文件与编辑器。已输入的对话草稿会保留。",
+  "ide.loadingProject": "正在连接环境并加载项目…",
+  "ide.projectEnvironmentUnavailable":
+    "项目所属环境暂不可用。请在连接设置中恢复连接，或选择其他项目。",
+  "ide.workspace": "工作区",
+  "ide.workbenchTitle": "Code Work IDE",
+  "ide.extensions": "VS Code 扩展",
+  "ide.preparing": "正在准备编辑器和扩展宿主…",
+  "ide.loadingWorkbench": "正在加载编辑器界面…",
+  "ide.themeSyncFailed": "主题同步失败，已保存的主题仍可使用，请重新选择主题后重试。",
+  "ide.languageReloadRequired": "IDE 语言已变更。请保存文件，再重新加载以应用。",
+  "ide.connectionFailed": "无法连接 IDE，请检查环境连接后重试。",
+  "ide.commandFailed": "IDE 操作失败，请重新连接后重试。",
+  "ide.retry": "重新连接 IDE",
+  "ide.sessionRebuildPaused": "IDE 会话多次中断，已暂停自动恢复，请重新连接。",
+  "ide.sendSelectionToChat": "将选中代码添加到 AI 对话",
+  "ide.selectedCode": "选中的代码",
+  "ide.cursorPosition": "行 {{line}}，列 {{column}}",
+  "workspace.layout": "工作区布局",
+  "workspace.chatMode": "对话模式",
+  "workspace.chatShort": "对话",
+  "workspace.ideMode": "IDE 模式",
+  "workspace.ideModeDescription": "文件树、编辑器、终端与 AI 对话",
+  "workspace.ideNeedsSpace": "退出对话分屏并拉宽工作区，必要时收起侧栏后可使用 IDE 模式",
+  "workspace.toggleAiChat": "显示或隐藏 AI 对话",
+  "workspace.chooseFile": "从左侧文件树选择文件开始编辑",
   "localAccountPool.title": "本地官方账号池",
   "localAccountPool.description":
     "将官方 CLI 凭据导入本机服务器。凭据由服务端密钥存储保管，启用的账号会按请求轮换，不依赖 CPA 或 Sub2API。",
@@ -7527,6 +7593,7 @@ export const zhCN: Record<string, string> = {
   selectAnExistingThreadOrCreateANewOneToGetStarted: "选择一个已有线程，或新建一个线程开始。",
   selectAPullRequestFirst: "请先选择一个拉取请求",
   selectAtLeastOnePermission: "请至少选择一个权限。",
+  selectProjectToSend: "选择项目后发送",
   sendActivityFromThisEnvironmentToYourMobileClientsForPushNot:
     "将此环境的活动发送到你的移动客户端，用于推送通知和实时活动。无需 Code Work Connect 隧道即可使用。",
   sendAMessageBeforeYouSubmitFeedback: "提交反馈前请先发送一条消息。",

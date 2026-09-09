@@ -1,18 +1,23 @@
 # Code Work 桌面端发布
 
-普通稳定版桌面发布由 GitHub Actions 云端构建并自动创建 GitHub Release。
+普通稳定版和 `battle` 预发布由 GitHub Actions 云端构建并自动创建 GitHub Release。
 
 ## 触发方式
 
-只推送三段式稳定版本 tag：
+稳定版推送三段式 tag，`battle` 预发布推送带后缀的 tag：
 
 ```bash
 git tag v0.0.39
 git push origin v0.0.39
+
+# battle 预发布
+git tag v1.0.0-battle
+git push origin v1.0.0-battle
 ```
 
-符合 `vX.Y.Z` 的 tag 会触发 `.github/workflows/release.yml`。工作流不提供
-nightly、手动 dry-run 或其他 tag 发布通道；`v*-nightly.*` 会被排除。
+符合上述格式的 tag 会触发 `.github/workflows/release.yml`。稳定版标记为 latest，`battle`
+标记为预发布；工作流不提供 nightly、手动 dry-run 或其他 tag 发布通道，`v*-nightly.*`
+会被排除。
 
 ## 发布产物
 

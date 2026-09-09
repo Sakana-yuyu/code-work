@@ -1,16 +1,19 @@
 # 桌面 Release 运维说明
 
-> 本文只描述当前仓库的普通稳定版桌面发布流程。
+> 本文描述当前仓库的普通桌面发布流程，包括稳定版和 `battle` 预发布。
 
 ## 发布范围
 
-Release 工作流位于 `.github/workflows/release.yml`，只在推送稳定版本 tag 时触发：
+Release 工作流位于 `.github/workflows/release.yml`，在推送稳定版或 `battle` tag 时触发：
 
 ```text
 vX.Y.Z
+# 或
+vX.Y.Z-battle
 ```
 
 当前没有定时发布、手动发布入口或 nightly 发布入口。`v*-nightly.*` tag 会被排除。
+稳定版会标记为 latest，`battle` 会创建 GitHub 预发布且不会覆盖 latest。
 
 一次稳定版发布包含：
 
@@ -51,11 +54,15 @@ Release 会先执行质量门禁，再开始桌面矩阵构建。质量门禁包
 
 ## 触发发布
 
-稳定版 tag 推送后，GitHub Actions 会自动创建 Release 工作流：
+稳定版或 `battle` tag 推送后，GitHub Actions 会自动创建 Release 工作流：
 
 ```bash
 git tag vX.Y.Z
 git push origin vX.Y.Z
+
+# battle 预发布
+git tag vX.Y.Z-battle
+git push origin vX.Y.Z-battle
 ```
 
 本仓库不提供不发布的 tag dry-run。不要使用测试版本号验证流程，因为符合规则的稳定 tag 会进入
@@ -72,6 +79,8 @@ gh run view <run-id> --log-failed
 
 ```bash
 gh release view vX.Y.Z
+# 或
+gh release view vX.Y.Z-battle
 ```
 
 确认四类桌面安装包、更新清单、blockmap 和 Linux WSL `node-pty` 辅助附件均已存在。

@@ -154,6 +154,11 @@ const allowedHosts = [".ts.net", ...configuredAllowedHosts];
 export default defineConfig(() => {
   return {
     assetsInclude: ["**/*.wasm"],
+    // VS Code's in-document workbench (monaco-vscode-api) ships module
+    // workers and expects modern syntax in the output.
+    worker: {
+      format: "es" as const,
+    },
     plugins: [
       devCompressionPlugin(),
       // Route-level code splitting: settings/PR/usage surfaces (plus their
@@ -172,6 +177,11 @@ export default defineConfig(() => {
       tailwindcss(),
     ],
     optimizeDeps: {
+      // 保留语言包的资源 URL 转换，使内置扩展的中文翻译文件可正常加载。
+      exclude: [
+        "@codingame/monaco-vscode-language-pack-zh-hans",
+        "@codingame/monaco-vscode-language-pack-ja",
+      ],
       include: [
         "@clerk/clerk-js",
         "@clerk/react/internal",
@@ -182,6 +192,13 @@ export default defineConfig(() => {
         "effect/Array",
         "effect/Order",
         "react-dom/client",
+        // The VS Code runtime entry points are pure-ESM with huge module
+        // graphs; leaving them out of prebundling makes dev reload the page
+        // on first IDE mount instead of serving them directly.
+        "@codingame/monaco-vscode-api",
+        "@codingame/monaco-vscode-api/monaco",
+        "@codingame/monaco-vscode-api/extensions",
+        "vscode/localExtensionHost",
       ],
     },
     define: {
@@ -208,7 +225,7 @@ export default defineConfig(() => {
     },
     resolve: {
       tsconfigPaths: true,
-      dedupe: ["react", "react-dom"],
+      dedupe: ["react", "react-dom", "vscode", "monaco-editor"],
     },
     experimental: {
       bundledDev,
@@ -238,7 +255,8 @@ export default defineConfig(() => {
                 {
                   target: devProxyTarget,
                   changeOrigin: true,
-                  ...(prefix === "/ws" ? { ws: true } : {}),
+                  xfwd: true,
+                  ...(prefix === "/ws" || prefix === "/api" ? { ws: true } : {}),
                 },
               ]),
             ),
@@ -264,6 +282,9 @@ export default defineConfig(() => {
       outDir: "dist",
       emptyOutDir: true,
       sourcemap: buildSourcemap,
+      // The vendored VS Code browser sources use current JS; transpiling
+      // them to a conservative target both slows the build and breaks.
+      target: "esnext",
     },
     test: {
       projects: [defineProject(unitTestProject)],

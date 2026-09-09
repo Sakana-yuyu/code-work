@@ -26,6 +26,8 @@ interface ComposerPrimaryActionsProps {
   sendDisabledReason: string | null;
   isConnecting: boolean;
   isEnvironmentUnavailable: boolean;
+  projectSelectionRequired: boolean;
+  noProviderAvailable: boolean;
   isPreparingWorktree: boolean;
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
@@ -69,6 +71,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   sendDisabledReason,
   isConnecting,
   isEnvironmentUnavailable,
+  projectSelectionRequired,
+  noProviderAvailable,
   isPreparingWorktree,
   hasSendableContent,
   preserveComposerFocusOnPointerDown = false,
@@ -234,20 +238,26 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         isSendDisabled ||
         isConnecting ||
         isEnvironmentUnavailable ||
+        projectSelectionRequired ||
+        noProviderAvailable ||
         !hasSendableContent
       }
       aria-label={
         isEnvironmentUnavailable
           ? t("environmentDisconnected")
-          : sendDisabledReason
-            ? sendDisabledReason
-            : isConnecting
-              ? t("connecting")
-              : isPreparingWorktree
-                ? t("preparingWorktree")
-                : isSendBusy
-                  ? t("sending2")
-                  : t("sendMessage")
+          : projectSelectionRequired
+            ? t("selectProjectToSend")
+            : noProviderAvailable
+              ? t("noProviderAvailable")
+              : sendDisabledReason
+                ? sendDisabledReason
+                : isConnecting
+                  ? t("connecting")
+                  : isPreparingWorktree
+                    ? t("preparingWorktree")
+                    : isSendBusy
+                      ? t("sending2")
+                      : t("sendMessage")
       }
     >
       {stageBackdropVariant ? (

@@ -1,0 +1,39 @@
+diff --git a/vscode/src/vs/workbench/contrib/files/browser/fileImportExport.d.ts b/vscode/src/vs/workbench/contrib/files/browser/fileImportExport.d.ts
+index 940ea981967bb6b28337d711d0c78f0b64df9ba7..21ea253e0c1e568486bebdda06e5f05ab06a3c6e 100644
+--- a/vscode/src/vs/workbench/contrib/files/browser/fileImportExport.d.ts
++++ b/vscode/src/vs/workbench/contrib/files/browser/fileImportExport.d.ts
+@@ -43,7 +43,7 @@ export declare class ExternalFileImport {
+     private readonly notificationService;
+     private readonly instantiationService;
+     constructor(fileService: IFileService, hostService: IHostService, contextService: IWorkspaceContextService, configurationService: IConfigurationService, dialogService: IDialogService, workspaceEditingService: IWorkspaceEditingService, explorerService: IExplorerService, editorService: IEditorService, progressService: IProgressService, notificationService: INotificationService, instantiationService: IInstantiationService);
+-    import(target: ExplorerItem, source: DragEvent, targetWindow: Window): Promise<void>;
++    importFiles(target: ExplorerItem, source: DragEvent, targetWindow: Window): Promise<void>;
+     private doImport;
+     private importResources;
+ }
+diff --git a/vscode/src/vs/workbench/contrib/files/browser/fileImportExport.js b/vscode/src/vs/workbench/contrib/files/browser/fileImportExport.js
+index d30549a384a8ef06ca19c6d1aec57ab867df8417..bc559751eed7154f00fbcc8ee1a54a8d9847a102 100644
+--- a/vscode/src/vs/workbench/contrib/files/browser/fileImportExport.js
++++ b/vscode/src/vs/workbench/contrib/files/browser/fileImportExport.js
+@@ -331,7 +331,7 @@ let ExternalFileImport = class ExternalFileImport {
+         this.notificationService = notificationService;
+         this.instantiationService = instantiationService;
+     }
+-    async import(target, source, targetWindow) {
++    async importFiles(target, source, targetWindow) {
+         const cts = ( new CancellationTokenSource());
+         const importPromise = this.progressService.withProgress({
+             location: ProgressLocation.Window,
+diff --git a/vscode/src/vs/workbench/contrib/files/browser/views/explorerViewer.js b/vscode/src/vs/workbench/contrib/files/browser/views/explorerViewer.js
+index 94c51317340c39b17eb984dcd635bb88f92bb862..495c99adb5f63aa5ba4b93047d892798723286a6 100644
+--- a/vscode/src/vs/workbench/contrib/files/browser/views/explorerViewer.js
++++ b/vscode/src/vs/workbench/contrib/files/browser/views/explorerViewer.js
+@@ -1638,7 +1638,7 @@ let FileDragAndDrop = class FileDragAndDrop {
+             if (data instanceof NativeDragAndDropData) {
+                 if (!isWeb || (isTemporaryWorkspace(this.contextService.getWorkspace()) && WebFileSystemAccess.supported(mainWindow))) {
+                     const fileImport = this.instantiationService.createInstance(ExternalFileImport);
+-                    await fileImport.import(resolvedTarget, originalEvent, mainWindow);
++                    await fileImport.importFiles(resolvedTarget, originalEvent, mainWindow);
+                 }
+                 else {
+                     const browserUpload = this.instantiationService.createInstance(BrowserFileUpload);

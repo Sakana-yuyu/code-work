@@ -82,6 +82,7 @@ packageExtensionsChecksum: sha256-CUzzeefpj3gNFrCKNBhV9FOaniNbrLdKyIhWQyXuaiE=
 patchedDependencies:
   '@clerk/electron@0.0.37': e2bdca4bfa2b5ad9dcde197b0b05b6f5b1da7c8c976c94123e00f65b3278a32d
   '@clerk/expo@4.2.0': 72e426f44fc1cde16fc2cbba3d1e96cdca7c6d957faa73d0fe6b43948608a6c1
+  '@codingame/monaco-vscode-api@33.0.9': 110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec
   '@effect/vitest@4.0.0-beta.103': a16b1e870d8c29e4a98b17cc4c638a4ff471753d8ca3487f78a22b759caf951b
   '@expo/metro-config@56.0.14': 8cb08b5bb7051ed9d2dbe46a2c293c5a1e17f1bd6ddf30de27909e18c921ff46
   '@ff-labs/fff-node@0.9.4': ab9ff544009e1891cfe3930105862d3699007f38922a79f3c98d90018deca368
@@ -540,6 +541,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.4.1
         version: 1.5.0(@types/react@19.2.16)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@clerk/clerk-js':
+        specifier: 6.30.1
+        version: 6.30.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@clerk/electron':
         specifier: 0.0.37
         version: 0.0.37(patch_hash=e2bdca4bfa2b5ad9dcde197b0b05b6f5b1da7c8c976c94123e00f65b3278a32d)(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@41.5.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -555,6 +559,177 @@ importers:
       '@codework/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@codingame/monaco-vscode-accessibility-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-api':
+        specifier: 33.0.9
+        version: 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-authentication-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-base-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-comments-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-configuration-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-css-default-extension':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-css-language-features-default-extension':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-debug-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-dialogs-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-environment-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-explorer-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-extension-gallery-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-extensions-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-files-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-host-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-html-default-extension':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-html-language-features-default-extension':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-json-default-extension':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-json-language-features-default-extension':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-keybindings-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-language-pack-ja':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-language-pack-zh-hans':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-languages-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-layout-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-lifecycle-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-log-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-markdown-basics-default-extension':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-markers-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-model-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-multi-diff-editor-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-notifications-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-outline-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-output-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-preferences-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-python-default-extension':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-quickaccess-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-remote-agent-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-scm-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-search-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-secret-storage-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-snippets-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-storage-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-task-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-terminal-service-override':
+        specifier: 33.0.9
+        version: 33.0.9(@xterm/xterm@6.1.0-beta.219)
+      '@codingame/monaco-vscode-textmate-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-theme-defaults-default-extension':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-theme-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-timeline-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-typescript-basics-default-extension':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-typescript-language-features-default-extension':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-user-data-profile-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-view-status-bar-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-view-title-bar-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-views-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-working-copy-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
+      '@codingame/monaco-vscode-workspace-trust-service-override':
+        specifier: 33.0.9
+        version: 33.0.9
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -621,6 +796,9 @@ importers:
       lucide-react:
         specifier: ^0.564.0
         version: 0.564.0(react@19.2.6)
+      monaco-editor:
+        specifier: npm:@codingame/monaco-vscode-editor-api@33.0.9
+        version: '@codingame/monaco-vscode-editor-api@33.0.9'
       react:
         specifier: 19.2.6
         version: 19.2.6
@@ -645,6 +823,9 @@ importers:
       tailwind-merge:
         specifier: ^3.4.0
         version: 3.6.0
+      vscode:
+        specifier: npm:@codingame/monaco-vscode-extension-api@33.0.9
+        version: '@codingame/monaco-vscode-extension-api@33.0.9'
       zustand:
         specifier: ^5.0.11
         version: 5.0.14(@types/react@19.2.16)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
@@ -1873,6 +2054,195 @@ packages:
 
   '@codework/mobile-terminal-native@file:apps/mobile/modules/codework-terminal':
     resolution: {directory: apps/mobile/modules/codework-terminal, type: directory}
+
+  '@codingame/monaco-vscode-accessibility-service-override@33.0.9':
+    resolution: {integrity: sha512-HXVzeLadCDW+KDNkDC4BEKlJvNkH1DxbpbH4tTnjWG1v3sOr2KzZZQ7+sUkoJCDom/wU8RW7bMaUaxDzeelpNw==}
+
+  '@codingame/monaco-vscode-api@33.0.9':
+    resolution: {integrity: sha512-cMyAY0gJmBOSU1n9sYJI57LXU2fwNYcPnpTdHgS5qIfJL/cVvBjlmqRrQSpmS0Q1vHcIELVgTn9WKegdE5581Q==}
+
+  '@codingame/monaco-vscode-authentication-service-override@33.0.9':
+    resolution: {integrity: sha512-ed79DEwO56kROglveAQdd9VfripigzJaNp3wNRMxZZJC4VYJc2MWnm2yrecRv1mf9QrXAH0np6Lc0JVwNW6Bhg==}
+
+  '@codingame/monaco-vscode-base-service-override@33.0.9':
+    resolution: {integrity: sha512-aLJaaxVGh+x3EQ3AUFAAYo91ohw2x6yzM/w1Iy/SRxb1biXwuE2GIhRR7WR1MdUwv8JWaEIdrTC3J/pLDp9h3g==}
+
+  '@codingame/monaco-vscode-bulk-edit-service-override@33.0.9':
+    resolution: {integrity: sha512-hqiLEgw4Wl95/cI/J7SMgHP/j6X8hh98fnuEaHVN1Y/m5R47fNVOP2ozm9gZx+WkOcaB+NYwd6OCWZO/NUNVPw==}
+
+  '@codingame/monaco-vscode-comments-service-override@33.0.9':
+    resolution: {integrity: sha512-P/c8RgmRaCQMUaSZQyf1lUgRnyBWl68HGd109cxwcjb2hzY42wYuHP5K1GmKCterAyON6p72jEjrV9vvW+gY7A==}
+
+  '@codingame/monaco-vscode-configuration-service-override@33.0.9':
+    resolution: {integrity: sha512-4VaAiq/GuITiLC5EYBO6XDW9axlA5ujOZFQo4R+lvIO72a9uebExkENJ4Do9tVr74eWSCYKz19CwdDn3vTbNWw==}
+
+  '@codingame/monaco-vscode-css-default-extension@33.0.9':
+    resolution: {integrity: sha512-mFKVQAzdkuJH5dvfaWPQnkyk2PaCOLkluOffmqNndtNHhSg6WJwswADiANCcwE9GGgrk36L4LWIGRVsCm/C0Og==}
+
+  '@codingame/monaco-vscode-css-language-features-default-extension@33.0.9':
+    resolution: {integrity: sha512-SlERDDvjZ7osU+nI2q7jv6TIkHmNdMdpPxXThYVA10wdRYHTGjN6UY3NUPVlax4bsLdBdvkh3aUbzK+hWJ6VyQ==}
+
+  '@codingame/monaco-vscode-debug-service-override@33.0.9':
+    resolution: {integrity: sha512-YPP/dsrUG7TNdntKAoB55AoYAiPuAe4QSeYllxp8YtYgA7gsi8Mltc5TQVhbzWwC2loJu2RY5SeZzvYwj+2YIA==}
+
+  '@codingame/monaco-vscode-dialogs-service-override@33.0.9':
+    resolution: {integrity: sha512-SSCvQIucaugzupbijypTo4tbf2h2BQhndXgTUR/I9AW6NmcoYWttVD0GOsLKBlhA9xMvZolFhNZTH8Sw+vJnrQ==}
+
+  '@codingame/monaco-vscode-editor-api@33.0.9':
+    resolution: {integrity: sha512-nkQ2aeloWtQUIcCe+oPhmgCRZw26PIQtLmlPSAVA/O9odrocbbXvhr+Qh69v5MJHYtnJXiJdqGmHIEUuQsFW5Q==}
+
+  '@codingame/monaco-vscode-environment-service-override@33.0.9':
+    resolution: {integrity: sha512-ol20jRZxAJ1dAEAC3VejLBo/7T3IgQ+Kd6eiCA4Axt7nt94yivphwBk9Akg/tLovFpL1uOwVgogvGpg0hYcYPA==}
+
+  '@codingame/monaco-vscode-explorer-service-override@33.0.9':
+    resolution: {integrity: sha512-IQA2O/42I8FOui8CXbvTjWBpKHhx4/Q86KiMrUXzba7POn/jU3cERhRbxHvqkv7h8fc24ceCBClitf8Ni6KWoQ==}
+
+  '@codingame/monaco-vscode-extension-api@33.0.9':
+    resolution: {integrity: sha512-roNm3k3HBU8ibYoYElDH8IoEwSHmtwxuxLjROk2icN/BLKUwJhztdPN9oxZtFW+rlAAhBLZdSNdFDc5WWLhXtw==}
+
+  '@codingame/monaco-vscode-extension-gallery-service-override@33.0.9':
+    resolution: {integrity: sha512-IjbYAsPKPcqNiHhCInLnxiUYdskprNXTUTeBjOpOsge6xkQHFDWL3JmN3wE28hkB1kvQ6uM1RCjPZDkEa90pyA==}
+
+  '@codingame/monaco-vscode-extensions-service-override@33.0.9':
+    resolution: {integrity: sha512-g2UmGXHtddXmLEt85lYDLeMw8OSEFABOEP6OCxKn4TJLM02GKNbosSoAxfo9AEO+rzSvmu8xNAW7VNEjWVnxwQ==}
+
+  '@codingame/monaco-vscode-files-service-override@33.0.9':
+    resolution: {integrity: sha512-Gc4yvM68rECU38cjGcuzwBYXXZM3tf4D71vBJzNxztqSE0V5n+h2/UbcLmLwfY/6cLfT+Oc4IY8X2yWHNFweDA==}
+
+  '@codingame/monaco-vscode-host-service-override@33.0.9':
+    resolution: {integrity: sha512-DkDzv6ijQU1udBhA4LB4OIMpPPoP3ktXCD7JWgwIwHifeIQzlgRMvzgKcMtWz/H4sSZYNHlBuJMgchmfLFTLig==}
+
+  '@codingame/monaco-vscode-html-default-extension@33.0.9':
+    resolution: {integrity: sha512-SYP3lXSVDRKmVaN9RDp5lHm7RdjgDwbfDoc5B/rzci6WtRZN5BWWTWqqxK81wOeJOsjayPOCAewgwWj6MXv7LA==}
+
+  '@codingame/monaco-vscode-html-language-features-default-extension@33.0.9':
+    resolution: {integrity: sha512-K1mKe9B9peQEUXZfEUEkVQ2WDO/86MByCeUSRfqIC/YzWF3p8xJgvBgnOhkJGN/T3F0rCOSs2vYjwGPqxVuaNA==}
+
+  '@codingame/monaco-vscode-json-default-extension@33.0.9':
+    resolution: {integrity: sha512-YtLu5eo0d+ce9t09mAGUmY4puEJ7/nNCzXertzYhMGWLe49TJx2tUpgOxYqhY1/0iIsdfZeWCOX/cNwl4ytOVQ==}
+
+  '@codingame/monaco-vscode-json-language-features-default-extension@33.0.9':
+    resolution: {integrity: sha512-IUWgyenvLyMQXaWmUX0DWK3iGy6WC6athHUE+6N0ZvWAzz81zBM+wyESkjSJD0sUFnwTDqaANspFZHPKoDQmnw==}
+
+  '@codingame/monaco-vscode-keybindings-service-override@33.0.9':
+    resolution: {integrity: sha512-OCrk31XpTgAo1pMGsVYqtfVidqCMRuNhGVNzMVEGeGnPq1mwh1Z2rI8kGVZuUCUo330SJObQ7Ves/BxNevX/rA==}
+
+  '@codingame/monaco-vscode-language-pack-ja@33.0.9':
+    resolution: {integrity: sha512-792rEriQoLF2sRXd378xyyU6UWdTBOaTt+2xHN/KLzYbbG0y5uJgP0Zu4HpbwUBxF9Vslrw8qGHi08uV8edEew==}
+
+  '@codingame/monaco-vscode-language-pack-zh-hans@33.0.9':
+    resolution: {integrity: sha512-tcZfUpp7MXMA1or32kvJRa4hw+M/uyv0A13If3HmrjWJ+88eWlqw/SL+XNK/9wjrOK7OMEO/DaWDSi8zwMXvtQ==}
+
+  '@codingame/monaco-vscode-languages-service-override@33.0.9':
+    resolution: {integrity: sha512-i8zHsEhPOXquOM86ROqIFsWflahFglHYYSnLokVXPiwmQGZAyOVFs2eH2ptmiNjoxu1ciLWLilDag1QNXcVaaA==}
+
+  '@codingame/monaco-vscode-layout-service-override@33.0.9':
+    resolution: {integrity: sha512-akQ+0l9kCGrwr6fgk9q2ZdvvQcBPshkhc3Jw3W1LCVeN2p5A6dObkuem6hKhptyAgtLsOJmG9MmBxDu631UTvw==}
+
+  '@codingame/monaco-vscode-lifecycle-service-override@33.0.9':
+    resolution: {integrity: sha512-HN8oGkLPlDW27LCNSBDpbVqetED9wr6iTa54yzENyYvSpkHbuMsH010Aao8Usfv6gRgt5NPc5KPRXBRcibN+2Q==}
+
+  '@codingame/monaco-vscode-log-service-override@33.0.9':
+    resolution: {integrity: sha512-RaccjJzGTpdMiuMQ5QUanHHrUtsUTvRN60b8Xty2Xbmh1uLD7ZbJmcsSJKp8cgVEe9QFtNiGLLC/yqvgGTJtiQ==}
+
+  '@codingame/monaco-vscode-markdown-basics-default-extension@33.0.9':
+    resolution: {integrity: sha512-fUu+AaEY/xRb+T0VqLTxdIro2TG14Ubip3OMxnQbjjRIy4OGG8Cj0DxFjEvPQ8xQEzrMaKc85soK+IvPK/63pg==}
+
+  '@codingame/monaco-vscode-markers-service-override@33.0.9':
+    resolution: {integrity: sha512-WwJloJJW9XkpYilB1wOSQ6skwR+uXKeXoZ7wJdSVssbqCnvPpEBRGhRlreaYHA45oBQKtxmoZIqpi2OO4dxtvw==}
+
+  '@codingame/monaco-vscode-model-service-override@33.0.9':
+    resolution: {integrity: sha512-CXKgUJDSpxufzs/PpUDRfopCIqoYfnDuvlaOKR0YGXHHcavoAzM9GcRbV8PDM0YM8p77/bkgCBXE+WeBvWSoLg==}
+
+  '@codingame/monaco-vscode-multi-diff-editor-service-override@33.0.9':
+    resolution: {integrity: sha512-/q3XVuyJxF7LCRIAbPH3NE6Pv4ya12DwLiRqZBDden4XRhQqewslZDmWVyjzHKGJhM61xyee67kr3iENpcVUmA==}
+
+  '@codingame/monaco-vscode-notifications-service-override@33.0.9':
+    resolution: {integrity: sha512-TjdO/2Z8fZrb6XnGnJ3D3P08kTRfC1NxkIM80Zd/0DK7zkjLyTk2DCpwWwdsxzCTLtn+p58EijCoFwyseym5Wg==}
+
+  '@codingame/monaco-vscode-outline-service-override@33.0.9':
+    resolution: {integrity: sha512-27Cm3yXJMtqVCJhjQkDq/HJG8Xa/0ELA3DV9sTaTX70AN+zzA/I4hvRpI3236SauDNB/x4srsjbuKTvcsV9Svw==}
+
+  '@codingame/monaco-vscode-output-service-override@33.0.9':
+    resolution: {integrity: sha512-Zm8fuaYKA4i8GJ8AkGtL0Fm1skQPqUiNDFcwZnWEyWIp7w22rUEQjj7Bf8ZaZEuHGaE6zUxDMOFMmLnwQSpbsw==}
+
+  '@codingame/monaco-vscode-preferences-service-override@33.0.9':
+    resolution: {integrity: sha512-TtwIDzuRsnxJmZqBUZnSy3OWAztOnVXnTBoRIzRe/4e00+UrUsiucfTzjyGcdsTb7HRIHoz3usEz8dhFeqtH4g==}
+
+  '@codingame/monaco-vscode-python-default-extension@33.0.9':
+    resolution: {integrity: sha512-updsjHmE7eRZHoNraXqd146tpub2sg4s3FlpbCh9hF7oVemnm+CaEZHpOoBDIRmV5monboc1zGW/mCHwiuAvkw==}
+
+  '@codingame/monaco-vscode-quickaccess-service-override@33.0.9':
+    resolution: {integrity: sha512-XEpmz3g1m9m6PS5Gf3Bho2hmotcg0MgO1wFwvwjH6CxZ131F6tkdWJvDWsVOyV34HXJ9HOIgNa04bwbDNxguyw==}
+
+  '@codingame/monaco-vscode-remote-agent-service-override@33.0.9':
+    resolution: {integrity: sha512-cMDeTRdU55GELzpNt6m+LFR9U1XI4EMK5Q2DBAp58ANvxvSWXRNrzan3RVl0PCB8EtTZKXg6jRChwkYUHhps0w==}
+
+  '@codingame/monaco-vscode-scm-service-override@33.0.9':
+    resolution: {integrity: sha512-g1tGzOYUenKyfE+ufChvxfz5ZTzQjXT159Fw+t/IA2+DjUfU+r/lu5I95olq5xoJ6W8KdT0IJeuXCJTc/Y2wTQ==}
+
+  '@codingame/monaco-vscode-search-service-override@33.0.9':
+    resolution: {integrity: sha512-aQfJ/yZ9hdMlxLGM7RFvvZppRBJpz8CHwT6GDv9XW/f6kF34ymln5tJPNlayLncGvAYI+DMDVwdn/YCL09Vtuw==}
+
+  '@codingame/monaco-vscode-secret-storage-service-override@33.0.9':
+    resolution: {integrity: sha512-yo1SSEb4e0SM2g2AR0wiyzAvtijtFvw42X9ek6SNIHadGY6//sQW2d1PQvYXwc29YQUBxTD1ILW1Gc5hHr3w6w==}
+
+  '@codingame/monaco-vscode-snippets-service-override@33.0.9':
+    resolution: {integrity: sha512-71v67hgJIRoKVTz7mZZHsTWefmksPe2f41HnaCj2dRiODMNFoLnqQUP7ptUEOesHYTSzw5Xmoi5xX7/s1HZUVA==}
+
+  '@codingame/monaco-vscode-storage-service-override@33.0.9':
+    resolution: {integrity: sha512-oi3qx1tGqm6+KZBORQh96bo+wDCuWOuhffmGKBgyhdi/r+nlWsqTkde3L8fNiJgZS4fcEl4QLeSQwUfwNvzsqQ==}
+
+  '@codingame/monaco-vscode-task-service-override@33.0.9':
+    resolution: {integrity: sha512-M2B9OBGEMLFBODIbSIAGHF1w1eKpX+va3w5gD0teUQPF/hONZLo6xMReD9MA0VL4V8nZBP+LAD551HpB4PrYCA==}
+
+  '@codingame/monaco-vscode-terminal-service-override@33.0.9':
+    resolution: {integrity: sha512-PmeBGkny4dlqVPXJBeNU6P2qryAAKKXYJd7O9UxdZa8B8x5Rf0dPkQ5S6CiBkQxwtdIORtF+6QnRFcjYFraw6A==}
+
+  '@codingame/monaco-vscode-textmate-service-override@33.0.9':
+    resolution: {integrity: sha512-zj2rKY6Pvdo5s63s1987yKZFwjipfXdcs/r55eqmG4dSOhXO2PhG4DE3SKqFuXUwiNdHxD+j6PgnqvPTX6z4Jw==}
+
+  '@codingame/monaco-vscode-theme-defaults-default-extension@33.0.9':
+    resolution: {integrity: sha512-Jo2UirX47tEeScbWh4RXHB5063P1ciswjKcV9zieSiOlFXJ9ieQEvGK0ST4aKywQyjWW8RnpizsaSNnGadJcBg==}
+
+  '@codingame/monaco-vscode-theme-service-override@33.0.9':
+    resolution: {integrity: sha512-gNfL7ScPaePuwbQ+d1RixsMRvFybXEGIPXzo+DqHV3sVklnmdodAP4tY8Y5rbVWczWjsBTcc0of7vWgAOmGaRg==}
+
+  '@codingame/monaco-vscode-timeline-service-override@33.0.9':
+    resolution: {integrity: sha512-Gjm6oES0EWDvJcvuX9nZZlWT8pB7QxTBplIEnLU2vn8l7S6ZHcIgxI6Yhiqn8GFnkhb2PFfzPp0jmH7Kj4xkmg==}
+
+  '@codingame/monaco-vscode-typescript-basics-default-extension@33.0.9':
+    resolution: {integrity: sha512-EpJvxgzWNeRmFQelopDKtkHPQvlh8OtB2YjQlfmUJgnFgmnI222Jh1cmR5x1hfMljeDFgm/pEzpQCBWEnMnA2A==}
+
+  '@codingame/monaco-vscode-typescript-language-features-default-extension@33.0.9':
+    resolution: {integrity: sha512-k75WKmqxQD94ShbyIumnyTZtfFFHTjgk0U5ZYIwOip9MgGdD/FChQyhbP6FQQ3PWLwWPVyjE8nfenCq9h9iwaQ==}
+
+  '@codingame/monaco-vscode-user-data-profile-service-override@33.0.9':
+    resolution: {integrity: sha512-pzVr9SKAZjLo6V4O+XtS/RjKGB+xUGiogwoI0fUXo27E5E2pC8Wzv7kxcp2Cg4P7CTGYp3UP1e7r8sJV3wuSig==}
+
+  '@codingame/monaco-vscode-view-common-service-override@33.0.9':
+    resolution: {integrity: sha512-Ua9E0DrvnKZsx4nUqNwNJSa1mtvBypyDx1vCuaw6ZtFe9/h3B7dnAnwDotpfrCsgxwCJQw2gbk9oA81luU90Bg==}
+
+  '@codingame/monaco-vscode-view-status-bar-service-override@33.0.9':
+    resolution: {integrity: sha512-UEC3z7kngjCtmBvY3ihEGe+mxRJoMvoeOz+Bi0vd450Ed0nCR27yRnfw0jzl6w2MH44UaGRpSb4NiYNroUR+ww==}
+
+  '@codingame/monaco-vscode-view-title-bar-service-override@33.0.9':
+    resolution: {integrity: sha512-31vKS1XAIPZNSXZ3Iyk2vmQ/hQPsCySCGxwwZc3bxBxtTlDGq6B7v76nLK6Iog+q1IlicUI7UZwgqc+HeuakBQ==}
+
+  '@codingame/monaco-vscode-views-service-override@33.0.9':
+    resolution: {integrity: sha512-LVsysfuJHEHyqyyTEm6O2r+NSx0h/6OP99SqfPUGIKBKAHUGuTEEuiEbQHO3PFraB1UwXV5hlP4JscTBfyiLpQ==}
+
+  '@codingame/monaco-vscode-working-copy-service-override@33.0.9':
+    resolution: {integrity: sha512-a/OPYlKszFAWttoo6LWrCizDZz3y7HC/C3ZIc5aKZHjQhPsijKwZT7sJM7ya2q3z/XerJldEsON2svqSxTT9PA==}
+
+  '@codingame/monaco-vscode-workspace-trust-service-override@33.0.9':
+    resolution: {integrity: sha512-ufXcLWey0wcfa/ky+ncUoVkE0t5CeNE7AMq1kcvor063H9Wst4wFsbXG52uQjyVM/jhMiO2upt5iAzoe812Bng==}
+
+  '@codingame/monaco-vscode-xterm-addons-common@33.0.9':
+    resolution: {integrity: sha512-SIPqc63Y1QEwfkazg5PNSSyf8n9RtKu2oNfBKP+hBE9LTWlmACmAypP3OSfnIkED3db1gygWvrdgEN8yZU9uwA==}
+
+  '@codingame/monaco-vscode-xterm-common@33.0.9':
+    resolution: {integrity: sha512-7v71ofmAOOcUnlJcd6W7B/Cno3yBeAtJ6uFc19jCOiCBmcRZ+3fbdSpryPBIA5wWyQB95VBvo260aV/KUkJnJg==}
 
   '@distilled.cloud/aws@0.30.2':
     resolution: {integrity: sha512-Uw2yZf7PJ2ienrKG49HN1ajnke65mTtHBUrSb/3ykeZ/8cLaSgwVhPscHxSzGByY0TEtYcYKNNmfUVISgGQl9g==}
@@ -4910,6 +5280,9 @@ packages:
   '@types/statuses@2.0.6':
     resolution: {integrity: sha512-xMAgYwceFhRA2zY+XbEA7mxYbA093wdiW8Vu6gZPGWy9cmOyU9XesH1tNcEWsKFd5Vzrqx5T3D38PWx1FIIXkA==}
 
+  '@types/trusted-types@2.0.7':
+    resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
+
   '@types/unist@2.0.11':
     resolution: {integrity: sha512-CmBKiL6NNo/OqgmMn95Fk9Whlp2mtvIv+KNpQKN2F4SjvrEesubTRWGYSg+BnWZOnlCaSTU1sMpsBOzgbYhnsA==}
 
@@ -5175,6 +5548,9 @@ packages:
   '@vscode/emmet-helper@2.11.0':
     resolution: {integrity: sha512-QLxjQR3imPZPQltfbWRnHU6JecWTF1QSWhx3GAKQpslx7y3Dp6sIIXhKjiUJ/BR9FX8PVthjr9PD6pNwOJfAzw==}
 
+  '@vscode/iconv-lite-umd@0.7.1':
+    resolution: {integrity: sha512-tK6k0DXFHW7q5+GGuGZO+phpAqpxO4WXl+BLc/8/uOk3RsM2ssAL3CQUQDb1TGfwltjsauhN6S4ghYZzs4sPFw==}
+
   '@vscode/l10n@0.0.18':
     resolution: {integrity: sha512-KYSIHVmslkaCDyw013pphY+d7x1qV8IZupYfeIfzNA+nsaWHbn5uPuQRvdRFsa9zFzGeudPuoGoZ1Op4jrJXIQ==}
 
@@ -5187,6 +5563,50 @@ packages:
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
     engines: {node: '>=14.6'}
     deprecated: this version has critical issues, please update to the latest version
+
+  '@xterm/addon-clipboard@0.3.0-beta.219':
+    resolution: {integrity: sha512-KKN1BFJJbHoKKd1YZaq5Fjn85hv6/nu7Sbsobd0rhK0Ei6UBCaX+Q7xO+CtxatcOT/zaRGcCFsRvwSv92Hmk0w==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.219
+
+  '@xterm/addon-image@0.10.0-beta.219':
+    resolution: {integrity: sha512-qt/khIK4YB/uFPi/D03hrqr1ftqswBJ4C5Kid2cBUUJgDxxyRwNqNidRcdYa9/g9W5CqOR98EJv9cMGdRBrlmg==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.219
+
+  '@xterm/addon-ligatures@0.11.0-beta.219':
+    resolution: {integrity: sha512-81dFqoT9d+OoYdmKcJ+bGPbkyfzqA48Zill1VU29BoKHfLMqGAzJ+kfIIDwU4giSc7zW2qK5AVu/XaV9SonVeg==}
+    engines: {node: '>8.0.0'}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.219
+
+  '@xterm/addon-progress@0.3.0-beta.219':
+    resolution: {integrity: sha512-DuBEpVcsV4s63kQ0NU79JauLM1qK/UF6vDei94drV1wgTq5k0Hmd/c+ULe9aX8siUHkPkKs8WyU0HWR0/wqdZg==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.219
+
+  '@xterm/addon-search@0.17.0-beta.219':
+    resolution: {integrity: sha512-Qx65+aPPZlvzqccTE1FTtsTrWYIjf4/1XWD6TsLiIWl2IwGId76Ja9Q01YYYpPf7E3dzqWIw6zMeM+cHyg39XA==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.219
+
+  '@xterm/addon-serialize@0.15.0-beta.219':
+    resolution: {integrity: sha512-xutWzMsTZIgajaHTrejDKK2Xp6ucO1ltakxn+T0AYkzTrdGbzfUf97/b1tB7dfzMoyXNuBKXuPNbBD8nPdkv0w==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.219
+
+  '@xterm/addon-unicode11@0.10.0-beta.219':
+    resolution: {integrity: sha512-2EJjnULMg1Fk8XMS8TLb1jLNhfT7dKf/pf3AXqUdehs33mKhHxpx4nPR/Oz8NcxHtlsnVNeRXxOOIsFpela18g==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.219
+
+  '@xterm/addon-webgl@0.20.0-beta.218':
+    resolution: {integrity: sha512-TihrC07cUULEcmLQ0Wsj8f9a6vikrWKUx7JWrFFG/Ip31uYohcHY0X46JP+WdAIzPhnE2iVr6OpJG3G5uSKE+w==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.219
+
+  '@xterm/xterm@6.1.0-beta.219':
+    resolution: {integrity: sha512-cQDv5UMEooIqjlybDPfNO0uI0sB0SWaaOxubHcFNXah8umLHR8SfKQbj5BPaa5gqoTKGYFkVdpowyhZlV+xywQ==}
 
   '@yuuang/ffi-rs-android-arm64@1.3.2':
     resolution: {integrity: sha512-eDYLT0kVBkp7e2BwdRDmt6N1rkeDPUHDefk3ZX0/nok+GLsqfy1WBoSL3Yg7HVXN1EyW8OBVc2uK8Zq8HbmaSA==}
@@ -6175,6 +6595,9 @@ packages:
   domhandler@5.0.3:
     resolution: {integrity: sha512-cgwlv/1iFQiFnU96XXgROh8xTeetsnJiDsTc7TYCLFd9+/WNkIqPTxiM/8pSd8VIrhXGTf1Ny1q1hquVqDJB5w==}
     engines: {node: '>= 4'}
+
+  dompurify@3.4.5:
+    resolution: {integrity: sha512-OrwIBKsdNSVEeubdJ1HBv/wNENRM9ytAVCv7YXt//A3vPdVMNuACRqK9mXCGCBW2ln7BT/A4X0jXHo2Gu89miA==}
 
   domutils@3.2.2:
     resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
@@ -7513,6 +7936,10 @@ packages:
   jsc-safe-url@0.2.4:
     resolution: {integrity: sha512-0wM3YBWtYePOjfyXQH5MWQ8H7sdk5EXSwZvmSLKk2RboVQ2Bu239jycHDz5J/8Blf3K0Qnoy2b6xD+z10MFB+Q==}
 
+  jschardet@3.1.4:
+    resolution: {integrity: sha512-/kmVISmrwVwtyYU40iQUOp3SUPk2dhNCMsZBQX0R1/jZ8maaXJ/oZIzUOiyOqcgtLnETFKYChbJ5iDC/eWmFHg==}
+    engines: {node: '>=0.1.90'}
+
   jsesc@3.1.0:
     resolution: {integrity: sha512-/sM3dO2FOzXjKQhJuo0Q173wf2KOo8t4I8vHy6lF9poUp7bKT0/NHE8fPX23PwfhnykfqnC2xRxOnVw5XuGIaA==}
     engines: {node: '>=6'}
@@ -7916,6 +8343,11 @@ packages:
 
   markdown-table@3.0.4:
     resolution: {integrity: sha512-wiYz4+JrLyb/DqW2hkFJxP7Vd7JuTDm77fvbM8VfEQdmSMqcImWeeRbHwZjBjIFki/VaMK2BhFi7oUUZeM5bqw==}
+
+  marked@14.0.0:
+    resolution: {integrity: sha512-uIj4+faQ+MgHgwUW1l2PsPglZLOLOT1uErt06dAPtx2kjteLAkbsd/0FiYg/MGS+i7ZKLb7w2WClxHkzOOuryQ==}
+    engines: {node: '>= 18'}
+    hasBin: true
 
   marky@1.3.0:
     resolution: {integrity: sha512-ocnPZQLNpvbedwTy9kNrQEsknEfgvcLMvOtz3sFeWApDq1MXH1TqkCIx58xlpESsfwQOnuBO9beyQuNGzVvuhQ==}
@@ -8516,6 +8948,10 @@ packages:
   open@7.4.2:
     resolution: {integrity: sha512-MVHddDVweXZF3awtlAS+6pgKLlm/JgxZ90+/NBurBoQctVOOB/zDdVjcyPzQ+0laDGbsWgrRkflI65sQeOgT9Q==}
     engines: {node: '>=8'}
+
+  opentype.js@0.8.0:
+    resolution: {integrity: sha512-FQHR4oGP+a0m/f6yHoRpBOIbn/5ZWxKd4D/djHVJu8+KpBTYrJda0b7mLcgDEMWXE9xBCJm+qb0yv6FcvPjukg==}
+    hasBin: true
 
   ora@3.4.0:
     resolution: {integrity: sha512-eNwHudNbO1folBP3JsZ19v9azXWtQZjICdr3Q0TDPIaeBQ3mXLrh54wM+er0+hSp+dWKf+Z8KM58CYzEyIYxYg==}
@@ -11693,6 +12129,302 @@ snapshots:
   '@codework/mobile-review-diff-native@file:apps/mobile/modules/codework-review-diff': {}
 
   '@codework/mobile-terminal-native@file:apps/mobile/modules/codework-terminal': {}
+
+  '@codingame/monaco-vscode-accessibility-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      marked: 14.0.0
+
+  '@codingame/monaco-vscode-api@33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)':
+    dependencies:
+      '@codingame/monaco-vscode-base-service-override': 33.0.9
+      '@codingame/monaco-vscode-environment-service-override': 33.0.9
+      '@codingame/monaco-vscode-extensions-service-override': 33.0.9
+      '@codingame/monaco-vscode-files-service-override': 33.0.9
+      '@codingame/monaco-vscode-host-service-override': 33.0.9
+      '@codingame/monaco-vscode-layout-service-override': 33.0.9
+      '@codingame/monaco-vscode-quickaccess-service-override': 33.0.9
+      '@vscode/iconv-lite-umd': 0.7.1
+      dompurify: 3.4.5
+      jschardet: 3.1.4
+      marked: 14.0.0
+
+  '@codingame/monaco-vscode-authentication-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-base-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-bulk-edit-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-comments-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-configuration-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-files-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-css-default-extension@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-css-language-features-default-extension@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-debug-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-dialogs-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-editor-api@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-environment-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-explorer-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-extension-api@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-extensions-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-extension-gallery-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-extensions-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-files-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-files-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-host-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-html-default-extension@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-html-language-features-default-extension@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-json-default-extension@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-json-language-features-default-extension@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-keybindings-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-files-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-language-pack-ja@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-language-pack-zh-hans@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-languages-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-files-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-layout-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-lifecycle-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-log-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-environment-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-markdown-basics-default-extension@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-markers-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-model-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-multi-diff-editor-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-notifications-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-outline-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-output-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-log-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-preferences-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-python-default-extension@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-quickaccess-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-remote-agent-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-environment-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-scm-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-search-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-secret-storage-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-snippets-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-files-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-storage-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-task-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-terminal-service-override@33.0.9(@xterm/xterm@6.1.0-beta.219)':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-xterm-addons-common': 33.0.9(@xterm/xterm@6.1.0-beta.219)
+      '@codingame/monaco-vscode-xterm-common': 33.0.9
+    transitivePeerDependencies:
+      - '@xterm/xterm'
+
+  '@codingame/monaco-vscode-textmate-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-files-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-theme-defaults-default-extension@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-theme-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-files-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-timeline-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-typescript-basics-default-extension@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-typescript-language-features-default-extension@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-user-data-profile-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-view-common-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-bulk-edit-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-view-status-bar-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-view-title-bar-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-views-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-keybindings-service-override': 33.0.9
+      '@codingame/monaco-vscode-layout-service-override': 33.0.9
+      '@codingame/monaco-vscode-quickaccess-service-override': 33.0.9
+      '@codingame/monaco-vscode-view-common-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-working-copy-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-files-service-override': 33.0.9
+
+  '@codingame/monaco-vscode-workspace-trust-service-override@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+
+  '@codingame/monaco-vscode-xterm-addons-common@33.0.9(@xterm/xterm@6.1.0-beta.219)':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@xterm/addon-clipboard': 0.3.0-beta.219(@xterm/xterm@6.1.0-beta.219)
+      '@xterm/addon-image': 0.10.0-beta.219(@xterm/xterm@6.1.0-beta.219)
+      '@xterm/addon-ligatures': 0.11.0-beta.219(@xterm/xterm@6.1.0-beta.219)
+      '@xterm/addon-progress': 0.3.0-beta.219(@xterm/xterm@6.1.0-beta.219)
+      '@xterm/addon-search': 0.17.0-beta.219(@xterm/xterm@6.1.0-beta.219)
+      '@xterm/addon-serialize': 0.15.0-beta.219(@xterm/xterm@6.1.0-beta.219)
+      '@xterm/addon-unicode11': 0.10.0-beta.219(@xterm/xterm@6.1.0-beta.219)
+      '@xterm/addon-webgl': 0.20.0-beta.218(@xterm/xterm@6.1.0-beta.219)
+    transitivePeerDependencies:
+      - '@xterm/xterm'
+
+  '@codingame/monaco-vscode-xterm-common@33.0.9':
+    dependencies:
+      '@codingame/monaco-vscode-api': 33.0.9(patch_hash=110e745ee073eb74c746605f3ebe10dbb671be3f54528d28889f90dfaf9a64ec)
+      '@codingame/monaco-vscode-xterm-addons-common': 33.0.9(@xterm/xterm@6.1.0-beta.219)
+      '@xterm/xterm': 6.1.0-beta.219
 
   '@distilled.cloud/aws@0.30.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))':
     dependencies:
@@ -15099,6 +15831,9 @@ snapshots:
 
   '@types/statuses@2.0.6': {}
 
+  '@types/trusted-types@2.0.7':
+    optional: true
+
   '@types/unist@2.0.11': {}
 
   '@types/unist@3.0.3': {}
@@ -15337,11 +16072,49 @@ snapshots:
       vscode-languageserver-types: 3.17.5
       vscode-uri: 3.1.0
 
+  '@vscode/iconv-lite-umd@0.7.1': {}
+
   '@vscode/l10n@0.0.18': {}
 
   '@xmldom/xmldom@0.8.13': {}
 
   '@xmldom/xmldom@0.9.10': {}
+
+  '@xterm/addon-clipboard@0.3.0-beta.219(@xterm/xterm@6.1.0-beta.219)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.219
+
+  '@xterm/addon-image@0.10.0-beta.219(@xterm/xterm@6.1.0-beta.219)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.219
+
+  '@xterm/addon-ligatures@0.11.0-beta.219(@xterm/xterm@6.1.0-beta.219)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.219
+      lru-cache: 6.0.0
+      opentype.js: 0.8.0
+
+  '@xterm/addon-progress@0.3.0-beta.219(@xterm/xterm@6.1.0-beta.219)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.219
+
+  '@xterm/addon-search@0.17.0-beta.219(@xterm/xterm@6.1.0-beta.219)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.219
+
+  '@xterm/addon-serialize@0.15.0-beta.219(@xterm/xterm@6.1.0-beta.219)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.219
+
+  '@xterm/addon-unicode11@0.10.0-beta.219(@xterm/xterm@6.1.0-beta.219)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.219
+
+  '@xterm/addon-webgl@0.20.0-beta.218(@xterm/xterm@6.1.0-beta.219)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.219
+
+  '@xterm/xterm@6.1.0-beta.219': {}
 
   '@yuuang/ffi-rs-android-arm64@1.3.2':
     optional: true
@@ -16490,6 +17263,10 @@ snapshots:
   domhandler@5.0.3:
     dependencies:
       domelementtype: 2.3.0
+
+  dompurify@3.4.5:
+    optionalDependencies:
+      '@types/trusted-types': 2.0.7
 
   domutils@3.2.2:
     dependencies:
@@ -18186,6 +18963,8 @@ snapshots:
 
   jsc-safe-url@0.2.4: {}
 
+  jschardet@3.1.4: {}
+
   jsesc@3.1.0: {}
 
   json-buffer@3.0.1: {}
@@ -18502,6 +19281,8 @@ snapshots:
       tmpl: 1.0.5
 
   markdown-table@3.0.4: {}
+
+  marked@14.0.0: {}
 
   marky@1.3.0: {}
 
@@ -19394,6 +20175,10 @@ snapshots:
     dependencies:
       is-docker: 2.2.1
       is-wsl: 2.2.0
+
+  opentype.js@0.8.0:
+    dependencies:
+      tiny-inflate: 1.0.3
 
   ora@3.4.0:
     dependencies:

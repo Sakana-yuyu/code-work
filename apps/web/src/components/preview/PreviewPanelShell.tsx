@@ -100,7 +100,14 @@ export function PreviewPanelShell(props: {
       data-preview-panel-mode={props.mode}
       data-preview-panel-maximized={props.maximized ? "true" : "false"}
     >
-      {isInline && !props.maximized ? <RightPanelResizeHandle handlers={handlers} /> : null}
+      {isInline && !props.maximized ? (
+        <RightPanelResizeHandle
+          handlers={handlers}
+          width={width}
+          minWidth={PREVIEW_PANEL_MIN_WIDTH}
+          maxWidth={maxWidth}
+        />
+      ) : null}
       {useDragRegion ? <div className="electron-drag-region h-0 w-full" aria-hidden /> : null}
       {props.children}
     </div>
@@ -138,7 +145,10 @@ function useClampedMaxWidth(hostRef: RefObject<HTMLDivElement | null>, enabled: 
   }, []);
   useLayoutEffect(() => {
     if (!enabled) return;
-    const parent = hostRef.current?.parentElement;
+    // 网格槽位只占面板自身宽度，限制宽度时仍需测量包含对话区的整个工作区。
+    const parent =
+      hostRef.current?.closest<HTMLElement>("[data-workspace-layout]") ??
+      hostRef.current?.parentElement;
     if (!parent) return;
     // Measure before first paint: the persisted width must be clamped
     // against the row on the initial render, not one observer tick later

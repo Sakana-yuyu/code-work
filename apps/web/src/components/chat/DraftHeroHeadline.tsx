@@ -25,15 +25,18 @@ import {
 } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { t } from "~/i18n";
+import { cn } from "~/lib/utils";
 
 interface DraftHeroHeadlineProps {
   readonly activeProjectRef: ScopedProjectRef | null;
   readonly activeProjectTitle: string | null;
+  readonly compact?: boolean;
 }
 
 export function DraftHeroHeadline({
   activeProjectRef,
   activeProjectTitle,
+  compact = false,
 }: DraftHeroHeadlineProps) {
   const projects = useProjects();
   const threads = useThreadShells();
@@ -168,7 +171,12 @@ export function DraftHeroHeadline({
   );
 
   return (
-    <h1 className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl">
+    <h1
+      className={cn(
+        "mx-auto w-full max-w-5xl text-center font-normal text-foreground tracking-tight",
+        compact ? "text-base leading-6" : "text-2xl sm:text-3xl",
+      )}
+    >
       {hasResolvedProject ? (
         <>
           {t("whatShouldWeBuildIn")} {projectSelector}

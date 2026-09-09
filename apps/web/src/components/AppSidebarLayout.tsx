@@ -7,7 +7,8 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useLocation, useMatches, useNavigate } from "@tanstack/react-router";
+import { PanelLeftIcon } from "lucide-react";
 
 import { isElectron } from "../env";
 import { openCommandPalette } from "../commandPaletteBus";
@@ -42,6 +43,13 @@ import {
   useSidebarVisibility,
 } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { Button } from "./ui/button";
+import { sendCodeossCommand } from "./ide/codeossCommands";
+import {
+  shouldUseIdeShell,
+  useIdeViewportAvailable,
+  useWorkspaceLayoutPreference,
+} from "../workspaceLayout";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "90px";
 
@@ -66,13 +74,14 @@ function readInitialThreadSidebarWidth(): number {
   }
 }
 
-function SidebarControl() {
+function SidebarControl({ ide }: { ide: boolean }) {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { toggleSidebar } = useSidebar();
-  const isSidebarVisible = useSidebarVisibility();
+  const isMainSidebarVisible = useSidebarVisibility();
+  const isSidebarVisible = isMainSidebarVisible;
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const stageBackdropVariant = useSidebarStageBackdropVariant(
-    environmentIdentificationMode === "artwork",
+    !ide && environmentIdentificationMode === "artwork",
   );
   const shortcutLabel = shortcutLabelForCommand(keybindings, "sidebar.toggle");
 
@@ -89,13 +98,14 @@ function SidebarControl() {
 
       event.preventDefault();
       event.stopPropagation();
-      toggleSidebar();
+      if (ide) sendCodeossCommand("sidebar");
+      else toggleSidebar();
     };
 
     // Capture before focused editors consume commands such as Mod+B for rich-text formatting.
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [keybindings, toggleSidebar]);
+  }, [ide, keybindings, toggleSidebar]);
 
   return (
     // The right-side layout controls carry mr-px (border compensation inside
@@ -108,18 +118,30 @@ function SidebarControl() {
       <Tooltip>
         <TooltipTrigger
           render={
-            <SidebarTrigger
-              className={cn(
-                "pointer-events-auto",
-                isSidebarVisible &&
-                  stageBackdropVariant &&
-                  "focus-visible:ring-white/90 [&_svg]:stroke-white/90! [&_svg]:opacity-100! [&_svg]:hover:stroke-white! [:hover,[data-pressed]]:bg-white/15",
-                isSidebarVisible &&
-                  stageBackdropVariant &&
-                  resolveSidebarStageFocusRingOffsetClass(stageBackdropVariant),
-              )}
-              aria-label={t("toggleMainSidebar")}
-            />
+            ide ? (
+              <Button
+                className="pointer-events-auto size-[var(--workspace-titlebar-control-size)]! [-webkit-app-region:no-drag]"
+                size="icon"
+                variant="ghost"
+                aria-label={t("toggleMainSidebar")}
+                onClick={() => sendCodeossCommand("sidebar")}
+              >
+                <PanelLeftIcon />
+              </Button>
+            ) : (
+              <SidebarTrigger
+                className={cn(
+                  "pointer-events-auto",
+                  isSidebarVisible &&
+                    stageBackdropVariant &&
+                    "focus-visible:ring-white/90 [&_svg]:stroke-white/90! [&_svg]:opacity-100! [&_svg]:hover:stroke-white! [:hover,[data-pressed]]:bg-white/15",
+                  isSidebarVisible &&
+                    stageBackdropVariant &&
+                    resolveSidebarStageFocusRingOffsetClass(stageBackdropVariant),
+                )}
+                aria-label={t("toggleMainSidebar")}
+              />
+            )
           }
         />
         <TooltipPopup side="bottom">
@@ -145,12 +167,28 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   // sidebar is active.
   const pathname = useLocation({ select: (location) => location.pathname });
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+  const isThreadRoute = useMatches({
+    select: (matches) =>
+      matches.some(
+        (match) =>
+          match.routeId === "/_chat/draft/$draftId" ||
+          match.routeId === "/_chat/$environmentId/$threadId",
+      ),
+  });
+  const [preferredLayout] = useWorkspaceLayoutPreference();
+  const ideViewportAvailable = useIdeViewportAvailable();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
   // and a clamped drag ends with an unchanged width, which skips the re-render
   // that would otherwise refresh a render-time snapshot.
   const viewportWidth = useSyncExternalStore(subscribeToViewportWidth, readViewportWidth);
+  const ideShell = shouldUseIdeShell(
+    preferredLayout,
+    ideViewportAvailable ? viewportWidth : 0,
+    isThreadRoute,
+  );
   const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(viewportWidth);
   const resetSidebarWidth = () => {
     try {
@@ -237,42 +275,46 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     <SidebarProvider
       className="relative isolate h-dvh! min-h-0!"
       defaultOpen
+      open={ideShell ? false : sidebarOpen}
+      onOpenChange={setSidebarOpen}
       style={sidebarProviderStyle}
     >
       <ThemeDecorationSync />
       <ThemeBackdrop region="global" />
       <ProjectProjectionRetention />
-      <Sidebar
-        side="left"
-        collapsible="offcanvas"
-        data-app-sidebar=""
-        className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
-        resizable={{
-          maxWidth: sidebarMaximumWidth,
-          minWidth: THREAD_SIDEBAR_MIN_WIDTH,
-          shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
-            nextWidth <= currentWidth ||
-            wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-          storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-          onResize: setSidebarWidth,
-        }}
-      >
-        <div className="theme-sidebar-surface relative isolate flex min-h-0 flex-1 flex-col">
-          <ThemeBackdrop region="sidebar" />
-          {isOnSettings ? (
-            <>
-              <SidebarChromeHeader isElectron={isElectron} />
-              <SettingsSidebarNav pathname={pathname} />
-            </>
-          ) : (
-            <ThreadSidebar />
-          )}
-          <ThemeVideoControls />
-        </div>
-        <SidebarRail onDoubleClick={resetSidebarWidth} />
-      </Sidebar>
+      {!ideShell && (
+        <Sidebar
+          side="left"
+          collapsible="offcanvas"
+          data-app-sidebar=""
+          className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+          resizable={{
+            maxWidth: sidebarMaximumWidth,
+            minWidth: THREAD_SIDEBAR_MIN_WIDTH,
+            shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+              nextWidth <= currentWidth ||
+              wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+            storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+            onResize: setSidebarWidth,
+          }}
+        >
+          <div className="theme-sidebar-surface relative isolate flex min-h-0 flex-1 flex-col">
+            <ThemeBackdrop region="sidebar" />
+            {isOnSettings ? (
+              <>
+                <SidebarChromeHeader isElectron={isElectron} />
+                <SettingsSidebarNav pathname={pathname} />
+              </>
+            ) : (
+              <ThreadSidebar />
+            )}
+            <ThemeVideoControls />
+          </div>
+          <SidebarRail onDoubleClick={resetSidebarWidth} />
+        </Sidebar>
+      )}
       {children}
-      <SidebarControl />
+      <SidebarControl ide={ideShell} />
     </SidebarProvider>
   );
 }

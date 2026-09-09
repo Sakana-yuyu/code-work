@@ -4,6 +4,39 @@
  * messages.ts.
  */
 export const ja: Record<string, string> = {
+  "ide.activityBar": "IDE アクティビティバー",
+  "ide.explorer": "エクスプローラー",
+  "ide.projectsAndChats": "プロジェクトとチャット",
+  "ide.chooseProject": "プロジェクトを開く",
+  "ide.chooseProjectDescription":
+    "プロジェクトを選択してファイルとエディターを開きます。入力済みのチャット下書きは保持されます。",
+  "ide.loadingProject": "環境に接続してプロジェクトを読み込んでいます…",
+  "ide.projectEnvironmentUnavailable":
+    "プロジェクトの環境に接続できません。接続設定で再接続するか、別のプロジェクトを選択してください。",
+  "ide.workspace": "ワークスペース",
+  "ide.workbenchTitle": "Code Work IDE",
+  "ide.extensions": "VS Code 拡張機能",
+  "ide.preparing": "エディターと拡張機能ホストを準備中…",
+  "ide.loadingWorkbench": "エディター画面を読み込み中…",
+  "ide.themeSyncFailed": "テーマの同期に失敗しました。保存済みのテーマを再度選択してください。",
+  "ide.languageReloadRequired":
+    "IDE の言語が変更されました。ファイルを保存してから再読み込みしてください。",
+  "ide.connectionFailed": "IDE に接続できません。環境への接続を確認してください。",
+  "ide.commandFailed": "IDE 操作に失敗しました。再接続してください。",
+  "ide.retry": "IDE に再接続",
+  "ide.sessionRebuildPaused":
+    "IDE セッションが繰り返し切断されたため、自動復旧を停止しました。再接続してください。",
+  "ide.sendSelectionToChat": "選択したコードを AI チャットに追加",
+  "ide.selectedCode": "選択したコード",
+  "ide.cursorPosition": "行 {{line}}、列 {{column}}",
+  "workspace.layout": "ワークスペースのレイアウト",
+  "workspace.chatMode": "チャットモード",
+  "workspace.chatShort": "チャット",
+  "workspace.ideMode": "IDE モード",
+  "workspace.ideModeDescription": "ファイル、エディター、ターミナルと AI チャット",
+  "workspace.ideNeedsSpace": "IDE モードを使うには、会話の分割を閉じて画面を広げてください",
+  "workspace.toggleAiChat": "AI チャットの表示を切り替え",
+  "workspace.chooseFile": "左側のファイル一覧からファイルを選んで編集を開始",
   "effortPicker.labelLanguage": "強度ラベルの言語",
   "Fallback model": "フォールバックモデル",
   "Limit each request to 1–1000 tool-use rounds. Leave empty for no additional limit. This is not a token or spending limit.":
@@ -1806,6 +1839,7 @@ export const ja: Record<string, string> = {
     "この環境のアクティビティをモバイルクライアントに送信して、プッシュ通知や Live Activities に反映します。Code Work Connect トンネルがなくても動作します。",
   sendAMessageBeforeYouSubmitFeedback:
     "フィードバックを送信する前に、メッセージを送信してください。",
+  selectProjectToSend: "送信するにはプロジェクトを選択",
   sending: "送信中...",
   sending2: "送信中",
   sendingIsUnavailableRightNowFinishTheCurrentActionThenSend:

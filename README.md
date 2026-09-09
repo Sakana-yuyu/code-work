@@ -110,6 +110,7 @@ graph LR
 
 - **多 Provider 工作台**：统一查看 Provider 状态、登录状态、可执行文件路径和启用配置；不同 Provider 仍使用各自的官方 CLI 与账号。
 - **项目与线程**：按项目组织会话，支持工作区、worktree、文件搜索、终端、源码控制、回合历史、变更查看与检查点恢复。
+- **IDE 工作区**：在同一项目内切换对话与 IDE 布局；IDE 复用 Code Work 的文件、终端、Git、主题和远程 SSH 能力，并支持中文 VS Code 工作台界面。
 - **任务委派与长任务**：提供执行器注册、可用性探测、优先级与故障转移，并支持审查、重试、改派、预算升级、视觉委派和子代理角色。
 - **权限与运行时控制**：按线程选择权限模式；组合运行时负责任务图、工具代理、能力授予审批，以及跨重启委派收口。
 - **BYOK 与自定义模型**：接入 OpenAI、Anthropic、Gemini 及兼容中转，支持模型发现、上下文窗口匹配、余额查询和使用量仪表盘。
@@ -144,6 +145,7 @@ vp run dev        # 维护者启动本地开发环境
 - [从手机或另一台机器远程访问](./docs/user/remote-access.md)
 - [应用与服务端同步](./docs/user/updating.md)
 - [源码控制集成](./docs/user/source-control.md)
+- [IDE 工作区](./docs/user/workspace-ide.md)
 - [Claude Provider](./docs/user/providers-claude.md)
 - [使用量与计划](./docs/user/usage.md)
 - [Agent CLI](./docs/user/agent-cli.md)
@@ -159,9 +161,10 @@ vp run dev        # 维护者启动本地开发环境
 
 ## 桌面端构建与发布
 
-普通稳定版桌面 Release 使用 GitHub Actions 的官方托管构建机器，工作流位于
+桌面 Release 使用 GitHub Actions 的官方托管构建机器，工作流位于
 [`.github/workflows/release.yml`](./.github/workflows/release.yml)。推送形如 `v1.2.3`
-的稳定版本 tag 后，工作流会自动构建并创建 GitHub Release；当前不提供手动发布入口。
+的稳定版本 tag 会创建 latest Release；推送形如 `v1.2.3-battle` 的 battle tag 会创建
+预发布 Release，不会覆盖 latest。两种发布均由同一套桌面构建矩阵完成。
 
 当前桌面 Release 包含以下产物：
 

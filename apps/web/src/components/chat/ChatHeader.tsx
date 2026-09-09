@@ -19,10 +19,23 @@ import {
   GitCompareIcon,
   PanelsTopLeftIcon,
   FileSearchIcon,
+  MessageSquareIcon,
+  SquareCodeIcon,
+  CheckIcon,
 } from "lucide-react";
 import { Button } from "../ui/button";
-import { Menu, MenuItem, MenuPopup, MenuTrigger, MenuShortcut, MenuSeparator } from "../ui/menu";
+import {
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
+  MenuShortcut,
+  MenuSeparator,
+  MenuRadioGroup,
+  MenuRadioItem,
+} from "../ui/menu";
 import { openCommandPalette } from "../../commandPaletteBus";
+import { sendCodeossCommand } from "../ide/codeossCommands";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useTerminalUiStateStore } from "../../terminalUiStateStore";
 import { shortcutLabelForCommand } from "../../keybindings";
@@ -60,6 +73,7 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { cn } from "~/lib/utils";
 import { t } from "~/i18n";
+import { useIdeViewportAvailable } from "../../workspaceLayout";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -79,6 +93,8 @@ interface ChatHeaderProps {
   keybindings: ResolvedKeybindingsConfig;
   availableEditors: ReadonlyArray<EditorId>;
   rightPanelOpen: boolean;
+  workspaceLayout: "chat" | "ide";
+  onWorkspaceLayoutChange: (mode: "chat" | "ide") => void;
   gitCwd: string | null;
   readonly onOpenPullRequest?: ((number: number) => void) | undefined;
   onNewThreadInProject: () => void;
@@ -148,6 +164,8 @@ export const ChatHeader = memo(function ChatHeader({
   keybindings,
   availableEditors,
   rightPanelOpen,
+  workspaceLayout,
+  onWorkspaceLayoutChange,
   gitCwd,
   onOpenPullRequest,
   onNewThreadInProject,
@@ -157,6 +175,18 @@ export const ChatHeader = memo(function ChatHeader({
   onDeleteProjectScript,
 }: ChatHeaderProps) {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  // 布局切换只受窗口和分屏限制，不能被暂未解析到的项目锁住。
+  const ideAvailable = useIdeViewportAvailable();
+  const layoutOptions = [
+    {
+      value: "chat",
+      label: t("workspace.chatMode"),
+      shortLabel: t("workspace.chatShort"),
+      icon: MessageSquareIcon,
+    },
+    { value: "ide", label: t("workspace.ideMode"), shortLabel: "IDE", icon: SquareCodeIcon },
+  ] as const;
+  const currentLayout = layoutOptions[workspaceLayout === "ide" ? 1 : 0];
   const fileScripts = useCodeworkProjectFileScripts(
     activeThreadEnvironmentId,
     activeProjectScripts ? activeProjectCwd : null,
@@ -304,6 +334,9 @@ export const ChatHeader = memo(function ChatHeader({
       className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3"
       onContextMenu={handleHeaderContextMenu}
     >
+      {workspaceLayout === "ide" ? (
+        <img src="/favicon-32x32.png" alt="Code Work" className="size-5 shrink-0" />
+      ) : null}
       <WorkspaceBreadcrumb ariaLabel={t("threadBreadcrumb")} className="flex-1">
         {/* The project always leads the header: knowing which project a
             thread lives in is priority zero, and the thread title alone
@@ -398,6 +431,99 @@ export const ChatHeader = memo(function ChatHeader({
           rightPanelOpen ? "pr-0" : "pr-16",
         )}
       >
+        <div
+          role="group"
+          aria-label={t("workspace.layout")}
+          className="flex shrink-0 items-center [-webkit-app-region:no-drag]"
+        >
+          {/* 按标题栏的实际宽度收缩，右侧面板打开时同样生效。 */}
+          <div className="hidden h-8 items-center gap-0.5 rounded-lg border border-border/60 bg-muted/50 p-0.5 @[48rem]/header-actions:flex">
+            {layoutOptions.map(({ value, label, shortLabel, icon: Icon }) => (
+              <Tooltip key={value}>
+                <TooltipTrigger render={<span className="flex" />}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={cn(
+                      "h-6! gap-1.5 rounded-md border-0 px-2.5 text-xs font-medium",
+                      workspaceLayout === value
+                        ? "bg-background text-foreground shadow-xs ring-1 ring-border/50"
+                        : "text-muted-foreground",
+                    )}
+                    aria-label={label}
+                    aria-pressed={workspaceLayout === value}
+                    disabled={value === "ide" && !ideAvailable}
+                    onClick={() => onWorkspaceLayoutChange(value)}
+                  >
+                    <Icon
+                      className={cn(
+                        "size-3.5",
+                        workspaceLayout === value ? "text-primary" : "text-muted-foreground",
+                      )}
+                    />
+                    {shortLabel}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipPopup>
+                  {value === "ide" && !ideAvailable ? t("workspace.ideNeedsSpace") : label}
+                </TooltipPopup>
+              </Tooltip>
+            ))}
+          </div>
+          <div className="flex @[48rem]/header-actions:hidden">
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8! gap-1.5 rounded-lg border-border/60 bg-muted/30 px-2 text-xs font-medium"
+                    aria-label={`${t("workspace.layout")}: ${currentLayout.label}`}
+                    title={currentLayout.label}
+                  />
+                }
+              >
+                <currentLayout.icon className="size-3.5 text-primary" />
+                <span className="hidden @[24rem]/header-actions:inline">
+                  {currentLayout.shortLabel}
+                </span>
+                <ChevronDownIcon className="size-3 text-muted-foreground" />
+              </MenuTrigger>
+              <MenuPopup align="end" className="w-52">
+                <MenuRadioGroup
+                  value={workspaceLayout}
+                  onValueChange={(value) => {
+                    if (value === "chat" || (value === "ide" && ideAvailable)) {
+                      onWorkspaceLayoutChange(value);
+                    }
+                  }}
+                >
+                  {layoutOptions.map(({ value, label, icon: Icon }) => (
+                    <MenuRadioItem
+                      key={value}
+                      value={value}
+                      disabled={value === "ide" && !ideAvailable}
+                      closeOnClick
+                    >
+                      <span className="flex items-center gap-2">
+                        <Icon className="size-4 text-muted-foreground" />
+                        <span className="flex-1">{label}</span>
+                        {workspaceLayout === value ? (
+                          <CheckIcon className="size-3.5 text-primary" />
+                        ) : null}
+                      </span>
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+                {!ideAvailable ? (
+                  <p className="px-2 py-1.5 text-xs leading-relaxed text-muted-foreground">
+                    {t("workspace.ideNeedsSpace")}
+                  </p>
+                ) : null}
+              </MenuPopup>
+            </Menu>
+          </div>
+        </div>
         {activeProjectCwd && (
           <Menu>
             <MenuTrigger
@@ -408,20 +534,41 @@ export const ChatHeader = memo(function ChatHeader({
               <ChevronDownIcon className="size-3" />
             </MenuTrigger>
             <MenuPopup align="end" className="min-w-56">
+              <MenuItem onClick={() => openCommandPalette()}>
+                <MessageSquareIcon />
+                {t("ide.projectsAndChats")}
+              </MenuItem>
+              <MenuSeparator />
               <MenuItem
-                onClick={() => useRightPanelStore.getState().open(activeThreadRef, "files")}
+                onClick={() =>
+                  workspaceLayout === "ide"
+                    ? sendCodeossCommand("files")
+                    : useRightPanelStore.getState().open(activeThreadRef, "files")
+                }
               >
                 <FolderTreeIcon />
                 {t("workspace.files")}
               </MenuItem>
-              <MenuItem onClick={() => openCommandPalette({ open: "files" })}>
+              <MenuItem
+                onClick={() =>
+                  workspaceLayout === "ide"
+                    ? sendCodeossCommand("quickOpen")
+                    : openCommandPalette({ open: "files" })
+                }
+              >
                 <FileSearchIcon />
                 {t("workspace.quickOpen")}
                 <MenuShortcut>
                   {shortcutLabelForCommand(keybindings, "filePicker.toggle")}
                 </MenuShortcut>
               </MenuItem>
-              <MenuItem onClick={() => openCommandPalette({ open: "content" })}>
+              <MenuItem
+                onClick={() =>
+                  workspaceLayout === "ide"
+                    ? sendCodeossCommand("search")
+                    : openCommandPalette({ open: "content" })
+                }
+              >
                 <SearchIcon />
                 {t("workspace.search")}
                 <MenuShortcut>
@@ -431,7 +578,9 @@ export const ChatHeader = memo(function ChatHeader({
               <MenuSeparator />
               <MenuItem
                 onClick={() =>
-                  useTerminalUiStateStore.getState().setTerminalOpen(activeThreadRef, true)
+                  workspaceLayout === "ide"
+                    ? sendCodeossCommand("terminal")
+                    : useTerminalUiStateStore.getState().setTerminalOpen(activeThreadRef, true)
                 }
               >
                 <TerminalIcon />
@@ -442,12 +591,22 @@ export const ChatHeader = memo(function ChatHeader({
               </MenuItem>
               <MenuItem
                 disabled={!isServerThread || !gitCwd}
-                onClick={() => useRightPanelStore.getState().open(activeThreadRef, "diff")}
+                onClick={() =>
+                  workspaceLayout === "ide"
+                    ? sendCodeossCommand("git")
+                    : useRightPanelStore.getState().open(activeThreadRef, "diff")
+                }
               >
                 <GitCompareIcon />
                 {t("workspace.changes")}
                 <MenuShortcut>{shortcutLabelForCommand(keybindings, "diff.toggle")}</MenuShortcut>
               </MenuItem>
+              {workspaceLayout === "ide" ? (
+                <MenuItem onClick={() => sendCodeossCommand("extensions")}>
+                  <SquareCodeIcon />
+                  {t("ide.extensions")}
+                </MenuItem>
+              ) : null}
             </MenuPopup>
           </Menu>
         )}

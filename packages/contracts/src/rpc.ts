@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { CliProxyError, CliProxyRequest, CliProxyResult } from "./cliProxy.ts";
+import { IdeError, IdeOpenInput, IdeOpenResult } from "./ide.ts";
 
 import { ProviderEventQueryInput, ProviderEventQueryResult } from "./providerEventQuery.ts";
 import { AccountQuotaRequest, AccountQuotaResult } from "./accountQuota.ts";
@@ -385,6 +386,7 @@ export const WS_METHODS = {
   // Filesystem methods
   filesystemBrowse: "filesystem.browse",
   assetsCreateUrl: "assets.createUrl",
+  ideOpen: "ide.open",
   attachmentsCreateUploadUrl: "attachments.createUploadUrl",
   attachmentsDelete: "attachments.delete",
 
@@ -1458,6 +1460,12 @@ export const WsAssetsCreateUrlRpc = Rpc.make(WS_METHODS.assetsCreateUrl, {
   error: Schema.Union([AssetAccessError, EnvironmentAuthorizationError]),
 });
 
+export const WsIdeOpenRpc = Rpc.make(WS_METHODS.ideOpen, {
+  payload: IdeOpenInput,
+  success: IdeOpenResult,
+  error: Schema.Union([IdeError, EnvironmentAuthorizationError]),
+});
+
 export const WsAttachmentsCreateUploadUrlRpc = Rpc.make(WS_METHODS.attachmentsCreateUploadUrl, {
   payload: AttachmentCreateUploadUrlInput,
   success: AttachmentCreateUploadUrlResult,
@@ -2040,6 +2048,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsAssetsCreateUrlRpc,
+  WsIdeOpenRpc,
   WsAttachmentsCreateUploadUrlRpc,
   WsAttachmentsDeleteRpc,
   WsProviderUploadFeedbackRpc,

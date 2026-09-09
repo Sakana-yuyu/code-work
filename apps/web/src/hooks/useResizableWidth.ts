@@ -1,5 +1,12 @@
 import * as Schema from "effect/Schema";
-import { type PointerEvent as ReactPointerEvent, useCallback, useRef, useState } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { getCanonicalFirstLocalStorageItem, setLocalStorageItem } from "./useLocalStorage";
 
@@ -21,6 +28,7 @@ export interface UseResizableWidthOptions {
 }
 
 export interface ResizableWidthHandlers {
+  readonly onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
   readonly onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   readonly onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void;
   readonly onPointerUp: (event: ReactPointerEvent<HTMLElement>) => void;
@@ -58,7 +66,8 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
         legacyStorageKey === undefined
           ? getCanonicalFirstLocalStorageItem(storageKey, storageKey, WidthSchema)
           : getCanonicalFirstLocalStorageItem(storageKey, legacyStorageKey, WidthSchema);
-      return clamp(stored ?? defaultWidth);
+      // 首次渲染时容器可能尚未测量，只限制显示宽度，不截断用户保存的偏好。
+      return stored ?? defaultWidth;
     } catch (error) {
       console.error("Could not read persisted panel width.", error);
       return defaultWidth;
@@ -79,6 +88,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
   const releasePointer = useCallback((pointerId: number) => {
     const state = dragStateRef.current;
     if (!state) return;
+    dragStateRef.current = null;
     if (state.rafId !== null) {
       cancelAnimationFrame(state.rafId);
     }
@@ -91,8 +101,48 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
     }
     document.body.style.removeProperty("cursor");
     document.body.style.removeProperty("user-select");
-    dragStateRef.current = null;
   }, []);
+
+  useEffect(
+    () => () => {
+      if (dragStateRef.current) releasePointer(dragStateRef.current.pointerId);
+    },
+    [releasePointer],
+  );
+
+  const commitWidth = useCallback(
+    (value: number) => {
+      const next = clamp(value);
+      try {
+        setLocalStorageItem(storageKey, next, WidthSchema);
+      } catch (error) {
+        console.error("Could not persist panel width.", error);
+      }
+      setWidth(next);
+    },
+    [clamp, storageKey],
+  );
+
+  const onKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLElement>) => {
+      const direction = edge === "left" ? -1 : 1;
+      const next =
+        event.key === "Home"
+          ? minWidth
+          : event.key === "End"
+            ? maxWidth
+            : event.key === "ArrowLeft"
+              ? clampedWidth - direction * 20
+              : event.key === "ArrowRight"
+                ? clampedWidth + direction * 20
+                : undefined;
+      if (next === undefined) return;
+      event.preventDefault();
+      event.stopPropagation();
+      commitWidth(next);
+    },
+    [clampedWidth, commitWidth, edge, maxWidth, minWidth],
+  );
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
@@ -141,17 +191,12 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
     (event: ReactPointerEvent<HTMLElement>) => {
       const state = dragStateRef.current;
       if (!state || state.pointerId !== event.pointerId) return;
-      const finalWidth = clamp(state.pending);
+      const finalWidth = state.pending;
       releasePointer(event.pointerId);
       // Commit once at drag-end to avoid 60Hz localStorage writes.
-      try {
-        setLocalStorageItem(storageKey, finalWidth, WidthSchema);
-      } catch (error) {
-        console.error("Could not persist panel width.", error);
-      }
-      setWidth(finalWidth);
+      commitWidth(finalWidth);
     },
-    [clamp, releasePointer, storageKey],
+    [commitWidth, releasePointer],
   );
 
   const onPointerCancel = useCallback(
@@ -167,6 +212,6 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
 
   return {
     width: clampedWidth,
-    handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel },
+    handlers: { onKeyDown, onPointerDown, onPointerMove, onPointerUp, onPointerCancel },
   };
 }

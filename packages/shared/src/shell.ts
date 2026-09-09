@@ -547,7 +547,10 @@ function cacheCommandResolution(
   });
 }
 
-const isExecutableFile = Effect.fn("shell.isExecutableFile")(function* (
+// Debug keeps PATH-walk spans out of normal Info logs: a single walk emits hundreds of these spans
+// (each an antivirus-taxed stat on Windows), which alone fills a 10MB trace
+// file in minutes and buries every meaningful span around it.
+const isExecutableFile = Effect.fn("shell.isExecutableFile", { level: "Debug" })(function* (
   filePath: string,
   platform: NodeJS.Platform,
   windowsPathExtensions: ReadonlyArray<string>,
@@ -566,7 +569,9 @@ const isExecutableFile = Effect.fn("shell.isExecutableFile")(function* (
   return canExecuteFile(filePath);
 });
 
-const resolveCommandPathForPlatform = Effect.fn("shell.resolveCommandPathForPlatform")(function* (
+const resolveCommandPathForPlatform = Effect.fn("shell.resolveCommandPathForPlatform", {
+  level: "Debug",
+})(function* (
   command: string,
   options: CommandAvailabilityOptions & { readonly platform: NodeJS.Platform },
 ): Effect.fn.Return<string, CommandResolutionError, FileSystem.FileSystem | Path.Path> {
@@ -666,15 +671,14 @@ const resolveCommandPathForPlatform = Effect.fn("shell.resolveCommandPathForPlat
   return yield* new CommandResolutionError({ command, reason: "not-found" });
 });
 
-export const resolveCommandPath = Effect.fn("shell.resolveCommandPath")(function* (
-  command: string,
-  options: CommandAvailabilityOptions = {},
-) {
-  return yield* resolveCommandPathForPlatform(command, {
-    env: options.env ?? (yield* HostProcessEnvironment),
-    platform: yield* HostProcessPlatform,
-  });
-});
+export const resolveCommandPath = Effect.fn("shell.resolveCommandPath", { level: "Debug" })(
+  function* (command: string, options: CommandAvailabilityOptions = {}) {
+    return yield* resolveCommandPathForPlatform(command, {
+      env: options.env ?? (yield* HostProcessEnvironment),
+      platform: yield* HostProcessPlatform,
+    });
+  },
+);
 
 export const resolveSpawnCommand = Effect.fn("shell.resolveSpawnCommand")(function* (
   command: string,
@@ -707,15 +711,14 @@ export const resolveSpawnCommand = Effect.fn("shell.resolveSpawnCommand")(functi
   };
 });
 
-export const isCommandAvailable = Effect.fn("shell.isCommandAvailable")(function* (
-  command: string,
-  options: CommandAvailabilityOptions = {},
-) {
-  return yield* resolveCommandPath(command, options).pipe(
-    Effect.as(true),
-    Effect.catchTag("CommandResolutionError", () => Effect.succeed(false)),
-  );
-});
+export const isCommandAvailable = Effect.fn("shell.isCommandAvailable", { level: "Debug" })(
+  function* (command: string, options: CommandAvailabilityOptions = {}) {
+    return yield* resolveCommandPath(command, options).pipe(
+      Effect.as(true),
+      Effect.catchTag("CommandResolutionError", () => Effect.succeed(false)),
+    );
+  },
+);
 
 /** Drops every memoized command resolution. Call after installing a new CLI
     so availability probes observe it instead of a cached "not-found". */

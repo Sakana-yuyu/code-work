@@ -90,7 +90,6 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
       )}
       to="/"
     >
-      <CodeworkWordmark />
       <span
         className={cn(
           "-translate-y-px truncate text-sm font-medium tracking-tight",
@@ -100,27 +99,6 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
         {APP_BASE_NAME}
       </span>
     </Link>
-  );
-}
-
-function CodeworkWordmark() {
-  return (
-    <svg
-      aria-label="Code Work"
-      className="h-2.5 w-auto shrink-0"
-      viewBox="0 0 24 24"
-      role="img"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M7.5 5.5 3 10l4.5 4.5M16.5 5.5 21 10l-4.5 4.5M14 3 10 17"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.25"
-      />
-    </svg>
   );
 }
 

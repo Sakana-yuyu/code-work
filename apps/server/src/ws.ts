@@ -146,6 +146,7 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
+import { Codeoss, layer as CodeossLayer } from "./ide/Codeoss.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
 import { listCanvasArtifacts } from "./canvas/CanvasArtifact.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
@@ -3648,6 +3649,11 @@ const makeWsRpcLayer = (
             deletePendingAttachment(input.attachmentId),
             { "rpc.aggregate": "workspace" },
           ),
+        [WS_METHODS.ideOpen]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.ideOpen,
+            Codeoss.use((ide) => ide.open(currentSessionId, input)),
+          ),
         [WS_METHODS.assetsCreateUrl]: (input) =>
           observeRpcEffect(
             WS_METHODS.assetsCreateUrl,
@@ -4120,6 +4126,7 @@ const makeWsRpcLayer = (
 
 export const websocketRpcRouteLayer = Layer.unwrap(
   Effect.gen(function* () {
+    const codeoss = yield* Codeoss;
     const cliProxy = yield* CliProxy.CliProxy;
     const previewAutomationBroker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
     const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
@@ -4151,6 +4158,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
         }).pipe(
           Effect.provide(
             makeWsRpcLayer(session, clientOrigin, previewAutomationBroker).pipe(
+              Layer.provide(Layer.succeed(Codeoss, codeoss)),
               Layer.provide(Layer.succeed(CliProxy.CliProxy, cliProxy)),
               Layer.provideMerge(RpcSerialization.layerJson),
               Layer.provide(ProviderMaintenanceRunner.layer),
@@ -4195,4 +4203,8 @@ export const websocketRpcRouteLayer = Layer.unwrap(
       ),
     );
   }),
-).pipe(Layer.provide(CliProxy.layer), Layer.provide(AccountQuotaLayer));
+).pipe(
+  Layer.provide(CliProxy.layer),
+  Layer.provide(AccountQuotaLayer),
+  Layer.provide(CodeossLayer),
+);

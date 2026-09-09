@@ -135,6 +135,7 @@ packageExtensions:
 patchedDependencies:
   "@clerk/electron@0.0.37": patches/@clerk__electron@0.0.37.patch
   "@clerk/expo@4.2.0": patches/@clerk__expo@4.2.0.patch
+  "@codingame/monaco-vscode-api@33.0.9": patches/@codingame__monaco-vscode-api@33.0.9.patch
   "@effect/vitest@4.0.0-beta.103": patches/@effect__vitest@4.0.0-beta.103.patch
   "@expo/metro-config@56.0.14": patches/@expo%2Fmetro-config@56.0.14.patch
   "@ff-labs/fff-node@0.9.4": patches/@ff-labs__fff-node@0.9.4.patch

@@ -257,6 +257,18 @@ export function parseVsCodeThemeFile(value: unknown): ThemeDefinition {
 
   const overrides: Partial<Record<ThemeColorRole, string>> = {
     canvas: canvasHex,
+    chrome: solidOver(canvas, "titleBar.activeBackground") ?? canvasHex,
+    toolbar:
+      solidOver(canvas, "editorGroupHeader.tabsBackground", "titleBar.activeBackground") ??
+      canvasHex,
+    toolbarForeground: readableOn(
+      solidOver(canvas, "editorGroupHeader.tabsBackground", "titleBar.activeBackground") ??
+        canvasHex,
+      derived.toolbarForeground,
+      "titleBar.activeForeground",
+      "foreground",
+    ),
+    toolbarBorder: solidOver(canvas, "titleBar.border", "panel.border") ?? derived.toolbarBorder,
     text: readableOn(canvasHex, derived.text, "editor.foreground", "foreground"),
     textMuted: readableOn(
       canvasHex,

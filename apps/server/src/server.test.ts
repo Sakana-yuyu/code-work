@@ -3604,6 +3604,23 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("IDE RPC 接入已认证路由，无效目录和未知工作台会话均明确拒绝", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const error = yield* Effect.flip(
+        Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.ideOpen]({ cwd: "relative/invalid-project" }),
+          ),
+        ),
+      );
+      assert.equal(error._tag, "IdeError");
+      const response = yield* fetchEffect(yield* getHttpServerUrl(`/api/ide/${"a".repeat(64)}/`));
+      assert.equal(response.status, 401);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("does not allow management-only access tokens to operate the environment", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();

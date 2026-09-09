@@ -14,6 +14,7 @@ interface PanelLayoutControlsProps {
   rightPanelOpen: boolean;
   rightPanelShortcutLabel: string | null;
   rightPanelUnavailableLabel?: string;
+  rightPanelLabel?: string;
   /** Running + waiting subagents in this thread; badges the right panel toggle. */
   liveAgentCount: number;
   onToggleTerminal: () => void;
@@ -29,6 +30,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
   rightPanelOpen,
   rightPanelShortcutLabel,
   rightPanelUnavailableLabel = t("panelLayout.rightPanelUnavailable"),
+  rightPanelLabel,
   liveAgentCount,
   onToggleTerminal,
   onToggleRightPanel,
@@ -69,9 +71,10 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
             pressed={rightPanelOpen}
             onPressedChange={onToggleRightPanel}
             aria-label={
-              liveAgentCount > 0
+              rightPanelLabel ??
+              (liveAgentCount > 0
                 ? t("toggleRightPanelAgentsWorking", { count: liveAgentCount })
-                : t("toggleRightPanel")
+                : t("toggleRightPanel"))
             }
             variant="ghost"
             size="sm"
@@ -90,7 +93,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
         </TooltipTrigger>
         <TooltipPopup side="bottom">
           {rightPanelAvailable
-            ? `${t("toggleRightPanel")}${rightPanelShortcutLabel ? ` (${rightPanelShortcutLabel})` : ""}${
+            ? `${rightPanelLabel ?? t("toggleRightPanel")}${rightPanelShortcutLabel ? ` (${rightPanelShortcutLabel})` : ""}${
                 liveAgentCount > 0 ? ` · ${t("agentsWorking", { count: liveAgentCount })}` : ""
               }`
             : rightPanelUnavailableLabel}
