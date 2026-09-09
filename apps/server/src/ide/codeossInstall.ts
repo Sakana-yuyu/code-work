@@ -94,6 +94,7 @@ export async function supplyTypeScriptLibrary(installRoot: string, signal: Abort
 // PATH 里的 MSYS tar 会把 "C:\..." 当作远程主机；Windows 10+ 自带的 bsdtar 没有
 // 这个歧义，优先固定使用它，避免安装成败取决于启动 shell。
 export function resolveTarExecutable(): string {
+  // oxlint-disable-next-line codework/no-global-process-runtime -- tar 解析依赖真实宿主的系统目录，本模块是刻意的非 Effect 安装边界。
   if (process.platform !== "win32") return "tar";
   const systemTar = NodePath.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
   return NodeFS.existsSync(systemTar) ? systemTar : "tar";

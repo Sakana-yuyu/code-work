@@ -4,7 +4,8 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeStream from "node:stream";
-import { expect, it, vi } from "@effect/vitest";
+import { expect, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import { CodeossRuntime } from "./codeossRuntime.ts";
 import { installCodeoss } from "./codeossInstall.ts";
 
