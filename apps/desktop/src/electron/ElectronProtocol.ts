@@ -107,7 +107,8 @@ export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrat
   // the build-configured Clerk, relay, and OTLP endpoints. Those environment
   // origins are not known when this response policy is created, so restrict
   // connections by the network schemes the client supports instead of by host.
-  const connectSources = ["'self'", "http:", "https:", "ws:", "wss:"];
+  // 内置 IDE 主题和语言包通过 fetch 读取打包后的 data: JSON，脚本策略仍单独限制。
+  const connectSources = ["'self'", "http:", "https:", "ws:", "wss:", "data:"];
 
   return [
     "default-src 'self'",
@@ -119,7 +120,7 @@ export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrat
     "style-src 'self' 'unsafe-inline'",
     `font-src 'self' ${getProtocolAliases(input.scheme)
       .map((scheme) => `${scheme}:`)
-      .join(" ")} data:`,
+      .join(" ")} data: http: https:`,
     "worker-src 'self' blob:",
     // 背景视频仅使用本地导入的 Blob，不开放远程视频或脚本来源。
     "media-src 'self' blob:",

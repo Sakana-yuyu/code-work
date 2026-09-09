@@ -61,7 +61,7 @@ describe("ElectronProtocol", () => {
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
-            "connect-src 'self' http: https: ws: wss:",
+            "connect-src 'self' http: https: ws: wss: data:",
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
@@ -69,7 +69,7 @@ describe("ElectronProtocol", () => {
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
-            "font-src 'self' codework-dev: t3code-dev: data:",
+            "font-src 'self' codework-dev: t3code-dev: data: http: https:",
           );
         }),
       );
@@ -216,7 +216,14 @@ describe("ElectronProtocol", () => {
       "https://clerk.t3.codes",
       "https://challenges.cloudflare.com",
     ]);
-    assert.deepEqual(directives["connect-src"], ["'self'", "http:", "https:", "ws:", "wss:"]);
+    assert.deepEqual(directives["connect-src"], [
+      "'self'",
+      "http:",
+      "https:",
+      "ws:",
+      "wss:",
+      "data:",
+    ]);
     assert.deepEqual(directives["media-src"], ["'self'", "blob:"]);
     assert.deepEqual(directives["img-src"], [
       "'self'",
@@ -227,6 +234,13 @@ describe("ElectronProtocol", () => {
       "http:",
       "https:",
     ]);
-    assert.deepEqual(directives["font-src"], ["'self'", "codework:", "t3code:", "data:"]);
+    assert.deepEqual(directives["font-src"], [
+      "'self'",
+      "codework:",
+      "t3code:",
+      "data:",
+      "http:",
+      "https:",
+    ]);
   });
 });
