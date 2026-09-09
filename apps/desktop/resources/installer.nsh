@@ -4,13 +4,11 @@
 ; .onVerifyInstDir 里同步改写 $INSTDIR 并刷新目录输入框（NSIS 目录页控件
 ; 1018）。手工输入途经盘符根时同样会补全，输入框可见且可继续编辑。
 ; 补全后再次触发的回调因路径已含 ${APP_FILENAME} 直接跳过，不会循环。
-; 本文件被拼在模板 common.nsh 之前，LogicLib 必须自带（重复引入无害）。
+; 本文件被拼在模板 common.nsh 之前，LogicLib 必须自带（重复引入无害）；
+; 不要在此 !define WinMessages.nsh 里的常量（如 WM_SETTEXT），会引起
+; "already defined" 冲突，SendMessage 直接写消息值 0x000B。
 
 !include "LogicLib.nsh"
-
-!ifndef WM_SETTEXT
-  !define WM_SETTEXT 0x000B
-!endif
 
 Function .onVerifyInstDir
   Push $R0
@@ -25,7 +23,7 @@ Function .onVerifyInstDir
     ${OrIf} $INSTDIR == "$R2"
       StrCpy $INSTDIR "$R1\${APP_FILENAME}"
       GetDlgItem $R2 $HWNDPARENT 1018
-      SendMessage $R2 ${WM_SETTEXT} 0 "STR:$INSTDIR"
+      SendMessage $R2 0x000B 0 "STR:$INSTDIR"   ; WM_SETTEXT
     ${EndIf}
   ${EndIf}
   Pop $R2
