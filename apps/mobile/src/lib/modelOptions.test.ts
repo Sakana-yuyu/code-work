@@ -44,6 +44,57 @@ describe("mobile model options", () => {
     expect(getThreadProviderGroups(groups, "byok", true)).toEqual([groups[0]]);
   });
 
+  it("labels model groups by driver instead of falling back to instance ids", () => {
+    const drivers = [
+      ["piAgent", "Pi"],
+      ["ompAgent", "OhMyPi"],
+      ["acpAgent", "ACP Agent"],
+      ["cursor", "Cursor"],
+      ["grok", "Grok"],
+      ["kimi", "Kimi"],
+      ["antigravity", "Antigravity"],
+      ["opencode", "OpenCode"],
+      ["byok", "Custom model service"],
+    ] as const;
+    const providers = drivers.map(([driver], index) => ({
+      instanceId: `instance_${index}`,
+      driver,
+      enabled: true,
+      installed: true,
+      auth: { status: "authenticated" },
+      models: [{ slug: "model-a", name: "Model A", isCustom: false, capabilities: null }],
+    }));
+    const groups = groupByProvider(
+      buildModelOptions({ providers } as unknown as ServerConfig, null),
+    );
+    expect(groups.map((group) => [group.providerKey, group.providerLabel])).toEqual(
+      drivers.map(([driver, label]) => [
+        `instance_${drivers.findIndex((d) => d[0] === driver)}`,
+        label,
+      ]),
+    );
+    // displayName 永远优先于 driver 默认名。
+    const named = groupByProvider(
+      buildModelOptions(
+        {
+          providers: [
+            {
+              instanceId: "omp_main",
+              driver: "ompAgent",
+              displayName: "我的 OhMyPi",
+              enabled: true,
+              installed: true,
+              auth: { status: "authenticated" },
+              models: [{ slug: "m", name: "M", isCustom: false, capabilities: null }],
+            },
+          ],
+        } as unknown as ServerConfig,
+        null,
+      ),
+    );
+    expect(named[0]?.providerLabel).toBe("我的 OhMyPi");
+  });
+
   it("groups models by provider and flags legacy entries", () => {
     const config = {
       providers: [

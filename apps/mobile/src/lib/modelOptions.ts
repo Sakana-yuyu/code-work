@@ -33,9 +33,32 @@ function providerDisplayLabel(provider: {
   readonly instanceId: string;
 }): string {
   if (provider.displayName) return provider.displayName;
-  if (provider.driver === "codex") return "Codex";
-  if (provider.driver === "claudeAgent") return "Claude";
-  return provider.instanceId;
+  switch (provider.driver) {
+    case "codex":
+      return "Codex";
+    case "claudeAgent":
+      return "Claude";
+    case "cursor":
+      return "Cursor";
+    case "grok":
+      return "Grok";
+    case "kimi":
+      return "Kimi";
+    case "antigravity":
+      return "Antigravity";
+    case "opencode":
+      return "OpenCode";
+    case "byok":
+      return "Custom model service";
+    case "piAgent":
+      return "Pi";
+    case "ompAgent":
+      return "OhMyPi";
+    case "acpAgent":
+      return "ACP Agent";
+    default:
+      return provider.instanceId;
+  }
 }
 
 function normalizeSelectionOptions(
