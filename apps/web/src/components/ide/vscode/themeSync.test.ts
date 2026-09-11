@@ -149,6 +149,15 @@ describe("IDE 与对话主题同步", () => {
       "#fafafa",
     );
   });
+  it("侧栏未单独设置透明度时沿用全局透明度计算图标对比度", () => {
+    const style = { getPropertyValue: (name: string) => (name === "--sidebar" ? "#ffffff" : "") };
+    expect(
+      workbenchColorsFromApp(style, {
+        global: { opacity: 20 },
+        sidebar: { color: "#000000" },
+      })["activityBar.foreground"],
+    ).toBe("#000000");
+  });
   it("首次初始化不等待隐藏终端，卸载后不再修改迟到的画布", async () => {
     const f = fixture();
     const options = { allowTransparency: false, theme: { background: "#ffffff" } };

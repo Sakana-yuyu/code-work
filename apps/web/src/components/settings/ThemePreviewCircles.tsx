@@ -1,5 +1,5 @@
 import { MoonIcon, SunIcon } from "lucide-react";
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   STANDARD_THEME_PREVIEW_COLORS as SHARED_STANDARD_THEME_PREVIEW_COLORS,
   THEME_PREVIEW_RENDER_SPECS,
@@ -147,11 +147,33 @@ export function ThemePreviewCircle({
   background?: ThemeSurface | undefined;
   wide?: boolean;
 }) {
-  const source = useMediaSource(background?.media);
+  const previewRef = useRef<HTMLSpanElement>(null);
+  const [isNearViewport, setIsNearViewport] = useState(false);
+  const source = useMediaSource(background?.media, isNearViewport);
   const [failedSource, setFailedSource] = useState<string | null>(null);
+  useEffect(() => {
+    if (!background?.media) return;
+    const element = previewRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setIsNearViewport(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setIsNearViewport(true);
+        observer.disconnect();
+      },
+      { rootMargin: "160px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [background?.media?.source, background?.media?.value]);
   return (
     <span
       aria-hidden
+      ref={previewRef}
       className={cn(
         "relative block shrink-0 overflow-hidden border-2 border-background",
         wide ? "h-20 w-full rounded-lg" : "size-14 rounded-full",

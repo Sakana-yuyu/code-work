@@ -19,7 +19,11 @@ import { IWorkbenchThemeService } from "@codingame/monaco-vscode-api/vscode/vs/w
 import { Parts } from "@codingame/monaco-vscode-views-service-override";
 import type { IdeConnectionInfo } from "@codework/contracts";
 import { workbenchResourceUri } from "./resourceUri";
-import { registerExtension, ExtensionHostKind } from "@codingame/monaco-vscode-api/extensions";
+import {
+  registerExtension,
+  ExtensionHostKind,
+  type RegisterLocalExtensionResult,
+} from "@codingame/monaco-vscode-api/extensions";
 import { ColorThemeData } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/themes/common/colorThemeData";
 import { IConfigurationService } from "@codingame/monaco-vscode-api/vscode/vs/platform/configuration/common/configuration.service";
 import {
@@ -34,7 +38,7 @@ import { createIndexedDbBackupStore, HotExitBackupService } from "./hotExitBacku
 import type { ThemeDefinition } from "../../../themePalette";
 import { APP_WORKBENCH_THEMES, startWorkbenchThemeSync } from "./themeSync";
 import { workbenchThemeDataUrl } from "./themeColors";
-import { registerAndWaitForExtension, runInBackground } from "./bootstrapLifecycle";
+import { desktopResourceScheme, runInBackground } from "./bootstrapLifecycle";
 
 import getBaseServiceOverride from "@codingame/monaco-vscode-base-service-override";
 import getEnvironmentServiceOverride from "@codingame/monaco-vscode-environment-service-override";
@@ -211,6 +215,7 @@ const globals = globalThis as Record<string, unknown>;
 
 let bootstrapPromise: Promise<VscodeIdeRuntime> | null =
   (globals[bootstrapKey] as Promise<VscodeIdeRuntime> | undefined) ?? null;
+let appColorThemeExtension: RegisterLocalExtensionResult | null = null;
 
 export interface VscodeIdeRuntime {
   remoteAuthority: string;
@@ -246,9 +251,8 @@ export async function bootstrapVscodeIde(
 async function doBootstrap(options: VscodeIdeBootstrapOptions): Promise<VscodeIdeRuntime> {
   // 桌面资源也由浏览器读取。缺少此提供器时，上游等待扩展注册来激活协议，
   // 而扩展注册又在等待中文包/主题资源，导致整个主题同步无法启动。
-  if (["codework:", "codework-dev:", "t3code:", "t3code-dev:"].includes(window.location.protocol)) {
-    registerCustomProvider(window.location.protocol.slice(0, -1), new FetchFileSystemProvider());
-  }
+  const resourceScheme = desktopResourceScheme(window.location.protocol);
+  if (resourceScheme) registerCustomProvider(resourceScheme, new FetchFileSystemProvider());
   window.MonacoEnvironment = {
     getWorker(_moduleId, label) {
       switch (label) {
@@ -279,6 +283,26 @@ async function doBootstrap(options: VscodeIdeBootstrapOptions): Promise<VscodeId
       return undefined;
     },
   };
+
+  // 在工作台初始化前登记，避免扩展服务把内置主题误判为待查询的 gallery 扩展。
+  const appThemeExtension = (appColorThemeExtension ??= registerExtension(
+    {
+      name: "app-color-themes",
+      publisher: "codework",
+      version: "1.0.0",
+      engines: { vscode: "*" },
+      contributes: {
+        themes: (["light", "dark"] as const).map((appearance) => ({
+          id: APP_WORKBENCH_THEMES[appearance],
+          label: APP_WORKBENCH_THEMES[appearance],
+          uiTheme: appearance === "dark" ? "vs-dark" : "vs",
+          path: `themes/${appearance}.json`,
+        })),
+      },
+    },
+    ExtensionHostKind.LocalWebWorker,
+    { system: true },
+  ));
 
   // The REH validates the first protocol message against its
   // --connection-token-file, whose content is this session's capability.
@@ -430,7 +454,7 @@ async function doBootstrap(options: VscodeIdeBootstrapOptions): Promise<VscodeId
 
   // 主题同步依赖扩展注册；它不能阻塞工作台首屏，否则扩展宿主卡住时
   // 用户只能看到“正在加载编辑器界面”，却无法使用编辑器本身。
-  runInBackground(() => initializeThemeSync(options), options.onThemeSyncError);
+  runInBackground(() => initializeThemeSync(options, appThemeExtension), options.onThemeSyncError);
 
   // hot exit 调度面：接上工作副本服务的脏状态事件；卸载前补写一次在途脏内容。
   hotExit.attach(await getService(IWorkingCopyService));
@@ -724,7 +748,10 @@ export async function showWorkbenchTerminal(): Promise<void> {
   await terminalGroup.showPanel(false);
 }
 
-async function initializeThemeSync(options: VscodeIdeBootstrapOptions): Promise<void> {
+async function initializeThemeSync(
+  options: VscodeIdeBootstrapOptions,
+  appThemeExtension: RegisterLocalExtensionResult,
+): Promise<void> {
   // 默认主题由扩展贡献；冷启动先等注册完成，避免空清单让整条主题同步失效。
   const extensionService = await getService(IExtensionService);
   await extensionService.whenInstalledExtensionsRegistered();
@@ -743,31 +770,10 @@ async function initializeThemeSync(options: VscodeIdeBootstrapOptions): Promise<
     }),
   );
   // 专用主题承载应用配色，不改写用户安装的主题；沿用上游默认代码高亮规则。
-  await registerAndWaitForExtension(extensionService, "codework.app-color-themes", async () => {
-    const extension = registerExtension(
-      {
-        name: "app-color-themes",
-        publisher: "codework",
-        version: "1.0.0",
-        engines: { vscode: "*" },
-        contributes: {
-          themes: definitions.map(({ appearance }) => ({
-            id: APP_WORKBENCH_THEMES[appearance],
-            label: APP_WORKBENCH_THEMES[appearance],
-            uiTheme: appearance === "dark" ? "vs-dark" : "vs",
-            path: `themes/${appearance}.json`,
-          })),
-        },
-      },
-      // 纯主题没有 Node 入口，使用当前文档已有的 Web Worker 宿主。
-      ExtensionHostKind.LocalWebWorker,
-      { system: true },
-    );
-    for (const { appearance, tokens } of definitions) {
-      extension.registerFileUrl(`themes/${appearance}.json`, workbenchThemeDataUrl(tokens));
-    }
-    await extension.whenReady();
-  });
+  for (const { appearance, tokens } of definitions) {
+    appThemeExtension.registerFileUrl(`themes/${appearance}.json`, workbenchThemeDataUrl(tokens));
+  }
+  await appThemeExtension.whenReady();
   await startWorkbenchThemeSync(
     themes,
     configuration,

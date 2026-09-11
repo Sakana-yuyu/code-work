@@ -106,11 +106,14 @@ export function ThemeDecorationSync() {
   return null;
 }
 
-export function useMediaSource(media?: ThemeMedia) {
+export function useMediaSource(media?: ThemeMedia, enabled = true) {
   const [result, setResult] = useState<{ key: string; url?: string; error?: string } | null>(null);
-  const key = media ? `${media.source}:${media.value}` : "";
+  const key = enabled && media ? `${media.source}:${media.value}` : "";
   useEffect(() => {
-    if (!media) return;
+    if (!media || !enabled) {
+      setResult(null);
+      return;
+    }
     let disposed = false;
     let objectUrl: string | undefined;
     if (media.source === "url") {
@@ -131,8 +134,8 @@ export function useMediaSource(media?: ThemeMedia) {
       disposed = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [key, media?.source, media?.value]);
-  return result?.key === key ? result : null;
+  }, [enabled, key, media?.source, media?.value]);
+  return key && result?.key === key ? result : null;
 }
 
 export function ThemeBackdrop({ region }: { region: "global" | "sidebar" | "content" }) {

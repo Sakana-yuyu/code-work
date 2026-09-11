@@ -1,41 +1,19 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { registerAndWaitForExtension, runInBackground } from "./bootstrapLifecycle";
+import { desktopResourceScheme, runInBackground } from "./bootstrapLifecycle";
+
+describe("IDE resource protocol", () => {
+  it("supports canonical and legacy schemes across all desktop channels", () => {
+    expect(desktopResourceScheme("codework:")).toBe("codework");
+    expect(desktopResourceScheme("codework-dev:")).toBe("codework-dev");
+    expect(desktopResourceScheme("codework-preview:")).toBe("codework-preview");
+    expect(desktopResourceScheme("t3code:")).toBe("t3code");
+    expect(desktopResourceScheme("t3code-dev:")).toBe("t3code-dev");
+    expect(desktopResourceScheme("t3code-preview:")).toBe("t3code-preview");
+    expect(desktopResourceScheme("https:")).toBeUndefined();
+  });
+});
 
 describe("IDE bootstrap background tasks", () => {
-  it("扩展入队后继续等待注册事件，失败时释放监听", async () => {
-    let added: (event: { added: { identifier: { value: string } }[] }) => void = () => {};
-    const dispose = vi.fn();
-    const service = {
-      extensions: [],
-      onDidChangeExtensions: vi.fn((listener) => {
-        added = listener;
-        return { dispose };
-      }),
-    };
-    let finished = false;
-    const ready = registerAndWaitForExtension(
-      service,
-      "codework.app-color-themes",
-      async () => {},
-    ).then(() => {
-      finished = true;
-    });
-    await Promise.resolve();
-    expect(finished).toBe(false);
-    added({ added: [{ identifier: { value: "unrelated" } }] });
-    await Promise.resolve();
-    expect(finished).toBe(false);
-    added({ added: [{ identifier: { value: "codework.app-color-themes" } }] });
-    await ready;
-    expect(finished).toBe(true);
-    expect(dispose).toHaveBeenCalledOnce();
-    await expect(
-      registerAndWaitForExtension(service, "failed", async () => {
-        throw new Error("注册失败");
-      }),
-    ).rejects.toThrow("注册失败");
-    expect(dispose).toHaveBeenCalledTimes(2);
-  });
   it("does not wait for a background task to finish", async () => {
     let resolve!: () => void;
     const task = new Promise<void>((done) => {

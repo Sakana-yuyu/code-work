@@ -128,7 +128,7 @@ export function workbenchColorsFromApp(
       foreground,
       surface?.color ?? base,
       base,
-      surface?.opacity ?? 100,
+      surface?.opacity ?? decoration.global?.opacity ?? 100,
       surface?.gradient,
     ) ?? 0;
   const foreground = contrast("#000000") >= contrast("#ffffff") ? "#000000" : "#ffffff";

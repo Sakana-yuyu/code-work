@@ -99,6 +99,7 @@ export default function VscodeWorkbench(props: {
   const [status, setStatus] = useState<IdeOpenResult>({ phase: "starting", message: "" });
   const [ideConnection, setIdeConnection] = useState<IdeConnectionInfo | null>(null);
   const [bootstrapped, setBootstrapped] = useState(false);
+  const [bootstrapFailed, setBootstrapFailed] = useState(false);
   const [panelVisible, setPanelVisible] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const runtimeRef = useRef<VscodeIdeRuntime | null>(null);
@@ -158,12 +159,14 @@ export default function VscodeWorkbench(props: {
       .then((runtime) => {
         if (!cancelled) {
           runtimeRef.current = runtime;
+          setBootstrapFailed(false);
           setBootstrapped(true);
         }
       })
       .catch((error: unknown) => {
         if (cancelled) return;
         console.error("[codework-ide] workbench bootstrap failed", error);
+        setBootstrapFailed(true);
         setStatus({ phase: "error", message: t("ide.connectionFailed") });
       });
     return () => {
@@ -459,7 +462,12 @@ export default function VscodeWorkbench(props: {
                   : t("ide.loadingWorkbench")}
           </span>
           {status.phase === "error" ? (
-            <Button variant="outline" onClick={() => setAttempt((value) => value + 1)}>
+            <Button
+              variant="outline"
+              onClick={() =>
+                bootstrapFailed ? window.location.reload() : setAttempt((value) => value + 1)
+              }
+            >
               {t("ide.retry")}
             </Button>
           ) : null}
