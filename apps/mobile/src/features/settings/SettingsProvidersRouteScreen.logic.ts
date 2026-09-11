@@ -22,7 +22,10 @@ export interface MobileProviderField {
     | "providersMobile.autoCompactWindow"
     | "providersMobile.fallbackModel"
     | "providersMobile.maxTurns"
-    | "providersMobile.routeThroughByok";
+    | "providersMobile.routeThroughByok"
+    | "providersMobile.command"
+    | "providersMobile.authMethod"
+    | "providersMobile.approvalMode";
   readonly kind: MobileProviderFieldKind;
   readonly placeholderKey:
     | "providersMobile.binaryPathPlaceholder"
@@ -35,6 +38,9 @@ export interface MobileProviderField {
     | "providersMobile.autoCompactWindowPlaceholder"
     | "providersMobile.fallbackModelPlaceholder"
     | "providersMobile.maxTurnsPlaceholder"
+    | "providersMobile.commandPlaceholder"
+    | "providersMobile.authMethodPlaceholder"
+    | "providersMobile.approvalModePlaceholder"
     | null;
 }
 
@@ -46,6 +52,9 @@ export const MOBILE_PROVIDER_DRIVERS = [
   "kimi",
   "antigravity",
   "opencode",
+  "piAgent",
+  "ompAgent",
+  "acpAgent",
 ] as const;
 
 export type MobileProviderDriver = (typeof MOBILE_PROVIDER_DRIVERS)[number];
@@ -110,6 +119,24 @@ const PROVIDER_FIELDS: Readonly<Record<MobileProviderDriver, ReadonlyArray<Mobil
         "providersMobile.serverPasswordPlaceholder",
         "password",
       ),
+      FIELD("routeThroughByok", "providersMobile.routeThroughByok", null, "switch"),
+    ],
+    piAgent: [
+      FIELD("binaryPath", "providersMobile.binaryPath", "providersMobile.binaryPathPlaceholder"),
+      FIELD("launchArgs", "providersMobile.launchArgs", "providersMobile.launchArgsPlaceholder"),
+    ],
+    ompAgent: [
+      FIELD("binaryPath", "providersMobile.binaryPath", "providersMobile.binaryPathPlaceholder"),
+      FIELD("launchArgs", "providersMobile.launchArgs", "providersMobile.launchArgsPlaceholder"),
+      FIELD(
+        "approvalMode",
+        "providersMobile.approvalMode",
+        "providersMobile.approvalModePlaceholder",
+      ),
+    ],
+    acpAgent: [
+      FIELD("command", "providersMobile.command", "providersMobile.commandPlaceholder"),
+      FIELD("authMethodId", "providersMobile.authMethod", "providersMobile.authMethodPlaceholder"),
       FIELD("routeThroughByok", "providersMobile.routeThroughByok", null, "switch"),
     ],
   };
@@ -206,11 +233,17 @@ export function buildMobileProviderRows(
   const rows: MobileProviderRow[] = [];
   const seen = new Set<string>();
 
+  // The legacy `providers` struct predates pi/omp/acp; those drivers only ever
+  // exist as `providerInstances` entries, so their legacy lookup is undefined.
+  const legacyProviders = settings.providers as Readonly<
+    Partial<Record<MobileProviderDriver, unknown>>
+  >;
+
   for (const driver of MOBILE_PROVIDER_DRIVERS) {
     const brandedDriver = ProviderDriverKind.make(driver);
     const instanceId = defaultInstanceIdForDriver(brandedDriver);
     const explicit = settings.providerInstances?.[instanceId];
-    const instance = explicit ?? legacyInstance(driver, settings.providers[driver]);
+    const instance = explicit ?? legacyInstance(driver, legacyProviders[driver]);
     if (instance === undefined) continue;
     rows.push({ instanceId, driver, instance, isDefault: true, known: true });
     seen.add(String(instanceId));

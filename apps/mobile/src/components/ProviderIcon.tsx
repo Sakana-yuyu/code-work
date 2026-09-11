@@ -1,4 +1,4 @@
-import { Path, Svg } from "react-native-svg";
+import { Path, Rect, Svg } from "react-native-svg";
 import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
 
 type ProviderIconProps = {
@@ -55,6 +55,44 @@ export function ProviderIcon(props: ProviderIconProps) {
       <Svg width={size} height={size} viewBox="0 0 32 40" fill="none">
         <Path d="M24 32H8V16H24V32Z" fill={isDarkMode ? "#4B4646" : "#CFCECD"} />
         <Path d="M24 8H8V32H24V8ZM32 40H0V0H32V40Z" fill={isDarkMode ? "#F1ECEC" : "#211E1E"} />
+      </Svg>
+    );
+  }
+
+  if (props.provider === "piAgent") {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 800 800" fill="none">
+        <Rect width={800} height={800} rx={160} fill="#000" />
+        <Path
+          fill="#fff"
+          fillRule="evenodd"
+          d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"
+        />
+        <Path fill="#fff" d="M517.36 400H634.72V634.72H517.36Z" />
+      </Svg>
+    );
+  }
+
+  if (props.provider === "ompAgent") {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 800 800" fill="none">
+        <Rect width={800} height={800} rx={160} fill="#000" />
+        <Path fill="#fff" d="M165.29 165.29H300.1V634.72H165.29Z" />
+        <Path fill="#fff" d="M300.1 165.29H499.9L400 400.1Z" />
+        <Path fill="#fff" d="M499.9 165.29H634.72V634.72H499.9Z" />
+      </Svg>
+    );
+  }
+
+  if (props.provider === "acpAgent") {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 800 800" fill="none">
+        <Rect width={800} height={800} rx={160} fill="#000" />
+        <Path
+          fill="#fff"
+          fillRule="evenodd"
+          d="M165.29 634.72L309.9 165.29H490.1L634.72 634.72ZM400 309.9L330 470.1H470ZM334 540.1H466L444 634.72H356Z"
+        />
       </Svg>
     );
   }

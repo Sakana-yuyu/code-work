@@ -14,7 +14,7 @@ import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hook
 import { cn } from "../../lib/utils";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { Button } from "../ui/button";
-import { ACPRegistryIcon, Gemini, GithubCopilotIcon, PiAgentIcon, type Icon } from "../Icons";
+import { ACPRegistryIcon, Gemini, GithubCopilotIcon, type Icon } from "../Icons";
 import {
   Dialog,
   DialogDescription,
@@ -100,13 +100,6 @@ const COMING_SOON_DRIVER_OPTIONS: readonly ComingSoonDriverOption[] = [
       return t("acpRegistry");
     },
     icon: ACPRegistryIcon,
-  },
-  {
-    value: ProviderDriverKind.make("piAgent"),
-    get label() {
-      return t("piAgent");
-    },
-    icon: PiAgentIcon,
   },
 ];
 

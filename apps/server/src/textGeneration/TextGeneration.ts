@@ -16,7 +16,10 @@ export type TextGenerationProvider =
   | "grok"
   | "kimi"
   | "antigravity"
-  | "opencode";
+  | "opencode"
+  | "piAgent"
+  | "ompAgent"
+  | "acpAgent";
 
 export interface CommitMessageGenerationInput {
   cwd: string;

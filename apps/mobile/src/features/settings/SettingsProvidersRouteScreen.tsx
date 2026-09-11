@@ -668,6 +668,12 @@ function providerLabel(driver: string): string {
       return "Antigravity";
     case "opencode":
       return t("providersMobile.driverOpenCode");
+    case "piAgent":
+      return t("piAgent");
+    case "ompAgent":
+      return t("ompAgent");
+    case "acpAgent":
+      return t("acpAgent");
     default:
       return driver;
   }

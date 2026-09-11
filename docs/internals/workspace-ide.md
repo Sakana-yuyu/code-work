@@ -1,6 +1,6 @@
 # Workspace IDE 架构约束
 
-IDE 模式在宿主文档内直接渲染 VS Code 工作台（`@codingame/monaco-vscode-api`），由服务端同机运行的 VSCodium REH（远程扩展宿主）提供协议后端。改动前先读本文与 `apps/web/src/vendor/vscode/README.md`。
+IDE 模式在宿主文档内直接渲染 VS Code 工作台（`@codingame/monaco-vscode-api`），由服务端同机运行的 VSCodium REH（远程扩展宿主）提供协议后端。改动前先读本文与 `apps/web/src/vendor/vscode/README.md`。注意：内嵌工作台不是 composition 的 `vscode_ide` IDE Runtime，也不存在 VSCode agent 供应商——边界与协议契约见 [vscode-ide-boundary.md](./vscode-ide-boundary.md)。
 
 ## 双侧版本对齐（硬约束）
 

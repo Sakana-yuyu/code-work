@@ -1,5 +1,5 @@
 /**
- * Japanese catalog (2410/2410 keys). Missing keys fall back to
+ * Japanese catalog (2421/2421 keys). Missing keys fall back to
  * English at runtime. Filled in translation chunks; keep ids in sync with
  * messages.ts.
  */
@@ -1312,6 +1312,9 @@ export const ja: Record<string, string> = {
   "providersMobile.driverCursor": "Cursor",
   "providersMobile.driverGrok": "Grok",
   "providersMobile.driverOpenCode": "OpenCode",
+  piAgent: "Pi Agent",
+  ompAgent: "OhMyPi",
+  acpAgent: "ACP エージェント",
   "providersMobile.binaryPath": "バイナリパス",
   "providersMobile.binaryPathPlaceholder": "codex",
   "providersMobile.homePath": "ホームパス",
@@ -1329,6 +1332,12 @@ export const ja: Record<string, string> = {
   "providersMobile.autoCompactWindow": "自動コンパクトのしきい値",
   "providersMobile.autoCompactWindowPlaceholder": "例: 300000",
   "providersMobile.routeThroughByok": "BYOK ゲートウェイ経由でルーティング",
+  "providersMobile.command": "コマンドライン",
+  "providersMobile.commandPlaceholder": "例: npx -y cline@3.0.46 --acp",
+  "providersMobile.authMethod": "認証方式",
+  "providersMobile.authMethodPlaceholder": "例: login",
+  "providersMobile.approvalMode": "承認モード",
+  "providersMobile.approvalModePlaceholder": "例: auto / always-ask / write / yolo",
   "serverSettingsMobile.title": "サーバー設定",
   "serverSettingsMobile.settingsHint": "デスクトップと共有する動作を制御",
   "serverSettingsMobile.description":

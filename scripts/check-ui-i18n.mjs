@@ -70,6 +70,7 @@ const SOURCE_EXEMPTIONS = new Set([
   "iOS",
   "Pi Agent",
   "Pocket Pi",
+  "OhMyPi",
   "Ultrathink",
   "VS Code",
   // Provider and protocol names are never translated.

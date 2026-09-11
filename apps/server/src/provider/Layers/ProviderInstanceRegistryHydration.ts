@@ -105,24 +105,35 @@ export const deriveProviderInstanceConfigMap = (
   }
 
   for (const [instanceId, entry] of Object.entries(merged)) {
-    if (!["codex", "claudeAgent", "grok", "opencode"].includes(entry.driver)) continue;
+    // pi/omp 只有 BYOK 一种形态；acpAgent 在用户开启网关注入时也纳入指纹。
+    const alwaysRouted = entry.driver === "piAgent" || entry.driver === "ompAgent";
+    const optionallyRouted =
+      entry.driver === "codex" ||
+      entry.driver === "claudeAgent" ||
+      entry.driver === "grok" ||
+      entry.driver === "opencode" ||
+      entry.driver === "acpAgent";
+    if (!alwaysRouted && !optionallyRouted) continue;
     const config = entry.config;
-    if (
-      config === null ||
-      typeof config !== "object" ||
-      Array.isArray(config) ||
-      !("routeThroughByok" in config) ||
-      config.routeThroughByok !== true
-    ) {
+    if (config === null || typeof config !== "object" || Array.isArray(config)) continue;
+    if (!alwaysRouted && !("routeThroughByok" in config && config.routeThroughByok === true)) {
       continue;
     }
     const sourceId =
-      "byokSourceInstanceId" in config && typeof config.byokSourceInstanceId === "string"
+      "byokSourceInstanceId" in config &&
+      typeof config.byokSourceInstanceId === "string" &&
+      config.byokSourceInstanceId.length > 0
         ? config.byokSourceInstanceId
-        : undefined;
+        : alwaysRouted
+          ? "byok"
+          : undefined;
     const source = sourceId === undefined ? undefined : merged[sourceId];
-    const routes = gatewayAdapterRoutes(settings, sourceId).filter(
-      (route) => route.protocol === (entry.driver === "claudeAgent" ? "anthropic" : "openai"),
+    const routes = gatewayAdapterRoutes(settings, sourceId).filter((route) =>
+      entry.driver === "claudeAgent"
+        ? route.protocol === "anthropic"
+        : entry.driver === "codex" || entry.driver === "grok" || entry.driver === "opencode"
+          ? route.protocol === "openai"
+          : true,
     );
     // 来源变化沿用 Registry 的忙碌延迟更新；摘要仅供内存比较，driver 解码会剥离此字段。
     const fingerprint = NodeCrypto.createHash("sha256")

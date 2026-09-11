@@ -1,23 +1,29 @@
 import {
+  AcpAgentSettings,
+  AntigravitySettings,
   ByokSettings,
   ClaudeSettings,
   CodexSettings,
   CursorSettings,
   GrokSettings,
   KimiSettings,
-  AntigravitySettings,
+  OmpAgentSettings,
   OpenCodeSettings,
+  PiAgentSettings,
   ProviderDriverKind,
 } from "@codework/contracts";
 import type * as Schema from "effect/Schema";
 import {
+  AcpAgentIcon,
   AntigravityIcon,
   ClaudeAI,
   CursorIcon,
   GrokIcon,
   type Icon,
+  OmpAgentIcon,
   OpenAI,
   OpenCodeIcon,
+  PiAgentIcon,
 } from "../Icons";
 import { t } from "~/i18n/runtime";
 
@@ -108,6 +114,36 @@ export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = 
     },
     icon: OpenCodeIcon,
     settingsSchema: OpenCodeSettings,
+  },
+  {
+    value: ProviderDriverKind.make("piAgent"),
+    get label() {
+      return t("piAgent");
+    },
+    icon: PiAgentIcon,
+    // BYOK-only driver: model calls always route through the local BYOK
+    // gateway, so every instance advertises the same marker.
+    badgeLabel: "BYOK",
+    settingsSchema: PiAgentSettings,
+  },
+  {
+    value: ProviderDriverKind.make("ompAgent"),
+    get label() {
+      return t("ompAgent");
+    },
+    icon: OmpAgentIcon,
+    // BYOK-only driver, same as piAgent above.
+    badgeLabel: "BYOK",
+    settingsSchema: OmpAgentSettings,
+  },
+  {
+    value: ProviderDriverKind.make("acpAgent"),
+    get label() {
+      return t("acpAgent");
+    },
+    icon: AcpAgentIcon,
+    badgeLabel: "ACP",
+    settingsSchema: AcpAgentSettings,
   },
   {
     value: ProviderDriverKind.make("byok"),

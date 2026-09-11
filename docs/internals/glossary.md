@@ -95,7 +95,7 @@ The live backend agent implementation and its event stream. The main service is 
 
 #### Provider
 
-The backend agent runtime that actually performs work. Five drivers ship built in: Codex, Claude, Cursor, Grok, and OpenCode. See [ProviderService.ts][14], [ProviderAdapter.ts][15], and [CodexAdapter.ts][17] as a representative adapter.
+The backend agent runtime that actually performs work. Built-in drivers include Codex, Claude, Cursor, Grok, Kimi, Antigravity, OpenCode, Pi, OhMyPi, the generic ACP Agent, and BYOK — the full list lives in `BUILT_IN_DRIVERS` (see the [provider architecture][16]). See [ProviderService.ts][14], [ProviderAdapter.ts][15], and [CodexAdapter.ts][17] as a representative adapter.
 
 #### Session
 
@@ -116,6 +116,14 @@ Controls how assistant text reaches the thread timeline. In [the contracts][1], 
 #### Snapshot
 
 A point-in-time view of state. The word is used in multiple layers, including orchestration, provider, and checkpointing. See [ProjectionSnapshotQuery.ts][10], [ProviderAdapter.ts][15], and [CheckpointStore.ts][19].
+
+#### pi-family
+
+The Pi (`piAgent`) and OhMyPi (`ompAgent`) providers, which share a JSONL RPC transport but keep independent event parsers. They are BYOK-only by construction: Code Work writes a managed `models.json` into a managed agent dir (`PI_CODING_AGENT_DIR`, no `auth.json`) registering only gateway providers, and scrubs third-party provider keys from the child env. See [pi-family-providers.md](./pi-family-providers.md).
+
+#### Host tools
+
+OhMyPi's mechanism for client-side tool execution: the adapter registers Code Work canonical tools via `set_host_tools`, and omp's `host_tool_call` / `host_tool_cancel` frames execute through the ToolBroker bridge (approval, deny, cancel, and failure all map back to tool results the agent sees). Pi has no client-side tool execution — Code Work tools reach it through the host MCP channel instead. See [pi-family-providers.md](./pi-family-providers.md).
 
 #### Model manifest
 
@@ -156,6 +164,10 @@ One model credential (protocol, base URL, stored key, model id) under a BYOK ins
 #### Gateway token
 
 The bearer token the gateway expects from harnesses, generated into the server secret store and delivered only through child-process environment variables.
+
+#### Managed agent dir
+
+The per-instance directory (`provider-homes/pi-family/.../agent`, pointed at via `PI_CODING_AGENT_DIR`) where Code Work writes a managed `models.json` registering only the gateway as a model provider. For pi-family providers this is the enforcement mechanism that makes them BYOK-only: the dir holds no other credentials and the child env is scrubbed of third-party provider keys. See [pi-family-providers.md](./pi-family-providers.md).
 
 ### Code index
 

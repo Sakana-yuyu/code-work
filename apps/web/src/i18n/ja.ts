@@ -1022,6 +1022,7 @@ export const ja: Record<string, string> = {
     "実行中のプロセスを停止し、その履歴を消去します: {{labelList}}。",
   about: "このアプリについて",
   accentColor: "アクセントカラー",
+  acpAgent: "ACP エージェント",
   acpRegistry: "ACPレジストリ",
   addAction: "アクションを追加",
   addAProjectAndThePullRequestsFromItsRepositoryAppearHere:
@@ -1685,6 +1686,7 @@ export const ja: Record<string, string> = {
   peakMem: "ピークメモリ",
   permissions: "権限",
   piAgent: "Pi Agent",
+  ompAgent: "OhMyPi",
   pickAThreadToContinue: "続行するスレッドを選択してください",
   pickTheDefaultWorkspaceModeForNewlyCreatedDraftThreads:
     "新しく作成するドラフトスレッドのデフォルトのワークスペースモードを選択します。",

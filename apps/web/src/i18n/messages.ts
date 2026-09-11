@@ -962,6 +962,7 @@ export const en: Record<string, string> = {
     "This stops the running processes and clears their history: {{labelList}}.",
   about: "About",
   accentColor: "Accent color",
+  acpAgent: "ACP Agent",
   acpRegistry: "ACP Registry",
   addAction: "Add action",
   addAProjectAndThePullRequestsFromItsRepositoryAppearHere:
@@ -1647,6 +1648,7 @@ export const en: Record<string, string> = {
   peakMem: "Peak Mem",
   permissions: "Permissions",
   piAgent: "Pi Agent",
+  ompAgent: "OhMyPi",
   pickAThreadToContinue: "Pick a thread to continue",
   pickTheDefaultWorkspaceModeForNewlyCreatedDraftThreads:
     "Pick the default workspace mode for newly created draft threads.",
@@ -10381,6 +10383,7 @@ export const zhCN: Record<string, string> = {
   yourChangesAreNowActive: "您的更改现已生效。",
   yourChangesAreSaved: "您的更改已保存。",
   zed: "Zed",
+  acpAgent: "ACP 智能体",
   acpRegistry: "ACP 注册表",
   archivedShelfCount: "已归档（{{count}}）",
   backendExampleCom: "backend.example.com",
@@ -10394,6 +10397,7 @@ export const zhCN: Record<string, string> = {
   message2: "~/",
   paircode: "PAIRCODE",
   piAgent: "Pi Agent",
+  ompAgent: "OhMyPi",
   root: "root",
   snoozedThreads: "已延后",
   snoozedThreadsCount: "已延后（{{count}}）",

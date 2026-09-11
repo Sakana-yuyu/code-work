@@ -581,6 +581,143 @@ export const AntigravitySettings = makeProviderSettingsSchema(
 );
 export type AntigravitySettings = typeof AntigravitySettings.Type;
 
+/**
+ * Pi CLI（pi-mono 原生 `pi --mode rpc` JSONL-RPC 入口）。
+ *
+ * 该 Provider 只有 BYOK 一种形态：Code Work 在受管配置根里只注册一个指向
+ * 本地 BYOK 网关的 provider 条目，进程物理上接触不到其他模型凭据。
+ */
+export const PiAgentSettings = makeProviderSettingsSchema(
+  {
+    enabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    binaryPath: makeBinaryPathSetting("pi").pipe(
+      Schema.annotateKey({
+        title: "Binary path",
+        description: "Path to the Pi CLI binary.",
+        providerSettingsForm: { placeholder: "pi", clearWhenEmpty: "omit" },
+      }),
+    ),
+    launchArgs: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Launch arguments",
+        description:
+          "Additional CLI arguments passed to pi on session start, e.g. --tools read,grep to restrict built-in tools.",
+      }),
+    ),
+    byokSourceInstanceId: Schema.optional(ProviderInstanceId).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    customModels: Schema.Array(Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+  },
+  { order: ["binaryPath", "launchArgs"] },
+);
+export type PiAgentSettings = typeof PiAgentSettings.Type;
+
+/**
+ * OhMyPi CLI（`omp --mode rpc-ui` 入口，host tools + 原生审批语义）。
+ *
+ * 与 Pi 同族协议但事件语义独立。模型调用同样只有 BYOK 一种形态。
+ */
+export const OmpAgentSettings = makeProviderSettingsSchema(
+  {
+    enabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    binaryPath: makeBinaryPathSetting("omp").pipe(
+      Schema.annotateKey({
+        title: "Binary path",
+        description: "Path to the OhMyPi (omp) CLI binary.",
+        providerSettingsForm: { placeholder: "omp", clearWhenEmpty: "omit" },
+      }),
+    ),
+    launchArgs: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Launch arguments",
+        description: "Additional CLI arguments passed to omp on session start.",
+      }),
+    ),
+    approvalMode: Schema.Literals(["auto", "always-ask", "write", "yolo"]).pipe(
+      Schema.withDecodingDefault(Effect.succeed("auto" as const)),
+      Schema.annotateKey({
+        title: "Native tool approval mode",
+        description:
+          'Approval mode omp applies to its built-in tools. "auto" maps each turn from the Code Work runtime mode (approval-required → always-ask, auto-accept-edits/auto → write, full-access → yolo).',
+      }),
+    ),
+    byokSourceInstanceId: Schema.optional(ProviderInstanceId).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    customModels: Schema.Array(Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+  },
+  { order: ["binaryPath", "launchArgs", "approvalMode"] },
+);
+export type OmpAgentSettings = typeof OmpAgentSettings.Type;
+
+/**
+ * 通用 ACP Agent：任意 Agent Client Protocol CLI 入口（JSON-RPC over stdio）。
+ *
+ * 模型路由由 agent 自身解释；开启 BYOK 网关注入后，标准 OpenAI/Anthropic
+ * 环境变量会指向本地网关（fail-closed）。
+ */
+export const AcpAgentSettings = makeProviderSettingsSchema(
+  {
+    enabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    command: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Command line",
+        description: "Full launch command of the ACP agent, e.g. npx -y cline@3.0.46 --acp.",
+        providerSettingsForm: { placeholder: "npx -y cline@3.0.46 --acp" },
+      }),
+    ),
+    authMethodId: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("login")),
+      Schema.annotateKey({
+        title: "Auth method",
+        description: "ACP authenticate method id the agent expects during session setup.",
+        providerSettingsForm: { placeholder: "login", clearWhenEmpty: "omit" },
+      }),
+    ),
+    routeThroughByok: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({
+        title: "Route through BYOK gateway",
+        description:
+          "Point the agent's OpenAI/Anthropic endpoints at the local BYOK gateway by injecting standard env vars. Only agents that read those vars are affected.",
+        providerSettingsForm: { control: "switch" },
+      }),
+    ),
+    byokSourceInstanceId: Schema.optional(ProviderInstanceId).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    supportsModelSelection: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    customModels: Schema.Array(Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+  },
+  { order: ["command", "authMethodId", "routeThroughByok"] },
+);
+export type AcpAgentSettings = typeof AcpAgentSettings.Type;
+
 export const GrokSettings = makeProviderSettingsSchema(
   {
     // Off by default (like Cursor and OpenCode): the binding is not yet

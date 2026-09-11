@@ -699,3 +699,23 @@ export const PiAgentIcon: Icon = ({ className, ...props }) => (
     <path fill="#fff" d="M517.36 400H634.72V634.72H517.36Z" />
   </svg>
 );
+
+export const OmpAgentIcon: Icon = ({ className, ...props }) => (
+  <svg {...props} viewBox="0 0 800 800" className={cn("fill-none", className)}>
+    <rect width="800" height="800" rx="160" fill="#000" />
+    <path fill="#fff" d="M165.29 165.29H300.1V634.72H165.29Z" />
+    <path fill="#fff" d="M300.1 165.29H499.9L400 400.1Z" />
+    <path fill="#fff" d="M499.9 165.29H634.72V634.72H499.9Z" />
+  </svg>
+);
+
+export const AcpAgentIcon: Icon = ({ className, ...props }) => (
+  <svg {...props} viewBox="0 0 800 800" className={cn("fill-none", className)}>
+    <rect width="800" height="800" rx="160" fill="#000" />
+    <path
+      fill="#fff"
+      fillRule="evenodd"
+      d="M165.29 634.72L309.9 165.29H490.1L634.72 634.72ZM400 309.9L330 470.1H470ZM334 540.1H466L444 634.72H356Z"
+    />
+  </svg>
+);
