@@ -3,6 +3,7 @@ import { CATALOGS, t } from "~/i18n/runtime";
 
 export type SettingsPath =
   | "/settings/general"
+  | "/settings/downloads"
   | "/settings/appearance"
   | "/settings/keybindings"
   | "/settings/providers"
@@ -37,6 +38,7 @@ export interface SettingsSearchItem {
  */
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/general": "general",
+  "/settings/downloads": "settings.downloads",
   "/settings/appearance": "appearance",
   "/settings/keybindings": "settings.keybindings",
   "/settings/providers": "settings.providers",
@@ -84,6 +86,27 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "workspaceScripts.title",
     to: "/settings/workspace-scripts",
     keywords: ["script", "scripts", "project script", "脚本", "项目脚本"],
+  },
+  {
+    id: "downloads",
+    title: "settings.downloads",
+    to: "/settings/downloads",
+    keywords: [
+      "version",
+      "versions",
+      "release",
+      "releases",
+      "changelog",
+      "download",
+      "installer",
+      "battle",
+      "beta",
+      "版本",
+      "下载",
+      "更新日志",
+      "测试版",
+      "正式版",
+    ],
   },
   {
     id: "color-scheme",

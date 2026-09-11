@@ -12,6 +12,7 @@ import {
   BlocksIcon,
   BotIcon,
   CalendarClockIcon,
+  DownloadIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -59,6 +60,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   Record<SettingsPath, ComponentType<{ className?: string }>>
 > = {
   "/settings/general": Settings2Icon,
+  "/settings/downloads": DownloadIcon,
   "/settings/appearance": PaletteIcon,
   "/settings/keybindings": KeyboardIcon,
   "/settings/providers": BotIcon,
@@ -78,6 +80,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
 
 const STANDARD_SETTINGS_PATHS = [
   "/settings/general",
+  "/settings/downloads",
   "/settings/appearance",
   "/settings/keybindings",
   "/settings/integrations",

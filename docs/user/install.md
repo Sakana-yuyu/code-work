@@ -21,7 +21,9 @@ This starts the Code Work server on your machine and opens the local web app. Us
 
 Download the latest release from
 [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases), or install from a package
-registry.
+registry. Releases come on two lines — the stable `Latest` release and pre-release `X.Y.Z-battle`
+beta builds; once the app is installed, **Settings → Versions & Downloads** browses both lines with
+changelogs and installers.
 
 Windows:
 

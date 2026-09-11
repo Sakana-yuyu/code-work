@@ -24,6 +24,7 @@ import { Route as SettingsLocalPluginsRouteImport } from './routes/settings.loca
 import { Route as SettingsKeybindingsRouteImport } from './routes/settings.keybindings'
 import { Route as SettingsIntegrationsRouteImport } from './routes/settings.integrations'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
+import { Route as SettingsDownloadsRouteImport } from './routes/settings.downloads'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsDelegationRouteImport } from './routes/settings.delegation'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
@@ -113,6 +114,11 @@ const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
   path: '/general',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsDownloadsRoute = SettingsDownloadsRouteImport.update({
+  id: '/downloads',
+  path: '/downloads',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsDiagnosticsRoute = SettingsDiagnosticsRouteImport.update({
   id: '/diagnostics',
   path: '/diagnostics',
@@ -197,6 +203,7 @@ export interface FileRoutesByFullPath {
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/delegation': typeof SettingsDelegationRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
+  '/settings/downloads': typeof SettingsDownloadsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
@@ -225,6 +232,7 @@ export interface FileRoutesByTo {
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/delegation': typeof SettingsDelegationRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
+  '/settings/downloads': typeof SettingsDownloadsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
@@ -256,6 +264,7 @@ export interface FileRoutesById {
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/delegation': typeof SettingsDelegationRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
+  '/settings/downloads': typeof SettingsDownloadsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
@@ -288,6 +297,7 @@ export interface FileRouteTypes {
     | '/settings/connections'
     | '/settings/delegation'
     | '/settings/diagnostics'
+    | '/settings/downloads'
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
@@ -316,6 +326,7 @@ export interface FileRouteTypes {
     | '/settings/connections'
     | '/settings/delegation'
     | '/settings/diagnostics'
+    | '/settings/downloads'
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
@@ -346,6 +357,7 @@ export interface FileRouteTypes {
     | '/settings/connections'
     | '/settings/delegation'
     | '/settings/diagnostics'
+    | '/settings/downloads'
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
@@ -477,6 +489,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsGeneralRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/downloads': {
+      id: '/settings/downloads'
+      path: '/downloads'
+      fullPath: '/settings/downloads'
+      preLoaderRoute: typeof SettingsDownloadsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/diagnostics': {
       id: '/settings/diagnostics'
       path: '/diagnostics'
@@ -596,6 +615,7 @@ interface SettingsRouteChildren {
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
   SettingsDelegationRoute: typeof SettingsDelegationRoute
   SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
+  SettingsDownloadsRoute: typeof SettingsDownloadsRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsIntegrationsRoute: typeof SettingsIntegrationsRoute
   SettingsKeybindingsRoute: typeof SettingsKeybindingsRoute
@@ -616,6 +636,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsConnectionsRoute: SettingsConnectionsRoute,
   SettingsDelegationRoute: SettingsDelegationRoute,
   SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,
+  SettingsDownloadsRoute: SettingsDownloadsRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsIntegrationsRoute: SettingsIntegrationsRoute,
   SettingsKeybindingsRoute: SettingsKeybindingsRoute,

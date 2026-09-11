@@ -3,6 +3,19 @@
 The Code Work web or desktop app and the server it connects to work best when they use the same
 version. If they do not match, Code Work shows a warning with the right update option for that server.
 
+## Desktop Release Lines
+
+Desktop releases come on two lines:
+
+- **Stable** (`X.Y.Z`) — verified releases. This is what the default download installs.
+- **Beta** (`X.Y.Z-battle`) — pre-release builds with new features first.
+
+The installer you run decides which line the app follows: a beta build checks for beta updates, a
+stable build checks for stable updates. To move between lines, install an installer from the other
+line — **Settings → Versions & Downloads** lists every release on both lines with its changelog and
+per-platform installers, so you can pick a version deliberately instead of hunting through GitHub.
+The same changelog lives in `CHANGELOG.md` at the repository root.
+
 ## Where to Find the Update
 
 You may see the warning in either of these places:

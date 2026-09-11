@@ -93,6 +93,7 @@ const SOURCE_EXEMPTIONS = new Set([
 
 const SAME_VALUE_EXEMPTIONS = new Set([
   ...SOURCE_EXEMPTIONS,
+  "Code Work IDE",
   "Google Gemini",
   "Git URL",
   "IDE Profile",
@@ -206,7 +207,7 @@ const SAME_VALUE_EXEMPTIONS = new Set([
 const SAME_VALUE_EXEMPTION =
   /^(?:[A-Z0-9_ .:/@#$%+(){}\[\],~'"\\|-]+|Claude|Codex|Cursor|Grok|OpenCode|OpenAI|Anthropic|Gemini|DeepSeek|OpenRouter|Git|GitHub|GitLab|Bitbucket|macOS|Windows|Linux|Android|iOS|Tailscale|WSL|SSH|CPU|GPU|PID|URL|ID|PR|MCP|BYOK|ACP|Code Work(?: Connect)?|Sidecar|Span|Trace|Base URL|Tailnet|MagicDNS|PhpStorm|VSCodium|English)$/;
 const TECHNICAL_LITERAL =
-  /^(?:https?:\/\/\S+|wss?:\/\/\S+|(?:[a-z0-9-]+\.)+[a-z]{2,}|[A-Z0-9_]{3,}|ERR_\{\{\w+\}\}|PR\s+#\{\{\w+\}\}|[a-z0-9_.-]+\/[a-z0-9_./-]+|[A-Za-z]:[\\/]|\.\.?[\\/]|[#.:/@$][^ ]+|--[^ ]+|[a-z]+(?::[a-z0-9-]+)+|[a-z]+(?:-[a-z0-9]+){2,}|\d+(?:\.\d+)?(?:ms|s|m|h)|\{\{\w+\}\}\s+(?:tokens?|\([A-Za-z0-9+ -]+\))|\{.*\}|git:\(|VITE\s.+|WSL\s*\([^)]*\)|[✓△✗].*)$/;
+  /^(?:https?:\/\/\S+|wss?:\/\/\S+|(?:[a-z0-9-]+\.)+[a-z]{2,}|[A-Z0-9_]{3,}|ERR_\{\{\w+\}\}|PR\s+#\{\{\w+\}\}|L\{\{\w+\}\}-L\{\{\w+\}\}|[a-z0-9_.-]+\/[a-z0-9_./-]+|[A-Za-z]:[\\/]|\.\.?[\\/]|[#.:/@$][^ ]+|--[^ ]+|[a-z]+(?::[a-z0-9-]+)+|[a-z]+(?:-[a-z0-9]+){2,}|\d+(?:\.\d+)?(?:ms|s|m|h)|\{\{\w+\}\}\s+(?:tokens?|\([A-Za-z0-9+ -]+\))|\{.*\}|git:\(|VITE\s.+|WSL\s*\([^)]*\)|[✓△✗].*)$/;
 const BAD_TRANSLATION_PATTERNS = [
   /分支es/u,
   /工作树s/u,

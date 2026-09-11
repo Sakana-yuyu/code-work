@@ -541,6 +541,16 @@ jobs:
             fi
           done
 
+      # CHANGELOG.md 中该版本的小节作为 Release 说明正文；缺失时输出为空，
+      # softprops 会退回 GitHub 自动生成的说明。
+      - name: Extract changelog body
+        id: changelog
+        run: >
+          node scripts/extract-release-changelog.ts
+          --version "${{ needs.preflight.outputs.version }}"
+          --changelog CHANGELOG.md
+          --github-output
+
       - name: Publish release
         if: needs.preflight.outputs.previous_tag != ''
         uses: softprops/action-gh-release@v3
@@ -548,6 +558,7 @@ jobs:
           tag_name: ${{ needs.preflight.outputs.tag }}
           target_commitish: ${{ needs.preflight.outputs.ref }}
           name: ${{ needs.preflight.outputs.release_name }}
+          body: ${{ steps.changelog.outputs.body }}
           generate_release_notes: true
           previous_tag: ${{ needs.preflight.outputs.previous_tag }}
           prerelease: ${{ needs.preflight.outputs.is_prerelease }}
@@ -569,6 +580,7 @@ jobs:
           tag_name: ${{ needs.preflight.outputs.tag }}
           target_commitish: ${{ needs.preflight.outputs.ref }}
           name: ${{ needs.preflight.outputs.release_name }}
+          body: ${{ steps.changelog.outputs.body }}
           generate_release_notes: true
           prerelease: ${{ needs.preflight.outputs.is_prerelease }}
           make_latest: ${{ needs.preflight.outputs.make_latest }}
