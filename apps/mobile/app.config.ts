@@ -175,7 +175,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 
 const config: ExpoConfig = {
   name: variant.appName,
-  slug: "code-work",
+  slug: "codework",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
   version: "1.0.4",
@@ -191,7 +191,7 @@ const config: ExpoConfig = {
   userInterfaceStyle: "automatic",
   updates: {
     enabled: true,
-    url: "https://u.expo.dev/3bc41c40-7ffe-4d80-8237-1a5a8dcd0220",
+    url: "https://u.expo.dev/1a654c05-a3b5-4710-a083-72b35bbabd4d",
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
   },
@@ -392,7 +392,7 @@ const config: ExpoConfig = {
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
     eas: {
-      projectId: "3bc41c40-7ffe-4d80-8237-1a5a8dcd0220",
+      projectId: "1a654c05-a3b5-4710-a083-72b35bbabd4d",
     },
   },
   owner: "sakana-yuyu",
