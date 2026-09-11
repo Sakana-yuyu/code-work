@@ -182,8 +182,12 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.equal(config.balanceAccessTokenRedacted, true);
       assert.equal(nested.apiKey, "");
       assert.equal(nested.apiKeyRedacted, true);
-      assert.notInclude(JSON.stringify(redacted), "malformed-api-key");
-      assert.notInclude(JSON.stringify(redacted), "malformed-balance-token");
+      // @effect-diagnostics-next-line schemaSyncInEffect:off - 断言块是 Effect.sync 非 gen，同步编码器足够。
+      const redactedJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(
+        redacted,
+      );
+      assert.notInclude(redactedJson, "malformed-api-key");
+      assert.notInclude(redactedJson, "malformed-balance-token");
     }),
   );
 
