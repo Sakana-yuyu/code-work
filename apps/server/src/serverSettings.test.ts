@@ -137,6 +137,56 @@ const recordProviderUsage = (provider: string, instanceId: string | null = provi
   });
 
 it.layer(NodeServices.layer)("server settings", (it) => {
+  it.effect("脱敏没有 config 的 BYOK 实例时仍生成合法 JSON", () =>
+    Effect.sync(() => {
+      const instanceId = ProviderInstanceId.make("byok_without_config");
+      const redacted = ServerSettingsModule.redactServerSettingsForClient({
+        ...DEFAULT_SERVER_SETTINGS,
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("byok"),
+            enabled: true,
+          },
+        },
+      });
+      const instance = redacted.providerInstances[instanceId];
+
+      assert.isFalse(Object.prototype.hasOwnProperty.call(instance, "config"));
+      assert.doesNotThrow(() => Schema.encodeUnknownSync(ServerSettings)(redacted));
+    }),
+  );
+
+  it.effect("脱敏畸形 BYOK 配置中的密钥字段", () =>
+    Effect.sync(() => {
+      const instanceId = ProviderInstanceId.make("byok_malformed_config");
+      const redacted = ServerSettingsModule.redactServerSettingsForClient({
+        ...DEFAULT_SERVER_SETTINGS,
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("byok"),
+            enabled: true,
+            config: {
+              apiKey: "malformed-api-key",
+              balanceAccessToken: "malformed-balance-token",
+              nested: { apiKey: "nested-api-key" },
+            },
+          },
+        },
+      });
+      const config = redacted.providerInstances[instanceId]?.config as Record<string, unknown>;
+      const nested = config.nested as Record<string, unknown>;
+
+      assert.equal(config.apiKey, "");
+      assert.equal(config.apiKeyRedacted, true);
+      assert.equal(config.balanceAccessToken, "");
+      assert.equal(config.balanceAccessTokenRedacted, true);
+      assert.equal(nested.apiKey, "");
+      assert.equal(nested.apiKeyRedacted, true);
+      assert.notInclude(JSON.stringify(redacted), "malformed-api-key");
+      assert.notInclude(JSON.stringify(redacted), "malformed-balance-token");
+    }),
+  );
+
   it.effect("stores MCP sensitive values outside settings and redacts client snapshots", () =>
     Effect.gen(function* () {
       const serverConfig = yield* ServerConfig.ServerConfig;

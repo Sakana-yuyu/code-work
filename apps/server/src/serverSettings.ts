@@ -131,35 +131,48 @@ function mcpSecretName(input: {
   return `mcp-${encode(input.serverId)}-${input.kind}-${encode(input.name)}`;
 }
 
+function hasByokSecretValue(value: unknown): boolean {
+  return typeof value === "string" ? value.length > 0 : value !== undefined && value !== null;
+}
+
+function redactByokValue(value: unknown, adapter = false): unknown {
+  if (Array.isArray(value)) return value.map((entry) => redactByokValue(entry));
+  if (value === null || typeof value !== "object") return value;
+
+  const record = value as Record<string, unknown>;
+  const redacted: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(record)) {
+    redacted[key] =
+      key === "adapters" && Array.isArray(nested)
+        ? nested.map((entry) => redactByokValue(entry, true))
+        : redactByokValue(nested);
+  }
+
+  const apiKey = record["apiKey"];
+  if (
+    adapter ||
+    Object.prototype.hasOwnProperty.call(record, "apiKey") ||
+    record["apiKeyRedacted"] === true
+  ) {
+    redacted["apiKey"] = "";
+    if (hasByokSecretValue(apiKey) || record["apiKeyRedacted"] === true) {
+      redacted["apiKeyRedacted"] = true;
+    }
+  }
+
+  const balanceToken = record["balanceAccessToken"];
+  if (Object.prototype.hasOwnProperty.call(record, "balanceAccessToken")) {
+    redacted["balanceAccessToken"] = "";
+    if (hasByokSecretValue(balanceToken) || record["balanceAccessTokenRedacted"] === true) {
+      redacted["balanceAccessTokenRedacted"] = true;
+    }
+  }
+
+  return redacted;
+}
+
 function redactByokConfig(config: unknown): unknown {
-  if (config === null || typeof config !== "object" || Array.isArray(config)) return config;
-  const record = config as Record<string, unknown>;
-  if (!Array.isArray(record["adapters"])) return config;
-  return {
-    ...record,
-    adapters: record["adapters"].map((entry) => {
-      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return entry;
-      const adapter = entry as Record<string, unknown>;
-      const apiKey = typeof adapter["apiKey"] === "string" ? adapter["apiKey"] : "";
-      const balanceToken =
-        typeof adapter["balanceAccessToken"] === "string" ? adapter["balanceAccessToken"] : "";
-      return {
-        ...adapter,
-        apiKey: "",
-        ...(apiKey.length > 0 || adapter["apiKeyRedacted"] === true
-          ? { apiKeyRedacted: true }
-          : {}),
-        ...(Object.prototype.hasOwnProperty.call(adapter, "balanceAccessToken")
-          ? {
-              balanceAccessToken: "",
-              ...(balanceToken.length > 0 || adapter["balanceAccessTokenRedacted"] === true
-                ? { balanceAccessTokenRedacted: true }
-                : {}),
-            }
-          : {}),
-      };
-    }),
-  };
+  return redactByokValue(config);
 }
 
 function redactProviderEnvironmentVariable(
@@ -204,11 +217,13 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
   const providerInstances = Object.fromEntries(
     Object.entries(settings.providerInstances).map(([instanceId, instance]) => {
       const secretEnvironmentNames = multicaSecretEnvironmentNames(instance);
+      const { config: instanceConfig, ...instanceWithoutConfig } = instance;
+      const config = instance.driver === "byok" ? redactByokConfig(instanceConfig) : instanceConfig;
       return [
         instanceId,
         {
-          ...instance,
-          ...(instance.driver === "byok" ? { config: redactByokConfig(instance.config) } : {}),
+          ...instanceWithoutConfig,
+          ...(config === undefined ? {} : { config }),
           ...(instance.environment
             ? {
                 environment: instance.environment.map((variable) =>
