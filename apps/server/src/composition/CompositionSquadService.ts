@@ -5,6 +5,7 @@ import {
   type CompositionSquadCollaborationMode,
   type CompositionSquadFailurePolicy,
   type CompositionSquadMember,
+  type CompositionSquadModelBinding,
   type CompositionSquadPartialSuccessPolicy,
   type CompositionSquadRevision,
 } from "@codework/contracts";
@@ -30,6 +31,7 @@ export interface CompositionSquadCreateInput {
   readonly instructions?: string;
   readonly collaborationMode: CompositionSquadCollaborationMode;
   readonly members: ReadonlyArray<CompositionSquadMember>;
+  readonly defaultModelBinding?: CompositionSquadModelBinding;
   readonly maxConcurrency: number;
   readonly maxRetries?: number;
   readonly failurePolicy: CompositionSquadFailurePolicy;
@@ -164,6 +166,9 @@ const buildSquad = (
   revision: metadata.revision,
   collaborationMode: input.collaborationMode,
   members: input.members,
+  ...(input.defaultModelBinding === undefined
+    ? {}
+    : { defaultModelBinding: input.defaultModelBinding }),
   maxConcurrency: input.maxConcurrency,
   ...(input.maxRetries === undefined ? {} : { maxRetries: input.maxRetries }),
   failurePolicy: input.failurePolicy,

@@ -2666,6 +2666,9 @@ const makeWsRpcLayer = (
                       : { instructions: input.instructions }),
                     collaborationMode: input.collaborationMode,
                     members: input.members,
+                    ...(input.defaultModelBinding === undefined
+                      ? {}
+                      : { defaultModelBinding: input.defaultModelBinding }),
                     maxConcurrency: input.maxConcurrency,
                     ...(input.maxRetries === undefined ? {} : { maxRetries: input.maxRetries }),
                     failurePolicy: input.failurePolicy,
@@ -2695,6 +2698,9 @@ const makeWsRpcLayer = (
                       : { instructions: input.instructions }),
                     collaborationMode: input.collaborationMode,
                     members: input.members,
+                    ...(input.defaultModelBinding === undefined
+                      ? {}
+                      : { defaultModelBinding: input.defaultModelBinding }),
                     maxConcurrency: input.maxConcurrency,
                     ...(input.maxRetries === undefined ? {} : { maxRetries: input.maxRetries }),
                     failurePolicy: input.failurePolicy,
