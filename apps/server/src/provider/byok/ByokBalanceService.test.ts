@@ -393,3 +393,239 @@ describe("ByokBalanceService dashboard", () => {
     expect(instance?.adapters[0]?.balance.error?.code).toBe("unsupported_profile");
   });
 });
+
+describe("Zhipu GLM balance", () => {
+  it("combines the coding-plan quota windows with the wallet report", async () => {
+    const requests: string[] = [];
+    const fetch = asFetch(async (input) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.endsWith("/api/monitor/usage/quota/limit")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              level: "pro",
+              limits: [
+                {
+                  type: "TOKENS_LIMIT",
+                  unit: 3,
+                  number: 5,
+                  percentage: 37.5,
+                  nextResetTime: "2026-09-13T20:00:00+08:00",
+                },
+                {
+                  type: "TOKENS_LIMIT",
+                  unit: 6,
+                  number: 1,
+                  percentage: 8,
+                  nextResetTime: "2026-09-15T00:00:00+08:00",
+                },
+              ],
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/api/biz/account/query-customer-account-report")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: { availableBalance: 42.5, totalSpendAmount: 7.5, currency: "CNY" },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 404 });
+    });
+
+    const result = await runBalance(
+      makeSettings("zhipu-instance", [
+        adapter({
+          id: "zhipu",
+          baseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+          modelId: "glm-5.3",
+          supplierID: "zhipu_glm",
+        }),
+      ]),
+      fetch,
+      { instanceId: "zhipu-instance", adapterId: "zhipu", forceRefresh: true },
+    );
+
+    expect(requests.some((url) => url.endsWith("/api/monitor/usage/quota/limit"))).toBe(true);
+    expect(
+      requests.some((url) => url.endsWith("/api/biz/account/query-customer-account-report")),
+    ).toBe(true);
+    expect(result.supported).toBe(true);
+    expect(result.source).toBe("zhipu");
+    expect(result.planName).toBe("PRO");
+    expect(result.remaining).toBe(42.5);
+    expect(result.used).toBe(7.5);
+    expect(result.total).toBe(50);
+    expect(result.currency).toBe("CNY");
+    // 最短窗口在前（5 小时），最长的是每周；百分比已换算成已用占比。
+    expect(result.windows).toHaveLength(2);
+    expect(result.windows[0]).toMatchObject({
+      id: "session",
+      usedFraction: 0.375,
+      resetsAt: "2026-09-13T20:00:00+08:00",
+    });
+    expect(result.windows[1]).toMatchObject({ id: "weekly", usedFraction: 0.08 });
+  });
+
+  it("keeps the quota windows when the wallet report route is unavailable", async () => {
+    const fetch = asFetch(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/monitor/usage/quota/limit")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              level: "lite",
+              limits: [{ type: "TOKENS_LIMIT", unit: 3, number: 5, percentage: 90 }],
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const result = await runBalance(
+      makeSettings("zhipu-report-missing", [
+        adapter({
+          id: "zhipu",
+          baseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+          modelId: "glm-5.3",
+          supplierID: "zhipu_glm",
+        }),
+      ]),
+      fetch,
+      { instanceId: "zhipu-report-missing", adapterId: "zhipu", forceRefresh: true },
+    );
+
+    expect(result.supported).toBe(true);
+    expect(result.remaining).toBeUndefined();
+    expect(result.windows).toHaveLength(1);
+    // 90% 已用 → 剩余 10% → warning 档。
+    expect(result.windows[0]?.status).toBe("warning");
+  });
+
+  it("falls back to the v4 balance route when both console routes fail", async () => {
+    const fetch = asFetch(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/paas/v4/balance")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: { available_balance: 12.34, total_balance: 100, currency: "CNY" },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("denied", { status: 404 });
+    });
+
+    const result = await runBalance(
+      makeSettings("zhipu-v4", [
+        adapter({
+          id: "zhipu",
+          baseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+          modelId: "glm-5.3",
+          supplierID: "zhipu_glm",
+        }),
+      ]),
+      fetch,
+      { instanceId: "zhipu-v4", adapterId: "zhipu", forceRefresh: true },
+    );
+
+    expect(result.supported).toBe(true);
+    expect(result.source).toBe("zhipu");
+    expect(result.remaining).toBe(12.34);
+    expect(result.windows).toEqual([]);
+  });
+
+  it("routes the z.ai international origin to api.z.ai and honors a stored none profile", async () => {
+    const requests: string[] = [];
+    const fetch = asFetch(async (input) => {
+      requests.push(String(input));
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: { availableBalance: 1, currency: "USD" },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    const routed = await runBalance(
+      makeSettings("zai-origin", [
+        adapter({
+          id: "zai",
+          baseURL: "https://api.z.ai/api/coding/paas/v4",
+          modelId: "glm-5.3",
+          supplierID: "zhipu_glm_en",
+        }),
+      ]),
+      fetch,
+      { instanceId: "zai-origin", adapterId: "zai", forceRefresh: true },
+    );
+    expect(routed.supported).toBe(true);
+    expect(requests.every((url) => url.startsWith("https://api.z.ai/"))).toBe(true);
+
+    const optedOut = await runBalance(
+      makeSettings("zai-none", [
+        adapter({
+          id: "zai",
+          baseURL: "https://api.z.ai/api/coding/paas/v4",
+          modelId: "glm-5.3",
+          supplierID: "zhipu_glm_en",
+          balanceProfile: "none",
+        }),
+      ]),
+      asFetch(async () => {
+        throw new Error("must not be called");
+      }),
+      { instanceId: "zai-none", adapterId: "zai", forceRefresh: true },
+    );
+    expect(optedOut.supported).toBe(false);
+    expect(optedOut.error?.code).toBe("unsupported_profile");
+  });
+
+  it("answers the token_plan profile for zhipu hosts that previously reported unsupported", async () => {
+    const fetch = asFetch(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/monitor/usage/quota/limit")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: { level: "max", limits: [] },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({ success: true, data: { availableBalance: 9, currency: "CNY" } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    const result = await runBalance(
+      makeSettings("zhipu-token-plan", [
+        adapter({
+          id: "zhipu",
+          baseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+          modelId: "glm-5.3",
+          supplierID: "zhipu_glm",
+        }),
+      ]),
+      fetch,
+      { instanceId: "zhipu-token-plan", adapterId: "zhipu", forceRefresh: true },
+    );
+
+    // 之前 token_plan 落在 unsupported_profile；现在由智谱接口族应答。
+    expect(result.supported).toBe(true);
+    expect(result.planName).toBe("MAX");
+    expect(result.remaining).toBe(9);
+  });
+});

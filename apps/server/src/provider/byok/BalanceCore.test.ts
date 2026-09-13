@@ -15,6 +15,7 @@ import {
   parseNumericDotPath,
   parseNumericField,
   parseOpenAIBilling,
+  parseZhipuBalance,
   resolveBalanceProfile,
   shouldCacheBalanceResult,
   type NormalizedBalanceResult,
@@ -169,5 +170,80 @@ describe("BalanceCore", () => {
     expect(shouldCacheBalanceResult({ ...base, supported: true })).toBe("positive");
     expect(shouldCacheBalanceResult(base)).toBe("negative");
     expect(shouldCacheBalanceResult({ ...base, transient: true })).toBeUndefined();
+  });
+
+  it("parses the Zhipu quota windows sorted shortest-first with the wallet report", () => {
+    const quota = {
+      success: true,
+      data: {
+        level: "pro",
+        limits: [
+          {
+            type: "TOKENS_LIMIT",
+            unit: 6,
+            number: 1,
+            percentage: 8,
+            nextResetTime: "2026-09-15T00:00:00+08:00",
+          },
+          {
+            type: "TOKENS_LIMIT",
+            unit: 3,
+            number: 5,
+            percentage: 37.5,
+            nextResetTime: "2026-09-13T20:00:00+08:00",
+          },
+        ],
+      },
+    };
+    const report = {
+      success: true,
+      data: { availableBalance: 42.5, totalSpendAmount: 7.5, currency: "CNY" },
+    };
+
+    const result = parseZhipuBalance(report, quota);
+
+    expect(result).toMatchObject({
+      supported: true,
+      source: "zhipu",
+      currency: "CNY",
+      remaining: 42.5,
+      used: 7.5,
+      total: 50,
+      planName: "PRO",
+    });
+    expect(result?.windows).toHaveLength(2);
+    expect(result?.windows[0]).toMatchObject({ id: "session", usedFraction: 0.375, unit: "%" });
+    expect(result?.windows[1]).toMatchObject({ id: "weekly", usedFraction: 0.08 });
+  });
+
+  it("builds count-based Zhipu windows from currentValue/usage when no percentage exists", () => {
+    const quota = {
+      success: true,
+      data: {
+        level: "lite",
+        limits: [{ type: "CREDIT_LIMIT", unit: 3, number: 5, usage: 1000, currentValue: 250 }],
+      },
+    };
+
+    const result = parseZhipuBalance(undefined, quota);
+
+    expect(result?.windows[0]).toMatchObject({
+      id: "session",
+      unit: "credits",
+      usedFraction: 0.25,
+      used: 250,
+      limit: 1000,
+    });
+  });
+
+  it("falls back to the v4 balance shape and drops an unrecognized envelope", () => {
+    const v4 = { success: true, data: { available_balance: 12.34, currency: "CNY" } };
+    expect(parseZhipuBalance(undefined, undefined, v4)).toMatchObject({
+      source: "zhipu",
+      remaining: 12.34,
+      windows: [],
+    });
+    expect(parseZhipuBalance({ success: false, msg: "bad key" })).toBeUndefined();
+    expect(parseZhipuBalance(undefined, { success: true, data: {} })).toBeUndefined();
   });
 });

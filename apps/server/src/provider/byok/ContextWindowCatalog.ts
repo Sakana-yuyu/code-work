@@ -8,6 +8,7 @@ type CatalogRule = {
   readonly contextWindowTokens?: unknown;
   readonly maxOutputTokens?: unknown;
   readonly supportsVision?: unknown;
+  readonly reasoningEfforts?: unknown;
 };
 
 const rawRules = (rawCatalog as { readonly rules?: readonly CatalogRule[] }).rules ?? [];
@@ -18,6 +19,8 @@ export interface ModelContextCapabilities {
   readonly maxOutputTokens?: number;
   /** 目录核实的图片输入能力；目录未收录时为 undefined（交给启发式兜底）。 */
   readonly supportsVision?: boolean;
+  /** 模型支持的思考强度档位（如 GPT-6 的 low..max、Gemini 的 thinking_level）；未收录时为 undefined。 */
+  readonly reasoningEfforts?: readonly string[];
 }
 
 /**
@@ -37,6 +40,7 @@ export const CONTEXT_WINDOW_RULES: ReadonlyArray<ModelContextRule<ModelContextCa
     }
     const maxOutputTokens = rule.maxOutputTokens;
     const supportsVision = rule.supportsVision;
+    const reasoningEfforts = rule.reasoningEfforts;
     return [
       {
         pattern: rule.pattern,
@@ -48,6 +52,10 @@ export const CONTEXT_WINDOW_RULES: ReadonlyArray<ModelContextRule<ModelContextCa
             ? { maxOutputTokens }
             : {}),
           ...(typeof supportsVision === "boolean" ? { supportsVision } : {}),
+          ...(Array.isArray(reasoningEfforts) &&
+          reasoningEfforts.every((effort) => typeof effort === "string" && effort.trim() !== "")
+            ? { reasoningEfforts: reasoningEfforts.map((effort) => effort.trim()) }
+            : {}),
         },
       },
     ];

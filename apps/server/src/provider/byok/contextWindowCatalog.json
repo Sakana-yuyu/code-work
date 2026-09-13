@@ -1,7 +1,60 @@
 {
   "_comment": "模型上下文目录（与 cursor-byok internal/modelcontext/models.json 保持同步，仅保留 Code Work 用到的字段：上下文窗口、最大输出、视觉能力）。first-match-wins：pattern 按数组顺序匹配，越靠前优先级越高。pattern 经 normalizeModelID 处理后再匹配（小写、去 models/ 前缀、空格/下划线转连字符）。",
-  "_source": "cursor-byok models.json + 本仓库 deepseek 补充",
+  "_source": "cursor-byok models.json + 本仓库 deepseek 补充 + 2026-09 官方发布核对（Fable/Mythos 5.1、GPT-6 Astra、Gemini 3.8 Flash、DeepSeek V4.1-Flash、Grok 4.6、Qwen3.8-Max）",
   "rules": [
+    {
+      "pattern": "^gpt-?6(?:-|$)",
+      "displayName": "GPT-6 (Astra)",
+      "contextWindowTokens": 1050000,
+      "maxOutputTokens": 128000,
+      "supportsVision": true,
+      "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+    },
+    {
+      "pattern": "^gemini-?3[.-]?8-?flash(?:-|$)",
+      "displayName": "Gemini 3.8 Flash",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 64000,
+      "supportsVision": true,
+      "reasoningEfforts": ["low", "medium", "high"]
+    },
+    {
+      "pattern": "^(?:claude-)?fable-?5(?:[.-]1)?(?:-|$)",
+      "displayName": "Claude Fable 5 / 5.1",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "supportsVision": true,
+      "reasoningEfforts": ["low", "medium", "high"]
+    },
+    {
+      "pattern": "^(?:claude-)?mythos-?5(?:[.-]1)?(?:-|$)",
+      "displayName": "Claude Mythos 5 / 5.1",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "supportsVision": true,
+      "reasoningEfforts": ["low", "medium", "high"]
+    },
+    {
+      "pattern": "^deepseek-?v?4[.-]?1-?flash(?:-|$)",
+      "displayName": "DeepSeek V4.1-Flash",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 384000,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^grok-?4[.-]?6(?:-|$)",
+      "displayName": "Grok 4.6",
+      "contextWindowTokens": 500000,
+      "maxOutputTokens": 32000,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^qwen3[.-]?8-?max(?:-|$)",
+      "displayName": "Qwen3.8-Max",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "supportsVision": true
+    },
     {
       "pattern": "^deepseek-(?:chat|reasoner)(?:-|$)",
       "displayName": "DeepSeek V4 兼容别名",

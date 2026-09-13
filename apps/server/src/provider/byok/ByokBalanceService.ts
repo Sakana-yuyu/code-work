@@ -21,6 +21,7 @@ import {
   parseDeepSeekBalance,
   parseNewAPIQuota,
   parseOpenAIBilling,
+  parseZhipuBalance,
   resolveBalanceProfile,
   shouldCacheBalanceResult,
   type BalanceCache,
@@ -216,6 +217,48 @@ const deepSeekAttempts = (adapter: ByokModelAdapter): readonly BalanceAttempt[] 
   },
 ];
 
+/**
+ * 智谱 GLM / Z.ai 的计费 origin：控制台接口族挂在 open.bigmodel.cn（国内）或
+ * api.z.ai（国际），推理 baseURL 可能是同域或裸域，统一归一到计费域。
+ */
+const zhipuBillingOrigin = (baseURL: string): string | null => {
+  try {
+    const host = new URL(baseURL).hostname.toLowerCase();
+    if (host === "open.bigmodel.cn" || host === "www.bigmodel.cn" || host === "bigmodel.cn") {
+      return "https://open.bigmodel.cn";
+    }
+    if (host === "api.z.ai" || host === "z.ai") return "https://api.z.ai";
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * 智谱尝试链。主请求是 Coding Plan 配额窗口（quota/limit），伴随请求是钱包
+ * 报表（query-customer-account-report）——两个控制台路由都用裸 Key；报表是
+ * 前端路由、并非所有 origin 都提供，主请求成功而报表失败时仍返回窗口。
+ * 报表不可用且需要钱包时的兜底是文档化的 v4 balance（Bearer 形式）。
+ */
+const zhipuAttempts = (adapter: ByokModelAdapter): readonly BalanceAttempt[] => {
+  const origin = zhipuBillingOrigin(adapter.baseURL);
+  if (!origin) return [];
+  const consoleHeaders = { authorization: adapter.apiKey, accept: "application/json" };
+  return [
+    {
+      endpoint: `${origin}/api/monitor/usage/quota/limit`,
+      usageEndpoint: `${origin}/api/biz/account/query-customer-account-report`,
+      headers: consoleHeaders,
+      parse: (quota, report) => parseZhipuBalance(report, quota),
+    },
+    {
+      endpoint: `${origin}/api/paas/v4/balance`,
+      headers: { authorization: `Bearer ${adapter.apiKey}`, accept: "application/json" },
+      parse: (v4Balance) => parseZhipuBalance(undefined, undefined, v4Balance),
+    },
+  ];
+};
+
 const toResult = (
   input: ByokBalanceRequest,
   normalized: NormalizedBalanceResult,
@@ -316,7 +359,11 @@ export const make = Effect.gen(function* () {
               (usesOfficialDeepSeekEndpoint(adapter.baseURL) || template.usage.status === "fixed")
             ? ("auto" as const)
             : null;
-      if (supportedProfile === null) {
+      // 智谱计费域有专属接口族：模板声明为 token_plan（或用户落在该域的
+      // auto/general/newapi）都由智谱尝试链应答；显式 "none" 仍然尊重。
+      const zhipuOrigin =
+        profile !== "none" && profile !== "custom" ? zhipuBillingOrigin(adapter.baseURL) : null;
+      if (supportedProfile === null && zhipuOrigin === null) {
         return failure(input, "manual", "unsupported_profile");
       }
       // Native Gemini has no public balance endpoint; auto mode would only
@@ -324,11 +371,18 @@ export const make = Effect.gen(function* () {
       if (adapter.protocol === "gemini" && supportedProfile === "auto") {
         return failure(input, "manual", "unsupported_profile");
       }
-      const profiles: readonly ("general" | "newapi")[] =
-        supportedProfile === "auto" ? ["general", "newapi"] : [supportedProfile];
-      const attempts = usesOfficialDeepSeekEndpoint(adapter.baseURL)
-        ? deepSeekAttempts(adapter)
-        : profiles.flatMap((candidateProfile) => attemptsFor(adapter, candidateProfile));
+      const candidateProfiles: readonly ("general" | "newapi")[] =
+        supportedProfile === "general" || supportedProfile === "newapi"
+          ? [supportedProfile]
+          : ["general", "newapi"];
+      const attempts =
+        zhipuOrigin !== null
+          ? zhipuAttempts(adapter)
+          : usesOfficialDeepSeekEndpoint(adapter.baseURL)
+            ? deepSeekAttempts(adapter)
+            : candidateProfiles.flatMap((candidateProfile) =>
+                attemptsFor(adapter, candidateProfile),
+              );
       let lastError: ByokBalanceResult | undefined;
       for (const attempt of attempts) {
         const response = yield* Effect.result(
