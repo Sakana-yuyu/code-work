@@ -178,6 +178,13 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
                 apiKey: modelAdapter.apiKey,
                 modelId: modelAdapter.modelId,
                 contextWindowTokens: modelAdapter.contextWindowTokens,
+                ...(modelAdapter.maxOutputTokens !== undefined
+                  ? { maxOutputTokens: modelAdapter.maxOutputTokens }
+                  : {}),
+                ...(modelAdapter.customHeaders !== undefined &&
+                modelAdapter.customHeaders.trim().length > 0
+                  ? { customHeaders: modelAdapter.customHeaders }
+                  : {}),
                 ...(signal === undefined ? {} : { signal }),
               }),
             );

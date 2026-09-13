@@ -93,6 +93,8 @@ export const ByokDiscoveredModel = Schema.Struct({
   id: TrimmedNonEmptyString,
   ownedBy: Schema.optional(TrimmedString),
   contextWindowTokens: Schema.optional(NonNegativeInt),
+  /** 服务端用内置目录补全的最大输出；中转自报时以中转为准。 */
+  maxOutputTokens: Schema.optional(NonNegativeInt),
   pricing: Schema.optional(ByokModelPricing),
   capabilities: Schema.optional(Schema.Record(TrimmedNonEmptyString, Schema.Unknown)),
 });
@@ -149,10 +151,13 @@ export type ByokContextWindowMatchSource = typeof ByokContextWindowMatchSource.T
 
 export const ByokContextWindowMatchDetail = Schema.Struct({
   adapterId: TrimmedNonEmptyString,
-  modelId: TrimmedNonEmptyString,
+  modelId: TrimmedString,
   source: ByokContextWindowMatchSource,
   before: NonNegativeInt,
   after: NonNegativeInt,
+  /** 目录命中的最大输出建议；仅在适配器未显式设置时回填（fill-if-missing）。 */
+  maxOutputBefore: Schema.optional(NonNegativeInt),
+  maxOutputAfter: Schema.optional(NonNegativeInt),
 });
 export type ByokContextWindowMatchDetail = typeof ByokContextWindowMatchDetail.Type;
 

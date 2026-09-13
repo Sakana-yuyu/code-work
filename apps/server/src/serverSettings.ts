@@ -122,6 +122,13 @@ function byokBalanceTokenSecretName(input: {
   return `provider-byok-${Buffer.from(input.instanceId, "utf8").toString("base64url")}-${Buffer.from(input.adapterId, "utf8").toString("base64url")}-balance-token`;
 }
 
+function byokCustomHeadersSecretName(input: {
+  readonly instanceId: string;
+  readonly adapterId: string;
+}): string {
+  return `provider-byok-${Buffer.from(input.instanceId, "utf8").toString("base64url")}-${Buffer.from(input.adapterId, "utf8").toString("base64url")}-custom-headers`;
+}
+
 function mcpSecretName(input: {
   readonly serverId: string;
   readonly kind: "header" | "environment";
@@ -165,6 +172,15 @@ function redactByokValue(value: unknown, adapter = false): unknown {
     redacted["balanceAccessToken"] = "";
     if (hasByokSecretValue(balanceToken) || record["balanceAccessTokenRedacted"] === true) {
       redacted["balanceAccessTokenRedacted"] = true;
+    }
+  }
+
+  // 自定义请求头的值可能携带令牌，与 API 密钥同等脱敏：只回传空串与标记。
+  const customHeaders = record["customHeaders"];
+  if (Object.prototype.hasOwnProperty.call(record, "customHeaders")) {
+    redacted["customHeaders"] = "";
+    if (hasByokSecretValue(customHeaders) || record["customHeadersRedacted"] === true) {
+      redacted["customHeadersRedacted"] = true;
     }
   }
 
@@ -850,6 +866,29 @@ const make = Effect.gen(function* () {
                 : "",
             };
           }
+          // 自定义请求头与余额令牌同契约：脱敏标记 + 独立 secret 槽位。
+          if (adapterId !== "" && adapter["customHeadersRedacted"] === true) {
+            const customHeadersSecret = yield* secretStore
+              .get(byokCustomHeadersSecretName({ instanceId, adapterId }))
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ServerSettingsError({
+                      settingsPath,
+                      operation: "read-secret",
+                      providerInstanceId: instanceId,
+                      environmentVariable: `byok:${adapterId}:customHeaders`,
+                      cause,
+                    }),
+                ),
+              );
+            materialized = {
+              ...materialized,
+              customHeaders: Option.isSome(customHeadersSecret)
+                ? textDecoder.decode(customHeadersSecret.value)
+                : "",
+            };
+          }
           adapters.push(materialized);
         }
         providerInstances[instanceId] = {
@@ -1097,6 +1136,47 @@ const make = Effect.gen(function* () {
             const { balanceAccessTokenRedacted: _omitBalance, ...restBalance } = stored;
             adapters.push(restBalance);
           }
+          // 自定义请求头：新填→入密钥库并打标记；清空→删密钥并去标记；已脱敏→透传。
+          const customHeadersName = byokCustomHeadersSecretName({ instanceId, adapterId });
+          nextSecretNames.add(customHeadersName);
+          const customHeaders =
+            typeof adapter["customHeaders"] === "string" ? adapter["customHeaders"] : "";
+          if (adapter["customHeadersRedacted"] !== true && customHeaders.trim().length > 0) {
+            yield* writeSecretStore.set(customHeadersName, textEncoder.encode(customHeaders)).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerSettingsError({
+                    settingsPath,
+                    operation: "write-secret",
+                    providerInstanceId: instanceId,
+                    environmentVariable: `byok:${adapterId}:customHeaders`,
+                    cause,
+                  }),
+              ),
+            );
+            const stored = adapters.pop() as Record<string, unknown>;
+            adapters.push({ ...stored, customHeaders: "", customHeadersRedacted: true });
+          } else if (
+            adapter["customHeadersRedacted"] !== true &&
+            customHeaders.trim().length === 0 &&
+            Object.prototype.hasOwnProperty.call(adapter, "customHeaders")
+          ) {
+            yield* writeSecretStore.remove(customHeadersName).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerSettingsError({
+                    settingsPath,
+                    operation: "remove-secret",
+                    providerInstanceId: instanceId,
+                    environmentVariable: `byok:${adapterId}:customHeaders`,
+                    cause,
+                  }),
+              ),
+            );
+            const stored = adapters.pop() as Record<string, unknown>;
+            const { customHeadersRedacted: _omitCustomHeaders, ...restCustomHeaders } = stored;
+            adapters.push(restCustomHeaders);
+          }
         }
         providerInstances[instanceId] = {
           ...instance,
@@ -1151,6 +1231,33 @@ const make = Effect.gen(function* () {
                   operation: "remove-stale-secret",
                   providerInstanceId: instanceId,
                   environmentVariable: `byok:${adapterId}:apiKey`,
+                  cause,
+                }),
+            ),
+          );
+        }
+      }
+
+      for (const [instanceId, instance] of Object.entries(current.providerInstances)) {
+        if (instance.driver !== "byok") continue;
+        const config = instance.config;
+        if (config === null || typeof config !== "object" || Array.isArray(config)) continue;
+        const adapters = (config as Record<string, unknown>)["adapters"];
+        if (!Array.isArray(adapters)) continue;
+        for (const entry of adapters) {
+          if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+          const adapterId = (entry as Record<string, unknown>)["id"];
+          if (typeof adapterId !== "string" || adapterId.length === 0) continue;
+          const customHeadersName = byokCustomHeadersSecretName({ instanceId, adapterId });
+          if (nextSecretNames.has(customHeadersName)) continue;
+          yield* writeSecretStore.remove(customHeadersName).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerSettingsError({
+                  settingsPath,
+                  operation: "remove-stale-secret",
+                  providerInstanceId: instanceId,
+                  environmentVariable: `byok:${adapterId}:customHeaders`,
                   cause,
                 }),
             ),

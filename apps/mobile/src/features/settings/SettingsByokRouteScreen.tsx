@@ -27,6 +27,7 @@ import { useEnvironments } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { byokEnvironment, serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { inferByokProtocol } from "@codework/client-runtime/byok/protocol";
 import { SettingsEnvironmentPicker } from "./components/SettingsEnvironmentPicker";
 import {
   adapterFormFromAdapter,
@@ -530,11 +531,19 @@ function ByokInstanceCard(props: {
         input: { instanceId: props.instanceId, adapterId: adapter.id },
       });
       if (result._tag === "Success") {
+        const detailByAdapterId = new Map(
+          result.value.details.map((detail) => [detail.adapterId, detail]),
+        );
         const nextAdapters = adapters.map((current) => {
-          const detail = result.value.details.find(
-            (candidate) => candidate.adapterId === current.id,
-          );
-          return detail === undefined ? current : { ...current, contextWindowTokens: detail.after };
+          const detail = detailByAdapterId.get(current.id);
+          if (detail === undefined) return current;
+          return {
+            ...current,
+            contextWindowTokens: detail.after,
+            ...(detail.maxOutputAfter !== undefined
+              ? { maxOutputTokens: detail.maxOutputAfter }
+              : {}),
+          };
         });
         await updateConfig("adapters", nextAdapters);
       }
@@ -731,6 +740,13 @@ function ByokInstanceCard(props: {
                           ...(model.contextWindowTokens === undefined
                             ? {}
                             : { contextWindowTokens: model.contextWindowTokens }),
+                          ...(model.maxOutputTokens === undefined
+                            ? {}
+                            : { maxOutputTokens: model.maxOutputTokens }),
+                          // 选模型时按模型名推断协议，避免 claude/gemini 落在 openai。
+                          ...(inferByokProtocol(model.id, current.protocol) !== current.protocol
+                            ? { protocol: inferByokProtocol(model.id, current.protocol) }
+                            : {}),
                         }
                       : current,
                   ),
@@ -771,6 +787,12 @@ function ByokInstanceCard(props: {
               ...(model.contextWindowTokens === undefined
                 ? {}
                 : { contextWindowTokens: String(model.contextWindowTokens) }),
+              ...(model.maxOutputTokens === undefined
+                ? {}
+                : { maxOutputTokens: String(model.maxOutputTokens) }),
+              ...(inferByokProtocol(model.id, current.protocol) !== current.protocol
+                ? { protocol: inferByokProtocol(model.id, current.protocol) }
+                : {}),
             }))
           }
           onSave={() => void saveAdapter()}

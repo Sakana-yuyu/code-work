@@ -1270,6 +1270,9 @@ export const make = Effect.gen(function* () {
         baseURL: adapter.baseURL,
         apiKey: adapter.apiKey,
         modelId: adapter.modelId,
+        ...(adapter.customHeaders !== undefined && adapter.customHeaders.trim().length > 0
+          ? { customHeaders: adapter.customHeaders }
+          : {}),
         messages: [{ role: "user", content: prompt }],
       }),
     );

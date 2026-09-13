@@ -19,7 +19,10 @@ export interface ContextWindowMatchSummary {
 export const hasCatalogContextWindow = (modelId: string): boolean =>
   matchModelContext(modelId, CONTEXT_WINDOW_RULES).covered;
 
-/** 用户手动触发诊断时，以中转显式值优先，再以内置目录收敛窗口。 */
+/**
+ * 用户手动触发诊断时，以中转显式值优先，再以内置目录收敛窗口；
+ * 最大输出 token 只在适配器未显式设置时由目录回填（fill-if-missing）。
+ */
 export function matchContextWindows(
   adapters: ReadonlyArray<ByokModelAdapter>,
   probeModels: ReadonlyArray<ByokDiscoveredModel> = [],
@@ -44,7 +47,8 @@ export function matchContextWindows(
   for (const adapter of adapters) {
     const before = adapter.contextWindowTokens;
     const probedWindow = windowsByModelId.get(normalizeModelID(adapter.modelId));
-    const catalogWindow = matchModelContext(adapter.modelId, CONTEXT_WINDOW_RULES).value;
+    const catalogCapabilities = matchModelContext(adapter.modelId, CONTEXT_WINDOW_RULES).value;
+    const catalogWindow = catalogCapabilities?.contextWindowTokens;
     // 中转 /models 返回的是当前渠道的显式能力，优先采用；内置目录只负责
     // 收敛明显过大的值，不能覆盖用户主动设置的更小窗口。
     const after =
@@ -53,7 +57,13 @@ export function matchContextWindows(
         ? catalogWindow
         : before);
 
-    if (after === before) {
+    // 最大输出：目录值仅在适配器未设置时回填，用户显式值永远优先。
+    const maxOutputBefore = adapter.maxOutputTokens;
+    const maxOutputAfter =
+      maxOutputBefore === undefined ? catalogCapabilities?.maxOutputTokens : undefined;
+    const maxOutputChanged = maxOutputAfter !== undefined;
+
+    if (after === before && !maxOutputChanged) {
       details.push({
         adapterId: adapter.id,
         modelId: adapter.modelId,
@@ -64,8 +74,16 @@ export function matchContextWindows(
       continue;
     }
 
-    const source = probedWindow === undefined ? "catalog" : "probe";
-    details.push({ adapterId: adapter.id, modelId: adapter.modelId, source, before, after });
+    const source = after === before ? "catalog" : probedWindow === undefined ? "catalog" : "probe";
+    details.push({
+      adapterId: adapter.id,
+      modelId: adapter.modelId,
+      source,
+      before,
+      after,
+      ...(maxOutputBefore !== undefined ? { maxOutputBefore } : {}),
+      ...(maxOutputAfter !== undefined ? { maxOutputAfter } : {}),
+    });
     if (source === "probe") {
       fromProbe += 1;
     } else {
@@ -77,7 +95,9 @@ export function matchContextWindows(
     total: adapters.length,
     fromCatalog,
     fromProbe,
-    unchanged: details.filter((detail) => detail.before === detail.after).length,
+    unchanged: details.filter(
+      (detail) => detail.before === detail.after && detail.maxOutputAfter === undefined,
+    ).length,
     details,
   };
 }

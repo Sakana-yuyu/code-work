@@ -5,11 +5,13 @@ import { matchModelContext } from "./ModelCatalog.ts";
 import { SUPPLIER_TEMPLATES, type SupplierTemplate } from "./SupplierCatalog.ts";
 
 function publicModelPreset(modelId: string): ByokSupplierModelPreset {
-  const contextWindowTokens = matchModelContext(modelId, CONTEXT_WINDOW_RULES).value;
+  const capabilities = matchModelContext(modelId, CONTEXT_WINDOW_RULES).value;
   return {
     modelId,
     displayName: modelId,
-    ...(contextWindowTokens !== undefined ? { contextWindowTokens } : {}),
+    ...(capabilities !== undefined
+      ? { contextWindowTokens: capabilities.contextWindowTokens }
+      : {}),
   };
 }
 

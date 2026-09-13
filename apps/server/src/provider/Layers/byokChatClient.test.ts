@@ -10,6 +10,7 @@ import * as Stream from "effect/Stream";
 import {
   ByokEngineError,
   collectChatText,
+  parseByokCustomHeaders,
   streamChat,
   type ByokChatEvent,
   type ByokToolDescriptor,
@@ -1147,5 +1148,64 @@ describe("byokChatClient multi-protocol tool calls", () => {
         },
       ],
     });
+  });
+});
+
+describe("byokChatClient custom headers", () => {
+  it("parses a string-valued JSON object and nothing else", () => {
+    expect(parseByokCustomHeaders('{"X-Custom":"value"}')).toEqual({ "X-Custom": "value" });
+    expect(parseByokCustomHeaders('{" X-Spaced ":"value"}')).toEqual({ "X-Spaced": "value" });
+    expect(parseByokCustomHeaders("")).toBeUndefined();
+    expect(parseByokCustomHeaders("   ")).toBeUndefined();
+    expect(parseByokCustomHeaders(undefined)).toBeUndefined();
+    expect(parseByokCustomHeaders("not json")).toBeUndefined();
+    expect(parseByokCustomHeaders('["array"]')).toBeUndefined();
+    expect(parseByokCustomHeaders('{"n":1}')).toBeUndefined();
+    expect(parseByokCustomHeaders('{"":"empty-name"}')).toBeUndefined();
+  });
+
+  it("sends custom headers and lets them override the protocol default", async () => {
+    const { client, captured } = makeClient(
+      [
+        'data: {"choices":[{"delta":{"content":"hey"}}]}',
+        "",
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    );
+    await runEvents(client, {
+      protocol: "openai",
+      baseURL: "https://relay.example/v1",
+      apiKey: "k",
+      modelId: "gpt",
+      messages: [{ role: "user", content: "hi" }],
+      customHeaders: '{"X-Custom":"value","Authorization":"Bearer custom"}',
+    });
+    expect(captured[0]?.headers["x-custom"]).toBe("value");
+    expect(captured[0]?.headers["authorization"]).toBe("Bearer custom");
+  });
+
+  it("ignores invalid custom headers JSON instead of failing the request", async () => {
+    const { client, captured } = makeClient(
+      [
+        'data: {"choices":[{"delta":{"content":"hey"}}]}',
+        "",
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    );
+    await runEvents(client, {
+      protocol: "openai",
+      baseURL: "https://relay.example/v1",
+      apiKey: "k",
+      modelId: "gpt",
+      messages: [{ role: "user", content: "hi" }],
+      customHeaders: "not-json",
+    });
+    expect(captured[0]?.headers["authorization"]).toBe("Bearer k");
   });
 });

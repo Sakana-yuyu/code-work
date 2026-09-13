@@ -221,6 +221,27 @@ describe("ByokModelDiscoveryService", () => {
     expect(requested?.headers.get("authorization")).toBe("Bearer sk-test-key");
   });
 
+  it("enriches discovered models with catalog context and max output when the relay omits them", async () => {
+    const fetch = asFetch(
+      async () =>
+        new Response(JSON.stringify({ data: [{ id: "claude-sonnet-4-6" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const result = await runDiscover(makeSettings("instance-enrich", [adapter()]), fetch, {
+      instanceId: "instance-enrich",
+      adapterId: "adapter-success",
+      forceRefresh: true,
+    });
+
+    expect(result.status).toBe("ready");
+    expect(result.models).toEqual([
+      { id: "claude-sonnet-4-6", contextWindowTokens: 1_000_000, maxOutputTokens: 64_000 },
+    ]);
+  });
+
   it("uses provider usage for benchmark throughput when the relay returns it", async () => {
     let requestedBody = "";
     const fetch = asFetch(async (_input, init) => {

@@ -19,6 +19,8 @@ interface CandidateAdapter {
   readonly apiKey: string;
   readonly modelId: string;
   readonly contextWindowTokens: number;
+  readonly maxOutputTokens?: number;
+  readonly customHeaders?: string;
   readonly supplierID?: string;
   readonly modelCatalogURL?: string;
 }
@@ -92,8 +94,33 @@ export function parseAdaptersYaml(yamlText: string): {
       contextWindowRaw > 0
         ? contextWindowRaw
         : DEFAULT_CONTEXT_WINDOW_TOKENS;
+    const maxOutputRaw = entry["maxOutputTokens"];
+    const maxOutputTokens =
+      typeof maxOutputRaw === "number" && Number.isSafeInteger(maxOutputRaw) && maxOutputRaw > 0
+        ? maxOutputRaw
+        : undefined;
     const supplierID = cleanString(entry["supplierID"]);
     const modelCatalogURL = cleanString(entry["modelCatalogURL"]);
+    // cursor-byok 的 customHeadersJSON：仅接受「字符串值的 JSON 对象」，启用
+    // 开关关闭时视为没有自定义头。
+    const customHeadersEnabled = entry["customHeadersEnabled"] === true;
+    const customHeadersRaw = cleanString(entry["customHeadersJSON"]);
+    let customHeaders: string | undefined;
+    if (customHeadersEnabled && customHeadersRaw.length > 0) {
+      try {
+        const parsed: unknown = JSON.parse(customHeadersRaw);
+        if (
+          parsed !== null &&
+          typeof parsed === "object" &&
+          !Array.isArray(parsed) &&
+          Object.values(parsed).every((value) => typeof value === "string")
+        ) {
+          customHeaders = customHeadersRaw;
+        }
+      } catch {
+        // 无效 JSON 的自定义头直接丢弃，不阻塞整条导入。
+      }
+    }
     candidates.push({
       displayName,
       protocol,
@@ -101,6 +128,8 @@ export function parseAdaptersYaml(yamlText: string): {
       apiKey: cleanString(entry["apiKey"]),
       modelId,
       contextWindowTokens,
+      ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+      ...(customHeaders !== undefined ? { customHeaders } : {}),
       ...(supplierID ? { supplierID } : {}),
       ...(modelCatalogURL ? { modelCatalogURL } : {}),
     });
@@ -152,11 +181,17 @@ export const make = Effect.gen(function* () {
           displayName: candidate.displayName,
           protocol: candidate.protocol,
           baseURL: candidate.baseURL,
+          // 不打 apiKeyRedacted 标记：让设置写路径把非空密钥写入密钥库并
+          // 自行落标记。提前打标记会让写路径走「已脱敏透传」分支，密钥被
+          // 直接抹掉而从不入库。
           apiKey: candidate.apiKey,
-          ...(candidate.apiKey.length > 0 ? { apiKeyRedacted: true } : {}),
           balanceAccessToken: "",
+          customHeaders: candidate.customHeaders ?? "",
           modelId: candidate.modelId,
           contextWindowTokens: candidate.contextWindowTokens,
+          ...(candidate.maxOutputTokens !== undefined
+            ? { maxOutputTokens: candidate.maxOutputTokens }
+            : {}),
           ...(candidate.supplierID ? { supplierID: candidate.supplierID } : {}),
           ...(candidate.modelCatalogURL ? { modelCatalogURL: candidate.modelCatalogURL } : {}),
         });

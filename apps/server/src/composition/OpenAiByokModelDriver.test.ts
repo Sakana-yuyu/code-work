@@ -589,3 +589,32 @@ describe("ByokModelDriver", () => {
     }),
   );
 });
+
+describe("ByokModelDriver maxOutputTokens", () => {
+  effectIt.effect("passes the catalog-backed max output into the initial request", () =>
+    Effect.gen(function* () {
+      const { client, captured } = makeClient(
+        [
+          'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hi"}}',
+          "",
+          'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}',
+          "",
+          'data: {"type":"message_stop"}',
+          "",
+        ].join("\n"),
+      );
+      const driver = makeByokModelDriver(client, {
+        protocol: "anthropic",
+        baseURL: "https://api.anthropic.com",
+        apiKey: "k",
+        modelId: "claude-sonnet-4-6",
+        contextWindowTokens: 1_000_000,
+        maxOutputTokens: 64_000,
+      });
+
+      yield* Stream.runCollect(driver.complete({ turn: 1, messages: [], tools: [] }));
+
+      expect(captured[0]).toMatchObject({ max_tokens: 64_000 });
+    }),
+  );
+});

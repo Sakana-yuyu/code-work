@@ -11,6 +11,10 @@
       "types": "./src/authorization/index.ts",
       "default": "./src/authorization/index.ts"
     },
+    "./byok/protocol": {
+      "types": "./src/byok/protocol.ts",
+      "default": "./src/byok/protocol.ts"
+    },
     "./composition/squad-builder": {
       "types": "./src/composition/squadBuilder.ts",
       "default": "./src/composition/squadBuilder.ts"

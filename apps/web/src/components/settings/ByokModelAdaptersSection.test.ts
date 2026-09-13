@@ -2,11 +2,16 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   BYOK_SUPPLIER_TEMPLATES,
+  applyContextMatchDetails,
+  applyRelayEdit,
+  countContextMatchChanges,
   draftModelSelectionPatch,
   filterDiscoveredModels,
   filterSupplierTemplates,
   groupByokModelAdapters,
+  isValidCustomHeadersJson,
   readByokModelAdapters,
+  relayEditFormFromAdapters,
   removeBenchmarkResult,
   retainCurrentContextMatches,
   retainCurrentBenchmarkResults,
@@ -80,6 +85,7 @@ describe("readByokModelAdapters", () => {
         apiKey: "",
         apiKeyRedacted: true,
         balanceAccessToken: "",
+        customHeaders: "",
         modelId: "deepseek-chat",
         contextWindowTokens: 128_000,
       },
@@ -99,6 +105,7 @@ describe("readByokModelAdapters", () => {
             apiKeyRedacted: true,
             balanceProfile: "newapi",
             balanceAccessToken: "",
+            customHeaders: "",
             balanceAccessTokenRedacted: true,
             balanceUserID: "42",
             modelId: "newapi-model",
@@ -116,6 +123,7 @@ describe("readByokModelAdapters", () => {
         apiKeyRedacted: true,
         balanceProfile: "newapi",
         balanceAccessToken: "",
+        customHeaders: "",
         balanceAccessTokenRedacted: true,
         balanceUserID: "42",
         modelId: "newapi-model",
@@ -141,6 +149,24 @@ describe("draftModelSelectionPatch", () => {
       modelId: "model-without-context",
       displayName: "model-without-context",
     });
+  });
+
+  it("infers the native protocol for claude and gemini models", () => {
+    expect(draftModelSelectionPatch({ id: "claude-sonnet-4-6" }, "openai")).toMatchObject({
+      protocol: "anthropic",
+    });
+    expect(draftModelSelectionPatch({ id: "gemini-3.5-flash" }, "openai")).toMatchObject({
+      protocol: "gemini",
+    });
+    expect(draftModelSelectionPatch({ id: "deepseek-v4-pro" }, "openai")).not.toHaveProperty(
+      "protocol",
+    );
+  });
+
+  it("carries the catalog-enriched max output into the draft", () => {
+    expect(
+      draftModelSelectionPatch({ id: "claude-sonnet-4-6", maxOutputTokens: 64000 }, "openai"),
+    ).toMatchObject({ maxOutputTokens: "64000" });
   });
 });
 
@@ -174,6 +200,7 @@ describe("groupByokModelAdapters", () => {
     baseURL,
     apiKey: "",
     balanceAccessToken: "",
+    customHeaders: "",
     modelId: id,
     contextWindowTokens: 128_000,
   });
@@ -224,6 +251,7 @@ describe("retainCurrentBenchmarkResults", () => {
     baseURL,
     apiKey: "",
     balanceAccessToken: "",
+    customHeaders: "",
     modelId,
     contextWindowTokens: 128_000,
   });
@@ -299,6 +327,7 @@ describe("retainCurrentContextMatches", () => {
     baseURL: "https://relay.example/v1",
     apiKey: "",
     balanceAccessToken: "",
+    customHeaders: "",
     modelId,
     contextWindowTokens,
   });
@@ -338,5 +367,245 @@ describe("retainCurrentContextMatches", () => {
     expect(retainCurrentContextMatches({ "adapter-1": result(128_000) }, current)).toMatchObject({
       "adapter-1": { total: 1 },
     });
+  });
+});
+
+describe("applyContextMatchDetails", () => {
+  const adapter = (
+    id: string,
+    modelId: string,
+    contextWindowTokens = 128_000,
+  ): ByokModelAdapter => ({
+    id,
+    displayName: modelId,
+    protocol: "openai",
+    baseURL: "https://relay.example/v1",
+    apiKey: "",
+    balanceAccessToken: "",
+    customHeaders: "",
+    modelId,
+    contextWindowTokens,
+  });
+
+  it("applies context windows and max-output backfills together", () => {
+    const first = adapter("adapter-1", "gpt-5.6-luna", 1_000_000);
+    const second = adapter("adapter-2", "claude-sonnet-4-6", 200_000);
+    const third = adapter("adapter-3", "private-model");
+
+    const patched = applyContextMatchDetails(
+      [first, second, third],
+      [
+        {
+          adapterId: "adapter-1",
+          modelId: "gpt-5.6-luna",
+          source: "catalog",
+          before: 1_000_000,
+          after: 272_000,
+          maxOutputAfter: 32_768,
+        },
+        {
+          adapterId: "adapter-2",
+          modelId: "claude-sonnet-4-6",
+          source: "catalog",
+          before: 200_000,
+          after: 200_000,
+          maxOutputAfter: 64_000,
+        },
+        {
+          adapterId: "adapter-3",
+          modelId: "private-model",
+          source: "unchanged",
+          before: 128_000,
+          after: 128_000,
+        },
+      ],
+    );
+
+    expect(patched[0]).toMatchObject({ contextWindowTokens: 272_000, maxOutputTokens: 32_768 });
+    expect(patched[1]).toMatchObject({ contextWindowTokens: 200_000, maxOutputTokens: 64_000 });
+    expect(patched[2]).toBe(third);
+  });
+
+  it("counts every adapter whose context or max output changes", () => {
+    expect(
+      countContextMatchChanges([
+        {
+          adapterId: "adapter-1",
+          modelId: "m",
+          source: "catalog",
+          before: 128_000,
+          after: 128_000,
+          maxOutputAfter: 32_768,
+        },
+        {
+          adapterId: "adapter-2",
+          modelId: "m",
+          source: "unchanged",
+          before: 128_000,
+          after: 128_000,
+        },
+      ]),
+    ).toBe(1);
+  });
+});
+
+describe("applyRelayEdit", () => {
+  const adapter = (id: string, overrides: Partial<ByokModelAdapter> = {}): ByokModelAdapter => ({
+    id,
+    displayName: id,
+    protocol: "openai",
+    baseURL: "https://old.example/v1",
+    apiKey: "",
+    balanceAccessToken: "",
+    customHeaders: "",
+    modelId: id,
+    contextWindowTokens: 128_000,
+    ...overrides,
+  });
+
+  const members: ByokModelAdapter[] = [
+    adapter("model-a", { apiKeyRedacted: true, apiKeySourceAdapterId: "model-a" }),
+    adapter("model-b", { apiKey: "sk-plain", balanceProfile: "newapi" }),
+  ];
+  const outsider = adapter("outsider");
+
+  it("applies connection-level fields to every member and leaves others untouched", () => {
+    const next = applyRelayEdit(
+      [members[0]!, outsider, members[1]!],
+      members,
+      relayEditFormFromAdapters(members),
+    );
+
+    expect(next[1]).toBe(outsider);
+    expect(next[0]).toMatchObject({
+      protocol: "openai",
+      baseURL: "https://old.example/v1",
+      apiKeyRedacted: true,
+      apiKeySourceAdapterId: "model-a",
+    });
+    // 预填值未改动时，各成员自己的余额档案保留，不被首个成员的配置洗掉。
+    expect(next[2]).toMatchObject({ apiKey: "sk-plain", balanceProfile: "newapi" });
+  });
+
+  it("replaces keys and connection fields for all members when provided", () => {
+    const next = applyRelayEdit([members[0]!, members[1]!], members, {
+      ...relayEditFormFromAdapters(members),
+      groupName: "Renamed",
+      protocol: "anthropic",
+      baseURL: "https://new.example",
+      apiKey: "sk-fresh",
+      balanceProfile: "auto",
+      balanceAccessToken: "",
+      customHeaders: "",
+      balanceUserID: "",
+    });
+
+    expect(next).toHaveLength(2);
+    for (const entry of next) {
+      expect(entry).toMatchObject({
+        groupName: "Renamed",
+        protocol: "anthropic",
+        baseURL: "https://new.example",
+        apiKey: "sk-fresh",
+      });
+      expect(entry.apiKeyRedacted).toBeUndefined();
+      expect(entry.apiKeySourceAdapterId).toBeUndefined();
+    }
+    // balanceProfile 与预填（首成员原值 auto）一致 → 未改动 → 各成员保留原值。
+    expect(next[1]?.balanceProfile).toBe("newapi");
+  });
+
+  it("applies a changed balance profile to every member", () => {
+    const next = applyRelayEdit([members[0]!, members[1]!], members, {
+      ...relayEditFormFromAdapters(members),
+      balanceProfile: "general",
+      balanceAccessToken: "",
+      customHeaders: "",
+      balanceUserID: "",
+    });
+
+    expect(next[0]?.balanceProfile).toBe("general");
+    expect(next[1]?.balanceProfile).toBe("general");
+  });
+
+  it("keeps each member's stored key when the draft key is blank", () => {
+    const next = applyRelayEdit([members[0]!, members[1]!], members, {
+      ...relayEditFormFromAdapters(members),
+      apiKey: "   ",
+    });
+
+    expect(next[0]).toMatchObject({ apiKeyRedacted: true, apiKeySourceAdapterId: "model-a" });
+    expect(next[1]).toMatchObject({ apiKey: "sk-plain" });
+  });
+});
+
+describe("isValidCustomHeadersJson", () => {
+  it("accepts empty input and string-valued JSON objects", () => {
+    expect(isValidCustomHeadersJson("")).toBe(true);
+    expect(isValidCustomHeadersJson("   ")).toBe(true);
+    expect(isValidCustomHeadersJson('{"X-Custom":"value"}')).toBe(true);
+  });
+
+  it("rejects anything that is not a string-valued JSON object", () => {
+    expect(isValidCustomHeadersJson("not json")).toBe(false);
+    expect(isValidCustomHeadersJson('["array"]')).toBe(false);
+    expect(isValidCustomHeadersJson('{"nested":{"a":1}}')).toBe(false);
+    expect(isValidCustomHeadersJson('{"n":1}')).toBe(false);
+  });
+});
+
+describe("applyRelayEdit custom headers", () => {
+  const adapter = (id: string, overrides: Partial<ByokModelAdapter> = {}): ByokModelAdapter => ({
+    id,
+    displayName: id,
+    protocol: "openai",
+    baseURL: "https://old.example/v1",
+    apiKey: "",
+    customHeaders: "",
+    balanceAccessToken: "",
+    modelId: id,
+    contextWindowTokens: 128_000,
+    ...overrides,
+  });
+
+  it("keeps each member's stored headers when the draft is blank", () => {
+    const members: ByokModelAdapter[] = [
+      adapter("model-a", { customHeadersRedacted: true }),
+      adapter("model-b"),
+    ];
+    const next = applyRelayEdit(
+      [members[0]!, members[1]!],
+      members,
+      relayEditFormFromAdapters(members),
+    );
+    expect(next[0]?.customHeadersRedacted).toBe(true);
+    expect(next[1]?.customHeadersRedacted).toBeUndefined();
+  });
+
+  it("replaces headers for every member when provided", () => {
+    const members: ByokModelAdapter[] = [
+      adapter("model-a", { customHeadersRedacted: true }),
+      adapter("model-b"),
+    ];
+    const next = applyRelayEdit([members[0]!, members[1]!], members, {
+      ...relayEditFormFromAdapters(members),
+      customHeaders: '{"X-Custom":"value"}',
+    });
+    expect(next[0]).toMatchObject({ customHeaders: '{"X-Custom":"value"}' });
+    expect(next[0]?.customHeadersRedacted).toBeUndefined();
+    expect(next[1]).toMatchObject({ customHeaders: '{"X-Custom":"value"}' });
+  });
+
+  it("clears headers for every member when explicitly requested", () => {
+    const members: ByokModelAdapter[] = [
+      adapter("model-a", { customHeadersRedacted: true }),
+      adapter("model-b", { customHeadersRedacted: true }),
+    ];
+    const next = applyRelayEdit([members[0]!, members[1]!], members, {
+      ...relayEditFormFromAdapters(members),
+      clearCustomHeaders: true,
+    });
+    expect(next[0]?.customHeadersRedacted).toBeUndefined();
+    expect(next[1]?.customHeadersRedacted).toBeUndefined();
   });
 });

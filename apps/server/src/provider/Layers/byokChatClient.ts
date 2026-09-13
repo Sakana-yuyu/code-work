@@ -174,6 +174,34 @@ export interface ByokStreamChatInput {
   readonly includeUsage?: boolean | undefined;
   /** 单次请求的输出预算；未指定时沿用供应商默认值。 */
   readonly maxOutputTokens?: number | undefined;
+  /** 通道级自定义请求头（JSON 对象字符串），在协议默认头之后应用、可覆盖。 */
+  readonly customHeaders?: string | undefined;
+}
+
+/**
+ * 解析通道级自定义请求头 JSON（如 `{"X-Custom":"value"}`）。
+ * 空/空白返回 undefined；键名去除首尾空白后为空的条目跳过；非对象或含非
+ * 字符串值时返回 undefined（保存路径已做校验，运行期静默跳过保证请求可用）。
+ */
+export function parseByokCustomHeaders(
+  json: string | undefined,
+): Readonly<Record<string, string>> | undefined {
+  const text = (json ?? "").trim();
+  if (text.length === 0) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+  const headers: Record<string, string> = {};
+  for (const [name, value] of Object.entries(parsed as Record<string, unknown>)) {
+    const trimmedName = name.trim();
+    if (trimmedName.length === 0 || typeof value !== "string") continue;
+    headers[trimmedName] = value;
+  }
+  return Object.keys(headers).length > 0 ? headers : undefined;
 }
 
 const byokErrorDetail = (cause: unknown): string => {
@@ -1162,8 +1190,15 @@ export const streamChat = (
       : HttpClientRequest.setHeader("x-request-id", input.requestId),
   );
 
+  // 通道级自定义请求头最后应用，可覆盖协议默认头（与 cursor-byok 语义一致）。
+  const customHeaderValues = parseByokCustomHeaders(input.customHeaders);
+  const finalRequestEffect =
+    customHeaderValues === undefined
+      ? correlatedRequestEffect
+      : Effect.map(correlatedRequestEffect, HttpClientRequest.setHeaders(customHeaderValues));
+
   const sseItems: Stream.Stream<ByokSseItem, ByokEngineError> = HttpClientResponse.stream(
-    Effect.flatMap(correlatedRequestEffect, (prepared) => httpClient.execute(prepared)).pipe(
+    Effect.flatMap(finalRequestEffect, (prepared) => httpClient.execute(prepared)).pipe(
       Effect.mapError((cause) => toEngineError(cause, "transport_error")),
       Effect.flatMap((response) =>
         response.status >= 200 && response.status < 300

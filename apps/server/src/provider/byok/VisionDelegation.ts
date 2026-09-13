@@ -15,6 +15,7 @@
  */
 import type { ByokVisionDelegationConfig } from "@codework/contracts";
 
+import { catalogCapabilitiesForModel } from "./ContextWindowCatalog.ts";
 import type { ByokChatMessage, ByokContentPart, ByokImagePart } from "../Layers/byokChatClient.ts";
 
 export type VisionDelegationMode = ByokVisionDelegationConfig["mode"];
@@ -58,9 +59,21 @@ const VISION_CAPABLE_MODEL_PATTERNS: ReadonlyArray<RegExp> = [
   /vision/iu,
 ];
 
+/**
+ * 报告模型是否支持图片输入。
+ *
+ * 内置能力目录优先，但只按 model ID 判定——显示名是用户自由文本，拿去匹配
+ * 宽泛目录规则（如 `^deepseek`）会把自定义视觉模型误判成不支持。目录命中
+ * 的模型（无论标记为支持还是不支持）以目录为准；未收录的模型退回名称
+ * 启发式（model ID 与显示名都参与，与原 cursor-byok 同源），保持「未知
+ * 模型交给视觉委派兜底」的保守行为。
+ */
 export function modelLikelySupportsVision(modelId: string, displayName: string): boolean {
-  const candidates = [modelId, displayName];
-  return candidates.some((candidate) =>
+  const catalogCapabilities = catalogCapabilitiesForModel(modelId);
+  if (catalogCapabilities?.supportsVision !== undefined) {
+    return catalogCapabilities.supportsVision;
+  }
+  return [modelId, displayName].some((candidate) =>
     VISION_CAPABLE_MODEL_PATTERNS.some((pattern) => pattern.test(candidate)),
   );
 }

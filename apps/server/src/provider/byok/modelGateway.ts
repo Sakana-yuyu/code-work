@@ -62,6 +62,7 @@ import {
 } from "../LocalAccountPool.ts";
 import { matchLocalGatewayKey, readLocalGatewayKeys } from "../LocalGatewayKey.ts";
 import { localPoolUsageStore } from "../LocalPoolUsage.ts";
+import { parseByokCustomHeaders } from "../Layers/byokChatClient.ts";
 
 /** URL prefix the gateway is mounted under. */
 export const BYOK_GATEWAY_ROUTE_PREFIX = "/byok-gw";
@@ -90,6 +91,8 @@ export interface GatewayAdapterRoute {
   readonly modelId: string;
   /** Non-sensitive vendor/relay group label for picker display, "" when unset. */
   readonly groupName: string;
+  /** 通道级自定义请求头 JSON；仅中转适配器携带，本地官方账号路由恒为空。 */
+  readonly customHeaders?: string;
   readonly supplierID?: string;
   readonly localProvider?: LocalAccountProvider;
   readonly localAccountIds?: readonly string[];
@@ -158,6 +161,9 @@ export const gatewayAdapterRoutes = (
         displayName: adapter.displayName,
         modelId: adapter.modelId,
         groupName: adapter.groupName?.trim() ?? "",
+        ...(adapter.customHeaders !== undefined && adapter.customHeaders.trim().length > 0
+          ? { customHeaders: adapter.customHeaders }
+          : {}),
         ...(adapter.supplierID ? { supplierID: adapter.supplierID } : {}),
       });
     }
@@ -981,6 +987,13 @@ const gatewayHandler = (
         forwardHeaders["x-api-key"] = adapter.apiKey;
       } else {
         forwardHeaders["authorization"] = `Bearer ${adapter.apiKey}`;
+      }
+      // 通道级自定义请求头最后合并，可覆盖协议默认头（本地官方账号路由无此配置）。
+      if (adapter.localProvider === undefined) {
+        const customHeaderValues = parseByokCustomHeaders(adapter.customHeaders);
+        if (customHeaderValues !== undefined) {
+          Object.assign(forwardHeaders, customHeaderValues);
+        }
       }
 
       const attemptResult = yield* httpClient

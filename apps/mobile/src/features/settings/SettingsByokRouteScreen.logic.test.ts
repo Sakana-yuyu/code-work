@@ -61,6 +61,35 @@ describe("移动端 BYOK 设置逻辑", () => {
     expect(next.displayName).toBe("新名称");
   });
 
+  it("读取并保真目录回填的最大输出，且清空输入会移除覆盖值", () => {
+    const existing = readByokModelAdapters({
+      adapters: [
+        {
+          id: "adapter-1",
+          displayName: "主模型",
+          protocol: "openai",
+          baseURL: "https://example.com/v1",
+          apiKey: "",
+          modelId: "claude-sonnet-4-6",
+          contextWindowTokens: 1_000_000,
+          maxOutputTokens: 64_000,
+        },
+      ],
+    })[0]!;
+
+    expect(existing.maxOutputTokens).toBe(64_000);
+    // 表单回填后不改直接保存：值保真。
+    const unchanged = buildByokAdapter(adapterFormFromAdapter(existing), existing.id, existing);
+    expect(unchanged.maxOutputTokens).toBe(64_000);
+    // 清空最大输出再保存：覆盖值被移除，交给协议层兜底。
+    const cleared = buildByokAdapter(
+      { ...adapterFormFromAdapter(existing), maxOutputTokens: "" },
+      existing.id,
+      existing,
+    );
+    expect(cleared.maxOutputTokens).toBeUndefined();
+  });
+
   it("拒绝不符合服务端实例 ID 规则的值并构造 BYOK 实例", () => {
     expect(normalizeByokInstanceId("-invalid")).toBeNull();
     expect(normalizeByokInstanceId("byok_main")).toBe("byok_main");

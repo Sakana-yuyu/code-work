@@ -2547,6 +2547,45 @@ export const en: Record<string, string> = {
     "Catalog {{catalog}} · endpoint {{probe}} · unchanged {{unchanged}}.",
   "byokAdapters.contextMatchChange": "{{before}} 到 {{after}} 个令牌",
   "byokAdapters.contextMatchNoChanges": "No context windows need updating.",
+  "byokAdapters.optimizeAll": "Optimize all",
+  "byokAdapters.optimizing": "Optimizing…",
+  "byokAdapters.optimizeResultTitle": "Optimization results",
+  "byokAdapters.optimizeResultDescription":
+    "Context windows were aligned against the built-in model catalog; protocol mismatches need your confirmation.",
+  "byokAdapters.optimizeContextSummary":
+    "Checked {{total}} models: catalog {{catalog}}, endpoint {{probe}}, updated {{changed}}.",
+  "byokAdapters.protocolIssuesTitle": "{{count}} protocol mismatches",
+  "byokAdapters.protocolIssuesDescription":
+    "Claude and Gemini models routed through the OpenAI-compatible format lose prefix caching. Switching them to their native format restores it.",
+  "byokAdapters.protocolIssuesMore": "…and {{count}} more",
+  "byokAdapters.noProtocolIssues": "No protocol mismatches found.",
+  "byokAdapters.fixProtocolIssues": "Fix {{count}} protocols",
+  "byokAdapters.editRelay": "Edit relay",
+  "byokAdapters.editRelayDescription": "Changes apply to all {{count}} models on this relay.",
+  "byokAdapters.editRelaySave": "Apply to {{count}} models",
+  "byokAdapters.relayApiKeyPlaceholder": "Replace the key for every model",
+  "byokAdapters.relayApiKeyKeepHint": "Leave blank to keep each model's stored key.",
+  "byokAdapters.deleteRelay": "Delete relay",
+  "byokAdapters.deleteRelayConfirmTitle": "Delete this relay?",
+  "byokAdapters.deleteRelayConfirm":
+    "This removes all {{count}} models on {{name}} at once. Stored keys are removed with them.",
+  "byokAdapters.customHeadersSummary": "Custom request headers (advanced)",
+  "byokAdapters.customHeaders": "Custom request headers",
+  "byokAdapters.customHeadersDescription":
+    'A JSON object of extra headers sent with every request to this relay, e.g. {"X-Custom":"value"}. Values are stored as secrets and never echoed back.',
+  "byokAdapters.customHeadersInvalid":
+    'Custom headers must be a JSON object with string values, e.g. {"X-Custom":"value"}.',
+  "byokAdapters.customHeadersClear": "Clear the stored custom headers",
+  "byokAdapters.relayCustomHeadersHint":
+    "Applied to every model on this relay; leave blank to keep each model's stored headers.",
+  "byokAdapters.contextWindowDescription":
+    "Backfilled automatically from the model catalog when discovering or matching.",
+  "byokAdapters.maxOutputTokens": "Max output (tokens)",
+  "byokAdapters.maxOutputPlaceholder": "Optional",
+  "byokAdapters.maxOutputDescription":
+    "Backfilled from the catalog; requests cap their output at this value.",
+  "byokAdapters.maxOutputShort": "max output {{count}}",
+  "byokAdapters.maxOutputRequired": "Enter a positive whole number of tokens.",
   "byokAdapters.displayNameRequired": "Enter a display name.",
   "byokAdapters.baseURLRequired": "Enter a base URL.",
   "byokAdapters.apiKeyRequired": "Enter an API key.",
@@ -2667,7 +2706,8 @@ export const en: Record<string, string> = {
   addEnvironmentPairingDescription: "Click “Add environment” to pair another environment.",
   addEnvironmentPairingWithCloudDescription:
     "Click “Add environment” to pair another environment, or connect one from Code Work Connect.",
-  addProjectBaseDirectoryDescription: 'Leave empty to use "~/" when the Add Project browser opens.',
+  addProjectBaseDirectoryDescription:
+    'Leave empty to start at "C:\\" on Windows and "~/" on other platforms when the Add Project browser opens.',
   addTheme: "Add theme",
   archivedThreadsEmptyDescription: "Archived threads will appear here.",
   backgroundActivityAdvanced: "Advanced",
@@ -8334,6 +8374,42 @@ export const zhCN: Record<string, string> = {
     "目录匹配 {{catalog}} · 连接探测 {{probe}} · 保持不变 {{unchanged}}。",
   "byokAdapters.contextMatchChange": "{{before}} → {{after}} tokens",
   "byokAdapters.contextMatchNoChanges": "没有需要更新的上下文窗口。",
+  "byokAdapters.optimizeAll": "一键优化",
+  "byokAdapters.optimizing": "正在优化…",
+  "byokAdapters.optimizeResultTitle": "优化结果",
+  "byokAdapters.optimizeResultDescription":
+    "已按内置模型目录对齐上下文窗口；协议不匹配项需确认后修正。",
+  "byokAdapters.optimizeContextSummary":
+    "已检查 {{total}} 个模型：目录匹配 {{catalog}}、连接探测 {{probe}}、更新 {{changed}}。",
+  "byokAdapters.protocolIssuesTitle": "{{count}} 个协议不匹配",
+  "byokAdapters.protocolIssuesDescription":
+    "Claude / Gemini 模型走 OpenAI 兼容协议会丢失前缀缓存，改为原生协议即可恢复。",
+  "byokAdapters.protocolIssuesMore": "……以及另外 {{count}} 个",
+  "byokAdapters.noProtocolIssues": "未发现协议不匹配。",
+  "byokAdapters.fixProtocolIssues": "一键修正 {{count}} 个协议",
+  "byokAdapters.editRelay": "编辑通道",
+  "byokAdapters.editRelayDescription": "修改将应用到该通道下的全部 {{count}} 个模型。",
+  "byokAdapters.editRelaySave": "应用到 {{count}} 个模型",
+  "byokAdapters.relayApiKeyPlaceholder": "替换该通道全部模型的密钥",
+  "byokAdapters.relayApiKeyKeepHint": "留空时保留各模型已存储的密钥。",
+  "byokAdapters.deleteRelay": "删除通道",
+  "byokAdapters.deleteRelayConfirmTitle": "删除该通道？",
+  "byokAdapters.deleteRelayConfirm":
+    "将一次性移除 {{name}} 通道下的全部 {{count}} 个模型，已存储的密钥一并删除。",
+  "byokAdapters.customHeadersSummary": "自定义请求头（高级）",
+  "byokAdapters.customHeaders": "自定义请求头",
+  "byokAdapters.customHeadersDescription":
+    'JSON 对象形式的附加请求头，随发往该中转的每个请求发送，如 {"X-Custom":"value"}。值按密钥存储，不会回显。',
+  "byokAdapters.customHeadersInvalid":
+    '自定义请求头必须是「字符串值的 JSON 对象」，如 {"X-Custom":"value"}。',
+  "byokAdapters.customHeadersClear": "清除已存储的自定义请求头",
+  "byokAdapters.relayCustomHeadersHint": "应用到该通道的全部模型；留空时保留各模型已存储的请求头。",
+  "byokAdapters.contextWindowDescription": "发现模型或一键匹配时按内置目录自动回填。",
+  "byokAdapters.maxOutputTokens": "最大输出（tokens）",
+  "byokAdapters.maxOutputPlaceholder": "选填",
+  "byokAdapters.maxOutputDescription": "由内置目录自动回填；请求的输出上限按此值生效。",
+  "byokAdapters.maxOutputShort": "最大输出 {{count}}",
+  "byokAdapters.maxOutputRequired": "请输入正整数 token 数。",
   "byokAdapters.displayNameRequired": "请输入显示名称。",
   "byokAdapters.baseURLRequired": "请输入 Base URL。",
   "byokAdapters.apiKeyRequired": "请输入 API 密钥。",
@@ -8448,7 +8524,8 @@ export const zhCN: Record<string, string> = {
   addEnvironmentPairingDescription: "点击“添加环境”以配对另一个环境。",
   addEnvironmentPairingWithCloudDescription:
     "点击“添加环境”以配对另一个环境，或从 Code Work Connect 连接一个环境。",
-  addProjectBaseDirectoryDescription: "留空时，添加项目浏览器将默认使用 ~/ 目录。",
+  addProjectBaseDirectoryDescription:
+    "留空时，Windows 从 C:\\ 盘符根目录开始，其他平台从 ~/ 目录开始。",
   addTheme: "添加主题",
   archivedThreadsEmptyDescription: "归档的线程将显示在这里。",
   backgroundActivityAdvanced: "高级",

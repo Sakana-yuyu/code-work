@@ -833,6 +833,9 @@ export const ByokModelAdapter = Schema.Struct({
   apiKeySourceAdapterId: Schema.optional(TrimmedString),
   modelId: TrimmedString,
   contextWindowTokens: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(128000))),
+  // 模型官方最大输出 token 数（由一键匹配从内置目录回填，可手动覆盖）。
+  // 未设置时由协议层兜底（Anthropic 8192，其余不限制）。
+  maxOutputTokens: Schema.optional(Schema.Number),
   // Optional non-secret catalog metadata used by the built-in BYOK discovery layer.
   supplierID: Schema.optional(TrimmedString),
   modelCatalogURL: Schema.optional(TrimmedString),
@@ -851,6 +854,10 @@ export const ByokModelAdapter = Schema.Struct({
   balanceAccessToken: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   balanceAccessTokenRedacted: Schema.optional(Schema.Boolean),
   balanceUserID: Schema.optional(TrimmedString),
+  // 通道级自定义请求头（JSON 对象字符串，如 {"X-Custom":"value"}），随全部
+  // 出站请求发送并可覆盖协议默认头。值可能包含令牌，按密钥同样脱敏回传。
+  customHeaders: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  customHeadersRedacted: Schema.optional(Schema.Boolean),
 });
 export type ByokModelAdapter = typeof ByokModelAdapter.Type;
 

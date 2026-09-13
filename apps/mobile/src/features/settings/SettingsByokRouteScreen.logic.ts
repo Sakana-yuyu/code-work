@@ -53,6 +53,7 @@ export type MobileByokAdapterForm = {
   readonly apiKey: string;
   readonly modelId: string;
   readonly contextWindowTokens: string;
+  readonly maxOutputTokens: string;
   readonly balanceProfile: NonNullable<ByokModelAdapter["balanceProfile"]>;
   readonly balanceAccessToken: string;
   readonly balanceUserID: string;
@@ -110,6 +111,11 @@ export function readByokModelAdapters(config: unknown): ReadonlyArray<ByokModelA
       modelId,
       contextWindowTokens:
         optionalNumber(entry["contextWindowTokens"]) ?? DEFAULT_CONTEXT_WINDOW_TOKENS,
+      ...(typeof entry["maxOutputTokens"] === "number" &&
+      Number.isSafeInteger(entry["maxOutputTokens"]) &&
+      entry["maxOutputTokens"] > 0
+        ? { maxOutputTokens: entry["maxOutputTokens"] }
+        : {}),
       ...(optionalString(entry["supplierID"]) === undefined
         ? {}
         : { supplierID: optionalString(entry["supplierID"]) }),
@@ -143,6 +149,9 @@ export function readByokModelAdapters(config: unknown): ReadonlyArray<ByokModelA
       ...(optionalString(entry["balanceUserID"]) === undefined
         ? {}
         : { balanceUserID: optionalString(entry["balanceUserID"]) }),
+      // 自定义请求头是服务端密钥：仅回传空串与标记，编辑时原样保留。
+      customHeaders: stringValue(entry["customHeaders"]),
+      ...(entry["customHeadersRedacted"] === true ? { customHeadersRedacted: true } : {}),
     };
     return [adapter];
   });
@@ -231,6 +240,7 @@ export function adapterFormFromAdapter(adapter?: ByokModelAdapter): MobileByokAd
     apiKey: "",
     modelId: adapter?.modelId ?? "",
     contextWindowTokens: String(adapter?.contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS),
+    maxOutputTokens: adapter?.maxOutputTokens !== undefined ? String(adapter.maxOutputTokens) : "",
     balanceProfile: adapter?.balanceProfile ?? "auto",
     balanceAccessToken: "",
     balanceUserID: adapter?.balanceUserID ?? "",
@@ -247,10 +257,14 @@ export function buildByokAdapter(
     supplierID: _oldSupplierID,
     apiKeyRedacted: _oldApiKeyRedacted,
     balanceAccessTokenRedacted: _oldBalanceAccessTokenRedacted,
+    maxOutputTokens: _oldMaxOutputTokens,
+    customHeaders: _oldCustomHeaders,
     ...preserved
   } = existing ?? {};
   const apiKey = form.apiKey.trim();
   const balanceAccessToken = form.balanceAccessToken.trim();
+  const maxOutputTokensRaw = form.maxOutputTokens.trim();
+  const maxOutputTokens = maxOutputTokensRaw === "" ? undefined : Number(maxOutputTokensRaw);
   return {
     ...preserved,
     id: adapterId,
@@ -262,6 +276,11 @@ export function buildByokAdapter(
     ...(apiKey.length === 0 && existing?.apiKeyRedacted === true ? { apiKeyRedacted: true } : {}),
     modelId: form.modelId.trim(),
     contextWindowTokens: Number(form.contextWindowTokens.trim()),
+    // 移动端不编辑自定义请求头：编辑已有通道时原样保留（密钥不出服务端）。
+    customHeaders: _oldCustomHeaders ?? "",
+    ...(maxOutputTokens !== undefined && Number.isInteger(maxOutputTokens) && maxOutputTokens > 0
+      ? { maxOutputTokens }
+      : {}),
     ...(form.supplierID.trim() ? { supplierID: form.supplierID.trim() } : {}),
     ...(form.balanceProfile !== "auto" ? { balanceProfile: form.balanceProfile } : {}),
     balanceAccessToken,

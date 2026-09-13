@@ -1338,6 +1338,92 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect("treats BYOK custom headers as secrets across persist and materialize", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const instanceId = ProviderInstanceId.make("byok_headers");
+      const headersJson = '{"X-Custom":"secret-value"}';
+
+      const next = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("byok"),
+            config: {
+              adapters: [
+                {
+                  id: "relay-model",
+                  displayName: "Relay Model",
+                  protocol: "openai",
+                  baseURL: "https://relay.example/v1",
+                  apiKey: "sk-relay",
+                  modelId: "relay-model",
+                  contextWindowTokens: 128000,
+                  customHeaders: headersJson,
+                },
+              ],
+            },
+          },
+        },
+      });
+
+      const materializedAdapter = (
+        next.providerInstances[instanceId]?.config as
+          | { adapters: Array<Record<string, unknown>> }
+          | undefined
+      )?.adapters[0];
+      assert.equal(materializedAdapter?.customHeaders, headersJson);
+      assert.equal(materializedAdapter?.customHeadersRedacted, true);
+
+      const clientSettings = ServerSettingsModule.redactServerSettingsForClient(next);
+      const clientAdapter = (
+        clientSettings.providerInstances[instanceId]?.config as
+          | {
+              adapters: Array<Record<string, unknown>>;
+            }
+          | undefined
+      )?.adapters[0];
+      assert.equal(clientAdapter?.customHeaders, "");
+      assert.equal(clientAdapter?.customHeadersRedacted, true);
+
+      const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.notInclude(raw, "secret-value");
+
+      // 留空 + 标记 → 原值从密钥库还原；显式清空（无标记）→ 密钥被移除。
+      const retained = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("byok"),
+            config: {
+              adapters: [
+                {
+                  id: "relay-model",
+                  displayName: "Relay Model",
+                  protocol: "openai",
+                  baseURL: "https://relay.example/v1",
+                  apiKey: "",
+                  apiKeyRedacted: true,
+                  modelId: "relay-model",
+                  contextWindowTokens: 128000,
+                  customHeaders: "",
+                  customHeadersRedacted: true,
+                },
+              ],
+            },
+          },
+        },
+      });
+      const retainedAdapter = (
+        retained.providerInstances[instanceId]?.config as
+          | { adapters: Array<Record<string, unknown>> }
+          | undefined
+      )?.adapters[0];
+      assert.equal(retainedAdapter?.customHeaders, headersJson);
+      assert.equal(retainedAdapter?.customHeadersRedacted, true);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("stores NewAPI balance access tokens in the secret store", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;

@@ -2596,6 +2596,45 @@ export const ja: Record<string, string> = {
     "カタログ {{catalog}} · エンドポイント {{probe}} · 変更なし {{unchanged}}。",
   "byokAdapters.contextMatchChange": "{{before}} → {{after}} トークン",
   "byokAdapters.contextMatchNoChanges": "更新が必要なコンテキストウィンドウはありません。",
+  "byokAdapters.optimizeAll": "一括最適化",
+  "byokAdapters.optimizing": "最適化中…",
+  "byokAdapters.optimizeResultTitle": "最適化結果",
+  "byokAdapters.optimizeResultDescription":
+    "内蔵モデルカタログに基づいてコンテキストウィンドウを合わせました。プロトコルの不一致は確認後に修正します。",
+  "byokAdapters.optimizeContextSummary":
+    "{{total}} 件を確認：カタログ {{catalog}} · エンドポイント {{probe}} · 更新 {{changed}}。",
+  "byokAdapters.protocolIssuesTitle": "プロトコル不一致 {{count}} 件",
+  "byokAdapters.protocolIssuesDescription":
+    "Claude / Gemini モデルが OpenAI 互換プロトコル経由だとプレフィックスキャッシュが失われます。ネイティブ形式へ切り替えると復旧します。",
+  "byokAdapters.protocolIssuesMore": "……ほか {{count}} 件",
+  "byokAdapters.noProtocolIssues": "プロトコルの不一致は見つかりませんでした。",
+  "byokAdapters.fixProtocolIssues": "{{count}} 件のプロトコルを修正",
+  "byokAdapters.editRelay": "リレーを編集",
+  "byokAdapters.editRelayDescription":
+    "変更はこのリレー上の {{count}} 件のモデルすべてに適用されます。",
+  "byokAdapters.editRelaySave": "{{count}} 件のモデルに適用",
+  "byokAdapters.relayApiKeyPlaceholder": "リレー内全モデルのキーを置き換える",
+  "byokAdapters.relayApiKeyKeepHint": "空欄の場合は各モデルの保存済みキーを保持します。",
+  "byokAdapters.deleteRelay": "リレーを削除",
+  "byokAdapters.deleteRelayConfirmTitle": "このリレーを削除しますか？",
+  "byokAdapters.deleteRelayConfirm":
+    "{{name}} 上の {{count}} 件のモデルをすべて削除します。保存済みキーも一緒に削除されます。",
+  "byokAdapters.customHeadersSummary": "カスタムリクエストヘッダー（詳細）",
+  "byokAdapters.customHeaders": "カスタムリクエストヘッダー",
+  "byokAdapters.customHeadersDescription":
+    'このリレーへのすべてのリクエストに付加する JSON オブジェクト形式のヘッダー（例: {"X-Custom":"value"}）。値はシークレットとして保存され、画面には表示されません。',
+  "byokAdapters.customHeadersInvalid":
+    'カスタムヘッダーは文字列値の JSON オブジェクトである必要があります（例: {"X-Custom":"value"}）。',
+  "byokAdapters.customHeadersClear": "保存済みのカスタムヘッダーを削除",
+  "byokAdapters.relayCustomHeadersHint":
+    "リレー内の全モデルに適用されます。空欄の場合は各モデルの保存済みヘッダーを保持します。",
+  "byokAdapters.contextWindowDescription": "モデル検出・一括照合時にカタログから自動補完されます。",
+  "byokAdapters.maxOutputTokens": "最大出力（トークン）",
+  "byokAdapters.maxOutputPlaceholder": "任意",
+  "byokAdapters.maxOutputDescription":
+    "カタログから自動補完され、リクエストの出力上限として機能します。",
+  "byokAdapters.maxOutputShort": "最大出力 {{count}}",
+  "byokAdapters.maxOutputRequired": "正の整数でトークン数を入力してください。",
   "byokAdapters.displayNameRequired": "表示名を入力してください。",
   "byokAdapters.baseURLRequired": "ベース URL を入力してください。",
   "byokAdapters.apiKeyRequired": "API キーを入力してください。",
@@ -2716,7 +2755,7 @@ export const ja: Record<string, string> = {
   addEnvironmentPairingWithCloudDescription:
     "「環境を追加」をクリックして別の環境をペアリングするか、Code Work Connect から環境に接続します。",
   addProjectBaseDirectoryDescription:
-    "空のままにすると、「プロジェクトを追加」のブラウザーを開いたときに「~/」が使用されます。",
+    "空のままにすると、Windows では C:\\、その他のプラットフォームでは ~/ から「プロジェクトを追加」のブラウザーを開始します。",
   addTheme: "テーマを追加",
   archivedThreadsEmptyDescription: "アーカイブされたスレッドがここに表示されます。",
   backgroundActivityAdvanced: "詳細",

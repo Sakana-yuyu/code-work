@@ -75,6 +75,9 @@ export const makeByokTextGeneration = Effect.fn("makeByokTextGeneration")(functi
         baseURL: adapter.baseURL,
         apiKey: adapter.apiKey,
         modelId: adapter.modelId,
+        ...(adapter.customHeaders !== undefined && adapter.customHeaders.trim().length > 0
+          ? { customHeaders: adapter.customHeaders }
+          : {}),
         messages: [{ role: "user", content: input.prompt }],
       }),
     ).pipe(Effect.mapError((cause) => fail(input.operation, "BYOK engine request failed.", cause)));

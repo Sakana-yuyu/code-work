@@ -35,6 +35,13 @@ describe("vision delegation capability heuristic", () => {
     expect(modelLikelySupportsVision("kimi-k2", "Kimi K2")).toBe(false);
     expect(modelLikelySupportsVision("", "")).toBe(false);
   });
+
+  it("lets the built-in catalog override the name heuristic for known model ids", () => {
+    // GLM-5.3-Flash 支持视觉，但名称启发式没有对应规则；目录给出权威结论。
+    expect(modelLikelySupportsVision("glm-5.3-flash", "")).toBe(true);
+    // 目录核实为纯文本的模型，即使显示名带 Vision 字样也不直传图片。
+    expect(modelLikelySupportsVision("kimi-k2.7-code", "Kimi Vision")).toBe(false);
+  });
 });
 
 describe("buildVisionPrompt", () => {

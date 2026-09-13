@@ -416,6 +416,10 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             baseURL: visionAdapter.baseURL,
             apiKey: visionAdapter.apiKey,
             modelId: visionAdapter.modelId,
+            ...(visionAdapter.customHeaders !== undefined &&
+            visionAdapter.customHeaders.trim().length > 0
+              ? { customHeaders: visionAdapter.customHeaders }
+              : {}),
             messages: [{ role: "user", content: [{ type: "text", text: prompt }, image] }],
           });
           const description = yield* collectChatText(stream).pipe(
@@ -656,6 +660,12 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             apiKey: adapter.apiKey,
             modelId: adapter.modelId,
             contextWindowTokens: adapter.contextWindowTokens,
+            ...(adapter.maxOutputTokens !== undefined
+              ? { maxOutputTokens: adapter.maxOutputTokens }
+              : {}),
+            ...(adapter.customHeaders !== undefined && adapter.customHeaders.trim().length > 0
+              ? { customHeaders: adapter.customHeaders }
+              : {}),
             systemPrompt: agentSystemPrompt,
           }),
           toolBroker,

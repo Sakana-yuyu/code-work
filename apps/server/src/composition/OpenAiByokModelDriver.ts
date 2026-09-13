@@ -26,6 +26,10 @@ export interface ByokModelDriverOptions {
   readonly apiKey: string;
   readonly modelId: string;
   readonly contextWindowTokens?: number;
+  /** 模型官方最大输出（内置目录或用户覆盖提供）；未设置时交给协议层兜底。 */
+  readonly maxOutputTokens?: number;
+  /** 通道级自定义请求头 JSON；在协议默认头之后应用。 */
+  readonly customHeaders?: string;
   readonly systemPrompt?: string;
   readonly signal?: AbortSignal;
 }
@@ -97,11 +101,14 @@ export const makeByokModelDriver = (
           agentLoop: true,
           includeUsage: true,
           ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
+          ...(options.customHeaders !== undefined && options.customHeaders.trim().length > 0
+            ? { customHeaders: options.customHeaders }
+            : {}),
           ...(options.systemPrompt !== undefined ? { systemPrompt: options.systemPrompt } : {}),
           ...(options.signal !== undefined ? { signal: options.signal } : {}),
         });
 
-      return request().pipe(
+      return request(options.maxOutputTokens).pipe(
         Stream.tap((event) =>
           Effect.sync(() => {
             if (event.type !== "reasoning" && (event.type !== "text" || event.text.length > 0)) {

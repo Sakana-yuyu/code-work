@@ -31,8 +31,9 @@ import {
 } from "./ModelCatalog.ts";
 import { publicSupplierCatalog } from "./SupplierCatalogTransport.ts";
 import { supplierTemplate } from "./SupplierCatalog.ts";
+import { catalogCapabilitiesForModel } from "./ContextWindowCatalog.ts";
 import { matchContextWindows } from "./ContextWindowMatcher.ts";
-import { streamChat } from "../Layers/byokChatClient.ts";
+import { parseByokCustomHeaders, streamChat } from "../Layers/byokChatClient.ts";
 import * as Stream from "effect/Stream";
 import { fetchByokCatalog } from "./byokHttp.ts";
 import type { ByokHttpError } from "./byokHttp.ts";
@@ -66,7 +67,9 @@ type ModelDiscoveryTarget = Pick<
   | "modelCatalogURLs"
   | "modelCatalogStatus"
   | "appendModelCatalogCandidates"
->;
+> & {
+  readonly customHeaders?: string;
+};
 
 const errorMessage = (code: ByokModelDiscoveryErrorCode): string => {
   switch (code) {
@@ -179,6 +182,9 @@ const targetFromAdapter = (adapter: ByokModelAdapter): ModelDiscoveryTarget => (
   ...(adapter.appendModelCatalogCandidates !== undefined
     ? { appendModelCatalogCandidates: adapter.appendModelCatalogCandidates }
     : {}),
+  ...(adapter.customHeaders !== undefined && adapter.customHeaders.trim().length > 0
+    ? { customHeaders: adapter.customHeaders }
+    : {}),
 });
 
 const targetFromDraft = (input: ByokDraftModelDiscoveryRequest): ModelDiscoveryTarget => ({
@@ -189,27 +195,35 @@ const targetFromDraft = (input: ByokDraftModelDiscoveryRequest): ModelDiscoveryT
 });
 
 const publicModels = (models: ReturnType<typeof decodeModelCatalog>): ByokDiscoveredModel[] =>
-  models.map((model) => ({
-    id: model.id,
-    ...(model.ownedBy ? { ownedBy: model.ownedBy } : {}),
-    ...(model.contextWindowTokens ? { contextWindowTokens: model.contextWindowTokens } : {}),
-    ...(model.pricing
-      ? {
-          pricing: {
-            ...(model.pricing.input !== undefined ? { input: model.pricing.input } : {}),
-            ...(model.pricing.output !== undefined ? { output: model.pricing.output } : {}),
-            ...(model.pricing.cacheRead !== undefined
-              ? { cacheRead: model.pricing.cacheRead }
-              : {}),
-            ...(model.pricing.cacheWrite !== undefined
-              ? { cacheWrite: model.pricing.cacheWrite }
-              : {}),
-            ...(model.pricing.currency ? { currency: model.pricing.currency } : {}),
-          },
-        }
-      : {}),
-    ...(model.capabilities ? { capabilities: model.capabilities } : {}),
-  }));
+  models.map((model) => {
+    // 中转 /models 普遍不报窗口/输出上限：缺什么就用内置目录补什么，
+    // 让新加的模型直接带上正确的上下文元数据，而不是落到 128K 默认值。
+    const catalog = catalogCapabilitiesForModel(model.id);
+    const contextWindowTokens = model.contextWindowTokens ?? catalog?.contextWindowTokens;
+    const maxOutputTokens = catalog?.maxOutputTokens;
+    return {
+      id: model.id,
+      ...(model.ownedBy ? { ownedBy: model.ownedBy } : {}),
+      ...(contextWindowTokens ? { contextWindowTokens } : {}),
+      ...(maxOutputTokens ? { maxOutputTokens } : {}),
+      ...(model.pricing
+        ? {
+            pricing: {
+              ...(model.pricing.input !== undefined ? { input: model.pricing.input } : {}),
+              ...(model.pricing.output !== undefined ? { output: model.pricing.output } : {}),
+              ...(model.pricing.cacheRead !== undefined
+                ? { cacheRead: model.pricing.cacheRead }
+                : {}),
+              ...(model.pricing.cacheWrite !== undefined
+                ? { cacheWrite: model.pricing.cacheWrite }
+                : {}),
+              ...(model.pricing.currency ? { currency: model.pricing.currency } : {}),
+            },
+          }
+        : {}),
+      ...(model.capabilities ? { capabilities: model.capabilities } : {}),
+    };
+  });
 
 const discoverTarget = (target: ModelDiscoveryTarget) =>
   Effect.gen(function* () {
@@ -242,16 +256,21 @@ const discoverTarget = (target: ModelDiscoveryTarget) =>
     if (candidates.length === 0) return draftResultError("manual", "unsupported_catalog");
 
     let lastError: ByokDraftModelDiscoveryResult | undefined;
+    // 通道级自定义请求头与协议默认头合并（自定义头可覆盖）。
+    const customHeaderValues = parseByokCustomHeaders(target.customHeaders);
+    const discoveryHeaders = {
+      ...(target.protocol === "anthropic"
+        ? { "x-api-key": target.apiKey, "anthropic-version": "2023-06-01" }
+        : target.protocol === "gemini"
+          ? { "x-goog-api-key": target.apiKey }
+          : { authorization: `Bearer ${target.apiKey}` }),
+      ...(customHeaderValues ?? {}),
+    };
     for (const candidate of candidates) {
       const response = yield* Effect.result(
         fetchByokCatalog({
           url: candidate,
-          headers:
-            target.protocol === "anthropic"
-              ? { "x-api-key": target.apiKey, "anthropic-version": "2023-06-01" }
-              : target.protocol === "gemini"
-                ? { "x-goog-api-key": target.apiKey }
-                : { authorization: `Bearer ${target.apiKey}` },
+          headers: discoveryHeaders,
         }),
       );
       if (response._tag === "Failure") {
@@ -373,6 +392,9 @@ export const make = Effect.gen(function* () {
         baseURL: adapter.baseURL,
         apiKey: adapter.apiKey,
         modelId: adapter.modelId,
+        ...(adapter.customHeaders !== undefined && adapter.customHeaders.trim().length > 0
+          ? { customHeaders: adapter.customHeaders }
+          : {}),
         messages: [
           {
             role: "user",

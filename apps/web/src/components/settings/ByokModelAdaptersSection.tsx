@@ -21,6 +21,11 @@ import type {
   ByokModelDiscoveryResult,
   ByokSupplierCatalogEntry,
 } from "@codework/contracts";
+import {
+  diagnoseByokProtocolMismatches,
+  inferByokProtocol,
+  type ByokProtocolMismatchIssue,
+} from "@codework/client-runtime/byok/protocol";
 
 import { cn, randomUUID } from "../../lib/utils";
 import { Badge } from "../ui/badge";
@@ -44,6 +49,7 @@ import {
 } from "../ui/dialog";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { t } from "~/i18n";
@@ -116,15 +122,56 @@ export function retainCurrentContextMatches(
       const expected = adapters
         .filter((adapter) => sameRelayConnection(adapter, representative))
         .map(
-          (adapter) => `${adapter.id}\u0000${adapter.modelId}\u0000${adapter.contextWindowTokens}`,
+          (adapter) =>
+            `${adapter.id}\u0000${adapter.modelId}\u0000${adapter.contextWindowTokens}\u0000${adapter.maxOutputTokens ?? ""}`,
         )
         .sort();
       const actual = result.details
-        .map((detail) => `${detail.adapterId}\u0000${detail.modelId}\u0000${detail.before}`)
+        .map(
+          (detail) =>
+            `${detail.adapterId}\u0000${detail.modelId}\u0000${detail.before}\u0000${detail.maxOutputBefore ?? ""}`,
+        )
         .sort();
       return JSON.stringify(actual) === JSON.stringify(expected);
     }),
   );
+}
+
+/**
+ * 把一次（或多组）匹配结果落成适配器补丁：上下文窗口按 before→after、
+ * 最大输出按目录建议 fill-if-missing。纯函数，供单通道与全量优化共用。
+ */
+export function applyContextMatchDetails(
+  adapters: ReadonlyArray<ByokModelAdapter>,
+  details: ReadonlyArray<ByokContextWindowMatchResult["details"][number]>,
+): ReadonlyArray<ByokModelAdapter> {
+  const contextById = new Map(
+    details.filter((detail) => detail.before !== detail.after).map((d) => [d.adapterId, d.after]),
+  );
+  const maxOutputById = new Map(
+    details
+      .filter((detail) => detail.maxOutputAfter !== undefined)
+      .map((d) => [d.adapterId, d.maxOutputAfter as number]),
+  );
+  return adapters.map((current) => {
+    const contextWindowTokens = contextById.get(current.id);
+    const maxOutputTokens = maxOutputById.get(current.id);
+    if (contextWindowTokens === undefined && maxOutputTokens === undefined) return current;
+    return {
+      ...current,
+      ...(contextWindowTokens !== undefined ? { contextWindowTokens } : {}),
+      ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+    };
+  });
+}
+
+/** 统计一组匹配详情里实际发生变化的适配器数量（上下文或最大输出任一变化）。 */
+export function countContextMatchChanges(
+  details: ReadonlyArray<ByokContextWindowMatchResult["details"][number]>,
+): number {
+  return details.filter(
+    (detail) => detail.before !== detail.after || detail.maxOutputAfter !== undefined,
+  ).length;
 }
 
 export type ByokSupplierTemplateId = "custom" | string;
@@ -237,12 +284,21 @@ export function readByokModelAdapters(config: unknown): ReadonlyArray<ByokModelA
       ...(typeof record["balanceUserID"] === "string"
         ? { balanceUserID: record["balanceUserID"] }
         : {}),
+      ...(typeof record["customHeaders"] === "string"
+        ? { customHeaders: record["customHeaders"] }
+        : { customHeaders: "" }),
+      ...(record["customHeadersRedacted"] === true ? { customHeadersRedacted: true } : {}),
       modelId: typeof record["modelId"] === "string" ? record["modelId"] : "",
       contextWindowTokens:
         typeof record["contextWindowTokens"] === "number" &&
         Number.isFinite(record["contextWindowTokens"])
           ? record["contextWindowTokens"]
           : DEFAULT_CONTEXT_WINDOW_TOKENS,
+      ...(typeof record["maxOutputTokens"] === "number" &&
+      Number.isFinite(record["maxOutputTokens"]) &&
+      record["maxOutputTokens"] > 0
+        ? { maxOutputTokens: record["maxOutputTokens"] }
+        : {}),
     });
   }
   return adapters;
@@ -263,6 +319,10 @@ type AdapterFormState = {
   readonly apiKey: string;
   readonly modelId: string;
   readonly contextWindowTokens: string;
+  readonly maxOutputTokens: string;
+  readonly customHeaders: string;
+  /** 显式清除服务端已存的自定义请求头（脱敏后无法回显，需要显式出口）。 */
+  readonly clearStoredCustomHeaders: boolean;
   readonly balanceProfile: BalanceProfile;
   readonly balanceAccessToken: string;
   readonly balanceUserID: string;
@@ -277,6 +337,9 @@ const emptyFormState = (): AdapterFormState => ({
   apiKey: "",
   modelId: "",
   contextWindowTokens: String(DEFAULT_CONTEXT_WINDOW_TOKENS),
+  maxOutputTokens: "",
+  customHeaders: "",
+  clearStoredCustomHeaders: false,
   balanceProfile: "auto",
   balanceAccessToken: "",
   balanceUserID: "",
@@ -291,18 +354,45 @@ const formStateFromAdapter = (adapter: ByokModelAdapter): AdapterFormState => ({
   apiKey: adapter.apiKey,
   modelId: adapter.modelId,
   contextWindowTokens: String(adapter.contextWindowTokens),
+  maxOutputTokens: adapter.maxOutputTokens !== undefined ? String(adapter.maxOutputTokens) : "",
+  customHeaders: "",
+  clearStoredCustomHeaders: false,
   balanceProfile: adapter.balanceProfile ?? "auto",
   balanceAccessToken: "",
   balanceUserID: adapter.balanceUserID ?? "",
 });
 
-export function draftModelSelectionPatch(model: ByokDiscoveredModel) {
+/**
+ * 自定义请求头的表单校验：空串合法（表示不设置）；非空时必须是「字符串值
+ * 的 JSON 对象」，如 `{"X-Custom":"value"}`。与服务端 parseByokCustomHeaders
+ * 的接受范围保持一致。
+ */
+export function isValidCustomHeadersJson(value: string): boolean {
+  const text = value.trim();
+  if (text.length === 0) return true;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return false;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+  return Object.values(parsed).every((entry) => typeof entry === "string");
+}
+
+export function draftModelSelectionPatch(
+  model: ByokDiscoveredModel,
+  fallbackProtocol: ByokModelAdapter["protocol"] = "openai",
+) {
+  const protocol = inferByokProtocol(model.id, fallbackProtocol);
   return {
     modelId: model.id,
     displayName: model.id,
+    ...(protocol !== fallbackProtocol ? { protocol } : {}),
     ...(model.contextWindowTokens
       ? { contextWindowTokens: String(model.contextWindowTokens) }
       : {}),
+    ...(model.maxOutputTokens ? { maxOutputTokens: String(model.maxOutputTokens) } : {}),
   };
 }
 
@@ -382,6 +472,15 @@ export interface ByokModelAdapterRelayGroup {
   readonly adapters: ReadonlyArray<ByokModelAdapter>;
 }
 
+/** 一键优化的汇总结果：上下文对齐统计 + 待确认的协议不匹配列表。 */
+export interface OptimizeSummary {
+  readonly total: number;
+  readonly fromCatalog: number;
+  readonly fromProbe: number;
+  readonly changed: number;
+  readonly protocolIssues: ReadonlyArray<ByokProtocolMismatchIssue>;
+}
+
 export interface ByokModelAdapterGroup {
   readonly groupName: string;
   readonly relays: ReadonlyArray<ByokModelAdapterRelayGroup>;
@@ -391,6 +490,125 @@ interface ByokRelayDetailsTarget {
   readonly groupName: string;
   readonly protocol: ByokModelAdapter["protocol"];
   readonly baseURL: string;
+}
+
+export interface RelayEditFormState {
+  readonly groupName: string;
+  readonly protocol: ByokModelAdapter["protocol"];
+  readonly baseURL: string;
+  readonly apiKey: string;
+  readonly customHeaders: string;
+  /** 显式清除通道内全部成员已存的自定义请求头。 */
+  readonly clearCustomHeaders: boolean;
+  readonly balanceProfile: BalanceProfile;
+  readonly balanceAccessToken: string;
+  readonly balanceUserID: string;
+}
+
+const emptyRelayEditForm: RelayEditFormState = {
+  groupName: "",
+  protocol: "openai",
+  baseURL: "",
+  apiKey: "",
+  customHeaders: "",
+  clearCustomHeaders: false,
+  balanceProfile: "auto",
+  balanceAccessToken: "",
+  balanceUserID: "",
+};
+
+/** 通道级批量编辑的草稿：取通道内首个适配器作为默认值。 */
+export function relayEditFormFromAdapters(
+  adapters: ReadonlyArray<ByokModelAdapter>,
+): RelayEditFormState {
+  const first = adapters[0];
+  if (!first) return emptyRelayEditForm;
+  return {
+    groupName: first.groupName ?? "",
+    protocol: first.protocol,
+    baseURL: first.baseURL,
+    apiKey: "",
+    customHeaders: "",
+    clearCustomHeaders: false,
+    balanceProfile: first.balanceProfile ?? "auto",
+    balanceAccessToken: "",
+    balanceUserID: first.balanceUserID ?? "",
+  };
+}
+
+/**
+ * 把通道级编辑落到通道内全部适配器。密钥与余额令牌为空时逐成员保留原值
+ * （含脱敏标记与密钥来源引用），非空时整体替换。余额档案/用户 ID 与预填值
+ * （首个成员的原值）一致时视为未改动，逐成员保留，避免混合配置被静默洗掉。
+ */
+export function applyRelayEdit(
+  adapters: ReadonlyArray<ByokModelAdapter>,
+  members: ReadonlyArray<ByokModelAdapter>,
+  draft: RelayEditFormState,
+): ReadonlyArray<ByokModelAdapter> {
+  const memberIds = new Set(members.map((member) => member.id));
+  const first = members[0];
+  const groupName = draft.groupName.trim();
+  const baseURL = draft.baseURL.trim();
+  const apiKey = draft.apiKey.trim();
+  const customHeaders = draft.customHeaders.trim();
+  const balanceAccessToken = draft.balanceAccessToken.trim();
+  const balanceUserID = draft.balanceUserID.trim();
+  const balanceProfileUntouched =
+    first === undefined || draft.balanceProfile === (first.balanceProfile ?? "auto");
+  const balanceUserIDUntouched =
+    first === undefined || balanceUserID === (first.balanceUserID ?? "");
+  return adapters.map((current) => {
+    if (!memberIds.has(current.id)) return current;
+    const {
+      groupName: _oldGroup,
+      balanceProfile: _oldProfile,
+      balanceUserID: _oldBalanceUserID,
+      apiKeyRedacted: _oldKeyRedacted,
+      apiKeySourceAdapterId: _oldKeySource,
+      balanceAccessTokenRedacted: _oldBalanceTokenRedacted,
+      customHeadersRedacted: _oldCustomHeadersRedacted,
+      ...rest
+    } = current;
+    return {
+      ...rest,
+      ...(groupName ? { groupName } : {}),
+      protocol: draft.protocol,
+      baseURL,
+      ...(apiKey
+        ? { apiKey }
+        : {
+            ...(current.apiKeyRedacted ? { apiKeyRedacted: true } : {}),
+            ...(current.apiKeySourceAdapterId !== undefined
+              ? { apiKeySourceAdapterId: current.apiKeySourceAdapterId }
+              : {}),
+          }),
+      // 自定义请求头：非空整体替换；勾选清除时全部成员写空并去掉标记；
+      // 留空且未勾选清除时逐成员保留原值与脱敏标记。
+      ...(customHeaders
+        ? { customHeaders }
+        : draft.clearCustomHeaders
+          ? { customHeaders: "" }
+          : {
+              ...(current.customHeadersRedacted ? { customHeadersRedacted: true } : {}),
+            }),
+      ...(balanceProfileUntouched && current.balanceProfile !== undefined
+        ? { balanceProfile: current.balanceProfile }
+        : draft.balanceProfile !== "auto"
+          ? { balanceProfile: draft.balanceProfile }
+          : {}),
+      ...(balanceAccessToken
+        ? { balanceAccessToken }
+        : {
+            ...(current.balanceAccessTokenRedacted ? { balanceAccessTokenRedacted: true } : {}),
+          }),
+      ...(balanceUserIDUntouched && current.balanceUserID !== undefined
+        ? { balanceUserID: current.balanceUserID }
+        : balanceUserID
+          ? { balanceUserID }
+          : {}),
+    };
+  });
 }
 
 export function groupByokModelAdapters(
@@ -519,7 +737,7 @@ export function ByokModelAdaptersSection({
       adapters
         .map(
           (adapter) =>
-            `${adapter.id}\u0000${adapter.protocol}\u0000${adapter.baseURL.trim()}\u0000${adapter.groupName?.trim() ?? ""}\u0000${adapter.modelId}\u0000${adapter.contextWindowTokens}`,
+            `${adapter.id}\u0000${adapter.protocol}\u0000${adapter.baseURL.trim()}\u0000${adapter.groupName?.trim() ?? ""}\u0000${adapter.modelId}\u0000${adapter.contextWindowTokens}\u0000${adapter.maxOutputTokens ?? ""}`,
         )
         .join("\u0001"),
     [adapters],
@@ -538,6 +756,13 @@ export function ByokModelAdaptersSection({
   });
   const [discoveringAdapterId, setDiscoveringAdapterId] = useState<string | null>(null);
   const [matchingContextAdapterId, setMatchingContextAdapterId] = useState<string | null>(null);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizeSummary, setOptimizeSummary] = useState<OptimizeSummary | null>(null);
+  const [relayEditTarget, setRelayEditTarget] = useState<ByokRelayDetailsTarget | null>(null);
+  const [relayEditForm, setRelayEditForm] = useState<RelayEditFormState>(emptyRelayEditForm);
+  const [relayEditError, setRelayEditError] = useState<string | null>(null);
+  const [relayEditSaving, setRelayEditSaving] = useState(false);
+  const [pendingRelayDelete, setPendingRelayDelete] = useState<ByokRelayDetailsTarget | null>(null);
   const [draftDiscovery, setDraftDiscovery] = useState<ByokDraftModelDiscoveryResult | null>(null);
   const [selectedDraftModelIds, setSelectedDraftModelIds] = useState<ReadonlySet<string>>(
     () => new Set<string>(),
@@ -683,6 +908,7 @@ export function ByokModelAdaptersSection({
       modelId: "",
       displayName: "",
       contextWindowTokens: String(DEFAULT_CONTEXT_WINDOW_TOKENS),
+      maxOutputTokens: "",
     });
   };
 
@@ -697,7 +923,14 @@ export function ByokModelAdaptersSection({
       setError(t("byokAdapters.modelIdRequired"));
       return;
     }
-    patchForm({ modelId, displayName: modelId });
+    // 手动输入同样走协议推断，避免 claude/gemini 默认落到渠道协议上。
+    patchForm({
+      modelId,
+      displayName: modelId,
+      ...(inferByokProtocol(modelId, form.protocol) !== form.protocol
+        ? { protocol: inferByokProtocol(modelId, form.protocol) }
+        : {}),
+    });
     setManualModelDialogOpen(false);
   };
 
@@ -732,7 +965,26 @@ export function ByokModelAdaptersSection({
       setError(t("byokAdapters.contextWindowRequired"));
       return;
     }
-
+    const maxOutputTokensRaw = form.maxOutputTokens.trim();
+    const maxOutputTokens = maxOutputTokensRaw === "" ? undefined : Number(maxOutputTokensRaw);
+    if (
+      maxOutputTokens !== undefined &&
+      (!Number.isInteger(maxOutputTokens) || maxOutputTokens <= 0)
+    ) {
+      setError(t("byokAdapters.maxOutputRequired"));
+      return;
+    }
+    const customHeaders = form.customHeaders.trim();
+    if (!isValidCustomHeadersJson(customHeaders)) {
+      setError(t("byokAdapters.customHeadersInvalid"));
+      return;
+    }
+    const retainsStoredCustomHeaders =
+      customHeaders.length === 0 &&
+      !form.clearStoredCustomHeaders &&
+      existingAdapter?.customHeadersRedacted === true;
+    // 协议尊重表单显式选择：导入时已按模型名推断过（draftModelSelectionPatch 等），
+    // 这里不再强制改写，避免覆盖「OpenAI 兼容中转挂 Claude」的合法配置。
     const next: ByokModelAdapter = {
       id: editing === "new" || editing === null ? randomUUID() : editing,
       displayName: form.displayName.trim() || modelId,
@@ -740,13 +992,24 @@ export function ByokModelAdaptersSection({
       protocol: form.protocol,
       baseURL,
       apiKey,
-      ...(retainsStoredApiKey ? { apiKeyRedacted: true } : {}),
+      ...(retainsStoredApiKey
+        ? {
+            apiKeyRedacted: true,
+            // 编辑时保留「复用其他适配器已存密钥」的引用，避免静默丢失密钥来源。
+            ...(existingAdapter?.apiKeySourceAdapterId !== undefined
+              ? { apiKeySourceAdapterId: existingAdapter.apiKeySourceAdapterId }
+              : {}),
+          }
+        : {}),
       ...(form.balanceProfile !== "auto" ? { balanceProfile: form.balanceProfile } : {}),
       balanceAccessToken,
       ...(retainsStoredBalanceToken ? { balanceAccessTokenRedacted: true } : {}),
       ...(balanceUserID ? { balanceUserID } : {}),
+      ...(retainsStoredCustomHeaders ? { customHeadersRedacted: true } : {}),
+      customHeaders: retainsStoredCustomHeaders ? "" : customHeaders,
       modelId,
       contextWindowTokens,
+      ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
       ...(form.supplier !== "custom" ? { supplierID: form.supplier } : {}),
       ...(supplierTemplates.find((entry) => entry.id === form.supplier)?.modelCatalogURLs
         ? {
@@ -880,20 +1143,8 @@ export function ByokModelAdaptersSection({
       });
       if (!AsyncResult.isSuccess(result)) return;
 
-      const nextWindowByAdapterId = new Map(
-        result.value.details
-          .filter((detail) => detail.before !== detail.after)
-          .map((detail) => [detail.adapterId, detail.after]),
-      );
-      if (nextWindowByAdapterId.size > 0) {
-        const saved = await onChange(
-          adapters.map((current) => {
-            const contextWindowTokens = nextWindowByAdapterId.get(current.id);
-            return contextWindowTokens === undefined
-              ? current
-              : { ...current, contextWindowTokens };
-          }),
-        );
+      if (countContextMatchChanges(result.value.details) > 0) {
+        const saved = await onChange(applyContextMatchDetails(adapters, result.value.details));
         if (!saved) {
           setError(t("settingsSaveTryAgain"));
           return;
@@ -905,6 +1156,152 @@ export function ByokModelAdaptersSection({
     } finally {
       setMatchingContextAdapterId(null);
     }
+  };
+
+  // ── 一键优化：全量上下文对齐 + 协议诊断修正（移植自 cursor-byok「一键诊断优化」）──
+  const runOptimizeAll = async () => {
+    if (optimizing) return;
+    setOptimizing(true);
+    setOptimizeSummary(null);
+    try {
+      const representatives = adapterGroups.flatMap((group) =>
+        group.relays
+          .map((relay) => relay.adapters[0])
+          .filter((adapter): adapter is ByokModelAdapter => adapter !== undefined),
+      );
+      const allDetails: ByokContextWindowMatchResult["details"][number][] = [];
+      let fromCatalog = 0;
+      let fromProbe = 0;
+      let total = 0;
+      const freshMatches: Record<string, ByokContextWindowMatchResult> = {};
+      for (const representative of representatives) {
+        const result = await matchContextWindowsCommand({
+          environmentId: environmentId as never,
+          input: { instanceId, adapterId: representative.id },
+        });
+        if (!AsyncResult.isSuccess(result)) continue;
+        allDetails.push(...result.value.details);
+        fromCatalog += result.value.fromCatalog;
+        fromProbe += result.value.fromProbe;
+        total += result.value.total;
+        freshMatches[representative.id] = result.value;
+      }
+      const changedCount = countContextMatchChanges(allDetails);
+      if (changedCount > 0) {
+        const saved = await onChange(applyContextMatchDetails(adapters, allDetails));
+        if (!saved) {
+          setError(t("settingsSaveTryAgain"));
+          return;
+        }
+      }
+      setContextMatches((current) => ({ ...current, ...freshMatches }));
+      setOptimizeSummary({
+        total,
+        fromCatalog,
+        fromProbe,
+        changed: changedCount,
+        protocolIssues: diagnoseByokProtocolMismatches(adapters),
+      });
+    } catch {
+      setError(t("settingsSaveTryAgain"));
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
+  const applyProtocolFixes = async (issues: ReadonlyArray<ByokProtocolMismatchIssue>) => {
+    if (issues.length === 0) return;
+    const issueById = new Map(issues.map((issue) => [issue.adapterId, issue.suggested]));
+    const saved = await onChange(
+      adapters.map((current) => {
+        const protocol = issueById.get(current.id);
+        return protocol === undefined ? current : { ...current, protocol };
+      }),
+    );
+    if (!saved) {
+      setError(t("settingsSaveTryAgain"));
+      return;
+    }
+    setOptimizeSummary((current) =>
+      current === null ? current : { ...current, protocolIssues: [] },
+    );
+  };
+
+  // ── 通道级编辑：一次修改应用到通道内全部模型 ──────────────────────────
+  const selectedRelayEditMembers = useMemo(() => {
+    if (relayEditTarget === null) return [];
+    const group = adapterGroups.find((entry) => entry.groupName === relayEditTarget.groupName);
+    return (
+      group?.relays.find(
+        (relay) =>
+          relay.protocol === relayEditTarget.protocol && relay.baseURL === relayEditTarget.baseURL,
+      )?.adapters ?? []
+    );
+  }, [adapterGroups, relayEditTarget]);
+
+  const openRelayEdit = (target: ByokRelayDetailsTarget) => {
+    setRelayEditTarget(target);
+    setRelayEditError(null);
+    const group = adapterGroups.find((entry) => entry.groupName === target.groupName);
+    const members =
+      group?.relays.find(
+        (relay) => relay.protocol === target.protocol && relay.baseURL === target.baseURL,
+      )?.adapters ?? [];
+    setRelayEditForm(relayEditFormFromAdapters(members));
+  };
+
+  const saveRelayEdit = async () => {
+    if (relayEditTarget === null) return;
+    const baseURL = relayEditForm.baseURL.trim();
+    if (!baseURL) {
+      setRelayEditError(t("byokAdapters.baseURLRequired"));
+      return;
+    }
+    if (!isValidCustomHeadersJson(relayEditForm.customHeaders)) {
+      setRelayEditError(t("byokAdapters.customHeadersInvalid"));
+      return;
+    }
+    if (selectedRelayEditMembers.length === 0) {
+      setRelayEditTarget(null);
+      return;
+    }
+    setRelayEditSaving(true);
+    try {
+      const saved = await onChange(
+        applyRelayEdit(adapters, selectedRelayEditMembers, relayEditForm),
+      );
+      if (!saved) {
+        setRelayEditError(t("settingsSaveTryAgain"));
+        return;
+      }
+      setRelayEditTarget(null);
+      setRelayDetailsTarget(null);
+    } finally {
+      setRelayEditSaving(false);
+    }
+  };
+
+  // ── 删除通道：一次移除通道内全部模型 ──────────────────────────────────
+  const relayDeleteMembers = useMemo(() => {
+    if (pendingRelayDelete === null) return [];
+    const group = adapterGroups.find((entry) => entry.groupName === pendingRelayDelete.groupName);
+    return (
+      group?.relays.find(
+        (relay) =>
+          relay.protocol === pendingRelayDelete.protocol &&
+          relay.baseURL === pendingRelayDelete.baseURL,
+      )?.adapters ?? []
+    );
+  }, [adapterGroups, pendingRelayDelete]);
+
+  const confirmRelayDelete = () => {
+    if (pendingRelayDelete === null) return;
+    const memberIds = new Set(relayDeleteMembers.map((member) => member.id));
+    if (memberIds.size > 0) {
+      onChange(adapters.filter((adapter) => !memberIds.has(adapter.id)));
+    }
+    if (relayDetailsTarget !== null) setRelayDetailsTarget(null);
+    setPendingRelayDelete(null);
   };
 
   const discoverDraftModels = async () => {
@@ -950,7 +1347,7 @@ export function ByokModelAdaptersSection({
     const [onlyId] = selectedDraftModelIds;
     const model = draftDiscovery?.models.find((entry) => entry.id === onlyId);
     if (!model) return;
-    patchForm(draftModelSelectionPatch(model));
+    patchForm(draftModelSelectionPatch(model, form.protocol));
     setDraftModelPickerOpen(false);
     setDraftModelPickerSearch("");
   };
@@ -985,14 +1382,18 @@ export function ByokModelAdaptersSection({
         id: randomUUID(),
         displayName: model.id,
         ...(groupName ? { groupName } : {}),
-        protocol: form.protocol,
+        // 导入时按模型名推断协议：claude → anthropic、gemini → gemini，
+        // 其余沿用渠道协议（与 cursor-byok InferProviderType 同规则）。
+        protocol: inferByokProtocol(model.id, form.protocol),
         baseURL,
         apiKey,
+        customHeaders: form.customHeaders.trim(),
         ...(form.balanceProfile !== "auto" ? { balanceProfile: form.balanceProfile } : {}),
         balanceAccessToken: "",
         ...(form.balanceUserID ? { balanceUserID: form.balanceUserID } : {}),
         modelId: model.id,
         contextWindowTokens: model.contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS,
+        ...(model.maxOutputTokens ? { maxOutputTokens: model.maxOutputTokens } : {}),
         ...(form.supplier !== "custom" ? { supplierID: form.supplier } : {}),
         ...(template?.modelCatalogURLs ? { modelCatalogURLs: template.modelCatalogURLs } : {}),
         ...(template?.modelCatalogStatus
@@ -1042,9 +1443,17 @@ export function ByokModelAdaptersSection({
         displayName: model.id,
         modelId: model.id,
         ...(model.contextWindowTokens ? { contextWindowTokens: model.contextWindowTokens } : {}),
+        ...(model.maxOutputTokens ? { maxOutputTokens: model.maxOutputTokens } : {}),
+        // 已存通道下追加模型同样按模型名推断协议，防止 claude/gemini 落到 openai。
+        ...(inferByokProtocol(model.id, adapter.protocol) !== adapter.protocol
+          ? { protocol: inferByokProtocol(model.id, adapter.protocol) }
+          : {}),
         apiKey: "",
         ...(adapter.apiKeyRedacted ? { apiKeyRedacted: true } : {}),
         ...(adapter.apiKeyRedacted ? { apiKeySourceAdapterId: adapter.id } : {}),
+        // 自定义请求头随通道复制：脱敏时保留标记与原值语义（留空 + 标记）。
+        customHeaders: "",
+        ...(adapter.customHeadersRedacted ? { customHeadersRedacted: true } : {}),
         // Balance credentials are per-adapter secrets and never copied.
         balanceAccessToken: "",
         ...(adapter.balanceAccessTokenRedacted ? { balanceAccessTokenRedacted: true } : {}),
@@ -1268,6 +1677,40 @@ export function ByokModelAdaptersSection({
             {t("byokAdapters.requestModelDescription")}
           </span>
         </div>
+        <label htmlFor={`${formId}-context-window`} className="block">
+          <span className="text-xs font-medium text-foreground">
+            {t("byokAdapters.contextWindow")}
+          </span>
+          <Input
+            id={`${formId}-context-window`}
+            className="mt-1"
+            value={form.contextWindowTokens}
+            onChange={(event) => patchForm({ contextWindowTokens: event.target.value })}
+            placeholder="128000"
+            inputMode="numeric"
+            spellCheck={false}
+          />
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {t("byokAdapters.contextWindowDescription")}
+          </span>
+        </label>
+        <label htmlFor={`${formId}-max-output`} className="block">
+          <span className="text-xs font-medium text-foreground">
+            {t("byokAdapters.maxOutputTokens")}
+          </span>
+          <Input
+            id={`${formId}-max-output`}
+            className="mt-1"
+            value={form.maxOutputTokens}
+            onChange={(event) => patchForm({ maxOutputTokens: event.target.value })}
+            placeholder={t("byokAdapters.maxOutputPlaceholder")}
+            inputMode="numeric"
+            spellCheck={false}
+          />
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {t("byokAdapters.maxOutputDescription")}
+          </span>
+        </label>
         <details className="sm:col-span-2 rounded-md border border-border/60 bg-muted/10 px-3 py-2">
           <summary className="cursor-pointer text-xs font-medium text-foreground outline-none">
             {t("byokAdapters.balanceAdvancedSummary")}
@@ -1345,6 +1788,46 @@ export function ByokModelAdaptersSection({
               />
             </label>
           </div>
+        </details>
+        <details className="sm:col-span-2 rounded-md border border-border/60 bg-muted/10 px-3 py-2">
+          <summary className="cursor-pointer text-xs font-medium text-foreground outline-none">
+            {t("byokAdapters.customHeadersSummary")}
+          </summary>
+          <label htmlFor={`${formId}-custom-headers`} className="mt-3 block">
+            <span className="text-xs font-medium text-foreground">
+              {t("byokAdapters.customHeaders")}
+            </span>
+            <Textarea
+              id={`${formId}-custom-headers`}
+              size="sm"
+              className="mt-1 font-mono text-xs"
+              value={form.customHeaders}
+              onChange={(event) =>
+                patchForm({
+                  customHeaders: event.target.value,
+                  ...(event.target.value.trim().length > 0
+                    ? { clearStoredCustomHeaders: false }
+                    : {}),
+                })
+              }
+              placeholder='{"X-Custom":"value"}'
+              spellCheck={false}
+            />
+            <span className="mt-1 block text-xs text-muted-foreground">
+              {t("byokAdapters.customHeadersDescription")}
+            </span>
+          </label>
+          {isEdit && adapters.find((adapter) => adapter.id === editing)?.customHeadersRedacted ? (
+            <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <Checkbox
+                checked={form.clearStoredCustomHeaders}
+                onCheckedChange={(checked) =>
+                  patchForm({ clearStoredCustomHeaders: checked === true })
+                }
+              />
+              {t("byokAdapters.customHeadersClear")}
+            </label>
+          ) : null}
         </details>
         {!isEdit && draftDiscovery ? (
           <div className="sm:col-span-2">
@@ -1643,20 +2126,35 @@ export function ByokModelAdaptersSection({
     >
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs font-medium text-foreground">{t("byokAdapters.title")}</span>
-        <Button
-          type="button"
-          data-facilities-guide-target={
-            presentation === "provider" ? "providers-add-channel" : undefined
-          }
-          size="sm"
-          variant="outline"
-          className="h-7 gap-1.5 px-2 text-xs"
-          onClick={openAdd}
-          disabled={editing !== null}
-        >
-          <PlusIcon className="size-3" />
-          {t("byokAdapters.addAdapter")}
-        </Button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {adapters.length > 0 ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost-muted"
+              className="h-7 gap-1.5 px-2 text-xs"
+              onClick={() => void runOptimizeAll()}
+              disabled={optimizing || editing !== null}
+            >
+              <SparklesIcon className="size-3" />
+              {optimizing ? t("byokAdapters.optimizing") : t("byokAdapters.optimizeAll")}
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            data-facilities-guide-target={
+              presentation === "provider" ? "providers-add-channel" : undefined
+            }
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1.5 px-2 text-xs"
+            onClick={openAdd}
+            disabled={editing !== null}
+          >
+            <PlusIcon className="size-3" />
+            {t("byokAdapters.addAdapter")}
+          </Button>
+        </div>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{t("byokAdapters.description")}</p>
 
@@ -1817,6 +2315,26 @@ export function ByokModelAdaptersSection({
                   type="button"
                   size="sm"
                   variant="outline"
+                  className="h-7 gap-1.5 px-2 text-[10px]"
+                  onClick={() => relayDetailsTarget !== null && openRelayEdit(relayDetailsTarget)}
+                >
+                  <PencilIcon className="size-3" />
+                  {t("byokAdapters.editRelay")}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost-muted"
+                  className="h-7 gap-1.5 px-2 text-[10px] text-muted-foreground hover:text-destructive"
+                  onClick={() => setPendingRelayDelete(relayDetailsTarget)}
+                >
+                  <Trash2Icon className="size-3" />
+                  {t("byokAdapters.deleteRelay")}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
                   className="h-7 px-2 text-[10px]"
                   onClick={() => void benchmarkAllModels(selectedRelay.adapters)}
                   disabled={benchmarkAll || benchmarking !== null}
@@ -1877,6 +2395,14 @@ export function ByokModelAdaptersSection({
                             count: adapter.contextWindowTokens,
                           })}
                         </span>
+                        {adapter.maxOutputTokens !== undefined ? (
+                          <span>
+                            ·{" "}
+                            {t("byokAdapters.maxOutputShort", {
+                              count: adapter.maxOutputTokens,
+                            })}
+                          </span>
+                        ) : null}
                         {benchmark[adapter.id] ? (
                           <span className="font-medium text-foreground">
                             {t("byokAdapters.totalTokensPerSecond", {
@@ -2070,6 +2596,359 @@ export function ByokModelAdaptersSection({
           </AlertDialogFooter>
         </AlertDialogPopup>
       </AlertDialog>
+
+      <AlertDialog
+        open={pendingRelayDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRelayDelete(null);
+        }}
+      >
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("byokAdapters.deleteRelayConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("byokAdapters.deleteRelayConfirm", {
+                count: relayDeleteMembers.length,
+                name: pendingRelayDelete?.baseURL ?? "",
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="outline" />}>{t("cancel")}</AlertDialogClose>
+            <Button variant="destructive" onClick={confirmRelayDelete}>
+              <XIcon className="size-3.5" />
+              {t("delete")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
+
+      <Dialog
+        open={optimizeSummary !== null}
+        onOpenChange={(open) => {
+          if (!open) setOptimizeSummary(null);
+        }}
+      >
+        {optimizeSummary !== null ? (
+          <DialogPopup className="w-full max-w-lg p-0">
+            <DialogHeader>
+              <DialogTitle>{t("byokAdapters.optimizeResultTitle")}</DialogTitle>
+              <DialogDescription>{t("byokAdapters.optimizeResultDescription")}</DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[min(60dvh,36rem)] space-y-3 overflow-y-auto px-6 pb-4">
+              <p className="text-xs text-muted-foreground">
+                {t("byokAdapters.optimizeContextSummary", {
+                  total: optimizeSummary.total,
+                  catalog: optimizeSummary.fromCatalog,
+                  probe: optimizeSummary.fromProbe,
+                  changed: optimizeSummary.changed,
+                })}
+              </p>
+              {optimizeSummary.protocolIssues.length > 0 ? (
+                <div className="rounded-md border border-warning/40 bg-warning/10 p-3">
+                  <p className="text-xs font-medium text-foreground">
+                    {t("byokAdapters.protocolIssuesTitle", {
+                      count: optimizeSummary.protocolIssues.length,
+                    })}
+                  </p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    {t("byokAdapters.protocolIssuesDescription")}
+                  </p>
+                  <ul className="mt-2 space-y-1">
+                    {optimizeSummary.protocolIssues.slice(0, 8).map((issue) => (
+                      <li
+                        key={issue.adapterId}
+                        className="flex min-w-0 items-center gap-1.5 text-[10px]"
+                      >
+                        <code className="min-w-0 truncate text-foreground">{issue.modelId}</code>
+                        <span className="shrink-0 text-muted-foreground">
+                          {t(PROTOCOL_LABEL_KEYS[issue.current])} →{" "}
+                          {t(PROTOCOL_LABEL_KEYS[issue.suggested])}
+                        </span>
+                      </li>
+                    ))}
+                    {optimizeSummary.protocolIssues.length > 8 ? (
+                      <li className="text-[10px] text-muted-foreground">
+                        {t("byokAdapters.protocolIssuesMore", {
+                          count: optimizeSummary.protocolIssues.length - 8,
+                        })}
+                      </li>
+                    ) : null}
+                  </ul>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {t("byokAdapters.noProtocolIssues")}
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost-muted"
+                onClick={() => setOptimizeSummary(null)}
+              >
+                {t("dismiss")}
+              </Button>
+              {optimizeSummary.protocolIssues.length > 0 ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void applyProtocolFixes(optimizeSummary.protocolIssues)}
+                >
+                  {t("byokAdapters.fixProtocolIssues", {
+                    count: optimizeSummary.protocolIssues.length,
+                  })}
+                </Button>
+              ) : null}
+            </DialogFooter>
+          </DialogPopup>
+        ) : null}
+      </Dialog>
+
+      <Dialog
+        open={relayEditTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRelayEditTarget(null);
+        }}
+      >
+        {relayEditTarget !== null ? (
+          <DialogPopup className="w-full max-w-2xl p-0">
+            <DialogHeader>
+              <DialogTitle>{t("byokAdapters.editRelay")}</DialogTitle>
+              <DialogDescription>
+                {t("byokAdapters.editRelayDescription", {
+                  count: selectedRelayEditMembers.length,
+                })}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[min(68dvh,42rem)] space-y-3 overflow-y-auto px-6 pb-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label htmlFor="byok-relay-edit-group-name" className="block">
+                  <span className="text-xs font-medium text-foreground">
+                    {t("byokAdapters.groupName")}
+                  </span>
+                  <Input
+                    id="byok-relay-edit-group-name"
+                    className="mt-1"
+                    value={relayEditForm.groupName}
+                    onChange={(event) =>
+                      setRelayEditForm((current) => ({
+                        ...current,
+                        groupName: event.target.value,
+                      }))
+                    }
+                    placeholder={t("byokAdapters.defaultGroup")}
+                    spellCheck={false}
+                  />
+                </label>
+                <label htmlFor="byok-relay-edit-protocol" className="block">
+                  <span className="text-xs font-medium text-foreground">
+                    {t("byokAdapters.protocol")}
+                  </span>
+                  <Select
+                    value={relayEditForm.protocol}
+                    onValueChange={(value) => {
+                      if (value === "openai" || value === "anthropic" || value === "gemini") {
+                        setRelayEditForm((current) => ({ ...current, protocol: value }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="byok-relay-edit-protocol" className="mt-1 w-full" size="sm">
+                      <SelectValue>{t(PROTOCOL_LABEL_KEYS[relayEditForm.protocol])}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup align="start" alignItemWithTrigger={false}>
+                      <SelectItem hideIndicator value="openai">
+                        {t("byokAdapters.protocolOpenai")}
+                      </SelectItem>
+                      <SelectItem hideIndicator value="anthropic">
+                        {t("byokAdapters.protocolAnthropic")}
+                      </SelectItem>
+                      <SelectItem hideIndicator value="gemini">
+                        {t("byokAdapters.protocolGemini")}
+                      </SelectItem>
+                    </SelectPopup>
+                  </Select>
+                </label>
+                <label htmlFor="byok-relay-edit-base-url" className="block sm:col-span-2">
+                  <span className="text-xs font-medium text-foreground">
+                    {t("byokAdapters.baseURL")}
+                  </span>
+                  <Input
+                    id="byok-relay-edit-base-url"
+                    className="mt-1"
+                    value={relayEditForm.baseURL}
+                    onChange={(event) =>
+                      setRelayEditForm((current) => ({ ...current, baseURL: event.target.value }))
+                    }
+                    placeholder={PROTOCOL_BASE_URL_PLACEHOLDERS[relayEditForm.protocol]}
+                    spellCheck={false}
+                  />
+                </label>
+                <label htmlFor="byok-relay-edit-api-key" className="block sm:col-span-2">
+                  <span className="text-xs font-medium text-foreground">
+                    {t("byokAdapters.apiKey")}
+                  </span>
+                  <Input
+                    id="byok-relay-edit-api-key"
+                    className="mt-1"
+                    type="password"
+                    autoComplete="off"
+                    value={relayEditForm.apiKey}
+                    onChange={(event) =>
+                      setRelayEditForm((current) => ({ ...current, apiKey: event.target.value }))
+                    }
+                    placeholder={t("byokAdapters.relayApiKeyPlaceholder")}
+                    spellCheck={false}
+                  />
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {t("byokAdapters.relayApiKeyKeepHint")}
+                  </span>
+                </label>
+                <div className="block sm:col-span-2">
+                  <label htmlFor="byok-relay-edit-custom-headers">
+                    <span className="text-xs font-medium text-foreground">
+                      {t("byokAdapters.customHeaders")}
+                    </span>
+                  </label>
+                  <Textarea
+                    id="byok-relay-edit-custom-headers"
+                    size="sm"
+                    className="mt-1 font-mono text-xs"
+                    value={relayEditForm.customHeaders}
+                    onChange={(event) =>
+                      setRelayEditForm((current) => ({
+                        ...current,
+                        customHeaders: event.target.value,
+                        ...(event.target.value.trim().length > 0
+                          ? { clearCustomHeaders: false }
+                          : {}),
+                      }))
+                    }
+                    placeholder='{"X-Custom":"value"}'
+                    spellCheck={false}
+                  />
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {t("byokAdapters.relayCustomHeadersHint")}
+                  </span>
+                  {selectedRelayEditMembers.some((member) => member.customHeadersRedacted) ? (
+                    <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                      <Checkbox
+                        checked={relayEditForm.clearCustomHeaders}
+                        onCheckedChange={(checked) =>
+                          setRelayEditForm((current) => ({
+                            ...current,
+                            clearCustomHeaders: checked === true,
+                          }))
+                        }
+                      />
+                      {t("byokAdapters.customHeadersClear")}
+                    </label>
+                  ) : null}
+                </div>
+                <label htmlFor="byok-relay-edit-balance-profile" className="block">
+                  <span className="text-xs font-medium text-foreground">
+                    {t("byokAdapters.balanceProfile")}
+                  </span>
+                  <Select
+                    value={relayEditForm.balanceProfile}
+                    onValueChange={(value) => {
+                      if (
+                        value === "auto" ||
+                        value === "general" ||
+                        value === "newapi" ||
+                        value === "none"
+                      ) {
+                        setRelayEditForm((current) => ({ ...current, balanceProfile: value }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger
+                      id="byok-relay-edit-balance-profile"
+                      className="mt-1 w-full"
+                      size="sm"
+                    >
+                      <SelectValue>
+                        {t(BALANCE_PROFILE_LABEL_KEYS[relayEditForm.balanceProfile])}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup align="start" alignItemWithTrigger={false}>
+                      {(["auto", "general", "newapi", "none"] as const).map((profile) => (
+                        <SelectItem key={profile} hideIndicator value={profile}>
+                          {t(BALANCE_PROFILE_LABEL_KEYS[profile])}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                </label>
+                <label htmlFor="byok-relay-edit-balance-user-id" className="block">
+                  <span className="text-xs font-medium text-foreground">
+                    {t("byokAdapters.balanceUserID")}
+                  </span>
+                  <Input
+                    id="byok-relay-edit-balance-user-id"
+                    className="mt-1"
+                    value={relayEditForm.balanceUserID}
+                    onChange={(event) =>
+                      setRelayEditForm((current) => ({
+                        ...current,
+                        balanceUserID: event.target.value,
+                      }))
+                    }
+                    placeholder="1"
+                    spellCheck={false}
+                  />
+                </label>
+                <label htmlFor="byok-relay-edit-balance-token" className="block sm:col-span-2">
+                  <span className="text-xs font-medium text-foreground">
+                    {t("byokAdapters.balanceAccessToken")}
+                  </span>
+                  <Input
+                    id="byok-relay-edit-balance-token"
+                    className="mt-1"
+                    type="password"
+                    autoComplete="off"
+                    value={relayEditForm.balanceAccessToken}
+                    onChange={(event) =>
+                      setRelayEditForm((current) => ({
+                        ...current,
+                        balanceAccessToken: event.target.value,
+                      }))
+                    }
+                    placeholder={t("byokAdapters.relayApiKeyPlaceholder")}
+                    spellCheck={false}
+                  />
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {t("byokAdapters.relayApiKeyKeepHint")}
+                  </span>
+                </label>
+              </div>
+              {relayEditError ? <p className="text-xs text-destructive">{relayEditError}</p> : null}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost-muted"
+                onClick={() => setRelayEditTarget(null)}
+              >
+                {t("cancel")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={relayEditSaving}
+                onClick={() => void saveRelayEdit()}
+              >
+                {relayEditSaving
+                  ? t("saving")
+                  : t("byokAdapters.editRelaySave", { count: selectedRelayEditMembers.length })}
+              </Button>
+            </DialogFooter>
+          </DialogPopup>
+        ) : null}
+      </Dialog>
     </div>
   );
 }

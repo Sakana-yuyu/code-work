@@ -10,13 +10,14 @@ const adapter = (overrides: Partial<ByokModelAdapter> = {}): ByokModelAdapter =>
   baseURL: "https://relay.example.test/v1",
   apiKey: "sk-test-key",
   balanceAccessToken: "",
+  customHeaders: "",
   modelId: "gpt-5.6-luna",
   contextWindowTokens: 1_000_000,
   ...overrides,
 });
 
 describe("ContextWindowMatcher", () => {
-  it("uses the migrated catalog to correct overly large windows", () => {
+  it("uses the migrated catalog to correct overly large windows and backfills max output", () => {
     const result = matchContextWindows([adapter()]);
 
     expect(result).toMatchObject({
@@ -31,28 +32,42 @@ describe("ContextWindowMatcher", () => {
           source: "catalog",
           before: 1_000_000,
           after: 272_000,
+          maxOutputAfter: 32_768,
         },
       ],
     });
   });
 
-  it("preserves a smaller stored window when explicitly matched against the catalog", () => {
+  it("preserves a smaller stored window but still backfills max output (fill-if-missing)", () => {
     const result = matchContextWindows([adapter({ contextWindowTokens: 200_000 })]);
 
     expect(result.details).toEqual([
       {
         adapterId: "adapter-1",
         modelId: "gpt-5.6-luna",
-        source: "unchanged",
+        source: "catalog",
         before: 200_000,
         after: 200_000,
+        maxOutputAfter: 32_768,
       },
     ]);
-    expect(result.fromCatalog).toBe(0);
-    expect(result.unchanged).toBe(1);
+    expect(result.fromCatalog).toBe(1);
+    expect(result.unchanged).toBe(0);
   });
 
-  it("does not overwrite a smaller DeepSeek window from the built-in catalog", () => {
+  it("never overwrites an explicitly configured max output", () => {
+    const result = matchContextWindows([adapter({ maxOutputTokens: 4_096 })]);
+
+    expect(result.details[0]).toMatchObject({
+      source: "catalog",
+      before: 1_000_000,
+      after: 272_000,
+      maxOutputBefore: 4_096,
+    });
+    expect(result.details[0]?.maxOutputAfter).toBeUndefined();
+  });
+
+  it("does not shrink a DeepSeek window below the dedicated alias rule", () => {
     const result = matchContextWindows([
       adapter({ id: "deepseek-chat", modelId: "deepseek-chat", contextWindowTokens: 128_000 }),
       adapter({
@@ -63,18 +78,39 @@ describe("ContextWindowMatcher", () => {
     ]);
 
     expect(result).toMatchObject({
-      fromCatalog: 0,
-      unchanged: 2,
+      fromCatalog: 2,
+      unchanged: 0,
       details: [
-        { adapterId: "deepseek-chat", source: "unchanged", before: 128_000, after: 128_000 },
         {
-          adapterId: "deepseek-reasoner",
-          source: "unchanged",
+          adapterId: "deepseek-chat",
+          source: "catalog",
           before: 128_000,
           after: 128_000,
+          maxOutputAfter: 32_768,
+        },
+        {
+          adapterId: "deepseek-reasoner",
+          source: "catalog",
+          before: 128_000,
+          after: 128_000,
+          maxOutputAfter: 32_768,
         },
       ],
     });
+  });
+
+  it("covers the freshly synced GLM-5.3 family", () => {
+    const result = matchContextWindows([
+      adapter({ modelId: "glm-5.3-flash", contextWindowTokens: 128_000 }),
+    ]);
+
+    expect(result.details[0]).toMatchObject({
+      source: "catalog",
+      before: 128_000,
+      after: 128_000,
+    });
+    expect(result.details[0]?.maxOutputAfter).toBe(128_000);
+    expect(result.unchanged).toBe(0);
   });
 
   it("normalizes model ids before applying a relay catalog fallback", () => {
@@ -112,6 +148,7 @@ describe("ContextWindowMatcher", () => {
           source: "probe",
           before: 128_000,
           after: 1_000_000,
+          maxOutputAfter: 8_192,
         },
       ],
     });
@@ -132,6 +169,7 @@ describe("ContextWindowMatcher", () => {
   it("distinguishes catalog-covered and provider-probe models", () => {
     expect(hasCatalogContextWindow("deepseek-chat")).toBe(true);
     expect(hasCatalogContextWindow("deepseek-v4-flash")).toBe(true);
+    expect(hasCatalogContextWindow("glm-5.3")).toBe(true);
     expect(hasCatalogContextWindow("private-model")).toBe(false);
   });
 });
