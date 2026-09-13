@@ -7,6 +7,17 @@
 
 更早的历史版本见 [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases)。
 
+## 1.0.6
+
+### 新增
+
+- 余额看板支持智谱 GLM / Z.ai：`open.bigmodel.cn` 与 `api.z.ai` 域名下的通道会通过智谱官方接口读取 GLM Coding Plan 的套餐档位、配额窗口（滚动窗口 / 每周窗口、已用百分比与下次重置时间）和钱包余额（账户报表接口，不可用时回退 v4 balance 接口）。
+
+### 改进
+
+- 内置模型能力目录新增 2026 年 9 月发布的模型（按官方发布信息核对上下文窗口、最大输出与视觉能力）：Claude Fable 5.1 / Mythos 5.1（1M 上下文 / 128K 输出）、GPT-6 Astra（1.05M / 128K）、Gemini 3.8 Flash（1M / 64K）、DeepSeek V4.1-Flash（1M / 384K）、Grok 4.6（500K / 32K）、Qwen3.8-Max（1M / 128K），这些模型此前会被通用兜底规则按错误数值处理。
+- 目录新增模型支持的思考强度档位数据（如 GPT-6 的 low/medium/high/xhigh/max、Gemini 3.8 与 Claude Fable 5.1 的 low/medium/high），供后续能力展示与请求参数使用。
+
 ## 1.0.5
 
 ### 新增
