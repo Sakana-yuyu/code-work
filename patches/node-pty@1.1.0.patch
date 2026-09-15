@@ -1,0 +1,24 @@
+diff --git a/lib/windowsPtyAgent.js b/lib/windowsPtyAgent.js
+index a358ffb177357e177661033c1b092f9c9d0e5f5a..65ffe1eba044901bbc2a3be9498edab7619aebc3 100644
+--- a/lib/windowsPtyAgent.js
++++ b/lib/windowsPtyAgent.js
+@@ -138,6 +138,10 @@ var WindowsPtyAgent = /** @class */ (function () {
+                 this._inSocket.readable = false;
+                 this._outSocket.readable = false;
+                 this._getConsoleProcessList().then(function (consoleProcessList) {
++                    // Code Work patch: the agent can resolve undefined when the
++                    // conout worker already died; an unguarded forEach here is an
++                    // unhandled rejection that takes down the whole host process.
++                    if (!Array.isArray(consoleProcessList)) return;
+                     consoleProcessList.forEach(function (pid) {
+                         try {
+                             process.kill(pid);
+@@ -168,6 +172,8 @@ var WindowsPtyAgent = /** @class */ (function () {
+             // Microsoft/vscode#26807).
+             var processList = this._ptyNative.getProcessList(this._pid);
+             this._ptyNative.kill(this._pid, this._innerPid);
++            // Code Work patch: same guard as the ConPTY branch above.
++            if (!Array.isArray(processList)) return;
+             processList.forEach(function (pid) {
+                 try {
+                     process.kill(pid);
