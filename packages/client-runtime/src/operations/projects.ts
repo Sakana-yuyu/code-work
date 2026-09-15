@@ -18,6 +18,7 @@ import {
   findProjectByPath,
   inferProjectTitleFromPath,
   isExplicitRelativeProjectPath,
+  isWindowsPlatform,
   isUnsupportedWindowsProjectPath,
   resolveProjectPathForDispatch,
 } from "../state/projects.ts";
@@ -190,9 +191,16 @@ export function buildAddProjectRemoteSourceReadiness(
   return readiness;
 }
 
-export function getAddProjectInitialQuery(baseDirectory: string | null | undefined): string {
+export function getAddProjectInitialQuery(
+  baseDirectory: string | null | undefined,
+  platform = "",
+): string {
   const trimmed = baseDirectory?.trim() ?? "";
-  return trimmed.length === 0 ? "~/" : ensureBrowseDirectoryPath(trimmed);
+  return trimmed.length === 0
+    ? isWindowsPlatform(platform)
+      ? "C:\\"
+      : "~/"
+    : ensureBrowseDirectoryPath(trimmed);
 }
 
 /**
@@ -263,6 +271,21 @@ export function getCloneDestinationBrowsePath(input: {
   return selectedDirectoryMatches
     ? selectedDirectoryPath
     : getCloneDestinationPath(selectedDirectoryPath, input.cloneDirectoryName);
+}
+
+export function getCloneDestinationForPickedFolder(
+  folderPath: string,
+  cloneDirectoryName: string,
+  caseSensitive: boolean,
+): string {
+  const trimmedPath = folderPath.trim();
+  if (cloneDirectoryName.length === 0) return trimmedPath;
+  const withoutTrailingSeparator = trimmedPath.replace(/[\\/]+$/, "");
+  const selectedDirectoryName = withoutTrailingSeparator.split(/[\\/]/).at(-1) ?? "";
+  const matches = caseSensitive
+    ? selectedDirectoryName === cloneDirectoryName
+    : selectedDirectoryName.toLowerCase() === cloneDirectoryName.toLowerCase();
+  return matches ? trimmedPath : getCloneDestinationPath(trimmedPath, cloneDirectoryName);
 }
 
 export function resolveAddProjectPath(input: {

@@ -3,7 +3,9 @@
 import { scopeProjectRef, scopeThreadRef } from "@codework/client-runtime/environment";
 import {
   canCreateProjectInEnvironment,
+  getAddProjectInitialQuery,
   getCloneDestinationBrowsePath,
+  getCloneDestinationForPickedFolder,
   getCloneDestinationPath,
   getCloneDirectoryName,
   getDefaultCloneUrl,
@@ -83,7 +85,6 @@ import { useThreadSearch } from "../state/queries";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
   appendBrowsePathSegment,
-  ensureBrowseDirectoryPath,
   findProjectByPath,
   getBrowseDirectoryPath,
   hasTrailingPathSeparator,
@@ -129,8 +130,10 @@ import {
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
   ITEM_ICON_CLASS,
+  pickedFolderAction,
   RECENT_THREAD_LIMIT,
   reduceCommandPaletteUiState,
+  resolveEnvironmentBrowsePlatform,
   type SearchOverlayMode,
 } from "./CommandPalette.logic";
 import { orderItemsByPreferredIds, sortLogicalProjectsForSidebar } from "./Sidebar.logic";
@@ -184,19 +187,6 @@ function projectFavicon(project: Project) {
       className={ITEM_ICON_CLASS}
     />
   );
-}
-
-function getEnvironmentBrowsePlatform(os: string | null | undefined): string {
-  if (os === "windows") {
-    return "Win32";
-  }
-  if (os === "darwin") {
-    return "MacIntel";
-  }
-  if (os === "linux") {
-    return "Linux";
-  }
-  return typeof navigator === "undefined" ? "" : navigator.platform;
 }
 
 interface AddProjectEnvironmentOption {
@@ -651,6 +641,7 @@ function OpenCommandPaletteDialog(props: {
   );
   const [isPickingProjectFolder, setIsPickingProjectFolder] = useState(false);
   const [addProjectCloneFlow, setAddProjectCloneFlow] = useState<AddProjectCloneFlow | null>(null);
+  const cloneNativePickerOpenedRef = useRef(false);
   const [isRemoteProjectLookingUp, setIsRemoteProjectLookingUp] = useState(false);
   const [isRemoteProjectCloning, setIsRemoteProjectCloning] = useState(false);
   const projectGroupingSettings = useMemo(
@@ -837,8 +828,10 @@ function OpenCommandPaletteDialog(props: {
           input: {},
         }),
   );
-  const browseEnvironmentPlatform = getEnvironmentBrowsePlatform(
+  const browseEnvironmentPlatform = resolveEnvironmentBrowsePlatform(
     browseEnvironment?.serverConfig?.environment.platform.os,
+    typeof navigator === "undefined" ? "" : navigator.platform,
+    browseEnvironmentId === primaryEnvironmentId,
   );
   const isRemoteProjectCloneFlow = addProjectCloneFlow !== null;
   const isRemoteProjectRepositoryStep = addProjectCloneFlow?.step === "repository";
@@ -866,12 +859,14 @@ function OpenCommandPaletteDialog(props: {
       );
       const environmentSettings = environment?.serverConfig?.settings ?? null;
       const baseDirectory = environmentSettings?.addProjectBaseDirectory?.trim() ?? "";
-      if (baseDirectory.length === 0) {
-        return "~/";
-      }
-      return ensureBrowseDirectoryPath(baseDirectory);
+      const environmentPlatform = resolveEnvironmentBrowsePlatform(
+        environment?.serverConfig?.environment.platform.os,
+        typeof navigator === "undefined" ? "" : navigator.platform,
+        environmentId === primaryEnvironmentId,
+      );
+      return getAddProjectInitialQuery(baseDirectory, environmentPlatform);
     },
-    [environments],
+    [environments, primaryEnvironmentId],
   );
 
   const projectCwdById = useMemo(
@@ -2415,12 +2410,32 @@ function OpenCommandPaletteDialog(props: {
         );
         return;
       }
+      if (pickedFolderAction(addProjectCloneFlow?.step) === "clone") {
+        setHighlightedItemValue(null);
+        setQuery(
+          getCloneDestinationForPickedFolder(selection.linuxPath, pinnedCloneDirectoryName, true),
+        );
+        setBrowseGeneration((generation) => generation + 1);
+        return;
+      }
       await handleAddProjectForEnvironment({
         environmentId: selection.environmentId,
         rawCwd: selection.linuxPath,
         platform: "Linux",
         currentProjectCwd: null,
       });
+      return;
+    }
+    if (pickedFolderAction(addProjectCloneFlow?.step) === "clone") {
+      setHighlightedItemValue(null);
+      setQuery(
+        getCloneDestinationForPickedFolder(
+          pickedPath,
+          pinnedCloneDirectoryName,
+          !isWindowsPlatform(browseEnvironmentPlatform),
+        ),
+      );
+      setBrowseGeneration((generation) => generation + 1);
       return;
     }
     await handleAddProject(pickedPath);
@@ -2435,7 +2450,31 @@ function OpenCommandPaletteDialog(props: {
     handleAddProject,
     handleAddProjectForEnvironment,
     isPickingProjectFolder,
+    pinnedCloneDirectoryName,
+    addProjectCloneFlow?.step,
     primaryEnvironmentId,
+  ]);
+
+  useEffect(() => {
+    if (addProjectCloneFlow?.step !== "confirm") {
+      cloneNativePickerOpenedRef.current = false;
+      return;
+    }
+    if (
+      cloneNativePickerOpenedRef.current ||
+      !isWindowsPlatform(browseEnvironmentPlatform) ||
+      !canOpenProjectFromFileManager
+    ) {
+      return;
+    }
+
+    cloneNativePickerOpenedRef.current = true;
+    void handleOpenProjectFromFileManager();
+  }, [
+    addProjectCloneFlow?.step,
+    browseEnvironmentPlatform,
+    canOpenProjectFromFileManager,
+    handleOpenProjectFromFileManager,
   ]);
 
   const inputAccessory =
@@ -2538,16 +2577,19 @@ function OpenCommandPaletteDialog(props: {
         ? t("commandPalette.select")
         : undefined;
 
-  const footerTrailing = canOpenProjectFromFileManager ? (
-    <CommandFooterAction
-      disabled={isPickingProjectFolder}
-      onClick={() => {
-        void handleOpenProjectFromFileManager();
-      }}
-    >
-      {t("commandPalette.openInManager", { manager: fileManagerName })}
-    </CommandFooterAction>
-  ) : null;
+  const footerTrailing =
+    canOpenProjectFromFileManager && addProjectCloneFlow?.step !== "repository" ? (
+      <CommandFooterAction
+        disabled={isPickingProjectFolder}
+        onClick={() => {
+          void handleOpenProjectFromFileManager();
+        }}
+      >
+        {addProjectCloneFlow?.step === "confirm"
+          ? t("commandPalette.selectWhereToClone")
+          : t("commandPalette.openInManager", { manager: fileManagerName })}
+      </CommandFooterAction>
+    ) : null;
 
   return (
     <CommandPaletteContent

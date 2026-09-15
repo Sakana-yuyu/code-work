@@ -30,6 +30,21 @@ export function browseInputEndPaddingClass(input: {
   return "*:data-[slot=autocomplete-input]:pe-24!";
 }
 
+export function pickedFolderAction(step: "repository" | "confirm" | undefined): "add" | "clone" {
+  return step === "confirm" ? "clone" : "add";
+}
+
+export function resolveEnvironmentBrowsePlatform(
+  os: "windows" | "darwin" | "linux" | "unknown" | null | undefined,
+  hostPlatform: string,
+  preferHostPlatform: boolean,
+): string {
+  if (os === "windows") return "Win32";
+  if (os === "darwin") return "MacIntel";
+  if (os === "linux") return "Linux";
+  return preferHostPlatform ? hostPlatform : "";
+}
+
 /**
  * The global search overlay hosts three mutually exclusive surfaces: the
  * command palette (⌘K), the project file picker (⌘P), and project content

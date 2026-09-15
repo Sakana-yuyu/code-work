@@ -9,7 +9,9 @@ import {
   enumerateCommandPaletteItems,
   filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
+  pickedFolderAction,
   reduceCommandPaletteUiState,
+  resolveEnvironmentBrowsePlatform,
   type CommandPaletteGroup,
 } from "./CommandPalette.logic";
 
@@ -39,6 +41,22 @@ describe("browseInputEndPaddingClass", () => {
         hasHighlightedBrowseItem: false,
       }),
     ).toContain("pe-24");
+  });
+});
+
+describe("pickedFolderAction", () => {
+  it("keeps a native folder pick inside the clone flow", () => {
+    expect(pickedFolderAction("confirm")).toBe("clone");
+    expect(pickedFolderAction("repository")).toBe("add");
+    expect(pickedFolderAction(undefined)).toBe("add");
+  });
+});
+
+describe("resolveEnvironmentBrowsePlatform", () => {
+  it("uses the local desktop platform only when the target environment has no OS", () => {
+    expect(resolveEnvironmentBrowsePlatform(undefined, "Win32", true)).toBe("Win32");
+    expect(resolveEnvironmentBrowsePlatform("linux", "Win32", true)).toBe("Linux");
+    expect(resolveEnvironmentBrowsePlatform("unknown", "Win32", false)).toBe("");
   });
 });
 

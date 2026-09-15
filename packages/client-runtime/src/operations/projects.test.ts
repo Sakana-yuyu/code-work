@@ -14,6 +14,7 @@ import {
   findExistingAddProject,
   getAddProjectInitialQuery,
   getCloneDestinationBrowsePath,
+  getCloneDestinationForPickedFolder,
   getCloneDestinationPath,
   getCloneDirectoryName,
   getDefaultCloneUrl,
@@ -35,6 +36,7 @@ describe("add project shared logic", () => {
 
   it("resolves initial browse paths from settings", () => {
     expect(getAddProjectInitialQuery("")).toBe("~/");
+    expect(getAddProjectInitialQuery("", "Win32")).toBe("C:\\");
     expect(getAddProjectInitialQuery("/work")).toBe("/work/");
     expect(getAddProjectInitialQuery("C:\\work")).toBe("C:\\work\\");
   });
@@ -150,6 +152,15 @@ describe("add project shared logic", () => {
         caseSensitive: false,
       }),
     ).toBe("C:\\Projects\\Repo\\");
+  });
+
+  it("does not duplicate the repository folder selected by a native picker", () => {
+    expect(
+      getCloneDestinationForPickedFolder("C:\\Projects\\CyberStrikeAI", "CyberStrikeAI", false),
+    ).toBe("C:\\Projects\\CyberStrikeAI");
+    expect(getCloneDestinationForPickedFolder("C:\\Projects", "CyberStrikeAI", false)).toBe(
+      "C:\\Projects\\CyberStrikeAI",
+    );
   });
 
   it("rejects unsupported windows paths on non-windows environments", () => {
