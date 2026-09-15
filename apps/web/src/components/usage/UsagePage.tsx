@@ -77,8 +77,11 @@ export function UsagePage() {
   // The activity calendar reaches further than the selectable windows: one
   // year-long query feeds the lifetime-style strip and the heatmap. Atoms are
   // keyed per window, so this query is shared with nothing else on the page.
+  // It fires only after the primary window settles: the year-long scan is the
+  // most expensive query here and must not compete with first paint.
   const activityWindow = useMemo(() => makeWindow(ACTIVITY_WINDOW_DAYS), []);
-  const activity = useUsage(activityWindow);
+  const primarySettled = !isPending && !isPartial;
+  const activity = useUsage(activityWindow, { enabled: primarySettled });
   // Plan balances come from every connected environment, not just the
   // primary one: worktree servers resolve the same BYOK config, so the merge
   // claims each (instance, adapter) pair once.
@@ -104,7 +107,7 @@ export function UsagePage() {
   const activityUnavailable =
     activity.environments.length > 0 &&
     activity.environments.every((entry) => entry.error !== null);
-  const activitySettling = activity.isPending || activity.isPartial;
+  const activitySettling = activity.isDeferred || activity.isPending || activity.isPartial;
 
   // Hold the content until every environment is terminal. Rendering merged
   // totals while devices are still answering makes every number on the page
@@ -346,11 +349,13 @@ export function UsagePage() {
         <ScrollArea className="min-h-0 flex-1">
           <WorkspacePageContainer width="wide">
             {view === "plan" ? (
-              activitySettling ? (
-                <ActivitySkeleton />
-              ) : (
-                <>
-                  <UsageSubscriptionPanel />
+              <>
+                {/* 订阅面板不依赖全年活动查询，立即渲染；只有计划视图的
+                    统计需要等活动扫描收尾。 */}
+                <UsageSubscriptionPanel />
+                {activitySettling ? (
+                  <ActivitySkeleton />
+                ) : (
                   <UsagePlanView
                     providers={activity.merged.providers}
                     daily={activity.merged.daily}
@@ -361,8 +366,8 @@ export function UsagePage() {
                     byokPending={byok.isPending}
                     onQueryBalance={byok.queryBalance}
                   />
-                </>
-              )
+                )}
+              </>
             ) : view === "tasks" ? (
               <div className="flex min-w-0 flex-col gap-6">
                 <TaskGraphPanel />

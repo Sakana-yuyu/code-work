@@ -41,7 +41,17 @@ export function makeDayFormatter(timeZone: string): (timestampMs: number) => str
       day: "2-digit",
     });
   }
-  return (timestampMs) => format.format(new Date(timestampMs));
+  // 全年窗口动辄十万级记录，逐条 Intl 格式化是纯 CPU 浪费；真实时区
+  // 边界全部对齐到分钟，同一分钟桶内的记录必然同日，按分钟缓存即可。
+  const dayByMinute = new Map<number, string>();
+  return (timestampMs) => {
+    const minute = Math.floor(timestampMs / 60_000);
+    const cached = dayByMinute.get(minute);
+    if (cached !== undefined) return cached;
+    const day = format.format(new Date(timestampMs));
+    dayByMinute.set(minute, day);
+    return day;
+  };
 }
 
 const HOUR_MS = 60 * 60 * 1000;

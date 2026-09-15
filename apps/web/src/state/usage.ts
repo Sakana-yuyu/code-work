@@ -68,10 +68,26 @@ export interface UsageView {
    * improve by waiting on them, so they must not read as "still reporting".
    */
   readonly isPartial: boolean;
+  /** 查询尚未发起（enabled=false）；调用方应继续展示骨架而不是空数据。 */
+  readonly isDeferred: boolean;
   readonly refresh: () => void;
 }
 
-export function useUsage(input: UsageSummaryInput): UsageView {
+const deferredUsageAtom = Atom.make((): readonly EnvironmentUsageStatus[] => []);
+const emptyUsageView = (refresh: () => void): UsageView => ({
+  merged: mergeUsage([], USAGE_CONTRACT_VERSION),
+  environments: [],
+  isPending: false,
+  isPartial: false,
+  isDeferred: true,
+  refresh,
+});
+
+export function useUsage(
+  input: UsageSummaryInput,
+  options?: { readonly enabled?: boolean },
+): UsageView {
+  const enabled = options?.enabled !== false;
   const windowKey = useMemo(
     () =>
       JSON.stringify({
@@ -91,7 +107,7 @@ export function useUsage(input: UsageSummaryInput): UsageView {
       input.untilTime,
     ],
   );
-  const atom = usageByWindowAtom(windowKey);
+  const atom = enabled ? usageByWindowAtom(windowKey) : deferredUsageAtom;
   const environments = useAtomValue(atom);
 
   // Refreshing only the derived atom would re-read the per-environment SWR
@@ -126,11 +142,16 @@ export function useUsage(input: UsageSummaryInput): UsageView {
     (environment) => environment.summary === null && environment.error === null,
   ).length;
 
+  if (!enabled) {
+    return emptyUsageView(refresh);
+  }
+
   return {
     merged,
     environments,
     isPending: answeredCount === 0 && stillReporting > 0,
     isPartial: answeredCount > 0 && stillReporting > 0,
+    isDeferred: false,
     refresh,
   };
 }

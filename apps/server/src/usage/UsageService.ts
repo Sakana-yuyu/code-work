@@ -68,8 +68,26 @@ const RATES_TTL_MS = 24 * 60 * 60 * 1000;
 const MTIME_SLACK_MS = 36 * 60 * 60 * 1000;
 const MAX_HOURLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/** Longest window the UI offers, plus slack. Older entries are pruned. */
-const CACHE_RETENTION_DAYS = 90;
+/**
+ * Longest window the UI offers (the 365-day activity query), plus slack.
+ * Older entries are pruned. This must be ≥ the longest UI window: a shorter
+ * retention re-parses the difference on every query and rewrites the cache
+ * each time (the 90-day value once did exactly that for the activity tab).
+ */
+const CACHE_RETENTION_DAYS = 367;
+
+/**
+ * Completed summaries are reused for a short window. Matches the client
+ * query atom's stale time, so repeated page visits stop rescanning the
+ * transcript tree while staying no staler than what the client accepts.
+ */
+const SUMMARY_CACHE_TTL_MS = 60_000;
+/**
+ * 全年活动窗口的聚合结果缓存更久：热力图/累计统计不需要分钟级新鲜度，
+ * 而它的重算成本（全量遍历 + 十万级记录聚合）远高于短窗口。
+ */
+const ACTIVITY_SUMMARY_CACHE_TTL_MS = 10 * 60_000;
+const SUMMARY_CACHE_MAX_ENTRIES = 16;
 
 /** On-disk shape of the rate snapshot. */
 const RatesCacheFile = Schema.Struct({
@@ -129,6 +147,15 @@ export const make = Effect.gen(function* () {
 
   const fileCache: ScanCache = new Map();
   let cacheDirty = false;
+  // 30 天与 365 天窗口并发扫描会同时冷解析同一文件；按 (文件, 指纹) 单飞，
+  // 后到的窗口复用首个解析结果。条目在解析完成时自删，后续调用走 fileCache。
+  const fileParseFlights = new Map<string, Effect.Effect<readonly UsageRecord[]>>();
+  // 结果级缓存：键为规范化查询输入。delete-then-set 让同键刷新总是排在
+  // Map 尾部，容量超限时从头部逐出最久未访问的窗口。
+  const summaryCache = new Map<
+    string,
+    { readonly expiresAtMs: number; readonly summary: UsageSummary }
+  >();
 
   const ratesCachePath = path.join(config.stateDir, "usage-model-rates.json");
   const scanCachePath = path.join(config.stateDir, "usage-scan-cache.json");
@@ -292,17 +319,28 @@ export const make = Effect.gen(function* () {
         return cached.records;
       }
 
-      const parsed = yield* Effect.promise(() => readTranscriptRecords(filePath, provider));
-      // A read failure is not an empty transcript: caching it under this
-      // (size, mtime) would silently drop the file's usage until it changes.
-      if (parsed === null) return [];
-      // Stored already de-duplicated within the file, which is 99% of all
-      // duplicates. The aggregator still runs the cross-file dedupe pass.
-      const records = dedupeWithinFile(parsed);
-
-      fileCache.set(filePath, { size, mtimeMs, provider, records });
-      cacheDirty = true;
-      return records;
+      const flightKey = `${provider} ${filePath} ${size} ${mtimeMs}`;
+      let flight = fileParseFlights.get(flightKey);
+      if (flight === undefined) {
+        flight = yield* Effect.cached(
+          Effect.gen(function* () {
+            const parsed = yield* Effect.promise(() => readTranscriptRecords(filePath, provider));
+            // A read failure is not an empty transcript: caching it under this
+            // (size, mtime) would silently drop the file's usage until it changes.
+            const records = parsed === null ? [] : dedupeWithinFile(parsed);
+            if (parsed !== null) {
+              // Stored already de-duplicated within the file, which is 99% of all
+              // duplicates. The aggregator still runs the cross-file dedupe pass.
+              fileCache.set(filePath, { size, mtimeMs, provider, records });
+              cacheDirty = true;
+            }
+            fileParseFlights.delete(flightKey);
+            return records;
+          }),
+        );
+        fileParseFlights.set(flightKey, flight);
+      }
+      return yield* flight;
     });
 
   const readSummary = Effect.fn("UsageService.readSummary")(function* (input: UsageSummaryInput) {
@@ -459,7 +497,42 @@ export const make = Effect.gen(function* () {
     } satisfies UsageSummary;
   });
 
-  return { readSummary } as const;
+  return {
+    readSummary: Effect.fn("UsageService.readSummaryCached")(function* (input) {
+      // NUL 分隔拼接：各字段（日期、IANA 时区、时间戳）都不含 NUL，
+      // 无需 JSON 序列化即可得到无歧义的缓存键。
+      const key = [
+        input.sinceDay,
+        input.untilDay,
+        input.timeZone,
+        input.resolution ?? "day",
+        input.sinceTime ?? "",
+        input.untilTime ?? "",
+      ].join("\u0000");
+      const now = yield* Clock.currentTimeMillis;
+      const hit = summaryCache.get(key);
+      if (hit !== undefined && hit.expiresAtMs > now) return hit.summary;
+
+      // 长窗口（活动日历）按更长的 TTL 复用结果，短窗口保持分钟级新鲜。
+      const windowDays = Math.round(
+        (Date.parse(input.untilDay) - Date.parse(input.sinceDay)) / 86_400_000,
+      );
+      const ttlMs =
+        Number.isFinite(windowDays) && windowDays > 180
+          ? ACTIVITY_SUMMARY_CACHE_TTL_MS
+          : SUMMARY_CACHE_TTL_MS;
+      const summary = yield* readSummary(input);
+      const settledAt = yield* Clock.currentTimeMillis;
+      summaryCache.delete(key);
+      summaryCache.set(key, { expiresAtMs: settledAt + ttlMs, summary });
+      while (summaryCache.size > SUMMARY_CACHE_MAX_ENTRIES) {
+        const oldest = summaryCache.keys().next();
+        if (oldest.done === true) break;
+        summaryCache.delete(oldest.value);
+      }
+      return summary;
+    }),
+  } as const;
 });
 
 export const layer = Layer.effect(UsageService, make);
