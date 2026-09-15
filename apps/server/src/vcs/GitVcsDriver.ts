@@ -748,10 +748,28 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           });
         }
 
+        // git 对「显式点名被 .gitignore 忽略路径」的 exclude pathspec 会直接
+        // 报错退出（Code Work 项目的 .codework 通常被忽略且必然存在），所以
+        // 先全量 add 进临时索引，再用 rm --cached 剔除画布产物；--cached 只
+        // 改临时索引，不触碰工作区。
         yield* execute({
           operation,
           cwd: input.cwd,
-          args: ["add", "-A", "--", ".", CODEWORK_CANVAS_EXCLUDE_PATHSPEC],
+          args: ["add", "-A", "--", "."],
+          env: commitEnv,
+        });
+        yield* execute({
+          operation,
+          cwd: input.cwd,
+          args: [
+            "rm",
+            "-r",
+            "--cached",
+            "--ignore-unmatch",
+            "-q",
+            "--",
+            CODEWORK_CANVAS_ARTIFACT_DIRECTORY,
+          ],
           env: commitEnv,
         });
 

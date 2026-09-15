@@ -114,6 +114,35 @@ it.layer(TestLayer)("CheckpointStore.layer", (it) => {
     );
   });
 
+  describe("captureCheckpoint", () => {
+    it.effect("captures a checkpoint even when the canvas directory is gitignored", () =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        // 模拟 Code Work 项目布局：.codework/canvases 真实存在且被 .gitignore
+        // 忽略。git add 的 exclude pathspec 一旦显式命中被忽略路径就会整体
+        // 失败，捕获必须仍然成功且不把画布产物收进 checkpoint。
+        yield* writeTextFile(NodePath.join(tmp, ".gitignore"), ".codework/\n");
+        const fileSystem = yield* FileSystem.FileSystem;
+        yield* fileSystem.makeDirectory(NodePath.join(tmp, ".codework", "canvases"), {
+          recursive: true,
+        });
+        yield* writeTextFile(NodePath.join(tmp, ".codework", "canvases", "board.md"), "# board\n");
+        yield* git(tmp, ["add", ".gitignore"]);
+        yield* git(tmp, ["commit", "-m", "ignore internal artifacts"]);
+
+        const checkpointStore = yield* CheckpointStore.CheckpointStore;
+        const threadId = ThreadId.make("thread-checkpoint-store-ignored-canvas");
+        const checkpointRef = checkpointRefForThreadTurn(threadId, 0);
+        yield* checkpointStore.captureCheckpoint({ cwd: tmp, checkpointRef });
+
+        const tracked = yield* git(tmp, ["ls-tree", "-r", "--name-only", checkpointRef]);
+        expect(tracked).toContain("README.md");
+        expect(tracked).not.toContain(".codework/canvases/board.md");
+      }),
+    );
+  });
+
   describe("diffCheckpoints", () => {
     it.effect("returns full oversized checkpoint diffs without truncation", () =>
       Effect.gen(function* () {
