@@ -27,7 +27,11 @@ type ConnectionMode = "native" | "api" | "gateway";
 const supportsApiConnection = (driver: string): boolean =>
   driver === "codex" || driver === "claudeAgent" || driver === "kimi";
 const supportsGatewayConnection = (driver: string): boolean =>
-  driver === "codex" || driver === "claudeAgent" || driver === "grok" || driver === "opencode";
+  driver === "codex" ||
+  driver === "claudeAgent" ||
+  driver === "grok" ||
+  driver === "opencode" ||
+  driver === "kimi";
 const apiNames = (driver: string, bearer = false) =>
   driver === "codex"
     ? { url: "CODEWORK_CODEX_BASE_URL", key: "CODEWORK_CODEX_API_KEY" }

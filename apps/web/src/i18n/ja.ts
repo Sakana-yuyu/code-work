@@ -1977,6 +1977,9 @@ export const ja: Record<string, string> = {
   threadArchivedButNavigationFailed: "スレッドはアーカイブされましたが、移動に失敗しました",
   threadIdCopied: "スレッド ID をコピーしました",
   threadSearchResults: "スレッドの検索結果",
+  threadRunningAgentLockedDescription:
+    "この会話は実行中のため、エージェントを切り替えられません。現在のターンが終わってからもう一度お試しください。",
+  threadRunningAgentLockedTitle: "エージェントが実行中",
   threadTitle: "スレッドタイトル",
   threadTitleCannotBeEmpty: "スレッドタイトルは空にできません",
   time: "時刻",
@@ -2089,6 +2092,14 @@ export const ja: Record<string, string> = {
   "chat.access": "アクセス",
   "chat.auto": "自動",
   "chat.autoAcceptEdits": "編集を自動承認",
+  "chat.cacheHitRate": "キャッシュヒット率",
+  "chat.rounds": "ラウンド",
+  "chat.steps": "ステップ",
+  "chat.llmDuration": "LLM",
+  "chat.toolDuration": "ツール呼び出し",
+  "chat.inputTokens": "入力",
+  "chat.outputTokens": "出力",
+  reasoningSummary: "思考の要約",
   "chat.chatMode": "チャット",
   "chat.dismissError": "エラーを閉じる",
   "chat.fullAccess": "フルアクセス",
@@ -2628,7 +2639,8 @@ export const ja: Record<string, string> = {
   "byokAdapters.customHeadersClear": "保存済みのカスタムヘッダーを削除",
   "byokAdapters.relayCustomHeadersHint":
     "リレー内の全モデルに適用されます。空欄の場合は各モデルの保存済みヘッダーを保持します。",
-  "byokAdapters.contextWindowDescription": "モデル検出・一括照合時にカタログから自動補完されます。",
+  "byokAdapters.contextWindowDescription":
+    "モデル検出・一括照合・手動入力時にカタログから自動補完されます。",
   "byokAdapters.maxOutputTokens": "最大出力（トークン）",
   "byokAdapters.maxOutputPlaceholder": "任意",
   "byokAdapters.maxOutputDescription":
@@ -2841,6 +2853,8 @@ export const ja: Record<string, string> = {
   providerStatusCliNotFound: "PATH 上に CLI が検出されません。",
   providerStatusClaudeCliMissing:
     "Code Work のサーバー環境で Claude Agent CLI（`claude`）が見つかりませんでした。設定されたバイナリパスを確認するか、PATH を更新した後に Code Work を再起動してください。",
+  providerStatusCodexCliDamaged:
+    "Codex CLI のインストールが不完全または破損しているようです。修復してから、状態を更新してください。",
   providerStatusCodexCliMissing:
     "Code Work のサーバー環境で Codex CLI（`codex`）が見つかりませんでした。設定されたバイナリパスを確認するか、PATH を更新した後に Code Work を再起動してください。",
   providerStatusCliDamaged:
@@ -4314,6 +4328,9 @@ export const ja: Record<string, string> = {
   addToChat: "チャットに追加",
   agentActivityDisabled: "エージェントアクティビティを無効にしました",
   agentActivityEnabled: "エージェントアクティビティを有効にしました",
+  agentSwitchLockedForThreadDescription:
+    "エージェントごとの会話コンテキストは共有されず、途中で切り替えるとこれまでの経過が失われます。他のエージェントを使うには新しい会話を開始してください。",
+  agentSwitchLockedForThreadTitle: "この会話は現在のエージェントに固定されています",
   allChecksHavePassed: "すべてのチェックに合格しました",
   alwaysAllowThisSession: "このセッションでは常に許可",
   anErrorOccurredWhileCopying: "コピー中にエラーが発生しました。",

@@ -45,17 +45,18 @@ describe("供应商连接设置", () => {
     }
   });
 
-  it("Kimi 可以识别 API 连接，但不会把 Kimi 或 Antigravity 误报为共享线路", () => {
+  it("Kimi 识别 API 与共享线路两种连接，Antigravity 仍仅限官方登录", () => {
     const kimi = {
       driver: ProviderDriverKind.make("kimi"),
       config: { routeThroughByok: true },
       environment: [{ name: "KIMI_API_KEY", value: "saved", sensitive: true }],
     } as ProviderInstanceConfig;
-    expect(providerConnectionMode(kimi)).toBe("api");
-    expect(withProviderConnection(kimi, "gateway", "", "").config).toMatchObject({
-      routeThroughByok: false,
-    });
-    expect(withProviderConnection(kimi, "gateway", "", "").environment).toEqual([]);
+    expect(providerConnectionMode(kimi)).toBe("gateway");
+    // 网关模式接管端点与密钥：API 变量被清空，开关保持开启。
+    const routed = withProviderConnection(kimi, "gateway", "", "");
+    expect(routed.config).toMatchObject({ routeThroughByok: true });
+    expect(routed.environment).toEqual([]);
+    expect(providerConnectionMode(withProviderConnection(kimi, "native", "", ""))).toBe("native");
 
     const antigravity = {
       driver: ProviderDriverKind.make("antigravity"),
@@ -92,18 +93,23 @@ describe("供应商连接设置", () => {
     expect(withProviderConnection(kimi, "native", "", "").environment).toEqual([]);
   });
 
-  it("Kimi 和 Antigravity 不显示共享线路状态", () => {
-    for (const driver of ["kimi", "antigravity"]) {
-      const instance = {
-        driver: ProviderDriverKind.make(driver),
-        config: { routeThroughByok: true },
-        environment: [],
-      } as ProviderInstanceConfig;
-      expect(providerConnectionMode(instance)).toBe("native");
-      expect(withProviderConnection(instance, "gateway", "", "").config).toMatchObject({
-        routeThroughByok: false,
-      });
-    }
+  it("Kimi 加入共享线路支持，Antigravity 不显示共享线路状态", () => {
+    const kimi = {
+      driver: ProviderDriverKind.make("kimi"),
+      config: { routeThroughByok: true },
+      environment: [],
+    } as ProviderInstanceConfig;
+    expect(providerConnectionMode(kimi)).toBe("gateway");
+
+    const antigravity = {
+      driver: ProviderDriverKind.make("antigravity"),
+      config: { routeThroughByok: true },
+      environment: [],
+    } as ProviderInstanceConfig;
+    expect(providerConnectionMode(antigravity)).toBe("native");
+    expect(withProviderConnection(antigravity, "gateway", "", "").config).toMatchObject({
+      routeThroughByok: false,
+    });
   });
 
   it("保留已脱敏密钥和其他设置，显式切换时移除冲突覆盖", () => {

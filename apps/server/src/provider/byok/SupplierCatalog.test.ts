@@ -51,6 +51,18 @@ describe("SupplierCatalog", () => {
     expect(supplierTemplate("zhipu_glm").models).toEqual(["glm-5.1"]);
   });
 
+  it("declares endpoint model catalogs for the zhipu anthropic templates", () => {
+    // anthropic 类型没有显式目录 URL 时会推断成 manual_only，发现模型会被门禁拦下。
+    expect(supplierTemplate("zhipu_glm").modelCatalog).toMatchObject({
+      status: "openai_models",
+      urls: ["https://open.bigmodel.cn/api/anthropic/v1/models"],
+    });
+    expect(supplierTemplate("zhipu_glm_en").modelCatalog).toMatchObject({
+      status: "openai_models",
+      urls: ["https://api.z.ai/api/anthropic/v1/models"],
+    });
+  });
+
   it("keeps catalog suppliers sorted after the core templates", () => {
     const labels = SUPPLIER_TEMPLATES.slice(4).map(({ label }) => label);
     const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });

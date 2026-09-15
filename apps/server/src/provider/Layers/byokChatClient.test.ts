@@ -583,6 +583,31 @@ describe("byokChatClient multimodal parts", () => {
 });
 
 describe("byokChatClient existing protocols", () => {
+  it("OpenRouter 风格的 delta.reasoning 也解析为思考流", async () => {
+    const { client } = makeClient(
+      [
+        'data: {"choices":[{"delta":{"reasoning":"思考"}}]}',
+        "",
+        'data: {"choices":[{"delta":{"content":"答案"},"finish_reason":"stop"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    );
+    const events = await runEvents(client, {
+      protocol: "openai",
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: "k",
+      modelId: "openai/gpt-6",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(events).toEqual([
+      { type: "reasoning", text: "思考" },
+      { type: "text", text: "答案" },
+      { type: "completed", finishReason: "stop" },
+    ]);
+  });
+
   it("still parses openai deltas", async () => {
     const { client } = makeClient(
       [
@@ -629,6 +654,192 @@ describe("byokChatClient existing protocols", () => {
       { type: "text", text: "yo" },
       { type: "completed", finishReason: "end_turn" },
     ]);
+  });
+
+  it("捕获 anthropic 思考块的 signature_delta 事件", async () => {
+    const { client } = makeClient(
+      [
+        'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"推理中"}}',
+        "",
+        'data: {"type":"content_block_delta","delta":{"type":"signature_delta","signature":"sig-1"}}',
+        "",
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"答案"}}',
+        "",
+        'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}',
+        "",
+        'data: {"type":"message_stop"}',
+        "",
+      ].join("\n"),
+    );
+    const events = await runEvents(client, {
+      protocol: "anthropic",
+      baseURL: "https://open.bigmodel.cn/api/anthropic",
+      apiKey: "k",
+      modelId: "glm-5.1",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(events).toEqual([
+      { type: "reasoning", text: "推理中" },
+      { type: "reasoning_signature", signature: "sig-1" },
+      { type: "text", text: "答案" },
+      { type: "completed", finishReason: "end_turn" },
+    ]);
+  });
+
+  it("anthropic 回放时 thinking 块带签名且位于 assistant 内容首块", async () => {
+    const { client, captured } = makeClient(
+      'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}\n\ndata: {"type":"message_stop"}\n\n',
+    );
+    await runEvents(client, {
+      protocol: "anthropic",
+      baseURL: "https://open.bigmodel.cn/api/anthropic",
+      apiKey: "k",
+      modelId: "glm-5.1",
+      tools: [
+        {
+          canonicalToolName: "workspace.read_file",
+          description: "Read a text file",
+          parameters: { type: "object" },
+        },
+      ],
+      messages: [
+        { role: "user", content: "read" },
+        {
+          role: "assistant",
+          content: "",
+          reasoningContent: "需要先读文件",
+          reasoningSignature: "sig-1",
+          toolCalls: [
+            {
+              toolCallId: "call-0",
+              canonicalToolName: "workspace.read_file",
+              arguments: { relativePath: "README.md" },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          toolCallId: "call-0",
+          canonicalToolName: "workspace.read_file",
+          content: '{"status":"succeeded"}',
+        },
+        { role: "assistant", content: "done", reasoningContent: "总结" },
+      ],
+    });
+    const body = captured[0]?.body as {
+      messages: Array<{ content: Array<Record<string, unknown>> }>;
+    };
+    expect(body.messages[1]).toMatchObject({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "需要先读文件", signature: "sig-1" },
+        {
+          type: "tool_use",
+          id: "call-0",
+          name: "workspace.read_file",
+          input: { relativePath: "README.md" },
+        },
+      ],
+    });
+    expect(body.messages[3]).toMatchObject({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "总结", signature: "" },
+        { type: "text", text: "done" },
+      ],
+    });
+  });
+
+  it("仅在 assistant 消息上回传非空 reasoning_content，其余角色不带该字段", async () => {
+    const { client, captured } = makeClient(
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+    );
+    await runEvents(client, {
+      protocol: "openai",
+      baseURL: "https://api.deepseek.com/v1",
+      apiKey: "k",
+      modelId: "deepseek-v4-flash",
+      tools: [
+        {
+          canonicalToolName: "workspace.read_file",
+          description: "Read a text file",
+          parameters: { type: "object" },
+        },
+      ],
+      messages: [
+        { role: "user", content: "read" },
+        {
+          role: "assistant",
+          content: "",
+          reasoningContent: "需要先读文件",
+          toolCalls: [
+            {
+              toolCallId: "call-0",
+              canonicalToolName: "workspace.read_file",
+              arguments: { relativePath: "README.md" },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          toolCallId: "call-0",
+          canonicalToolName: "workspace.read_file",
+          content: '{"status":"succeeded"}',
+        },
+        { role: "assistant", content: "done", reasoningContent: "" },
+        { role: "user", content: "again" },
+      ],
+    });
+    const body = captured[0]?.body as { messages: Array<Record<string, unknown>> } | undefined;
+    const messages = body?.messages ?? [];
+    expect(messages[1]).toMatchObject({ reasoning_content: "需要先读文件" });
+    expect(messages[3]).not.toHaveProperty("reasoning_content");
+    expect(messages[0]).not.toHaveProperty("reasoning_content");
+    expect(messages[2]).not.toHaveProperty("reasoning_content");
+  });
+
+  it("仅在 openai 协议上透传非空 reasoning_effort，anthropic 协议不带该字段", async () => {
+    const sse = 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
+    const openai = makeClient(sse);
+    await runEvents(openai.client, {
+      protocol: "openai",
+      baseURL: "https://api.deepseek.com/v1",
+      apiKey: "k",
+      modelId: "deepseek-v4-flash",
+      reasoningEffort: " high ",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect((openai.captured[0]?.body as { reasoning_effort?: string }).reasoning_effort).toBe(
+      "high",
+    );
+
+    const bare = makeClient(sse);
+    await runEvents(bare.client, {
+      protocol: "openai",
+      baseURL: "https://api.deepseek.com/v1",
+      apiKey: "k",
+      modelId: "deepseek-v4-flash",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(bare.captured[0]?.body).not.toHaveProperty("reasoning_effort");
+
+    const anthropic = makeClient(
+      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\ndata: {"type":"message_stop"}\n\n',
+    );
+    await runEvents(anthropic.client, {
+      protocol: "anthropic",
+      baseURL: "https://api.anthropic.com",
+      apiKey: "k",
+      modelId: "claude",
+      reasoningEffort: "high",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(anthropic.captured[0]?.body).not.toHaveProperty("reasoning_effort");
+    // anthropic 协议把档位映射为 adaptive thinking + output_config.effort。
+    expect(anthropic.captured[0]?.body).toMatchObject({
+      thinking: { type: "adaptive" },
+      output_config: { effort: "high" },
+    });
   });
 });
 

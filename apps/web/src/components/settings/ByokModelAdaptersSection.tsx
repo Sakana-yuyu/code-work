@@ -396,6 +396,29 @@ export function draftModelSelectionPatch(
   };
 }
 
+/**
+ * 手动填模型后的目录回填补丁：上下文窗口仍是表单默认 128000 才替换
+ * （新模型需要被目录值抬高，用户显式值不覆盖），最大输出只在留空时补；
+ * 目录未收录时返回空补丁。
+ */
+export function manualModelCapabilitiesPatch(
+  capabilities: {
+    readonly contextWindowTokens?: number | undefined;
+    readonly maxOutputTokens?: number | undefined;
+  },
+  current: { readonly contextWindowTokens: string; readonly maxOutputTokens: string },
+) {
+  return {
+    ...(capabilities.contextWindowTokens !== undefined &&
+    current.contextWindowTokens.trim() === String(DEFAULT_CONTEXT_WINDOW_TOKENS)
+      ? { contextWindowTokens: String(capabilities.contextWindowTokens) }
+      : {}),
+    ...(capabilities.maxOutputTokens !== undefined && current.maxOutputTokens.trim() === ""
+      ? { maxOutputTokens: String(capabilities.maxOutputTokens) }
+      : {}),
+  };
+}
+
 export function filterDiscoveredModels(
   models: ReadonlyArray<ByokDiscoveredModel>,
   query: string,
@@ -754,6 +777,9 @@ export function ByokModelAdaptersSection({
   const discoverDraftCommand = useAtomCommand(byokEnvironment.discoverDraftModels, {
     reportFailure: false,
   });
+  const catalogLookupCommand = useAtomCommand(byokEnvironment.catalogModelLookup, {
+    reportFailure: false,
+  });
   const [discoveringAdapterId, setDiscoveringAdapterId] = useState<string | null>(null);
   const [matchingContextAdapterId, setMatchingContextAdapterId] = useState<string | null>(null);
   const [optimizing, setOptimizing] = useState(false);
@@ -924,14 +950,29 @@ export function ByokModelAdaptersSection({
       return;
     }
     // 手动输入同样走协议推断，避免 claude/gemini 默认落到渠道协议上。
+    const protocol = inferByokProtocol(modelId, form.protocol);
     patchForm({
       modelId,
       displayName: modelId,
-      ...(inferByokProtocol(modelId, form.protocol) !== form.protocol
-        ? { protocol: inferByokProtocol(modelId, form.protocol) }
-        : {}),
+      ...(protocol !== form.protocol ? { protocol } : {}),
     });
     setManualModelDialogOpen(false);
+    void fillManualModelCapabilities(modelId);
+  };
+
+  // 手动填模型没有发现响应可借，按模型 ID 查内置目录补窗口/最大输出；
+  // 表单未改动（默认 128000 / 空）才回填，用户已填的值不覆盖。
+  const fillManualModelCapabilities = async (modelId: string) => {
+    try {
+      const result = await catalogLookupCommand({
+        environmentId: environmentId as never,
+        input: { modelId },
+      });
+      if (!AsyncResult.isSuccess(result)) return;
+      patchForm(manualModelCapabilitiesPatch(result.value, form));
+    } catch {
+      // 目录回填是尽力而为；失败时保留表单原值即可。
+    }
   };
 
   const handleSave = async () => {

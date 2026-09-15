@@ -412,4 +412,109 @@ describe("ByokAdapter", () => {
       );
     });
   }
+
+  it.effect("服务器重启后按 resume 标记原生恢复会话历史", () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const responses = [
+      sse(
+        { choices: [{ delta: { content: "第一轮回答" }, finish_reason: null }] },
+        {
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
+        },
+      ),
+      sse(
+        { choices: [{ delta: { content: "第二轮回答" }, finish_reason: null }] },
+        {
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 210, completion_tokens: 10, total_tokens: 220 },
+        },
+      ),
+    ];
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        if (request.body instanceof HttpBody.Uint8Array) {
+          requests.push(decodeJson(decoder.decode(request.body.body)) as Record<string, unknown>);
+        }
+        const body = responses.shift();
+        if (body === undefined) throw new Error("收到未预期的 BYOK 请求");
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(body, { headers: { "content-type": "text/event-stream" } }),
+        );
+      }),
+    );
+
+    return Effect.gen(function* () {
+      // 第一段：原始会话。turn.completed 即历史已落盘的回执。
+      const adapter1 = yield* makeByokAdapter(settings, { instanceId });
+      const events1 = yield* adapter1.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      const started = yield* adapter1.startSession({
+        threadId,
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      expect(started.resumeCursor).toBe("byok-native-history-v1");
+      yield* adapter1.sendTurn({ threadId, input: "第一问" });
+      yield* Fiber.join(events1);
+
+      // 中间断言：turn.completed 之后历史文件必须已经落盘。
+      const serverConfig = yield* ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const stateFile = `${serverConfig.stateDir}/byok-sessions/byok-test/${encodeURIComponent(String(threadId))}.json`;
+      expect(yield* fileSystem.exists(stateFile)).toBe(true);
+
+      // 第二段：模拟服务器重启——同 stateDir 下的全新 adapter 实例，
+      // ProviderService 会把绑定里的 resumeCursor 透传给 startSession。
+      const adapter2 = yield* makeByokAdapter(settings, { instanceId });
+      const events2 = yield* adapter2.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* adapter2.startSession({
+        threadId,
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+        resumeCursor: "byok-native-history-v1",
+      });
+      yield* adapter2.sendTurn({ threadId, input: "第二问" });
+      const events2Array = Array.from(yield* Fiber.join(events2));
+
+      // 第二个请求携带原生历史，而不是空上下文或文本前缀重放。
+      expect(requests[1]).toMatchObject({
+        messages: [
+          { role: "user", content: "第一问" },
+          { role: "assistant", content: "第一轮回答" },
+          { role: "user", content: "第二问" },
+        ],
+      });
+      const secondMessages = (requests[1]?.messages as Array<{ content?: unknown }>) ?? [];
+      expect(
+        secondMessages.some(
+          (message) =>
+            typeof message.content === "string" && message.content.includes("conversation_history"),
+        ),
+      ).toBe(false);
+      expect(events2Array).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "session.started",
+            payload: expect.objectContaining({ resume: true }),
+          }),
+        ]),
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-test-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(NodeServices.layer),
+    );
+  });
 });

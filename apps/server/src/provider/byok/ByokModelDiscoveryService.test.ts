@@ -169,6 +169,33 @@ const runDraftDiscover = async (
   return { ...result, getSettingsCalls, updateSettingsCalls };
 };
 
+const runCatalogLookup = async (input: { modelId: string }) => {
+  const fetch = asFetch(async (input) => {
+    throw new Error(`Catalog lookup must not reach the network: ${String(input)}`);
+  });
+  // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* make;
+      return yield* service.lookupCatalogModel(input);
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          Layer.succeed(ServerSettings.ServerSettingsService, {
+            start: Effect.void,
+            ready: Effect.void,
+            getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
+            updateSettings: () => Effect.succeed(DEFAULT_SERVER_SETTINGS),
+            streamChanges: Stream.empty,
+            subscribeChanges: Effect.succeed(Stream.empty),
+          }),
+          FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetch))),
+        ),
+      ),
+    ),
+  );
+};
+
 const adapter = (overrides: Partial<Adapter> = {}): Adapter => ({
   id: "adapter-success",
   displayName: "Example model",
@@ -489,5 +516,13 @@ describe("ByokModelDiscoveryService", () => {
     expect(getSettingsCalls).toBe(0);
     expect(updateSettingsCalls).toBe(0);
     expect(JSON.stringify({ first, second })).not.toContain("sk-invalid-endpoint-key");
+  });
+
+  it("looks up built-in catalog capabilities locally for a manually entered model", async () => {
+    const hit = await runCatalogLookup({ modelId: "GLM-5.3-Flash" });
+    const miss = await runCatalogLookup({ modelId: "totally-unknown-model" });
+
+    expect(hit).toEqual({ contextWindowTokens: 1000000, maxOutputTokens: 128000 });
+    expect(miss).toEqual({});
   });
 });

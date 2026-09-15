@@ -49,11 +49,11 @@ const baseInput = {
 
 describe("byokAgentLoopMaxRounds (轮次预算归一化)", () => {
   it("clamps the unclamped PositiveInt the RPC path accepts", () => {
-    expect(byokAgentLoopMaxRounds(undefined)).toBe(8);
+    expect(byokAgentLoopMaxRounds(undefined)).toBe(64);
     expect(byokAgentLoopMaxRounds(10_000_000)).toBe(128);
     expect(byokAgentLoopMaxRounds(0)).toBe(1);
     expect(byokAgentLoopMaxRounds(3.9)).toBe(3);
-    expect(byokAgentLoopMaxRounds(Number.NaN)).toBe(8);
+    expect(byokAgentLoopMaxRounds(Number.NaN)).toBe(64);
   });
 });
 
@@ -241,6 +241,135 @@ describe("ByokAgentLoop", () => {
       expect.arrayContaining([expect.objectContaining({ role: "tool", toolCallId: "call-1" })]),
     );
   });
+
+  it("把本轮思考与全部工具调用聚合进单条 assistant 消息回放", async () => {
+    let secondInput: Parameters<ByokAgentModelDriver["complete"]>[0] | undefined;
+    const broker = ToolBroker.ToolBroker.of({
+      invoke: (input) => Effect.succeed(makeResult(input)),
+      cancel: () => Effect.void,
+    });
+    const model: ByokAgentModelDriver = {
+      complete: (input) => {
+        if (input.turn === 2) {
+          secondInput = input;
+          return Stream.fromIterable([{ type: "model_completed" as const }]);
+        }
+        return Stream.fromIterable([
+          { type: "reasoning_delta" as const, text: "需要先读" },
+          { type: "reasoning_delta" as const, text: "两个文件" },
+          { type: "reasoning_signature" as const, signature: "sig-round-1" },
+          {
+            type: "tool_call" as const,
+            toolCallId: "call-a",
+            canonicalToolName: "workspace.read_file",
+            arguments: { relativePath: "a.txt" },
+          },
+          {
+            type: "tool_call" as const,
+            toolCallId: "call-b",
+            canonicalToolName: "workspace.read_file",
+            arguments: { relativePath: "b.txt" },
+          },
+          { type: "model_completed" as const },
+        ]);
+      },
+    };
+
+    await Effect.runPromise(runByokAgentLoop(baseInput, model, broker));
+
+    expect(secondInput?.messages).toEqual([
+      { role: "user", content: baseInput.prompt },
+      {
+        role: "assistant",
+        content: "",
+        reasoningContent: "需要先读两个文件",
+        reasoningSignature: "sig-round-1",
+        toolCalls: [
+          {
+            toolCallId: "call-a",
+            canonicalToolName: "workspace.read_file",
+            arguments: { relativePath: "a.txt" },
+          },
+          {
+            toolCallId: "call-b",
+            canonicalToolName: "workspace.read_file",
+            arguments: { relativePath: "b.txt" },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        toolCallId: "call-a",
+        canonicalToolName: "workspace.read_file",
+        content: encodeUnknownJson({
+          status: "succeeded",
+          result: { contents: "workspace result" },
+        }),
+      },
+      {
+        role: "tool",
+        toolCallId: "call-b",
+        canonicalToolName: "workspace.read_file",
+        content: encodeUnknownJson({
+          status: "succeeded",
+          result: { contents: "workspace result" },
+        }),
+      },
+    ]);
+  });
+
+  it.effect("流式回调：思考增量与工具开始事件按发生顺序到达", () =>
+    Effect.gen(function* () {
+      const reasoningDeltas: string[] = [];
+      const startedTools: string[] = [];
+      const completedTools: string[] = [];
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            completedTools.push(input.canonicalToolName);
+            return makeResult(input);
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          if (input.turn === 2) {
+            return Stream.fromIterable([{ type: "model_completed" as const }]);
+          }
+          return Stream.fromIterable([
+            { type: "reasoning_delta" as const, text: "思考片段" },
+            {
+              type: "tool_call" as const,
+              toolCallId: "call-stream",
+              canonicalToolName: "workspace.read_file",
+              arguments: { relativePath: "README.md" },
+            },
+            { type: "model_completed" as const },
+          ]);
+        },
+      };
+
+      yield* runByokAgentLoop(
+        {
+          ...baseInput,
+          onReasoningCheckpoint: (checkpoint) =>
+            Effect.sync(() => {
+              reasoningDeltas.push(checkpoint.delta);
+            }),
+          onToolStarted: (toolCall) =>
+            Effect.sync(() => {
+              startedTools.push(toolCall.toolCallId);
+            }),
+        },
+        model,
+        broker,
+      );
+
+      expect(reasoningDeltas).toEqual(["思考片段"]);
+      expect(startedTools).toEqual(["call-stream"]);
+      expect(completedTools).toEqual(["workspace.read_file"]);
+    }),
+  );
 
   it("reinjects a denied or failed broker result as an error tool message", async () => {
     let secondInput: Parameters<ByokAgentModelDriver["complete"]>[0] | undefined;

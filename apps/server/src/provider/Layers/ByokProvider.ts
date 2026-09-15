@@ -24,6 +24,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 
+import { catalogCapabilitiesForModel } from "../byok/ContextWindowCatalog.ts";
 import { decodeModelCatalog } from "../byok/ModelCatalog.ts";
 import { buildServerProvider, type ServerProviderDraft } from "../providerSnapshot.ts";
 
@@ -35,6 +36,28 @@ const BYOK_PRESENTATION = {
 export const EMPTY_BYOK_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
   optionDescriptors: [],
 });
+
+/**
+ * 内置目录收录了思考强度档位时，把 `reasoningEffort` 作为模型选项暴露；
+ * 引擎在 openai 协议请求上透传为 `reasoning_effort`。未收录的模型不显示
+ * 该选项，请求也不带该字段。
+ */
+const byokModelCapabilities = (modelId: string): ModelCapabilities => {
+  const efforts = catalogCapabilitiesForModel(modelId)?.reasoningEfforts;
+  if (efforts === undefined || efforts.length === 0) {
+    return EMPTY_BYOK_MODEL_CAPABILITIES;
+  }
+  return createModelCapabilities({
+    optionDescriptors: [
+      {
+        id: "reasoningEffort",
+        label: "Reasoning",
+        type: "select",
+        options: efforts.map((effort) => ({ id: effort, label: effort })),
+      },
+    ],
+  });
+};
 
 const BYOK_KEY_PROBE_TIMEOUT_MS = 6_000;
 
@@ -64,7 +87,7 @@ export function byokModelsFromSettings(
       name: adapter.displayName.trim().length > 0 ? adapter.displayName : adapter.modelId,
       ...(subProvider.length > 0 ? { subProvider } : {}),
       isCustom: false,
-      capabilities: EMPTY_BYOK_MODEL_CAPABILITIES,
+      capabilities: byokModelCapabilities(adapter.modelId),
     };
   });
   return [...adapterModels, ...discoveredModels];

@@ -30,6 +30,8 @@ export interface ByokModelDriverOptions {
   readonly maxOutputTokens?: number;
   /** 通道级自定义请求头 JSON；在协议默认头之后应用。 */
   readonly customHeaders?: string;
+  /** 思考强度档位；openai 协议透传为顶层 `reasoning_effort`。 */
+  readonly reasoningEffort?: string;
   readonly systemPrompt?: string;
   readonly signal?: AbortSignal;
 }
@@ -51,6 +53,12 @@ const toChatMessage = (message: ByokAgentMessage): ByokChatMessage => {
       role: "assistant",
       content: message.content,
       ...(message.toolCalls !== undefined ? { toolCalls: message.toolCalls } : {}),
+      ...(message.reasoningContent !== undefined && message.reasoningContent.length > 0
+        ? { reasoningContent: message.reasoningContent }
+        : {}),
+      ...(message.reasoningSignature !== undefined && message.reasoningSignature.length > 0
+        ? { reasoningSignature: message.reasoningSignature }
+        : {}),
     };
   }
 
@@ -59,8 +67,11 @@ const toChatMessage = (message: ByokAgentMessage): ByokChatMessage => {
 
 const toToolDescriptor = (tool: ByokAgentTool): ByokToolDescriptor => tool;
 
-const toAgentModelEvent = (event: ByokChatEvent): ByokAgentModelEvent | undefined => {
-  if (event.type === "reasoning") return undefined;
+const toAgentModelEvent = (event: ByokChatEvent): ByokAgentModelEvent => {
+  if (event.type === "reasoning") return { type: "reasoning_delta", text: event.text };
+  if (event.type === "reasoning_signature") {
+    return { type: "reasoning_signature", signature: event.signature };
+  }
   if (event.type === "completed") {
     return {
       type: "model_completed",
@@ -104,6 +115,9 @@ export const makeByokModelDriver = (
           ...(options.customHeaders !== undefined && options.customHeaders.trim().length > 0
             ? { customHeaders: options.customHeaders }
             : {}),
+          ...(options.reasoningEffort !== undefined && options.reasoningEffort.trim().length > 0
+            ? { reasoningEffort: options.reasoningEffort }
+            : {}),
           ...(options.systemPrompt !== undefined ? { systemPrompt: options.systemPrompt } : {}),
           ...(options.signal !== undefined ? { signal: options.signal } : {}),
         });
@@ -111,7 +125,11 @@ export const makeByokModelDriver = (
       return request(options.maxOutputTokens).pipe(
         Stream.tap((event) =>
           Effect.sync(() => {
-            if (event.type !== "reasoning" && (event.type !== "text" || event.text.length > 0)) {
+            if (
+              event.type !== "reasoning" &&
+              event.type !== "reasoning_signature" &&
+              (event.type !== "text" || event.text.length > 0)
+            ) {
               outputEmitted = true;
             }
           }),
@@ -127,7 +145,6 @@ export const makeByokModelDriver = (
           return request(recoveryBudget);
         }),
         Stream.map(toAgentModelEvent),
-        Stream.filter((event): event is ByokAgentModelEvent => event !== undefined),
         Stream.mapError(
           (error: ByokEngineError) =>
             new ByokAgentModelError({

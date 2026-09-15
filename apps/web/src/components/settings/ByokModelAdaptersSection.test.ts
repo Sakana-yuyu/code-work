@@ -10,6 +10,7 @@ import {
   filterSupplierTemplates,
   groupByokModelAdapters,
   isValidCustomHeadersJson,
+  manualModelCapabilitiesPatch,
   readByokModelAdapters,
   relayEditFormFromAdapters,
   removeBenchmarkResult,
@@ -167,6 +168,32 @@ describe("draftModelSelectionPatch", () => {
     expect(
       draftModelSelectionPatch({ id: "claude-sonnet-4-6", maxOutputTokens: 64000 }, "openai"),
     ).toMatchObject({ maxOutputTokens: "64000" });
+  });
+});
+
+describe("manualModelCapabilitiesPatch", () => {
+  it("raises the untouched default context window and fills an empty max output", () => {
+    expect(
+      manualModelCapabilitiesPatch(
+        { contextWindowTokens: 1_000_000, maxOutputTokens: 128_000 },
+        { contextWindowTokens: "128000", maxOutputTokens: "" },
+      ),
+    ).toEqual({ contextWindowTokens: "1000000", maxOutputTokens: "128000" });
+  });
+
+  it("keeps values the user already entered", () => {
+    expect(
+      manualModelCapabilitiesPatch(
+        { contextWindowTokens: 1_000_000, maxOutputTokens: 128_000 },
+        { contextWindowTokens: "256000", maxOutputTokens: "32000" },
+      ),
+    ).toEqual({});
+  });
+
+  it("returns an empty patch when the catalog has no entry for the model", () => {
+    expect(
+      manualModelCapabilitiesPatch({}, { contextWindowTokens: "128000", maxOutputTokens: "" }),
+    ).toEqual({});
   });
 });
 

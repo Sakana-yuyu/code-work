@@ -145,6 +145,7 @@ const makeKimiConfig = (overrides: Partial<KimiSettings>): KimiSettings => ({
   binaryPath: "kimi",
   customModels: [],
   ...overrides,
+  routeThroughByok: overrides.routeThroughByok ?? false,
 });
 
 const makeAntigravityConfig = (overrides: Partial<AntigravitySettings>): AntigravitySettings => ({

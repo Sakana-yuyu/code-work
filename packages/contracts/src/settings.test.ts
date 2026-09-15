@@ -189,6 +189,11 @@ describe("ClientSettings sidebar", () => {
 });
 
 describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
+  it("defaults assistant output to streaming", () => {
+    expect(DEFAULT_SERVER_SETTINGS.enableLegacyTokenStreaming).toBe(true);
+    expect(decodeServerSettings({}).enableLegacyTokenStreaming).toBe(true);
+  });
+
   it("defaults text generation to Luna at low reasoning effort", () => {
     expect(DEFAULT_SERVER_SETTINGS.textGenerationModelSelection).toEqual({
       instanceId: ProviderInstanceId.make("codex"),

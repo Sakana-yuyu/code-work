@@ -2377,6 +2377,12 @@ const makeWsRpcLayer = (
             byokModelDiscovery.discoverDraft(input),
             { "rpc.aggregate": "server" },
           ),
+        [WS_METHODS.serverLookupByokCatalogModel]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverLookupByokCatalogModel,
+            byokModelDiscovery.lookupCatalogModel(input),
+            { "rpc.aggregate": "server" },
+          ),
         [WS_METHODS.serverGetByokBalance]: (input) =>
           observeRpcEffect(WS_METHODS.serverGetByokBalance, byokBalance.balance(input), {
             "rpc.aggregate": "server",

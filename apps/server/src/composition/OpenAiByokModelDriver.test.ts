@@ -120,6 +120,79 @@ describe("OpenAiByokModelDriver", () => {
     }),
   );
 
+  effectIt.effect("回放带思考内容的 assistant 工具轮次并透传供应商 reasoning 流", () =>
+    Effect.gen(function* () {
+      const { client, captured } = makeClient(
+        [
+          'data: {"choices":[{"delta":{"reasoning_content":"先检查文件内容"}}]}',
+          "",
+          'data: {"choices":[{"delta":{"content":"文件正常"},"finish_reason":"stop"}]}',
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"),
+      );
+      const driver = makeOpenAiByokModelDriver(client, {
+        baseURL: "https://api.deepseek.com/v1",
+        apiKey: "k",
+        modelId: "deepseek-v4-flash",
+      });
+
+      const events = yield* Stream.runCollect(
+        driver.complete({
+          turn: 2,
+          messages: [
+            { role: "user", content: "read README" },
+            {
+              role: "assistant",
+              content: "",
+              reasoningContent: "需要先读文件",
+              toolCalls: [
+                {
+                  toolCallId: "call-0",
+                  canonicalToolName: "workspace.read_file",
+                  arguments: { relativePath: "README.md" },
+                },
+              ],
+            },
+            {
+              role: "tool",
+              toolCallId: "call-0",
+              canonicalToolName: "workspace.read_file",
+              content: '{"status":"succeeded"}',
+            },
+          ],
+          tools: [],
+        }),
+      );
+
+      expect(Array.from(events)).toEqual([
+        { type: "reasoning_delta", text: "先检查文件内容" },
+        { type: "text_delta", text: "文件正常" },
+        { type: "model_completed" },
+      ]);
+      expect(captured[0]).toMatchObject({
+        messages: [
+          { role: "user", content: "read README" },
+          {
+            role: "assistant",
+            reasoning_content: "需要先读文件",
+            tool_calls: [
+              {
+                id: "call-0",
+                function: {
+                  name: "workspace_read_file",
+                  arguments: '{"relativePath":"README.md"}',
+                },
+              },
+            ],
+          },
+          { role: "tool", tool_call_id: "call-0", content: '{"status":"succeeded"}' },
+        ],
+      });
+    }),
+  );
+
   effectIt.effect("preserves retry metadata on BYOK provider failures", () =>
     Effect.gen(function* () {
       const client = HttpClient.make((request) =>
@@ -286,6 +359,7 @@ describe("OpenAiByokModelDriver", () => {
       );
 
       expect(Array.from(events)).toEqual([
+        { type: "reasoning_delta", text: "思考中" },
         { type: "text_delta", text: "完成" },
         {
           type: "model_completed",

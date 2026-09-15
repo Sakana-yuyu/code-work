@@ -107,6 +107,11 @@ export function createByokEnvironmentAtoms<R, E>(
           JSON.stringify([environmentId, input.protocol, input.baseURL, input.supplierID ?? ""]),
       },
     }),
+    catalogModelLookup: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:byok:catalog-model-lookup",
+      tag: WS_METHODS.serverLookupByokCatalogModel,
+      scheduler: draftDiscoveryScheduler,
+    }),
     balance: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:byok:balance",
       tag: WS_METHODS.serverGetByokBalance,

@@ -1064,7 +1064,11 @@ const catalogRows: SupplierCatalogRow[] = [
     "https://www.bigmodel.cn/claude-code?ic=RRVJPB5SII",
     "https://open.bigmodel.cn/api/anthropic",
     ["glm-5.1"],
-    { usageStatus: "token_plan", usageProvider: "zhipu" },
+    {
+      usageStatus: "token_plan",
+      usageProvider: "zhipu",
+      modelCatalogURLs: ["https://open.bigmodel.cn/api/anthropic/v1/models"],
+    },
   ],
   [
     "zhipu_glm_en",
@@ -1074,7 +1078,11 @@ const catalogRows: SupplierCatalogRow[] = [
     "https://z.ai/subscribe?ic=8JVLJQFSKB",
     "https://api.z.ai/api/anthropic",
     ["glm-5.1"],
-    { usageStatus: "token_plan", usageProvider: "zhipu" },
+    {
+      usageStatus: "token_plan",
+      usageProvider: "zhipu",
+      modelCatalogURLs: ["https://api.z.ai/api/anthropic/v1/models"],
+    },
   ],
 ];
 

@@ -2,6 +2,8 @@
 // @effect-diagnostics globalDate:off
 // @effect-diagnostics globalErrorInEffectFailure:off
 import type {
+  ByokCatalogModelLookupRequest,
+  ByokCatalogModelLookupResult,
   ByokContextWindowMatchRequest,
   ByokContextWindowMatchResult,
   ByokDraftModelDiscoveryRequest,
@@ -329,6 +331,9 @@ export interface ByokModelDiscoveryService {
   readonly discoverDraft: (
     input: ByokDraftModelDiscoveryRequest,
   ) => Effect.Effect<ByokDraftModelDiscoveryResult, never, HttpClient.HttpClient>;
+  readonly lookupCatalogModel: (
+    input: ByokCatalogModelLookupRequest,
+  ) => Effect.Effect<ByokCatalogModelLookupResult>;
   readonly catalog: ReadonlyArray<ByokSupplierCatalogEntry>;
 }
 
@@ -470,6 +475,18 @@ export const make = Effect.gen(function* () {
   const discoverDraft = (input: ByokDraftModelDiscoveryRequest) =>
     discoverTarget(targetFromDraft(input));
 
+  const lookupCatalogModel = (input: ByokCatalogModelLookupRequest) => {
+    const capabilities = catalogCapabilitiesForModel(input.modelId);
+    return Effect.succeed({
+      ...(capabilities?.contextWindowTokens !== undefined
+        ? { contextWindowTokens: capabilities.contextWindowTokens }
+        : {}),
+      ...(capabilities?.maxOutputTokens !== undefined
+        ? { maxOutputTokens: capabilities.maxOutputTokens }
+        : {}),
+    });
+  };
+
   const matchContextWindowsForRelay = (input: ByokContextWindowMatchRequest) =>
     Effect.gen(function* () {
       const settings = yield* serverSettings.getSettings;
@@ -493,6 +510,7 @@ export const make = Effect.gen(function* () {
     benchmark,
     matchContextWindows: matchContextWindowsForRelay,
     discoverDraft,
+    lookupCatalogModel,
     catalog: publicSupplierCatalog(),
   } satisfies ByokModelDiscoveryService;
 });

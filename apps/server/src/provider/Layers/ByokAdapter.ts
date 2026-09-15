@@ -41,6 +41,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
@@ -74,6 +75,7 @@ import {
   runChatEvents,
   streamChat,
 } from "./byokChatClient.ts";
+import { getModelSelectionStringOptionValue } from "@codework/shared/model";
 import { applyPromptTemplate, renderPromptTemplate } from "../byok/PromptTemplate.ts";
 import {
   buildVisionPrompt,
@@ -87,6 +89,76 @@ import {
 } from "../byok/VisionDelegation.ts";
 
 const PROVIDER = ProviderDriverKind.make("byok");
+
+/**
+ * BYOK 会话没有外部 CLI 进程托管历史，服务器重启即丢上下文（CLI 供应商
+ * 可原生 resume）。历史随回合落盘到 stateDir，startSession 收到该标记时
+ * 原生重建；ProviderService 见到 resumeCursor 也会跳过降级的文本前缀
+ * 重放，避免历史双份。
+ */
+const BYOK_RESUME_CURSOR = "byok-native-history-v1";
+
+const ByokPersistedContentPart = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("text"), text: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal("image"),
+    mimeType: Schema.String,
+    dataBase64: Schema.String,
+  }),
+]);
+const ByokPersistedMessage = Schema.Struct({
+  role: Schema.Literals(["user", "assistant", "tool"]),
+  content: Schema.Union([Schema.String, Schema.Array(ByokPersistedContentPart)]),
+  reasoningContent: Schema.optional(Schema.String),
+  reasoningSignature: Schema.optional(Schema.String),
+  toolCallId: Schema.optional(Schema.String),
+  canonicalToolName: Schema.optional(Schema.String),
+  toolCalls: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        toolCallId: Schema.String,
+        canonicalToolName: Schema.String,
+        arguments: Schema.Unknown,
+      }),
+    ),
+  ),
+});
+const ByokPersistedSessionFile = Schema.Struct({
+  version: Schema.Literal(1),
+  history: Schema.Array(ByokPersistedMessage),
+  model: Schema.NullOr(Schema.String),
+  totalProcessedTokens: Schema.Number,
+});
+const decodePersistedSession = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    ByokPersistedSessionFile as unknown as Schema.Codec<typeof ByokPersistedSessionFile.Type>,
+  ),
+);
+const encodePersistedSession = Schema.encodeEffect(
+  Schema.fromJsonString(
+    ByokPersistedSessionFile as unknown as Schema.Codec<typeof ByokPersistedSessionFile.Type>,
+  ),
+);
+
+type ByokPersistedMessage = (typeof ByokPersistedSessionFile.Type)["history"][number];
+
+/** 解码结果的可选字段带 undefined，规整为引擎消息类型（exactOptionalPropertyTypes）。 */
+const toByokChatMessages = (messages: ReadonlyArray<ByokPersistedMessage>): ByokChatMessage[] =>
+  messages.map((message) => ({
+    role: message.role,
+    content: message.content,
+    ...(message.reasoningContent !== undefined
+      ? { reasoningContent: message.reasoningContent }
+      : {}),
+    ...(message.reasoningSignature !== undefined
+      ? { reasoningSignature: message.reasoningSignature }
+      : {}),
+    ...(message.toolCallId !== undefined ? { toolCallId: message.toolCallId } : {}),
+    ...(message.canonicalToolName !== undefined
+      ? { canonicalToolName: message.canonicalToolName }
+      : {}),
+    ...(message.toolCalls !== undefined ? { toolCalls: message.toolCalls } : {}),
+  }));
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -129,6 +201,9 @@ export interface ByokAdapterLiveOptions {
 
 const BYOK_PROJECT_TOOL_NAMES: ReadonlySet<string> = new Set([
   "workspace.read_file",
+  "workspace.list_files",
+  "workspace.search_files",
+  "workspace.search_contents",
   "git.status",
   "git.diff",
   "canvas.create",
@@ -140,6 +215,7 @@ const BYOK_FULL_ACCESS_TOOL_NAMES: ReadonlySet<string> = new Set([
   "terminal.snapshot",
   "terminal.kill",
   "terminal.close",
+  "delegate_task",
 ]);
 
 const renderAgentConversation = (messages: ReadonlyArray<ByokChatMessage>): string =>
@@ -184,6 +260,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
     const crypto = yield* Crypto.Crypto;
     const httpClient = yield* HttpClient.HttpClient;
     const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
     const availableProjectTools = listCompositionAgentTools().filter((tool) =>
       BYOK_FULL_ACCESS_TOOL_NAMES.has(tool.canonicalToolName),
     );
@@ -196,6 +273,45 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
 
     const sessions = new Map<ThreadId, ByokSessionContext>();
     const runtimeEvents = yield* Queue.unbounded<ProviderRuntimeEvent>();
+
+    // 每实例一目录、每线程一文件；文件名编码线程 id，避免任意字符落盘。
+    const sessionStateDir = path.join(
+      serverConfig.stateDir,
+      "byok-sessions",
+      encodeURIComponent(String(boundInstanceId)),
+    );
+    const sessionStatePath = (threadId: ThreadId) =>
+      path.join(sessionStateDir, `${encodeURIComponent(String(threadId))}.json`);
+
+    const loadPersistedSession = (threadId: ThreadId) =>
+      fileSystem.readFileString(sessionStatePath(threadId)).pipe(
+        Effect.flatMap(decodePersistedSession),
+        Effect.catchCause(() => Effect.succeed(null)),
+      );
+
+    // 落盘失败只降级为"重启后无原生恢复"，绝不影响回合本身。
+    const persistSessionState = Effect.fn("byokPersistSessionState")((ctx: ByokSessionContext) =>
+      Effect.gen(function* () {
+        const serialized = yield* encodePersistedSession({
+          version: 1,
+          history: ctx.history,
+          model: ctx.session.model ?? null,
+          totalProcessedTokens: ctx.totalProcessedTokens,
+        }).pipe(Effect.catchCause(() => Effect.succeed(null)));
+        if (serialized === null) return;
+        yield* fileSystem
+          .makeDirectory(sessionStateDir, { recursive: true })
+          .pipe(Effect.catchCause(() => Effect.void));
+        yield* fileSystem.writeFileString(sessionStatePath(ctx.session.threadId), serialized).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("BYOK 会话历史持久化失败", {
+              threadId: String(ctx.session.threadId),
+              cause,
+            }),
+          ),
+        );
+      }),
+    );
 
     const randomUUIDv4 = crypto.randomUUIDv4.pipe(
       Effect.mapError(
@@ -337,6 +453,13 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
 
         sessions.delete(input.threadId);
 
+        // 重启/会话重启后的原生恢复：resumeCursor 标记由 ProviderService 从
+        // 会话绑定透传，历史从磁盘重建而不是空上下文重来。
+        const resumed =
+          input.resumeCursor === BYOK_RESUME_CURSOR
+            ? yield* loadPersistedSession(input.threadId)
+            : null;
+
         const createdAt = yield* nowIso;
         const session: ProviderSession = {
           provider: PROVIDER,
@@ -344,19 +467,24 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           status: "ready",
           runtimeMode: input.runtimeMode,
           cwd,
-          ...(input.modelSelection ? { model: input.modelSelection.model } : {}),
+          ...(input.modelSelection
+            ? { model: input.modelSelection.model }
+            : resumed?.model
+              ? { model: resumed.model }
+              : {}),
           threadId: input.threadId,
+          resumeCursor: BYOK_RESUME_CURSOR,
           createdAt,
           updatedAt: createdAt,
         };
         const ctx: ByokSessionContext = {
           session,
           cwd,
-          history: [],
+          history: resumed ? toByokChatMessages(resumed.history) : [],
           turns: [],
           activeTurnId: undefined,
           activeTurnFiber: undefined,
-          totalProcessedTokens: 0,
+          totalProcessedTokens: resumed?.totalProcessedTokens ?? 0,
         };
         sessions.set(input.threadId, ctx);
 
@@ -365,7 +493,10 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           type: "session.started",
           provider: PROVIDER,
           threadId: input.threadId,
-          payload: { message: "BYOK engine session started" },
+          payload: {
+            message: "BYOK engine session started",
+            ...(resumed ? { resume: true } : {}),
+          },
         });
         yield* emit({
           ...(yield* makeEventStamp()),
@@ -452,9 +583,11 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       adapter: ByokModelAdapter,
       messages: ReadonlyArray<ByokChatMessage>,
       systemPrompt: string,
+      reasoningEffort?: string,
     ) {
       let assistantText = "";
       let reasoningText = "";
+      let reasoningSignature = "";
       // 一次流式请求一个关联 id：随 x-request-id 发给供应商，事件里透出，
       // 供应商侧日志与本端 provider 事件日志靠它互相对上。
       const providerRequestId = yield* randomUUIDv4;
@@ -468,6 +601,9 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         messages: effectiveMessages,
         includeUsage: true,
         ...(systemPrompt.trim().length > 0 ? { systemPrompt } : {}),
+        ...(reasoningEffort !== undefined && reasoningEffort.trim().length > 0
+          ? { reasoningEffort }
+          : {}),
       });
       const outcome = yield* Effect.exit(
         runChatEvents(stream, (event) =>
@@ -481,6 +617,11 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             }
             if (event.type === "completed") {
               yield* emitThreadTokenUsage(ctx, turnId, adapter, event);
+              return;
+            }
+            if (event.type === "reasoning_signature") {
+              // Anthropic 思考块签名：不进时间线，只随历史回放。
+              reasoningSignature = event.signature;
               return;
             }
             if (event.text.length === 0) {
@@ -551,12 +692,24 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         return;
       }
 
+      // GLM/MiniMax 等端点的保留式思考要求历史 assistant 消息带回思考内容
+      // （anthropic 协议回放为 thinking 块；openai 协议回放 reasoning_content，
+      // 不识别该字段的端点会忽略）。
       if (assistantText.trim().length > 0) {
-        ctx.history.push({ role: "assistant", content: assistantText });
+        ctx.history.push({
+          role: "assistant",
+          content: assistantText,
+          ...(reasoningText.trim().length > 0 ? { reasoningContent: reasoningText } : {}),
+          ...(reasoningText.trim().length > 0 && reasoningSignature.length > 0
+            ? { reasoningSignature }
+            : {}),
+        });
       } else if (reasoningText.trim().length === 0) {
         ctx.history.push({ role: "assistant", content: "" });
       }
       ctx.history = fitHistory(ctx.history, adapter.contextWindowTokens);
+      // 历史定型后、终态事件前落盘：turn.completed 即"已可恢复"的回执。
+      yield* persistSessionState(ctx);
       yield* emit({
         ...(yield* makeEventStamp()),
         type: "turn.completed",
@@ -576,6 +729,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       systemPrompt: string,
       toolBroker: ToolBroker["Service"],
       isPlanMode: boolean,
+      reasoningEffort?: string,
     ) {
       const runtimeMode = isPlanMode ? "approval-required" : ctx.session.runtimeMode;
       const projectTools = availableProjectTools.filter(
@@ -619,6 +773,38 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
                   threadId: ctx.session.threadId,
                   turnId,
                   payload: { streamKind: "assistant_text", delta: checkpoint.delta },
+                });
+              }).pipe(Effect.orDie),
+            onReasoningCheckpoint: (checkpoint) =>
+              Effect.gen(function* () {
+                appendTurnItem(ctx, turnId, { type: "thinking", text: checkpoint.delta });
+                yield* emit({
+                  ...(yield* makeEventStamp()),
+                  type: "content.delta",
+                  provider: PROVIDER,
+                  threadId: ctx.session.threadId,
+                  turnId,
+                  payload: { streamKind: "reasoning_text", delta: checkpoint.delta },
+                });
+              }).pipe(Effect.orDie),
+            onToolStarted: (toolCall) =>
+              Effect.gen(function* () {
+                yield* emit({
+                  ...(yield* makeEventStamp()),
+                  type: "item.started",
+                  provider: PROVIDER,
+                  threadId: ctx.session.threadId,
+                  turnId,
+                  itemId: RuntimeItemId.make(toolCall.toolCallId),
+                  payload: {
+                    itemType: "mcp_tool_call",
+                    status: "inProgress",
+                    title: toolCall.canonicalToolName,
+                    data: {
+                      toolName: toolCall.canonicalToolName,
+                      input: toolCall.arguments,
+                    },
+                  },
                 });
               }).pipe(Effect.orDie),
             onToolCompleted: (toolCall, result) =>
@@ -666,6 +852,9 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             ...(adapter.customHeaders !== undefined && adapter.customHeaders.trim().length > 0
               ? { customHeaders: adapter.customHeaders }
               : {}),
+            ...(reasoningEffort !== undefined && reasoningEffort.trim().length > 0
+              ? { reasoningEffort }
+              : {}),
             systemPrompt: agentSystemPrompt,
           }),
           toolBroker,
@@ -703,6 +892,8 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
 
       ctx.history.push({ role: "assistant", content: outcome.value.text });
       ctx.history = fitHistory(ctx.history, adapter.contextWindowTokens);
+      // 历史定型后、终态事件前落盘：turn.completed 即"已可恢复"的回执。
+      yield* persistSessionState(ctx);
       yield* emit({
         ...(yield* makeEventStamp()),
         type: "turn.completed",
@@ -824,6 +1015,10 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         adapter.modelId,
       );
 
+      const reasoningEffort =
+        modelSelection === undefined
+          ? undefined
+          : getModelSelectionStringOptionValue(modelSelection, "reasoningEffort");
       const turnEffect =
         options?.toolBroker !== undefined && text.length > 0 && attachments.length === 0
           ? runAgentTurn(
@@ -834,8 +1029,9 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               systemPrompt,
               options.toolBroker,
               input.interactionMode === "plan",
+              reasoningEffort,
             )
-          : runTurn(ctx, turnId, adapter, messages, systemPrompt);
+          : runTurn(ctx, turnId, adapter, messages, systemPrompt, reasoningEffort);
       const fiber = yield* turnEffect.pipe(
         Effect.catchCause((cause) =>
           Effect.gen(function* () {
@@ -855,6 +1051,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               turnId,
               payload: { message: detail, class: "provider_error" },
             });
+            yield* persistSessionState(ctx);
             yield* emit({
               ...(yield* makeEventStamp()),
               type: "turn.completed",
@@ -886,6 +1083,9 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           yield* Fiber.interrupt(activeFiber).pipe(Effect.exit, Effect.asVoid);
         }
         yield* updateSession(ctx, { status: "ready" }, true);
+        // 中断后的部分历史（用户消息 + 已流出的内容）同样落盘，保持与
+        // 内存状态一致，turn.aborted 即"已可恢复"的回执。
+        yield* persistSessionState(ctx);
         if (interruptedTurnId !== undefined) {
           yield* emit({
             ...(yield* makeEventStamp()),
@@ -973,6 +1173,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         ctx.turns.splice(Math.max(0, ctx.turns.length - numTurns));
         const keepTurns = Math.max(0, Math.floor(ctx.history.length / 2) - numTurns);
         ctx.history.splice(keepTurns * 2);
+        yield* persistSessionState(ctx);
         return { threadId, turns: ctx.turns };
       },
     );

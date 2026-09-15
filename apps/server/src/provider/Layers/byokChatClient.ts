@@ -8,7 +8,8 @@
  *
  *   - `openai` protocol: `POST ${baseURL}/chat/completions` with
  *     `stream: true`; `choices[0].delta.content` is text,
- *     `choices[0].delta.reasoning_content` (DeepSeek style) is reasoning, and
+ *     `choices[0].delta.reasoning_content` (DeepSeek style) or
+ *     `choices[0].delta.reasoning` (OpenRouter style) is reasoning, and
  *     `choices[0].delta.tool_calls` is accumulated before being decoded.
  *     `choices[0].finish_reason` 标记模型终态；`[DONE]` 只表示传输结束。
  *   - `anthropic` protocol: `POST ${baseURL}/v1/messages` with `x-api-key` +
@@ -78,6 +79,11 @@ export type ByokTokenUsage = {
 export type ByokChatEvent =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "reasoning"; readonly text: string }
+  /**
+   * Anthropic 思考块的加密签名（`signature_delta`）。回放 thinking 块时
+   * 必须原样带回；仅 anthropic 协议产生该事件。
+   */
+  | { readonly type: "reasoning_signature"; readonly signature: string }
   | ({
       readonly type: "completed";
       readonly finishReason: string;
@@ -139,6 +145,15 @@ export interface ByokChatMessage {
   readonly role: "user" | "assistant" | "tool";
   /** Plain text, or multimodal parts when the turn carried image attachments. */
   readonly content: string | ReadonlyArray<ByokContentPart>;
+  /**
+   * 模型上一轮输出的思考内容（DeepSeek/Kimi 风格 `reasoning_content`）。
+   * 带 `tools` 的请求必须把它随 assistant 消息原样回传，否则这类网关直接
+   * 400；不带工具或不识别该字段的端点会忽略它。仅回放本端从同一端点捕获
+   * 到的内容，目前只有 openai 协议序列化该字段。
+   */
+  readonly reasoningContent?: string;
+  /** Anthropic 思考块签名；回放 thinking 块时必须原样带回。 */
+  readonly reasoningSignature?: string;
   readonly toolCallId?: string;
   readonly canonicalToolName?: string;
   readonly toolCalls?: ReadonlyArray<{
@@ -176,6 +191,13 @@ export interface ByokStreamChatInput {
   readonly maxOutputTokens?: number | undefined;
   /** 通道级自定义请求头（JSON 对象字符串），在协议默认头之后应用、可覆盖。 */
   readonly customHeaders?: string | undefined;
+  /**
+   * 思考强度档位。openai 协议作为顶层 `reasoning_effort` 透传（DeepSeek/
+   * Kimi/OpenAI 等要么使用要么忽略）；anthropic 协议映射为
+   * `thinking:adaptive + output_config.effort`（Claude fable/mythos 要求的
+   * 形状）；gemini 协议的思考参数形状各家不一，刻意不发送。
+   */
+  readonly reasoningEffort?: string | undefined;
 }
 
 /**
@@ -486,6 +508,24 @@ const geminiMessageParts = (message: ByokChatMessage): ReadonlyArray<Record<stri
           : []),
       ];
 
+/**
+ * GLM/MiniMax 等 anthropic 兼容端点的交错思考要求把思考块（含签名）随
+ * assistant 消息原样回传；Anthropic 语义下 thinking 块必须是 assistant
+ * 内容的首块。只回放本端从同一端点捕获到的内容。
+ */
+const anthropicThinkingBlock = (message: ByokChatMessage): ReadonlyArray<Record<string, unknown>> =>
+  message.role === "assistant" &&
+  message.reasoningContent !== undefined &&
+  message.reasoningContent.length > 0
+    ? [
+        {
+          type: "thinking",
+          thinking: message.reasoningContent,
+          signature: message.reasoningSignature ?? "",
+        },
+      ]
+    : [];
+
 const anthropicMessage = (message: ByokChatMessage): Record<string, unknown> => {
   if (message.role === "tool") {
     return {
@@ -504,6 +544,7 @@ const anthropicMessage = (message: ByokChatMessage): Record<string, unknown> => 
     return {
       role: "assistant",
       content: [
+        ...anthropicThinkingBlock(message),
         ...(typeof message.content === "string"
           ? message.content.length > 0
             ? [{ type: "text", text: message.content }]
@@ -515,6 +556,20 @@ const anthropicMessage = (message: ByokChatMessage): Record<string, unknown> => 
           name: toolCall.canonicalToolName,
           input: toolCall.arguments,
         })),
+      ],
+    };
+  }
+
+  if (message.role === "assistant" && message.reasoningContent !== undefined) {
+    return {
+      role: "assistant",
+      content: [
+        ...anthropicThinkingBlock(message),
+        ...(typeof message.content === "string"
+          ? message.content.length > 0
+            ? [{ type: "text", text: message.content }]
+            : []
+          : anthropicMessageContent(message.content)),
       ],
     };
   }
@@ -593,6 +648,13 @@ const asString = (value: unknown): string | undefined =>
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
+const openaiReasoningField = (message: ByokChatMessage): Record<string, unknown> =>
+  message.role === "assistant" &&
+  message.reasoningContent !== undefined &&
+  message.reasoningContent.length > 0
+    ? { reasoning_content: message.reasoningContent }
+    : {};
+
 const openaiMessage = (message: ByokChatMessage): Record<string, unknown> => {
   if (message.role === "tool") {
     return {
@@ -610,6 +672,7 @@ const openaiMessage = (message: ByokChatMessage): Record<string, unknown> => {
     return {
       role: "assistant",
       content: message.content,
+      ...openaiReasoningField(message),
       tool_calls: message.toolCalls.map((toolCall) => ({
         id: toolCall.toolCallId,
         type: "function",
@@ -624,6 +687,7 @@ const openaiMessage = (message: ByokChatMessage): Record<string, unknown> => {
   return {
     role: message.role,
     content: openaiMessageContent(message.content),
+    ...openaiReasoningField(message),
   };
 };
 
@@ -983,7 +1047,9 @@ const eventsFromSsePayload = (
     if (!isRecord(delta)) {
       return [];
     }
-    const reasoning = asString(delta.reasoning_content);
+    // OpenRouter 用 `delta.reasoning`，DeepSeek 系用 `delta.reasoning_content`；
+    // 同一 chunk 两者都出现时按先 reasoning 后 content 的顺序输出一次。
+    const reasoning = asString(delta.reasoning_content) ?? asString(delta.reasoning);
     const content = asString(delta.content);
     return [
       ...(reasoning ? [{ type: "reasoning", text: reasoning } as const] : []),
@@ -1030,9 +1096,11 @@ const eventsFromSsePayload = (
     return [];
   }
   const thinking = asString(delta.thinking);
+  const signature = asString(delta.signature);
   const text = asString(delta.text);
   return [
     ...(thinking ? [{ type: "reasoning", text: thinking } as const] : []),
+    ...(signature ? [{ type: "reasoning_signature", signature } as const] : []),
     ...(text ? [{ type: "text", text } as const] : []),
   ];
 };
@@ -1129,6 +1197,9 @@ export const streamChat = (
             stream: true,
             ...(input.maxOutputTokens === undefined ? {} : { max_tokens: input.maxOutputTokens }),
             ...(input.includeUsage ? { stream_options: { include_usage: true } } : {}),
+            ...(input.reasoningEffort !== undefined && input.reasoningEffort.trim().length > 0
+              ? { reasoning_effort: input.reasoningEffort.trim() }
+              : {}),
           }),
         )
       : input.protocol === "gemini"
@@ -1168,6 +1239,16 @@ export const streamChat = (
               model: input.modelId,
               messages: input.messages.map(anthropicMessage),
               ...(systemPrompt.length > 0 ? { system: systemPrompt } : {}),
+              // 目录里带思考档位的 anthropic 模型（Claude fable/mythos）只接受
+              // 自适应思考：thinking:adaptive + output_config.effort；老式
+              // {type:"enabled"} 会被这些模型 400。GLM/MiniMax 等端点默认思考
+              // 不带该参数，保持原生默认。
+              ...(input.reasoningEffort !== undefined && input.reasoningEffort.trim().length > 0
+                ? {
+                    thinking: { type: "adaptive" },
+                    output_config: { effort: input.reasoningEffort.trim() },
+                  }
+                : {}),
               ...(input.tools !== undefined && input.tools.length > 0
                 ? {
                     tools: input.tools.map((tool) => ({

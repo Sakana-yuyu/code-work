@@ -240,6 +240,8 @@ import {
   ServerSettingsPatch,
 } from "./settings.ts";
 import {
+  ByokCatalogModelLookupRequest,
+  ByokCatalogModelLookupResult,
   ByokContextWindowMatchRequest,
   ByokContextWindowMatchResult,
   ByokDraftModelDiscoveryRequest,
@@ -463,6 +465,7 @@ export const WS_METHODS = {
   serverBenchmarkByokModel: "server.benchmarkByokModel",
   serverMatchByokContextWindows: "server.matchByokContextWindows",
   serverDiscoverByokDraftModels: "server.discoverByokDraftModels",
+  serverLookupByokCatalogModel: "server.lookupByokCatalogModel",
   serverGetByokBalance: "server.getByokBalance",
   serverByokBalanceDashboard: "server.byokBalanceDashboard",
   serverSubmitByokDelegation: "server.submitByokDelegation",
@@ -733,6 +736,12 @@ export const WsServerDiscoverByokDraftModelsRpc = Rpc.make(
     error: EnvironmentAuthorizationError,
   },
 );
+
+export const WsServerLookupByokCatalogModelRpc = Rpc.make(WS_METHODS.serverLookupByokCatalogModel, {
+  payload: ByokCatalogModelLookupRequest,
+  success: ByokCatalogModelLookupResult,
+  error: EnvironmentAuthorizationError,
+});
 
 export const WsServerGetByokBalanceRpc = Rpc.make(WS_METHODS.serverGetByokBalance, {
   payload: ByokBalanceRequest,
@@ -1960,6 +1969,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerBenchmarkByokModelRpc,
   WsServerMatchByokContextWindowsRpc,
   WsServerDiscoverByokDraftModelsRpc,
+  WsServerLookupByokCatalogModelRpc,
   WsServerGetByokBalanceRpc,
   WsServerByokBalanceDashboardRpc,
   WsServerSubmitByokDelegationRpc,

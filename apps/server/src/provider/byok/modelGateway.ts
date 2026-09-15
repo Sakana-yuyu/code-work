@@ -421,6 +421,21 @@ export const mergeGrokManagedConfig = (
   return base.length === 0 ? managedBlock : `${base}\n\n${managedBlock}`;
 };
 
+/**
+ * Kimi CLI reads `KIMI_BASE_URL`/`KIMI_API_KEY` and speaks the
+ * OpenAI-compatible wire format against them (default base
+ * `https://api.moonshot.ai/v1`), so routed instances point at the gateway's
+ * OpenAI passthrough.
+ */
+export const kimiGatewayEnv = (
+  origin: string,
+  token: string,
+  sourceInstanceId?: string,
+): Readonly<Record<string, string>> => ({
+  KIMI_BASE_URL: openaiGatewayBase(origin, sourceInstanceId),
+  KIMI_API_KEY: token,
+});
+
 /** Claude Code reads its endpoint and token from these variables. */
 export const anthropicGatewayEnv = (
   origin: string,

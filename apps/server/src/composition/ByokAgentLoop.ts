@@ -28,6 +28,10 @@ export type ByokAgentMessage =
   | {
       readonly role: "assistant";
       readonly content: string;
+      /** 本轮模型思考内容，回放时随 assistant 消息回传（保留式思考网关要求）。 */
+      readonly reasoningContent?: string;
+      /** Anthropic 思考块签名，回放 thinking 块时必须原样带回。 */
+      readonly reasoningSignature?: string;
       readonly toolCalls?: ReadonlyArray<ByokAgentToolCall>;
     }
   | {
@@ -39,6 +43,8 @@ export type ByokAgentMessage =
 
 export type ByokAgentModelEvent =
   | { readonly type: "text_delta"; readonly text: string }
+  | { readonly type: "reasoning_delta"; readonly text: string }
+  | { readonly type: "reasoning_signature"; readonly signature: string }
   | ({ readonly type: "tool_call" } & ByokAgentToolCall)
   | ({ readonly type: "model_completed" } & ByokAgentModelUsage);
 
@@ -126,12 +132,20 @@ export type ByokAgentLoopInput = {
   readonly capabilityGrantIds: ReadonlyArray<string>;
   readonly tools: ReadonlyArray<ByokAgentTool>;
   readonly maxRounds?: number;
-  /** 包含初始用户消息；工具调用与结果按两条完整消息计算。 */
+  /** 包含初始用户消息；一个工具轮次按一条 assistant 消息加每个调用一条结果计算。 */
   readonly maxContextMessages?: number;
   /** 单条工具结果及参数纠错提示重新注入模型时允许的最大字符数。 */
   readonly maxToolResultChars?: number;
   readonly onTextCheckpoint?: (
     checkpoint: ByokAgentTextCheckpoint,
+  ) => Effect.Effect<void, ByokAgentLoopCheckpointError>;
+  /** 思考流的增量检查点；不设置时思考内容仅用于上下文回放。 */
+  readonly onReasoningCheckpoint?: (
+    checkpoint: ByokAgentTextCheckpoint,
+  ) => Effect.Effect<void, ByokAgentLoopCheckpointError>;
+  /** 每个工具调用开始执行时回调一次，用于向用户展示工具活动。 */
+  readonly onToolStarted?: (
+    toolCall: ByokAgentToolCall,
   ) => Effect.Effect<void, ByokAgentLoopCheckpointError>;
   /** 将内部 ToolBroker 调用回写成统一的 Provider Runtime 活动。 */
   readonly onToolCompleted?: (
@@ -154,7 +168,9 @@ const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.
 
 const DEFAULT_MAX_CONTEXT_MESSAGES = 17;
 const DEFAULT_MAX_TOOL_RESULT_CHARS = 12_000;
-const DEFAULT_MAX_ROUNDS = 8;
+// 每次模型调用记一轮；真实的审查/多步编辑任务通常要 20-40 轮才收尾，
+// 默认预算必须容纳它们，否则正常工作会被中途掐断（128 是防失控硬顶）。
+const DEFAULT_MAX_ROUNDS = 64;
 const OUTPUT_TRUNCATION_CONTINUATION_PROMPT =
   "Continue exactly where the previous response stopped. Do not repeat prior text.";
 /** Hard ceiling for one agent-loop run's model round budget. */
@@ -174,15 +190,47 @@ const boundedInteger = (value: number | undefined, fallback: number, min: number
 export const byokAgentLoopMaxRounds = (value: number | undefined): number =>
   boundedInteger(value ?? DEFAULT_MAX_ROUNDS, DEFAULT_MAX_ROUNDS, 1, MAX_BYOK_AGENT_LOOP_ROUNDS);
 
-const completeToolRound = (
-  assistant: ByokAgentMessage | undefined,
-  tool: ByokAgentMessage | undefined,
-): readonly [ByokAgentMessage, ByokAgentMessage] | undefined => {
-  if (assistant?.role !== "assistant" || tool?.role !== "tool") return undefined;
-  if (assistant.toolCalls?.some((toolCall) => toolCall.toolCallId === tool.toolCallId) !== true) {
-    return undefined;
+type ByokAgentToolRound = {
+  readonly assistant: Extract<ByokAgentMessage, { readonly role: "assistant" }>;
+  readonly toolMessages: ReadonlyArray<Extract<ByokAgentMessage, { readonly role: "tool" }>>;
+};
+
+/**
+ * 把消息序列切成「完整工具轮次」：一条带 toolCalls 的 assistant 消息加上
+ * 其全部连续 tool 结果。DeepSeek/Kimi 的保留式思考要求整轮 tool_calls 与
+ * reasoning_content 同处一条 assistant 消息，因此一轮只产生一条 assistant
+ * 消息；残缺轮次（工具结果未齐）与游离消息被丢弃。
+ */
+const collectToolRounds = (
+  messages: ReadonlyArray<ByokAgentMessage>,
+): ReadonlyArray<ByokAgentToolRound> => {
+  const rounds: ByokAgentToolRound[] = [];
+  let index = 1;
+  while (index < messages.length) {
+    const assistant = messages[index];
+    if (assistant?.role !== "assistant" || assistant.toolCalls === undefined) {
+      index += 1;
+      continue;
+    }
+    const toolMessages: Array<Extract<ByokAgentMessage, { readonly role: "tool" }>> = [];
+    let cursor = index + 1;
+    while (cursor < messages.length) {
+      const tool = messages[cursor];
+      if (
+        tool?.role !== "tool" ||
+        assistant.toolCalls.some((toolCall) => toolCall.toolCallId === tool.toolCallId) !== true
+      ) {
+        break;
+      }
+      toolMessages.push(tool);
+      cursor += 1;
+    }
+    if (toolMessages.length === assistant.toolCalls.length) {
+      rounds.push({ assistant, toolMessages });
+    }
+    index = cursor;
   }
-  return [assistant, tool];
+  return rounds;
 };
 
 const compactContextMessages = (
@@ -192,15 +240,21 @@ const compactContextMessages = (
   const initial = messages[0];
   if (initial?.role !== "user") return [];
 
-  const completeRounds: Array<readonly [ByokAgentMessage, ByokAgentMessage]> = [];
-  for (let index = 1; index < messages.length; index += 2) {
-    const round = completeToolRound(messages[index], messages[index + 1]);
-    if (round !== undefined) completeRounds.push(round);
+  // 从最新轮次向旧保留，直到预算装不下下一整轮；单调用轮次退化为
+  // 旧的 floor((N-1)/2) 条容量，行为与拆分式回放完全一致。
+  const budget = Math.max(1, maxContextMessages) - 1;
+  const retained: ByokAgentMessage[] = [];
+  let used = 0;
+  const rounds = collectToolRounds(messages);
+  for (let index = rounds.length - 1; index >= 0; index -= 1) {
+    const round = rounds[index];
+    if (round === undefined) continue;
+    const size = 1 + round.toolMessages.length;
+    if (used + size > budget) break;
+    retained.unshift(round.assistant, ...round.toolMessages);
+    used += size;
   }
-
-  const roundCapacity = Math.max(0, Math.floor((Math.max(1, maxContextMessages) - 1) / 2));
-  const retainedRounds = roundCapacity === 0 ? [] : completeRounds.slice(-roundCapacity);
-  return [initial, ...retainedRounds.flat()];
+  return [initial, ...retained];
 };
 
 const contextOverflowRecoveryMessages = (
@@ -209,11 +263,10 @@ const contextOverflowRecoveryMessages = (
   const initial = messages[0];
   if (initial?.role !== "user") return [];
 
-  for (let index = messages.length - 2; index >= 1; index -= 1) {
-    const round = completeToolRound(messages[index], messages[index + 1]);
-    if (round !== undefined) return [initial, ...round];
-  }
-  return [initial];
+  const lastRound = collectToolRounds(messages).at(-1);
+  return lastRound === undefined
+    ? [initial]
+    : [initial, lastRound.assistant, ...lastRound.toolMessages];
 };
 
 const truncatedToolResultContent = (
@@ -311,6 +364,9 @@ export const runByokAgentLoop = (
     let rounds = 0;
     let checkpointChunkIndex = 0;
     let cumulativeUtf8Bytes = 0;
+    let reasoningChunkIndex = 0;
+    let cumulativeReasoningUtf8Bytes = 0;
+    let roundReasoningSignature = "";
     let contextOverflowRecoveryUsed = false;
     let outputTruncationRecoveryUsed = false;
     let transientRetryUsed = false;
@@ -339,6 +395,21 @@ export const runByokAgentLoop = (
               if (event.type === "model_completed") {
                 if (input.onModelUsage !== undefined) {
                   yield* input.onModelUsage(event);
+                }
+                return;
+              }
+              if (event.type === "reasoning_delta") {
+                if (event.text.length === 0) return;
+                cumulativeReasoningUtf8Bytes += utf8Encoder.encode(event.text).byteLength;
+                const reasoningCheckpoint = {
+                  turn: rounds,
+                  chunkIndex: reasoningChunkIndex,
+                  delta: event.text,
+                  cumulativeUtf8Bytes: cumulativeReasoningUtf8Bytes,
+                } satisfies ByokAgentTextCheckpoint;
+                reasoningChunkIndex += 1;
+                if (input.onReasoningCheckpoint !== undefined) {
+                  yield* input.onReasoningCheckpoint(reasoningCheckpoint);
                 }
                 return;
               }
@@ -437,9 +508,18 @@ export const runByokAgentLoop = (
 
       const events = completion.events;
       let terminal = false;
-      let acceptedToolCall = false;
+      let roundReasoning = "";
+      const roundToolCalls: ByokAgentToolCall[] = [];
 
       for (const event of events) {
+        if (event.type === "reasoning_signature") {
+          roundReasoningSignature = event.signature;
+          continue;
+        }
+        if (event.type === "reasoning_delta") {
+          roundReasoning += event.text;
+          continue;
+        }
         if (event.type === "text_delta") {
           continue;
         }
@@ -452,48 +532,60 @@ export const runByokAgentLoop = (
         }
 
         seenToolCallIds.add(event.toolCallId);
-        acceptedToolCall = true;
-        messages.push({
-          role: "assistant",
-          content: "",
-          toolCalls: [
-            {
-              toolCallId: event.toolCallId,
-              canonicalToolName: event.canonicalToolName,
-              arguments: event.arguments,
-            },
-          ],
-        });
-
-        const result = yield* broker.invoke({
-          taskId: input.taskId,
-          runId: input.runId,
-          agentId: input.agentId,
-          ...(input.runtimeId === undefined ? {} : { runtimeId: input.runtimeId }),
-          ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
-          ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
+        roundToolCalls.push({
           toolCallId: event.toolCallId,
           canonicalToolName: event.canonicalToolName,
           arguments: event.arguments,
-          idempotencyKey: `${input.runId}:${event.toolCallId}`,
-          capabilityGrantIds: input.capabilityGrantIds,
-          workspaceRoot: input.workspaceRoot,
         });
-        if (input.onToolCompleted !== undefined) {
-          yield* input.onToolCompleted(event, result);
-        }
+      }
+
+      if (roundToolCalls.length > 0) {
+        // 一轮模型响应对应一条 assistant 消息：保留式思考端点（DeepSeek/Kimi）
+        // 要求带工具的请求把整轮 reasoning_content 与 tool_calls 一起回传，
+        // 拆成多条消息会被逐条校验拒掉。
         messages.push({
-          role: "tool",
-          toolCallId: event.toolCallId,
-          canonicalToolName: event.canonicalToolName,
-          content: toolResultContent(result, maxToolResultChars, input),
+          role: "assistant",
+          content: "",
+          ...(roundReasoning.length > 0 ? { reasoningContent: roundReasoning } : {}),
+          ...(roundReasoning.length > 0 && roundReasoningSignature.length > 0
+            ? { reasoningSignature: roundReasoningSignature }
+            : {}),
+          toolCalls: roundToolCalls,
         });
+        for (const toolCall of roundToolCalls) {
+          if (input.onToolStarted !== undefined) {
+            yield* input.onToolStarted(toolCall);
+          }
+          const result = yield* broker.invoke({
+            taskId: input.taskId,
+            runId: input.runId,
+            agentId: input.agentId,
+            ...(input.runtimeId === undefined ? {} : { runtimeId: input.runtimeId }),
+            ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+            ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
+            toolCallId: toolCall.toolCallId,
+            canonicalToolName: toolCall.canonicalToolName,
+            arguments: toolCall.arguments,
+            idempotencyKey: `${input.runId}:${toolCall.toolCallId}`,
+            capabilityGrantIds: input.capabilityGrantIds,
+            workspaceRoot: input.workspaceRoot,
+          });
+          if (input.onToolCompleted !== undefined) {
+            yield* input.onToolCompleted(toolCall, result);
+          }
+          messages.push({
+            role: "tool",
+            toolCallId: toolCall.toolCallId,
+            canonicalToolName: toolCall.canonicalToolName,
+            content: toolResultContent(result, maxToolResultChars, input),
+          });
+        }
       }
 
       if (!terminal) {
         return yield* new ByokAgentLoopTerminalEventMissingError();
       }
-      if (!acceptedToolCall) {
+      if (roundToolCalls.length === 0) {
         return { text, messages, rounds };
       }
     }

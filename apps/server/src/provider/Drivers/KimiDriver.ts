@@ -10,6 +10,13 @@ import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeCursorTextGeneration } from "../../textGeneration/CursorTextGeneration.ts";
+import {
+  ensureGatewayToken,
+  gatewayOrigin,
+  kimiGatewayEnv,
+  prepareRoutedProviderSnapshot,
+} from "../byok/modelGateway.ts";
+import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeCursorAdapter } from "../Layers/CursorAdapter.ts";
 import {
@@ -70,6 +77,7 @@ export type KimiDriverEnv =
   | Path.Path
   | ProviderEventLoggers
   | ServerConfig
+  | ServerSecretStore
   | ServerSettingsService;
 
 const withInstanceIdentity =
@@ -101,8 +109,21 @@ export const KimiDriver: ProviderDriver<KimiSettings, KimiDriverEnv> = {
       const path = yield* Path.Path;
       const serverConfig = yield* ServerConfig;
       const serverSettings = yield* ServerSettingsService;
+      const secretStore = yield* ServerSecretStore;
       const eventLoggers = yield* ProviderEventLoggers;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const baseProcessEnv = mergeProviderInstanceEnvironment(environment);
+      // BYOK 网关路由替换 CLI 自身的模型端点：开启时注入变量覆盖同名实例环境。
+      const processEnv =
+        config.routeThroughByok === true
+          ? {
+              ...baseProcessEnv,
+              ...kimiGatewayEnv(
+                gatewayOrigin(serverConfig.port),
+                yield* ensureGatewayToken(secretStore),
+                config.byokSourceInstanceId,
+              ),
+            }
+          : baseProcessEnv;
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,
@@ -154,6 +175,8 @@ export const KimiDriver: ProviderDriver<KimiSettings, KimiDriverEnv> = {
         haveSettingsChanged: haveProviderSnapshotSettingsChanged,
         initialSnapshot: (settings) =>
           buildInitialKimiProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
+        prepareSnapshot: (snapshot) =>
+          prepareRoutedProviderSnapshot(snapshot, config, serverSettings.getSettings),
         checkProvider,
         enrichSnapshot: ({ snapshot: currentSnapshot, publishSnapshot }) =>
           enrichKimiSnapshot({ snapshot: stampIdentity(currentSnapshot), publishSnapshot }),

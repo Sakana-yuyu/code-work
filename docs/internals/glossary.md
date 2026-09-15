@@ -165,6 +165,12 @@ One model credential (protocol, base URL, stored key, model id) under a BYOK ins
 
 The bearer token the gateway expects from harnesses, generated into the server secret store and delivered only through child-process environment variables.
 
+#### BYOK agent loop
+
+The model/tool loop inside `runByokAgentLoop` (BYOK provider turns and composition subagents both run it). One model response becomes exactly one assistant message carrying the round's `toolCalls` and its captured reasoning (`reasoning_content` on the openai protocol — DeepSeek/Kimi/GLM preserved-thinking endpoints reject tool rounds without it; a signed `thinking` content block on the anthropic protocol, where GLM/MiniMax require the signature verbatim on replay). Reasoning effort options map to top-level `reasoning_effort` on openai and `thinking: {type: "adaptive"} + output_config.effort` on anthropic (the shape Claude fable/mythos require). Providers that never emit the field never receive it. Context compaction keeps whole rounds — see the round walker in `ByokAgentLoop.ts`.
+
+BYOK threads have no external CLI to own their history, so each turn's in-memory history is flushed to `stateDir/byok-sessions/<instanceId>/<threadId>.json` before the terminal event (turn.completed is the "persisted" receipt), and `startSession` rebuilds it natively when ProviderService passes back the `byok-native-history-v1` resume cursor — server restarts and runtime-mode session restarts continue with full context instead of the lossy text-prefix replay.
+
 #### Managed agent dir
 
 The per-instance directory (`provider-homes/pi-family/.../agent`, pointed at via `PI_CODING_AGENT_DIR`) where Code Work writes a managed `models.json` registering only the gateway as a model provider. For pi-family providers this is the enforcement mechanism that makes them BYOK-only: the dir holds no other credentials and the child env is scrubbed of third-party provider keys. See [pi-family-providers.md](./pi-family-providers.md).

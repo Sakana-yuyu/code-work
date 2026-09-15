@@ -112,6 +112,7 @@ export const deriveProviderInstanceConfigMap = (
       entry.driver === "claudeAgent" ||
       entry.driver === "grok" ||
       entry.driver === "opencode" ||
+      entry.driver === "kimi" ||
       entry.driver === "acpAgent";
     if (!alwaysRouted && !optionallyRouted) continue;
     const config = entry.config;
@@ -131,7 +132,10 @@ export const deriveProviderInstanceConfigMap = (
     const routes = gatewayAdapterRoutes(settings, sourceId).filter((route) =>
       entry.driver === "claudeAgent"
         ? route.protocol === "anthropic"
-        : entry.driver === "codex" || entry.driver === "grok" || entry.driver === "opencode"
+        : entry.driver === "codex" ||
+            entry.driver === "grok" ||
+            entry.driver === "opencode" ||
+            entry.driver === "kimi"
           ? route.protocol === "openai"
           : true,
     );

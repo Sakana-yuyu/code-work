@@ -180,3 +180,19 @@ export const ByokDraftModelDiscoveryResult = Schema.Struct({
   error: Schema.optional(ByokModelDiscoveryError),
 });
 export type ByokDraftModelDiscoveryResult = typeof ByokDraftModelDiscoveryResult.Type;
+
+/**
+ * 按模型 ID 查内置能力目录：给「手动填写模型」的表单补全上下文窗口与最大输出，
+ * 与发现路径的服务端补全同一份数据。纯本地查询，不发任何网络请求。
+ */
+export const ByokCatalogModelLookupRequest = Schema.Struct({
+  modelId: TrimmedNonEmptyString,
+});
+export type ByokCatalogModelLookupRequest = typeof ByokCatalogModelLookupRequest.Type;
+
+/** 目录未收录时两个字段都缺省，客户端按「表单未改动才回填」策略处理。 */
+export const ByokCatalogModelLookupResult = Schema.Struct({
+  contextWindowTokens: Schema.optional(NonNegativeInt),
+  maxOutputTokens: Schema.optional(NonNegativeInt),
+});
+export type ByokCatalogModelLookupResult = typeof ByokCatalogModelLookupResult.Type;

@@ -67,6 +67,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverBenchmarkByokModel]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverMatchByokContextWindows]: AuthOrchestrationReadScope,
   [WS_METHODS.serverDiscoverByokDraftModels]: AuthOrchestrationOperateScope,
+  [WS_METHODS.serverLookupByokCatalogModel]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetByokBalance]: AuthOrchestrationReadScope,
   [WS_METHODS.serverByokBalanceDashboard]: AuthOrchestrationReadScope,
   [WS_METHODS.serverListByokDelegations]: AuthOrchestrationReadScope,

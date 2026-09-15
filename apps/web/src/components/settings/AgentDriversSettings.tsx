@@ -14,6 +14,7 @@ import { usePrimaryEnvironment } from "~/state/environments";
 import { useEnvironmentQuery } from "~/state/query";
 import { serverEnvironment } from "~/state/server";
 import { t } from "~/i18n";
+import { formatProviderDisplayName } from "~/lib/contextWindow";
 
 import { Button } from "../ui/button";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
@@ -101,7 +102,9 @@ export function displayDriverName(profile: CompositionAgentDriverProfile): strin
     case "opencode":
       return t("runtimeGuide.driverOpenCode");
     default:
-      return customName ?? profile.agentId;
+      return formatProviderDisplayName(
+        (profile.providerKind ?? customName ?? profile.agentId).replace(/^provider:/i, ""),
+      );
   }
 }
 

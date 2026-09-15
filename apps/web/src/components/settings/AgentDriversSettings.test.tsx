@@ -105,4 +105,20 @@ describe("AgentDriversSettings", () => {
   it("保留自定义驱动名称，不把用户名称替换成系统别名", () => {
     expect(displayDriverName(profile({ displayName: "Sakana 主力模型" }))).toBe("Sakana 主力模型");
   });
+
+  it.each([
+    ["kimi", "Kimi"],
+    ["antigravity", "Antigravity"],
+  ])("把内部 %s 标识显示为 Agent 名称", (providerKind, expected) => {
+    expect(
+      displayDriverName(
+        profile({
+          agentId: `provider:${providerKind}`,
+          runtimeId: `provider:${providerKind}`,
+          providerKind,
+          displayName: `provider:${providerKind}`,
+        }),
+      ),
+    ).toBe(expected);
+  });
 });

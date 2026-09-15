@@ -1936,6 +1936,9 @@ export const en: Record<string, string> = {
   threadArchivedButNavigationFailed: "Thread archived, but navigation failed",
   threadIdCopied: "Thread ID copied",
   threadSearchResults: "Thread search results",
+  threadRunningAgentLockedDescription:
+    "This conversation is mid-run; wait for the current turn to finish before switching agents.",
+  threadRunningAgentLockedTitle: "Agent is working",
   threadTitle: "Thread title",
   threadTitleCannotBeEmpty: "Thread title cannot be empty",
   time: "Time",
@@ -2042,6 +2045,14 @@ export const en: Record<string, string> = {
   "chat.access": "Access",
   "chat.auto": "Auto",
   "chat.autoAcceptEdits": "Auto-accept edits",
+  "chat.cacheHitRate": "Cache hit rate",
+  "chat.rounds": "rounds",
+  "chat.steps": "steps",
+  "chat.llmDuration": "LLM",
+  "chat.toolDuration": "tool calls",
+  "chat.inputTokens": "input",
+  "chat.outputTokens": "output",
+  reasoningSummary: "Thought summary",
   "chat.chatMode": "Chat",
   "chat.dismissError": "Dismiss error",
   "chat.fullAccess": "Full access",
@@ -2579,7 +2590,7 @@ export const en: Record<string, string> = {
   "byokAdapters.relayCustomHeadersHint":
     "Applied to every model on this relay; leave blank to keep each model's stored headers.",
   "byokAdapters.contextWindowDescription":
-    "Backfilled automatically from the model catalog when discovering or matching.",
+    "Backfilled automatically from the model catalog when discovering, matching, or entering a model manually.",
   "byokAdapters.maxOutputTokens": "Max output (tokens)",
   "byokAdapters.maxOutputPlaceholder": "Optional",
   "byokAdapters.maxOutputDescription":
@@ -2793,6 +2804,8 @@ export const en: Record<string, string> = {
   providerStatusCliNotFound: "CLI not detected on PATH.",
   providerStatusClaudeCliMissing:
     "Code Work's server environment could not find the Claude Agent CLI (`claude`). Check the configured binary path or restart Code Work after updating PATH.",
+  providerStatusCodexCliDamaged:
+    "The Codex CLI installation appears incomplete or damaged. Repair it, then refresh the status.",
   providerStatusCodexCliMissing:
     "Code Work's server environment could not find the Codex CLI (`codex`). Check the configured binary path or restart Code Work after updating PATH.",
   providerStatusCliDamaged:
@@ -4266,6 +4279,9 @@ export const en: Record<string, string> = {
   addToChat: "Add to chat",
   agentActivityDisabled: "Agent activity disabled",
   agentActivityEnabled: "Agent activity enabled",
+  agentSwitchLockedForThreadDescription:
+    "Agents don't share conversation context — switching mid-thread would discard this thread's progress. Start a new conversation to use another agent.",
+  agentSwitchLockedForThreadTitle: "This conversation is bound to its agent",
   allChecksHavePassed: "All checks have passed",
   alwaysAllowThisSession: "Always allow this session",
   anErrorOccurredWhileCopying: "An error occurred while copying.",
@@ -7782,6 +7798,8 @@ export const zhCN: Record<string, string> = {
   threadArchivedButNavigationFailed: "线程已归档，但导航失败",
   threadIdCopied: "已复制线程 ID",
   threadSearchResults: "线程搜索结果",
+  threadRunningAgentLockedDescription: "当前对话正在运行，暂不能切换 Agent；请等本轮结束后再试。",
+  threadRunningAgentLockedTitle: "Agent 正在执行",
   threadTitle: "线程标题",
   threadTitleCannotBeEmpty: "线程标题不能为空",
   time: "时间",
@@ -7882,6 +7900,14 @@ export const zhCN: Record<string, string> = {
   "chat.access": "权限",
   "chat.auto": "自动",
   "chat.autoAcceptEdits": "自动接受编辑",
+  "chat.cacheHitRate": "缓存命中率",
+  "chat.rounds": "轮",
+  "chat.steps": "步",
+  "chat.llmDuration": "LLM",
+  "chat.toolDuration": "工具调用",
+  "chat.inputTokens": "输入",
+  "chat.outputTokens": "输出",
+  reasoningSummary: "思考摘要",
   "chat.chatMode": "聊天",
   "chat.dismissError": "关闭错误",
   "chat.fullAccess": "完全访问",
@@ -8404,7 +8430,7 @@ export const zhCN: Record<string, string> = {
     '自定义请求头必须是「字符串值的 JSON 对象」，如 {"X-Custom":"value"}。',
   "byokAdapters.customHeadersClear": "清除已存储的自定义请求头",
   "byokAdapters.relayCustomHeadersHint": "应用到该通道的全部模型；留空时保留各模型已存储的请求头。",
-  "byokAdapters.contextWindowDescription": "发现模型或一键匹配时按内置目录自动回填。",
+  "byokAdapters.contextWindowDescription": "发现模型、一键匹配或手动填写模型时按内置目录自动回填。",
   "byokAdapters.maxOutputTokens": "最大输出（tokens）",
   "byokAdapters.maxOutputPlaceholder": "选填",
   "byokAdapters.maxOutputDescription": "由内置目录自动回填；请求的输出上限按此值生效。",
@@ -8606,6 +8632,7 @@ export const zhCN: Record<string, string> = {
   providerStatusCliNotFound: "未在 PATH 中检测到 CLI。",
   providerStatusClaudeCliMissing:
     "Code Work 运行环境未找到 Claude Agent CLI（claude）。请检查配置的可执行文件路径，或更新 PATH 后重启 Code Work。",
+  providerStatusCodexCliDamaged: "Codex CLI 安装不完整或已损坏，请点击“修复 CLI”重装后刷新状态。",
   providerStatusCodexCliMissing:
     "Code Work 运行环境未找到 Codex CLI（codex）。请检查配置的可执行文件路径，或更新 PATH 后重启 Code Work。",
   providerStatusCliDamaged: "Claude CLI 安装不完整或已损坏，请点击“修复 CLI”重装后刷新状态。",
@@ -10040,6 +10067,9 @@ export const zhCN: Record<string, string> = {
   addToChat: "添加到聊天",
   agentActivityDisabled: "Agent 活动已禁用",
   agentActivityEnabled: "Agent 活动已启用",
+  agentSwitchLockedForThreadDescription:
+    "各 Agent 的对话上下文互不相通，中途切换会丢失当前进展。请新建对话来使用其他 Agent。",
+  agentSwitchLockedForThreadTitle: "此对话已绑定当前 Agent",
   allChecksHavePassed: "所有检查均已通过",
   alwaysAllowThisSession: "始终允许此会话",
   anErrorOccurredWhileCopying: "复制时发生错误。",
