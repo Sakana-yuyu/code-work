@@ -8,6 +8,7 @@ import {
 } from "@codework/contracts";
 import { createEnvironmentRpcCommand } from "@codework/client-runtime/state/runtime";
 import { connectionAtomRuntime } from "../../../connection/runtime";
+import { gitEnvironment } from "../../../state/git";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { usePreparedConnection } from "../../../state/session";
 import { Button } from "../../ui/button";
@@ -94,6 +95,9 @@ export default function VscodeWorkbench(props: {
     [setTheme, setAppearanceMode, refreshTheme],
   );
   const open = useAtomCommand(openIde, { reportFailure: false });
+  const generateCommitMessage = useAtomCommand(gitEnvironment.generateCommitMessage, {
+    reportFailure: true,
+  });
   const connection = usePreparedConnection(props.environmentId);
   const baseUrl = connection._tag === "Some" ? connection.value.httpBaseUrl : null;
   const [status, setStatus] = useState<IdeOpenResult>({ phase: "starting", message: "" });
@@ -111,6 +115,20 @@ export default function VscodeWorkbench(props: {
   const panelRef = useRef<HTMLDivElement>(null);
   const statusBarRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const handleGenerateCommitMessage = useCallback(async () => {
+    const result = await generateCommitMessage({
+      environmentId: props.environmentId,
+      input: { cwd: props.cwd, language },
+    });
+    if (result._tag !== "Success") throw new Error("提交信息生成失败。");
+    return result.value.commitMessage;
+  }, [generateCommitMessage, language, props.cwd, props.environmentId]);
+  const handleGenerateCommitMessageRef = useRef(handleGenerateCommitMessage);
+  handleGenerateCommitMessageRef.current = handleGenerateCommitMessage;
+  const generateCommitMessageForWorkbench = useCallback(
+    () => handleGenerateCommitMessageRef.current(),
+    [],
+  );
 
   // Resolve the authorized proxy prefix for this environment's REH session.
   useEffect(() => {
@@ -155,6 +173,7 @@ export default function VscodeWorkbench(props: {
       proxyOrigin: proxyOriginFromBaseUrl(baseUrl),
       onThemeSelected,
       onThemeSyncError: reportThemeSyncError,
+      onGenerateCommitMessage: generateCommitMessageForWorkbench,
     })
       .then((runtime) => {
         if (!cancelled) {

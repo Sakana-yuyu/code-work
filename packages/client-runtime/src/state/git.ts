@@ -19,5 +19,11 @@ export function createGitEnvironmentAtoms<R, E>(
       scheduler: vcsCommandScheduler,
       concurrency: vcsCommandConcurrency,
     }),
+    generateCommitMessage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:git:generate-commit-message",
+      tag: WS_METHODS.gitGenerateCommitMessage,
+      scheduler: vcsCommandScheduler,
+      concurrency: vcsCommandConcurrency,
+    }),
   };
 }

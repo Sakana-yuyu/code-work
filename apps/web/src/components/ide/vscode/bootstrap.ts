@@ -12,6 +12,8 @@ import { initialize, getService, LogLevel } from "@codingame/monaco-vscode-api";
 import { URI } from "@codingame/monaco-vscode-api/vscode/vs/base/common/uri";
 import { IWorkspaceContextService } from "@codingame/monaco-vscode-api/vscode/vs/platform/workspace/common/workspace.service";
 import { ICommandService } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands.service";
+import { CommandsRegistry } from "@codingame/monaco-vscode-api/vscode/vs/platform/commands/common/commands";
+import { ISCMService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/contrib/scm/common/scm.service";
 import { IEditorService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/editor/common/editorService.service";
 import { ICodeEditorService } from "@codingame/monaco-vscode-api/vscode/vs/editor/browser/services/codeEditorService.service";
 import { IWorkbenchLayoutService } from "@codingame/monaco-vscode-api/vscode/vs/workbench/services/layout/browser/layoutService.service";
@@ -39,6 +41,7 @@ import type { ThemeDefinition } from "../../../themePalette";
 import { APP_WORKBENCH_THEMES, startWorkbenchThemeSync } from "./themeSync";
 import { workbenchThemeDataUrl } from "./themeColors";
 import { desktopResourceScheme, runInBackground } from "./bootstrapLifecycle";
+import product from "@codingame/monaco-vscode-api/vscode/vs/platform/product/common/product";
 
 import getBaseServiceOverride from "@codingame/monaco-vscode-base-service-override";
 import getEnvironmentServiceOverride from "@codingame/monaco-vscode-environment-service-override";
@@ -238,6 +241,7 @@ export interface VscodeIdeBootstrapOptions {
   proxyOrigin: string;
   onThemeSelected: (theme: ThemeDefinition) => void;
   onThemeSyncError: (error: unknown) => void;
+  onGenerateCommitMessage: () => Promise<string>;
 }
 
 export async function bootstrapVscodeIde(
@@ -449,8 +453,39 @@ async function doBootstrap(options: VscodeIdeBootstrapOptions): Promise<VscodeId
           return true;
         },
       },
+      ...(product.defaultChatAgent
+        ? {
+            defaultChatAgent: {
+              ...product.defaultChatAgent,
+              generateCommitMessageCommand: "codework.git.generateCommitMessage",
+            },
+          }
+        : {}),
     },
   );
+
+  // Code-OSS 的 SCM 按钮默认转发给 Copilot。这里保留原按钮和本地化文案，
+  // 只替换同一个命令的实现，避免依赖专有扩展或修改下载的运行包。
+  CommandsRegistry.registerCommand("scm.input.triggerSetup", (accessor) =>
+    accessor.get(ICommandService).executeCommand("codework.git.generateCommitMessage"),
+  );
+  CommandsRegistry.registerCommand("codework.git.generateCommitMessage", async (accessor) => {
+    const commitMessage = (await options.onGenerateCommitMessage()).trim();
+    if (!commitMessage) return;
+    const scmService = accessor.get(ISCMService);
+    const workspaceService = (await getService(
+      IWorkspaceContextService,
+    )) as never as WorkspaceServiceShape;
+    const rootUri = workspaceService.getWorkspace().folders[0]?.uri;
+    const repository = [...scmService.repositories].find(
+      (candidate) =>
+        rootUri !== undefined && candidate.provider.rootUri?.toString() === rootUri.toString(),
+    );
+    if (!repository) throw new Error("当前工作区没有可用的源代码管理仓库。");
+    repository.input.setValue(commitMessage, false);
+    repository.input.setFocus();
+    return commitMessage;
+  });
 
   // 主题同步依赖扩展注册；它不能阻塞工作台首屏，否则扩展宿主卡住时
   // 用户只能看到“正在加载编辑器界面”，却无法使用编辑器本身。

@@ -1894,6 +1894,33 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
+  it.effect("generates a localized commit message without committing", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("codework-git-manager-");
+      yield* initRepo(repoDir);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "README.md"), "hello\nworld\n");
+      let generatedPolicy: TextGeneration.CommitMessageGenerationInput["policy"];
+
+      const { manager } = yield* makeManager({
+        textGeneration: {
+          generateCommitMessage: (input) => {
+            generatedPolicy = input.policy;
+            return Effect.succeed({ subject: "生成提交信息", body: "" });
+          },
+        },
+      });
+      const result = yield* manager.generateCommitMessage({ cwd: repoDir, language: "zh-CN" });
+
+      expect(result.commitMessage).toBe("生成提交信息");
+      expect(generatedPolicy?.commitInstructions).toContain("Simplified Chinese");
+      expect(
+        yield* runGit(repoDir, ["status", "--porcelain"]).pipe(
+          Effect.map((output) => output.stdout.trim()),
+        ),
+      ).toBe("M  README.md");
+    }),
+  );
+
   it.effect("preserves custom style when instructions are empty", () =>
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("codework-git-manager-");
@@ -4148,9 +4175,12 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       expect((yield* runGit(worktreePath, ["rev-parse", "HEAD"])).stdout.trim()).toBe(
         rewrittenHead,
       );
-      expect(NodeFS.readFileSync(NodePath.join(worktreePath, "force-pushed.txt"), "utf8")).toBe(
-        "rewritten\n",
-      );
+      expect(
+        NodeFS.readFileSync(NodePath.join(worktreePath, "force-pushed.txt"), "utf8").replaceAll(
+          "\r\n",
+          "\n",
+        ),
+      ).toBe("rewritten\n");
     }),
   );
 

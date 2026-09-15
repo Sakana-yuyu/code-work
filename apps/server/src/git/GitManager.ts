@@ -17,6 +17,8 @@ import {
   GitActionProgressEvent,
   GitActionProgressPhase,
   GitCommandError,
+  GitGenerateCommitMessageInput,
+  GitGenerateCommitMessageResult,
   GitPreparePullRequestThreadInput,
   GitPreparePullRequestThreadResult,
   GitPullRequestRefInput,
@@ -99,6 +101,9 @@ export class GitManager extends Context.Service<
     readonly preparePullRequestThread: (
       input: GitPreparePullRequestThreadInput,
     ) => Effect.Effect<GitPreparePullRequestThreadResult, GitManagerServiceError>;
+    readonly generateCommitMessage: (
+      input: GitGenerateCommitMessageInput,
+    ) => Effect.Effect<GitGenerateCommitMessageResult, GitManagerServiceError>;
     readonly runStackedAction: (
       input: GitRunStackedActionInput,
       options?: GitRunStackedActionOptions,
@@ -117,6 +122,19 @@ const PR_LOOKUP_FAILURE_BASE_TTL = Duration.seconds(20);
 const PR_LOOKUP_FAILURE_MAX_TTL = Duration.minutes(15);
 const PR_LOOKUP_CACHE_CAPACITY = 2_048;
 const isSourceControlProviderError = Schema.is(SourceControlProviderError);
+
+function commitMessageLanguageName(language: GitGenerateCommitMessageInput["language"]): string {
+  switch (language) {
+    case "zh-CN":
+      return "Simplified Chinese";
+    case "ja":
+      return "Japanese";
+    case "en":
+      return "English";
+    default:
+      return "";
+  }
+}
 
 /**
  * How long a failed PR lookup is cached, given the number of consecutive
@@ -1546,6 +1564,7 @@ export const make = Effect.gen(function* () {
       /** When true, also produce a semantic feature branch name. */
       includeBranch?: boolean;
       filePaths?: readonly string[];
+      language?: GitGenerateCommitMessageInput["language"];
       settings: SourceControlTextGenerationSettings;
     }) {
       const context = yield* gitCore.prepareCommitContext(input.cwd, input.filePaths);
@@ -1566,6 +1585,18 @@ export const make = Effect.gen(function* () {
       }
 
       const policy = yield* resolveStylePolicy(input.cwd, input.settings.style);
+      const languageName = commitMessageLanguageName(input.language);
+      const localizedPolicy = languageName
+        ? {
+            ...policy,
+            commitInstructions: [
+              policy.commitInstructions,
+              `Write the commit message in ${languageName}.`,
+            ]
+              .filter((instruction): instruction is string => Boolean(instruction))
+              .join("\n"),
+          }
+        : policy;
 
       const generated = yield* textGeneration
         .generateCommitMessage({
@@ -1574,7 +1605,7 @@ export const make = Effect.gen(function* () {
           stagedSummary: limitContext(context.stagedSummary, 8_000),
           stagedPatch: limitContext(context.stagedPatch, 50_000),
           ...(input.includeBranch ? { includeBranch: true } : {}),
-          ...(policy ? { policy } : {}),
+          ...(localizedPolicy ? { policy: localizedPolicy } : {}),
           modelSelection: input.settings.modelSelection,
         })
         .pipe(Effect.map((result) => sanitizeCommitMessage(result)));
@@ -2383,6 +2414,47 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  const generateCommitMessage: GitManager["Service"]["generateCommitMessage"] = Effect.fn(
+    "generateCommitMessage",
+  )(function* (input) {
+    const status = yield* gitCore.statusDetails(input.cwd);
+    const settings = yield* serverSettingsService.getSettings.pipe(
+      Effect.flatMap((current) =>
+        current.sourceControlWriterModelSelection === null
+          ? Effect.succeed({
+              modelSelection: current.textGenerationModelSelection,
+              style: current.sourceControlWritingStyle,
+            })
+          : Effect.gen(function* () {
+              const providers = yield* providerRegistry.getProviders;
+              return {
+                modelSelection: ServerSettings.resolveSourceControlWriterModelSelection(
+                  current,
+                  providers,
+                ),
+                style: current.sourceControlWritingStyle,
+              };
+            }),
+      ),
+      Effect.mapError(
+        (cause) =>
+          new GitManagerError({
+            operation: "generateCommitMessage",
+            cwd: input.cwd,
+            detail: "Failed to get server settings.",
+            cause,
+          }),
+      ),
+    );
+    const suggestion = yield* resolveCommitAndBranchSuggestion({
+      cwd: input.cwd,
+      branch: status.branch,
+      settings,
+      ...(input.language ? { language: input.language } : {}),
+    });
+    return { commitMessage: suggestion?.commitMessage ?? "" };
+  });
+
   return GitManager.of({
     localStatus,
     remoteStatus,
@@ -2392,6 +2464,7 @@ export const make = Effect.gen(function* () {
     invalidateStatus,
     resolvePullRequest,
     preparePullRequestThread,
+    generateCommitMessage,
     runStackedAction,
   });
 });
