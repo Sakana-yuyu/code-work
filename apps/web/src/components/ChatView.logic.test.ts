@@ -565,6 +565,9 @@ describe("getStartedThreadModelChangeBlockReason", () => {
       instanceId: ProviderInstanceId.make("grok"),
       requiresNewThreadForModelChange: true,
     },
+    {
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+    },
   ];
 
   it("allows model changes before a provider session has started", () => {
@@ -599,6 +602,43 @@ describe("getStartedThreadModelChangeBlockReason", () => {
         },
       }),
     ).toBeNull();
+  });
+
+  it("allows model changes within the same agent instance on a started thread", () => {
+    expect(
+      getStartedThreadModelChangeBlockReason({
+        providers,
+        hasStartedSession: true,
+        currentModelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5.4",
+        },
+        nextModelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5.4-codex",
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("blocks switching the agent instance on a started thread with a friendly reason", () => {
+    expect(
+      getStartedThreadModelChangeBlockReason({
+        providers,
+        hasStartedSession: true,
+        currentModelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5.4",
+        },
+        nextModelSelection: {
+          instanceId: ProviderInstanceId.make("claudeAgent"),
+          model: "claude-sonnet-5",
+        },
+      }),
+    ).toEqual({
+      title: "This conversation is bound to its agent",
+      description: expect.stringContaining("Start a new conversation"),
+    });
   });
 
   it("blocks started-session model changes when either provider requires a new thread", () => {

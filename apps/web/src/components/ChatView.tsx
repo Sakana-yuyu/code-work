@@ -94,6 +94,7 @@ import {
 import {
   derivePendingApprovals,
   derivePendingUserInputs,
+  deriveReasoningSummaryEntries,
   derivePhase,
   deriveTimelineEntries,
   deriveActiveWorkStartedAt,
@@ -330,7 +331,12 @@ import {
   hasDismissedResumeCompaction,
   shouldOfferResumeCompaction,
 } from "./chat/ContextWindowMeter.logic";
-import { deriveLatestContextWindowSnapshot, formatContextWindowTokens } from "../lib/contextWindow";
+import {
+  deriveCacheHitRate,
+  deriveLatestContextWindowSnapshot,
+  deriveToolDurationMs,
+  formatContextWindowTokens,
+} from "../lib/contextWindow";
 import { ThreadSyncStatusPill } from "./chat/ThreadSyncStatusPill";
 import {
   DRAFT_HERO_TRANSITION_ANIMATION_ID,
@@ -359,6 +365,7 @@ import {
   shouldReleaseTimelineAnchorForToolActivity,
   shouldShowBranchMismatchBanner,
   getStartedThreadModelChangeBlockReason,
+  threadHasStarted,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
   LEGACY_LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
   LastInvokedScriptByProjectSchema,
@@ -391,6 +398,7 @@ import {
 } from "../lib/attachmentUploadQueue";
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { RightPanelSheet } from "./RightPanelSheet";
+import { WorkspaceLayoutSwitch } from "./chat/WorkspaceLayoutSwitch";
 import { previewEnvironment } from "../state/preview";
 import { useAtomCommand } from "../state/use-atom-command";
 import { Button } from "./ui/button";
@@ -1497,7 +1505,9 @@ function ChatViewContent(props: ChatViewProps) {
   const compactPanelViewport = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const [workspaceElement, setWorkspaceElement] = useState<HTMLDivElement | null>(null);
   const workspaceLayout = useWorkspaceLayout(workspaceElement);
-  const shouldUseRightPanelSheet = compactPanelViewport && workspaceLayout.mode !== "ide";
+  // IDE 布局没有右侧面板的网格槽位（工作台占满主区）：Agents/Diff/预览等
+  // 面板一律走覆盖层 sheet，否则这些入口在工作台模式下是死点击。
+  const shouldUseRightPanelSheet = compactPanelViewport || workspaceLayout.mode === "ide";
   const [ideChatVisible, setIdeChatVisible] = useState(true);
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
   const [pullRequestDialogState, setPullRequestDialogState] =
@@ -1797,7 +1807,10 @@ function ChatViewContent(props: ChatViewProps) {
     [activeKnownTerminalIds, panelTerminalIds],
   );
   const previewPanelOpen = activeRightPanelKind === "preview" && isPreviewSupportedInRuntime();
-  const rightPanelOpen = isIdeLayout || rightPanelState.isOpen;
+  // Must stay the store truth: the overlay sheet gates its mount on this, and
+  // an IDE-coerced `true` would keep the sheet open with no way to close it.
+  // IDE chat-column visibility is a separate axis (ideChatVisible).
+  const rightPanelOpen = rightPanelState.isOpen;
   const canMaximizeRightPanel = !isIdeLayout && rightPanelOpen && !shouldUseRightPanelSheet;
   const rightPanelMaximized =
     canMaximizeRightPanel && maximizedRightPanelThreadKey === routeThreadKey;
@@ -2391,6 +2404,26 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const workLogEntries = useMemo(() => deriveWorkLogEntries(threadActivities), [threadActivities]);
   const turnPlans = useMemo(() => deriveTurnPlans(threadActivities), [threadActivities]);
+  const reasoningSummaries = useMemo(
+    () => deriveReasoningSummaryEntries(threadActivities),
+    [threadActivities],
+  );
+  const conversationStats = useMemo(() => {
+    const rounds = new Set(
+      threadActivities.flatMap((activity) => (activity.turnId ? [activity.turnId] : [])),
+    ).size;
+    const steps = turnPlans.reduce((total, plan) => total + plan.plan.steps.length, 0);
+    return {
+      rounds,
+      steps,
+      llmDurationMs: activeContextWindow?.durationMs ?? null,
+      toolDurationMs: deriveToolDurationMs(threadActivities),
+      cacheHitRate: deriveCacheHitRate(activeContextWindow),
+      inputTokens: activeContextWindow?.inputTokens ?? activeContextWindow?.lastInputTokens ?? null,
+      outputTokens:
+        activeContextWindow?.outputTokens ?? activeContextWindow?.lastOutputTokens ?? null,
+    };
+  }, [activeContextWindow, threadActivities, turnPlans]);
   // Native subagent fold: memoized by activity-list identity, shared by the
   // Agents surface, live strip, and workflow cards. v2Projection is null
   // until orchestration-v2 lands (source precedence lives in the derive).
@@ -2767,8 +2800,9 @@ function ChatViewContent(props: ChatViewProps) {
         activeThread?.proposedPlans ?? [],
         workLogEntries,
         turnPlans,
+        reasoningSummaries,
       ),
-    [activeThread?.proposedPlans, timelineMessages, turnPlans, workLogEntries],
+    [activeThread?.proposedPlans, reasoningSummaries, timelineMessages, turnPlans, workLogEntries],
   );
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
@@ -6908,7 +6942,7 @@ function ChatViewContent(props: ChatViewProps) {
       }
       const reason = getStartedThreadModelChangeBlockReason({
         providers: providerStatuses,
-        hasStartedSession: activeThread.session !== null,
+        hasStartedSession: threadHasStarted(activeThread),
         currentModelSelection: activeThread.modelSelection,
         currentProviderInstanceId: activeThread.session?.providerInstanceId ?? null,
         nextModelSelection: { instanceId, model },
@@ -6933,6 +6967,11 @@ function ChatViewContent(props: ChatViewProps) {
         resolvedDriverKind !== null &&
         resolvedDriverKind !== lockedProvider
       ) {
+        toastManager.add({
+          type: "warning",
+          title: t("threadRunningAgentLockedTitle"),
+          description: t("threadRunningAgentLockedDescription"),
+        });
         scheduleComposerFocus();
         return;
       }
@@ -6945,6 +6984,11 @@ function ChatViewContent(props: ChatViewProps) {
           entry?.continuation?.groupKey &&
           currentEntry.continuation.groupKey !== entry.continuation.groupKey
         ) {
+          toastManager.add({
+            type: "warning",
+            title: t("threadRunningAgentLockedTitle"),
+            description: t("threadRunningAgentLockedDescription"),
+          });
           scheduleComposerFocus();
           return;
         }
@@ -6965,7 +7009,7 @@ function ChatViewContent(props: ChatViewProps) {
       };
       const modelChangeBlockReason = getStartedThreadModelChangeBlockReason({
         providers: providerStatuses,
-        hasStartedSession: activeThread.session !== null,
+        hasStartedSession: threadHasStarted(activeThread),
         currentModelSelection: activeThread.modelSelection,
         currentProviderInstanceId: activeThread.session?.providerInstanceId ?? null,
         nextModelSelection,
@@ -7389,7 +7433,7 @@ function ChatViewContent(props: ChatViewProps) {
         <>
           {!shouldUseRightPanelSheet && rightPanelOpen && activeThreadRef ? (
             <RightPanelTabs
-              mode={isIdeLayout ? "embedded" : "inline"}
+              mode="inline"
               maximized={rightPanelMaximized}
               surfaces={rightPanelState.surfaces}
               activeSurfaceId={activeRightPanelSurface?.id ?? null}
@@ -7430,7 +7474,12 @@ function ChatViewContent(props: ChatViewProps) {
       overlay={
         <>
           {rightPanelOpen && !shouldUseRightPanelSheet && !isIdeLayout ? panelLayoutControls : null}
-          {shouldUseRightPanelSheet && rightPanelOpen && activeThreadRef ? (
+          {/* An empty-open record (isOpen without surfaces) must not mount the
+              sheet: it would cover the page as an unclosable bare frame. */}
+          {shouldUseRightPanelSheet &&
+          rightPanelOpen &&
+          activeThreadRef &&
+          rightPanelState.surfaces.length > 0 ? (
             <RightPanelSheet open onClose={closePreviewPanel}>
               <RightPanelTabs
                 mode="sheet"
@@ -7439,7 +7488,15 @@ function ChatViewContent(props: ChatViewProps) {
                 // right inset plus mr-px), so the cluster does not creep when
                 // the sheet opens.
                 layoutControls={
-                  <div className="mr-px flex items-center">{panelToggleControls}</div>
+                  <div className="mr-px flex items-center gap-1">
+                    {/* The sheet covers the page header's right side, so the
+                        layout switch rides along here to stay reachable. */}
+                    <WorkspaceLayoutSwitch
+                      value={isIdeLayout ? "ide" : "chat"}
+                      onChange={workspaceLayout.setMode}
+                    />
+                    {panelToggleControls}
+                  </div>
                 }
                 surfaces={rightPanelState.surfaces}
                 activeSurfaceId={activeRightPanelSurface?.id ?? null}
@@ -7771,6 +7828,7 @@ function ChatViewContent(props: ChatViewProps) {
                                 : {})}
                               {...(hasMultipleEnvironments ? { onEnvironmentChange } : {})}
                               availableEnvironments={logicalProjectEnvironments}
+                              conversationStats={conversationStats}
                             />
                           </div>
                         )}
