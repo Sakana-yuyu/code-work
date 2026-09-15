@@ -4,8 +4,10 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
+  // 幂等：编号从 065 提升到 078（见 Migrations.ts），在水位线已经越过 65
+  // 的旧库上会作为新迁移重放一次，重复建表必须安全。
   yield* sql`
-    CREATE TABLE composition_goal_loop_retry_intents (
+    CREATE TABLE IF NOT EXISTS composition_goal_loop_retry_intents (
       previous_run_id TEXT PRIMARY KEY CHECK (
         length(trim(previous_run_id)) > 0 AND length(previous_run_id) <= 512
       ),
@@ -40,7 +42,7 @@ export default Effect.gen(function* () {
   `;
 
   yield* sql`
-    CREATE UNIQUE INDEX uq_composition_goal_loop_retry_new_run
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_composition_goal_loop_retry_new_run
     ON composition_goal_loop_retry_intents(new_run_id)
   `;
 });

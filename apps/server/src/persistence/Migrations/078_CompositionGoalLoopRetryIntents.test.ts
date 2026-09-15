@@ -8,11 +8,11 @@ import * as NodeSqliteClient from "../NodeSqliteClient.ts";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 
-layer("065_CompositionGoalLoopRetryIntents", (it) => {
+layer("078_CompositionGoalLoopRetryIntents", (it) => {
   it.effect("以追加迁移建立 Goal Loop retry 持久阶段合同", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 64 });
+      yield* runMigrations({ toMigrationInclusive: 77 });
 
       const before = yield* sql<{ readonly name: string }>`
         SELECT name
@@ -21,8 +21,8 @@ layer("065_CompositionGoalLoopRetryIntents", (it) => {
       `;
       assert.deepEqual(before, []);
 
-      const executed = yield* runMigrations({ toMigrationInclusive: 65 });
-      assert.deepEqual(executed, [[65, "CompositionGoalLoopRetryIntents"]]);
+      const executed = yield* runMigrations({ toMigrationInclusive: 78 });
+      assert.deepEqual(executed, [[78, "CompositionGoalLoopRetryIntents"]]);
 
       const columns = yield* sql<{ readonly name: string }>`
         PRAGMA table_info('composition_goal_loop_retry_intents')
@@ -51,14 +51,35 @@ layer("065_CompositionGoalLoopRetryIntents", (it) => {
         indexes.map((index) => index.name),
         ["uq_composition_goal_loop_retry_new_run"],
       );
-      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 65 }), []);
+      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 78 }), []);
+    }),
+  );
+
+  it.effect("水位线已越过旧编号 65 的库重放 078 时幂等自愈", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 78 });
+      // 模拟历史库：表已存在、迁移行还挂在旧编号 65 上（Effect Migrator 只
+      // 应用大于水位线的编号，065 编号曾被 069 抢先入库而永远跳过）。
+      yield* sql`
+        UPDATE effect_sql_migrations SET migration_id = 65
+        WHERE migration_id = 78
+      `;
+
+      const executed = yield* runMigrations({ toMigrationInclusive: 78 });
+      assert.deepEqual(executed, [[78, "CompositionGoalLoopRetryIntents"]]);
+
+      const rows = yield* sql<{ readonly migration_id: number }>`
+        SELECT migration_id FROM effect_sql_migrations WHERE migration_id IN (65, 78)
+      `;
+      assert.deepEqual(rows.map((row) => row.migration_id).sort(), [65, 78]);
     }),
   );
 
   it.effect("数据库拒绝重复新 Run、非法阶段快照和相同的新旧 Run", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 65 });
+      yield* runMigrations({ toMigrationInclusive: 78 });
       yield* insertIntent(sql, { previousRunId: "run-old-1", newRunId: "run-new-1" });
 
       const duplicateNewRun = yield* Effect.result(

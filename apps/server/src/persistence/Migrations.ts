@@ -77,8 +77,6 @@ import Migration0061 from "./Migrations/061_CompositionSquadExecutions.ts";
 import Migration0062 from "./Migrations/062_CompositionSquadExecutionBindings.ts";
 import Migration0063 from "./Migrations/063_CompositionSquadExecutionPlanDigest.ts";
 import Migration0064 from "./Migrations/064_CompositionToolInvocations.ts";
-import Migration0065 from "./Migrations/065_CompositionGoalLoopRetryIntents.ts";
-import Migration0066 from "./Migrations/066_CompositionTaskRunModelSnapshot.ts";
 import Migration0070 from "./Migrations/070_CompositionRunStartIntents.ts";
 import Migration0071 from "./Migrations/071_CompositionRunStartFencing.ts";
 import Migration0072 from "./Migrations/072_CompositionRunStartAcceptedOwnership.ts";
@@ -88,6 +86,8 @@ import Migration0069 from "./Migrations/069_ThreadGoals.ts";
 import Migration0075 from "./Migrations/075_SpecWorkflowCapabilities.ts";
 import Migration0076 from "./Migrations/076_SpecWorkflowEvents.ts";
 import Migration0077 from "./Migrations/077_SpecWorkflowSelectedIntent.ts";
+import Migration0078 from "./Migrations/078_CompositionGoalLoopRetryIntents.ts";
+import Migration0079 from "./Migrations/079_CompositionTaskRunModelSnapshot.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -167,8 +167,9 @@ export const migrationEntries = [
   [62, "CompositionSquadExecutionBindings", Migration0062],
   [63, "CompositionSquadExecutionPlanDigest", Migration0063],
   [64, "CompositionToolInvocations", Migration0064],
-  [65, "CompositionGoalLoopRetryIntents", Migration0065],
-  [66, "CompositionTaskRunModelSnapshot", Migration0066],
+  // 078/079 原编号 065/066：069 曾抢先入库，令水位线越过 65 的库永远跳过
+  // 它们（Effect Migrator 只应用大于水位线的编号）。重编号到水位线之上并
+  // 幂等化后，这类库在下次启动自动补齐；按旧编号应用过的新库重放亦安全。
   [70, "CompositionRunStartIntents", Migration0070],
   [71, "CompositionRunStartFencing", Migration0071],
   [72, "CompositionRunStartAcceptedOwnership", Migration0072],
@@ -178,6 +179,8 @@ export const migrationEntries = [
   [75, "SpecWorkflowCapabilities", Migration0075],
   [76, "SpecWorkflowEvents", Migration0076],
   [77, "SpecWorkflowSelectedIntent", Migration0077],
+  [78, "CompositionGoalLoopRetryIntents", Migration0078],
+  [79, "CompositionTaskRunModelSnapshot", Migration0079],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
