@@ -22,6 +22,33 @@ const descriptors = [
     source: "t3",
   },
   {
+    capabilityId: "t3.workspace.list_files",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: true, execute: false, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.workspace.search_files",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: true, execute: false, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.workspace.search_contents",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: true, execute: false, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
+  {
     capabilityId: "t3.terminal.open",
     kind: "tool",
     version: "1",
@@ -276,6 +303,56 @@ const agentToolSignatures: ReadonlyMap<
     },
   ],
   [
+    "workspace.list_files",
+    {
+      description:
+        "列出当前工作区的文件与目录（相对路径，按路径排序，有数量上限）。先了解项目结构时使用；找具体文件改用 workspace.search_files。",
+      parameters: {
+        type: "object",
+        properties: {
+          cwd: { type: "string", description: "当前工作区根目录的绝对路径。" },
+        },
+        required: ["cwd"],
+      },
+    },
+  ],
+  [
+    "workspace.search_files",
+    {
+      description:
+        "按名称模糊匹配当前工作区的文件或目录，返回相对路径列表。已知部分文件名或扩展名时使用，不要凭记忆猜测路径。",
+      parameters: {
+        type: "object",
+        properties: {
+          cwd: { type: "string", description: "当前工作区根目录的绝对路径。" },
+          query: { type: "string", description: "名称模糊匹配关键词。" },
+          limit: { type: "number", description: "返回上限，默认 50，最大 200。" },
+          kind: { type: "string", description: "可选：file 或 directory。" },
+        },
+        required: ["cwd", "query"],
+      },
+    },
+  ],
+  [
+    "workspace.search_contents",
+    {
+      description:
+        "在当前工作区文件内容中搜索文本，返回文件路径、行号和所在行。定位代码实现时优先使用，避免逐个读取文件。",
+      parameters: {
+        type: "object",
+        properties: {
+          cwd: { type: "string", description: "当前工作区根目录的绝对路径。" },
+          query: { type: "string", description: "搜索文本；useRegex 为 true 时是正则表达式。" },
+          limit: { type: "number", description: "返回上限，默认 100，最大 500。" },
+          caseSensitive: { type: "boolean", description: "是否区分大小写，默认 false。" },
+          wholeWord: { type: "boolean", description: "是否全词匹配，默认 false。" },
+          useRegex: { type: "boolean", description: "是否按正则表达式搜索，默认 false。" },
+        },
+        required: ["cwd", "query"],
+      },
+    },
+  ],
+  [
     "terminal.exec",
     {
       description:
@@ -366,6 +443,23 @@ const agentToolSignatures: ReadonlyMap<
         type: "object",
         properties: { task: { type: "string" }, subagentType: { type: "string" } },
         required: ["task"],
+      },
+    },
+  ],
+  [
+    "ide.invoke",
+    {
+      description:
+        "在已连接的 IDE 会话上执行一次经过握手验证的远程操作（如 editor.read/editor.write）。仅当当前任务来自已注册的 IDE 会话时可用；其他情况会返回 tool_scope_missing。",
+      parameters: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string", description: "IDE 会话 id。" },
+          handshakeId: { type: "string", description: "本任务握手获得的调用凭证。" },
+          operation: { type: "string", description: "握手期验证过的操作名。" },
+          arguments: { type: "object", description: "操作参数。" },
+        },
+        required: ["sessionId", "handshakeId", "operation", "arguments"],
       },
     },
   ],

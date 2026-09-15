@@ -32,9 +32,10 @@ const executedCommands: Array<{ threadId: string; terminalId: string; command: s
 const killedTerminals: string[] = [];
 const closedTerminals: string[] = [];
 
+const WorkspaceEntriesLayer = WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer));
 const WorkspaceFileLayer = WorkspaceFileSystem.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
-  Layer.provide(WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer))),
+  Layer.provide(WorkspaceEntriesLayer),
 );
 
 const testMcpToolRegistry = CompositionMcpToolRegistry.makeCompositionMcpToolRegistry();
@@ -203,13 +204,14 @@ const TestLayer = Layer.mergeAll(
     Layer.provide(CapabilityRegistryLayer),
     Layer.provide(McpToolRegistryLayer),
     Layer.provide(WorkspaceFileLayer),
+    Layer.provide(WorkspaceEntriesLayer),
     Layer.provide(ToolTestServicesLayer),
   ),
   CapabilityPolicyLayer,
   CapabilityGrantLayer,
   CapabilityRegistryLayer,
   WorkspaceFileLayer,
-  WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer)),
+  WorkspaceEntriesLayer,
   WorkspacePaths.layer,
   ToolTestServicesLayer,
   McpToolRegistryLayer,
@@ -652,6 +654,9 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
         expect(capabilities.map((capability) => capability.capabilityId)).toEqual([
           "t3.workspace.read_file",
           "t3.workspace.write_file",
+          "t3.workspace.list_files",
+          "t3.workspace.search_files",
+          "t3.workspace.search_contents",
           "t3.terminal.open",
           "t3.terminal.write",
           "t3.terminal.exec",
@@ -735,6 +740,65 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
   );
 
   describe("workspace tools", () => {
+    it.effect("lists, name-searches and content-searches the workspace", () =>
+      Effect.gen(function* () {
+        const broker = yield* ToolBroker.ToolBroker;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "README.md", "hello world\n");
+        yield* writeTextFile(cwd, "src/index.ts", "export const answer = 42;\n");
+        yield* writeTextFile(cwd, "src/search-target.ts", "export const answer = 43;\n");
+
+        const listed = yield* broker.invoke({
+          ...baseInput(cwd),
+          canonicalToolName: "workspace.list_files",
+          arguments: { cwd },
+          idempotencyKey: "idempotency-list-1",
+          capabilityGrantIds: ["t3.workspace.list_files"],
+        });
+        expect(listed.status).toBe("succeeded");
+        const listedPaths = (listed.result as { entries: Array<{ path: string }> }).entries.map(
+          (entry) => entry.path,
+        );
+        expect(listedPaths).toContain("README.md");
+        expect(listedPaths).toContain("src/index.ts");
+
+        const searched = yield* broker.invoke({
+          ...baseInput(cwd),
+          canonicalToolName: "workspace.search_files",
+          arguments: { cwd, query: "search-target" },
+          idempotencyKey: "idempotency-search-1",
+          capabilityGrantIds: ["t3.workspace.search_files"],
+        });
+        expect(searched.status).toBe("succeeded");
+        expect(searched.result).toMatchObject({
+          entries: [expect.objectContaining({ path: "src/search-target.ts", kind: "file" })],
+        });
+
+        const contents = yield* broker.invoke({
+          ...baseInput(cwd),
+          canonicalToolName: "workspace.search_contents",
+          arguments: { cwd, query: "answer = 4" },
+          idempotencyKey: "idempotency-contents-1",
+          capabilityGrantIds: ["t3.workspace.search_contents"],
+        });
+        expect(contents.status).toBe("succeeded");
+        const matches = (contents.result as { matches: Array<{ path: string }> }).matches;
+        expect(matches.map((match) => match.path).sort()).toEqual([
+          "src/index.ts",
+          "src/search-target.ts",
+        ]);
+
+        const rejected = yield* broker.invoke({
+          ...baseInput(cwd),
+          canonicalToolName: "workspace.search_files",
+          arguments: { cwd: "/definitely/not/the/workspace", query: "x" },
+          idempotencyKey: "idempotency-search-2",
+          capabilityGrantIds: ["t3.workspace.search_files"],
+        });
+        expect(rejected).toMatchObject({ status: "failed", errorCode: "tool_arguments_invalid" });
+      }),
+    );
+
     it.effect("reads through the real workspace path and redacts sensitive values", () =>
       Effect.gen(function* () {
         const broker = yield* ToolBroker.ToolBroker;
@@ -963,6 +1027,7 @@ const DelegateTestLayer = Layer.mergeAll(
     Layer.provide(CapabilityRegistryLayer),
     Layer.provide(McpToolRegistryLayer),
     Layer.provide(WorkspaceFileLayer),
+    Layer.provide(WorkspaceEntriesLayer),
     Layer.provide(ToolTestServicesLayer),
     Layer.provideMerge(FakeByokDelegationLayer),
   ),
@@ -970,6 +1035,7 @@ const DelegateTestLayer = Layer.mergeAll(
   CapabilityGrantLayer,
   CapabilityRegistryLayer,
   WorkspaceFileLayer,
+  WorkspaceEntriesLayer,
   ToolTestServicesLayer,
   McpToolRegistryLayer,
   ServerConfig.ServerConfig.layerTest(process.cwd(), {

@@ -38,6 +38,7 @@ import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 import { makeCompositionBrowserScope } from "./CompositionBrowserContext.ts";
 import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
+import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import { compositionToolCapabilityId } from "./CompositionToolRegistry.ts";
@@ -70,6 +71,33 @@ const WorkspaceWriteArguments = Schema.Struct({
   contents: Schema.String,
 });
 type WorkspaceWriteArguments = typeof WorkspaceWriteArguments.Type;
+
+const WorkspaceListFilesArguments = Schema.Struct({ cwd: Schema.String });
+type WorkspaceListFilesArguments = typeof WorkspaceListFilesArguments.Type;
+
+const WorkspaceSearchFilesArguments = Schema.Struct({
+  cwd: Schema.String,
+  query: Schema.String,
+  limit: Schema.optional(Schema.Number),
+  kind: Schema.optional(Schema.Literals(["file", "directory"])),
+});
+type WorkspaceSearchFilesArguments = typeof WorkspaceSearchFilesArguments.Type;
+
+const WorkspaceSearchContentsArguments = Schema.Struct({
+  cwd: Schema.String,
+  query: Schema.String,
+  limit: Schema.optional(Schema.Number),
+  caseSensitive: Schema.optional(Schema.Boolean),
+  wholeWord: Schema.optional(Schema.Boolean),
+  useRegex: Schema.optional(Schema.Boolean),
+});
+type WorkspaceSearchContentsArguments = typeof WorkspaceSearchContentsArguments.Type;
+
+/** 模型给出的 limit 一律夹紧到契约上限内，超界不再单独报错。 */
+const boundedPositiveInt = (value: number | undefined, fallback: number, max: number): number => {
+  const resolved = value === undefined || !Number.isFinite(value) ? fallback : value;
+  return Math.max(1, Math.min(max, Math.trunc(resolved)));
+};
 
 const TerminalOpenArguments = Schema.Struct({
   cwd: Schema.String,
@@ -240,6 +268,7 @@ const make = Effect.gen(function* () {
     CompositionMcpToolRegistry.CompositionMcpToolRegistry,
   );
   const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+  const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
   const completed = new Set<string>();
 
   const handlers = new Map<string, ToolHandler>([
@@ -290,6 +319,66 @@ const make = Effect.gen(function* () {
               request,
               threadId: input.threadId ?? input.taskId,
               fallbackCanvasId: input.toolCallId,
+            });
+          }),
+      },
+    ],
+    [
+      "workspace.list_files",
+      {
+        operation: "read",
+        execute: (input) =>
+          Effect.gen(function* () {
+            const args = yield* Schema.decodeUnknownEffect(WorkspaceListFilesArguments)(
+              input.arguments,
+            ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+            if (args.cwd !== input.workspaceRoot)
+              return yield* new ToolArgumentsInvalidError(input);
+            return yield* workspaceEntries.list({ cwd: args.cwd });
+          }),
+      },
+    ],
+    [
+      "workspace.search_files",
+      {
+        operation: "read",
+        execute: (input) =>
+          Effect.gen(function* () {
+            const args = yield* Schema.decodeUnknownEffect(WorkspaceSearchFilesArguments)(
+              input.arguments,
+            ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+            if (args.cwd !== input.workspaceRoot)
+              return yield* new ToolArgumentsInvalidError(input);
+            const query = args.query.trim();
+            if (query.length === 0) return yield* new ToolArgumentsInvalidError(input);
+            return yield* workspaceEntries.search({
+              cwd: args.cwd,
+              query,
+              limit: boundedPositiveInt(args.limit, 50, 200),
+              ...(args.kind === undefined ? {} : { kind: args.kind }),
+            });
+          }),
+      },
+    ],
+    [
+      "workspace.search_contents",
+      {
+        operation: "read",
+        execute: (input) =>
+          Effect.gen(function* () {
+            const args = yield* Schema.decodeUnknownEffect(WorkspaceSearchContentsArguments)(
+              input.arguments,
+            ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+            if (args.cwd !== input.workspaceRoot)
+              return yield* new ToolArgumentsInvalidError(input);
+            if (args.query.length === 0) return yield* new ToolArgumentsInvalidError(input);
+            return yield* workspaceEntries.searchContents({
+              cwd: args.cwd,
+              query: args.query,
+              limit: boundedPositiveInt(args.limit, 100, 500),
+              caseSensitive: args.caseSensitive ?? false,
+              wholeWord: args.wholeWord ?? false,
+              useRegex: args.useRegex ?? false,
             });
           }),
       },

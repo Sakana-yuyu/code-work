@@ -111,6 +111,7 @@ const TestLayer = Layer.mergeAll(
     Layer.provide(CapabilityPolicyLayer),
     Layer.provide(CapabilityRegistryLayer),
     Layer.provide(WorkspaceFileLayer),
+    Layer.provide(WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer))),
   ),
   CapabilityPolicyLayer,
   CapabilityRegistryLayer,

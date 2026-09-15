@@ -95,6 +95,7 @@ const makeTestLayer = (
       Layer.provide(grantRegistryLayer),
       Layer.provide(capabilityRegistryLayer),
       Layer.provide(workspaceFileLayer),
+      Layer.provide(WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer))),
       Layer.provide(registryLayer),
     ),
     capabilityPolicyLayer,

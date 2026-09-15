@@ -10,6 +10,9 @@ it("为统一 Runtime Tool Plane 暴露稳定且无重复的 canonical capabilit
     [
       "t3.workspace.read_file",
       "t3.workspace.write_file",
+      "t3.workspace.list_files",
+      "t3.workspace.search_files",
+      "t3.workspace.search_contents",
       "t3.terminal.open",
       "t3.terminal.write",
       "t3.terminal.exec",

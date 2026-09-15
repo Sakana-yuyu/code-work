@@ -13,6 +13,8 @@ import {
   type CompositionToolInvocation,
 } from "../persistence/Services/CompositionToolInvocationStore.ts";
 import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
+import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
+import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as CapabilityPolicy from "./CapabilityPolicy.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 import {
@@ -25,6 +27,7 @@ import {
   CompositionToolInvocationStartupRecoveryError,
 } from "./CompositionToolInvocationStartupRecovery.ts";
 import * as ToolBroker from "./ToolBroker.ts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 
 const workspaceRoot = "E:/tool-broker-persistence-test";
 
@@ -102,6 +105,12 @@ const makeBrokerLayer = <CoordinatorError, RecoveryError>(options: {
     Layer.provide(policyLayer),
     Layer.provide(registryLayer),
     Layer.provide(workspaceLayer),
+    Layer.provide(
+      WorkspaceEntries.layer.pipe(
+        Layer.provide(WorkspacePaths.layer),
+        Layer.provide(NodeServices.layer),
+      ),
+    ),
   );
 };
 

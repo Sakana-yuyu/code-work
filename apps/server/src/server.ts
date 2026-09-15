@@ -489,6 +489,7 @@ const CompositionToolBrokerLayerLive = CompositionToolBroker.persistentLayer.pip
   Layer.provideMerge(CompositionCapabilityGrantLayerLive),
   Layer.provideMerge(CompositionCapabilityRegistryLayerLive),
   Layer.provideMerge(WorkspaceFileSystemLayerLive),
+  Layer.provideMerge(WorkspaceEntriesLayerLive),
   Layer.provideMerge(GitVcsDriver.layer),
   Layer.provideMerge(TerminalLayerLive),
   // 启用 delegate_task 工具处理器：BYOK Agent Loop 内模型可自发委派子任务。
