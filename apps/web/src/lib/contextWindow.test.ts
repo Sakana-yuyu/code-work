@@ -3,11 +3,18 @@ import { EventId, type OrchestrationThreadActivity, TurnId } from "@codework/con
 
 import {
   deriveLatestAccountQuotaSnapshot,
+  deriveCacheHitRate,
   deriveLatestContextWindowSnapshot,
+  deriveToolDurationMs,
   formatContextWindowTokens,
 } from "./contextWindow";
 
-function makeActivity(id: string, kind: string, payload: unknown): OrchestrationThreadActivity {
+function makeActivity(
+  id: string,
+  kind: string,
+  payload: unknown,
+  overrides: Partial<OrchestrationThreadActivity> = {},
+): OrchestrationThreadActivity {
   return {
     id: EventId.make(id),
     tone: "info",
@@ -16,6 +23,7 @@ function makeActivity(id: string, kind: string, payload: unknown): Orchestration
     payload,
     turnId: TurnId.make("turn-1"),
     createdAt: "2026-03-23T00:00:00.000Z",
+    ...overrides,
   };
 }
 
@@ -86,6 +94,69 @@ describe("contextWindow", () => {
 
     expect(snapshot?.usedTokens).toBe(81_659);
     expect(snapshot?.totalProcessedTokens).toBe(748_126);
+  });
+
+  it("derives the conversation cache hit rate from cumulative input tokens", () => {
+    const usage = deriveLatestContextWindowSnapshot([
+      makeActivity("activity-1", "context-window.updated", {
+        usedTokens: 1_500,
+        inputTokens: 1_000,
+        cachedInputTokens: 250,
+      }),
+    ]);
+
+    expect(deriveCacheHitRate(usage)).toBe(25);
+    expect(deriveCacheHitRate(null)).toBeNull();
+    expect(
+      deriveCacheHitRate(
+        deriveLatestContextWindowSnapshot([
+          makeActivity("activity-2", "context-window.updated", {
+            usedTokens: 10,
+            inputTokens: 10,
+            cachedInputTokens: 20,
+          }),
+        ]),
+      ),
+    ).toBe(100);
+  });
+
+  it("sums only matched tool lifecycle durations", () => {
+    expect(
+      deriveToolDurationMs([
+        makeActivity("tool-1-start", "tool.started", { toolCallId: "tool-1" }),
+        makeActivity(
+          "tool-1-end",
+          "tool.completed",
+          { toolCallId: "tool-1" },
+          {
+            createdAt: "2026-03-23T00:00:00.250Z",
+          },
+        ),
+        makeActivity(
+          "tool-2-start",
+          "tool.started",
+          { toolCallId: "tool-2" },
+          {
+            createdAt: "2026-03-23T00:00:01.000Z",
+          },
+        ),
+        makeActivity(
+          "tool-2-end",
+          "tool.completed",
+          { toolCallId: "tool-2" },
+          {
+            createdAt: "2026-03-23T00:00:01.250Z",
+          },
+        ),
+      ]),
+    ).toBe(500);
+    expect(
+      deriveToolDurationMs([
+        makeActivity("tool-unmatched", "tool.completed", {
+          toolCallId: "missing-start",
+        }),
+      ]),
+    ).toBeNull();
   });
 
   it("derives official account quota windows without inventing missing values", () => {

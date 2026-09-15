@@ -39,6 +39,50 @@ export type AccountQuotaSnapshot = {
   readonly unlimited: boolean;
 };
 
+/** 根据当前对话累计输入 token 计算缓存命中率。 */
+export function deriveCacheHitRate(usage: ContextWindowSnapshot | null): number | null {
+  if (!usage) return null;
+
+  const cumulativeInputTokens = usage.inputTokens ?? 0;
+  const inputTokens =
+    cumulativeInputTokens > 0 ? cumulativeInputTokens : (usage.lastInputTokens ?? 0);
+  const cachedInputTokens = usage.cachedInputTokens ?? usage.lastCachedInputTokens ?? null;
+  if (inputTokens <= 0 || cachedInputTokens === null) return null;
+
+  return Math.min(100, Math.max(0, (cachedInputTokens / inputTokens) * 100));
+}
+
+/** 累加已配对工具活动的真实执行耗时；缺少任一端时不猜测。 */
+export function deriveToolDurationMs(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): number | null {
+  const startedAtByToolCall = new Map<string, number>();
+  let totalDurationMs = 0;
+  let completedToolCount = 0;
+
+  for (const activity of activities) {
+    if (activity.kind !== "tool.started" && activity.kind !== "tool.completed") continue;
+    const payload = asRecord(activity.payload);
+    const toolCallId = payload?.toolCallId;
+    if (typeof toolCallId !== "string" || toolCallId.length === 0) continue;
+    const timestamp = Date.parse(activity.createdAt);
+    if (!Number.isFinite(timestamp)) continue;
+
+    if (activity.kind === "tool.started") {
+      startedAtByToolCall.set(toolCallId, timestamp);
+      continue;
+    }
+
+    const startedAt = startedAtByToolCall.get(toolCallId);
+    if (startedAt === undefined || timestamp < startedAt) continue;
+    totalDurationMs += timestamp - startedAt;
+    completedToolCount += 1;
+    startedAtByToolCall.delete(toolCallId);
+  }
+
+  return completedToolCount > 0 ? totalDurationMs : null;
+}
+
 /** Map a provider driver kind to a user-facing display name. */
 export function formatProviderDisplayName(provider: string | null | undefined): string {
   if (!provider) return "This agent";

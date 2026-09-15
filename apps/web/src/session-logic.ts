@@ -146,6 +146,13 @@ export interface WorkLogEntry {
   };
 }
 
+export interface ReasoningSummaryEntry {
+  id: string;
+  createdAt: string;
+  turnId: TurnId | null;
+  text: string;
+}
+
 const workLogCollapseKey = Symbol();
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -219,6 +226,12 @@ export type TimelineEntry =
       kind: "turn-plan";
       createdAt: string;
       turnPlan: TurnPlanEntry;
+    }
+  | {
+      id: string;
+      kind: "reasoning-summary";
+      createdAt: string;
+      summary: ReasoningSummaryEntry;
     }
   | {
       id: string;
@@ -796,6 +809,35 @@ export function deriveTurnPlans(
     ...entry,
     plan: addPlanStepDurations(entry.plan, planActivities),
   }));
+}
+
+/** 将 provider 明确返回的 reasoning summary 增量聚合成时间线条目。 */
+export function deriveReasoningSummaryEntries(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): ReasoningSummaryEntry[] {
+  const summaries = new Map<string, ReasoningSummaryEntry>();
+  for (const activity of [...activities].toSorted(compareActivitiesByOrder)) {
+    if (activity.kind !== "reasoning.summary.delta") continue;
+    const payload = asRecord(activity.payload);
+    const delta = typeof payload?.delta === "string" ? payload.delta : "";
+    if (delta.length === 0) continue;
+    const summaryIndex = asNumber(payload?.summaryIndex) ?? 0;
+    const key = `${activity.turnId ?? "no-turn"}:${summaryIndex}`;
+    const existing = summaries.get(key);
+    if (existing) {
+      existing.text += delta;
+      continue;
+    }
+    summaries.set(key, {
+      id: `reasoning-summary:${key}`,
+      createdAt: activity.createdAt,
+      turnId: activity.turnId,
+      text: delta,
+    });
+  }
+  return [...summaries.values()].toSorted((left, right) =>
+    left.createdAt.localeCompare(right.createdAt),
+  );
 }
 
 export function findLatestProposedPlan(
@@ -1919,6 +1961,7 @@ export function deriveTimelineEntries(
   proposedPlans: ReadonlyArray<ProposedPlan>,
   workEntries: ReadonlyArray<WorkLogEntry>,
   turnPlans: ReadonlyArray<TurnPlanEntry> = [],
+  reasoningSummaries: ReadonlyArray<ReasoningSummaryEntry> = [],
 ): TimelineEntry[] {
   const messageRows: TimelineEntry[] = messages.map((message) => ({
     id: message.id,
@@ -1938,15 +1981,25 @@ export function deriveTimelineEntries(
     createdAt: turnPlan.createdAt,
     turnPlan,
   }));
+  const reasoningSummaryRows: TimelineEntry[] = reasoningSummaries.map((summary) => ({
+    id: summary.id,
+    kind: "reasoning-summary",
+    createdAt: summary.createdAt,
+    summary,
+  }));
   const workRows: TimelineEntry[] = workEntries.map((entry) => ({
     id: entry.id,
     kind: "work",
     createdAt: entry.createdAt,
     entry,
   }));
-  return [...messageRows, ...proposedPlanRows, ...turnPlanRows, ...workRows].toSorted((a, b) =>
-    a.createdAt.localeCompare(b.createdAt),
-  );
+  return [
+    ...messageRows,
+    ...proposedPlanRows,
+    ...turnPlanRows,
+    ...reasoningSummaryRows,
+    ...workRows,
+  ].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export function inferCheckpointTurnCountByTurnId(

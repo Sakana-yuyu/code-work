@@ -14,6 +14,8 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import { useProject, useThread, useThreadShellsForProjectRefs } from "../state/entities";
 import { useIsMobile } from "../hooks/useMediaQuery";
+import { formatDuration } from "../session-logic";
+import { formatContextWindowTokens } from "../lib/contextWindow";
 import {
   type EnvMode,
   type EnvironmentOption,
@@ -58,6 +60,17 @@ interface BranchToolbarProps {
   onComposerFocusRequest?: () => void;
   availableEnvironments?: readonly EnvironmentOption[];
   onEnvironmentChange?: (environmentId: EnvironmentId) => void;
+  conversationStats?: ConversationStats;
+}
+
+export interface ConversationStats {
+  rounds: number;
+  steps: number;
+  llmDurationMs: number | null;
+  toolDurationMs: number | null;
+  cacheHitRate: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
 }
 
 interface MobileRunContextSelectorProps {
@@ -376,6 +389,44 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
   return overflows;
 }
 
+const ConversationStatsStrip = memo(function ConversationStatsStrip({
+  stats,
+}: {
+  stats: ConversationStats;
+}) {
+  const formatDurationValue = (durationMs: number | null) =>
+    durationMs === null ? "—" : formatDuration(durationMs);
+  const formatTokenValue = (tokens: number | null) =>
+    tokens === null ? "—" : `${formatContextWindowTokens(tokens)} ${t("tok")}`;
+  const cacheHitRate =
+    stats.cacheHitRate === null ? "—" : `${stats.cacheHitRate.toFixed(1).replace(/\.0$/, "")}%`;
+
+  return (
+    <div
+      aria-label={`${t("chat.rounds")} ${stats.rounds}, ${t("chat.steps")} ${stats.steps}`}
+      className="hidden min-w-0 shrink items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap text-[11px] text-muted-foreground/70 md:flex"
+    >
+      <span className="shrink-0 tabular-nums">
+        {stats.rounds} {t("chat.rounds")} · {stats.steps} {t("chat.steps")}
+      </span>
+      <span aria-hidden>│</span>
+      <span className="shrink-0 tabular-nums">
+        {t("chat.llmDuration")} {formatDurationValue(stats.llmDurationMs)} ·{" "}
+        {t("chat.toolDuration")} {formatDurationValue(stats.toolDurationMs)}
+      </span>
+      <span aria-hidden>│</span>
+      <span className="shrink-0 tabular-nums">
+        {t("chat.cacheHitRate")} {cacheHitRate}
+      </span>
+      <span aria-hidden>│</span>
+      <span className="min-w-0 truncate tabular-nums">
+        {t("chat.inputTokens")} {formatTokenValue(stats.inputTokens)} · {t("chat.outputTokens")}{" "}
+        {formatTokenValue(stats.outputTokens)}
+      </span>
+    </div>
+  );
+});
+
 export const BranchToolbar = memo(function BranchToolbar({
   environmentId,
   threadId,
@@ -392,6 +443,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   onComposerFocusRequest,
   availableEnvironments,
   onEnvironmentChange,
+  conversationStats,
 }: BranchToolbarProps) {
   const threadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
@@ -520,6 +572,10 @@ export const BranchToolbar = memo(function BranchToolbar({
           ) : null}
         </div>
       )}
+
+      {showGitControls && conversationStats ? (
+        <ConversationStatsStrip stats={conversationStats} />
+      ) : null}
 
       {showGitControls ? (
         <BranchToolbarBranchSelector

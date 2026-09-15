@@ -16,6 +16,7 @@ import {
   deriveTurnPlans,
   derivePendingApprovals,
   derivePendingUserInputs,
+  deriveReasoningSummaryEntries,
   deriveTimelineEntries,
   deriveWorkLogEntries,
   findLatestProposedPlan,
@@ -940,6 +941,38 @@ describe("workEntryIndicatesToolFailure", () => {
         detail: "File not found in conversation",
       }),
     ).toBe(false);
+  });
+});
+
+describe("deriveReasoningSummaryEntries", () => {
+  it("聚合同一回合的 provider 思考摘要增量", () => {
+    const entries = deriveReasoningSummaryEntries([
+      makeActivity({
+        id: "reasoning-2",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        turnId: "turn-1",
+        kind: "reasoning.summary.delta",
+        payload: { summaryIndex: 0, delta: "检查。" },
+      }),
+      makeActivity({
+        id: "reasoning-1",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        turnId: "turn-1",
+        kind: "reasoning.summary.delta",
+        payload: { summaryIndex: 0, delta: "先" },
+      }),
+      makeActivity({
+        id: "raw-reasoning",
+        kind: "reasoning.delta",
+        payload: { delta: "不应展示" },
+      }),
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      id: "reasoning-summary:turn-1:0",
+      text: "先检查。",
+    });
   });
 });
 

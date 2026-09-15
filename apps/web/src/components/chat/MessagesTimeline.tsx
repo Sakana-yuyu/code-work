@@ -1006,7 +1006,8 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                   row.kind === "work" ||
                   row.kind === "work-live" ||
                   row.kind === "work-toggle" ||
-                  row.kind === "turn-plan"
+                  row.kind === "turn-plan" ||
+                  row.kind === "reasoning-summary"
                 ? "pb-2"
                 : "pb-4",
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
@@ -1031,6 +1032,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       ) : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "turn-plan" ? <TurnPlanTimelineRow row={row} /> : null}
+      {row.kind === "reasoning-summary" ? <ReasoningSummaryTimelineRow row={row} /> : null}
       {row.kind === "local-plugin-timeline" ? <LocalPluginTimelineRow entry={row.entry} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
     </div>
@@ -1164,7 +1166,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             }
           }}
           rows={Math.min(12, Math.max(2, editDraft.split("\n").length + 1))}
-          className="w-[80%] resize-y rounded-2xl border border-border bg-message p-3 text-sm leading-relaxed text-message-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+          className="w-[80%] resize-y rounded-2xl border border-border bg-message p-3 text-sm leading-relaxed text-message-foreground outline-none focus-visible:border-muted-foreground/50"
           aria-label={t("editUserMessage.action")}
         />
         <div className="flex w-[80%] items-center justify-end gap-2 pe-1">
@@ -1530,6 +1532,25 @@ const TurnPlanTimelineRow = memo(function TurnPlanTimelineRow({
         </div>
       ) : null}
     </div>
+  );
+});
+
+const ReasoningSummaryTimelineRow = memo(function ReasoningSummaryTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "reasoning-summary" }>;
+}) {
+  return (
+    <details className="group/reasoning-summary min-w-0 px-1 py-0.5">
+      <summary className="flex min-w-0 cursor-pointer list-none items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[12px] leading-5 text-muted-foreground/75 transition-colors duration-150 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70 [&::-webkit-details-marker]:hidden">
+        <ChevronRightIcon className="size-3.5 shrink-0 transition-transform duration-150 group-open/reasoning-summary:rotate-90" />
+        <BotIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+        <span className="truncate">{t("reasoningSummary")}</span>
+      </summary>
+      <div className="mt-1 ms-7 whitespace-pre-wrap break-words border-s border-border/45 ps-3 text-sm leading-relaxed text-muted-foreground">
+        {row.summary.text}
+      </div>
+    </details>
   );
 });
 

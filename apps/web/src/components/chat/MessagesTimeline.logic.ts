@@ -4,6 +4,7 @@ import {
   workEntryDisplayIndicatesToolFailure,
   workEntryIndicatesToolNeutralStatus,
   workLogEntryIsToolLike,
+  type ReasoningSummaryEntry,
   type TimelineEntry,
   type TurnPlanEntry,
   type WorkLogEntry,
@@ -281,6 +282,12 @@ export type MessagesTimelineRow =
       id: string;
       createdAt: string;
       turnPlan: TurnPlanEntry;
+    }
+  | {
+      kind: "reasoning-summary";
+      id: string;
+      createdAt: string;
+      summary: ReasoningSummaryEntry;
     }
   | {
       kind: "local-plugin-timeline";
@@ -568,6 +575,9 @@ function timelineEntryTurnId(entry: TimelineEntry): TurnId | null {
   if (entry.kind === "proposed-plan") {
     return entry.proposedPlan.turnId;
   }
+  if (entry.kind === "reasoning-summary") {
+    return entry.summary.turnId;
+  }
   return entry.kind === "work" ? (entry.entry.turnId ?? null) : null;
 }
 
@@ -606,9 +616,11 @@ function deriveTurnFolds(input: {
     const turnId =
       entry.kind === "message" && entry.message.role === "assistant"
         ? (entry.message.turnId ?? null)
-        : entry.kind === "work"
-          ? (entry.entry.turnId ?? null)
-          : null;
+        : entry.kind === "reasoning-summary"
+          ? entry.summary.turnId
+          : entry.kind === "work"
+            ? (entry.entry.turnId ?? null)
+            : null;
     if (!turnId) {
       continue;
     }
@@ -663,6 +675,9 @@ function deriveTurnFolds(input: {
         continue;
       }
       if (entry.kind === "work" && entry.entry.canvas !== undefined) {
+        continue;
+      }
+      if (entry.kind === "reasoning-summary") {
         continue;
       }
       hiddenEntryIds.add(entry.id);
@@ -791,6 +806,7 @@ export function deriveMessagesTimelineRows(input: {
         entry.entry.toolLifecycleStatus === "inProgress"
       );
     }
+    if (entry.kind === "reasoning-summary") return entry.summary.text.trim().length > 0;
     if (entry.kind === "proposed-plan" || entry.kind === "turn-plan") return true;
     return false;
   });
@@ -1059,6 +1075,16 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
+    if (timelineEntry.kind === "reasoning-summary") {
+      nextRows.push({
+        kind: "reasoning-summary",
+        id: timelineEntry.id,
+        createdAt: timelineEntry.createdAt,
+        summary: timelineEntry.summary,
+      });
+      continue;
+    }
+
     const assistantTurnStillInProgress =
       timelineEntry.message.role === "assistant" &&
       unsettledTurnId !== null &&
@@ -1170,6 +1196,11 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       // Plans rewrite in place: compare the snapshot's identity fields so an
       // unchanged plan keeps its row reference (virtualization stability).
       return a.createdAt === bp.createdAt && a.turnPlan.plan === bp.turnPlan.plan;
+    }
+
+    case "reasoning-summary": {
+      const br = b as typeof a;
+      return a.createdAt === br.createdAt && a.summary === br.summary;
     }
 
     case "local-plugin-timeline":
