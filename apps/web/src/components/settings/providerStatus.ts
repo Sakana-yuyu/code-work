@@ -27,6 +27,9 @@ export function localizeProviderMessage(message: string | null | undefined): str
   if (message.includes("Claude Agent CLI installation appears incomplete or damaged")) {
     return t("providerStatusCliDamaged");
   }
+  if (message.includes("Codex CLI installation appears incomplete or damaged")) {
+    return t("providerStatusCodexCliDamaged");
+  }
   if (
     message.includes("Claude Agent CLI (`claude`) was not found in Code Work's server environment")
   ) {
@@ -72,10 +75,7 @@ export function localizeProviderMessage(message: string | null | undefined): str
 }
 
 export function isProviderInstallationDamaged(provider: ServerProvider | undefined): boolean {
-  return (
-    provider?.message?.includes("Claude Agent CLI installation appears incomplete or damaged") ??
-    false
-  );
+  return provider?.message?.includes("installation appears incomplete or damaged") ?? false;
 }
 
 /**

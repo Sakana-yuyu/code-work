@@ -35,7 +35,11 @@ import { deepMerge } from "@codework/shared/Struct";
 import { createModelCapabilities } from "@codework/shared/model";
 import { applyServerSettingsPatch } from "@codework/shared/serverSettings";
 
-import { checkCodexProviderStatus, type CodexAppServerProviderSnapshot } from "./CodexProvider.ts";
+import {
+  checkCodexProviderStatus,
+  CODEX_INSTALLATION_DAMAGED_MESSAGE,
+  type CodexAppServerProviderSnapshot,
+} from "./CodexProvider.ts";
 import { checkClaudeProviderStatus } from "./ClaudeProvider.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import * as ModelManifest from "../ModelManifest.ts";
@@ -542,6 +546,63 @@ it.layer(
           status.message,
           "Codex CLI (`codex`) was not found in Code Work's server environment. Check the configured binary path or restart Code Work after updating PATH.",
         );
+      }),
+    );
+
+    it.effect(
+      "reports a damaged Codex install as not installed so the repair affordance can reinstall it",
+      () =>
+        Effect.gen(function* () {
+          const status = yield* checkCodexProviderStatus(
+            defaultCodexSettings,
+            () => Effect.fail(new CodexErrors.CodexAppServerProcessExitedError({ code: 1 })),
+            undefined,
+            () => Effect.succeed(true),
+          );
+          assert.strictEqual(status.status, "error");
+          assert.strictEqual(status.installed, false);
+          assert.strictEqual(status.message, CODEX_INSTALLATION_DAMAGED_MESSAGE);
+        }),
+    );
+
+    it.effect("keeps the generic probe failure when the Codex launcher is not damaged", () =>
+      Effect.gen(function* () {
+        const status = yield* checkCodexProviderStatus(
+          defaultCodexSettings,
+          () => Effect.fail(new CodexErrors.CodexAppServerProcessExitedError({ code: 1 })),
+          undefined,
+          () => Effect.succeed(false),
+        );
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.installed, true);
+        assert.strictEqual(
+          status.message,
+          "Codex app-server provider probe failed: Codex App Server process exited with code 1.",
+        );
+      }),
+    );
+
+    it.effect("skips the damaged-install recheck when the Codex CLI is not installed", () =>
+      Effect.gen(function* () {
+        let damageProbeRan = false;
+        const status = yield* checkCodexProviderStatus(
+          defaultCodexSettings,
+          () =>
+            Effect.fail(
+              new CodexErrors.CodexAppServerSpawnError({
+                command: "codex app-server",
+                cause: new Error("spawn codex ENOENT"),
+              }),
+            ),
+          undefined,
+          () =>
+            Effect.sync(() => {
+              damageProbeRan = true;
+              return true;
+            }),
+        );
+        assert.strictEqual(status.installed, false);
+        assert.strictEqual(damageProbeRan, false);
       }),
     );
 

@@ -131,6 +131,20 @@ describe("resolveProviderInstallAffordance", () => {
     expect(affordance.isRepair).toBe(true);
   });
 
+  it("labels a detected damaged Codex installation as repairable", () => {
+    const affordance = resolveProviderInstallAffordance({
+      liveProvider: {
+        ...notInstalledProvider,
+        message:
+          "Codex CLI installation appears incomplete or damaged. Repair it from Provider settings, then refresh status.",
+      },
+      readOnly: false,
+      hasHandler: true,
+    });
+    expect(affordance.visible).toBe(true);
+    expect(affordance.isRepair).toBe(true);
+  });
+
   it("hides the button when installed, when the server lacks the channel, in readOnly, or without a handler", () => {
     const readOnly = resolveProviderInstallAffordance({
       liveProvider: notInstalledProvider,

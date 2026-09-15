@@ -30,6 +30,8 @@ import { codexAppServerArgs, resolveCodexLaunchArgs } from "./codexLaunchArgs.ts
 import {
   AUTH_PROBE_TIMEOUT_MS,
   buildServerProvider,
+  DEFAULT_TIMEOUT_MS,
+  spawnAndCollect,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
@@ -37,6 +39,14 @@ import packageJson from "../../../package.json" with { type: "json" };
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
 
 const CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER = "2 seconds" as const;
+
+export const CODEX_INSTALLATION_DAMAGED_MESSAGE =
+  "Codex CLI installation appears incomplete or damaged. Repair it from Provider settings, then refresh status.";
+
+// The `codex` launcher shim fails fast with
+// "Missing optional dependency @openai/codex-<platform>" when npm dropped the
+// platform package — the one CLI-broken signature a reinstall reliably fixes.
+const CODEX_MISSING_PLATFORM_PACKAGE_PATTERN = /missing optional dependency @openai\/codex-/i;
 
 const CODEX_PRESENTATION = {
   displayName: "Codex",
@@ -505,6 +515,48 @@ function accountProbeStatus(account: CodexAppServerProviderSnapshot["account"]):
   return { status: "ready", auth };
 }
 
+export interface CodexDamageProbeInput {
+  readonly binaryPath: string;
+  readonly homePath?: string;
+  readonly environment?: NodeJS.ProcessEnv;
+}
+
+/**
+ * Cheap `codex --version` recheck used when the app-server probe already
+ * failed. A shim that spawns but dies during the handshake can mean npm
+ * dropped the platform package — the launcher throws "Missing optional
+ * dependency" before the app-server even starts. Anything else is left as a
+ * generic probe failure, since a reinstall would not fix it.
+ */
+const detectDamagedCodexInstall = (
+  input: CodexDamageProbeInput,
+): Effect.Effect<boolean, never, ChildProcessSpawner.ChildProcessSpawner> =>
+  Effect.gen(function* () {
+    const resolvedHomePath = input.homePath ? expandHomePath(input.homePath) : undefined;
+    const environment: NodeJS.ProcessEnv = {
+      ...input.environment,
+      ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
+    };
+    const spawnCommand = yield* resolveSpawnCommand(input.binaryPath, ["--version"], {
+      env: environment,
+      extendEnv: true,
+    });
+    const result = yield* spawnAndCollect(
+      input.binaryPath,
+      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+        env: environment,
+        extendEnv: true,
+        shell: spawnCommand.shell,
+      }),
+    ).pipe(Effect.timeoutOption(Duration.millis(DEFAULT_TIMEOUT_MS)));
+    if (Option.isNone(result)) {
+      return false;
+    }
+    return CODEX_MISSING_PLATFORM_PACKAGE_PATTERN.test(
+      `${result.value.stdout}\n${result.value.stderr}`,
+    );
+  }).pipe(Effect.orElseSucceed(() => false));
+
 export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(function* (
   codexSettings: CodexSettings,
   probe: (input: {
@@ -520,6 +572,13 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
   > = probeCodexAppServerProvider,
   environment?: NodeJS.ProcessEnv,
+  detectDamagedInstall: (
+    input: CodexDamageProbeInput,
+  ) => Effect.Effect<
+    boolean,
+    never,
+    ChildProcessSpawner.ChildProcessSpawner
+  > = detectDamagedCodexInstall,
 ): Effect.fn.Return<
   ServerProviderDraft,
   ServerSettingsError,
@@ -562,10 +621,21 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   if (Result.isFailure(probeResult)) {
     const error = probeResult.failure;
     const installed = !isCodexAppServerSpawnError(error);
+    const damaged =
+      installed &&
+      (yield* detectDamagedInstall({
+        binaryPath: codexSettings.binaryPath,
+        homePath: codexSettings.homePath,
+        environment: resolvedEnvironment,
+      }));
     yield* Effect.logWarning("Codex app-server health check failed.", {
       errorTag: error._tag,
       binaryPath: codexSettings.binaryPath,
-      reason: installed ? "execution-failed" : "command-not-found",
+      reason: damaged
+        ? "installation-damaged"
+        : installed
+          ? "execution-failed"
+          : "command-not-found",
     });
     return buildServerProvider({
       presentation: CODEX_PRESENTATION,
@@ -574,13 +644,15 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       models: emptyModels,
       skills: [],
       probe: {
-        installed,
+        installed: installed && !damaged,
         version: null,
         status: "error",
         auth: { status: "unknown" },
-        message: installed
-          ? `Codex app-server provider probe failed: ${error.message}.`
-          : "Codex CLI (`codex`) was not found in Code Work's server environment. Check the configured binary path or restart Code Work after updating PATH.",
+        message: damaged
+          ? CODEX_INSTALLATION_DAMAGED_MESSAGE
+          : installed
+            ? `Codex app-server provider probe failed: ${error.message}.`
+            : "Codex CLI (`codex`) was not found in Code Work's server environment. Check the configured binary path or restart Code Work after updating PATH.",
       },
     });
   }
