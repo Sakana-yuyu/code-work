@@ -106,6 +106,7 @@ const PROVIDER_FIELDS: Readonly<Record<MobileProviderDriver, ReadonlyArray<Mobil
     ],
     kimi: [
       FIELD("binaryPath", "providersMobile.binaryPath", "providersMobile.binaryPathPlaceholder"),
+      FIELD("routeThroughByok", "providersMobile.routeThroughByok", null, "switch"),
     ],
     antigravity: [
       FIELD("binaryPath", "providersMobile.binaryPath", "providersMobile.binaryPathPlaceholder"),
@@ -147,7 +148,11 @@ export function providerFields(driver: string): ReadonlyArray<MobileProviderFiel
 
 export function providerSupportsSharedRoute(driver: string): boolean {
   return (
-    driver === "codex" || driver === "claudeAgent" || driver === "grok" || driver === "opencode"
+    driver === "codex" ||
+    driver === "claudeAgent" ||
+    driver === "grok" ||
+    driver === "opencode" ||
+    driver === "kimi"
   );
 }
 

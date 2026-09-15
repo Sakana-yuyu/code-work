@@ -76,7 +76,7 @@ describe("移动端 Provider 设置逻辑", () => {
     expect(providerSupportsSharedRoute("claudeAgent")).toBe(true);
     expect(providerSupportsSharedRoute("grok")).toBe(true);
     expect(providerSupportsSharedRoute("opencode")).toBe(true);
-    expect(providerSupportsSharedRoute("kimi")).toBe(false);
+    expect(providerSupportsSharedRoute("kimi")).toBe(true);
     expect(providerSupportsSharedRoute("antigravity")).toBe(false);
   });
 });

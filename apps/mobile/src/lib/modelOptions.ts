@@ -216,7 +216,14 @@ export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyAr
 export function getThreadProviderGroups(
   groups: ReadonlyArray<ProviderGroup>,
   currentInstanceId: string,
-  isRunning: boolean,
+  state: { readonly isRunning: boolean; readonly isStarted: boolean },
 ): ReadonlyArray<ProviderGroup> {
-  return isRunning ? groups.filter((group) => group.providerKey === currentInstanceId) : groups;
+  // 已开始的对话锁定在当前 Agent 实例：各 Agent 的会话上下文互不相通，
+  // 中途换 Agent 会丢掉全部进展（运行中同样锁定）。当前实例已不在列表
+  // （例如被删除）时退回全部分组，避免选择器被清空。
+  if (!state.isRunning && !state.isStarted) {
+    return groups;
+  }
+  const locked = groups.filter((group) => group.providerKey === currentInstanceId);
+  return locked.length > 0 ? locked : groups;
 }

@@ -1077,6 +1077,9 @@ export const en: Record<string, string> = {
     "Add an environment to load projects and start coding sessions.",
   addProject2: "Add Project",
   agentWorkInProgress: "Agent work in progress",
+  agentSwitchLockedDescription:
+    "Agents don't share conversation context — switching mid-thread would discard this thread's progress. Start a new conversation to use another agent.",
+  agentSwitchLockedTitle: "This conversation is bound to its agent",
   allowCameraAccessToScanAnEnvironmentPairingQrCode:
     "Allow camera access to scan an environment pairing QR code.",
   allowOnce: "Allow once",
@@ -3670,6 +3673,9 @@ export const zhCN: Record<string, string> = {
   addAnEnvironmentToLoadProjectsAndStartCodingSessions: "添加环境来加载项目并开始编码会话。",
   addProject2: "添加项目",
   agentWorkInProgress: "Agent 正在进行中",
+  agentSwitchLockedDescription:
+    "各 Agent 的对话上下文互不相通，中途切换会丢失当前进展。要使用其他 Agent，请新建对话。",
+  agentSwitchLockedTitle: "此对话已绑定当前 Agent",
   allowCameraAccessToScanAnEnvironmentPairingQrCode: "允许相机访问以扫描环境配对 QR 代码。",
   allowOnce: "允许一次",
   allowSession: "允许会话",

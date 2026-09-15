@@ -40,8 +40,25 @@ describe("mobile model options", () => {
       { providerKey: "codex", providerLabel: "Codex", models: [] },
       { providerKey: "codex_personal", providerLabel: "Codex Personal", models: [] },
     ];
-    expect(getThreadProviderGroups(groups, "byok", false)).toBe(groups);
-    expect(getThreadProviderGroups(groups, "byok", true)).toEqual([groups[0]]);
+    expect(getThreadProviderGroups(groups, "byok", { isRunning: false, isStarted: false })).toBe(
+      groups,
+    );
+    expect(getThreadProviderGroups(groups, "byok", { isRunning: true, isStarted: false })).toEqual([
+      groups[0],
+    ]);
+  });
+
+  it("已开始的对话锁定在当前 Agent 分组，实例缺失时退回全部分组", () => {
+    const groups = [
+      { providerKey: "byok", providerLabel: "BYOK", models: [] },
+      { providerKey: "codex", providerLabel: "Codex", models: [] },
+    ];
+    expect(getThreadProviderGroups(groups, "byok", { isRunning: false, isStarted: true })).toEqual([
+      groups[0],
+    ]);
+    expect(
+      getThreadProviderGroups(groups, "removed_instance", { isRunning: false, isStarted: true }),
+    ).toBe(groups);
   });
 
   it("labels model groups by driver instead of falling back to instance ids", () => {

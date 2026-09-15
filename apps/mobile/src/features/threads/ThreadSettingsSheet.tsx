@@ -298,6 +298,8 @@ type ThreadSettingsSubmenuPage =
 
 type ThreadSettingsSessionProps = {
   readonly providerGroups: ReadonlyArray<ProviderGroup>;
+  /** 已开始的对话锁定了 Agent；选择器只显示当前 Agent 时为 true。 */
+  readonly agentLocked?: boolean;
   readonly selectedModel: ModelSelection | null;
   readonly onSelectModel: (option: ModelOption) => void;
   readonly optionDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
@@ -349,6 +351,7 @@ export function useExistingThreadSettingsRoutePresentation() {
 
 type ThreadSettingsSessionValue = {
   readonly providerGroups: ReadonlyArray<ProviderGroup>;
+  readonly agentLocked: boolean;
   readonly runtimeMode: RuntimeMode;
   readonly onUpdateRuntimeMode: (mode: RuntimeMode) => void;
   readonly displayedDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
@@ -467,6 +470,7 @@ function ThreadSettingsSessionProvider(
   const value = useMemo<ThreadSettingsSessionValue>(
     () => ({
       providerGroups: props.providerGroups,
+      agentLocked: props.agentLocked === true,
       runtimeMode: props.runtimeMode,
       onUpdateRuntimeMode: props.onUpdateRuntimeMode,
       displayedDescriptors,
@@ -490,6 +494,7 @@ function ThreadSettingsSessionProvider(
       applyOptionChange,
       commitPendingModel,
       displayedDescriptors,
+      props.agentLocked,
       providerExpansionOverrides,
       hasLegacyModels,
       isApplied,
@@ -839,6 +844,16 @@ function ThreadSettingsMainContent(props: {
       ListHeaderComponent={
         <>
           {usesTransparentNativeHeader ? <View style={{ height: nativeHeaderHeight }} /> : null}
+          {session.agentLocked ? (
+            <View className="mx-4 mb-3 mt-2 rounded-2xl bg-card px-4 py-3">
+              <Text className="text-sm font-codework-medium text-foreground">
+                {t("agentSwitchLockedTitle")}
+              </Text>
+              <Text className="pt-1 text-xs leading-4 text-foreground-muted">
+                {t("agentSwitchLockedDescription")}
+              </Text>
+            </View>
+          ) : null}
           {Platform.OS === "android" ? (
             <View className="px-4 pb-2 pt-3">
               <TextInput

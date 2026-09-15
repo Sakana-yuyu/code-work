@@ -1112,6 +1112,9 @@ export const ja: Record<string, string> = {
     "環境を追加すると、プロジェクトの読み込みとコーディングセッションの開始ができます。",
   addProject2: "プロジェクトを追加",
   agentWorkInProgress: "エージェントが作業中です",
+  agentSwitchLockedDescription:
+    "エージェントごとの会話コンテキストは共有されず、途中で切り替えるとこれまでの経過が失われます。他のエージェントを使うには新しい会話を開始してください。",
+  agentSwitchLockedTitle: "この会話は現在のエージェントに固定されています",
   allowCameraAccessToScanAnEnvironmentPairingQrCode:
     "環境のペアリング QR コードをスキャンするには、カメラへのアクセスを許可してください。",
   allowOnce: "今回のみ許可",

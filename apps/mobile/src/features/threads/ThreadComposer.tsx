@@ -649,13 +649,19 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     [props.serverConfig, currentModelSelection],
   );
   const providerGroups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
-  // 仅在启动或执行期间保留当前运行器分组，空闲任务可保留聊天并切换运行器。
+  // 已开始的对话锁定在当前 Agent 分组（各 Agent 上下文互不相通）；
+  // 运行中同样锁定，空闲的新对话才能自由选择。
+  const threadStarted =
+    props.selectedThread.session !== null || props.selectedThread.latestTurn !== null;
   const threadProviderGroups = useMemo(
     () =>
       getThreadProviderGroups(
         providerGroups,
         props.selectedThread.session?.providerInstanceId ?? currentModelSelection.instanceId,
-        showStopAction || props.selectedThread.latestTurn?.state === "running",
+        {
+          isRunning: showStopAction || props.selectedThread.latestTurn?.state === "running",
+          isStarted: threadStarted,
+        },
       ),
     [
       providerGroups,
@@ -663,8 +669,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       props.selectedThread.session?.providerInstanceId,
       props.selectedThread.latestTurn?.state,
       showStopAction,
+      threadStarted,
     ],
   );
+  const agentLocked = threadStarted && threadProviderGroups.length < providerGroups.length;
   const currentModelOption =
     modelOptions.find(
       (option) =>
@@ -684,6 +692,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     () => ({
       ownerId: settingsOwnerId,
       providerGroups: threadProviderGroups,
+      agentLocked,
       selectedModel: currentModelSelection,
       onSelectModel: (option) => props.onUpdateModelSelection(option.selection),
       optionDescriptors: providerOptionDescriptors,
@@ -693,6 +702,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       onUpdateRuntimeMode: props.onUpdateRuntimeMode,
     }),
     [
+      agentLocked,
       currentModelSelection,
       currentRuntimeMode,
       props.onUpdateModelSelection,
