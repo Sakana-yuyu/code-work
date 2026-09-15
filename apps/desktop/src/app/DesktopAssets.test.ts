@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 
 import * as DesktopAssets from "./DesktopAssets.ts";
@@ -20,7 +21,7 @@ const environmentLayer = DesktopEnvironment.layer({
   isPackaged: true,
   resourcesPath: "/Applications/Code Work.app/Contents/Resources",
   runningUnderArm64Translation: false,
-}).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({}))));
+}).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, Path.layer, DesktopConfig.layerTest({}))));
 
 describe("DesktopAssets", () => {
   it.effect("uses canonical source-tree icons for unpackaged development", () =>
@@ -39,6 +40,7 @@ describe("DesktopAssets", () => {
         Layer.provide(
           Layer.mergeAll(
             NodeServices.layer,
+            Path.layer,
             DesktopConfig.layerTest({ VITE_DEV_SERVER_URL: "http://localhost:5733" }),
           ),
         ),

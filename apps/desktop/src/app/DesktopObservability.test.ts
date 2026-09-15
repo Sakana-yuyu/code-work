@@ -9,6 +9,7 @@ import * as Schema from "effect/Schema";
 import * as DesktopConfig from "./DesktopConfig.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopObservability from "./DesktopObservability.ts";
+import { t } from "../i18n.js";
 
 const DesktopBackendChildLogRecord = Schema.Struct({
   message: Schema.String,
@@ -173,7 +174,7 @@ describe("DesktopObservability", () => {
       const end = yield* decodeDesktopBackendChildLogRecord(lines[2] ?? "");
 
       assert.equal(lines.length, 3);
-      assert.equal(start.message, "backend child process failure output start");
+      assert.equal(start.message, t("backendChildProcessFailureOutputStart"));
       assert.equal(start.level, "ERROR");
       assert.equal(start.annotations.component, "desktop-backend-child");
       assert.equal(start.annotations.runId, "test-run");
@@ -181,7 +182,7 @@ describe("DesktopObservability", () => {
       assert.equal(start.annotations.phase, "START");
       assert.equal(start.annotations.details, "pid=123 port=3773 cwd=/repo");
 
-      assert.equal(output.message, "backend child process output");
+      assert.equal(output.message, t("backendChildProcessOutput"));
       assert.equal(output.level, "INFO");
       assert.equal(output.annotations.component, "desktop-backend-child");
       assert.equal(output.annotations.runId, "test-run");
@@ -189,7 +190,7 @@ describe("DesktopObservability", () => {
       assert.equal(output.annotations.stream, "stdout");
       assert.equal(output.annotations.text, "hello server\n");
 
-      assert.equal(end.message, "backend child process failure output end");
+      assert.equal(end.message, t("backendChildProcessFailureOutputEnd"));
       assert.equal(end.level, "ERROR");
       assert.equal(end.annotations.instanceId, "primary");
       assert.equal(end.annotations.phase, "END");

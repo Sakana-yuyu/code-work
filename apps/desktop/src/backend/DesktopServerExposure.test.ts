@@ -14,6 +14,7 @@ import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopNetworkInterfaces from "./DesktopNetworkInterfaces.ts";
 import * as DesktopServerExposure from "./DesktopServerExposure.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+import { t } from "../i18n.js";
 
 const encoder = new TextEncoder();
 
@@ -384,10 +385,10 @@ describe("DesktopServerExposure", () => {
         assert.deepEqual(endpoints, [
           {
             id: "desktop-loopback:3773",
-            label: "This machine",
+            label: t("thisMachine"),
             provider: {
               id: "desktop-core",
-              label: "Desktop",
+              label: t("desktop"),
               kind: "core",
               isAddon: false,
             },
@@ -400,14 +401,14 @@ describe("DesktopServerExposure", () => {
             },
             source: "desktop-core",
             status: "available",
-            description: "Loopback endpoint for this desktop app.",
+            description: t("loopbackEndpointForThisDesktopApp"),
           },
           {
             id: "desktop-lan:http://192.168.1.20:3773",
-            label: "Local network",
+            label: t("localNetwork"),
             provider: {
               id: "desktop-core",
-              label: "Desktop",
+              label: t("desktop"),
               kind: "core",
               isAddon: false,
             },
@@ -421,14 +422,14 @@ describe("DesktopServerExposure", () => {
             source: "desktop-core",
             status: "available",
             isDefault: true,
-            description: "Reachable from devices on the same network.",
+            description: t("reachableFromDevicesOnTheSameNetwork"),
           },
           {
             id: "manual:https://desktop.example.ts.net",
-            label: "Custom HTTPS",
+            label: t("customHttps"),
             provider: {
               id: "manual",
-              label: "Manual",
+              label: t("manual"),
               kind: "manual",
               isAddon: false,
             },
@@ -441,14 +442,14 @@ describe("DesktopServerExposure", () => {
             },
             source: "user",
             status: "unknown",
-            description: "User-configured HTTPS endpoint for this desktop backend.",
+            description: t("userConfiguredHttpsEndpointForThisDesktopBackend"),
           },
           {
             id: "manual:http://desktop.example.test:3773",
-            label: "Custom endpoint",
+            label: t("byokAdapters.supplierCustom"),
             provider: {
               id: "manual",
-              label: "Manual",
+              label: t("manual"),
               kind: "manual",
               isAddon: false,
             },
@@ -461,7 +462,7 @@ describe("DesktopServerExposure", () => {
             },
             source: "user",
             status: "unknown",
-            description: "User-configured endpoint for this desktop backend.",
+            description: t("userConfiguredEndpointForThisDesktopBackend"),
           },
         ]);
       }),

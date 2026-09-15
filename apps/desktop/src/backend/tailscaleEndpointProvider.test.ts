@@ -8,6 +8,7 @@ import {
   parseTailscaleMagicDnsName,
   resolveTailscaleAdvertisedEndpoints,
 } from "./tailscaleEndpointProvider.ts";
+import { t } from "../i18n.js";
 
 const unusedTailscaleExternalServicesLayer = Layer.mergeAll(
   Layer.succeed(
@@ -54,10 +55,10 @@ describe("tailscale endpoint provider", () => {
       assert.deepEqual(endpoints, [
         {
           id: "tailscale-ip:http://100.100.100.100:3773",
-          label: "Tailscale IP",
+          label: t("tailscaleIp"),
           provider: {
             id: "tailscale",
-            label: "Tailscale",
+            label: t("tailscale"),
             kind: "private-network",
             isAddon: true,
           },
@@ -70,14 +71,14 @@ describe("tailscale endpoint provider", () => {
           },
           source: "desktop-addon",
           status: "available",
-          description: "Reachable from devices on the same Tailnet.",
+          description: t("reachableFromDevicesOnTheSameTailnet"),
         },
         {
           id: "tailscale-magicdns:https://desktop.tail.ts.net/",
-          label: "Tailscale HTTPS",
+          label: t("tailscaleHttps"),
           provider: {
             id: "tailscale",
-            label: "Tailscale",
+            label: t("tailscale"),
             kind: "private-network",
             isAddon: true,
           },
@@ -90,7 +91,7 @@ describe("tailscale endpoint provider", () => {
           },
           source: "desktop-addon",
           status: "unavailable",
-          description: "MagicDNS hostname. Configure Tailscale Serve for HTTPS access.",
+          description: t("magicdnsHostnameConfigureTailscaleServeForHttpsAccess"),
         },
       ]);
     }).pipe(Effect.provide(unusedTailscaleExternalServicesLayer)),
@@ -129,10 +130,10 @@ describe("tailscale endpoint provider", () => {
         assert.deepEqual(endpoints, [
           {
             id: "tailscale-magicdns:https://desktop.tail.ts.net/",
-            label: "Tailscale HTTPS",
+            label: t("tailscaleHttps"),
             provider: {
               id: "tailscale",
-              label: "Tailscale",
+              label: t("tailscale"),
               kind: "private-network",
               isAddon: true,
             },
@@ -145,7 +146,7 @@ describe("tailscale endpoint provider", () => {
             },
             source: "desktop-addon",
             status: "available",
-            description: "HTTPS endpoint served by Tailscale Serve.",
+            description: t("httpsEndpointServedByTailscaleServe"),
           },
         ]);
       }).pipe(Effect.provide(unusedTailscaleExternalServicesLayer)),

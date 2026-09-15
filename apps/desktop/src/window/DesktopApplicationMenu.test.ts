@@ -15,6 +15,7 @@ import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
+import { t } from "../i18n.js";
 
 const environmentInput = {
   dirname: "/repo/apps/desktop/dist-electron",
@@ -130,12 +131,12 @@ describe("DesktopApplicationMenu", () => {
       yield* configureMenu(selectedAction, applicationMenuTemplate);
 
       const template = yield* Deferred.await(applicationMenuTemplate);
-      const fileMenu = template.find((item) => item.label === "File");
+      const fileMenu = template.find((item) => item.label === t("file"));
       assert.isDefined(fileMenu);
       if (!Array.isArray(fileMenu.submenu)) {
         throw new Error("Expected File menu submenu to be an array.");
       }
-      const settingsItem = fileMenu.submenu.find((item) => item.label === "Settings...");
+      const settingsItem = fileMenu.submenu.find((item) => item.label === t("settings"));
       assert.isDefined(settingsItem);
       const settingsClick = settingsItem.click;
       if (typeof settingsClick !== "function") {
@@ -159,7 +160,7 @@ describe("DesktopApplicationMenu", () => {
       yield* configureMenu(selectedAction, applicationMenuTemplate);
 
       const template = yield* Deferred.await(applicationMenuTemplate);
-      const viewMenu = template.find((item) => item.label === "View");
+      const viewMenu = template.find((item) => item.label === t("view"));
       assert.isDefined(viewMenu);
       if (!Array.isArray(viewMenu.submenu)) {
         throw new Error("Expected View menu submenu to be an array.");
@@ -169,7 +170,7 @@ describe("DesktopApplicationMenu", () => {
         viewMenu.submenu.find((item) => item.role?.toLowerCase().includes("zoom")),
       );
 
-      const zoomIn = viewMenu.submenu.find((item) => item.label === "Zoom In");
+      const zoomIn = viewMenu.submenu.find((item) => item.label === t("zoomIn"));
       assert.isDefined(zoomIn);
       assert.equal(zoomIn.accelerator, "CmdOrCtrl+=");
       if (typeof zoomIn.click !== "function") {
