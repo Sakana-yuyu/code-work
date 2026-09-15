@@ -3,6 +3,7 @@ import {
   ProviderDriverKind,
   RuntimeTaskId,
   ThreadId,
+  TurnId,
   type ProviderRuntimeEvent,
 } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
@@ -14,6 +15,41 @@ const base = {
   createdAt: "2026-08-06T00:00:00.000Z",
   threadId: ThreadId.make("thread-1"),
 };
+
+describe("runtimeEventToActivities reasoning summaries", () => {
+  it("persists provider reasoning summaries but ignores raw reasoning text", () => {
+    const summary = runtimeEventToActivities({
+      ...base,
+      type: "content.delta",
+      eventId: EventId.make("evt-reasoning-summary"),
+      turnId: TurnId.make("turn-1"),
+      payload: {
+        streamKind: "reasoning_summary_text",
+        summaryIndex: 0,
+        delta: "先检查现有实现。",
+      },
+    });
+    const rawReasoning = runtimeEventToActivities({
+      ...base,
+      type: "content.delta",
+      eventId: EventId.make("evt-reasoning-raw"),
+      turnId: TurnId.make("turn-1"),
+      payload: {
+        streamKind: "reasoning_text",
+        delta: "内部逐步推理不应展示。",
+      },
+    });
+
+    expect(summary).toMatchObject([
+      {
+        tone: "info",
+        kind: "reasoning.summary.delta",
+        payload: { delta: "先检查现有实现。", summaryIndex: 0 },
+      },
+    ]);
+    expect(rawReasoning).toEqual([]);
+  });
+});
 
 describe("runtimeEventToActivities task progress", () => {
   it("persists usage independently from replaceable activity", () => {

@@ -568,6 +568,34 @@ export function runtimeEventToActivities(
       ];
     }
 
+    case "content.delta": {
+      // 只持久化 provider 明确提供的 reasoning summary；原始 reasoning
+      // 仍不进入对话时间线，避免把隐藏思维链当作普通消息展示。
+      if (
+        event.payload.streamKind !== "reasoning_summary_text" ||
+        event.payload.delta.length === 0
+      ) {
+        return [];
+      }
+      return [
+        {
+          id: event.eventId,
+          createdAt: event.createdAt,
+          tone: "info",
+          kind: "reasoning.summary.delta",
+          summary: "Reasoning summary",
+          payload: {
+            delta: event.payload.delta,
+            ...(event.payload.summaryIndex === undefined
+              ? {}
+              : { summaryIndex: event.payload.summaryIndex }),
+          },
+          turnId: toTurnId(event.turnId) ?? null,
+          ...maybeSequence,
+        },
+      ];
+    }
+
     case "task.started": {
       return [
         {

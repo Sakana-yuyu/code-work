@@ -291,7 +291,12 @@ describe("ProviderRuntimeIngestion", () => {
         ),
       ),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
-      Layer.provideMerge(makeTestServerSettingsLayer(options?.serverSettings)),
+      Layer.provideMerge(
+        makeTestServerSettingsLayer({
+          enableLegacyTokenStreaming: false,
+          ...options?.serverSettings,
+        }),
+      ),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(NodeServices.layer),
     );
