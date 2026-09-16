@@ -16,6 +16,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { t } from "~/i18n";
@@ -198,9 +199,18 @@ export function SshFilesPanel(props: SshFilesPanelProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-1 border-b px-2 py-1">
-        <span className="min-w-0 truncate text-muted-foreground text-xs" title={props.serverLabel}>
-          {props.serverLabel}
-        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="min-w-0 truncate text-muted-foreground text-xs">
+                {props.serverLabel}
+              </span>
+            }
+          />
+          <TooltipPopup side="top" className="max-w-60 whitespace-nowrap">
+            {props.serverLabel}
+          </TooltipPopup>
+        </Tooltip>
         <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
           {crumbs.map((crumb, index) => (
             <span key={crumb.value} className="flex shrink-0 items-center">
@@ -259,9 +269,14 @@ export function SshFilesPanel(props: SshFilesPanelProps) {
       {openFile !== null ? (
         <div className="flex h-full min-h-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center gap-1 border-b px-2 py-1">
-            <span className="min-w-0 flex-1 truncate text-xs" title={openFile.path}>
-              {openFile.path}
-            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={<span className="min-w-0 flex-1 truncate text-xs">{openFile.path}</span>}
+              />
+              <TooltipPopup side="top" className="max-w-60 whitespace-nowrap">
+                {openFile.path}
+              </TooltipPopup>
+            </Tooltip>
             {openFile.truncated ? (
               <span className="shrink-0 text-amber-600 text-xs dark:text-amber-400">
                 {t("ssh.truncated")}

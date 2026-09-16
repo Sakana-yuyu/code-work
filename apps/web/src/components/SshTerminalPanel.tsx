@@ -20,6 +20,7 @@ import { sshTerminalEnvironment } from "../state/ssh";
 import { useAtomCommand } from "../state/use-atom-command";
 import { cn } from "~/lib/utils";
 import { t } from "~/i18n";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { terminalThemeFromApp } from "./ThreadTerminalDrawer";
 import { DEFAULT_TERMINAL_FONT_SIZE, GhosttyTerminalSurface } from "~/terminal/ghostty/surface";
 
@@ -193,9 +194,18 @@ export function SshTerminalPanel(props: SshTerminalPanelProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-1 border-b px-2 py-1">
-        <span className="min-w-0 truncate text-muted-foreground text-xs" title={props.serverLabel}>
-          {props.serverLabel}
-        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="min-w-0 truncate text-muted-foreground text-xs">
+                {props.serverLabel}
+              </span>
+            }
+          />
+          <TooltipPopup side="top" className="max-w-60 whitespace-nowrap">
+            {props.serverLabel}
+          </TooltipPopup>
+        </Tooltip>
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           {props.terminalIds.map((terminalId, index) => (
             <span

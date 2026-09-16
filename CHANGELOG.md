@@ -7,6 +7,14 @@
 
 更早的历史版本见 [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases)。
 
+## 1.0.9
+
+### 修复
+
+- 修复 SSH `ssh2` 原生依赖未被桌面 sidecar 外置，导致跨平台构建解析 `cpufeatures.node` 失败的问题。
+- 修复 SSH 面板使用原生 `title` 提示触发 Web lint 失败的问题。
+- 按 Provider 分段边界事件更新传输预算回归阈值，保持线传输和消息数量上限不变。
+
 ## 1.0.8
 
 ### 新增

@@ -34,7 +34,9 @@ const TRANSFER_BUDGET = {
   totalWireBytes: 15_500,
   threadSnapshotWireBytes: 7_500,
   measuredTurnWebSocketWireBytes: 8_000,
-  measuredTurnWebSocketDecodedBytes: 68_000,
+  // Provider segment-boundary events add a small decoded payload to the
+  // measured turn; keep the existing wire/message caps unchanged.
+  measuredTurnWebSocketDecodedBytes: 70_000,
   measuredTurnWebSocketMessages: 21,
 } satisfies ProviderTransferBudget;
 

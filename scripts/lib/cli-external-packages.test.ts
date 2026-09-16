@@ -10,8 +10,8 @@ import * as Schema from "effect/Schema";
 import serverPackageJson from "../../apps/server/package.json" with { type: "json" };
 
 import {
-  CLI_RUNTIME_EXTERNAL_PREFIXES,
   findInlinedExternalPackages,
+  isRuntimeExternalCliDependency,
   selectCliRuntimeExternalDependencies,
   shouldBundleCliDependency,
 } from "./cli-external-packages.ts";
@@ -44,6 +44,8 @@ describe("shouldBundleCliDependency", () => {
   it("leaves native addons and their dlopen wrappers external", () => {
     for (const id of [
       "node-pty",
+      "ssh2",
+      "cpu-features",
       "ffi-rs",
       "@yuuang/ffi-rs-win32-x64-msvc",
       "@ff-labs/fff-node",
@@ -66,6 +68,10 @@ describe("shouldBundleCliDependency", () => {
   it("treats prefix-matched siblings as external", () => {
     assert.strictEqual(shouldBundleCliDependency("node-gyp-build-optional-packages"), false);
   });
+
+  it("does not confuse package-name prefixes with sibling packages", () => {
+    assert.strictEqual(isRuntimeExternalCliDependency("asn1js"), false);
+  });
 });
 
 describe("selectCliRuntimeExternalDependencies", () => {
@@ -76,10 +82,12 @@ describe("selectCliRuntimeExternalDependencies", () => {
         "@ff-labs/fff-node": "2.0.0",
         effect: "3.0.0",
         "node-pty": "4.0.0",
+        ssh2: "1.17.0",
       }),
       {
         "@ff-labs/fff-node": "2.0.0",
         "node-pty": "4.0.0",
+        ssh2: "1.17.0",
       },
     );
   });
@@ -87,7 +95,7 @@ describe("selectCliRuntimeExternalDependencies", () => {
   it("selects every external root declared by the server", () => {
     assert.deepStrictEqual(
       Object.keys(selectCliRuntimeExternalDependencies(serverPackageJson.dependencies)).sort(),
-      ["@ff-labs/fff-node", "msgpackr-extract", "node-pty"],
+      ["@ff-labs/fff-node", "msgpackr-extract", "node-pty", "ssh2"],
     );
   });
 });
@@ -150,8 +158,7 @@ it.layer(NodeServices.layer)("external package dependency closure", (it) => {
 
   // Runtime-external only. The build-only entries resolve `bun:*` and are never
   // loaded by Node, so their closure genuinely does not need to be external.
-  const isRuntimeExternal = (name: string) =>
-    CLI_RUNTIME_EXTERNAL_PREFIXES.some((prefix) => name.startsWith(prefix));
+  const isRuntimeExternal = isRuntimeExternalCliDependency;
 
   it.effect("finds the runtime-external packages on disk", () =>
     Effect.gen(function* () {

@@ -11,9 +11,9 @@
  * as Node resolves it from the emitted bundle. Keeping both consumers on one
  * list prevents packaging from drifting away from the bundle boundary.
  *
- * Entries are matched as prefixes (`id.startsWith(prefix)`), so they also cover
- * a package's platform-specific siblings — `node-gyp-build` covers
- * `node-gyp-build-optional-packages`, `@yuuang/` covers every `ffi-rs-*` binding.
+ * Entries match a package name and its subpaths. The `node-gyp-build` entry also
+ * covers its optional-package sibling, while scoped entries ending in `/` cover
+ * every platform-specific binding under that scope.
  */
 /**
  * External because Node actually loads them from disk at runtime.
@@ -27,6 +27,17 @@
  */
 export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   "node-pty",
+  // ssh2 loads cpu-features.node and sshcrypto.node by filesystem-relative
+  // paths. Keep the package and its complete dependency closure external so
+  // desktop sidecars install the native binaries beside their loaders.
+  "ssh2",
+  "cpu-features",
+  "asn1",
+  "bcrypt-pbkdf",
+  "buildcheck",
+  "nan",
+  "safer-buffer",
+  "tweetnacl",
   "ffi-rs",
   "@yuuang/",
   "@ff-labs/",
@@ -68,8 +79,18 @@ export const CLI_EXTERNAL_PACKAGE_PREFIXES = [
   ...CLI_BUILD_ONLY_EXTERNAL_PREFIXES,
 ] as const;
 
+function matchesCliDependency(id: string, prefix: string): boolean {
+  if (
+    (prefix === "node-gyp-build" || prefix === "@clerk/electron-passkeys") &&
+    id.startsWith(`${prefix}-`)
+  ) {
+    return true;
+  }
+  return id === prefix || id.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`);
+}
+
 export function isRuntimeExternalCliDependency(id: string): boolean {
-  return CLI_RUNTIME_EXTERNAL_PREFIXES.some((prefix) => id.startsWith(prefix));
+  return CLI_RUNTIME_EXTERNAL_PREFIXES.some((prefix) => matchesCliDependency(id, prefix));
 }
 
 /**
@@ -83,7 +104,7 @@ export function isRuntimeExternalCliDependency(id: string): boolean {
  * inlined while node-pty (a declared dependency) stayed external.
  */
 export function isExternalCliDependency(id: string): boolean {
-  return CLI_EXTERNAL_PACKAGE_PREFIXES.some((prefix) => id.startsWith(prefix));
+  return CLI_EXTERNAL_PACKAGE_PREFIXES.some((prefix) => matchesCliDependency(id, prefix));
 }
 
 /** True when the CLI bundle should inline `id` rather than leave it external. */
