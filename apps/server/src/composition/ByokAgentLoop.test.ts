@@ -492,28 +492,81 @@ describe("ByokAgentLoop", () => {
     );
   });
 
-  it("stops before an unbounded model/tool loop", async () => {
-    const model: ByokAgentModelDriver = {
-      complete: (input) =>
-        Stream.fromIterable([
-          {
-            type: "tool_call" as const,
-            toolCallId: `call-loop-${input.turn}`,
-            canonicalToolName: "workspace.read_file",
-            arguments: { cwd: "C:/workspace", relativePath: "README.md" },
-          },
-          { type: "model_completed" as const },
-        ]),
-    };
-    const broker = ToolBroker.ToolBroker.of({
-      invoke: (input) => Effect.succeed(makeResult(input)),
-      cancel: () => Effect.void,
-    });
+  it.effect("stops before an unbounded model/tool loop", () =>
+    Effect.gen(function* () {
+      const model: ByokAgentModelDriver = {
+        complete: (input) =>
+          Stream.fromIterable([
+            {
+              type: "tool_call" as const,
+              toolCallId: `call-loop-${input.turn}`,
+              canonicalToolName: "workspace.read_file",
+              arguments: { cwd: "C:/workspace", relativePath: "README.md" },
+            },
+            { type: "model_completed" as const },
+          ]),
+      };
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) => Effect.succeed(makeResult(input)),
+        cancel: () => Effect.void,
+      });
 
-    await expect(
-      Effect.runPromise(runByokAgentLoop({ ...baseInput, maxRounds: 2 }, model, broker)),
-    ).rejects.toBeInstanceOf(ByokAgentLoopMaxRoundsError);
-  });
+      const error = yield* Effect.flip(
+        runByokAgentLoop({ ...baseInput, maxRounds: 2 }, model, broker),
+      );
+      expect(error).toBeInstanceOf(ByokAgentLoopMaxRoundsError);
+    }),
+  );
+
+  it.effect("预算将尽时每次调用注入收敛警告，且警告不写入回放历史", () =>
+    Effect.gen(function* () {
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) => Effect.succeed(makeResult(input)),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          modelInputs.push(input);
+          return input.turn === 12
+            ? Stream.fromIterable([
+                { type: "text_delta" as const, text: "收尾" },
+                { type: "model_completed" as const },
+              ])
+            : Stream.fromIterable([
+                {
+                  type: "tool_call" as const,
+                  toolCallId: `call-${input.turn}`,
+                  canonicalToolName: "workspace.read_file",
+                  arguments: { relativePath: `file-${input.turn}.txt` },
+                },
+                { type: "model_completed" as const },
+              ]);
+        },
+      };
+
+      const result = yield* runByokAgentLoop({ ...baseInput, maxRounds: 12 }, model, broker);
+
+      expect(result.text).toBe("收尾");
+      expect(result.rounds).toBe(12);
+      const warnedTurns = modelInputs
+        .filter((input) =>
+          input.messages.some(
+            (message) => message.role === "user" && message.content.includes("预算即将用尽"),
+          ),
+        )
+        .map((input) => input.turn);
+      // 12 轮预算，剩余不足 8 轮的第 5 轮起每次调用都带警告。
+      expect(warnedTurns).toEqual([5, 6, 7, 8, 9, 10, 11, 12]);
+      expect(modelInputs[4]?.messages.at(-1)).toMatchObject({ role: "user" });
+      // 警告只进模型调用消息，不进 history/result.messages。
+      expect(
+        result.messages.some(
+          (message) => message.role === "user" && message.content.includes("预算即将用尽"),
+        ),
+      ).toBe(false);
+    }),
+  );
 
   it.effect("超过消息预算时只向模型重放最近的完整工具轮次", () =>
     Effect.gen(function* () {

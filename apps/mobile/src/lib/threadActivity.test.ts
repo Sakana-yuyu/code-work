@@ -21,10 +21,12 @@ import {
   derivePendingApprovals,
   deriveThreadFeedPresentation,
   isPendingUserInputOptionSelected,
+  reconcileExpandedTurnIdsAfterLatestTurnChange,
   setPendingUserInputCustomAnswer,
   togglePendingUserInputOptionSelection,
   type ThreadFeedActivity,
   type ThreadFeedEntry,
+  type ThreadFeedLatestTurn,
 } from "./threadActivity";
 
 describe("Codex feedback pseudo-messages", () => {
@@ -986,5 +988,81 @@ describe("buildThreadFeed server copy translation", () => {
     } finally {
       setCurrentLanguage("en");
     }
+  });
+});
+
+describe("reconcileExpandedTurnIdsAfterLatestTurnChange", () => {
+  const latestTurn = (
+    turnId: string,
+    state: "running" | "interrupted" | "completed" | "error",
+  ): ThreadFeedLatestTurn => ({
+    turnId: TurnId.make(turnId),
+    state,
+    startedAt: "2026-01-01T00:00:00Z",
+    completedAt: state === "running" ? null : "2026-01-01T00:01:00Z",
+  });
+
+  // Mirrors the ThreadFeed effect: the ref keeps the last non-null latestTurn
+  // across transient null gaps.
+  const drive = (
+    sequence: ReadonlyArray<ThreadFeedLatestTurn | null>,
+    initial: ReadonlySet<TurnId> = new Set(),
+  ): ReadonlySet<TurnId> => {
+    let expandedTurnIds = initial;
+    let previous: ThreadFeedLatestTurn | null = null;
+    for (const turn of sequence) {
+      const prior = previous;
+      if (turn !== null) {
+        previous = turn;
+      }
+      expandedTurnIds = reconcileExpandedTurnIdsAfterLatestTurnChange({
+        expandedTurnIds,
+        previousLatestTurn: prior,
+        latestTurn: turn,
+      });
+    }
+    return expandedTurnIds;
+  };
+
+  it("expands the in-session interrupted turn so the user keeps their place", () => {
+    const expanded = drive([latestTurn("turn-1", "running"), latestTurn("turn-1", "interrupted")]);
+    expect([...expanded]).toEqual(["turn-1"]);
+  });
+
+  it("folds the interrupted turn once a new turn supersedes it", () => {
+    const expanded = drive([
+      latestTurn("turn-1", "running"),
+      latestTurn("turn-1", "interrupted"),
+      latestTurn("turn-2", "running"),
+    ]);
+    expect([...expanded]).toEqual([]);
+  });
+
+  it("still folds the interrupted turn when latestTurn passes through null before the next turn", () => {
+    const expanded = drive([
+      latestTurn("turn-1", "running"),
+      latestTurn("turn-1", "interrupted"),
+      null,
+      latestTurn("turn-2", "running"),
+    ]);
+    expect([...expanded]).toEqual([]);
+  });
+
+  it("folds the interrupted turn when its state flips to completed before the next turn", () => {
+    const expanded = drive([
+      latestTurn("turn-1", "running"),
+      latestTurn("turn-1", "interrupted"),
+      latestTurn("turn-1", "completed"),
+      latestTurn("turn-2", "running"),
+    ]);
+    expect([...expanded]).toEqual([]);
+  });
+
+  it("does not treat a null gap as a turn boundary", () => {
+    const expanded = drive(
+      [latestTurn("turn-1", "running"), null, latestTurn("turn-1", "completed")],
+      new Set([TurnId.make("turn-1")]),
+    );
+    expect([...expanded]).toEqual(["turn-1"]);
   });
 });

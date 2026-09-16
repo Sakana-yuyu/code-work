@@ -69,6 +69,9 @@ import {
   type TerminalError,
   type TerminalEvent,
   type TerminalMetadataStreamEvent,
+  type SshTerminalAttachStreamEvent,
+  type SshTerminalError,
+  type SshTerminalEvent,
   WorkspaceScriptRpcError,
   WS_METHODS,
   WsRpcGroup,
@@ -143,6 +146,8 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
+import * as SshServerServiceModule from "./ssh/SshServerService.ts";
+import * as SshTerminalServiceModule from "./ssh/SshTerminalService.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
@@ -527,6 +532,8 @@ const makeWsRpcLayer = (
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
+      const sshServerService = yield* SshServerServiceModule.SshServerService;
+      const sshTerminalService = yield* SshTerminalServiceModule.SshTerminalService;
       const previewManager = yield* PreviewManager.PreviewManager;
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
@@ -3892,6 +3899,80 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.terminalClose, terminalManager.close(input), {
             "rpc.aggregate": "terminal",
           }),
+
+        // SSH 远程服务器
+        [WS_METHODS.sshTestConnection]: (input) =>
+          observeRpcEffect(WS_METHODS.sshTestConnection, sshServerService.testConnection(input), {
+            "rpc.aggregate": "ssh",
+          }),
+        [WS_METHODS.sshGetServerStatus]: (input) =>
+          observeRpcEffect(WS_METHODS.sshGetServerStatus, sshServerService.status(input.serverId), {
+            "rpc.aggregate": "ssh",
+          }),
+        [WS_METHODS.sshListFiles]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.sshListFiles,
+            Effect.map(sshServerService.listFiles(input.serverId, input.path), (entries) => ({
+              path: input.path,
+              entries,
+            })),
+            { "rpc.aggregate": "ssh" },
+          ),
+        [WS_METHODS.sshReadFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.sshReadFile,
+            Effect.map(sshServerService.readFile(input.serverId, input.path), (outcome) => ({
+              path: input.path,
+              content: outcome.content,
+              sizeBytes: outcome.sizeBytes,
+              truncated: outcome.truncated,
+            })),
+            { "rpc.aggregate": "ssh" },
+          ),
+        [WS_METHODS.sshWriteFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.sshWriteFile,
+            sshServerService.writeFile(input.serverId, input.path, input.content),
+            { "rpc.aggregate": "ssh" },
+          ),
+        [WS_METHODS.sshDeleteFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.sshDeleteFile,
+            sshServerService.deleteFile(input.serverId, input.path, input.recursive),
+            { "rpc.aggregate": "ssh" },
+          ),
+        [WS_METHODS.sshTerminalOpen]: (input) =>
+          observeRpcEffect(WS_METHODS.sshTerminalOpen, sshTerminalService.open(input), {
+            "rpc.aggregate": "ssh",
+          }),
+        [WS_METHODS.sshTerminalAttach]: (input) =>
+          observeRpcStream(
+            WS_METHODS.sshTerminalAttach,
+            Stream.callback<SshTerminalAttachStreamEvent, SshTerminalError>((queue) =>
+              Effect.acquireRelease(
+                Effect.sync(() =>
+                  sshTerminalService.attachStream(input, (event) => {
+                    // Stream.callback 的队列无界，同步投递不会阻塞；流已关闭时忽略。
+                    Effect.runSync(Queue.offer(queue, event).pipe(Effect.ignore));
+                  }),
+                ),
+                (unsubscribe) => Effect.sync(unsubscribe),
+              ),
+            ),
+            { "rpc.aggregate": "ssh" },
+          ),
+        [WS_METHODS.sshTerminalWrite]: (input) =>
+          observeRpcEffect(WS_METHODS.sshTerminalWrite, sshTerminalService.write(input), {
+            "rpc.aggregate": "ssh",
+          }),
+        [WS_METHODS.sshTerminalResize]: (input) =>
+          observeRpcEffect(WS_METHODS.sshTerminalResize, sshTerminalService.resize(input), {
+            "rpc.aggregate": "ssh",
+          }),
+        [WS_METHODS.sshTerminalClose]: (input) =>
+          observeRpcEffect(WS_METHODS.sshTerminalClose, sshTerminalService.close(input), {
+            "rpc.aggregate": "ssh",
+          }),
         [WS_METHODS.subscribeTerminalEvents]: (_input) =>
           observeRpcStream(
             WS_METHODS.subscribeTerminalEvents,
@@ -3902,6 +3983,22 @@ const makeWsRpcLayer = (
               ),
             ),
             { "rpc.aggregate": "terminal" },
+          ),
+
+        [WS_METHODS.subscribeSshTerminalEvents]: (_input) =>
+          observeRpcStream(
+            WS_METHODS.subscribeSshTerminalEvents,
+            Stream.callback<SshTerminalEvent>((queue) =>
+              Effect.acquireRelease(
+                Effect.sync(() =>
+                  sshTerminalService.subscribe((event) => {
+                    Effect.runSync(Queue.offer(queue, event).pipe(Effect.ignore));
+                  }),
+                ),
+                (unsubscribe) => Effect.sync(unsubscribe),
+              ),
+            ),
+            { "rpc.aggregate": "ssh" },
           ),
         [WS_METHODS.subscribeTerminalMetadata]: (_input) =>
           observeRpcStream(

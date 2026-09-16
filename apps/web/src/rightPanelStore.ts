@@ -52,6 +52,8 @@ export const RIGHT_PANEL_KINDS = [
   "agents",
   "canvas",
   "plugin",
+  "ssh-terminal",
+  "ssh-files",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -65,6 +67,21 @@ export type RightPanelSurface =
       terminalIds: string[];
       activeTerminalId: string;
       splitDirection?: "horizontal" | "vertical";
+    }
+  | {
+      /** 一台服务器一个表面；会话键是 (threadId, terminalId)，terminalId 由面板生成。 */
+      id: `ssh-terminal:${string}`;
+      kind: "ssh-terminal";
+      serverId: string;
+      serverLabel: string;
+      terminalIds: string[];
+      activeTerminalId: string;
+    }
+  | {
+      id: `ssh-files:${string}`;
+      kind: "ssh-files";
+      serverId: string;
+      serverLabel: string;
     }
   | { id: "diff"; kind: "diff" }
   | { id: "files"; kind: "files" }
@@ -114,7 +131,8 @@ const RIGHT_PANEL_STORAGE_KEY = canonicalStorageKey(LEGACY_RIGHT_PANEL_STORAGE_K
 // v11 stops persisting the pull-request list's shared panel, so a restart opens the page fresh.
 // v12 adds validated local-plugin workspace panel surfaces; v13 adds Canvas references;
 // v14 removes stale Canvas artifacts that were persisted as ordinary file surfaces.
-const RIGHT_PANEL_STORAGE_VERSION = 14;
+// v15 adds SSH terminal and SSH files surfaces keyed by registered server id.
+const RIGHT_PANEL_STORAGE_VERSION = 15;
 
 /**
  * The pull-request list's shared panel (see PULL_REQUESTS_PANEL_ID in the route) is session
@@ -132,7 +150,10 @@ interface RightPanelStoreState {
   byThreadKey: Record<string, ThreadRightPanelState>;
   open: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "plugin" | "canvas">,
+    kind: Exclude<
+      RightPanelKind,
+      "file" | "terminal" | "pull-request" | "plugin" | "canvas" | "ssh-terminal" | "ssh-files"
+    >,
   ) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
@@ -141,6 +162,14 @@ interface RightPanelStoreState {
     target: { environmentId?: string; projectId: string; repository: string; number: number },
   ) => void;
   openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
+  openSshTerminal: (
+    ref: ScopedThreadRef,
+    server: { serverId: string; serverLabel: string },
+    terminalId: string,
+  ) => void;
+  activateSshTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
+  closeSshTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
+  openSshFiles: (ref: ScopedThreadRef, server: { serverId: string; serverLabel: string }) => void;
   openPluginPanel: (ref: ScopedThreadRef, pluginId: string, contributionId: string) => void;
   openCanvas: (
     ref: ScopedThreadRef,
@@ -174,7 +203,10 @@ interface RightPanelStoreState {
   toggleVisibility: (ref: ScopedThreadRef) => void;
   toggle: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "plugin" | "canvas">,
+    kind: Exclude<
+      RightPanelKind,
+      "file" | "terminal" | "pull-request" | "plugin" | "canvas" | "ssh-terminal" | "ssh-files"
+    >,
   ) => void;
   removeThread: (ref: ScopedThreadRef) => void;
 }
@@ -188,7 +220,14 @@ const EMPTY_THREAD_STATE: ThreadRightPanelState = {
 const singletonSurface = (
   kind: Exclude<
     RightPanelKind,
-    "file" | "preview" | "terminal" | "pull-request" | "plugin" | "canvas"
+    | "file"
+    | "preview"
+    | "terminal"
+    | "pull-request"
+    | "plugin"
+    | "canvas"
+    | "ssh-terminal"
+    | "ssh-files"
   >,
 ): RightPanelSurface => {
   switch (kind) {
@@ -224,6 +263,25 @@ const terminalSurface = (terminalId: string): RightPanelSurface => ({
   resourceId: terminalId,
   terminalIds: [terminalId],
   activeTerminalId: terminalId,
+});
+
+const sshTerminalSurface = (
+  server: { serverId: string; serverLabel: string },
+  terminalId: string,
+): RightPanelSurface => ({
+  id: `ssh-terminal:${server.serverId}`,
+  kind: "ssh-terminal",
+  serverId: server.serverId,
+  serverLabel: server.serverLabel,
+  terminalIds: [terminalId],
+  activeTerminalId: terminalId,
+});
+
+const sshFilesSurface = (server: { serverId: string; serverLabel: string }): RightPanelSurface => ({
+  id: `ssh-files:${server.serverId}`,
+  kind: "ssh-files",
+  serverId: server.serverId,
+  serverLabel: server.serverLabel,
 });
 
 const canvasSurface = (canvas: {
@@ -400,6 +458,65 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                       }
                       return [surface];
                     }
+                    if (surface.kind === "ssh-terminal") {
+                      if (
+                        typeof surface.serverId !== "string" ||
+                        surface.serverId.length === 0 ||
+                        surface.id !== `ssh-terminal:${surface.serverId}`
+                      ) {
+                        return [];
+                      }
+                      const terminalIds = Array.isArray(surface.terminalIds)
+                        ? [
+                            ...new Set(
+                              surface.terminalIds.filter(
+                                (terminalId): terminalId is string =>
+                                  typeof terminalId === "string" && terminalId.length > 0,
+                              ),
+                            ),
+                          ]
+                        : [];
+                      if (terminalIds.length === 0) return [];
+                      return [
+                        {
+                          id: surface.id,
+                          kind: "ssh-terminal",
+                          serverId: surface.serverId,
+                          serverLabel:
+                            typeof surface.serverLabel === "string" &&
+                            surface.serverLabel.length > 0
+                              ? surface.serverLabel
+                              : surface.serverId,
+                          terminalIds,
+                          activeTerminalId:
+                            typeof surface.activeTerminalId === "string" &&
+                            terminalIds.includes(surface.activeTerminalId)
+                              ? surface.activeTerminalId
+                              : terminalIds[0]!,
+                        },
+                      ];
+                    }
+                    if (surface.kind === "ssh-files") {
+                      if (
+                        typeof surface.serverId !== "string" ||
+                        surface.serverId.length === 0 ||
+                        surface.id !== `ssh-files:${surface.serverId}`
+                      ) {
+                        return [];
+                      }
+                      return [
+                        {
+                          id: surface.id,
+                          kind: "ssh-files",
+                          serverId: surface.serverId,
+                          serverLabel:
+                            typeof surface.serverLabel === "string" &&
+                            surface.serverLabel.length > 0
+                              ? surface.serverLabel
+                              : surface.serverId,
+                        },
+                      ];
+                    }
                     if (surface.kind !== "terminal") return [surface];
                     if (
                       !("resourceId" in surface) ||
@@ -527,6 +644,105 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
             upsertSurface(current, terminalSurface(terminalId)),
           ),
+        })),
+      openSshTerminal: (ref, server, terminalId) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            const surfaceId = `ssh-terminal:${server.serverId}`;
+            const existing = current.surfaces.find(
+              (surface): surface is Extract<RightPanelSurface, { kind: "ssh-terminal" }> =>
+                surface.id === surfaceId && surface.kind === "ssh-terminal",
+            );
+            if (!existing) return upsertSurface(current, sshTerminalSurface(server, terminalId));
+            return {
+              ...current,
+              isOpen: true,
+              activeSurfaceId: surfaceId,
+              surfaces: current.surfaces.map((surface) =>
+                surface.id === surfaceId && surface.kind === "ssh-terminal"
+                  ? {
+                      ...surface,
+                      serverLabel: server.serverLabel,
+                      terminalIds: surface.terminalIds.includes(terminalId)
+                        ? surface.terminalIds
+                        : [...surface.terminalIds, terminalId],
+                      activeTerminalId: terminalId,
+                    }
+                  : surface,
+              ),
+            };
+          }),
+        })),
+      activateSshTerminal: (ref, surfaceId, terminalId) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => ({
+            ...current,
+            activeSurfaceId: surfaceId,
+            surfaces: current.surfaces.map((surface) =>
+              surface.id === surfaceId &&
+              surface.kind === "ssh-terminal" &&
+              surface.terminalIds.includes(terminalId)
+                ? { ...surface, activeTerminalId: terminalId }
+                : surface,
+            ),
+          })),
+        })),
+      closeSshTerminal: (ref, surfaceId, terminalId) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            const surface = current.surfaces.find(
+              (entry) => entry.id === surfaceId && entry.kind === "ssh-terminal",
+            );
+            if (!surface || surface.kind !== "ssh-terminal") return current;
+            const terminalIds = surface.terminalIds.filter((id) => id !== terminalId);
+            if (terminalIds.length === 0) {
+              const index = current.surfaces.findIndex((entry) => entry.id === surfaceId);
+              const surfaces = current.surfaces.filter((entry) => entry.id !== surfaceId);
+              const fallback = surfaces[Math.min(index, surfaces.length - 1)] ?? null;
+              return {
+                ...current,
+                isOpen: surfaces.length > 0 && current.isOpen,
+                surfaces,
+                activeSurfaceId:
+                  current.activeSurfaceId === surfaceId
+                    ? (fallback?.id ?? null)
+                    : current.activeSurfaceId,
+              };
+            }
+            return {
+              ...current,
+              surfaces: current.surfaces.map((entry) =>
+                entry.id === surfaceId && entry.kind === "ssh-terminal"
+                  ? {
+                      ...entry,
+                      terminalIds,
+                      activeTerminalId:
+                        entry.activeTerminalId === terminalId
+                          ? (terminalIds.at(-1) ?? terminalIds[0]!)
+                          : entry.activeTerminalId,
+                    }
+                  : entry,
+              ),
+            };
+          }),
+        })),
+      openSshFiles: (ref, server) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            const surface = sshFilesSurface(server);
+            const existing = current.surfaces.some((entry) => entry.id === surface.id);
+            return existing
+              ? {
+                  ...current,
+                  isOpen: true,
+                  activeSurfaceId: surface.id,
+                  // label 可能随设置改名，打开时刷新。
+                  surfaces: current.surfaces.map((entry) =>
+                    entry.id === surface.id ? surface : entry,
+                  ),
+                }
+              : upsertSurface(current, surface);
+          }),
         })),
       openPluginPanel: (ref, pluginId, contributionId) =>
         set((state) => ({

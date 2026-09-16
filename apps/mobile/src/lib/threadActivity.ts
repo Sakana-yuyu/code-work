@@ -1181,6 +1181,41 @@ function deriveUnsettledTurnId(latestTurn: ThreadFeedLatestTurn | null): TurnId 
   return settled ? null : latestTurn.turnId;
 }
 
+/**
+ * Reconciles the locally expanded turn-fold set across a latestTurn change.
+ * An in-session interrupt leaves its turn expanded so the user keeps their
+ * place; the next turn folds it again. `previousLatestTurn` is the last
+ * non-null latestTurn the caller observed: a null latestTurn is a transient
+ * gap (loading placeholder, a latest-turn-id that no longer resolves), never a
+ * turn boundary, so it must neither expand nor fold anything — callers keep the
+ * last observed turn as `previousLatestTurn` across null gaps so the next real
+ * turn still folds the one it supersedes.
+ */
+export function reconcileExpandedTurnIdsAfterLatestTurnChange(input: {
+  expandedTurnIds: ReadonlySet<TurnId>;
+  previousLatestTurn: ThreadFeedLatestTurn | null;
+  latestTurn: ThreadFeedLatestTurn | null;
+}): ReadonlySet<TurnId> {
+  const { expandedTurnIds, previousLatestTurn, latestTurn } = input;
+  if (latestTurn === null || previousLatestTurn === null) {
+    return expandedTurnIds;
+  }
+  if (latestTurn.turnId === previousLatestTurn.turnId) {
+    if (previousLatestTurn.state === "running" && latestTurn.state === "interrupted") {
+      const next = new Set(expandedTurnIds);
+      next.add(latestTurn.turnId);
+      return next;
+    }
+    return expandedTurnIds;
+  }
+  if (!expandedTurnIds.has(previousLatestTurn.turnId)) {
+    return expandedTurnIds;
+  }
+  const next = new Set(expandedTurnIds);
+  next.delete(previousLatestTurn.turnId);
+  return next;
+}
+
 interface ThreadFeedTurnFold {
   readonly turnId: TurnId;
   readonly createdAt: string;

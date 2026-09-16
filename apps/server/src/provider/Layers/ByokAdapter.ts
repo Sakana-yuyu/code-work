@@ -53,13 +53,14 @@ const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.
 
 import { ServerConfig } from "../../config.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
-import { runByokAgentLoop } from "../../composition/ByokAgentLoop.ts";
+import { extractRescuableCanvas, normalizeRescuedCanvas } from "../../canvas/CanvasTextRescue.ts";
+import { runByokAgentLoop, type ByokAgentToolCall } from "../../composition/ByokAgentLoop.ts";
 import { makeByokModelDriver } from "../../composition/OpenAiByokModelDriver.ts";
 import {
   compositionToolCapabilityId,
   listCompositionAgentTools,
 } from "../../composition/CompositionToolRegistry.ts";
-import type { ToolBroker } from "../../composition/ToolBroker.ts";
+import type { ToolBroker, ToolBrokerResult } from "../../composition/ToolBroker.ts";
 import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
@@ -207,6 +208,10 @@ const BYOK_PROJECT_TOOL_NAMES: ReadonlySet<string> = new Set([
   "git.status",
   "git.diff",
   "canvas.create",
+  // 远程服务器只读三件套与本地 workspace 只读同级。
+  "ssh.status",
+  "ssh.list_files",
+  "ssh.read_file",
 ]);
 const BYOK_FULL_ACCESS_TOOL_NAMES: ReadonlySet<string> = new Set([
   ...BYOK_PROJECT_TOOL_NAMES,
@@ -216,7 +221,17 @@ const BYOK_FULL_ACCESS_TOOL_NAMES: ReadonlySet<string> = new Set([
   "terminal.kill",
   "terminal.close",
   "delegate_task",
+  // 远程服务器写路径与本地 terminal 同级，仅在 full-access 模式放行。
+  "ssh.exec",
+  "ssh.write_file",
+  "ssh.delete_file",
 ]);
+
+/** BYOK 循环内的工具分组：project 只读集在所有模式可用，其余仅 full-access。 */
+export const isByokProjectTool = (canonicalToolName: string): boolean =>
+  BYOK_PROJECT_TOOL_NAMES.has(canonicalToolName);
+export const isByokFullAccessTool = (canonicalToolName: string): boolean =>
+  BYOK_FULL_ACCESS_TOOL_NAMES.has(canonicalToolName);
 
 const renderAgentConversation = (messages: ReadonlyArray<ByokChatMessage>): string =>
   messages
@@ -262,7 +277,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const availableProjectTools = listCompositionAgentTools().filter((tool) =>
-      BYOK_FULL_ACCESS_TOOL_NAMES.has(tool.canonicalToolName),
+      isByokFullAccessTool(tool.canonicalToolName),
     );
 
     // Fibers forked into this scope are interrupted when the adapter layer
@@ -630,6 +645,9 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             if (event.type === "reasoning") {
               reasoningText += event.text;
               appendTurnItem(ctx, turnId, { type: "thinking", text: event.text });
+              // BYOK 没有独立的 summary 通道：reasoning_content/thinking 块本身就是
+              // 面向用户展示的思考流，走 reasoning_summary_text 才会像 Codex 一样
+              // 在时间线上渲染成可折叠的 Thought 行；reasoning_text 会被时间线丢弃。
               yield* emit({
                 ...(yield* makeEventStamp()),
                 type: "content.delta",
@@ -637,7 +655,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
                 threadId: ctx.session.threadId,
                 turnId,
                 providerRefs: { providerRequestId },
-                payload: { streamKind: "reasoning_text", delta: event.text },
+                payload: { streamKind: "reasoning_summary_text", delta: event.text },
               });
               return;
             }
@@ -733,10 +751,61 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
     ) {
       const runtimeMode = isPlanMode ? "approval-required" : ctx.session.runtimeMode;
       const projectTools = availableProjectTools.filter(
-        (tool) =>
-          runtimeMode === "full-access" || BYOK_PROJECT_TOOL_NAMES.has(tool.canonicalToolName),
+        (tool) => runtimeMode === "full-access" || isByokProjectTool(tool.canonicalToolName),
       );
       const effectiveMessages = yield* applyVisionDelegation(ctx, adapter, messages);
+      // 工具时间线行的发射器提出来共用：agent loop 的每个工具调用与文本抢救
+      // 改道的 canvas.create 都走同一对 item.started/item.completed。
+      const emitToolRowStarted = (toolCall: ByokAgentToolCall) =>
+        Effect.gen(function* () {
+          yield* emit({
+            ...(yield* makeEventStamp()),
+            type: "item.started",
+            provider: PROVIDER,
+            threadId: ctx.session.threadId,
+            turnId,
+            itemId: RuntimeItemId.make(toolCall.toolCallId),
+            payload: {
+              itemType: "mcp_tool_call",
+              status: "inProgress",
+              title: toolCall.canonicalToolName,
+              data: {
+                toolName: toolCall.canonicalToolName,
+                input: toolCall.arguments,
+              },
+            },
+          });
+        }).pipe(Effect.orDie);
+      const emitToolRowCompleted = (toolCall: ByokAgentToolCall, result: ToolBrokerResult) =>
+        Effect.gen(function* () {
+          yield* emit({
+            ...(yield* makeEventStamp()),
+            type: "item.completed",
+            provider: PROVIDER,
+            threadId: ctx.session.threadId,
+            turnId,
+            itemId: RuntimeItemId.make(toolCall.toolCallId),
+            payload: {
+              itemType: "mcp_tool_call",
+              status: result.status === "succeeded" ? "completed" : "failed",
+              title: toolCall.canonicalToolName,
+              data: {
+                toolName: toolCall.canonicalToolName,
+                input: toolCall.arguments,
+                ...(result.status === "succeeded" && result.result !== undefined
+                  ? { canvas: result.result }
+                  : {}),
+                result: {
+                  content: encodeUnknownJson(
+                    result.status === "succeeded"
+                      ? result.result
+                      : { errorCode: result.errorCode ?? "tool_failed" },
+                  ),
+                },
+              },
+            },
+          });
+        }).pipe(Effect.orDie);
       const agentSystemPrompt = [
         systemPrompt,
         "你正在 Code Work 中处理当前项目，可用操作以本轮工具清单为准。",
@@ -745,6 +814,10 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         isPlanMode
           ? "当前为计划模式，仅分析代码并给出计划，不执行文件修改或命令。"
           : "当用户要求创建或修改文件、执行命令时，使用本轮已授权工具完成操作。",
+        // 对齐 Cursor canvas skill 的常驻语义：独立分析交付物默认用 Canvas
+        // 承载，而不是把结论倒进 markdown 表格或长代码块。
+        "当产出独立的分析型交付物（审计、评审、代码地图、量化分析、数据密集结论、对比、时间线）时，优先用 canvas.create 工具承载并随任务推进复用相同 canvasId 更新它，而不是写大段 markdown 表格或长代码块；定向实现、调试等明确交付物不适用。",
+        "画布只能通过调用 canvas.create 工具创建：把画布 JSON 写进回复正文或代码块不会生成画布面板。",
       ]
         .filter((part) => part.trim().length > 0)
         .join("\n\n");
@@ -778,65 +851,23 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             onReasoningCheckpoint: (checkpoint) =>
               Effect.gen(function* () {
                 appendTurnItem(ctx, turnId, { type: "thinking", text: checkpoint.delta });
+                // 每轮模型调用对应一条 Thought 行：summaryIndex 取模型轮次，轮间
+                // 的思考块与工具行按时间交错，而不是全部汇进同一个折叠行。
                 yield* emit({
                   ...(yield* makeEventStamp()),
                   type: "content.delta",
                   provider: PROVIDER,
                   threadId: ctx.session.threadId,
                   turnId,
-                  payload: { streamKind: "reasoning_text", delta: checkpoint.delta },
-                });
-              }).pipe(Effect.orDie),
-            onToolStarted: (toolCall) =>
-              Effect.gen(function* () {
-                yield* emit({
-                  ...(yield* makeEventStamp()),
-                  type: "item.started",
-                  provider: PROVIDER,
-                  threadId: ctx.session.threadId,
-                  turnId,
-                  itemId: RuntimeItemId.make(toolCall.toolCallId),
                   payload: {
-                    itemType: "mcp_tool_call",
-                    status: "inProgress",
-                    title: toolCall.canonicalToolName,
-                    data: {
-                      toolName: toolCall.canonicalToolName,
-                      input: toolCall.arguments,
-                    },
+                    streamKind: "reasoning_summary_text",
+                    delta: checkpoint.delta,
+                    summaryIndex: checkpoint.turn,
                   },
                 });
               }).pipe(Effect.orDie),
-            onToolCompleted: (toolCall, result) =>
-              Effect.gen(function* () {
-                yield* emit({
-                  ...(yield* makeEventStamp()),
-                  type: "item.completed",
-                  provider: PROVIDER,
-                  threadId: ctx.session.threadId,
-                  turnId,
-                  itemId: RuntimeItemId.make(toolCall.toolCallId),
-                  payload: {
-                    itemType: "mcp_tool_call",
-                    status: result.status === "succeeded" ? "completed" : "failed",
-                    title: toolCall.canonicalToolName,
-                    data: {
-                      toolName: toolCall.canonicalToolName,
-                      input: toolCall.arguments,
-                      ...(result.status === "succeeded" && result.result !== undefined
-                        ? { canvas: result.result }
-                        : {}),
-                      result: {
-                        content: encodeUnknownJson(
-                          result.status === "succeeded"
-                            ? result.result
-                            : { errorCode: result.errorCode ?? "tool_failed" },
-                        ),
-                      },
-                    },
-                  },
-                });
-              }).pipe(Effect.orDie),
+            onToolStarted: (toolCall) => emitToolRowStarted(toolCall),
+            onToolCompleted: (toolCall, result) => emitToolRowCompleted(toolCall, result),
             onModelUsage: (usage) =>
               emitThreadTokenUsage(ctx, turnId, adapter, usage).pipe(Effect.orDie),
           },
@@ -888,6 +919,45 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           payload: { state: "failed", errorMessage: detail },
         });
         return;
+      }
+
+      // 抢救落空的画布交付：模型偶尔把画布 JSON 以代码块写进正文而不调用
+      // canvas.create。本回合没走过该工具且正文里能解析出画布时，改道真实
+      // 的工具调用把交付物落成画布；解析失败则原文原样保留。
+      if (
+        outcome.value.messages.some(
+          (message) => message.role === "tool" && message.canonicalToolName === "canvas.create",
+        ) !== true
+      ) {
+        const rawCanvas = extractRescuableCanvas(outcome.value.text);
+        const rescuedCanvas =
+          rawCanvas === undefined ? undefined : normalizeRescuedCanvas(rawCanvas, ctx.cwd);
+        if (rescuedCanvas !== undefined) {
+          const toolCallId = `canvas-rescue-${yield* randomUUIDv4}`;
+          const toolCall: ByokAgentToolCall = {
+            toolCallId,
+            canonicalToolName: "canvas.create",
+            arguments: rescuedCanvas,
+          };
+          yield* emitToolRowStarted(toolCall);
+          const result = yield* toolBroker.invoke({
+            taskId: String(ctx.session.threadId),
+            runId: String(turnId),
+            agentId: `provider:${boundInstanceId}`,
+            runtimeId: `byok:${boundInstanceId}`,
+            threadId: String(ctx.session.threadId),
+            runtimeMode,
+            toolCallId,
+            canonicalToolName: toolCall.canonicalToolName,
+            arguments: rescuedCanvas,
+            idempotencyKey: `${turnId}:${toolCallId}`,
+            capabilityGrantIds: projectTools.map((tool) =>
+              compositionToolCapabilityId(tool.canonicalToolName),
+            ),
+            workspaceRoot: ctx.cwd,
+          });
+          yield* emitToolRowCompleted(toolCall, result);
+        }
       }
 
       ctx.history.push({ role: "assistant", content: outcome.value.text });

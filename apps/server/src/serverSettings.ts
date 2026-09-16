@@ -22,6 +22,7 @@ import {
   type ProviderInstanceEnvironmentVariable,
   ProviderDriverKind,
   ProviderInstanceId,
+  type SshServerConfig,
   ServerSettings,
   ServerSettingsConflictError,
   ServerSettingsError,
@@ -136,6 +137,10 @@ function mcpSecretName(input: {
 }): string {
   const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
   return `mcp-${encode(input.serverId)}-${input.kind}-${encode(input.name)}`;
+}
+
+function sshServerPasswordSecretName(input: { readonly serverId: string }): string {
+  return `ssh-server-${Buffer.from(input.serverId, "utf8").toString("base64url")}-password`;
 }
 
 function hasByokSecretValue(value: unknown): boolean {
@@ -270,7 +275,13 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
       }),
     ),
   } as ServerSettings["localAccountPool"];
-  return { ...settings, providerInstances, localAccountPool, mcpServers };
+  const sshServers = Object.fromEntries(
+    Object.entries(settings.sshServers).map(([serverId, config]) => [
+      serverId,
+      config.password.length > 0 ? { ...config, password: "", passwordRedacted: true } : config,
+    ]),
+  );
+  return { ...settings, providerInstances, localAccountPool, mcpServers, sshServers };
 }
 
 export class ServerSettingsService extends Context.Service<
@@ -766,6 +777,94 @@ const make = Effect.gen(function* () {
       return { ...next, mcpServers };
     });
 
+  const materializeSshServerSecrets = (
+    settings: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const sshServers: Record<string, SshServerConfig> = {};
+      for (const [serverId, config] of Object.entries(settings.sshServers)) {
+        if (config.password.length > 0 || config.passwordRedacted !== true) {
+          sshServers[serverId] = config;
+          continue;
+        }
+        const secret = yield* secretStore.get(sshServerPasswordSecretName({ serverId })).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ServerSettingsError({
+                settingsPath,
+                operation: "read-secret",
+                environmentVariable: `ssh-server:${serverId}:password`,
+                cause,
+              }),
+          ),
+        );
+        sshServers[serverId] = {
+          ...config,
+          password: Option.isSome(secret) ? textDecoder.decode(secret.value) : "",
+        };
+      }
+      return { ...settings, sshServers };
+    });
+
+  const persistSshServerSecrets = (
+    current: ServerSettings,
+    next: ServerSettings,
+    writeSecretStore: ServerSecretStore.ServerSecretStore["Service"],
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const sshServers: Record<string, SshServerConfig> = {};
+      for (const [serverId, config] of Object.entries(next.sshServers)) {
+        const secretName = sshServerPasswordSecretName({ serverId });
+        if (config.password.length > 0) {
+          yield* writeSecretStore.set(secretName, textEncoder.encode(config.password)).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerSettingsError({
+                  settingsPath,
+                  operation: "write-secret",
+                  environmentVariable: `ssh-server:${serverId}:password`,
+                  cause,
+                }),
+            ),
+          );
+          sshServers[serverId] = { ...config, password: "", passwordRedacted: true };
+        } else if (config.passwordRedacted === true) {
+          // 客户端以空值 + 脱敏标记表示"保留已存密码"。
+          sshServers[serverId] = { ...config, password: "", passwordRedacted: true };
+        } else {
+          yield* writeSecretStore.remove(secretName).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerSettingsError({
+                  settingsPath,
+                  operation: "remove-secret",
+                  environmentVariable: `ssh-server:${serverId}:password`,
+                  cause,
+                }),
+            ),
+          );
+          const { passwordRedacted: _omit, ...rest } = config;
+          sshServers[serverId] = rest;
+        }
+      }
+      // 已删除服务器的密码要跟着出库。
+      for (const serverId of Object.keys(current.sshServers)) {
+        if (serverId in sshServers) continue;
+        yield* writeSecretStore.remove(sshServerPasswordSecretName({ serverId })).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ServerSettingsError({
+                settingsPath,
+                operation: "remove-stale-secret",
+                environmentVariable: `ssh-server:${serverId}:password`,
+                cause,
+              }),
+          ),
+        );
+      }
+      return { ...next, sshServers };
+    });
+
   const materializeByokSecrets = (
     settings: ServerSettings,
   ): Effect.Effect<ServerSettings, ServerSettingsError> =>
@@ -953,6 +1052,7 @@ const make = Effect.gen(function* () {
         materializeProviderEnvironmentSecrets(settings).pipe(
           Effect.flatMap(materializeMcpServerSecrets),
           Effect.flatMap(materializeByokSecrets),
+          Effect.flatMap(materializeSshServerSecrets),
           Effect.catch((error: ServerSettingsError) =>
             Effect.logWarning("failed to materialize provider environment secrets", {
               operation: error.operation,
@@ -1463,7 +1563,12 @@ const make = Effect.gen(function* () {
             nextWithMcpSecrets,
             secretTransaction.store,
           );
-          const next = yield* normalizeServerSettings(nextPersisted, settingsPath);
+          const nextWithSshSecrets = yield* persistSshServerSecrets(
+            current,
+            nextPersisted,
+            secretTransaction.store,
+          );
+          const next = yield* normalizeServerSettings(nextWithSshSecrets, settingsPath);
           return {
             contents: yield* serializeSettings(next),
             value: next,
@@ -1568,6 +1673,7 @@ const make = Effect.gen(function* () {
       Effect.flatMap(materializeProviderEnvironmentSecrets),
       Effect.flatMap(materializeMcpServerSecrets),
       Effect.flatMap(materializeByokSecrets),
+      Effect.flatMap(materializeSshServerSecrets),
       Effect.map(resolveTextGenerationProvider),
     ),
     updateSettings: (update) =>
@@ -1620,7 +1726,8 @@ const make = Effect.gen(function* () {
             yield* emitChange(next);
             const materializedEnvironment = yield* materializeProviderEnvironmentSecrets(next);
             const materializedMcp = yield* materializeMcpServerSecrets(materializedEnvironment);
-            const materialized = yield* materializeByokSecrets(materializedMcp);
+            const materializedByok = yield* materializeByokSecrets(materializedMcp);
+            const materialized = yield* materializeSshServerSecrets(materializedByok);
             return resolveTextGenerationProvider(materialized);
           }
         }),

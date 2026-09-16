@@ -182,6 +182,8 @@ import { DiffWorkerPoolProvider } from "./DiffWorkerPoolProvider";
 import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
+import { SshFilesPanel } from "./SshFilesPanel";
+import { SshTerminalPanel } from "./SshTerminalPanel";
 import {
   AlarmClockIcon,
   CheckCircle2Icon,
@@ -214,6 +216,7 @@ import {
   useClientSettings,
   useClientSettingsHydrated,
   useEnvironmentSettings,
+  usePrimarySettings,
 } from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
@@ -269,6 +272,7 @@ import {
   serverEnvironment,
 } from "../state/server";
 import { terminalEnvironment } from "../state/terminal";
+import { sshTerminalEnvironment } from "../state/ssh";
 import { threadEnvironment, useEnvironmentThread } from "../state/threads";
 import {
   requestOlderThreadTurns,
@@ -3822,6 +3826,74 @@ function ChatViewContent(props: ChatViewProps) {
     },
     [activeRightPanelSurface, activeThreadRef, closeTerminalMutation, storeCloseTerminal],
   );
+  const sshServerConfigs = usePrimarySettings((settings) => settings.sshServers);
+  const sshServerOptions = useMemo(
+    () =>
+      Object.entries(sshServerConfigs).map(([serverId, config]) => ({
+        serverId,
+        serverLabel: config.label,
+      })),
+    [sshServerConfigs],
+  );
+  const closeSshTerminalMutation = useAtomCommand(sshTerminalEnvironment.close, {
+    reportFailure: false,
+  });
+  const addSshTerminalSurface = useCallback(
+    (server: { serverId: string; serverLabel: string }) => {
+      if (!activeThreadRef) return;
+      const store = useRightPanelStore.getState();
+      const existingIds =
+        selectThreadRightPanelState(store.byThreadKey, activeThreadRef).surfaces.find(
+          (surface): surface is Extract<RightPanelSurface, { kind: "ssh-terminal" }> =>
+            surface.kind === "ssh-terminal" && surface.serverId === server.serverId,
+        )?.terminalIds ?? [];
+      const base = `ssh-${server.serverId}`;
+      let terminalId = base;
+      let suffix = 2;
+      while (existingIds.includes(terminalId)) {
+        terminalId = `${base}-${suffix}`;
+        suffix += 1;
+      }
+      store.openSshTerminal(activeThreadRef, server, terminalId);
+    },
+    [activeThreadRef],
+  );
+  const addSshFilesSurface = useCallback(
+    (server: { serverId: string; serverLabel: string }) => {
+      if (!activeThreadRef) return;
+      useRightPanelStore.getState().openSshFiles(activeThreadRef, server);
+    },
+    [activeThreadRef],
+  );
+  const activateSshTerminalInPanel = useCallback(
+    (terminalId: string) => {
+      if (!activeThreadRef || activeRightPanelSurface?.kind !== "ssh-terminal") return;
+      useRightPanelStore
+        .getState()
+        .activateSshTerminal(activeThreadRef, activeRightPanelSurface.id, terminalId);
+    },
+    [activeRightPanelSurface, activeThreadRef],
+  );
+  const closeSshTerminalInPanel = useCallback(
+    (terminalId: string) => {
+      if (!activeThreadRef || activeRightPanelSurface?.kind !== "ssh-terminal") return;
+      void closeSshTerminalMutation({
+        environmentId: activeThreadRef.environmentId,
+        input: { threadId: activeThreadRef.threadId, terminalId },
+      });
+      useRightPanelStore
+        .getState()
+        .closeSshTerminal(activeThreadRef, activeRightPanelSurface.id, terminalId);
+    },
+    [activeRightPanelSurface, activeThreadRef, closeSshTerminalMutation],
+  );
+  const newSshTerminalInPanel = useCallback(() => {
+    if (activeRightPanelSurface?.kind !== "ssh-terminal") return;
+    addSshTerminalSurface({
+      serverId: activeRightPanelSurface.serverId,
+      serverLabel: activeRightPanelSurface.serverLabel,
+    });
+  }, [addSshTerminalSurface, activeRightPanelSurface]);
   const requestCloseTerminal = useCallback(
     (terminalId: string) => {
       const label = terminalDisplayLabel(
@@ -6266,13 +6338,15 @@ function ChatViewContent(props: ChatViewProps) {
     }
   };
 
+  // Draft threads have no turns yet, but generating from one is still valid:
+  // the prompt analyzes the project, not the conversation. Only the one-canvas-
+  // per-turn dedupe needs a turn to compare against.
   const canCreateCanvas =
     activeThread !== null &&
-    activeLatestTurn !== null &&
     activeProject !== null &&
     Boolean(activeWorkspaceRoot) &&
     !workLogEntries.some(
-      (entry) => entry.turnId === activeLatestTurn.turnId && entry.canvas !== undefined,
+      (entry) => entry.turnId === activeLatestTurn?.turnId && entry.canvas !== undefined,
     ) &&
     !isWorking &&
     !activeEnvironmentUnavailable &&
@@ -7209,6 +7283,24 @@ function ChatViewContent(props: ChatViewProps) {
         newShortcutLabel={newTerminalShortcutLabel ?? undefined}
         closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
       />
+    ) : activeRightPanelSurface?.kind === "ssh-terminal" && activeThreadRef ? (
+      <SshTerminalPanel
+        environmentId={activeThreadRef.environmentId}
+        threadId={activeThreadRef.threadId}
+        serverId={activeRightPanelSurface.serverId}
+        serverLabel={activeRightPanelSurface.serverLabel}
+        terminalIds={activeRightPanelSurface.terminalIds}
+        activeTerminalId={activeRightPanelSurface.activeTerminalId}
+        onActivateTerminal={activateSshTerminalInPanel}
+        onCloseTerminal={closeSshTerminalInPanel}
+        onNewTerminal={newSshTerminalInPanel}
+      />
+    ) : activeRightPanelSurface?.kind === "ssh-files" && activeThreadRef ? (
+      <SshFilesPanel
+        environmentId={activeThreadRef.environmentId}
+        serverId={activeRightPanelSurface.serverId}
+        serverLabel={activeRightPanelSurface.serverLabel}
+      />
     ) : activeRightPanelSurface?.kind === "diff" ? (
       <Suspense fallback={null}>
         <DiffPanel
@@ -7456,6 +7548,9 @@ function ChatViewContent(props: ChatViewProps) {
               onAddPullRequest={addPullRequestSurface}
               onAddAgents={addAgentsSurface}
               onAddCanvas={openCanvasPanel}
+              onAddSshTerminal={addSshTerminalSurface}
+              onAddSshFiles={addSshFilesSurface}
+              sshServerOptions={sshServerOptions}
               browserAvailable={isPreviewSupportedInRuntime()}
               terminalAvailable={activeProject !== null}
               diffAvailable={isServerThread && isGitRepo}
@@ -7519,6 +7614,9 @@ function ChatViewContent(props: ChatViewProps) {
                 onAddPullRequest={addPullRequestSurface}
                 onAddAgents={addAgentsSurface}
                 onAddCanvas={openCanvasPanel}
+                onAddSshTerminal={addSshTerminalSurface}
+                onAddSshFiles={addSshFilesSurface}
+                sshServerOptions={sshServerOptions}
                 browserAvailable={isPreviewSupportedInRuntime()}
                 terminalAvailable={activeProject !== null}
                 diffAvailable={isServerThread && isGitRepo}

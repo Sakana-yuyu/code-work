@@ -1536,6 +1536,7 @@ const make = Effect.gen(function* () {
             ).pipe(Effect.as(undefined)),
           ),
         );
+      if (result === undefined) return;
       yield* Cache.set(handledSpecWorkflowIntentKeys, intentKey, true);
       if (result?.route.corrected === true) {
         yield* orchestrationEngine.dispatch({
@@ -2344,6 +2345,38 @@ const make = Effect.gen(function* () {
             delta: assistantDelta,
             ...(turnId ? { turnId } : {}),
             createdAt: now,
+          });
+        }
+      }
+
+      // 非 assistant 条目的边界（工具调用、推理块、压缩等）切断当前文本段。
+      // 不发显式 item 边界的 provider（BYOK 循环、Pi/Omp 的 message_update
+      // 流）由此得到与 Codex 相同的「文字 → 工具 → 文字」交错时间线。
+      // reasoning summary 增量同样自成时间线块：思考块前后的正文不能并进
+      // 同一条消息，否则后段文本在视觉上会压在 Thought 行之前。
+      const nonAssistantItemBoundaryTurnId =
+        ((event.type === "item.started" || event.type === "item.completed") &&
+          event.payload.itemType !== "assistant_message") ||
+        (event.type === "content.delta" && event.payload.streamKind === "reasoning_summary_text")
+          ? toTurnId(event.turnId)
+          : undefined;
+      if (nonAssistantItemBoundaryTurnId !== undefined) {
+        const activeBoundaryMessageId = yield* getActiveAssistantMessageIdForTurn(
+          thread.id,
+          nonAssistantItemBoundaryTurnId,
+        );
+        if (Option.isSome(activeBoundaryMessageId)) {
+          const detailedThread = yield* getLoadedThreadDetail();
+          yield* finalizeActiveAssistantSegmentForTurn({
+            event,
+            threadId: thread.id,
+            turnId: nonAssistantItemBoundaryTurnId,
+            createdAt: now,
+            commandTag: "assistant-complete-on-item-boundary",
+            finalDeltaCommandTag: "assistant-delta-finalize-on-item-boundary",
+            hasProjectedMessage:
+              detailedThread !== null &&
+              findMessageById(detailedThread.messages, activeBoundaryMessageId.value) !== undefined,
           });
         }
       }

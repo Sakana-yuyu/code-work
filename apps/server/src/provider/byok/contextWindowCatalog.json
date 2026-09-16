@@ -8,7 +8,7 @@
       "contextWindowTokens": 1050000,
       "maxOutputTokens": 128000,
       "supportsVision": true,
-      "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+      "reasoningEfforts": ["none", "low", "medium", "high", "xhigh", "max"]
     },
     {
       "pattern": "^gemini-?3[.-]?8-?flash(?:-|$)",
@@ -123,14 +123,16 @@
       "displayName": "GPT-5.6 (Codex)",
       "contextWindowTokens": 272000,
       "maxOutputTokens": 32768,
-      "supportsVision": true
+      "supportsVision": true,
+      "reasoningEfforts": ["none", "low", "medium", "high", "xhigh"]
     },
     {
       "pattern": "^gpt-?5[.-]?6(?:-|$)",
       "displayName": "GPT-5.6",
       "contextWindowTokens": 1000000,
       "maxOutputTokens": 32768,
-      "supportsVision": true
+      "supportsVision": true,
+      "reasoningEfforts": ["none", "low", "medium", "high", "xhigh"]
     },
     {
       "pattern": "^gpt-?5[.-]?4(?:-|$)",
@@ -144,7 +146,8 @@
       "displayName": "GPT-5.5",
       "contextWindowTokens": 400000,
       "maxOutputTokens": 128000,
-      "supportsVision": true
+      "supportsVision": true,
+      "reasoningEfforts": ["none", "low", "medium", "high", "xhigh"]
     },
     {
       "pattern": "^gpt-?5(?:-|$)",

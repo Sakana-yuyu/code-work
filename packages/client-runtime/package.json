@@ -207,6 +207,14 @@
       "types": "./src/state/threadSort.ts",
       "default": "./src/state/threadSort.ts"
     },
+    "./state/ssh-servers": {
+      "types": "./src/state/sshServers.ts",
+      "default": "./src/state/sshServers.ts"
+    },
+    "./state/ssh-terminal": {
+      "types": "./src/state/sshTerminal.ts",
+      "default": "./src/state/sshTerminal.ts"
+    },
     "./state/thread-settled": {
       "types": "./src/state/threadSettled.ts",
       "default": "./src/state/threadSettled.ts"

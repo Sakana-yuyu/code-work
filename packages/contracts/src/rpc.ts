@@ -178,6 +178,29 @@ import {
   TerminalWriteInput,
 } from "./terminal.ts";
 import {
+  SshDeleteFileInput,
+  SshError,
+  SshListFilesInput,
+  SshListFilesResult,
+  SshReadFileInput,
+  SshReadFileResult,
+  SshServerStatus,
+  SshTestConnectionInput,
+  SshTestConnectionResult,
+  SshWriteFileInput,
+} from "./sshServers.ts";
+import {
+  SshTerminalAttachInput,
+  SshTerminalAttachStreamEvent,
+  SshTerminalCloseInput,
+  SshTerminalError,
+  SshTerminalEvent,
+  SshTerminalOpenInput,
+  SshTerminalResizeInput,
+  SshTerminalSessionSnapshot,
+  SshTerminalWriteInput,
+} from "./sshTerminal.ts";
+import {
   DiscoveredLocalServerList,
   ConfiguredLocalServerUrls,
   PreviewCloseInput,
@@ -426,6 +449,19 @@ export const WS_METHODS = {
   terminalRestart: "terminal.restart",
   terminalClose: "terminal.close",
 
+  // SSH remote server methods
+  sshTestConnection: "ssh.testConnection",
+  sshGetServerStatus: "ssh.getServerStatus",
+  sshListFiles: "ssh.listFiles",
+  sshReadFile: "ssh.readFile",
+  sshWriteFile: "ssh.writeFile",
+  sshDeleteFile: "ssh.deleteFile",
+  sshTerminalOpen: "sshTerminal.open",
+  sshTerminalAttach: "sshTerminal.attach",
+  sshTerminalWrite: "sshTerminal.write",
+  sshTerminalResize: "sshTerminal.resize",
+  sshTerminalClose: "sshTerminal.close",
+
   // Preview methods
   previewOpen: "preview.open",
   previewNavigate: "preview.navigate",
@@ -566,6 +602,7 @@ export const WS_METHODS = {
   subscribeVcsStatus: "subscribeVcsStatus",
   subscribeTerminalEvents: "subscribeTerminalEvents",
   subscribeTerminalMetadata: "subscribeTerminalMetadata",
+  subscribeSshTerminalEvents: "subscribeSshTerminalEvents",
   subscribePreviewEvents: "subscribePreviewEvents",
   subscribeDiscoveredLocalServers: "subscribeDiscoveredLocalServers",
   subscribeServerConfig: "subscribeServerConfig",
@@ -1629,6 +1666,68 @@ export const WsTerminalCloseRpc = Rpc.make(WS_METHODS.terminalClose, {
   error: Schema.Union([TerminalError, EnvironmentAuthorizationError]),
 });
 
+export const WsSshTestConnectionRpc = Rpc.make(WS_METHODS.sshTestConnection, {
+  payload: SshTestConnectionInput,
+  success: SshTestConnectionResult,
+  error: Schema.Union([SshError, EnvironmentAuthorizationError]),
+});
+
+export const WsSshGetServerStatusRpc = Rpc.make(WS_METHODS.sshGetServerStatus, {
+  payload: Schema.Struct({ serverId: SshListFilesInput.fields.serverId }),
+  success: SshServerStatus,
+  error: Schema.Union([SshError, EnvironmentAuthorizationError]),
+});
+
+export const WsSshListFilesRpc = Rpc.make(WS_METHODS.sshListFiles, {
+  payload: SshListFilesInput,
+  success: SshListFilesResult,
+  error: Schema.Union([SshError, EnvironmentAuthorizationError]),
+});
+
+export const WsSshReadFileRpc = Rpc.make(WS_METHODS.sshReadFile, {
+  payload: SshReadFileInput,
+  success: SshReadFileResult,
+  error: Schema.Union([SshError, EnvironmentAuthorizationError]),
+});
+
+export const WsSshWriteFileRpc = Rpc.make(WS_METHODS.sshWriteFile, {
+  payload: SshWriteFileInput,
+  error: Schema.Union([SshError, EnvironmentAuthorizationError]),
+});
+
+export const WsSshDeleteFileRpc = Rpc.make(WS_METHODS.sshDeleteFile, {
+  payload: SshDeleteFileInput,
+  error: Schema.Union([SshError, EnvironmentAuthorizationError]),
+});
+
+export const WsSshTerminalOpenRpc = Rpc.make(WS_METHODS.sshTerminalOpen, {
+  payload: SshTerminalOpenInput,
+  success: SshTerminalSessionSnapshot,
+  error: Schema.Union([SshError, SshTerminalError, EnvironmentAuthorizationError]),
+});
+
+export const WsSshTerminalAttachRpc = Rpc.make(WS_METHODS.sshTerminalAttach, {
+  payload: SshTerminalAttachInput,
+  success: SshTerminalAttachStreamEvent,
+  error: Schema.Union([SshTerminalError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+export const WsSshTerminalWriteRpc = Rpc.make(WS_METHODS.sshTerminalWrite, {
+  payload: SshTerminalWriteInput,
+  error: Schema.Union([SshTerminalError, EnvironmentAuthorizationError]),
+});
+
+export const WsSshTerminalResizeRpc = Rpc.make(WS_METHODS.sshTerminalResize, {
+  payload: SshTerminalResizeInput,
+  error: Schema.Union([SshTerminalError, EnvironmentAuthorizationError]),
+});
+
+export const WsSshTerminalCloseRpc = Rpc.make(WS_METHODS.sshTerminalClose, {
+  payload: SshTerminalCloseInput,
+  error: Schema.Union([SshTerminalError, EnvironmentAuthorizationError]),
+});
+
 export const WsPreviewOpenRpc = Rpc.make(WS_METHODS.previewOpen, {
   payload: PreviewOpenInput,
   success: PreviewSessionSnapshot,
@@ -1911,6 +2010,13 @@ export const WsSubscribeTerminalMetadataRpc = Rpc.make(WS_METHODS.subscribeTermi
   stream: true,
 });
 
+export const WsSubscribeSshTerminalEventsRpc = Rpc.make(WS_METHODS.subscribeSshTerminalEvents, {
+  payload: Schema.Struct({}),
+  success: SshTerminalEvent,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 export const WsSubscribeServerConfigRpc = Rpc.make(WS_METHODS.subscribeServerConfig, {
   payload: Schema.Struct({}),
   success: ServerConfigStreamEvent,
@@ -2093,8 +2199,20 @@ export const WsRpcGroup = RpcGroup.make(
   WsTerminalClearRpc,
   WsTerminalRestartRpc,
   WsTerminalCloseRpc,
+  WsSshTestConnectionRpc,
+  WsSshGetServerStatusRpc,
+  WsSshListFilesRpc,
+  WsSshReadFileRpc,
+  WsSshWriteFileRpc,
+  WsSshDeleteFileRpc,
+  WsSshTerminalOpenRpc,
+  WsSshTerminalAttachRpc,
+  WsSshTerminalWriteRpc,
+  WsSshTerminalResizeRpc,
+  WsSshTerminalCloseRpc,
   WsSubscribeTerminalEventsRpc,
   WsSubscribeTerminalMetadataRpc,
+  WsSubscribeSshTerminalEventsRpc,
   WsPreviewOpenRpc,
   WsPreviewNavigateRpc,
   WsPreviewResizeRpc,

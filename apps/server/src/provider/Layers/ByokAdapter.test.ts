@@ -203,6 +203,121 @@ describe("ByokAdapter", () => {
     });
   }
 
+  it.effect("BYOK Agent 的思考流按模型轮次上报为 reasoning summary", () => {
+    const responses = [
+      sse(
+        { choices: [{ delta: { reasoning_content: "先想清楚第一步。" }, finish_reason: null }] },
+        { choices: [{ delta: { reasoning_content: "再读文件。" }, finish_reason: null }] },
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call-think-1",
+                    function: {
+                      name: "workspace.read_file",
+                      arguments: encodeJson({ cwd: workspaceRoot, relativePath: "README.md" }),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: { prompt_tokens: 100, completion_tokens: 40, total_tokens: 140 },
+        },
+      ),
+      sse(
+        { choices: [{ delta: { reasoning_content: "读完再总结一下。" }, finish_reason: null }] },
+        { choices: [{ delta: { content: "已读取。" }, finish_reason: null }] },
+        {
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 160, completion_tokens: 30, total_tokens: 190 },
+        },
+      ),
+    ];
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        const body = responses.shift();
+        if (body === undefined) throw new Error("收到未预期的 BYOK 请求");
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(body, { headers: { "content-type": "text/event-stream" } }),
+        );
+      }),
+    );
+    const toolBroker = ToolBroker.ToolBroker.of({
+      invoke: (input) =>
+        Effect.succeed({
+          invocationId: `invocation-${input.toolCallId}`,
+          taskId: input.taskId,
+          runId: input.runId,
+          toolCallId: input.toolCallId,
+          canonicalToolName: input.canonicalToolName,
+          status: "succeeded" as const,
+          result: { contents: "# Code Work" },
+          startedAtUnixMs: 1,
+          finishedAtUnixMs: 2,
+        }),
+      cancel: () => Effect.void,
+    });
+
+    return Effect.gen(function* () {
+      const adapter = yield* makeByokAdapter(settings, { instanceId, toolBroker });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* adapter.startSession({
+        threadId,
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      yield* adapter.sendTurn({
+        threadId,
+        input: "思考问题并读取文件",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+
+      const reasoningDeltas = events.filter(
+        (event) =>
+          event.type === "content.delta" && event.payload.streamKind === "reasoning_summary_text",
+      );
+      expect(
+        reasoningDeltas.map((event) => ({
+          delta: event.type === "content.delta" ? event.payload.delta : "",
+          summaryIndex: event.type === "content.delta" ? event.payload.summaryIndex : undefined,
+        })),
+      ).toEqual([
+        { delta: "先想清楚第一步。", summaryIndex: 1 },
+        { delta: "再读文件。", summaryIndex: 1 },
+        { delta: "读完再总结一下。", summaryIndex: 2 },
+      ]);
+      expect(
+        events.some(
+          (event) =>
+            event.type === "content.delta" && event.payload.streamKind === "reasoning_text",
+        ),
+      ).toBe(false);
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: "item.started" }),
+          expect.objectContaining({ type: "turn.completed", payload: { state: "completed" } }),
+        ]),
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-test-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
   it.effect("图片流式回合把 x-request-id 关联 id 透传到事件里", () => {
     const capturedHeaders: Array<Record<string, string>> = [];
     const responses = [

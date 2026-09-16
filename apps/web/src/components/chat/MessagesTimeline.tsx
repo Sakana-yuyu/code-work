@@ -92,6 +92,7 @@ import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
   normalizeCompactToolLabel,
+  reconcileExpandedTurnIdsAfterLatestTurnChange,
   resolveAssistantMessageCopyState,
   resolveTimelineIsAtEnd,
   resolveTimelineMinimapHasPersistentGutter,
@@ -408,31 +409,22 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   // An in-session interrupt leaves its turn expanded so the user keeps their
   // place; the next turn (or a reload, since this is local state) folds it.
+  // latestTurn can render null between turns (loading placeholder, a
+  // latest-turn-id that no longer resolves): keep the last observed turn so
+  // the next real turn still folds the interrupted one it supersedes.
   const previousLatestTurnRef = useRef(latestTurn);
   useEffect(() => {
     const previous = previousLatestTurnRef.current;
-    previousLatestTurnRef.current = latestTurn;
-    if (!latestTurn || previous?.turnId === undefined) {
-      return;
+    if (latestTurn !== null) {
+      previousLatestTurnRef.current = latestTurn;
     }
-    if (latestTurn.turnId === previous.turnId) {
-      if (previous.state === "running" && latestTurn.state === "interrupted") {
-        setExpandedTurnIds((existing) => {
-          const next = new Set(existing);
-          next.add(latestTurn.turnId);
-          return next;
-        });
-      }
-      return;
-    }
-    setExpandedTurnIds((existing) => {
-      if (!existing.has(previous.turnId)) {
-        return existing;
-      }
-      const next = new Set(existing);
-      next.delete(previous.turnId);
-      return next;
-    });
+    setExpandedTurnIds((existing) =>
+      reconcileExpandedTurnIdsAfterLatestTurnChange({
+        expandedTurnIds: existing,
+        previousLatestTurn: previous,
+        latestTurn,
+      }),
+    );
   }, [latestTurn]);
 
   const rawRows = useMemo(

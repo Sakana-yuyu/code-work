@@ -171,6 +171,15 @@ const DEFAULT_MAX_TOOL_RESULT_CHARS = 12_000;
 // 每次模型调用记一轮；真实的审查/多步编辑任务通常要 20-40 轮才收尾，
 // 默认预算必须容纳它们，否则正常工作会被中途掐断（128 是防失控硬顶）。
 const DEFAULT_MAX_ROUNDS = 64;
+/**
+ * 剩余轮次低于该值时，每次模型调用都会追加一条收敛警告（只进调用消息，
+ * 不写入回放历史）：探索型任务在大仓库里会在交付前被硬预算掐断，警告
+ * 迫使最后几轮直接产出交付物。预算本身不超过该值的小任务不注入——
+ * 第一轮就警告只是浪费上下文。
+ */
+const BUDGET_WARNING_ROUNDS_LEFT = 8;
+const BUDGET_WARNING_MESSAGE =
+  "提示：本轮任务的模型调用轮次预算即将用尽（剩余不足 8 轮）。立即停止探索性的读取与搜索，基于已取得的证据直接收尾：若任务要求生成交付物（例如调用 Canvas 工具），现在就调用它并只使用已有证据；否则直接输出最终回答。不要再发起新的探索性工具调用。";
 const OUTPUT_TRUNCATION_CONTINUATION_PROMPT =
   "Continue exactly where the previous response stopped. Do not repeat prior text.";
 /** Hard ceiling for one agent-loop run's model round budget. */
@@ -379,6 +388,11 @@ export const runByokAgentLoop = (
 
       const compactedMessages = compactContextMessages(messages, maxContextMessages);
       messages.splice(0, messages.length, ...compactedMessages);
+      const budgetNearlySpent =
+        maxRounds > BUDGET_WARNING_ROUNDS_LEFT && maxRounds - rounds < BUDGET_WARNING_ROUNDS_LEFT;
+      let modelMessages: ReadonlyArray<ByokAgentMessage> = budgetNearlySpent
+        ? [...compactedMessages, { role: "user", content: BUDGET_WARNING_MESSAGE }]
+        : compactedMessages;
       // 先完整收集模型流，再执行工具；溢出恢复不会重放已产生副作用的工具调用。
       const complete = (modelMessages: ReadonlyArray<ByokAgentMessage>) => {
         let sawOutput = false;
@@ -449,7 +463,6 @@ export const runByokAgentLoop = (
         );
       };
 
-      let modelMessages = compactedMessages;
       let completion = yield* complete(modelMessages);
       while (completion._tag === "failed") {
         if (

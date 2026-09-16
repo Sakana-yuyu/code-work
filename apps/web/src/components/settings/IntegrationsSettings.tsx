@@ -28,6 +28,7 @@ import { ScreenRotationIcon } from "~/browser/ScreenRotationIcon";
 import { isElectron } from "../../env";
 import { CodeIndexSettingsSection } from "./CodeIndexSettings";
 import { McpServersSettings } from "./McpServersSettings";
+import { SshServersSettings } from "./SshServersSettings";
 import { SupplierRegistrySettings } from "./SupplierRegistrySettings";
 
 import { Button } from "../ui/button";
@@ -482,6 +483,7 @@ export function IntegrationsSettingsPanel() {
         )}
       </SettingsSection>
       <McpServersSettings />
+      <SshServersSettings />
       <CodeIndexSettingsSection />
       <SupplierRegistrySettings />
     </SettingsPageContainer>

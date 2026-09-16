@@ -47,11 +47,141 @@ export const CanvasTableBlock = Schema.Struct({
 });
 export type CanvasTableBlock = typeof CanvasTableBlock.Type;
 
+const CanvasTodoItemText = TrimmedNonEmptyString.check(Schema.isMaxLength(500));
+
+export const CanvasCalloutBlock = Schema.Struct({
+  type: Schema.Literal("callout"),
+  tone: Schema.Literals(["info", "success", "warning", "risk"]),
+  title: Schema.optional(CanvasTitle),
+  body: CanvasText,
+});
+export type CanvasCalloutBlock = typeof CanvasCalloutBlock.Type;
+
+export const CanvasTodoBlock = Schema.Struct({
+  type: Schema.Literal("todo"),
+  title: Schema.optional(CanvasTitle),
+  items: Schema.Array(
+    Schema.Struct({
+      text: CanvasTodoItemText,
+      status: Schema.Literals(["done", "in_progress", "pending"]),
+    }),
+  ).check(Schema.isMinLength(1), Schema.isMaxLength(24)),
+});
+export type CanvasTodoBlock = typeof CanvasTodoBlock.Type;
+
+const CanvasChartTone = Schema.optional(
+  Schema.Literals(["neutral", "info", "success", "warning", "risk", "accent"]),
+);
+
+export const CanvasCodeBlock = Schema.Struct({
+  type: Schema.Literal("code"),
+  language: Schema.optional(Schema.String.check(Schema.isMaxLength(24))),
+  code: TrimmedNonEmptyString.check(Schema.isMaxLength(8_000)),
+});
+export type CanvasCodeBlock = typeof CanvasCodeBlock.Type;
+
+export const CanvasDividerBlock = Schema.Struct({
+  type: Schema.Literal("divider"),
+});
+export type CanvasDividerBlock = typeof CanvasDividerBlock.Type;
+
+export const CanvasBadgesBlock = Schema.Struct({
+  type: Schema.Literal("badges"),
+  items: Schema.Array(
+    Schema.Struct({
+      label: CanvasTitle,
+      tone: CanvasChartTone,
+    }),
+  ).check(Schema.isMinLength(1), Schema.isMaxLength(12)),
+});
+export type CanvasBadgesBlock = typeof CanvasBadgesBlock.Type;
+
+export const CanvasUsageBlock = Schema.Struct({
+  type: Schema.Literal("usage"),
+  label: Schema.optional(CanvasTitle),
+  segments: Schema.Array(
+    Schema.Struct({
+      label: CanvasTitle,
+      value: Schema.Number.check(Schema.isGreaterThan(0)),
+      tone: CanvasChartTone,
+    }),
+  ).check(Schema.isMinLength(1), Schema.isMaxLength(12)),
+});
+export type CanvasUsageBlock = typeof CanvasUsageBlock.Type;
+
+const CanvasChartPoint = Schema.Struct({
+  label: CanvasTitle,
+  value: Schema.Number,
+});
+
+export const CanvasBarChartBlock = Schema.Struct({
+  type: Schema.Literal("chart_bar"),
+  title: Schema.optional(CanvasTitle),
+  unit: Schema.optional(Schema.String.check(Schema.isMaxLength(16))),
+  points: Schema.Array(CanvasChartPoint).check(Schema.isMinLength(1), Schema.isMaxLength(24)),
+});
+export type CanvasBarChartBlock = typeof CanvasBarChartBlock.Type;
+
+export const CanvasLineChartBlock = Schema.Struct({
+  type: Schema.Literal("chart_line"),
+  title: Schema.optional(CanvasTitle),
+  labels: Schema.Array(CanvasTitle).check(Schema.isMinLength(2), Schema.isMaxLength(48)),
+  series: Schema.Array(
+    Schema.Struct({
+      label: CanvasTitle,
+      points: Schema.Array(Schema.Number).check(Schema.isMinLength(2), Schema.isMaxLength(48)),
+    }),
+  ).check(Schema.isMinLength(1), Schema.isMaxLength(4)),
+});
+export type CanvasLineChartBlock = typeof CanvasLineChartBlock.Type;
+
+export const CanvasPieChartBlock = Schema.Struct({
+  type: Schema.Literal("chart_pie"),
+  title: Schema.optional(CanvasTitle),
+  slices: Schema.Array(
+    Schema.Struct({
+      label: CanvasTitle,
+      value: Schema.Number.check(Schema.isGreaterThan(0)),
+    }),
+  ).check(Schema.isMinLength(2), Schema.isMaxLength(8)),
+});
+export type CanvasPieChartBlock = typeof CanvasPieChartBlock.Type;
+
+const CanvasDiffLine = Schema.Struct({
+  type: Schema.Literals(["add", "del", "context"]),
+  text: Schema.String.check(Schema.isMaxLength(500)),
+});
+
+export const CanvasDiffBlock = Schema.Struct({
+  type: Schema.Literal("diff"),
+  path: Schema.optional(CanvasPath),
+  lines: Schema.Array(CanvasDiffLine).check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+});
+export type CanvasDiffBlock = typeof CanvasDiffBlock.Type;
+
+export const CanvasDiscloseBlock = Schema.Struct({
+  type: Schema.Literal("disclose"),
+  summary: CanvasTitle,
+  body: CanvasText,
+});
+export type CanvasDiscloseBlock = typeof CanvasDiscloseBlock.Type;
+
 export const CanvasBlock = Schema.Union([
   CanvasSectionBlock,
   CanvasStatBlock,
   CanvasFileBlock,
   CanvasTableBlock,
+  CanvasCalloutBlock,
+  CanvasTodoBlock,
+  CanvasCodeBlock,
+  CanvasDividerBlock,
+  CanvasBadgesBlock,
+  CanvasUsageBlock,
+  CanvasBarChartBlock,
+  CanvasLineChartBlock,
+  CanvasPieChartBlock,
+  CanvasDiffBlock,
+  CanvasDiscloseBlock,
 ]);
 export type CanvasBlock = typeof CanvasBlock.Type;
 

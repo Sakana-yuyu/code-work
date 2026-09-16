@@ -16,6 +16,7 @@ import {
   ProjectReadFileResult,
   ProjectWriteFileResult,
   ReviewDiffPreviewInput,
+  SshError,
   TerminalOpenInput,
   type TerminalSessionSnapshot,
   TerminalWriteInput,
@@ -33,6 +34,7 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as PreviewAutomationBroker from "../mcp/PreviewAutomationBroker.ts";
 import { normalizePreviewOpenInput } from "../mcp/toolkits/preview/handlers.ts";
 import * as ByokDelegationService from "../provider/byok/ByokDelegationService.ts";
+import * as SshServerService from "../ssh/SshServerService.ts";
 import * as CapabilityPolicy from "./CapabilityPolicy.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
@@ -134,6 +136,52 @@ const TerminalCloseArguments = Schema.Struct({
 });
 
 const GitStatusArguments = Schema.Struct({ cwd: Schema.String });
+
+const SshServerRef = TrimmedNonEmptyString;
+const SshStatusArguments = Schema.Struct({ server: SshServerRef });
+type SshStatusArguments = typeof SshStatusArguments.Type;
+
+const SshExecArguments = Schema.Struct({
+  server: SshServerRef,
+  command: TrimmedNonEmptyString,
+  timeoutMs: Schema.optional(Schema.Number),
+});
+type SshExecArguments = typeof SshExecArguments.Type;
+
+const SshPathArguments = Schema.Struct({
+  server: SshServerRef,
+  path: Schema.String,
+});
+type SshPathArguments = typeof SshPathArguments.Type;
+
+const SshWriteFileArguments = Schema.Struct({
+  server: SshServerRef,
+  path: Schema.String,
+  content: Schema.String,
+});
+type SshWriteFileArguments = typeof SshWriteFileArguments.Type;
+
+const SshDeleteFileArguments = Schema.Struct({
+  server: SshServerRef,
+  path: Schema.String,
+  recursive: Schema.Boolean,
+});
+type SshDeleteFileArguments = typeof SshDeleteFileArguments.Type;
+
+/**
+ * SSH 失败对模型是可读观察（如服务器名填错时携带可用列表），按 delegate_task
+ * 先例作为成功结果返回，让模型自纠错而不是拿到不透明的 tool_execution_failed。
+ */
+const isSshError = Schema.is(SshError);
+const encodeSshError = Schema.encodeUnknownSync(SshError);
+const sshObservation = <A, E>(effect: Effect.Effect<A, SshError | E, never>) =>
+  effect.pipe(
+    Effect.catch((error) =>
+      isSshError(error)
+        ? Effect.succeed({ ok: false as const, error: encodeSshError(error) })
+        : Effect.fail(error),
+    ),
+  );
 
 const GitDiffArguments = Schema.Struct({
   cwd: Schema.String,
@@ -267,6 +315,7 @@ const make = Effect.gen(function* () {
   const mcpToolRegistry = yield* Effect.serviceOption(
     CompositionMcpToolRegistry.CompositionMcpToolRegistry,
   );
+  const sshServerService = yield* Effect.serviceOption(SshServerService.SshServerService);
   const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
   const completed = new Set<string>();
@@ -816,6 +865,109 @@ const make = Effect.gen(function* () {
             ...(snapshot.errorMessage === undefined ? {} : { errorMessage: snapshot.errorMessage }),
           };
         }),
+    });
+  }
+
+  if (Option.isSome(sshServerService)) {
+    const ssh = sshServerService.value;
+
+    handlers.set("ssh.status", {
+      operation: "read",
+      execute: (input) =>
+        sshObservation(
+          Effect.gen(function* () {
+            const args = yield* Schema.decodeUnknownEffect(SshStatusArguments)(
+              input.arguments,
+            ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+            const resolved = yield* ssh.resolveServer(args.server);
+            const status = yield* ssh.status(resolved.serverId);
+            return { server: resolved.config.label, ...status };
+          }),
+        ),
+    });
+    handlers.set("ssh.exec", {
+      operation: "execute",
+      execute: (input) =>
+        sshObservation(
+          Effect.gen(function* () {
+            const args = yield* Schema.decodeUnknownEffect(SshExecArguments)(input.arguments).pipe(
+              Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+            );
+            const resolved = yield* ssh.resolveServer(args.server);
+            const outcome = yield* ssh.exec(
+              resolved.serverId,
+              args.command,
+              boundedPositiveInt(args.timeoutMs, 30_000, 120_000),
+            );
+            return {
+              server: resolved.config.label,
+              exitCode: outcome.exitCode,
+              stdout: outcome.stdout,
+              ...(outcome.stderr.length > 0 ? { stderr: outcome.stderr } : {}),
+            };
+          }),
+        ),
+    });
+    handlers.set("ssh.list_files", {
+      operation: "read",
+      execute: (input) =>
+        sshObservation(
+          Effect.gen(function* () {
+            const args = yield* Schema.decodeUnknownEffect(SshPathArguments)(input.arguments).pipe(
+              Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+            );
+            const resolved = yield* ssh.resolveServer(args.server);
+            const entries = yield* ssh.listFiles(resolved.serverId, args.path);
+            return { server: resolved.config.label, path: args.path, entries: [...entries] };
+          }),
+        ),
+    });
+    handlers.set("ssh.read_file", {
+      operation: "read",
+      execute: (input) =>
+        sshObservation(
+          Effect.gen(function* () {
+            const args = yield* Schema.decodeUnknownEffect(SshPathArguments)(input.arguments).pipe(
+              Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+            );
+            const resolved = yield* ssh.resolveServer(args.server);
+            const file = yield* ssh.readFile(resolved.serverId, args.path);
+            return { server: resolved.config.label, ...file };
+          }),
+        ),
+    });
+    handlers.set("ssh.write_file", {
+      operation: "mutate",
+      execute: (input) =>
+        sshObservation(
+          Effect.gen(function* () {
+            const args = yield* Schema.decodeUnknownEffect(SshWriteFileArguments)(
+              input.arguments,
+            ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+            const resolved = yield* ssh.resolveServer(args.server);
+            yield* ssh.writeFile(resolved.serverId, args.path, args.content);
+            return { server: resolved.config.label, path: args.path, written: true };
+          }),
+        ),
+    });
+    handlers.set("ssh.delete_file", {
+      operation: "mutate",
+      execute: (input) =>
+        sshObservation(
+          Effect.gen(function* () {
+            const args = yield* Schema.decodeUnknownEffect(SshDeleteFileArguments)(
+              input.arguments,
+            ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+            const resolved = yield* ssh.resolveServer(args.server);
+            yield* ssh.deleteFile(resolved.serverId, args.path, args.recursive);
+            return {
+              server: resolved.config.label,
+              path: args.path,
+              deleted: true,
+              recursive: args.recursive,
+            };
+          }),
+        ),
     });
   }
 

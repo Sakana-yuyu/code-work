@@ -219,6 +219,21 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.subscribeServerLifecycle]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeAuthAccess]: AuthAccessReadScope,
   [WS_METHODS.subscribeBackgroundPolicy]: AuthOrchestrationReadScope,
+
+  // SSH 远程服务器：读类（状态/文件浏览/读文件/终端事件订阅）放开到 read，
+  // 写删与连接测试、终端操作需要 operate。
+  [WS_METHODS.sshGetServerStatus]: AuthOrchestrationReadScope,
+  [WS_METHODS.sshListFiles]: AuthOrchestrationReadScope,
+  [WS_METHODS.sshReadFile]: AuthOrchestrationReadScope,
+  [WS_METHODS.subscribeSshTerminalEvents]: AuthOrchestrationReadScope,
+  [WS_METHODS.sshTestConnection]: AuthOrchestrationOperateScope,
+  [WS_METHODS.sshWriteFile]: AuthOrchestrationOperateScope,
+  [WS_METHODS.sshDeleteFile]: AuthOrchestrationOperateScope,
+  [WS_METHODS.sshTerminalOpen]: AuthTerminalOperateScope,
+  [WS_METHODS.sshTerminalAttach]: AuthTerminalOperateScope,
+  [WS_METHODS.sshTerminalWrite]: AuthTerminalOperateScope,
+  [WS_METHODS.sshTerminalResize]: AuthTerminalOperateScope,
+  [WS_METHODS.sshTerminalClose]: AuthTerminalOperateScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

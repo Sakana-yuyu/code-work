@@ -963,3 +963,86 @@ describe("rightPanelStore", () => {
     });
   });
 });
+
+describe("ssh surface migration (v15)", () => {
+  const baseSshTerminal = {
+    id: "ssh-terminal:web-1",
+    kind: "ssh-terminal",
+    serverId: "web-1",
+    serverLabel: "Web 服务器",
+    terminalIds: ["ssh-web-1", "ssh-web-1-2"],
+    activeTerminalId: "ssh-web-1-2",
+  };
+
+  it("keeps valid ssh terminal surfaces with their terminal tabs", () => {
+    const migrated = migratePersistedRightPanelState({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "ssh-terminal:web-1",
+          surfaces: [baseSshTerminal],
+        },
+      },
+    });
+    expect(migrated.byThreadKey["env-1:thread-A"]).toEqual({
+      isOpen: true,
+      activeSurfaceId: "ssh-terminal:web-1",
+      surfaces: [baseSshTerminal],
+    });
+  });
+
+  it("falls back to the first terminal tab when the active one is gone", () => {
+    const migrated = migratePersistedRightPanelState({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "ssh-terminal:web-1",
+          surfaces: [{ ...baseSshTerminal, activeTerminalId: "ssh-web-9" }],
+        },
+      },
+    });
+    expect(migrated.byThreadKey["env-1:thread-A"]?.surfaces[0]).toMatchObject({
+      activeTerminalId: "ssh-web-1",
+    });
+  });
+
+  it("falls back to the server id as label when the label is missing", () => {
+    const migrated = migratePersistedRightPanelState({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "ssh-files:web-1",
+          surfaces: [{ id: "ssh-files:web-1", kind: "ssh-files", serverId: "web-1" }],
+        },
+      },
+    });
+    expect(migrated.byThreadKey["env-1:thread-A"]?.surfaces[0]).toEqual({
+      id: "ssh-files:web-1",
+      kind: "ssh-files",
+      serverId: "web-1",
+      serverLabel: "web-1",
+    });
+  });
+
+  it("drops ssh surfaces with mismatched ids or empty terminal lists", () => {
+    const migrated = migratePersistedRightPanelState({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "ssh-terminal:web-1",
+          surfaces: [
+            { ...baseSshTerminal, id: "ssh-terminal:other" },
+            { ...baseSshTerminal, terminalIds: [] },
+            { id: "ssh-files:web-1", kind: "ssh-files", serverId: 42 },
+          ],
+        },
+      },
+    });
+    // 三个表面全部无效 → 面板不得以空壳打开（IDE 卡死教训）。
+    expect(migrated.byThreadKey["env-1:thread-A"]).toEqual({
+      isOpen: false,
+      activeSurfaceId: null,
+      surfaces: [],
+    });
+  });
+});

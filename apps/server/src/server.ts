@@ -126,6 +126,8 @@ import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
 import * as ServerSettings from "./serverSettings.ts";
+import * as SshServerServiceModule from "./ssh/SshServerService.ts";
+import * as SshTerminalServiceModule from "./ssh/SshTerminalService.ts";
 import * as ByokDelegationService from "./provider/byok/ByokDelegationService.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as CodeworkProjectFileLoader from "./project/CodeworkProjectFileLoader.ts";
@@ -213,6 +215,13 @@ const ServerSettingsLayerLive = ServerSettings.layer.pipe(
   Layer.provide(ServerSecretStore.layer),
   Layer.provideMerge(SqlitePersistenceLayerLive),
 );
+
+// 远程服务器（SSH 管理主机）：连接池 + 文件/状态/终端。settings 复用同一实例，
+// 凭据在服务端 secret store 与 settings 之间往返。
+export const SshLayerLive = Layer.mergeAll(
+  SshServerServiceModule.SshServerServiceLayer,
+  SshTerminalServiceModule.SshTerminalServiceLayer,
+).pipe(Layer.provideMerge(ServerSettingsLayerLive));
 
 const NativeTelemetryLayerLive = NativeTelemetryClient.layer.pipe(
   Layer.provide(ResourceMonitorBinary.layer),
@@ -494,6 +503,8 @@ const CompositionToolBrokerLayerLive = CompositionToolBroker.persistentLayer.pip
   Layer.provideMerge(TerminalLayerLive),
   // 启用 delegate_task 工具处理器：BYOK Agent Loop 内模型可自发委派子任务。
   Layer.provideMerge(ByokDelegationServiceLayerLive),
+  // ssh.* agent 工具与 RPC 共享同一 SSH 服务实例（Layer 按 identity 记忆化）。
+  Layer.provideMerge(SshLayerLive),
 );
 
 const ProviderInstanceRegistryHydrationWithToolBrokerLive =
@@ -797,6 +808,8 @@ const RuntimeCoreDependenciesLive = RuntimeCoreDependenciesBaseLive.pipe(
 );
 
 const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
+  // 远程服务器：ws RPC 层的剩余需求在此兜底；与 ToolBroker 共享同一实例。
+  Layer.provideMerge(SshLayerLive),
   // Misc.
   Layer.provideMerge(BackgroundLayerLive),
   Layer.provideMerge(ResourceDiagnosticsLayerLive),

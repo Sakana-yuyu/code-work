@@ -38,7 +38,16 @@ import { readLocalApi } from "~/localApi";
 import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Kbd } from "~/components/ui/kbd";
-import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "~/components/ui/menu";
+import {
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuShortcut,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "~/components/ui/menu";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 import { faviconUrlForOrigin } from "~/lib/favicon";
@@ -86,6 +95,10 @@ interface RightPanelTabsProps {
   onAddPullRequest: () => void;
   onAddAgents: () => void;
   onAddCanvas: () => void;
+  /** 未提供时整个 SSH 分区不出现在「+」菜单（如拉取请求页）。 */
+  onAddSshTerminal?: ((server: { serverId: string; serverLabel: string }) => void) | undefined;
+  onAddSshFiles?: ((server: { serverId: string; serverLabel: string }) => void) | undefined;
+  sshServerOptions?: ReadonlyArray<{ serverId: string; serverLabel: string }> | undefined;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -530,6 +543,9 @@ function surfaceTitle(
         terminalLabelsById.get(surface.activeTerminalId) ??
           getTerminalLabel(surface.activeTerminalId),
       );
+    case "ssh-terminal":
+    case "ssh-files":
+      return surface.serverLabel;
     case "pull-request":
       return `#${surface.number}`;
     case "agents":
@@ -607,6 +623,10 @@ function SurfaceIcon({
       );
     case "terminal":
       return <TerminalSquare className="size-3 shrink-0" />;
+    case "ssh-terminal":
+      return <TerminalSquare className="size-3 shrink-0" />;
+    case "ssh-files":
+      return <Files className="size-3 shrink-0" />;
     case "pull-request": {
       const status = pullRequestStatuses?.[surface.id] ?? null;
       const toneClassName =
@@ -979,6 +999,53 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       </SurfaceMenuItem>
                     );
                   })}
+                  {props.sshServerOptions === undefined ? null : props.sshServerOptions.length >
+                    0 ? (
+                    <>
+                      <MenuSub>
+                        <MenuSubTrigger>
+                          <TerminalSquare />
+                          {t("surface.sshTerminal")}
+                        </MenuSubTrigger>
+                        <MenuSubPopup>
+                          {props.sshServerOptions.map((server) => (
+                            <MenuItem
+                              key={server.serverId}
+                              onClick={() => props.onAddSshTerminal?.(server)}
+                            >
+                              {server.serverLabel}
+                            </MenuItem>
+                          ))}
+                        </MenuSubPopup>
+                      </MenuSub>
+                      <MenuSub>
+                        <MenuSubTrigger>
+                          <Files />
+                          {t("surface.sshFiles")}
+                        </MenuSubTrigger>
+                        <MenuSubPopup>
+                          {props.sshServerOptions.map((server) => (
+                            <MenuItem
+                              key={server.serverId}
+                              onClick={() => props.onAddSshFiles?.(server)}
+                            >
+                              {server.serverLabel}
+                            </MenuItem>
+                          ))}
+                        </MenuSubPopup>
+                      </MenuSub>
+                    </>
+                  ) : (
+                    <SurfaceMenuItem
+                      available={false}
+                      disabledReason={t("surface.sshNotConfigured")}
+                      shortcut=""
+                      onClick={() => undefined}
+                    >
+                      <TerminalSquare />
+                      {t("surface.sshTerminal")}
+                    </SurfaceMenuItem>
+                  )}
                 </MenuPopup>
               </Menu>
             ) : null}

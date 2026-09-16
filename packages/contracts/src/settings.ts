@@ -29,6 +29,7 @@ import {
   isMulticaSecretName,
 } from "./compositionRuntime.ts";
 import { LocalAccountPoolSettings } from "./localAccount.ts";
+import { SshServerConfig, SshServerId } from "./sshServers.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -1211,6 +1212,10 @@ export const ServerSettings = Schema.Struct({
   mcpServers: Schema.Record(CompositionMcpServerId, CompositionMcpRuntimeServerConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /** 远程服务器（SSH 管理主机）配置；密码只进 secret store，回传时脱敏。 */
+  sshServers: Schema.Record(SshServerId, SshServerConfig).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /** 代码符号索引：开启后为已知项目维护可检索的声明索引并暴露给 agent。 */
   codeIndexEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -1468,6 +1473,9 @@ export const ServerSettingsPatch = Schema.Struct({
   mcpServers: Schema.optionalKey(
     Schema.Record(CompositionMcpServerId, CompositionMcpRuntimeServerConfig),
   ),
+  // 整表替换，与 providerInstances/mcpServers 同款：地图小，半合并状态比整表
+  // 提交更危险。Web 每次编辑都发送完整地图。
+  sshServers: Schema.optionalKey(Schema.Record(SshServerId, SshServerConfig)),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 

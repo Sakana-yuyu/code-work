@@ -8,6 +8,8 @@ export * from "./desktopBootstrap.ts";
 export * from "./remoteAccess.ts";
 export * from "./ipc.ts";
 export * from "./terminal.ts";
+export * from "./sshServers.ts";
+export * from "./sshTerminal.ts";
 export * from "./provider.ts";
 export * from "./providerInstance.ts";
 export * from "./localAccount.ts";

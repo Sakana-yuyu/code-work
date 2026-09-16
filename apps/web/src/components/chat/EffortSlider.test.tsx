@@ -56,10 +56,10 @@ describe("思考强度滑条", () => {
     expect(effortOptionLabel({ id: "custom", label: "Custom" }, "zh-CN")).toBe("Custom");
   });
 
-  it("固定档位点位于滑道上层并保持清晰可见", () => {
+  it("不渲染档位小圆点，滑道不留任何可拦截指针的覆盖层", () => {
     const markup = render({ effort: "high" });
-    expect(markup).toContain("inset-x-3.5 inset-y-0 z-10");
-    expect(markup).toContain("bg-white/60");
+    expect(markup).not.toContain("bg-white/60");
+    expect(markup).not.toContain("inset-x-3.5 inset-y-0 z-10");
   });
 
   it("保留原生键盘步进，视觉位置与星光密度跟随强度", () => {

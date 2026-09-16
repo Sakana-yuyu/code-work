@@ -102,6 +102,7 @@ import { markdownFileIconSource } from "@codework/mobile-markdown-text/file-icon
 import { resolveMarkdownLinkPresentation } from "@codework/mobile-markdown-text/links";
 import {
   deriveThreadFeedPresentation,
+  reconcileExpandedTurnIdsAfterLatestTurnChange,
   type ThreadFeedEntry,
   type ThreadFeedLatestTurn,
 } from "../../lib/threadActivity";
@@ -1988,29 +1989,23 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       ? props.latestTurn.turnId
       : null;
 
+  // latestTurn can render null between turns (loading placeholder, a
+  // latest-turn-id that no longer resolves): keep the last observed turn so
+  // the next real turn still folds the interrupted one it supersedes.
   useEffect(() => {
     const previous = previousLatestTurnRef.current;
-    previousLatestTurnRef.current = props.latestTurn;
-    if (!props.latestTurn || !previous) {
-      return;
-    }
-    if (props.latestTurn.turnId === previous.turnId) {
-      if (previous.state === "running" && props.latestTurn.state === "interrupted") {
-        const interruptedTurnId = props.latestTurn.turnId;
-        setInteractionState((current) => ({
-          ...current,
-          expandedTurnIds: new Set(current.expandedTurnIds).add(interruptedTurnId),
-        }));
-      }
-      return;
+    if (props.latestTurn !== null) {
+      previousLatestTurnRef.current = props.latestTurn;
     }
     setInteractionState((current) => {
-      if (!current.expandedTurnIds.has(previous.turnId)) {
-        return current;
-      }
-      const next = new Set(current.expandedTurnIds);
-      next.delete(previous.turnId);
-      return { ...current, expandedTurnIds: next };
+      const expandedTurnIds = reconcileExpandedTurnIdsAfterLatestTurnChange({
+        expandedTurnIds: current.expandedTurnIds,
+        previousLatestTurn: previous,
+        latestTurn: props.latestTurn,
+      });
+      return expandedTurnIds === current.expandedTurnIds
+        ? current
+        : { ...current, expandedTurnIds };
     });
   }, [props.latestTurn]);
 

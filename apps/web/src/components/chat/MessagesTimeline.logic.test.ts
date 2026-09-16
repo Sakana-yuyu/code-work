@@ -1,4 +1,4 @@
-import { MessageId } from "@codework/contracts";
+import { MessageId, type TurnId } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { setCurrentLanguage } from "~/i18n/runtime";
 
@@ -9,8 +9,10 @@ import {
   computeMessageDurationStart,
   deriveMessagesTimelineRows,
   normalizeCompactToolLabel,
+  reconcileExpandedTurnIdsAfterLatestTurnChange,
   resolveAssistantMessageCopyState,
   shouldPreserveAssistantLineBreaks,
+  type TimelineLatestTurn,
 } from "./MessagesTimeline.logic";
 
 describe("shouldPreserveAssistantLineBreaks", () => {
@@ -1851,4 +1853,100 @@ it("消息或工作日志更新不重建相同的 Canvas 索引，真实增删�
   expect(changed).not.toBe(first);
   expect(changed.canvasReferences[0]!.title).toBe("新标题");
   expect(deriveStableCanvasReferences([], changed).canvasReferences).toEqual([]);
+});
+
+describe("reconcileExpandedTurnIdsAfterLatestTurnChange", () => {
+  const latestTurn = (
+    turnId: string,
+    state: "running" | "interrupted" | "completed" | "error",
+  ): TimelineLatestTurn => ({
+    turnId: turnId as never,
+    state,
+    startedAt: "2026-01-01T00:00:00Z",
+    completedAt: state === "running" ? null : "2026-01-01T00:01:00Z",
+  });
+
+  // Mirrors the MessagesTimeline effect: the ref keeps the last non-null
+  // latestTurn across transient null gaps.
+  const drive = (
+    sequence: ReadonlyArray<TimelineLatestTurn | null>,
+    initial: ReadonlySet<TurnId> = new Set(),
+  ): ReadonlySet<TurnId> => {
+    let expandedTurnIds = initial;
+    let previous: TimelineLatestTurn | null = null;
+    for (const turn of sequence) {
+      const prior = previous;
+      if (turn !== null) {
+        previous = turn;
+      }
+      expandedTurnIds = reconcileExpandedTurnIdsAfterLatestTurnChange({
+        expandedTurnIds,
+        previousLatestTurn: prior,
+        latestTurn: turn,
+      });
+    }
+    return expandedTurnIds;
+  };
+
+  it("expands the in-session interrupted turn so the user keeps their place", () => {
+    const expanded = drive([latestTurn("turn-1", "running"), latestTurn("turn-1", "interrupted")]);
+    expect([...expanded]).toEqual(["turn-1"]);
+  });
+
+  it("folds the interrupted turn once a new turn supersedes it", () => {
+    const expanded = drive([
+      latestTurn("turn-1", "running"),
+      latestTurn("turn-1", "interrupted"),
+      latestTurn("turn-2", "running"),
+    ]);
+    expect([...expanded]).toEqual([]);
+  });
+
+  it("still folds the interrupted turn when latestTurn passes through null before the next turn", () => {
+    // Regenerate/revert can render latestTurn as null between turns; the old
+    // effect forgot the interrupted turn and left its fold expanded forever.
+    const expanded = drive([
+      latestTurn("turn-1", "running"),
+      latestTurn("turn-1", "interrupted"),
+      null,
+      latestTurn("turn-2", "running"),
+    ]);
+    expect([...expanded]).toEqual([]);
+  });
+
+  it("folds the interrupted turn when its state flips to completed before the next turn", () => {
+    // A late checkpoint diff can settle an interrupted turn as completed on the
+    // same turnId — invisible to a turnId-only cleanup.
+    const expanded = drive([
+      latestTurn("turn-1", "running"),
+      latestTurn("turn-1", "interrupted"),
+      latestTurn("turn-1", "completed"),
+      latestTurn("turn-2", "running"),
+    ]);
+    expect([...expanded]).toEqual([]);
+  });
+
+  it("does not treat a null gap as a turn boundary", () => {
+    const expanded = drive(
+      [latestTurn("turn-1", "running"), null, latestTurn("turn-1", "completed")],
+      new Set(["turn-1" as never]),
+    );
+    expect([...expanded]).toEqual(["turn-1"]);
+  });
+
+  it("leaves other expanded turns untouched when an unexpanded turn is superseded", () => {
+    const expanded = drive(
+      [latestTurn("turn-2", "running"), latestTurn("turn-3", "running")],
+      new Set(["turn-1" as never]),
+    );
+    expect([...expanded]).toEqual(["turn-1"]);
+  });
+
+  it("only expands on the running-to-interrupted edge", () => {
+    const expanded = drive([
+      latestTurn("turn-1", "completed"),
+      latestTurn("turn-1", "interrupted"),
+    ]);
+    expect([...expanded]).toEqual([]);
+  });
 });

@@ -1110,6 +1110,278 @@ describe("ProviderRuntimeIngestion", () => {
     expect(message?.streaming).toBe(false);
   });
 
+  it("splits assistant text into separate messages across tool item boundaries", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    // BYOK agent-loop shape: assistant deltas carry no itemId and no
+    // item.completed(assistant_message) boundary, so without boundary
+    // finalization the whole turn would collapse into one message.
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-item-boundary-delta-1"),
+      provider: ProviderDriverKind.make("cursor"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-boundary"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "before tool",
+      },
+    });
+    harness.emit({
+      type: "item.started",
+      eventId: asEventId("evt-item-boundary-tool-started"),
+      provider: ProviderDriverKind.make("cursor"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-boundary"),
+      itemId: asItemId("item-boundary-tool"),
+      payload: {
+        itemType: "command_execution",
+        status: "inProgress",
+        title: "Ran command",
+      },
+    });
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-item-boundary-tool-completed"),
+      provider: ProviderDriverKind.make("cursor"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-boundary"),
+      itemId: asItemId("item-boundary-tool"),
+      payload: {
+        itemType: "command_execution",
+        status: "completed",
+        title: "Ran command",
+      },
+    });
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-item-boundary-delta-2"),
+      provider: ProviderDriverKind.make("cursor"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-boundary"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "after tool",
+      },
+    });
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-item-boundary-assistant-completed"),
+      provider: ProviderDriverKind.make("cursor"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-boundary"),
+      payload: {
+        itemType: "assistant_message",
+        status: "completed",
+      },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) => {
+      const assistantMessages = entry.messages.filter(
+        (message: ProviderRuntimeTestMessage) =>
+          message.role === "assistant" && message.turnId === "turn-boundary",
+      );
+      return (
+        assistantMessages.length === 2 &&
+        assistantMessages.every((message: ProviderRuntimeTestMessage) => !message.streaming)
+      );
+    });
+    const assistantMessages = thread.messages.filter(
+      (message: ProviderRuntimeTestMessage) =>
+        message.role === "assistant" && message.turnId === "turn-boundary",
+    );
+    expect(assistantMessages.map((message: ProviderRuntimeTestMessage) => message.text)).toEqual([
+      "before tool",
+      "after tool",
+    ]);
+  });
+
+  it("splits assistant text across tool boundaries in legacy streaming mode", async () => {
+    const harness = await createHarness({
+      serverSettings: { enableLegacyTokenStreaming: true },
+    });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-stream-boundary-delta-1"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-stream-boundary"),
+      itemId: asItemId("item-stream-text-1"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "before tool",
+      },
+    });
+    harness.emit({
+      type: "item.started",
+      eventId: asEventId("evt-stream-boundary-tool-started"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-stream-boundary"),
+      itemId: asItemId("item-stream-tool"),
+      payload: {
+        itemType: "command_execution",
+        status: "inProgress",
+        title: "Ran command",
+      },
+    });
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-stream-boundary-delta-2"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-stream-boundary"),
+      itemId: asItemId("item-stream-text-1"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "after tool",
+      },
+    });
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-stream-boundary-assistant-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-stream-boundary"),
+      itemId: asItemId("item-stream-text-1"),
+      payload: {
+        itemType: "assistant_message",
+        status: "completed",
+      },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) => {
+      const assistantMessages = entry.messages.filter(
+        (message: ProviderRuntimeTestMessage) =>
+          message.role === "assistant" && message.turnId === "turn-stream-boundary",
+      );
+      return (
+        assistantMessages.length === 2 &&
+        assistantMessages.every((message: ProviderRuntimeTestMessage) => !message.streaming)
+      );
+    });
+    const assistantMessages = thread.messages.filter(
+      (message: ProviderRuntimeTestMessage) =>
+        message.role === "assistant" && message.turnId === "turn-stream-boundary",
+    );
+    expect(assistantMessages.map((message: ProviderRuntimeTestMessage) => message.text)).toEqual([
+      "before tool",
+      "after tool",
+    ]);
+  });
+
+  it("splits assistant text across reasoning summary boundaries and keeps the thought row", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    // BYOK 循环把模型的 thinking/reasoning_content 流映射为
+    // reasoning_summary_text；思考块两侧的文本必须分成两条消息，
+    // 否则后段文本会在视觉上压到 Thought 行之前。
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-reasoning-boundary-delta-1"),
+      provider: ProviderDriverKind.make("byok"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-reasoning-boundary"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "before thinking",
+      },
+    });
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-reasoning-boundary-thinking-1"),
+      provider: ProviderDriverKind.make("byok"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-reasoning-boundary"),
+      payload: {
+        streamKind: "reasoning_summary_text",
+        delta: "thinking about the next step",
+        summaryIndex: 1,
+      },
+    });
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-reasoning-boundary-thinking-2"),
+      provider: ProviderDriverKind.make("byok"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-reasoning-boundary"),
+      payload: {
+        streamKind: "reasoning_summary_text",
+        delta: " more thinking",
+        summaryIndex: 1,
+      },
+    });
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-reasoning-boundary-delta-2"),
+      provider: ProviderDriverKind.make("byok"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-reasoning-boundary"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "after thinking",
+      },
+    });
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-reasoning-boundary-completed"),
+      provider: ProviderDriverKind.make("byok"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-reasoning-boundary"),
+      payload: { state: "completed" },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) => {
+      const assistantMessages = entry.messages.filter(
+        (message: ProviderRuntimeTestMessage) =>
+          message.role === "assistant" && message.turnId === "turn-reasoning-boundary",
+      );
+      return (
+        assistantMessages.length === 2 &&
+        assistantMessages.every((message: ProviderRuntimeTestMessage) => !message.streaming) &&
+        entry.activities.some(
+          (activity: { kind: string }) => activity.kind === "reasoning.summary.delta",
+        )
+      );
+    });
+    const assistantMessages = thread.messages.filter(
+      (message: ProviderRuntimeTestMessage) =>
+        message.role === "assistant" && message.turnId === "turn-reasoning-boundary",
+    );
+    expect(assistantMessages.map((message: ProviderRuntimeTestMessage) => message.text)).toEqual([
+      "before thinking",
+      "after thinking",
+    ]);
+    const reasoningActivities = thread.activities.filter(
+      (activity: { kind: string; payload?: unknown }) =>
+        activity.kind === "reasoning.summary.delta",
+    );
+    expect(reasoningActivities).toHaveLength(2);
+    expect(
+      reasoningActivities.map(
+        (activity: { payload?: unknown }) => (activity.payload as { delta?: string }).delta,
+      ),
+    ).toEqual(["thinking about the next step", " more thinking"]);
+  });
+
   it("preserves completed tool metadata on projected tool activities", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

@@ -1,6 +1,61 @@
-import type { CompositionCapabilityDescriptor } from "@codework/contracts";
+import { type CompositionCapabilityDescriptor, CanvasCreateInput } from "@codework/contracts";
+import { Tool } from "effect/unstable/ai";
 
 import type { ByokAgentTool } from "./ByokAgentLoop.ts";
+
+type JsonSchemaish = Record<string, unknown>;
+
+/**
+ * The schema generator renders optionals as `anyOf: [T, null]`, but the
+ * decoders reject explicit nulls. Advertise just T (the field stays optional
+ * via `required`) so models omit the field instead of sending null.
+ */
+const withoutNullSchemaAlternatives = (schema: JsonSchemaish): JsonSchemaish => {
+  const anyOf = schema.anyOf;
+  if (Array.isArray(anyOf)) {
+    const kept = anyOf.filter(
+      (member) =>
+        !(
+          member !== null &&
+          typeof member === "object" &&
+          (member as JsonSchemaish).type === "null"
+        ),
+    );
+    const [first] = kept;
+    if (kept.length === 1 && first !== null && typeof first === "object") {
+      return withoutNullSchemaAlternatives(first as JsonSchemaish);
+    }
+    return {
+      ...schema,
+      anyOf: kept.map((member) => withoutNullSchemaAlternatives(member as JsonSchemaish)),
+    };
+  }
+  const next: JsonSchemaish = { ...schema };
+  for (const key of ["items", "additionalProperties"] as const) {
+    const value = next[key];
+    if (value !== null && typeof value === "object") {
+      next[key] = withoutNullSchemaAlternatives(value as JsonSchemaish);
+    }
+  }
+  const properties = next.properties;
+  if (properties !== null && typeof properties === "object") {
+    next.properties = Object.fromEntries(
+      Object.entries(properties as Record<string, unknown>).map(([name, member]) => [
+        name,
+        member !== null && typeof member === "object"
+          ? withoutNullSchemaAlternatives(member as JsonSchemaish)
+          : member,
+      ]),
+    );
+  }
+  return next;
+};
+
+// 从契约 schema 生成，保证宣传给模型的字段名与 ToolBroker 的真实解码永远一致；
+// 手写一份曾在缺字段定义时让模型整轮猜错字段、反复校验失败。
+const canvasCreateParameters = withoutNullSchemaAlternatives(
+  Tool.getJsonSchemaFromSchema(CanvasCreateInput) as unknown as JsonSchemaish,
+);
 
 const descriptors = [
   {
@@ -100,6 +155,60 @@ const descriptors = [
     status: "available",
     grants: { read: false, execute: true, mutate: false },
     approval: "on_first_use",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.ssh.status",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: true, execute: false, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.ssh.exec",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: false, execute: true, mutate: false },
+    approval: "on_first_use",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.ssh.list_files",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: true, execute: false, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.ssh.read_file",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: true, execute: false, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.ssh.write_file",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: false, execute: false, mutate: true },
+    approval: "every_use",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.ssh.delete_file",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: false, execute: false, mutate: true },
+    approval: "every_use",
     source: "t3",
   },
   {
@@ -254,23 +363,8 @@ const agentToolSignatures: ReadonlyMap<
     "canvas.create",
     {
       description:
-        "仅当用户需要独立的分析交付物时创建可保存、信息密度高且易扫读的结构化 Canvas（架构评审、审计、代码地图、数据分析、对比、流程和风险）；定向实现、调试或其他明确交付物不要使用。优先提供简洁摘要、在有证据时提供 2-4 个关键统计、关系/流程与风险章节、带行号的文件定位，以及用于有效对比的紧凑表格。按信息层级组织区块；每个区块都必须来自已检查的项目证据，省略空内容和推测内容；没有真实内容时不要调用工具。表格必须使用具体且自描述的列名，并在适用时标明单位、来源或时间范围；只接受非空 section、stat、file、table，不要自行创建文件或生成可执行 UI 代码。",
-      parameters: {
-        type: "object",
-        properties: {
-          cwd: { type: "string", description: "当前工作区根目录的绝对路径。" },
-          canvasId: { type: "string", description: "可选的稳定 ID；相同 ID 会更新同一个 Canvas。" },
-          title: { type: "string", description: "Canvas 标题。" },
-          summary: { type: "string", description: "可选的分析摘要。" },
-          blocks: {
-            type: "array",
-            description:
-              "按信息层级组织的非空内容块：优先关键 stat，再放关系/流程/风险 section，使用带行号的 file 定位和必要的 table 对比；表格列名要具体、自描述，并在适用时标明单位、来源或时间范围；不要填充空区块或未经证实的内容。支持 section、stat、file、table。",
-            items: { type: "object" },
-          },
-        },
-        required: ["cwd", "title", "blocks"],
-      },
+        "创建可保存、信息密度高且易扫读的结构化 Canvas（用户可随时在右侧面板打开的独立分析视图）。当任务产出独立的分析型交付物时必须用它承载：架构评审、审计、代码地图、量化分析、数据密集结论、对比、流程、时间线和风险；数据本身就是交付物时优先用它，而不是把结论堆进 markdown 表格或长代码块。量化数据优先用 chart_bar/chart_line/chart_pie 或 table 呈现，风险用 callout 突出，行动项用 todo。允许多次调用：先基于已有证据创建，随任务推进用相同 canvasId 更新同一个 Canvas，也可为不同主题创建多个 Canvas。必须通过工具调用提交画布：把画布 JSON 写进回复正文不会生成画布面板。区块字段名和长度上限必须严格按参数 schema：section=heading/body，stat=label/value，file=path/line/note，table=columns/rows，callout=tone/title/body，todo=title/items(text/status)，code=language/code，divider 无字段，badges=items(label/tone)，usage=label/segments(label/value/tone)，chart_bar=title/unit/points(label/value)，chart_line=title/labels/series(label/points)，chart_pie=title/slices(label/value)，diff=path/lines(type/text)，disclose=summary/body；title ≤160 字符，正文类字段 ≤12000 字符，blocks 1-32 个；可选字段请省略而不要传 null。按信息层级组织区块，所有结论来自已检查的证据，省略空内容和推测内容，没有真实内容时不要调用。",
+      parameters: canvasCreateParameters,
     },
   ],
   [
@@ -431,6 +525,98 @@ const agentToolSignatures: ReadonlyMap<
           ignoreWhitespace: { type: "boolean", description: "是否忽略空白差异。" },
         },
         required: ["cwd"],
+      },
+    },
+  ],
+  [
+    "ssh.status",
+    {
+      description:
+        "读取已登记远程服务器的在线状态与资源占用（操作系统、运行时长、负载、CPU、内存、磁盘）。server 填服务器名称或 id；填错时返回的错误会携带可用服务器列表。",
+      parameters: {
+        type: "object",
+        properties: {
+          server: { type: "string", description: "远程服务器名称（label）或 id。" },
+        },
+        required: ["server"],
+      },
+    },
+  ],
+  [
+    "ssh.exec",
+    {
+      description:
+        "在已登记的远程服务器上执行一条 shell 命令并等待结束，返回退出码、stdout 和 stderr。适合运行维护命令、查日志、装软件等服务器管理操作。默认 30 秒超时，最长 120 秒。",
+      parameters: {
+        type: "object",
+        properties: {
+          server: { type: "string", description: "远程服务器名称（label）或 id。" },
+          command: { type: "string", description: "要执行的 shell 命令。" },
+          timeoutMs: { type: "number", description: "超时毫秒数，默认 30000，最大 120000。" },
+        },
+        required: ["server", "command"],
+      },
+    },
+  ],
+  [
+    "ssh.list_files",
+    {
+      description:
+        "列出远程服务器上某个目录的内容，返回名称、路径、类型、大小和修改时间。path 必须是绝对路径。",
+      parameters: {
+        type: "object",
+        properties: {
+          server: { type: "string", description: "远程服务器名称（label）或 id。" },
+          path: { type: "string", description: "远程绝对路径，如 /var/log。" },
+        },
+        required: ["server", "path"],
+      },
+    },
+  ],
+  [
+    "ssh.read_file",
+    {
+      description:
+        "读取远程服务器上的 UTF-8 文本文件，上限 1MB（超出会截断并标记）；二进制文件会被拒绝。path 必须是绝对路径。",
+      parameters: {
+        type: "object",
+        properties: {
+          server: { type: "string", description: "远程服务器名称（label）或 id。" },
+          path: { type: "string", description: "远程文件绝对路径。" },
+        },
+        required: ["server", "path"],
+      },
+    },
+  ],
+  [
+    "ssh.write_file",
+    {
+      description:
+        "在远程服务器上创建或覆盖文本文件，content 为完整文件内容（上限 4MB）。父目录不存在时自动逐级创建。path 必须是绝对路径。",
+      parameters: {
+        type: "object",
+        properties: {
+          server: { type: "string", description: "远程服务器名称（label）或 id。" },
+          path: { type: "string", description: "远程文件绝对路径。" },
+          content: { type: "string", description: "要写入的完整文本内容。" },
+        },
+        required: ["server", "path", "content"],
+      },
+    },
+  ],
+  [
+    "ssh.delete_file",
+    {
+      description:
+        "删除远程服务器上的文件或目录，不可恢复。删除目录必须显式 recursive=true（有条目数上限保护），拒绝删除根目录。",
+      parameters: {
+        type: "object",
+        properties: {
+          server: { type: "string", description: "远程服务器名称（label）或 id。" },
+          path: { type: "string", description: "要删除的远程绝对路径。" },
+          recursive: { type: "boolean", description: "删除目录时必须为 true。" },
+        },
+        required: ["server", "path", "recursive"],
       },
     },
   ],

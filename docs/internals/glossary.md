@@ -12,6 +12,7 @@ This is a living glossary for Code Work. It explains what common terms mean in t
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
 - [Code index](#code-index)
+- [Remote servers (SSH)](#remote-servers-ssh)
 
 ## Concepts
 
@@ -182,6 +183,12 @@ A per-workspace declaration index agents query through the `code-work` MCP tools
 #### rootKey
 
 The workspace root path an index row belongs to. Every `files`/`symbols` row and every `CodeIndexRoot` resource is keyed by it, so one store serves all projects without cross-project leaks.
+
+### Remote servers (SSH)
+
+Servers registered by IP + account + password in `ServerSettings.sshServers` and reached over the `ssh2` protocol — distinct from an **environment** (which speaks Code Work RPC) and from a **project** (a local workspace). One multiplexed SSH connection per server carries interactive shells, exec runs, and SFTP file operations; the pool reuses connections and reclaims them after five idle minutes. Passwords live only in the server secret store under `ssh-server-<serverId>-password`, travel once through a settings patch, and never reach a client. First contact records the host key fingerprint (TOFU); a changed fingerprint blocks the connection until the user resets it in Settings.
+
+Agent access goes through the `ssh.status / ssh.exec / ssh.list_files / ssh.read_file / ssh.write_file / ssh.delete_file` tool group (read-only tools are `never`-approval, exec is `on_first_use`, writes and deletes are `every_use`; in the BYOK loop the read-only trio rides the project group and the rest needs full-access mode). The right panel gains two thread-scoped surfaces per server — `ssh-terminal` (a Ghostty viewport over an SSH shell channel; `open` is ensure-running, so remounts reuse the live session) and `ssh-files` (SFTP browse/preview/edit/delete with a 10k-entry recursive-delete guard and a refused root).
 
 ## Practical Shortcuts
 

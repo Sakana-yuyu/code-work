@@ -10,6 +10,7 @@ import { useProjectFileQuery } from "~/components/files/projectFilesQueryState";
 import type { RightPanelSurface } from "~/rightPanelStore";
 import { cn } from "~/lib/utils";
 import { t } from "~/i18n";
+import { CanvasRichBlock } from "./CanvasRichBlock";
 
 type CanvasSurface = Extract<RightPanelSurface, { kind: "canvas" }>;
 
@@ -249,6 +250,18 @@ function CanvasDocumentPanel({
                         </table>
                       </div>
                     );
+                  case "callout":
+                  case "todo":
+                  case "code":
+                  case "divider":
+                  case "badges":
+                  case "usage":
+                  case "chart_bar":
+                  case "chart_line":
+                  case "chart_pie":
+                  case "diff":
+                  case "disclose":
+                    return <CanvasRichBlock block={block} />;
                 }
               })}
             </div>

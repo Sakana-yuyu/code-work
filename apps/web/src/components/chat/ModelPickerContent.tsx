@@ -15,7 +15,9 @@ import {
   modelPickerModelKey,
   parseModelPickerLegacySectionKey,
   parseModelPickerModelKey,
+  parseModelPickerProviderGroupKey,
 } from "./modelPickerKeys";
+import { buildGroupedModelPickerItemKeys } from "./modelPickerGroups";
 import { isModelPickerNewModel } from "./modelPickerModelHighlights";
 import { buildModelPickerSearchText, scoreModelPickerSearch } from "./modelPickerSearch";
 import {
@@ -71,6 +73,13 @@ export function getModelPickerEmptyState(input: {
 
 function ModelListSeparator() {
   return <div className="h-0.5" />;
+}
+
+/** 列表行外层供应商标签；与收藏组头共用同一套树形分组键。 */
+function providerLabelForModel(model: ModelPickerItem): string {
+  return model.subProvider
+    ? `${model.instanceDisplayName} · ${model.subProvider}`
+    : model.instanceDisplayName;
 }
 
 export const ModelPickerContent = memo(function ModelPickerContent(props: {
@@ -489,27 +498,58 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     () => [...modelJumpCommandByKey.keys()],
     [modelJumpCommandByKey],
   );
+  const favoritesLabel = t("favorites");
+  const groupedAllItemKeys = useMemo(
+    (): string[] =>
+      buildGroupedModelPickerItemKeys({
+        models: flatModels.map((model) => ({
+          key: modelPickerModelKey(model.instanceId, model.slug),
+          providerLabel: providerLabelForModel(model),
+          isFavorite: false,
+        })),
+        favoritesHeaderLabel: "",
+        groupFavorites: false,
+      }),
+    [flatModels],
+  );
   const allItemKeys = useMemo(
     (): string[] => [
-      ...flatModels.map((model) => modelPickerModelKey(model.instanceId, model.slug)),
+      ...groupedAllItemKeys,
       ...new Set(
         flatModels
           .filter((model) => model.isLegacy)
           .map((model) => modelPickerLegacySectionKey(model.instanceId)),
       ),
     ],
-    [flatModels],
+    [flatModels, groupedAllItemKeys],
   );
+  const groupedCurrentItemKeys = useMemo((): string[] => {
+    return buildGroupedModelPickerItemKeys({
+      models: visibleModels
+        .filter((model) => !model.isLegacy)
+        .map((model) => ({
+          key: modelPickerModelKey(model.instanceId, model.slug),
+          providerLabel: providerLabelForModel(model),
+          isFavorite: favoritesSet.has(providerModelKey(model.instanceId, model.slug)),
+        })),
+      favoritesHeaderLabel: favoritesLabel,
+      groupFavorites: selectedInstanceId !== "favorites",
+    });
+  }, [favoritesLabel, favoritesSet, selectedInstanceId, visibleModels]);
   const filteredItemKeys = useMemo((): string[] => {
-    const modelKeys = visibleModels.map((model) =>
-      modelPickerModelKey(model.instanceId, model.slug),
-    );
     if (!legacySection) {
-      return modelKeys;
+      return groupedCurrentItemKeys;
     }
-    modelKeys.splice(legacySection.currentModels.length, 0, legacySection.key);
-    return modelKeys;
-  }, [legacySection, visibleModels]);
+    return [
+      ...groupedCurrentItemKeys,
+      legacySection.key,
+      ...(legacySection.isExpanded
+        ? legacySection.legacyModels.map((model) =>
+            modelPickerModelKey(model.instanceId, model.slug),
+          )
+        : []),
+    ];
+  }, [groupedCurrentItemKeys, legacySection]);
   const filteredModelByKey = useMemo(
     (): ReadonlyMap<string, ModelPickerItem> =>
       new Map(
@@ -732,6 +772,22 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                   extraData={modelListExtraData}
                   keyExtractor={(modelKey) => modelKey}
                   renderItem={({ item: modelKey, index }) => {
+                    const groupLabel = parseModelPickerProviderGroupKey(modelKey);
+                    if (groupLabel !== null) {
+                      return (
+                        <ComboboxItem
+                          hideIndicator
+                          index={index}
+                          value={modelKey}
+                          className="pointer-events-none w-full rounded-md px-2 pb-1 pt-2"
+                          contentClassName="flex w-full items-center gap-2"
+                        >
+                          <div className="min-w-0 truncate text-[11px] font-semibold leading-snug text-muted-foreground/70">
+                            {groupLabel}
+                          </div>
+                        </ComboboxItem>
+                      );
+                    }
                     if (legacySection?.key === modelKey) {
                       return (
                         <ComboboxItem
@@ -780,8 +836,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                         isSelected={
                           modelKey === modelPickerModelKey(props.activeInstanceId, props.model)
                         }
-                        showProvider
-                        preferShortName={!isLocked}
+                        showProvider={false}
+                        preferShortName={false}
                         useTriggerLabel={false}
                         showNewBadge={isModelPickerNewModel(model.driverKind, model.slug)}
                         jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
@@ -790,7 +846,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                       />
                     );
                   }}
-                  estimatedItemSize={52}
+                  estimatedItemSize={34}
                   drawDistance={480}
                   recycleItems
                   contentContainerClassName="pl-2 pr-px"
