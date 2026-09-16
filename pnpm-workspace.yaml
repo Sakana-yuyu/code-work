@@ -12,7 +12,7 @@ allowBuilds:
   browser-tabs-lock: false
   bufferutil: false
   core-js: false
-  cpu-features: false
+  cpu-features: true
   electron: true
   electron-winstaller: false
   esbuild: true
@@ -20,7 +20,7 @@ allowBuilds:
   msw: false
   node-pty: true
   sharp: true
-  ssh2: false
+  ssh2: true
   utf-8-validate: false
   workerd: false
 

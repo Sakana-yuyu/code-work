@@ -7,6 +7,12 @@
 
 更早的历史版本见 [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases)。
 
+## 1.0.10
+
+### 修复
+
+- 允许 SSH 原生依赖在 Electron 跨平台重建前生成构建探测文件，修复 Linux 与 macOS 发布构建失败。
+
 ## 1.0.9
 
 ### 修复
