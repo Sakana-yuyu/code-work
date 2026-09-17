@@ -1,16 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import * as TestClock from "effect/testing/TestClock";
 
 import * as ToolBroker from "./ToolBroker.ts";
 import { listCompositionAgentTools } from "./CompositionToolRegistry.ts";
 import {
   ByokAgentModelError,
-  ByokAgentLoopMaxRoundsError,
-  byokAgentLoopMaxRounds,
   runByokAgentLoop,
   type ByokAgentModelDriver,
 } from "./ByokAgentLoop.ts";
@@ -46,16 +42,6 @@ const baseInput = {
     },
   ],
 };
-
-describe("byokAgentLoopMaxRounds (轮次预算归一化)", () => {
-  it("clamps the unclamped PositiveInt the RPC path accepts", () => {
-    expect(byokAgentLoopMaxRounds(undefined)).toBe(64);
-    expect(byokAgentLoopMaxRounds(10_000_000)).toBe(128);
-    expect(byokAgentLoopMaxRounds(0)).toBe(1);
-    expect(byokAgentLoopMaxRounds(3.9)).toBe(3);
-    expect(byokAgentLoopMaxRounds(Number.NaN)).toBe(64);
-  });
-});
 
 describe("ByokAgentLoop", () => {
   it.effect("参数无效时提供现有签名，模型修正后只执行一次有效写入并结束", () =>
@@ -492,79 +478,38 @@ describe("ByokAgentLoop", () => {
     );
   });
 
-  it.effect("stops before an unbounded model/tool loop", () =>
+  it.effect("超过 64 轮后仍继续执行，并在模型完成时收敛", () =>
     Effect.gen(function* () {
-      const model: ByokAgentModelDriver = {
-        complete: (input) =>
-          Stream.fromIterable([
-            {
-              type: "tool_call" as const,
-              toolCallId: `call-loop-${input.turn}`,
-              canonicalToolName: "workspace.read_file",
-              arguments: { cwd: "C:/workspace", relativePath: "README.md" },
-            },
-            { type: "model_completed" as const },
-          ]),
-      };
-      const broker = ToolBroker.ToolBroker.of({
-        invoke: (input) => Effect.succeed(makeResult(input)),
-        cancel: () => Effect.void,
-      });
-
-      const error = yield* Effect.flip(
-        runByokAgentLoop({ ...baseInput, maxRounds: 2 }, model, broker),
-      );
-      expect(error).toBeInstanceOf(ByokAgentLoopMaxRoundsError);
-    }),
-  );
-
-  it.effect("预算将尽时每次调用注入收敛警告，且警告不写入回放历史", () =>
-    Effect.gen(function* () {
-      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
-      const broker = ToolBroker.ToolBroker.of({
-        invoke: (input) => Effect.succeed(makeResult(input)),
-        cancel: () => Effect.void,
-      });
+      let modelCalls = 0;
       const model: ByokAgentModelDriver = {
         complete: (input) => {
-          modelInputs.push(input);
-          return input.turn === 12
+          modelCalls += 1;
+          return input.turn === 65
             ? Stream.fromIterable([
-                { type: "text_delta" as const, text: "收尾" },
+                { type: "text_delta" as const, text: "done" },
                 { type: "model_completed" as const },
               ])
             : Stream.fromIterable([
                 {
                   type: "tool_call" as const,
-                  toolCallId: `call-${input.turn}`,
+                  toolCallId: `call-loop-${input.turn}`,
                   canonicalToolName: "workspace.read_file",
-                  arguments: { relativePath: `file-${input.turn}.txt` },
+                  arguments: { cwd: "C:/workspace", relativePath: "README.md" },
                 },
                 { type: "model_completed" as const },
               ]);
         },
       };
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) => Effect.succeed(makeResult(input)),
+        cancel: () => Effect.void,
+      });
 
-      const result = yield* runByokAgentLoop({ ...baseInput, maxRounds: 12 }, model, broker);
+      const result = yield* runByokAgentLoop({ ...baseInput, maxRounds: 1 }, model, broker);
 
-      expect(result.text).toBe("收尾");
-      expect(result.rounds).toBe(12);
-      const warnedTurns = modelInputs
-        .filter((input) =>
-          input.messages.some(
-            (message) => message.role === "user" && message.content.includes("预算即将用尽"),
-          ),
-        )
-        .map((input) => input.turn);
-      // 12 轮预算，剩余不足 8 轮的第 5 轮起每次调用都带警告。
-      expect(warnedTurns).toEqual([5, 6, 7, 8, 9, 10, 11, 12]);
-      expect(modelInputs[4]?.messages.at(-1)).toMatchObject({ role: "user" });
-      // 警告只进模型调用消息，不进 history/result.messages。
-      expect(
-        result.messages.some(
-          (message) => message.role === "user" && message.content.includes("预算即将用尽"),
-        ),
-      ).toBe(false);
+      expect(result.text).toBe("done");
+      expect(result.rounds).toBe(65);
+      expect(modelCalls).toBe(65);
     }),
   );
 
@@ -604,7 +549,7 @@ describe("ByokAgentLoop", () => {
       };
 
       const result = yield* runByokAgentLoop(
-        { ...baseInput, maxRounds: 6, maxContextMessages: 5 },
+        { ...baseInput, maxContextMessages: 5 },
         model,
         broker,
       );
@@ -790,7 +735,7 @@ describe("ByokAgentLoop", () => {
       };
 
       const result = yield* runByokAgentLoop(
-        { ...baseInput, maxRounds: 3, maxContextMessages: 5 },
+        { ...baseInput, maxContextMessages: 5 },
         model,
         broker,
       );
@@ -843,7 +788,7 @@ describe("ByokAgentLoop", () => {
       };
 
       const error = yield* Effect.flip(
-        runByokAgentLoop({ ...baseInput, maxRounds: 3, maxContextMessages: 5 }, model, broker),
+        runByokAgentLoop({ ...baseInput, maxContextMessages: 5 }, model, broker),
       );
 
       expect(error).toMatchObject({ code: "context_overflow", detail: "still too large" });
@@ -875,21 +820,21 @@ describe("ByokAgentLoop", () => {
     }),
   );
 
-  it.effect("无模型输出的瞬时失败只在同一 turn 重试一次", () =>
+  it.effect("仅断流时同一 turn 最多轮询 10 次", () =>
     Effect.gen(function* () {
-      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
+      let modelCalls = 0;
       const broker = ToolBroker.ToolBroker.of({
         invoke: (input) => Effect.succeed(makeResult(input)),
         cancel: () => Effect.void,
       });
       const model: ByokAgentModelDriver = {
-        complete: (input) => {
-          modelInputs.push(input);
-          return modelInputs.length === 1
+        complete: () => {
+          modelCalls += 1;
+          return modelCalls <= 10
             ? Stream.fail(
                 new ByokAgentModelError({
                   code: "byok_engine_error",
-                  detail: "connection refused",
+                  detail: "stream disconnected",
                   reason: "transport_error",
                   retryable: true,
                 }),
@@ -905,7 +850,7 @@ describe("ByokAgentLoop", () => {
 
       expect(result.text).toBe("recovered");
       expect(result.rounds).toBe(1);
-      expect(modelInputs.map((input) => input.turn)).toEqual([1, 1]);
+      expect(modelCalls).toBe(11);
     }),
   );
 
@@ -1161,7 +1106,7 @@ describe("ByokAgentLoop", () => {
     }),
   );
 
-  it.effect("瞬时失败重试耗尽后原样失败且不会循环", () =>
+  it.effect("非断流瞬时失败不触发轮询", () =>
     Effect.gen(function* () {
       let modelCalls = 0;
       const broker = ToolBroker.ToolBroker.of({
@@ -1174,7 +1119,7 @@ describe("ByokAgentLoop", () => {
           return Stream.fail(
             new ByokAgentModelError({
               code: "byok_engine_error",
-              detail: modelCalls === 1 ? "first unavailable" : "second unavailable",
+              detail: "unavailable",
               reason: "unavailable",
               retryable: true,
             }),
@@ -1184,12 +1129,12 @@ describe("ByokAgentLoop", () => {
 
       const error = yield* Effect.flip(runByokAgentLoop(baseInput, model, broker));
 
-      expect(error).toMatchObject({ detail: "second unavailable", retryable: true });
-      expect(modelCalls).toBe(2);
+      expect(error).toMatchObject({ detail: "unavailable", retryable: true });
+      expect(modelCalls).toBe(1);
     }),
   );
 
-  it.effect("已有工具轮次后的 503 重试不会重复调用 ToolBroker", () =>
+  it.effect("已有工具轮次后的 503 不轮询且不会重复调用 ToolBroker", () =>
     Effect.gen(function* () {
       const turns: number[] = [];
       let brokerCalls = 0;
@@ -1232,11 +1177,10 @@ describe("ByokAgentLoop", () => {
         },
       };
 
-      const result = yield* runByokAgentLoop(baseInput, model, broker);
+      const error = yield* Effect.flip(runByokAgentLoop(baseInput, model, broker));
 
-      expect(result.text).toBe("done");
-      expect(result.rounds).toBe(2);
-      expect(turns).toEqual([1, 2, 2]);
+      expect(error).toMatchObject({ detail: "HTTP 503", retryable: true });
+      expect(turns).toEqual([1, 2]);
       expect(brokerCalls).toBe(1);
     }),
   );
@@ -1269,7 +1213,7 @@ describe("ByokAgentLoop", () => {
     }),
   );
 
-  it.effect("重试等待遵循 Retry-After 且不真实休眠", () =>
+  it.effect("限流错误不按 Retry-After 轮询", () =>
     Effect.gen(function* () {
       let modelCalls = 0;
       const broker = ToolBroker.ToolBroker.of({
@@ -1279,34 +1223,21 @@ describe("ByokAgentLoop", () => {
       const model: ByokAgentModelDriver = {
         complete: () => {
           modelCalls += 1;
-          return modelCalls === 1
-            ? Stream.fail(
-                new ByokAgentModelError({
-                  code: "byok_engine_error",
-                  detail: "rate limited",
-                  reason: "rate_limit",
-                  retryable: true,
-                  retryAfterMs: 5_000,
-                }),
-              )
-            : Stream.fromIterable([
-                { type: "text_delta" as const, text: "done" },
-                { type: "model_completed" as const },
-              ]);
+          return Stream.fail(
+            new ByokAgentModelError({
+              code: "byok_engine_error",
+              detail: "rate limited",
+              reason: "rate_limit",
+              retryable: true,
+              retryAfterMs: 5_000,
+            }),
+          );
         },
       };
-      const fiber = yield* runByokAgentLoop(baseInput, model, broker).pipe(Effect.forkChild);
+      const error = yield* Effect.flip(runByokAgentLoop(baseInput, model, broker));
 
-      yield* Effect.yieldNow;
+      expect(error).toMatchObject({ detail: "rate limited", reason: "rate_limit" });
       expect(modelCalls).toBe(1);
-      yield* TestClock.adjust("4999 millis");
-      expect(modelCalls).toBe(1);
-      yield* TestClock.adjust("1 millis");
-      const result = yield* Fiber.join(fiber);
-
-      expect(result.text).toBe("done");
-      expect(result.rounds).toBe(1);
-      expect(modelCalls).toBe(2);
-    }).pipe(Effect.provide(TestClock.layer())),
+    }),
   );
 });

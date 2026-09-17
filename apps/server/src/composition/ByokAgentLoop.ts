@@ -79,17 +79,6 @@ export interface ByokAgentModelDriver {
   }) => Stream.Stream<ByokAgentModelEvent, ByokAgentModelError>;
 }
 
-export class ByokAgentLoopMaxRoundsError extends Schema.TaggedErrorClass<ByokAgentLoopMaxRoundsError>()(
-  "ByokAgentLoopMaxRoundsError",
-  {
-    maxRounds: Schema.Int,
-  },
-) {
-  override get message(): string {
-    return `BYOK agent loop exceeded the maximum of ${this.maxRounds} model rounds.`;
-  }
-}
-
 export class ByokAgentLoopTerminalEventMissingError extends Schema.TaggedErrorClass<ByokAgentLoopTerminalEventMissingError>()(
   "ByokAgentLoopTerminalEventMissingError",
   {},
@@ -131,6 +120,7 @@ export type ByokAgentLoopInput = {
   readonly prompt: string;
   readonly capabilityGrantIds: ReadonlyArray<string>;
   readonly tools: ReadonlyArray<ByokAgentTool>;
+  /** 兼容旧调用方；BYOK Loop 不再按模型轮数截断。 */
   readonly maxRounds?: number;
   /** 包含初始用户消息；一个工具轮次按一条 assistant 消息加每个调用一条结果计算。 */
   readonly maxContextMessages?: number;
@@ -168,36 +158,16 @@ const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.
 
 const DEFAULT_MAX_CONTEXT_MESSAGES = 17;
 const DEFAULT_MAX_TOOL_RESULT_CHARS = 12_000;
-// 每次模型调用记一轮；真实的审查/多步编辑任务通常要 20-40 轮才收尾，
-// 默认预算必须容纳它们，否则正常工作会被中途掐断（128 是防失控硬顶）。
-const DEFAULT_MAX_ROUNDS = 64;
-/**
- * 剩余轮次低于该值时，每次模型调用都会追加一条收敛警告（只进调用消息，
- * 不写入回放历史）：探索型任务在大仓库里会在交付前被硬预算掐断，警告
- * 迫使最后几轮直接产出交付物。预算本身不超过该值的小任务不注入——
- * 第一轮就警告只是浪费上下文。
- */
-const BUDGET_WARNING_ROUNDS_LEFT = 8;
-const BUDGET_WARNING_MESSAGE =
-  "提示：本轮任务的模型调用轮次预算即将用尽（剩余不足 8 轮）。立即停止探索性的读取与搜索，基于已取得的证据直接收尾：若任务要求生成交付物（例如调用 Canvas 工具），现在就调用它并只使用已有证据；否则直接输出最终回答。不要再发起新的探索性工具调用。";
 const OUTPUT_TRUNCATION_CONTINUATION_PROMPT =
   "Continue exactly where the previous response stopped. Do not repeat prior text.";
-/** Hard ceiling for one agent-loop run's model round budget. */
-export const MAX_BYOK_AGENT_LOOP_ROUNDS = 128;
+/** 断流后的同一模型轮次最多重连次数；普通错误不进入该路径。 */
+const MAX_STREAM_DISCONNECT_RETRIES = 10;
 const utf8Encoder = new TextEncoder();
 
 const boundedInteger = (value: number | undefined, fallback: number, min: number, max: number) =>
   value === undefined || !Number.isFinite(value)
     ? fallback
     : Math.max(min, Math.min(max, Math.trunc(value)));
-
-/**
- * Normalize the caller-supplied round budget. The RPC path (maxRounds as
- * PositiveInt) accepts unclamped values, so bound it here like the sibling
- * context/message budgets.
- */
-export const byokAgentLoopMaxRounds = (value: number | undefined): number =>
-  boundedInteger(value ?? DEFAULT_MAX_ROUNDS, DEFAULT_MAX_ROUNDS, 1, MAX_BYOK_AGENT_LOOP_ROUNDS);
 
 type ByokAgentToolRound = {
   readonly assistant: Extract<ByokAgentMessage, { readonly role: "assistant" }>;
@@ -348,13 +318,9 @@ export const runByokAgentLoop = (
   broker: ToolBroker.ToolBroker["Service"],
 ): Effect.Effect<
   ByokAgentLoopResult,
-  | ByokAgentLoopMaxRoundsError
-  | ByokAgentLoopTerminalEventMissingError
-  | ByokAgentLoopCheckpointError
-  | ByokAgentModelError
+  ByokAgentLoopTerminalEventMissingError | ByokAgentLoopCheckpointError | ByokAgentModelError
 > =>
   Effect.gen(function* () {
-    const maxRounds = byokAgentLoopMaxRounds(input.maxRounds);
     const maxContextMessages = boundedInteger(
       input.maxContextMessages,
       DEFAULT_MAX_CONTEXT_MESSAGES,
@@ -378,21 +344,13 @@ export const runByokAgentLoop = (
     let roundReasoningSignature = "";
     let contextOverflowRecoveryUsed = false;
     let outputTruncationRecoveryUsed = false;
-    let transientRetryUsed = false;
 
     while (true) {
       rounds += 1;
-      if (rounds > maxRounds) {
-        return yield* new ByokAgentLoopMaxRoundsError({ maxRounds });
-      }
 
       const compactedMessages = compactContextMessages(messages, maxContextMessages);
       messages.splice(0, messages.length, ...compactedMessages);
-      const budgetNearlySpent =
-        maxRounds > BUDGET_WARNING_ROUNDS_LEFT && maxRounds - rounds < BUDGET_WARNING_ROUNDS_LEFT;
-      let modelMessages: ReadonlyArray<ByokAgentMessage> = budgetNearlySpent
-        ? [...compactedMessages, { role: "user", content: BUDGET_WARNING_MESSAGE }]
-        : compactedMessages;
+      let modelMessages: ReadonlyArray<ByokAgentMessage> = compactedMessages;
       // 先完整收集模型流，再执行工具；溢出恢复不会重放已产生副作用的工具调用。
       const complete = (modelMessages: ReadonlyArray<ByokAgentMessage>) => {
         let sawOutput = false;
@@ -463,6 +421,7 @@ export const runByokAgentLoop = (
         );
       };
 
+      let streamDisconnectRetryCount = 0;
       let completion = yield* complete(modelMessages);
       while (completion._tag === "failed") {
         if (
@@ -500,16 +459,13 @@ export const runByokAgentLoop = (
           completion.error.reason === "output_truncated" ||
           completion.error.reason === "terminal_event_missing";
         if (
-          completion.error.retryable === true &&
+          completion.error.reason === "transport_error" &&
           !completion.sawOutput &&
-          !transientRetryUsed &&
+          streamDisconnectRetryCount < MAX_STREAM_DISCONNECT_RETRIES &&
           !canceled &&
           !terminalFailure
         ) {
-          transientRetryUsed = true;
-          if ((completion.error.retryAfterMs ?? 0) > 0) {
-            yield* Effect.sleep(completion.error.retryAfterMs ?? 0);
-          }
+          streamDisconnectRetryCount += 1;
           completion = yield* complete(modelMessages);
           continue;
         }
