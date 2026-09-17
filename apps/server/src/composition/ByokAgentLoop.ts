@@ -5,6 +5,7 @@ import {
   COMPOSITION_AGENT_LOOP_MIN_TOOL_RESULT_CHARS,
   type RuntimeMode,
 } from "@codework/contracts";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -54,6 +55,7 @@ export type ByokAgentModelUsage = {
   readonly outputTokens?: number;
   readonly reasoningTokens?: number;
   readonly totalTokens?: number;
+  readonly durationMs?: number;
 };
 
 export class ByokAgentModelError extends Schema.TaggedErrorClass<ByokAgentModelError>()(
@@ -351,6 +353,7 @@ export const runByokAgentLoop = (
       const compactedMessages = compactContextMessages(messages, maxContextMessages);
       messages.splice(0, messages.length, ...compactedMessages);
       let modelMessages: ReadonlyArray<ByokAgentMessage> = compactedMessages;
+      const modelStartedAt = yield* Clock.currentTimeMillis;
       // 先完整收集模型流，再执行工具；溢出恢复不会重放已产生副作用的工具调用。
       const complete = (modelMessages: ReadonlyArray<ByokAgentMessage>) => {
         let sawOutput = false;
@@ -366,7 +369,11 @@ export const runByokAgentLoop = (
               }
               if (event.type === "model_completed") {
                 if (input.onModelUsage !== undefined) {
-                  yield* input.onModelUsage(event);
+                  const modelCompletedAt = yield* Clock.currentTimeMillis;
+                  yield* input.onModelUsage({
+                    ...event,
+                    durationMs: Math.max(0, modelCompletedAt - modelStartedAt),
+                  });
                 }
                 return;
               }

@@ -2582,7 +2582,10 @@ const make = Effect.gen(function* () {
           const pendingGoalKey = providerTurnKey(thread.id, turnId);
           const pendingGoal = pendingGoalTerminations.get(pendingGoalKey);
           pendingGoalTerminations.delete(pendingGoalKey);
-          if (pendingGoal !== undefined && shouldApplyThreadLifecycle) {
+          // 生命周期保护只阻止旧轮次覆盖当前 session；完成标记已按精确轮次暂存，且
+          // applyAssistantGoalTermination 仍会用 goalId 做并发校验，不能因旧轮次回执
+          // 被过滤而丢掉 Goal 完成清理。
+          if (pendingGoal !== undefined) {
             yield* applyAssistantGoalTermination(thread.id, event, pendingGoal);
           }
           yield* pauseThreadGoalIfActive(thread.id, pendingGoal?.goalId);

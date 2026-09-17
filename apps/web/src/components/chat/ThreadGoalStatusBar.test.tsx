@@ -104,13 +104,12 @@ describe("ThreadGoalStatusBar", () => {
   });
 
   it("maps every persisted status to its label and legal controls", () => {
-    const statuses: Array<ThreadGoal["status"]> = [
+    const statuses: Array<Exclude<ThreadGoal["status"], "complete">> = [
       "active",
       "paused",
       "blocked",
       "usageLimited",
       "budgetLimited",
-      "complete",
     ];
     const statusLabels: Record<ThreadGoal["status"], string> = {
       active: t("threadGoal.status.active"),
@@ -143,7 +142,7 @@ describe("ThreadGoalStatusBar", () => {
     }
   });
 
-  it("does not offer editing for a completed goal", () => {
+  it("does not render a completed goal", () => {
     const markup = renderToStaticMarkup(
       <ThreadGoalStatusBar
         goal={goal("complete")}
@@ -156,7 +155,6 @@ describe("ThreadGoalStatusBar", () => {
       />,
     );
 
-    expect(markup).not.toContain(`aria-label="${t("threadGoal.edit")}"`);
-    expect(markup).toContain(`aria-label="${t("threadGoal.clear")}"`);
+    expect(markup).toBe("");
   });
 });

@@ -816,7 +816,14 @@ export function deriveReasoningSummaryEntries(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): ReasoningSummaryEntry[] {
   const summaries = new Map<string, ReasoningSummaryEntry>();
-  for (const activity of [...activities].toSorted(compareActivitiesByOrder)) {
+  const orderedActivities = [...activities].toSorted(compareActivitiesByOrder);
+  // Goal 内部可能包含很多模型回合；Goal 完成后只保留最终结果，避免把
+  // 已结束 Goal 的整段思考过程铺满时间线。完成后的新回合仍正常展示摘要。
+  const latestCompletedGoalIndex = orderedActivities.findLastIndex(
+    (activity) => activity.kind === "goal.completed",
+  );
+  for (const [activityIndex, activity] of orderedActivities.entries()) {
+    if (activityIndex <= latestCompletedGoalIndex) continue;
     if (activity.kind !== "reasoning.summary.delta") continue;
     const payload = asRecord(activity.payload);
     const delta = typeof payload?.delta === "string" ? payload.delta : "";

@@ -3038,6 +3038,89 @@ describe("ProviderRuntimeIngestion", () => {
     ).toBe(true);
   });
 
+  it("clears a Goal when its completion arrives with a stale lifecycle receipt", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    const completedTurnId = asTurnId("turn-goal-stale-completion");
+    const currentTurnId = asTurnId("turn-goal-current");
+    await Effect.runPromise(
+      harness.goalStore.set({
+        threadId,
+        objective: "Keep the migration reversible",
+        tokenBudget: null,
+      }),
+    );
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-goal-stale-completion-started"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt,
+      threadId,
+      turnId: completedTurnId,
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.activeTurnId === completedTurnId,
+    );
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-goal-stale-completion-delta"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt,
+      threadId,
+      turnId: completedTurnId,
+      itemId: asItemId("item-goal-stale-completion"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "迁移完成 [[GOAL_COMPLETE: 旧轮次已完成]]",
+      },
+    });
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-goal-stale-completion-item"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt,
+      threadId,
+      turnId: completedTurnId,
+      itemId: asItemId("item-goal-stale-completion"),
+      payload: { itemType: "assistant_message", status: "completed" },
+    });
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-goal-current-turn"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: currentTurnId,
+          updatedAt: createdAt,
+          lastError: null,
+        },
+        createdAt,
+      }),
+    );
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-goal-stale-completion-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt,
+      threadId,
+      turnId: completedTurnId,
+      payload: { state: "completed" },
+    });
+
+    await waitForThread(harness.readModel, (thread) =>
+      thread.activities.some((activity) => activity.kind === "goal.completed"),
+    );
+    expect(Option.isNone(await Effect.runPromise(harness.goalStore.get(threadId)))).toBe(true);
+  });
+
   it("pauses an active Goal when the provider requests approval or user input", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

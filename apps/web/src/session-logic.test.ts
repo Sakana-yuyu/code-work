@@ -974,6 +974,47 @@ describe("deriveReasoningSummaryEntries", () => {
       text: "先检查。",
     });
   });
+
+  it("Goal 完成后隐藏此前积累的思考摘要，但保留后续回合摘要", () => {
+    const entries = deriveReasoningSummaryEntries([
+      makeActivity({
+        id: "reasoning-before-1",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        turnId: "turn-goal-1",
+        kind: "reasoning.summary.delta",
+        payload: { summaryIndex: 0, delta: "检查第一步。" },
+      }),
+      makeActivity({
+        id: "reasoning-before-2",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        turnId: "turn-goal-2",
+        kind: "reasoning.summary.delta",
+        payload: { summaryIndex: 0, delta: "继续验证。" },
+      }),
+      makeActivity({
+        id: "goal-completed",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        kind: "goal.completed",
+        summary: "目标已完成",
+        tone: "info",
+        payload: { goalId: "goal-1" },
+      }),
+      makeActivity({
+        id: "reasoning-after",
+        createdAt: "2026-02-23T00:00:04.000Z",
+        turnId: "turn-follow-up",
+        kind: "reasoning.summary.delta",
+        payload: { summaryIndex: 0, delta: "处理后续问题。" },
+      }),
+    ]);
+
+    expect(entries).toMatchObject([
+      {
+        id: "reasoning-summary:turn-follow-up:0",
+        text: "处理后续问题。",
+      },
+    ]);
+  });
 });
 
 describe("deriveWorkLogEntries", () => {

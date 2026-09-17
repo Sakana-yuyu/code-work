@@ -133,6 +133,10 @@ describe("ByokAdapter", () => {
         const usageEvents = events.filter((event) => event.type === "thread.token-usage.updated");
         expect(usageEvents.map((event) => event.payload.usage.usedTokens)).toEqual([1_210, 1_230]);
         expect(usageEvents[1]?.payload.usage.totalProcessedTokens).toBe(2_440);
+        expect(usageEvents.map((event) => event.payload.usage.durationMs)).toHaveLength(2);
+        expect(usageEvents[1]?.payload.usage.durationMs).toBeGreaterThanOrEqual(
+          usageEvents[0]?.payload.usage.durationMs ?? 0,
+        );
         expect(invocations).toHaveLength(1);
         expect(invocations[0]).toMatchObject({
           canonicalToolName: "workspace.read_file",

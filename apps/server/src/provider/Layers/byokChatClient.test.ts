@@ -476,6 +476,27 @@ describe("byokChatClient usage metadata", () => {
     ]);
   });
 
+  it("读取 DeepSeek 原生 prompt_cache_hit_tokens", async () => {
+    const { client } = makeClient(
+      [
+        'data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}],"usage":{"prompt_tokens":283,"completion_tokens":69,"total_tokens":352,"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":27}}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    );
+    await expect(
+      runEvents(client, { ...baseErrorInput, includeUsage: true }),
+    ).resolves.toContainEqual({
+      type: "completed",
+      finishReason: "stop",
+      inputTokens: 283,
+      cachedInputTokens: 256,
+      outputTokens: 69,
+      totalTokens: 352,
+    });
+  });
+
   it("读取 Anthropic message_delta 中的真实生成 token 数", async () => {
     const { client } = makeClient(
       [

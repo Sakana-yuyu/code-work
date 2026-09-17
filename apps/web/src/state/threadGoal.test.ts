@@ -1,7 +1,8 @@
-import type { ThreadGoal, ThreadGoalEvent } from "@codework/contracts";
+import { ThreadGoalRpcError, type ThreadGoal, type ThreadGoalEvent } from "@codework/contracts";
+import * as Cause from "effect/Cause";
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveThreadGoalSnapshot } from "./threadGoal";
+import { isThreadGoalAlreadyCleared, resolveThreadGoalSnapshot } from "./threadGoal";
 
 const goal = (status: ThreadGoal["status"] = "active"): ThreadGoal => ({
   threadId: "thread-1" as ThreadGoal["threadId"],
@@ -35,5 +36,18 @@ describe("thread goal web state", () => {
 
   it("keeps the query snapshot when no event has arrived", () => {
     expect(resolveThreadGoalSnapshot(goal("blocked"), null)?.status).toBe("blocked");
+  });
+
+  it("treats a server-side already-cleared goal as a successful clear", () => {
+    expect(
+      isThreadGoalAlreadyCleared(
+        Cause.fail(new ThreadGoalRpcError({ code: "goal-not-found", message: "already cleared" })),
+      ),
+    ).toBe(true);
+    expect(
+      isThreadGoalAlreadyCleared(
+        Cause.fail(new ThreadGoalRpcError({ code: "stale-version", message: "changed" })),
+      ),
+    ).toBe(false);
   });
 });

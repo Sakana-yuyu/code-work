@@ -35,6 +35,7 @@ import {
   TurnId,
 } from "@codework/contracts";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -129,6 +130,7 @@ const ByokPersistedSessionFile = Schema.Struct({
   history: Schema.Array(ByokPersistedMessage),
   model: Schema.NullOr(Schema.String),
   totalProcessedTokens: Schema.Number,
+  totalModelDurationMs: Schema.optional(Schema.Number),
 });
 const decodePersistedSession = Schema.decodeUnknownEffect(
   Schema.fromJsonString(
@@ -193,6 +195,7 @@ interface ByokSessionContext {
   activeTurnId: TurnId | undefined;
   activeTurnFiber: Fiber.Fiber<void, unknown> | undefined;
   totalProcessedTokens: number;
+  totalModelDurationMs: number;
 }
 
 export interface ByokAdapterLiveOptions {
@@ -312,6 +315,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           history: ctx.history,
           model: ctx.session.model ?? null,
           totalProcessedTokens: ctx.totalProcessedTokens,
+          totalModelDurationMs: ctx.totalModelDurationMs,
         }).pipe(Effect.catchCause(() => Effect.succeed(null)));
         if (serialized === null) return;
         yield* fileSystem
@@ -413,6 +417,9 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           : undefined;
       const usedTokens = activeTokens;
       ctx.totalProcessedTokens += activeTokens;
+      if (usage.durationMs !== undefined) {
+        ctx.totalModelDurationMs += usage.durationMs;
+      }
       yield* emit({
         ...(yield* makeEventStamp()),
         type: "thread.token-usage.updated",
@@ -443,6 +450,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             ...(usage.reasoningTokens === undefined
               ? {}
               : { lastReasoningOutputTokens: usage.reasoningTokens }),
+            ...(usage.durationMs === undefined ? {} : { durationMs: ctx.totalModelDurationMs }),
           },
         },
       });
@@ -500,6 +508,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           activeTurnId: undefined,
           activeTurnFiber: undefined,
           totalProcessedTokens: resumed?.totalProcessedTokens ?? 0,
+          totalModelDurationMs: resumed?.totalModelDurationMs ?? 0,
         };
         sessions.set(input.threadId, ctx);
 
@@ -603,6 +612,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       let assistantText = "";
       let reasoningText = "";
       let reasoningSignature = "";
+      const modelStartedAt = yield* Clock.currentTimeMillis;
       // 一次流式请求一个关联 id：随 x-request-id 发给供应商，事件里透出，
       // 供应商侧日志与本端 provider 事件日志靠它互相对上。
       const providerRequestId = yield* randomUUIDv4;
@@ -631,7 +641,11 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               });
             }
             if (event.type === "completed") {
-              yield* emitThreadTokenUsage(ctx, turnId, adapter, event);
+              const modelCompletedAt = yield* Clock.currentTimeMillis;
+              yield* emitThreadTokenUsage(ctx, turnId, adapter, {
+                ...event,
+                durationMs: Math.max(0, modelCompletedAt - modelStartedAt),
+              });
               return;
             }
             if (event.type === "reasoning_signature") {

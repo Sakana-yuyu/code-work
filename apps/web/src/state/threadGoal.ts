@@ -47,6 +47,11 @@ function isThreadGoalRpcError(error: unknown): error is ThreadGoalRpcError {
   );
 }
 
+export function isThreadGoalAlreadyCleared(cause: Cause.Cause<unknown>): boolean {
+  const error = Cause.squash(cause);
+  return isThreadGoalRpcError(error) && error.code === "goal-not-found";
+}
+
 export function useThreadGoal(threadRef: ScopedThreadRef | null): {
   readonly goal: ThreadGoal | null;
   readonly errorCode: ThreadGoalErrorCode | null;
@@ -128,7 +133,7 @@ export function useThreadGoalController(threadRef: ScopedThreadRef | null): Thre
   const clear = useCallback(async () => {
     if (threadId === null || environmentId === null) return false;
     const result = await clearCommand({ environmentId, input: { threadId } });
-    if (result._tag !== "Success") return false;
+    if (result._tag !== "Success" && !isThreadGoalAlreadyCleared(result.cause)) return false;
     refresh();
     return true;
   }, [clearCommand, environmentId, refresh, threadId]);

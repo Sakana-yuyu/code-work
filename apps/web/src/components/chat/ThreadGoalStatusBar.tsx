@@ -193,6 +193,8 @@ export function ThreadGoalStatusBar({
     }
   };
 
+  if (goal?.status === "complete") return null;
+
   return (
     <div
       className={cn(
@@ -245,7 +247,7 @@ export function ThreadGoalStatusBar({
           >
             <SaveIcon />
           </Button>
-          {goal !== null && goal.status !== "complete" ? (
+          {goal !== null ? (
             <Button
               type="button"
               size="icon-xs"

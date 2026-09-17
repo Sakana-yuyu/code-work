@@ -74,6 +74,7 @@ export type ByokTokenUsage = {
   readonly outputTokens?: number;
   readonly reasoningTokens?: number;
   readonly totalTokens?: number;
+  readonly durationMs?: number;
 };
 
 export type ByokChatEvent =
@@ -862,13 +863,14 @@ const usageFromPayload = (
     protocol === "openai" && isRecord(usage.prompt_tokens_details)
       ? usage.prompt_tokens_details
       : undefined;
-  const cachedInputTokens = nonNegativeInteger(
+  const cachedInputTokens =
     protocol === "openai"
-      ? promptDetails?.cached_tokens
-      : protocol === "anthropic"
-        ? usage.cache_read_input_tokens
-        : usage.cachedContentTokenCount,
-  );
+      ? (nonNegativeInteger(promptDetails?.cached_tokens) ??
+        // DeepSeek 原生字段不放在 OpenAI 兼容的 prompt_tokens_details 中。
+        nonNegativeInteger(usage.prompt_cache_hit_tokens))
+      : nonNegativeInteger(
+          protocol === "anthropic" ? usage.cache_read_input_tokens : usage.cachedContentTokenCount,
+        );
   const inputTokens =
     protocol === "anthropic" && uncachedInputTokens !== undefined
       ? nonNegativeInteger(

@@ -139,11 +139,17 @@ import {
   submitComposerDraft,
 } from "./composerSubmission";
 import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
-import { threadGoalEnvironment, useThreadGoal } from "../../state/threadGoal";
+import {
+  isThreadGoalAlreadyCleared,
+  threadGoalEnvironment,
+  useThreadGoal,
+} from "../../state/threadGoal";
 import { useSpecWorkflowController } from "../../state/specWorkflow";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useLocalPluginAttachmentPaletteItems } from "../../localPlugins/adapters/useLocalPluginAttachmentPaletteItems";
 import { useByokBalanceDashboards } from "../../state/byokBalance";
+
+const THREAD_GOAL_CONTINUATION_PROMPT = "继续执行上次未完成的工作，不要重复已完成的内容。";
 
 type ComposerCommandMenuPosition = {
   bottom: number;
@@ -740,6 +746,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? { environmentId, threadId: activeThreadId }
       : null,
   );
+  const visibleThreadGoal =
+    threadGoalState.goal?.status === "complete" ? null : threadGoalState.goal;
   const specWorkflowThreadRef =
     routeKind === "server" && activeThreadId !== null
       ? { environmentId, threadId: activeThreadId }
@@ -832,16 +840,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ]);
   const onResumeThreadGoal = useCallback(async () => {
     if (routeKind !== "server" || activeThreadId === null) return false;
-    const objective = threadGoalState.goal?.objective.trim();
-    if (!objective) return false;
+    if (!threadGoalState.goal?.objective.trim()) return false;
     const result = await resumeThreadGoalCommand({
       environmentId,
       input: { threadId: activeThreadId },
     });
     if (result._tag !== "Success") return false;
     threadGoalState.refresh();
-    // 恢复目标必须同时启动一个真实回合，不能只把状态改成 active。
-    void onSend(undefined, "foreground", undefined, objective);
+    // 恢复目标必须启动真实回合，但只发送短续跑指令；目标上下文由服务端 Goal 包装注入。
+    void onSend(undefined, "foreground", undefined, THREAD_GOAL_CONTINUATION_PROMPT);
     return true;
   }, [activeThreadId, environmentId, onSend, resumeThreadGoalCommand, routeKind, threadGoalState]);
   const onClearThreadGoal = useCallback(async () => {
@@ -857,7 +864,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       environmentId,
       input: { threadId: activeThreadId },
     });
-    if (result._tag !== "Success") return false;
+    if (result._tag !== "Success" && !isThreadGoalAlreadyCleared(result.cause)) return false;
     threadGoalState.refresh();
     setComposerDraftGoalObjective(composerDraftTarget, null);
     setIsGoalComposerActive(false);
@@ -3362,15 +3369,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ) : null}
         </div>
       ) : null}
-      {threadGoalState.goal !== null || specWorkflowControl.enabled ? (
+      {visibleThreadGoal !== null || specWorkflowControl.enabled ? (
         <div
           className="chat-composer-top-drawer"
-          data-chat-composer-goal-drawer={threadGoalState.goal !== null ? "true" : undefined}
+          data-chat-composer-goal-drawer={visibleThreadGoal !== null ? "true" : undefined}
           data-chat-composer-spec-workflow-drawer={specWorkflowControl.enabled ? "true" : undefined}
         >
-          {threadGoalState.goal !== null ? (
+          {visibleThreadGoal !== null ? (
             <ThreadGoalStatusBar
-              goal={threadGoalState.goal}
+              goal={visibleThreadGoal}
               isPending={threadGoalState.isPending}
               errorMessage={threadGoalErrorMessage}
               presentation="top-drawer"
@@ -3792,7 +3799,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     interactionMode={interactionMode}
                     planModeEnabled={planModeUiEnabled}
                     canEditGoal={routeKind === "server" || routeKind === "draft"}
-                    goal={threadGoalState.goal}
+                    goal={visibleThreadGoal}
                     draftObjective={routeKind === "draft" ? draftGoalObjective : null}
                     goalIsPending={threadGoalState.isPending}
                     goalErrorMessage={threadGoalErrorMessage}
@@ -3893,7 +3900,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   {isGoalComposerActive ||
                   (routeKind === "draft" && draftGoalObjective !== null) ? (
                     <ComposerGoalControl
-                      goal={threadGoalState.goal}
+                      goal={visibleThreadGoal}
                       draftObjective={
                         isGoalComposerActive
                           ? goalComposerText
