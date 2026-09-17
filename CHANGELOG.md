@@ -7,6 +7,12 @@
 
 更早的历史版本见 [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases)。
 
+## 1.0.11
+
+### 修复
+
+- 放宽 BYOK Agent Loop 的模型调用轮次，不再因固定 64 轮上限提前停止；仅在模型流断流且尚未产生输出时重连，最多轮询 10 次。
+
 ## 1.0.10
 
 ### 修复
