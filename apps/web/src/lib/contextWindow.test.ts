@@ -5,6 +5,7 @@ import {
   deriveLatestAccountQuotaSnapshot,
   deriveCacheHitRate,
   deriveLatestContextWindowSnapshot,
+  deriveModelResponseCount,
   deriveToolDurationMs,
   formatContextWindowTokens,
 } from "./contextWindow";
@@ -157,6 +158,19 @@ describe("contextWindow", () => {
         }),
       ]),
     ).toBeNull();
+  });
+
+  it("counts each usage activity as one model response step", () => {
+    expect(
+      deriveModelResponseCount([
+        makeActivity("usage-1", "context-window.updated", { usedTokens: 100 }),
+        makeActivity("tool-1", "tool.completed", { toolCallId: "tool-1" }),
+        makeActivity("usage-2", "context-window.updated", { usedTokens: 200 }),
+        makeActivity("usage-3", "context-window.updated", { usedTokens: 300 }),
+      ]),
+    ).toBe(3);
+    expect(deriveModelResponseCount([])).toBe(0);
+    expect(deriveModelResponseCount([makeActivity("tool-only", "tool.completed", {})])).toBe(0);
   });
 
   it("derives official account quota windows without inventing missing values", () => {

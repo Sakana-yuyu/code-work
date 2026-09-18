@@ -3,13 +3,24 @@ import type { EnvironmentId, ThreadId } from "@codework/contracts";
 import {
   ChevronDownIcon,
   CloudIcon,
+  DatabaseIcon,
   FolderGit2Icon,
   FolderGitIcon,
   FolderIcon,
+  GaugeIcon,
   HistoryIcon,
   MonitorIcon,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import { useProject, useThread, useThreadShellsForProjectRefs } from "../state/entities";
@@ -32,6 +43,7 @@ import { BranchToolbarBranchSelector } from "./BranchToolbarBranchSelector";
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
 import { BranchToolbarEnvModeSelector } from "./BranchToolbarEnvModeSelector";
 import { Button } from "./ui/button";
+import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import {
   Menu,
   MenuGroup,
@@ -71,6 +83,7 @@ export interface ConversationStats {
   cacheHitRate: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  reasoningOutputTokens: number | null;
 }
 
 interface MobileRunContextSelectorProps {
@@ -389,40 +402,225 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
   return overflows;
 }
 
+const STATS_PILL_CLASS =
+  "inline-flex max-w-full items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] tabular-nums";
+
+function StatsDialogShell({
+  icon: Icon,
+  title,
+  titleValue,
+  children,
+}: {
+  icon: typeof GaugeIcon;
+  title: string;
+  titleValue?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2 p-3 text-left">
+      <div className="mb-0.5 flex items-center justify-between gap-4 border-b border-border/50 pb-1.5 text-[11px] font-medium text-foreground">
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <Icon className="size-3.5 shrink-0" />
+          <span className="truncate">{title}</span>
+        </span>
+        {titleValue !== undefined ? (
+          <span className="shrink-0 text-muted-foreground tabular-nums">{titleValue}</span>
+        ) : null}
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[11px]">{children}</dl>
+    </div>
+  );
+}
+
+function StatsDialogRow({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <dt className="text-muted-foreground/70">{label}</dt>
+      <dd className="text-right text-foreground/85 tabular-nums">{value}</dd>
+    </>
+  );
+}
+
+const formatExactTokenCount = (tokens: number) =>
+  `${Math.round(tokens).toLocaleString()} ${t("tok")}`;
+
+/** 仪表胶囊：轮次/步数计数；有计时数据时点开「会话统计」。 */
+const ConversationTimePill = memo(function ConversationTimePill({
+  rounds,
+  steps,
+  llmDurationMs,
+  toolDurationMs,
+}: {
+  rounds: number;
+  steps: number;
+  llmDurationMs: number | null;
+  toolDurationMs: number | null;
+}) {
+  // 值为 0 的分段直接省略，不显示「0 步」这种假数字。
+  const face = (
+    <>
+      <span className="shrink-0">
+        {rounds} {t("chat.rounds")}
+        {steps > 0 ? (
+          <>
+            {" · "}
+            {steps} {t("chat.steps")}
+          </>
+        ) : null}
+      </span>
+    </>
+  );
+  const icon = <GaugeIcon className="size-3 shrink-0" />;
+  // 没有任何计时数据时保持纯文本，不伪装成可点开的控件。
+  if (llmDurationMs === null && toolDurationMs === null) {
+    return (
+      <span className={`${STATS_PILL_CLASS} shrink-0 text-muted-foreground/70`}>
+        {icon}
+        {face}
+      </span>
+    );
+  }
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`${t("chat.rounds")} ${rounds}, ${t("chat.steps")} ${steps}`}
+            className={`${STATS_PILL_CLASS} shrink-0 cursor-pointer text-muted-foreground/70 transition-colors duration-150 hover:bg-accent/30 hover:text-foreground/80`}
+          />
+        }
+      >
+        {icon}
+        {face}
+      </PopoverTrigger>
+      <PopoverPopup
+        tooltipStyle
+        side="top"
+        align="center"
+        viewportClassName="p-0"
+        className="w-52 max-w-[calc(100vw-1rem)] rounded-xl border border-border/70 bg-popover/95 whitespace-normal shadow-xl"
+      >
+        <StatsDialogShell icon={GaugeIcon} title={t("chat.sessionStats")}>
+          {llmDurationMs !== null ? (
+            <StatsDialogRow label={t("chat.modelTime")} value={formatDuration(llmDurationMs)} />
+          ) : null}
+          {toolDurationMs !== null ? (
+            <StatsDialogRow label={t("chat.toolDuration")} value={formatDuration(toolDurationMs)} />
+          ) : null}
+        </StatsDialogShell>
+      </PopoverPopup>
+    </Popover>
+  );
+});
+
+/** 用量胶囊：总 token 与缓存命中率；点开「Token 用量」明细。 */
+const ConversationUsagePill = memo(function ConversationUsagePill({
+  inputTokens,
+  outputTokens,
+  reasoningOutputTokens,
+  cacheHitRate,
+}: {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  reasoningOutputTokens: number | null;
+  cacheHitRate: number | null;
+}) {
+  const totalTokens =
+    inputTokens === null && outputTokens === null ? null : (inputTokens ?? 0) + (outputTokens ?? 0);
+  if (totalTokens === null) return null;
+  const totalText = `${formatContextWindowTokens(totalTokens)} ${t("tok")}`;
+  const cacheHitPercent =
+    cacheHitRate === null ? null : `${cacheHitRate.toFixed(1).replace(/\.0$/, "")}%`;
+  const formatTokenValue = (tokens: number | null) =>
+    tokens === null ? "—" : formatContextWindowTokens(tokens);
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={
+              cacheHitPercent === null
+                ? totalText
+                : `${totalText} · ${t("chat.cacheHitRate")} ${cacheHitPercent}`
+            }
+            className={`${STATS_PILL_CLASS} min-w-0 cursor-pointer text-muted-foreground/70 transition-colors duration-150 hover:bg-accent/30 hover:text-foreground/80`}
+          />
+        }
+      >
+        <DatabaseIcon className="size-3 shrink-0" />
+        <span className="min-w-0 truncate">
+          {totalText}
+          {cacheHitPercent !== null ? (
+            <>
+              {" · "}
+              {t("chat.cacheHitRate")} {cacheHitPercent}
+            </>
+          ) : null}
+        </span>
+      </PopoverTrigger>
+      <PopoverPopup
+        tooltipStyle
+        side="top"
+        align="center"
+        viewportClassName="p-0"
+        className="w-56 max-w-[calc(100vw-1rem)] rounded-xl border border-border/70 bg-popover/95 whitespace-normal shadow-xl"
+      >
+        <StatsDialogShell icon={DatabaseIcon} title={t("chat.tokenUsage")} titleValue={totalText}>
+          {cacheHitPercent !== null ? (
+            <StatsDialogRow label={t("chat.cacheHitRate")} value={cacheHitPercent} />
+          ) : null}
+          <StatsDialogRow
+            label={t("chat.inputTokens")}
+            value={inputTokens === null ? "—" : formatExactTokenCount(inputTokens)}
+          />
+          <StatsDialogRow
+            label={t("chat.outputTokens")}
+            value={outputTokens === null ? "—" : formatExactTokenCount(outputTokens)}
+          />
+          {reasoningOutputTokens !== null && reasoningOutputTokens > 0 ? (
+            <StatsDialogRow
+              label={t("chat.reasoningTokens")}
+              value={formatExactTokenCount(reasoningOutputTokens)}
+            />
+          ) : null}
+        </StatsDialogShell>
+      </PopoverPopup>
+    </Popover>
+  );
+});
+
+/**
+ * Composer 下方会话统计，双胶囊形态对齐 deepseek-harness 的 StatsPills：
+ * 仪表胶囊（轮/步/计时）+ 用量胶囊（token/缓存命中），无数据的分段
+ * 省略，整条无内容时不渲染。
+ */
 const ConversationStatsStrip = memo(function ConversationStatsStrip({
   stats,
 }: {
   stats: ConversationStats;
 }) {
-  const formatDurationValue = (durationMs: number | null) =>
-    durationMs === null ? "—" : formatDuration(durationMs);
-  const formatTokenValue = (tokens: number | null) =>
-    tokens === null ? "—" : `${formatContextWindowTokens(tokens)} ${t("tok")}`;
-  const cacheHitRate =
-    stats.cacheHitRate === null ? "—" : `${stats.cacheHitRate.toFixed(1).replace(/\.0$/, "")}%`;
-
+  const hasUsage = stats.inputTokens !== null || stats.outputTokens !== null;
+  if (stats.rounds === 0 && !hasUsage) return null;
   return (
-    <div
-      aria-label={`${t("chat.rounds")} ${stats.rounds}, ${t("chat.steps")} ${stats.steps}`}
-      className="hidden min-w-0 shrink items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap text-[11px] text-muted-foreground/70 md:flex"
-    >
-      <span className="shrink-0 tabular-nums">
-        {stats.rounds} {t("chat.rounds")} · {stats.steps} {t("chat.steps")}
-      </span>
-      <span aria-hidden>│</span>
-      <span className="shrink-0 tabular-nums">
-        {t("chat.llmDuration")} {formatDurationValue(stats.llmDurationMs)} ·{" "}
-        {t("chat.toolDuration")} {formatDurationValue(stats.toolDurationMs)}
-      </span>
-      <span aria-hidden>│</span>
-      <span className="shrink-0 tabular-nums">
-        {t("chat.cacheHitRate")} {cacheHitRate}
-      </span>
-      <span aria-hidden>│</span>
-      <span className="min-w-0 truncate tabular-nums">
-        {t("chat.inputTokens")} {formatTokenValue(stats.inputTokens)} · {t("chat.outputTokens")}{" "}
-        {formatTokenValue(stats.outputTokens)}
-      </span>
+    <div className="hidden min-w-0 shrink items-center justify-center gap-2 overflow-hidden whitespace-nowrap text-[11px] text-muted-foreground/70 md:flex">
+      {stats.rounds > 0 ? (
+        <ConversationTimePill
+          rounds={stats.rounds}
+          steps={stats.steps}
+          llmDurationMs={stats.llmDurationMs}
+          toolDurationMs={stats.toolDurationMs}
+        />
+      ) : null}
+      {hasUsage ? (
+        <ConversationUsagePill
+          inputTokens={stats.inputTokens}
+          outputTokens={stats.outputTokens}
+          reasoningOutputTokens={stats.reasoningOutputTokens}
+          cacheHitRate={stats.cacheHitRate}
+        />
+      ) : null}
     </div>
   );
 });

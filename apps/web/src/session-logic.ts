@@ -231,7 +231,12 @@ export type TimelineEntry =
       id: string;
       kind: "reasoning-summary";
       createdAt: string;
-      summary: ReasoningSummaryEntry;
+      /**
+       * 相邻摘要折叠成一组：BYOK 每个模型轮次各发一条摘要，不折叠会把
+       * 时间线铺成一列同款行。id 取首条的 id，流式追加段时不换 key，
+       * 展开状态因此得以保留。
+       */
+      summaries: ReasoningSummaryEntry[];
     }
   | {
       id: string;
@@ -1992,7 +1997,7 @@ export function deriveTimelineEntries(
     id: summary.id,
     kind: "reasoning-summary",
     createdAt: summary.createdAt,
-    summary,
+    summaries: [summary],
   }));
   const workRows: TimelineEntry[] = workEntries.map((entry) => ({
     id: entry.id,
@@ -2000,13 +2005,25 @@ export function deriveTimelineEntries(
     createdAt: entry.createdAt,
     entry,
   }));
-  return [
+  const sorted = [
     ...messageRows,
     ...proposedPlanRows,
     ...turnPlanRows,
     ...reasoningSummaryRows,
     ...workRows,
   ].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
+  // 排序后把相邻的摘要行并成一组；中间隔着工具行等可见条目时天然分组，
+  // 保留「思考 → 动手 → 再思考」的真实节奏。
+  const merged: TimelineEntry[] = [];
+  for (const entry of sorted) {
+    const previous = merged.at(-1);
+    if (entry.kind === "reasoning-summary" && previous?.kind === "reasoning-summary") {
+      previous.summaries.push(...entry.summaries);
+      continue;
+    }
+    merged.push(entry);
+  }
+  return merged;
 }
 
 export function inferCheckpointTurnCountByTurnId(

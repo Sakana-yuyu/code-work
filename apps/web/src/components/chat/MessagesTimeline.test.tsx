@@ -825,7 +825,7 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("rounded-2xl bg-message p-3");
   });
 
-  it("renders a queued message with a distinct neutral accent", () => {
+  it("does not render a queued presentation as a queue card", () => {
     const entry = buildUserTimelineEntry("排队中的普通消息");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -842,11 +842,8 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain('data-timeline-message-card="queue"');
-    expect(markup).toContain("Queued");
+    expect(markup).not.toContain('data-timeline-message-card="queue"');
     expect(markup).toContain("排队中的普通消息");
-    expect(markup).toContain("border-sky-400/35");
-    expect(markup).toContain("border-dashed");
     expect(markup).not.toContain('data-timeline-message-card="goal"');
   });
 

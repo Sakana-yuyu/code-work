@@ -253,6 +253,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import {
   CircleAlertIcon,
+  CircleDashedIcon,
+  PencilIcon,
   type LucideIcon,
   LockIcon,
   LockOpenIcon,
@@ -423,6 +425,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
     isComplete: boolean;
   } | null;
   isRunning: boolean;
+  isInterrupting: boolean;
   showPlanFollowUpPrompt: boolean;
   promptHasText: boolean;
   isSendBusy: boolean;
@@ -447,6 +450,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         compact={props.compact}
         pendingAction={props.pendingAction}
         isRunning={props.isRunning}
+        isInterrupting={props.isInterrupting}
         showPlanFollowUpPrompt={props.showPlanFollowUpPrompt}
         promptHasText={props.promptHasText}
         isSendBusy={props.isSendBusy}
@@ -531,6 +535,9 @@ export interface ChatComposerProps {
   activeThreadId: ThreadId | null;
   activeThreadEnvironmentId: EnvironmentId | undefined;
   activeThread: Thread | undefined;
+  queuedMessages?: ReadonlyArray<{ readonly id: string; readonly text: string }>;
+  onCancelQueuedMessage: (messageId: string) => void;
+  onEditQueuedMessage: (messageId: string) => void;
   isServerThread: boolean;
   isLocalDraftThread: boolean;
   forceExpandedOnMobile: boolean;
@@ -639,6 +646,66 @@ export interface ChatComposerProps {
   onExpandImage: (preview: ExpandedImagePreview) => void;
 }
 
+const EMPTY_QUEUED_MESSAGES: ReadonlyArray<{ readonly id: string; readonly text: string }> = [];
+
+export function QueuedMessagesPanel({
+  messages,
+  onEdit,
+  onCancel,
+}: {
+  readonly messages: ReadonlyArray<{ readonly id: string; readonly text: string }>;
+  readonly onEdit: (messageId: string) => void;
+  readonly onCancel: (messageId: string) => void;
+}) {
+  return (
+    <div
+      className="chat-composer-top-drawer px-3 pt-3 sm:px-4"
+      data-queued-messages-panel="true"
+      role="status"
+    >
+      <div className="pb-1.5 text-[11px] text-muted-foreground/70">
+        {t("chat.queuedMessageCount", { count: messages.length })}
+      </div>
+      <div className="max-h-40 space-y-1.5 overflow-y-auto">
+        {messages.map((message) => (
+          <div
+            key={message.id}
+            className="flex min-w-0 items-start gap-2 rounded-[12px] border border-border/55 bg-background/90 px-2.5 py-1.5 text-xs text-message-foreground dark:bg-background/65"
+          >
+            <CircleDashedIcon
+              className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words leading-relaxed">
+              {message.text}
+            </span>
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={() => onEdit(message.id)}
+              aria-label={t("chat.editQueuedMessage")}
+            >
+              <PencilIcon className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={() => onCancel(message.id)}
+              aria-label={t("chat.cancelQueuedMessage")}
+            >
+              <XIcon className="size-3.5" />
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // --------------------------------------------------------------------------
 // Component
 // --------------------------------------------------------------------------
@@ -655,6 +722,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadId,
     activeThreadEnvironmentId: _activeThreadEnvironmentId,
     activeThread,
+    queuedMessages = EMPTY_QUEUED_MESSAGES,
+    onCancelQueuedMessage,
+    onEditQueuedMessage,
     isServerThread: _isServerThread,
     isLocalDraftThread: _isLocalDraftThread,
     forceExpandedOnMobile,
@@ -1182,6 +1252,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     null,
   );
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
+  const [isInterrupting, setIsInterrupting] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
@@ -1547,8 +1618,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         : null,
     [activePendingIsResponding, activePendingProgress, activePendingResolvedAnswers],
   );
+  useEffect(() => {
+    if (phase !== "running") setIsInterrupting(false);
+  }, [phase]);
+  const handleInterruptPrimaryAction = useCallback(async () => {
+    if (isInterrupting) return false;
+    setIsInterrupting(true);
+    const interrupted = await onInterrupt();
+    if (!interrupted) setIsInterrupting(false);
+    return interrupted;
+  }, [isInterrupting, onInterrupt]);
   const collapsedComposerPrimaryActionDisabled =
-    phase === "running" ||
     isSendBusy ||
     isSendDisabled ||
     isConnecting ||
@@ -3033,9 +3113,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     window.addEventListener("dragend", onWindowDragEnd);
     return () => window.removeEventListener("dragend", onWindowDragEnd);
   }, [isDragOverComposer]);
-  const handleInterruptPrimaryAction = useCallback(() => {
-    return onInterrupt();
-  }, [onInterrupt]);
   const handleImplementPlanInNewThreadPrimaryAction = useCallback(() => {
     void onImplementPlanInNewThread();
   }, [onImplementPlanInNewThread]);
@@ -3400,6 +3477,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           onCollapse={toggleTasksDrawer}
           progress={visibleTasksProgress}
           steps={visibleTaskSteps}
+        />
+      ) : null}
+      {queuedMessages.length > 0 ? (
+        <QueuedMessagesPanel
+          messages={queuedMessages}
+          onEdit={onEditQueuedMessage}
+          onCancel={onCancelQueuedMessage}
         />
       ) : null}
       <div className="relative">
@@ -3933,6 +4017,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     compact={isComposerPrimaryActionsCompact}
                     pendingAction={pendingPrimaryAction}
                     isRunning={phase === "running"}
+                    isInterrupting={isInterrupting}
                     showPlanFollowUpPrompt={
                       pendingUserInputs.length === 0 && showPlanFollowUpPrompt
                     }
@@ -3946,7 +4031,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     isPreparingWorktree={isPreparingWorktree}
                     hasSendableContent={hasSendableComposerContent}
                     preserveComposerFocusOnPointerDown={isMobileViewport}
-                    showSendWhileRunning={isMobileViewport}
+                    showSendWhileRunning
                     onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                     onInterrupt={handleInterruptPrimaryAction}
                     onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}

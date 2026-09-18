@@ -52,6 +52,21 @@ export function deriveCacheHitRate(usage: ContextWindowSnapshot | null): number 
   return Math.min(100, Math.max(0, (cachedInputTokens / inputTokens) * 100));
 }
 
+/**
+ * 模型响应步数：每条用量活动对应一次计费的模型调用（BYOK 每轮一条，
+ * CLI 供应商按其上报节奏），与 deepseek-harness「N 步」同口径。没有
+ * 用量上报的供应商计 0，界面按缺数处理而不是显示假数字。
+ */
+export function deriveModelResponseCount(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): number {
+  let count = 0;
+  for (const activity of activities) {
+    if (activity.kind === "context-window.updated") count += 1;
+  }
+  return count;
+}
+
 /** 累加已配对工具活动的真实执行耗时；缺少任一端时不猜测。 */
 export function deriveToolDurationMs(
   activities: ReadonlyArray<OrchestrationThreadActivity>,

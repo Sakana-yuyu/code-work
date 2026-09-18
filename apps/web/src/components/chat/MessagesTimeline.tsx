@@ -1120,7 +1120,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     </>
   );
 
-  if (presentation) {
+  if (presentation?.kind === "goal") {
     return (
       <TimelineMessageCard
         presentation={presentation}
@@ -1532,15 +1532,29 @@ const ReasoningSummaryTimelineRow = memo(function ReasoningSummaryTimelineRow({
 }: {
   row: Extract<TimelineRow, { kind: "reasoning-summary" }>;
 }) {
+  const label =
+    row.summaries.length > 1
+      ? t("chat.reasoningSegmentCount", { count: row.summaries.length })
+      : t("reasoningSummary");
   return (
     <details className="group/reasoning-summary min-w-0 px-1 py-0.5">
       <summary className="flex min-w-0 cursor-pointer list-none items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-[12px] leading-5 text-muted-foreground/75 transition-colors duration-150 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70 [&::-webkit-details-marker]:hidden">
         <ChevronRightIcon className="size-3.5 shrink-0 transition-transform duration-150 group-open/reasoning-summary:rotate-90" />
         <BotIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
-        <span className="truncate">{t("reasoningSummary")}</span>
+        <span className="truncate">{label}</span>
       </summary>
-      <div className="mt-1 ms-7 whitespace-pre-wrap break-words border-s border-border/45 ps-3 text-sm leading-relaxed text-muted-foreground">
-        {row.summary.text}
+      <div className="mt-1 ms-7 border-s border-border/45 ps-3 text-sm leading-relaxed text-muted-foreground">
+        {row.summaries.map((summary, index) => (
+          <div
+            key={summary.id}
+            className={cn(
+              "whitespace-pre-wrap break-words",
+              index > 0 && "mt-2 border-t border-border/30 pt-2",
+            )}
+          >
+            {summary.text}
+          </div>
+        ))}
       </div>
     </details>
   );

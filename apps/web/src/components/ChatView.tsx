@@ -24,6 +24,7 @@ import {
   TerminalOpenInput,
 } from "@codework/contracts";
 import { type EnvironmentConnectionPresentation } from "@codework/client-runtime/connection";
+import { type StartThreadTurnInput } from "@codework/client-runtime/operations";
 import { wasBootstrapThreadDeleted } from "@codework/client-runtime/errors";
 import {
   changeRequestAutoSettles,
@@ -338,6 +339,7 @@ import {
 import {
   deriveCacheHitRate,
   deriveLatestContextWindowSnapshot,
+  deriveModelResponseCount,
   deriveToolDurationMs,
   formatContextWindowTokens,
 } from "../lib/contextWindow";
@@ -438,6 +440,28 @@ const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
+// ponytail: 仅持久化当前浏览器的队列展示；跨设备同步需扩展服务端线程壳数据。
+const QUEUED_MESSAGES_STORAGE_KEY = "codework:chat:queued-messages";
+type PersistedQueuedMessage = {
+  readonly threadKey: string;
+  readonly messageId: string;
+  readonly text: string;
+  readonly createdAt: string;
+};
+const PersistedQueuedMessageSchema = Schema.Struct({
+  threadKey: Schema.String,
+  messageId: Schema.String,
+  text: Schema.String,
+  createdAt: Schema.String,
+});
+const PersistedQueuedMessagesSchema = Schema.Array(PersistedQueuedMessageSchema);
+const EMPTY_QUEUED_MESSAGES: PersistedQueuedMessage[] = [];
+interface QueuedTurnSubmission {
+  readonly environmentId: EnvironmentId;
+  readonly input: StartThreadTurnInput;
+  readonly createdAt: string;
+  readonly images: ReadonlyArray<ComposerImageAttachment>;
+}
 function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
   const transitionGroupRef = useRef<HTMLDivElement | null>(null);
   const composerAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -1463,6 +1487,18 @@ function ChatViewContent(props: ChatViewProps) {
   const [localMessagePresentations, setLocalMessagePresentations] = useState<
     Record<string, ChatMessagePresentation>
   >({});
+  const [queuedMessageRecords, setQueuedMessageRecords] = useLocalStorage(
+    QUEUED_MESSAGES_STORAGE_KEY,
+    EMPTY_QUEUED_MESSAGES,
+    PersistedQueuedMessagesSchema,
+  );
+  const [queuedTurnSubmissions, setQueuedTurnSubmissions] = useState<QueuedTurnSubmission[]>([]);
+  const queuedTurnSubmissionsRef = useRef(queuedTurnSubmissions);
+  queuedTurnSubmissionsRef.current = queuedTurnSubmissions;
+  const queuedTurnDispatchRef = useRef<{
+    readonly messageId: MessageId;
+    readonly createdAt: string;
+  } | null>(null);
   const [feedbackSubmissionsByThreadKey, setFeedbackSubmissionsByThreadKey] = useState<
     Record<string, ReadonlyArray<CodexFeedbackSubmission>>
   >({});
@@ -2416,18 +2452,21 @@ function ChatViewContent(props: ChatViewProps) {
     const rounds = new Set(
       threadActivities.flatMap((activity) => (activity.turnId ? [activity.turnId] : [])),
     ).size;
-    const steps = turnPlans.reduce((total, plan) => total + plan.plan.steps.length, 0);
     return {
       rounds,
-      steps,
+      steps: deriveModelResponseCount(threadActivities),
       llmDurationMs: activeContextWindow?.durationMs ?? null,
       toolDurationMs: deriveToolDurationMs(threadActivities),
       cacheHitRate: deriveCacheHitRate(activeContextWindow),
       inputTokens: activeContextWindow?.inputTokens ?? activeContextWindow?.lastInputTokens ?? null,
       outputTokens:
         activeContextWindow?.outputTokens ?? activeContextWindow?.lastOutputTokens ?? null,
+      reasoningOutputTokens:
+        activeContextWindow?.reasoningOutputTokens ??
+        activeContextWindow?.lastReasoningOutputTokens ??
+        null,
     };
-  }, [activeContextWindow, threadActivities, turnPlans]);
+  }, [activeContextWindow, threadActivities]);
   // Native subagent fold: memoized by activity-list identity, shared by the
   // Agents surface, live strip, and workflow cards. v2Projection is null
   // until orchestration-v2 lands (source precedence lives in the derive).
@@ -2797,16 +2836,69 @@ function ChatViewContent(props: ChatViewProps) {
     localMessagePresentations,
     optimisticUserMessages,
   ]);
+  const queuedMessagesForThread = useMemo(
+    () => queuedMessageRecords.filter((message) => message.threadKey === routeThreadKey),
+    [queuedMessageRecords, routeThreadKey],
+  );
+  const queuedMessageIds = useMemo(
+    () => new Set(queuedMessagesForThread.map((message) => message.messageId)),
+    [queuedMessagesForThread],
+  );
+  const conversationTimelineMessages = useMemo(
+    () => timelineMessages.filter((message) => !queuedMessageIds.has(String(message.id))),
+    [queuedMessageIds, timelineMessages],
+  );
+  const queuedMessagesForComposer = useMemo(
+    () => queuedMessagesForThread.map(({ messageId, text }) => ({ id: messageId, text })),
+    [queuedMessagesForThread],
+  );
+  useEffect(() => {
+    if (threadDetailLoading || activeThread === undefined || queuedMessagesForThread.length === 0) {
+      return;
+    }
+    const sessionStatus = activeThread.session?.status;
+    const latestTurnRequestedAt = activeThread.latestTurn?.requestedAt ?? null;
+    const shouldClearQueue =
+      (sessionStatus !== "running" && sessionStatus !== "starting") ||
+      (latestTurnRequestedAt !== null &&
+        queuedMessagesForThread.some((message) => latestTurnRequestedAt >= message.createdAt));
+    if (!shouldClearQueue) return;
+    setQueuedMessageRecords((existing) => {
+      const locallyQueuedMessageIds = new Set(
+        queuedTurnSubmissions.map((submission) => String(submission.input.message.messageId)),
+      );
+      const next = existing.filter((message) => {
+        if (message.threadKey !== routeThreadKey) return true;
+        if (locallyQueuedMessageIds.has(message.messageId)) return true;
+        if (sessionStatus !== "running" && sessionStatus !== "starting") return false;
+        return latestTurnRequestedAt === null || latestTurnRequestedAt < message.createdAt;
+      });
+      return next.length === existing.length ? existing : next;
+    });
+  }, [
+    activeThread,
+    queuedMessagesForThread,
+    queuedTurnSubmissions,
+    routeThreadKey,
+    setQueuedMessageRecords,
+    threadDetailLoading,
+  ]);
   const timelineEntries = useMemo(
     () =>
       deriveTimelineEntries(
-        timelineMessages,
+        conversationTimelineMessages,
         activeThread?.proposedPlans ?? [],
         workLogEntries,
         turnPlans,
         reasoningSummaries,
       ),
-    [activeThread?.proposedPlans, reasoningSummaries, timelineMessages, turnPlans, workLogEntries],
+    [
+      activeThread?.proposedPlans,
+      conversationTimelineMessages,
+      reasoningSummaries,
+      turnPlans,
+      workLogEntries,
+    ],
   );
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
@@ -4729,6 +4821,128 @@ function ChatViewContent(props: ChatViewProps) {
     if (activeThreadRef === null || activeThreadWokeAt === null) return;
     markThreadVisited(scopedThreadKey(activeThreadRef), activeThreadWokeAt);
   }, [activeThreadRef, activeThreadWokeAt, markThreadVisited]);
+  const onCancelQueuedMessage = useCallback(
+    (rawMessageId: string) => {
+      const queued = queuedTurnSubmissionsRef.current.find(
+        (submission) => String(submission.input.message.messageId) === rawMessageId,
+      );
+      if (queuedTurnDispatchRef.current?.messageId === queued?.input.message.messageId) return;
+      if (queued) {
+        const next = queuedTurnSubmissionsRef.current.filter((submission) => submission !== queued);
+        queuedTurnSubmissionsRef.current = next;
+        setQueuedTurnSubmissions(next);
+      }
+      setQueuedMessageRecords((existing) =>
+        existing.filter((message) => message.messageId !== rawMessageId),
+      );
+      setLocalMessagePresentations((existing) => {
+        if (!(rawMessageId in existing)) return existing;
+        const nextPresentations = { ...existing };
+        delete nextPresentations[rawMessageId];
+        return nextPresentations;
+      });
+      setOptimisticUserMessages((existing) => {
+        const removed = existing.filter((message) => String(message.id) === rawMessageId);
+        for (const message of removed) revokeUserMessagePreviewUrls(message);
+        return existing.filter((message) => String(message.id) !== rawMessageId);
+      });
+      if (supportsAttachmentUploads && queued) releaseAttachmentUploads(queued.images);
+    },
+    [setQueuedMessageRecords, supportsAttachmentUploads],
+  );
+  const onEditQueuedMessage = useCallback(
+    (rawMessageId: string) => {
+      // 与取消共用同一条守卫：已进入分发的消息不可再编辑，避免队列重发造成重复。
+      const queued = queuedTurnSubmissionsRef.current.find(
+        (submission) => String(submission.input.message.messageId) === rawMessageId,
+      );
+      if (queuedTurnDispatchRef.current?.messageId === queued?.input.message.messageId) return;
+      const record = queuedMessageRecords.find((message) => message.messageId === rawMessageId);
+      const text = record?.text ?? "";
+      onCancelQueuedMessage(rawMessageId);
+      if (text.trim().length === 0) return;
+      setComposerDraftPrompt(composerDraftTarget, text);
+      scheduleComposerFocus();
+    },
+    [
+      composerDraftTarget,
+      onCancelQueuedMessage,
+      queuedMessageRecords,
+      scheduleComposerFocus,
+      setComposerDraftPrompt,
+    ],
+  );
+  useEffect(() => {
+    const dispatching = queuedTurnDispatchRef.current;
+    if (dispatching !== null) {
+      const latestTurnRequestedAt = activeThread?.latestTurn?.requestedAt ?? null;
+      if (
+        phase === "running" ||
+        (latestTurnRequestedAt !== null && latestTurnRequestedAt >= dispatching.createdAt)
+      ) {
+        queuedTurnDispatchRef.current = null;
+      } else {
+        return;
+      }
+    }
+    if (phase === "running" || phase === "connecting" || activeThread === undefined) return;
+    const queued = queuedTurnSubmissions.find(
+      (submission) =>
+        submission.environmentId === environmentId && submission.input.threadId === activeThread.id,
+    );
+    if (!queued) return;
+
+    const messageId = queued.input.message.messageId;
+    queuedTurnDispatchRef.current = { messageId, createdAt: queued.createdAt };
+    beginLocalDispatch({ preparingWorktree: false });
+    void startThreadTurn({ environmentId: queued.environmentId, input: queued.input }).then(
+      (result) => {
+        if (result._tag === "Failure") {
+          queuedTurnDispatchRef.current = null;
+          resetLocalDispatch();
+          if (!isAtomCommandInterrupted(result)) {
+            const error = squashAtomCommandFailure(result);
+            setThreadError(
+              queued.input.threadId,
+              error instanceof Error ? error.message : t("composer.failedToSendMessage"),
+            );
+          }
+          setOptimisticUserMessages((existing) => {
+            const removed = existing.filter((message) => message.id === messageId);
+            for (const message of removed) revokeUserMessagePreviewUrls(message);
+            return existing.filter((message) => message.id !== messageId);
+          });
+        } else {
+          if (supportsAttachmentUploads) releaseAttachmentUploads(queued.images);
+          acknowledgeActiveThreadWoke();
+        }
+        setQueuedTurnSubmissions((existing) =>
+          existing.filter((submission) => submission.input.message.messageId !== messageId),
+        );
+        setQueuedMessageRecords((existing) =>
+          existing.filter((message) => message.messageId !== String(messageId)),
+        );
+        setLocalMessagePresentations((existing) => {
+          if (!(messageId in existing)) return existing;
+          const next = { ...existing };
+          delete next[messageId];
+          return next;
+        });
+      },
+    );
+  }, [
+    acknowledgeActiveThreadWoke,
+    activeThread,
+    beginLocalDispatch,
+    environmentId,
+    phase,
+    queuedTurnSubmissions,
+    resetLocalDispatch,
+    setQueuedMessageRecords,
+    setThreadError,
+    startThreadTurn,
+    supportsAttachmentUploads,
+  ]);
   // Mirror of the sidebar's Woke pill for the open thread. It uses the same
   // visit comparison and change request settle rule.
   const activeThreadLastVisitedAt = useUiStateStore((store) =>
@@ -5993,13 +6207,30 @@ function ChatViewContent(props: ChatViewProps) {
       void dockTransition.catch(() => resolveDockStarted?.());
       await dockStarted;
     }
-    beginLocalDispatch({
-      preparingWorktree: Boolean(baseBranchForWorktree),
-      submissionIntent: resolvedSubmissionIntent,
-    });
+    if (localPresentation?.kind !== "queue") {
+      beginLocalDispatch({
+        preparingWorktree: Boolean(baseBranchForWorktree),
+        submissionIntent: resolvedSubmissionIntent,
+      });
+    }
 
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
+    if (localPresentation?.kind === "queue") {
+      setQueuedMessageRecords((existing) =>
+        existing.some((message) => message.messageId === String(messageIdForSend))
+          ? existing
+          : [
+              ...existing,
+              {
+                threadKey: scopedThreadKey(scopeThreadRef(environmentId, threadIdForSend)),
+                messageId: String(messageIdForSend),
+                text: localPresentation.summary,
+                createdAt: messageCreatedAt,
+              },
+            ],
+      );
+    }
     const turnAttachmentsPromise = Promise.all(
       composerImagesSnapshot.map(async (image) => {
         if (supportsAttachmentUploads) {
@@ -6178,94 +6409,112 @@ function ChatViewContent(props: ChatViewProps) {
                 : {}),
             }
           : undefined;
-      beginLocalDispatch({ preparingWorktree: false });
+      if (localPresentation?.kind !== "queue") {
+        beginLocalDispatch({ preparingWorktree: false });
+      }
       const backgroundThreadRef =
         resolvedSubmissionIntent === "background" && isLocalDraftThread
           ? scopeThreadRef(activeThread.environmentId, threadIdForSend)
           : null;
-      if (backgroundThreadRef) {
-        beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
-      }
-      const startResult = await startThreadTurn({
-        environmentId,
-        input: {
-          threadId: threadIdForSend,
-          message: {
-            messageId: messageIdForSend,
-            role: "user",
-            text: outgoingMessageText,
-            attachments: turnAttachmentsResult.value,
-          },
-          modelSelection: ctxSelectedModelSelection,
-          titleSeed: title,
-          runtimeMode,
-          interactionMode,
-          ...(bootstrap ? { bootstrap } : {}),
-          createdAt: messageCreatedAt,
+      const turnStartInput: StartThreadTurnInput = {
+        threadId: threadIdForSend,
+        message: {
+          messageId: messageIdForSend,
+          role: "user",
+          text: outgoingMessageText,
+          attachments: turnAttachmentsResult.value,
         },
-      });
-      if (startResult._tag === "Failure") {
-        if (backgroundThreadRef) {
-          clearBackgroundDraftSubmissionByRef(backgroundThreadRef);
-        }
-        failure = startResult;
-      } else {
+        modelSelection: ctxSelectedModelSelection,
+        titleSeed: title,
+        runtimeMode,
+        interactionMode,
+        ...(bootstrap ? { bootstrap } : {}),
+        createdAt: messageCreatedAt,
+      };
+      if (localPresentation?.kind === "queue") {
+        setQueuedTurnSubmissions((existing) => [
+          ...existing,
+          {
+            environmentId,
+            input: turnStartInput,
+            createdAt: messageCreatedAt,
+            images: composerImagesSnapshot,
+          },
+        ]);
         turnStartSucceeded = true;
-        if (supportsAttachmentUploads) {
-          releaseAttachmentUploads(composerImagesSnapshot);
-        }
-        acknowledgeActiveThreadWoke();
+      } else {
         if (backgroundThreadRef) {
-          markPromotedDraftThreadByRef(backgroundThreadRef);
-          try {
-            const nextDraft = await handleNewThread(
-              scopeProjectRef(activeProject.environmentId, activeProject.id),
-              resolveBackgroundDraftWorkspaceOptions({
-                envMode: sendEnvMode,
-                branch: activeThreadBranch,
-                startFromOrigin,
-              }),
-            );
-            if (nextDraft) {
-              finalizePromotedDraftThreadByRef(backgroundThreadRef);
-              toastManager.add(
-                stackedThreadToast({
-                  type: "success",
-                  title: t("startedInBackground"),
-                  timeout: 5_000,
-                  actionProps: {
-                    children: t("open"),
-                    onClick: () => {
-                      void navigate({
-                        to: "/$environmentId/$threadId",
-                        params: buildThreadRouteParams(backgroundThreadRef),
-                      });
-                    },
-                  },
-                }),
-              );
-            } else {
-              clearBackgroundDraftSubmissionByRef(backgroundThreadRef);
-            }
-          } catch (error) {
+          beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
+        }
+        const startResult = await startThreadTurn({ environmentId, input: turnStartInput });
+        if (startResult._tag === "Failure") {
+          if (backgroundThreadRef) {
             clearBackgroundDraftSubmissionByRef(backgroundThreadRef);
-            resetLocalDispatch();
+          }
+          failure = startResult;
+        } else {
+          turnStartSucceeded = true;
+          if (supportsAttachmentUploads) {
+            releaseAttachmentUploads(composerImagesSnapshot);
+          }
+          acknowledgeActiveThreadWoke();
+        }
+      }
+      if (turnStartSucceeded && backgroundThreadRef) {
+        markPromotedDraftThreadByRef(backgroundThreadRef);
+        try {
+          const nextDraft = await handleNewThread(
+            scopeProjectRef(activeProject.environmentId, activeProject.id),
+            resolveBackgroundDraftWorkspaceOptions({
+              envMode: sendEnvMode,
+              branch: activeThreadBranch,
+              startFromOrigin,
+            }),
+          );
+          if (nextDraft) {
+            finalizePromotedDraftThreadByRef(backgroundThreadRef);
             toastManager.add(
               stackedThreadToast({
-                type: "warning",
-                title: t("taskStartedInTheBackground"),
-                description:
-                  error instanceof Error
-                    ? t("couldNotOpenAFreshComposer", { message: error.message })
-                    : t("couldNotOpenAFreshComposer2"),
+                type: "success",
+                title: t("startedInBackground"),
+                timeout: 5_000,
+                actionProps: {
+                  children: t("open"),
+                  onClick: () => {
+                    void navigate({
+                      to: "/$environmentId/$threadId",
+                      params: buildThreadRouteParams(backgroundThreadRef),
+                    });
+                  },
+                },
               }),
             );
+          } else {
+            clearBackgroundDraftSubmissionByRef(backgroundThreadRef);
           }
+        } catch (error) {
+          clearBackgroundDraftSubmissionByRef(backgroundThreadRef);
+          resetLocalDispatch();
+          toastManager.add(
+            stackedThreadToast({
+              type: "warning",
+              title: t("taskStartedInTheBackground"),
+              description:
+                error instanceof Error
+                  ? t("couldNotOpenAFreshComposer", { message: error.message })
+                  : t("couldNotOpenAFreshComposer2"),
+            }),
+          );
         }
       }
     }
 
     if (failure !== null) {
+      if (localPresentation?.kind === "queue") {
+        setQueuedMessageRecords((existing) =>
+          existing.filter((message) => message.messageId !== String(messageIdForSend)),
+        );
+      }
       if (
         promptRef.current.length === 0 &&
         composerImagesRef.current.length === 0 &&
@@ -7817,6 +8066,9 @@ function ChatViewContent(props: ChatViewProps) {
                             activeThreadId={activeThreadId}
                             activeThreadEnvironmentId={activeThread?.environmentId}
                             activeThread={activeThread}
+                            queuedMessages={queuedMessagesForComposer}
+                            onCancelQueuedMessage={onCancelQueuedMessage}
+                            onEditQueuedMessage={onEditQueuedMessage}
                             isServerThread={isServerThread}
                             isLocalDraftThread={isLocalDraftThread}
                             forceExpandedOnMobile={forceExpandedMobileComposer && isDraftHeroState}

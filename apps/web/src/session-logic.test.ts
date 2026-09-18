@@ -25,6 +25,7 @@ import {
   workEntryIndicatesToolFailure,
   workEntryIndicatesToolNeutralStatus,
   workEntryIndicatesToolSuccess,
+  type ReasoningSummaryEntry,
 } from "./session-logic";
 
 let nextActivityId = 0;
@@ -2035,6 +2036,37 @@ describe("deriveTimelineEntries", () => {
         implementationThreadId: null,
       },
     });
+  });
+
+  it("相邻的思考摘要聚合成一组，被工具行隔开后各自成组", () => {
+    const makeSummary = (id: string, createdAt: string, text: string): ReasoningSummaryEntry => ({
+      id,
+      createdAt,
+      turnId: TurnId.make("turn-1"),
+      text,
+    });
+    const entries = deriveTimelineEntries(
+      [],
+      [],
+      [{ id: "work-1", createdAt: "2026-02-23T00:00:03.000Z", label: "Ran tests", tone: "tool" }],
+      [],
+      [
+        makeSummary("reasoning-summary:turn-1:0", "2026-02-23T00:00:01.000Z", "先想第一步。"),
+        makeSummary("reasoning-summary:turn-1:1", "2026-02-23T00:00:02.000Z", "再验证一步。"),
+        makeSummary("reasoning-summary:turn-1:2", "2026-02-23T00:00:04.000Z", "换个思路。"),
+      ],
+    );
+
+    expect(entries.map((entry) => entry.kind)).toEqual([
+      "reasoning-summary",
+      "work",
+      "reasoning-summary",
+    ]);
+    expect(entries[0]).toMatchObject({
+      id: "reasoning-summary:turn-1:0",
+      summaries: [{ text: "先想第一步。" }, { text: "再验证一步。" }],
+    });
+    expect(entries[2]).toMatchObject({ summaries: [{ text: "换个思路。" }] });
   });
 });
 

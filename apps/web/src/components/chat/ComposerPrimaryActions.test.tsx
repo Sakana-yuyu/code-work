@@ -16,6 +16,7 @@ vi.mock("../SidebarStageBackdrop", () => ({
 }));
 
 import { ComposerPrimaryActions, formatPendingPrimaryActionLabel } from "./ComposerPrimaryActions";
+import { QueuedMessagesPanel } from "./ChatComposer";
 import { t } from "~/i18n";
 
 function renderPendingActions(isRunning: boolean) {
@@ -47,12 +48,13 @@ function renderPendingActions(isRunning: boolean) {
   );
 }
 
-function renderStandaloneStop() {
+function renderStandaloneStop(isInterrupting = false) {
   return renderToStaticMarkup(
     createElement(ComposerPrimaryActions, {
       compact: true,
       pendingAction: null,
       isRunning: true,
+      isInterrupting,
       showPlanFollowUpPrompt: false,
       promptHasText: false,
       isSendBusy: false,
@@ -212,6 +214,22 @@ describe("formatPendingPrimaryActionLabel", () => {
   });
 });
 
+describe("QueuedMessagesPanel", () => {
+  it("offers immediate cancellation and editing for every queued message", () => {
+    const markup = renderToStaticMarkup(
+      createElement(QueuedMessagesPanel, {
+        messages: [{ id: "queued-1", text: "queued task" }],
+        onEdit: () => {},
+        onCancel: () => {},
+      }),
+    );
+
+    expect(markup).toContain("queued task");
+    expect(markup).toContain(`aria-label="${t("chat.cancelQueuedMessage")}"`);
+    expect(markup).toContain(`aria-label="${t("chat.editQueuedMessage")}"`);
+  });
+});
+
 describe("ComposerPrimaryActions", () => {
   it("disables and labels the send button while feedback is uploading", () => {
     const markup = renderSendButton("Sending feedback");
@@ -226,6 +244,13 @@ describe("ComposerPrimaryActions", () => {
 
   it("does not offer Stop generation for a pending request without a running turn", () => {
     expect(renderPendingActions(false)).not.toContain(`aria-label="${t("stopGeneration")}"`);
+  });
+
+  it("shows immediate stopping feedback and disables repeated interruption", () => {
+    const markup = renderStandaloneStop(true);
+
+    expect(markup).toContain(`aria-label="${t("stopping")}"`);
+    expect(markup).toContain("disabled");
   });
 
   it("matches the small pending action size without changing the standalone size", () => {
