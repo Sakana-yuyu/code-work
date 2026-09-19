@@ -46,6 +46,8 @@ export const COMPOSITION_AGENT_LOOP_MIN_CONTEXT_MESSAGES = 3;
 export const COMPOSITION_AGENT_LOOP_MAX_CONTEXT_MESSAGES = 65;
 export const COMPOSITION_AGENT_LOOP_MIN_TOOL_RESULT_CHARS = 160;
 export const COMPOSITION_AGENT_LOOP_MAX_TOOL_RESULT_CHARS = 120_000;
+export const COMPOSITION_AGENT_LOOP_MIN_CONTEXT_CHARS = 1_000;
+export const COMPOSITION_AGENT_LOOP_MAX_CONTEXT_CHARS = 100_000_000;
 
 /** 显式启动 BYOK Agent Loop 的 RPC 输入，不改变旧文本会话语义。 */
 export const CompositionAgentLoopRunRequest = Schema.Struct({
@@ -64,6 +66,12 @@ export const CompositionAgentLoopRunRequest = Schema.Struct({
     PositiveInt.check(
       Schema.isGreaterThanOrEqualTo(COMPOSITION_AGENT_LOOP_MIN_CONTEXT_MESSAGES),
       Schema.isLessThanOrEqualTo(COMPOSITION_AGENT_LOOP_MAX_CONTEXT_MESSAGES),
+    ),
+  ),
+  maxContextChars: Schema.optional(
+    PositiveInt.check(
+      Schema.isGreaterThanOrEqualTo(COMPOSITION_AGENT_LOOP_MIN_CONTEXT_CHARS),
+      Schema.isLessThanOrEqualTo(COMPOSITION_AGENT_LOOP_MAX_CONTEXT_CHARS),
     ),
   ),
   maxToolResultChars: Schema.optional(

@@ -1681,6 +1681,21 @@ describe("composition contracts", () => {
         maxToolResultChars: 120_001,
       }),
     ).toThrow();
+    expect(
+      decodeAgentLoopRunRequest({ ...decoded, maxContextChars: 400_000 }).maxContextChars,
+    ).toBe(400_000);
+    expect(() =>
+      decodeAgentLoopRunRequest({
+        ...decoded,
+        maxContextChars: 999,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeAgentLoopRunRequest({
+        ...decoded,
+        maxContextChars: 100_000_001,
+      }),
+    ).toThrow();
     expect(decodeAgentLoopRunResult({ text: "完成", rounds: 1 }).rounds).toBe(1);
   });
 

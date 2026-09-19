@@ -29,6 +29,7 @@ export type CompositionAgentServiceInput = {
   readonly tools: ReadonlyArray<ByokAgentTool>;
   readonly maxRounds?: number | undefined;
   readonly maxContextMessages?: number | undefined;
+  readonly maxContextChars?: number | undefined;
   readonly maxToolResultChars?: number | undefined;
   readonly onTextCheckpoint?: ByokAgentLoopInput["onTextCheckpoint"];
   readonly signal?: AbortSignal | undefined;
@@ -121,6 +122,9 @@ const make = (options: CompositionAgentServiceOptions): CompositionAgentServiceS
           ...(input.maxContextMessages === undefined
             ? {}
             : { maxContextMessages: input.maxContextMessages }),
+          ...(input.maxContextChars === undefined
+            ? {}
+            : { maxContextChars: input.maxContextChars }),
           ...(input.maxToolResultChars === undefined
             ? {}
             : { maxToolResultChars: input.maxToolResultChars }),

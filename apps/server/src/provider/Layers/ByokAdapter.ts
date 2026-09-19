@@ -168,6 +168,12 @@ const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 /** Rough chars-per-token estimate used to bound the replayed history. */
 const BYOK_HISTORY_CHARS_PER_TOKEN = 4;
 
+/**
+ * 主线程 agent loop 的上下文预算占模型窗口的比例：预算内全量重放让
+ * prompt cache 前缀跨轮稳定，只有逼近窗口上限才整体裁剪一次。
+ */
+const BYOK_CONTEXT_BUDGET_RATIO = 0.8;
+
 /** Rough replay cost of one inline image (≈1k tokens) for history fitting. */
 const BYOK_IMAGE_CHARS_ESTIMATE = 4_000;
 
@@ -835,6 +841,15 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       ]
         .filter((part) => part.trim().length > 0)
         .join("\n\n");
+      // 窗口未知的模型拿不到可靠预算，退回 loop 内按条数的滑窗。
+      const contextCharsBudget =
+        Number.isSafeInteger(adapter.contextWindowTokens) && adapter.contextWindowTokens > 0
+          ? Math.floor(
+              adapter.contextWindowTokens *
+                BYOK_HISTORY_CHARS_PER_TOKEN *
+                BYOK_CONTEXT_BUDGET_RATIO,
+            )
+          : undefined;
       const outcome = yield* Effect.exit(
         runByokAgentLoop(
           {
@@ -850,6 +865,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             ),
             tools: projectTools,
             runtimeMode,
+            ...(contextCharsBudget === undefined ? {} : { maxContextChars: contextCharsBudget }),
             onTextCheckpoint: (checkpoint) =>
               Effect.gen(function* () {
                 appendTurnItem(ctx, turnId, { type: "text", text: checkpoint.delta });

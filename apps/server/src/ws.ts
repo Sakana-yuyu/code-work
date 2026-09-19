@@ -2453,6 +2453,9 @@ const makeWsRpcLayer = (
                     ...(input.maxContextMessages === undefined
                       ? {}
                       : { maxContextMessages: input.maxContextMessages }),
+                    ...(input.maxContextChars === undefined
+                      ? {}
+                      : { maxContextChars: input.maxContextChars }),
                     ...(input.maxToolResultChars === undefined
                       ? {}
                       : { maxToolResultChars: input.maxToolResultChars }),

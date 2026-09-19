@@ -593,6 +593,155 @@ describe("ByokAgentLoop", () => {
     }),
   );
 
+  it.effect("字符预算内全量重放且请求前缀跨轮稳定", () =>
+    Effect.gen(function* () {
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.succeed({
+            ...makeResult(input),
+            result: { contents: `result-${input.toolCallId}` },
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          modelInputs.push(input);
+          return input.turn === 5
+            ? Stream.fromIterable([
+                { type: "text_delta" as const, text: "done" },
+                { type: "model_completed" as const },
+              ])
+            : Stream.fromIterable([
+                {
+                  type: "tool_call" as const,
+                  toolCallId: `call-${input.turn}`,
+                  canonicalToolName: "workspace.read_file",
+                  arguments: { relativePath: `file-${input.turn}.txt` },
+                },
+                { type: "model_completed" as const },
+              ]);
+        },
+      };
+
+      const result = yield* runByokAgentLoop(
+        { ...baseInput, maxContextChars: 100_000 },
+        model,
+        broker,
+      );
+
+      expect(result.text).toBe("done");
+      expect(result.rounds).toBe(5);
+      expect(modelInputs.map((input) => input.messages.length)).toEqual([1, 3, 5, 7, 9]);
+      for (let index = 1; index < modelInputs.length; index += 1) {
+        const previous = modelInputs[index - 1]?.messages ?? [];
+        const next = modelInputs[index]?.messages ?? [];
+        expect(next.slice(0, previous.length)).toEqual(previous);
+      }
+    }),
+  );
+
+  it.effect("超过字符预算时整体裁剪一次保留最近轮次，预算内不再逐轮滑动", () =>
+    Effect.gen(function* () {
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.succeed({
+            ...makeResult(input),
+            result: { contents: "x".repeat(4_000) },
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          modelInputs.push(input);
+          return input.turn === 5
+            ? Stream.fromIterable([
+                { type: "text_delta" as const, text: "done" },
+                { type: "model_completed" as const },
+              ])
+            : Stream.fromIterable([
+                {
+                  type: "tool_call" as const,
+                  toolCallId: `call-${input.turn}`,
+                  canonicalToolName: "workspace.read_file",
+                  arguments: { relativePath: `file-${input.turn}.txt` },
+                },
+                { type: "model_completed" as const },
+              ]);
+        },
+      };
+
+      const result = yield* runByokAgentLoop(
+        { ...baseInput, maxContextChars: 10_000 },
+        model,
+        broker,
+      );
+
+      expect(result.text).toBe("done");
+      // 前三轮预算内全量重放；第四轮超过 10_000 字符触发整体裁剪。
+      expect(modelInputs.map((input) => input.messages.length)).toEqual([1, 3, 5, 3, 5]);
+      const compacted = modelInputs[3]?.messages ?? [];
+      expect(compacted[0]).toEqual({ role: "user", content: baseInput.prompt });
+      expect(
+        compacted
+          .filter((message) => message.role === "tool")
+          .map((message) => (message.role === "tool" ? message.toolCallId : "")),
+      ).toEqual(["call-3"]);
+      // 裁剪后的新前缀保持稳定并继续增长，而不是每轮再滑。
+      const afterCompaction = modelInputs[4]?.messages ?? [];
+      expect(afterCompaction.slice(0, compacted.length)).toEqual(compacted);
+      expect(
+        afterCompaction
+          .filter((message) => message.role === "tool")
+          .map((message) => (message.role === "tool" ? message.toolCallId : "")),
+      ).toEqual(["call-3", "call-4"]);
+    }),
+  );
+
+  it.effect("字符预算小于单个工具轮次时仍至少保留最近一轮", () =>
+    Effect.gen(function* () {
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.succeed({
+            ...makeResult(input),
+            result: { contents: "x".repeat(4_000) },
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          modelInputs.push(input);
+          return input.turn === 3
+            ? Stream.fromIterable([
+                { type: "text_delta" as const, text: "done" },
+                { type: "model_completed" as const },
+              ])
+            : Stream.fromIterable([
+                {
+                  type: "tool_call" as const,
+                  toolCallId: `call-${input.turn}`,
+                  canonicalToolName: "workspace.read_file",
+                  arguments: { relativePath: `file-${input.turn}.txt` },
+                },
+                { type: "model_completed" as const },
+              ]);
+        },
+      };
+
+      const result = yield* runByokAgentLoop({ ...baseInput, maxContextChars: 500 }, model, broker);
+
+      expect(result.text).toBe("done");
+      const secondCall = modelInputs[1]?.messages ?? [];
+      expect(secondCall).toHaveLength(3);
+      expect(secondCall[0]).toEqual({ role: "user", content: baseInput.prompt });
+      expect(
+        secondCall.some((message) => message.role === "tool" && message.toolCallId === "call-1"),
+      ).toBe(true);
+    }),
+  );
+
   it.effect("超长成功工具结果会被裁剪为有界且有效的 JSON", () =>
     Effect.gen(function* () {
       const maxToolResultChars = 160;

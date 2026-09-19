@@ -323,4 +323,64 @@ describe("CompositionAgentService", () => {
       }
     }),
   );
+
+  effectIt.effect("把字符上下文预算传递给 BYOK Loop 并触发整体裁剪", () =>
+    Effect.gen(function* () {
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
+      const loopModel: ByokAgentModelDriver = {
+        complete: (modelInput) => {
+          modelInputs.push(modelInput);
+          return modelInput.turn === 2
+            ? Stream.fromIterable([
+                { type: "text_delta" as const, text: "完成" },
+                { type: "model_completed" as const },
+              ])
+            : Stream.fromIterable([
+                {
+                  type: "tool_call" as const,
+                  toolCallId: `call-chars-${modelInput.turn}`,
+                  canonicalToolName: "workspace.read_file",
+                  arguments: { relativePath: `file-${modelInput.turn}.txt` },
+                },
+                { type: "model_completed" as const },
+              ]);
+        },
+      };
+      const broker: ToolBroker.ToolBroker["Service"] = {
+        invoke: (brokerInput) =>
+          Effect.succeed({
+            invocationId: `invocation-${brokerInput.toolCallId}`,
+            taskId: brokerInput.taskId,
+            runId: brokerInput.runId,
+            toolCallId: brokerInput.toolCallId,
+            canonicalToolName: brokerInput.canonicalToolName,
+            status: "succeeded" as const,
+            result: { contents: "x".repeat(2_000) },
+          }),
+        cancel: () => Effect.void,
+      };
+      const service = makeCompositionAgentService({
+        broker,
+        resolveModelDriver: () => Effect.succeed(loopModel),
+      });
+
+      const result = yield* service.run({
+        ...input,
+        tools: [
+          {
+            canonicalToolName: "workspace.read_file",
+            description: "读取文件",
+            parameters: { type: "object" },
+          },
+        ],
+        maxContextChars: 500,
+      });
+      const secondCall = modelInputs[1]?.messages ?? [];
+
+      expect(result.text).toBe("完成");
+      // 条数滑窗缺省不会裁 5 条消息；字符预算 500 在第二次调用前触发裁剪。
+      expect(secondCall).toHaveLength(3);
+      expect(secondCall[0]).toEqual({ role: "user", content: input.prompt });
+    }),
+  );
 });

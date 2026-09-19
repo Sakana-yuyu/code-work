@@ -124,6 +124,12 @@ export type ByokAgentLoopInput = {
   readonly tools: ReadonlyArray<ByokAgentTool>;
   /** 兼容旧调用方；BYOK Loop 不再按模型轮数截断。 */
   readonly maxRounds?: number;
+  /**
+   * 按字符数计的上下文预算：预算内全量重放（prompt cache 前缀跨轮稳定），
+   * 超过时整体裁剪一次、保留最近完整工具轮次。主线程按模型上下文窗口的
+   * ~80% 传入；缺省时退回按条数的滑窗（子 agent 语义）。
+   */
+  readonly maxContextChars?: number;
   /** 包含初始用户消息；一个工具轮次按一条 assistant 消息加每个调用一条结果计算。 */
   readonly maxContextMessages?: number;
   /** 单条工具结果及参数纠错提示重新注入模型时允许的最大字符数。 */
@@ -160,6 +166,8 @@ const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.
 
 const DEFAULT_MAX_CONTEXT_MESSAGES = 17;
 const DEFAULT_MAX_TOOL_RESULT_CHARS = 12_000;
+/** 字符预算触发裁剪后把历史压回到预算的这一比例，留出增长空间以摊薄裁剪频率。 */
+const COMPACTION_RETAIN_RATIO = 0.5;
 const OUTPUT_TRUNCATION_CONTINUATION_PROMPT =
   "Continue exactly where the previous response stopped. Do not repeat prior text.";
 /** 断流后的同一模型轮次最多重连次数；普通错误不进入该路径。 */
@@ -232,6 +240,50 @@ const compactContextMessages = (
     if (round === undefined) continue;
     const size = 1 + round.toolMessages.length;
     if (used + size > budget) break;
+    retained.unshift(round.assistant, ...round.toolMessages);
+    used += size;
+  }
+  return [initial, ...retained];
+};
+
+/** 消息在请求里的近似字符开销：正文加思考回放与工具调用参数。 */
+const messageChars = (message: ByokAgentMessage): number => {
+  let size = message.content.length;
+  if (message.role !== "assistant") return size;
+  size += message.reasoningContent?.length ?? 0;
+  for (const toolCall of message.toolCalls ?? []) {
+    size += JSON.stringify(toolCall.arguments ?? {}).length + 64;
+  }
+  return size;
+};
+
+const historyChars = (messages: ReadonlyArray<ByokAgentMessage>): number =>
+  messages.reduce((sum, message) => sum + messageChars(message), 0);
+
+/**
+ * 字符预算触发的整体裁剪：预算内原样返回，超过时保留初始消息与最近的
+ * 完整工具轮次、压回预算的一半。与按条数滑窗不同，预算内不动历史——
+ * 请求前缀跨轮稳定，prompt cache 能持续命中；裁剪只在逼近模型窗口上限
+ * 时发生，之后前缀重新稳定，频率随窗口大小摊薄。
+ */
+const compactContextByChars = (
+  messages: ReadonlyArray<ByokAgentMessage>,
+  maxContextChars: number,
+): ReadonlyArray<ByokAgentMessage> => {
+  // 始终返回新数组：交给模型的数组是当轮快照，后续追加不得改写它。
+  if (historyChars(messages) <= maxContextChars) return [...messages];
+  const initial = messages[0];
+  if (initial?.role !== "user") return [...messages];
+  const retainChars = maxContextChars * COMPACTION_RETAIN_RATIO;
+  const retained: ByokAgentMessage[] = [];
+  let used = 0;
+  const rounds = collectToolRounds(messages);
+  for (let index = rounds.length - 1; index >= 0; index -= 1) {
+    const round = rounds[index];
+    if (round === undefined) continue;
+    const size = historyChars([round.assistant, ...round.toolMessages]);
+    // 最近一轮无条件保留：预算再小也不能让模型失去进行中的工作。
+    if (retained.length > 0 && used + size > retainChars) break;
     retained.unshift(round.assistant, ...round.toolMessages);
     used += size;
   }
@@ -329,6 +381,13 @@ export const runByokAgentLoop = (
       COMPOSITION_AGENT_LOOP_MIN_CONTEXT_MESSAGES,
       COMPOSITION_AGENT_LOOP_MAX_CONTEXT_MESSAGES,
     );
+    // 字符预算优先：设置时不再按条数滑窗，前缀稳定由预算内全量重放保证。
+    const contextCharsBudget =
+      input.maxContextChars !== undefined &&
+      Number.isFinite(input.maxContextChars) &&
+      input.maxContextChars >= 1
+        ? Math.trunc(input.maxContextChars)
+        : undefined;
     const maxToolResultChars = boundedInteger(
       input.maxToolResultChars,
       DEFAULT_MAX_TOOL_RESULT_CHARS,
@@ -350,7 +409,10 @@ export const runByokAgentLoop = (
     while (true) {
       rounds += 1;
 
-      const compactedMessages = compactContextMessages(messages, maxContextMessages);
+      const compactedMessages =
+        contextCharsBudget === undefined
+          ? compactContextMessages(messages, maxContextMessages)
+          : compactContextByChars(messages, contextCharsBudget);
       messages.splice(0, messages.length, ...compactedMessages);
       let modelMessages: ReadonlyArray<ByokAgentMessage> = compactedMessages;
       const modelStartedAt = yield* Clock.currentTimeMillis;
