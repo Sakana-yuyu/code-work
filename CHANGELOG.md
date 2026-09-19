@@ -7,6 +7,12 @@
 
 更早的历史版本见 [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases)。
 
+## 1.0.14
+
+### 修复
+
+- 修复 BYOK 长回合下缓存命中率极低的问题（实测仅三到五成）：主线程 agent loop 不再按固定条数逐轮滑动上下文，改为在模型上下文窗口约 80% 以内全量重放，请求前缀跨轮稳定、prompt cache 持续命中，仅在逼近窗口上限时整体裁剪一次；委派子代理维持原有滑窗行为。
+
 ## 1.0.13
 
 ### 新增
