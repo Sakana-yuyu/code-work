@@ -60,6 +60,26 @@ describe("anthropicMessagesToChatBody", () => {
     });
   });
 
+  it("maps anthropic adaptive thinking effort to chat reasoning_effort", () => {
+    const body = anthropicMessagesToChatBody(
+      {
+        model: "claude-x",
+        max_tokens: 256,
+        thinking: { type: "adaptive" },
+        output_config: { effort: "high" },
+        messages: [{ role: "user", content: "hi" }],
+      },
+      "deepseek-chat",
+    );
+    expect(body.reasoning_effort).toBe("high");
+
+    const withoutEffort = anthropicMessagesToChatBody(
+      { model: "claude-x", max_tokens: 256, messages: [{ role: "user", content: "hi" }] },
+      "deepseek-chat",
+    );
+    expect("reasoning_effort" in withoutEffort).toBe(false);
+  });
+
   it("maps tool_use and tool_result turns so chat round-trips keep call order", () => {
     const body = anthropicMessagesToChatBody(
       {

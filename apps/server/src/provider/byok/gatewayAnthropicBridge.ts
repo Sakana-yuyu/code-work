@@ -171,9 +171,12 @@ export const anthropicMessagesToChatBody = (body: unknown, modelId: string): Unk
 
     if (role === "assistant") {
       const text = textParts.join("");
+      // 严格端点对「null content 且无 tool_calls」的 assistant 消息会 400；
+      // 纯 thinking 的回合（thinking 块按设计丢弃）用空串保底。
+      const content = text.length > 0 ? text : toolCalls.length > 0 ? null : "";
       messages.push({
         role: "assistant",
-        ...(text.length > 0 ? { content: text } : { content: null }),
+        content,
         ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
       });
       continue;
@@ -222,6 +225,11 @@ export const anthropicMessagesToChatBody = (body: unknown, modelId: string): Unk
     ...(typeof request.max_tokens === "number" ? { max_tokens: request.max_tokens } : {}),
     ...(typeof request.temperature === "number" ? { temperature: request.temperature } : {}),
     ...(typeof request.top_p === "number" ? { top_p: request.top_p } : {}),
+    // Anthropic 思考强度（thinking:adaptive + output_config.effort）映射为
+    // chat 的 reasoning_effort，桥接渠道上的强度选择才不落空。
+    ...(isRecord(request.output_config) && typeof request.output_config.effort === "string"
+      ? { reasoning_effort: request.output_config.effort }
+      : {}),
     ...(stop !== undefined && stop.length > 0 ? { stop } : {}),
     ...(request.stream === true ? { stream: true } : {}),
   };
@@ -244,9 +252,11 @@ const chatStopReasonToAnthropic = (finish: unknown): string => {
 const chatUsageOf = (value: unknown): { input: number; output: number } => {
   if (!isRecord(value)) return { input: 0, output: 0 };
   const number = (entry: unknown): number => (typeof entry === "number" && entry > 0 ? entry : 0);
+  // 两种拼写（OpenAI / Anthropic 风格中转）取其一；同时回传两套字段的
+  // 上游若相加会双计。
   return {
-    input: number(value.prompt_tokens) + number(value.input_tokens),
-    output: number(value.completion_tokens) + number(value.output_tokens),
+    input: number(value.prompt_tokens) || number(value.input_tokens),
+    output: number(value.completion_tokens) || number(value.output_tokens),
   };
 };
 
@@ -299,6 +309,11 @@ export const estimateAnthropicPromptTokens = (body: unknown): number => {
     for (const block of blocksOf(entry.content)) {
       if (isRecord(block) && block.type === "tool_use") {
         chars += JSON.stringify(block.input ?? {}).length;
+        continue;
+      }
+      // tool_result 往往是上下文大头（工具输出原文），必须计入估算。
+      if (isRecord(block) && block.type === "tool_result") {
+        chars += toolResultText(block).length;
         continue;
       }
       chars += textBlockText(block).length;
