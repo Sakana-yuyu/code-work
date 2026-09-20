@@ -157,12 +157,7 @@ it.layer(TestLayer, { excludeTestServices: true })(
             ]),
         });
         const byokEvents = yield* Stream.runCollect(
-          Stream.take(
-            byokDriver.streamEvents!().pipe(
-              Stream.tap((event) => (event.type === "turn.completed" ? Effect.void : Effect.void)),
-            ),
-            3,
-          ),
+          Stream.take(byokDriver.streamEvents!(), 3),
         ).pipe(Effect.forkChild);
         yield* byokDriver.startTask({
           task: byokTask,

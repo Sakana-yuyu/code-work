@@ -299,14 +299,14 @@ const makeProjectionTurnRepository = Effect.gen(function* () {
       ),
     );
 
-  const replacePendingTurnStart: ProjectionTurnRepositoryShape["replacePendingTurnStart"] = (row) =>
+  const appendPendingTurnStart: ProjectionTurnRepositoryShape["appendPendingTurnStart"] = (row) =>
     // Appends one pending placeholder per queued turn start; a thread may hold
     // several queued messages at once, so insertion no longer clears siblings.
     insertPendingProjectionTurn(row).pipe(
       Effect.mapError(
         toPersistenceSqlOrDecodeError(
-          "ProjectionTurnRepository.replacePendingTurnStart:query",
-          "ProjectionTurnRepository.replacePendingTurnStart:encodeRequest",
+          "ProjectionTurnRepository.appendPendingTurnStart:query",
+          "ProjectionTurnRepository.appendPendingTurnStart:encodeRequest",
         ),
       ),
     );
@@ -392,7 +392,7 @@ const makeProjectionTurnRepository = Effect.gen(function* () {
 
   return {
     upsertByTurnId,
-    replacePendingTurnStart,
+    appendPendingTurnStart,
     getPendingTurnStartByThreadId,
     deletePendingTurnStartByThreadId,
     listPendingTurnStartsByThreadId,

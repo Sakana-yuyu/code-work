@@ -406,8 +406,10 @@ const make = Effect.gen(function* () {
   const threadModelSelections = new Map<string, ModelSelection>();
   const pendingTurnSends = new Map<ThreadId, number>();
   // Queued turn starts the user cancelled before the provider adopted them. The
-  // set lives for the process; the projection row is the durable record and is
-  // also checked right before send.
+  // set is process-lifetime only and covers the race window between the cancel
+  // event and the projection row delete; the cancel event deletes the pending
+  // row in the projection (ProjectionPipeline), so nothing survives restart to
+  // be re-sent from the read model.
   // ponytail: bounded FIFO set — a cancelled messageId is only needed until the
   // matching turn-start-requested reaches the send check; 1000 is far past any
   // realistic queue depth and prevents unbounded growth from orphaned cancels.

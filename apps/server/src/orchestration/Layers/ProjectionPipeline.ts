@@ -1205,7 +1205,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           return;
         }
         case "thread.turn-start-requested": {
-          yield* projectionTurnRepository.replacePendingTurnStart({
+          yield* projectionTurnRepository.appendPendingTurnStart({
             threadId: event.payload.threadId,
             messageId: event.payload.messageId,
             sourceProposedPlanThreadId: event.payload.sourceProposedPlan?.threadId ?? null,

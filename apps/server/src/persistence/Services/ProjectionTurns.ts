@@ -124,7 +124,7 @@ export interface ProjectionTurnRepositoryShape {
   /**
    * Replaces any existing pending-start placeholder rows for a thread with exactly one latest pending-start row.
    */
-  readonly replacePendingTurnStart: (
+  readonly appendPendingTurnStart: (
     row: ProjectionPendingTurnStart,
   ) => Effect.Effect<void, ProjectionRepositoryError>;
 
