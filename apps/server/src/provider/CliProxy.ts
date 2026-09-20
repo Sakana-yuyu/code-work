@@ -515,7 +515,7 @@ export const layer = Layer.effect(
     const fs = yield* FileSystem.FileSystem;
     // 用量持久化：启动水合，定时落盘脏快照，关闭时补一次。
     yield* fs.readFile(config.localPoolUsagePath).pipe(
-      Effect.catch(() => Effect.succeed(undefined)),
+      Effect.orElseSucceed(() => undefined),
       Effect.flatMap((bytes) => {
         const state =
           bytes === undefined

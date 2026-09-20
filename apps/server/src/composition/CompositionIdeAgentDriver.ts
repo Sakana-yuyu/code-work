@@ -257,11 +257,9 @@ export const makeCompositionIdeAgentDriver = (
         ],
       });
       if (!acceptedHandshake(handshake)) {
-        return yield* Effect.fail(
-          failure(
-            handshake.reasonCode ?? "ide_task_handshake_rejected",
-            "IDE session 未接受任务 bridge capability。",
-          ),
+        return yield* failure(
+          handshake.reasonCode ?? "ide_task_handshake_rejected",
+          "IDE session 未接受任务 bridge capability。",
         );
       }
 
@@ -297,13 +295,12 @@ export const makeCompositionIdeAgentDriver = (
         const runtimeTaskId = stringFrom(recordFrom(invocation)?.runtimeTaskId);
         const status = resultStatus(invocation);
         if (runtimeTaskId === undefined || status === undefined) {
-          return yield* Effect.fail(
-            failure("ide_task_start_result_invalid", "IDE task.start 返回值格式无效。"),
-          );
+          return yield* failure("ide_task_start_result_invalid", "IDE task.start 返回值格式无效。");
         }
         if (status === "already_terminal") {
-          return yield* Effect.fail(
-            failure("ide_task_already_terminal", "IDE task.start 返回任务已经处于终态。"),
+          return yield* failure(
+            "ide_task_already_terminal",
+            "IDE task.start 返回任务已经处于终态。",
           );
         }
         const binding = {
@@ -330,8 +327,9 @@ export const makeCompositionIdeAgentDriver = (
       const runtimeTaskId = input.run.runtimeTaskId ?? binding?.runtimeTaskId;
       const handshakeId = input.run.capabilityHandshakeId ?? binding?.handshakeId;
       if (runtimeTaskId === undefined || handshakeId === undefined) {
-        return yield* Effect.fail(
-          failure("ide_task_binding_missing", "IDE task 缺少 runtimeTaskId 或 handshakeId。"),
+        return yield* failure(
+          "ide_task_binding_missing",
+          "IDE task 缺少 runtimeTaskId 或 handshakeId。",
         );
       }
       const invocation = yield* options.registry
@@ -347,9 +345,7 @@ export const makeCompositionIdeAgentDriver = (
         .pipe(Effect.mapError((cause) => failure("ide_task_cancel_failed", errorDetail(cause))));
       const status = cancelStatus(invocation);
       if (status === undefined) {
-        return yield* Effect.fail(
-          failure("ide_task_cancel_result_invalid", "IDE task.cancel 返回值格式无效。"),
-        );
+        return yield* failure("ide_task_cancel_result_invalid", "IDE task.cancel 返回值格式无效。");
       }
       if (status !== "cancel_requested") activeRuns.delete(input.run.runId);
       return { status };

@@ -105,14 +105,11 @@ const follow = (
         return yield* Effect.fail(
           error("redirect_blocked", "The model catalog endpoint redirected too many times."),
         );
-      let target: URL;
-      try {
-        target = new URL(location, url);
-      } catch {
-        return yield* Effect.fail(
+      const target = yield* Effect.try({
+        try: () => new URL(location, url),
+        catch: () =>
           error("redirect_blocked", "The model catalog endpoint returned an invalid redirect."),
-        );
-      }
+      });
       if (target.protocol !== "http:" && target.protocol !== "https:")
         return yield* Effect.fail(
           error("redirect_blocked", "The model catalog redirect uses an unsupported protocol."),

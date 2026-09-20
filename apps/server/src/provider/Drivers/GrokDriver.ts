@@ -171,7 +171,9 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
           .readFileString(configFilePath)
           .pipe(
             Effect.catch((error) =>
-              error.reason._tag === "NotFound" ? Effect.succeed(undefined) : Effect.fail(error),
+              error.reason._tag === "NotFound"
+                ? Effect.succeed(undefined as string | undefined)
+                : Effect.fail(error),
             ),
           );
         if (existing === undefined && config.routeThroughByok !== true) return;

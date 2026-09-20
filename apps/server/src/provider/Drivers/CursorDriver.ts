@@ -137,7 +137,7 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
       > =>
         Effect.gen(function* () {
           const settings = yield* serverSettings.getSettings.pipe(
-            Effect.catch(() => Effect.succeed(undefined)),
+            Effect.orElseSucceed(() => undefined),
           );
           if (settings === undefined) return processEnv;
           const accountIds = settings.localAccountPool?.providerInstances[instanceId] ?? [];
@@ -150,7 +150,7 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
           ).pipe(
             // ACP 的 startSession 合约不携带账号池错误类型；令牌不可用时
             // 保留原生登录环境，让 Cursor 自己报告认证错误。
-            Effect.catch(() => Effect.succeed(undefined)),
+            Effect.orElseSucceed(() => undefined),
           );
           if (credential === undefined) return processEnv;
           return { ...processEnv, ...cursorCredentialEnvironment(credential) };

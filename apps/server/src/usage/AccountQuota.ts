@@ -293,7 +293,7 @@ export const layer = Layer.effectDiscard(
     const fs = yield* FileSystem.FileSystem;
     const config = yield* ServerConfig;
     yield* fs.readFile(config.accountQuotaPath).pipe(
-      Effect.catch(() => Effect.succeed(undefined)),
+      Effect.orElseSucceed(() => undefined),
       Effect.flatMap((bytes) => {
         const state =
           bytes === undefined

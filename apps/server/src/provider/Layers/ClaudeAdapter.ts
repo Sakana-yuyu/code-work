@@ -4722,7 +4722,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     for (const result of results) {
       if (result._tag === "Failure") {
-        return yield* Effect.fail(result.failure);
+        return yield* result.failure;
       }
     }
   });

@@ -180,8 +180,8 @@ export const make = Effect.gen(function* () {
   const SECRET_READ_CACHE_TTL_NANOS = 60_000_000_000n;
   const readCache = new Map<string, { value: Uint8Array; expiresAtNanos: bigint }>();
 
-  const get: ServerSecretStore["Service"]["get"] = (name) =>
-    Effect.gen(function* () {
+  const get: ServerSecretStore["Service"]["get"] = Effect.fn("ServerSecretStore.get")(
+    function* (name) {
       const cached = readCache.get(name);
       if (cached !== undefined) {
         const nowNanos = yield* Clock.currentTimeNanos;
@@ -211,7 +211,8 @@ export const make = Effect.gen(function* () {
         });
       }
       return read;
-    }).pipe(Effect.withSpan("ServerSecretStore.get"));
+    },
+  );
 
   const set: ServerSecretStore["Service"]["set"] = (name, value) => {
     const secretPath = resolveSecretPath(name);

@@ -639,7 +639,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           const description = yield* collectChatText(stream).pipe(
             Effect.timeoutOption(BYOK_VISION_IMAGE_TIMEOUT_MS),
             Effect.map((outcome) => (Option.isSome(outcome) ? outcome.value.trim() : "")),
-            Effect.catch(() => Effect.succeed("")),
+            Effect.orElseSucceed(() => ""),
           );
           texts.push(
             description.length === 0
@@ -833,55 +833,61 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       // 工具时间线行的发射器提出来共用：agent loop 的每个工具调用与文本抢救
       // 改道的 canvas.create 都走同一对 item.started/item.completed。
       const emitToolRowStarted = (toolCall: ByokAgentToolCall) =>
-        Effect.gen(function* () {
-          yield* emit({
-            ...(yield* makeEventStamp()),
-            type: "item.started",
-            provider: PROVIDER,
-            threadId: ctx.session.threadId,
-            turnId,
-            itemId: RuntimeItemId.make(toolCall.toolCallId),
-            payload: {
-              itemType: "mcp_tool_call",
-              status: "inProgress",
-              title: toolCall.canonicalToolName,
-              data: {
-                toolName: toolCall.canonicalToolName,
-                input: toolCall.arguments,
-              },
-            },
-          });
-        }).pipe(Effect.orDie);
-      const emitToolRowCompleted = (toolCall: ByokAgentToolCall, result: ToolBrokerResult) =>
-        Effect.gen(function* () {
-          yield* emit({
-            ...(yield* makeEventStamp()),
-            type: "item.completed",
-            provider: PROVIDER,
-            threadId: ctx.session.threadId,
-            turnId,
-            itemId: RuntimeItemId.make(toolCall.toolCallId),
-            payload: {
-              itemType: "mcp_tool_call",
-              status: result.status === "succeeded" ? "completed" : "failed",
-              title: toolCall.canonicalToolName,
-              data: {
-                toolName: toolCall.canonicalToolName,
-                input: toolCall.arguments,
-                ...(result.status === "succeeded" && result.result !== undefined
-                  ? { canvas: result.result }
-                  : {}),
-                result: {
-                  content: encodeUnknownJson(
-                    result.status === "succeeded"
-                      ? result.result
-                      : { errorCode: result.errorCode ?? "tool_failed" },
-                  ),
+        makeEventStamp().pipe(
+          Effect.flatMap((stamp) =>
+            emit({
+              ...stamp,
+              type: "item.started",
+              provider: PROVIDER,
+              threadId: ctx.session.threadId,
+              turnId,
+              itemId: RuntimeItemId.make(toolCall.toolCallId),
+              payload: {
+                itemType: "mcp_tool_call",
+                status: "inProgress",
+                title: toolCall.canonicalToolName,
+                data: {
+                  toolName: toolCall.canonicalToolName,
+                  input: toolCall.arguments,
                 },
               },
-            },
-          });
-        }).pipe(Effect.orDie);
+            }),
+          ),
+          Effect.orDie,
+        );
+      const emitToolRowCompleted = (toolCall: ByokAgentToolCall, result: ToolBrokerResult) =>
+        makeEventStamp().pipe(
+          Effect.flatMap((stamp) =>
+            emit({
+              ...stamp,
+              type: "item.completed",
+              provider: PROVIDER,
+              threadId: ctx.session.threadId,
+              turnId,
+              itemId: RuntimeItemId.make(toolCall.toolCallId),
+              payload: {
+                itemType: "mcp_tool_call",
+                status: result.status === "succeeded" ? "completed" : "failed",
+                title: toolCall.canonicalToolName,
+                data: {
+                  toolName: toolCall.canonicalToolName,
+                  input: toolCall.arguments,
+                  ...(result.status === "succeeded" && result.result !== undefined
+                    ? { canvas: result.result }
+                    : {}),
+                  result: {
+                    content: encodeUnknownJson(
+                      result.status === "succeeded"
+                        ? result.result
+                        : { errorCode: result.errorCode ?? "tool_failed" },
+                    ),
+                  },
+                },
+              },
+            }),
+          ),
+          Effect.orDie,
+        );
       // CodeGraph：开关开启时，已有索引则注入使用边界指引；没有则后台补建
       // （per-root 去重、危险根守卫、绝不阻塞回合）。设置读取失败视为关闭。
       let codeGraphGuidance: string | undefined;
@@ -894,11 +900,11 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           if (hasCodeGraphIndex(ctx.cwd)) {
             codeGraphGuidance = CODEGRAPH_GUIDANCE_PROMPT;
           } else {
+            const runFork = Effect.runForkWith(yield* Effect.context<never>());
             yield* Effect.sync(() =>
               spawnCodeGraphIndexInit({
                 root: ctx.cwd,
-                logWarning: (message, cause) =>
-                  Effect.runFork(Effect.logWarning(message, { cause })),
+                logWarning: (message, cause) => runFork(Effect.logWarning(message, { cause })),
               }),
             );
           }

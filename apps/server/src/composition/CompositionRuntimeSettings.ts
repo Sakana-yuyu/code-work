@@ -324,9 +324,11 @@ const makeRuntimeMcpCapabilityBridge = (
           CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBindingError
         > =
           mcpSessionRegistry === undefined
-            ? Effect.succeed<
-                CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBinding | undefined
-              >(undefined)
+            ? Effect.succeed(
+                undefined as
+                  | CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBinding
+                  | undefined,
+              )
             : mcpSessionRegistry.activate({
                 rawToken,
                 runtimeId,
@@ -614,8 +616,7 @@ export const makeCompositionRuntimeSettingsReconciler = (
   const createIdeAdapter = options.createIdeAdapter ?? defaultCreateIdeAdapter;
   const logWarning = options.logWarning ?? defaultLogWarning;
 
-  const warn = (message: string, cause?: unknown) =>
-    logWarning(message, cause).pipe(Effect.catch(() => Effect.void));
+  const warn = (message: string, cause?: unknown) => logWarning(message, cause);
 
   const refresh: Effect.Effect<void> = Effect.gen(function* () {
     const settings = yield* options.settings.getSettings.pipe(
@@ -633,37 +634,41 @@ export const makeCompositionRuntimeSettingsReconciler = (
           yield* warn(`跳过 IDE Runtime 配置 '${instanceId}'：未提供 IDE session registry。`);
           continue;
         }
-        try {
-          ideCandidates.set(instanceId, makeIdeFactoryInput(instanceId, instance));
-        } catch (cause) {
-          yield* warn(`跳过无效的 IDE Runtime 配置 '${instanceId}'。`, cause);
-        }
+        const ideInput = yield* Effect.try(() => makeIdeFactoryInput(instanceId, instance)).pipe(
+          Effect.catch((cause) =>
+            warn(`跳过无效的 IDE Runtime 配置 '${instanceId}'。`, cause).pipe(Effect.as(undefined)),
+          ),
+        );
+        if (ideInput !== undefined) ideCandidates.set(instanceId, ideInput);
         continue;
       }
       if (instance.driver !== "multica" || !instanceEnabled(instance)) continue;
-      try {
-        candidates.set(instanceId, {
-          ...makeFactoryInput(instanceId, instance),
-          ...(options.mcpSessionRegistry === undefined
-            ? {}
-            : { mcpSessionRegistry: options.mcpSessionRegistry }),
-          ...(options.quickCreateIntentStore === undefined
-            ? {}
-            : { quickCreateIntentStore: options.quickCreateIntentStore }),
-          ...(options.processRunner === undefined ? {} : { processRunner: options.processRunner }),
-          ...(options.taskExecutionBridge === undefined
-            ? {}
-            : { taskExecutionBridge: options.taskExecutionBridge }),
-          ...(options.taskEventStreamFactory === undefined
-            ? {}
-            : { taskEventStreamFactory: options.taskEventStreamFactory }),
-          ...(options.daemonControlStreamFactory === undefined
-            ? {}
-            : { daemonControlStreamFactory: options.daemonControlStreamFactory }),
-        });
-      } catch (cause) {
-        yield* warn(`跳过无效的 Multica Runtime 配置 '${instanceId}'。`, cause);
-      }
+      const factoryInput = yield* Effect.try(() => ({
+        ...makeFactoryInput(instanceId, instance),
+        ...(options.mcpSessionRegistry === undefined
+          ? {}
+          : { mcpSessionRegistry: options.mcpSessionRegistry }),
+        ...(options.quickCreateIntentStore === undefined
+          ? {}
+          : { quickCreateIntentStore: options.quickCreateIntentStore }),
+        ...(options.processRunner === undefined ? {} : { processRunner: options.processRunner }),
+        ...(options.taskExecutionBridge === undefined
+          ? {}
+          : { taskExecutionBridge: options.taskExecutionBridge }),
+        ...(options.taskEventStreamFactory === undefined
+          ? {}
+          : { taskEventStreamFactory: options.taskEventStreamFactory }),
+        ...(options.daemonControlStreamFactory === undefined
+          ? {}
+          : { daemonControlStreamFactory: options.daemonControlStreamFactory }),
+      })).pipe(
+        Effect.catch((cause) =>
+          warn(`跳过无效的 Multica Runtime 配置 '${instanceId}'。`, cause).pipe(
+            Effect.as(undefined),
+          ),
+        ),
+      );
+      if (factoryInput !== undefined) candidates.set(instanceId, factoryInput);
     }
 
     const nextManaged = new Map<string, ManagedAdapter>();
@@ -760,11 +765,7 @@ export const makeCompositionRuntimeSettingsReconciler = (
   const start = Effect.gen(function* () {
     yield* refresh;
     const changes = yield* options.settings.subscribeChanges;
-    yield* Effect.forkScoped(
-      Stream.runForEach(changes, () =>
-        refresh.pipe(Effect.catch((cause) => warn("Runtime Settings 刷新失败。", cause))),
-      ),
-    );
+    yield* Effect.forkScoped(Stream.runForEach(changes, () => refresh));
   });
 
   return { refresh, start, ready: Effect.void };

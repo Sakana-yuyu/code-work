@@ -1402,14 +1402,8 @@ export const make = Effect.gen(function* () {
         modelOverride = action.modelOverride;
       }
     }).pipe(
-      Effect.catch(() =>
-        Effect.succeed(
-          failedSnapshot(
-            input,
-            "DELEGATION_SUBMIT_FAILED",
-            "Delegation submit failed unexpectedly.",
-          ),
-        ),
+      Effect.orElseSucceed(() =>
+        failedSnapshot(input, "DELEGATION_SUBMIT_FAILED", "Delegation submit failed unexpectedly."),
       ),
     );
 
@@ -1422,7 +1416,7 @@ export const make = Effect.gen(function* () {
         return [];
       }
       return entry.scheduler.list().map(toSnapshot);
-    }).pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<ByokDelegationSnapshot>)));
+    }).pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<ByokDelegationSnapshot>));
 
   /**
    * Per-task cancel (original cursor-byok parity): abort the executor and
@@ -1438,11 +1432,11 @@ export const make = Effect.gen(function* () {
       if (entry === undefined || snapshot === undefined) return null;
       if (!isTerminalStatus(snapshot.status)) entry.scheduler.cancel(input.delegationId);
       return toSnapshot(entry.scheduler.get(input.delegationId) ?? snapshot);
-    }).pipe(Effect.catch(() => Effect.succeed(null)));
+    }).pipe(Effect.orElseSucceed(() => null));
 
   const cancelCompositionTask: ByokDelegationService["cancelCompositionTask"] = (input) =>
     Option.isNone(taskStore)
-      ? Effect.succeed(undefined)
+      ? Effect.succeed(undefined as CompositionTaskCancelResult | undefined)
       : Clock.currentTimeMillis.pipe(
           Effect.flatMap((nowUnixMs) =>
             cancelProjectedByokDelegationTask({
@@ -1475,7 +1469,7 @@ export const make = Effect.gen(function* () {
           : { diagnosticPreview: outcome.diagnosticPreview }),
         probedAt,
       } satisfies ByokDelegationExecutorProbe;
-    }).pipe(Effect.catch(() => Effect.succeed(null)));
+    }).pipe(Effect.orElseSucceed(() => null));
 
   return {
     submit,

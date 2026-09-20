@@ -711,7 +711,7 @@ const makeWsRpcLayer = (
                     message: "线程不存在。",
                   }),
                 ),
-              onSome: () => Effect.succeed(undefined),
+              onSome: () => Effect.void,
             }),
           ),
         );
@@ -800,7 +800,7 @@ const makeWsRpcLayer = (
                     message: "线程不存在。",
                   }),
                 ),
-              onSome: () => Effect.succeed(undefined),
+              onSome: () => Effect.void,
             }),
           ),
         );
@@ -3298,7 +3298,7 @@ const makeWsRpcLayer = (
               const serverSettings = yield* ServerSettings.ServerSettingsService;
               const enabled = yield* serverSettings.getSettings.pipe(
                 Effect.map((settings) => settings.codeIndexEnabled),
-                Effect.catch(() => Effect.succeed(false)),
+                Effect.orElseSucceed(() => false),
               );
               const projects: CodeIndexProjectStatus[] = [];
               if (!enabled) {
@@ -3374,7 +3374,7 @@ const makeWsRpcLayer = (
               const serverSettings = yield* ServerSettings.ServerSettingsService;
               const enabled = yield* serverSettings.getSettings.pipe(
                 Effect.map((settings) => settings.codeGraphEnabled),
-                Effect.catch(() => Effect.succeed(false)),
+                Effect.orElseSucceed(() => false),
               );
               const install = getCodeGraphInstallState();
               if (!enabled) {
@@ -4135,12 +4135,13 @@ const makeWsRpcLayer = (
             WS_METHODS.sshTerminalAttach,
             Stream.callback<SshTerminalAttachStreamEvent, SshTerminalError>((queue) =>
               Effect.acquireRelease(
-                Effect.sync(() =>
-                  sshTerminalService.attachStream(input, (event) => {
+                Effect.map(Effect.context<never>(), (context) => {
+                  const runSync = Effect.runSyncWith(context);
+                  return sshTerminalService.attachStream(input, (event) => {
                     // Stream.callback 的队列无界，同步投递不会阻塞；流已关闭时忽略。
-                    Effect.runSync(Queue.offer(queue, event).pipe(Effect.ignore));
-                  }),
-                ),
+                    runSync(Queue.offer(queue, event).pipe(Effect.ignore));
+                  });
+                }),
                 (unsubscribe) => Effect.sync(unsubscribe),
               ),
             ),
@@ -4175,11 +4176,12 @@ const makeWsRpcLayer = (
             WS_METHODS.subscribeSshTerminalEvents,
             Stream.callback<SshTerminalEvent>((queue) =>
               Effect.acquireRelease(
-                Effect.sync(() =>
-                  sshTerminalService.subscribe((event) => {
-                    Effect.runSync(Queue.offer(queue, event).pipe(Effect.ignore));
-                  }),
-                ),
+                Effect.map(Effect.context<never>(), (context) => {
+                  const runSync = Effect.runSyncWith(context);
+                  return sshTerminalService.subscribe((event) => {
+                    runSync(Queue.offer(queue, event).pipe(Effect.ignore));
+                  });
+                }),
                 (unsubscribe) => Effect.sync(unsubscribe),
               ),
             ),

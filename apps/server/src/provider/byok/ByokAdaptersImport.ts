@@ -234,14 +234,12 @@ export const make = Effect.gen(function* () {
         })),
       };
     }).pipe(
-      Effect.catch(() =>
-        Effect.succeed<ByokAdaptersImportResult>({
-          imported: 0,
-          skipped: 0,
-          skippedReasons: ["settings_read_failed"],
-          adapters: [],
-        }),
-      ),
+      Effect.orElseSucceed<ByokAdaptersImportResult>(() => ({
+        imported: 0,
+        skipped: 0,
+        skippedReasons: ["settings_read_failed"],
+        adapters: [],
+      })),
     );
 
   return { importAdapters };

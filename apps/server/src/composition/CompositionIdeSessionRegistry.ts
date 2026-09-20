@@ -423,11 +423,7 @@ export const makeCompositionIdeSessionRegistry = (
           Effect.forEach(entries, (adapter) =>
             adapter
               .probe()
-              .pipe(
-                Effect.catch(() =>
-                  Effect.succeed(unavailable(adapter.sessionId, "ide_probe_failed")),
-                ),
-              ),
+              .pipe(Effect.orElseSucceed(() => unavailable(adapter.sessionId, "ide_probe_failed"))),
           ),
         ),
       );

@@ -102,14 +102,12 @@ export const normalizeMulticaProviderInstances = (
         (config.taskMcpEndpoint !== undefined &&
           !isSafeMulticaTaskMcpEndpoint(config.taskMcpEndpoint))
       ) {
-        return yield* Effect.fail(
-          new ServerSettingsError({
-            settingsPath,
-            operation: "normalize",
-            providerInstanceId: instanceId,
-            cause: new Error("Multica Runtime URL 配置不安全或无效。"),
-          }),
-        );
+        return yield* new ServerSettingsError({
+          settingsPath,
+          operation: "normalize",
+          providerInstanceId: instanceId,
+          cause: new Error("Multica Runtime URL 配置不安全或无效。"),
+        });
       }
 
       const { enabled: configEnabled, ...canonicalConfig } = config;

@@ -433,7 +433,7 @@ export const make = Effect.gen(function* () {
         return result;
       }
       return lastError ?? failure(input, "balance", "invalid_payload");
-    }).pipe(Effect.catch(() => Effect.succeed(failure(input, "service", "invalid_payload"))));
+    }).pipe(Effect.orElseSucceed(() => failure(input, "service", "invalid_payload")));
 
   const dashboard = (input: ByokBalanceDashboardRequest) =>
     Effect.gen(function* () {

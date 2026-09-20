@@ -810,12 +810,10 @@ const bridgedAnthropicRequest = (input: {
         { status: 405 },
       );
     }
-    let body: unknown;
-    try {
-      body = JSON.parse(input.bodyText);
-    } catch {
-      body = undefined;
-    }
+    const bodyText = input.bodyText;
+    const body = yield* Effect.try(() => JSON.parse(bodyText)).pipe(
+      Effect.orElseSucceed(() => undefined),
+    );
     if (body === undefined) {
       return HttpServerResponse.jsonUnsafe(
         {
@@ -877,7 +875,7 @@ const bridgedAnthropicRequest = (input: {
     }
     const upstream = attemptResult.upstream;
     if (upstream.status >= 400) {
-      const detail = yield* upstream.text.pipe(Effect.catch(() => Effect.succeed("")));
+      const detail = yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
       return HttpServerResponse.jsonUnsafe(
         {
           type: "error",
@@ -891,7 +889,7 @@ const bridgedAnthropicRequest = (input: {
       );
     }
     if (!wantsStream) {
-      const detail = yield* upstream.text.pipe(Effect.catch(() => Effect.succeed("")));
+      const detail = yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
       const parsed = safeJsonParse(detail);
       if (parsed === undefined) {
         return HttpServerResponse.jsonUnsafe(
@@ -1126,7 +1124,7 @@ const gatewayHandler = (
           account,
           secretStore,
           httpClient,
-        ).pipe(Effect.catch(() => Effect.succeed(undefined)));
+        ).pipe(Effect.orElseSucceed(() => undefined));
         const token =
           localCredential === undefined
             ? undefined
@@ -1282,7 +1280,7 @@ const gatewayHandler = (
         localAccount = nextLocalAccount();
         if (localAccount !== undefined) {
           // 丢弃首个错误响应，后续只透传新账号的完整流，避免混合两个响应。
-          yield* upstream.text.pipe(Effect.catch(() => Effect.succeed("")));
+          yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
           continue;
         }
       }

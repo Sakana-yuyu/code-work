@@ -145,7 +145,7 @@ describe("CompositionByokAgentDriverRegistry", () => {
   it("可以在真实 Effect Layer 中创建 BYOK projection 并完成初始注册", async () => {
     const changes = Effect.runSync(PubSub.unbounded<void>());
     const providerRegistry = {
-      getInstance: () => Effect.succeed(void 0),
+      getInstance: () => Effect.succeed(undefined as ProviderInstance | undefined),
       listInstances: Effect.succeed([makeByokInstance("byok-layer")]),
       listUnavailable: Effect.succeed([]),
       streamChanges: Stream.fromPubSub(changes),

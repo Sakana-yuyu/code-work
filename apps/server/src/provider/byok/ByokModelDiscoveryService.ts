@@ -455,20 +455,18 @@ export const make = Effect.gen(function* () {
             : Math.round(((visibleOutputTokens * 1000) / visibleGenerationMs) * 100) / 100,
       } satisfies ByokModelBenchmarkResult;
     }).pipe(
-      Effect.catch(() =>
-        Effect.succeed({
-          adapterId: input.adapterId,
-          modelId: resolvedModelId,
-          error: "模型测速请求失败",
-          firstTokenMs: 0,
-          firstResponseMs: 0,
-          totalMs: 0,
-          outputTokens: 0,
-          tokensEstimated: true,
-          visibleTokensPerSecond: 0,
-          tokensPerSecond: 0,
-        }),
-      ),
+      Effect.orElseSucceed(() => ({
+        adapterId: input.adapterId,
+        modelId: resolvedModelId,
+        error: "模型测速请求失败",
+        firstTokenMs: 0,
+        firstResponseMs: 0,
+        totalMs: 0,
+        outputTokens: 0,
+        tokensEstimated: true,
+        visibleTokensPerSecond: 0,
+        tokensPerSecond: 0,
+      })),
     );
   };
 
@@ -503,7 +501,7 @@ export const make = Effect.gen(function* () {
       });
       const summary = matchContextWindows(relayAdapters, discovery.models);
       return { adapterId: representative.id, ...summary } satisfies ByokContextWindowMatchResult;
-    }).pipe(Effect.catch(() => Effect.succeed(emptyContextWindowMatch(input.adapterId))));
+    }).pipe(Effect.orElseSucceed(() => emptyContextWindowMatch(input.adapterId)));
 
   return {
     discover,

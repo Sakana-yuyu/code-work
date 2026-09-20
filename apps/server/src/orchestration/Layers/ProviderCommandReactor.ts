@@ -754,7 +754,7 @@ const make = Effect.gen(function* () {
     const currentInfo = yield* providerService.getInstanceInfo(currentInstanceId).pipe(
       Effect.catch(() =>
         currentInstanceId !== desiredInstanceId
-          ? Effect.succeed(undefined)
+          ? Effect.void
           : Effect.fail(
               new ProviderAdapterRequestError({
                 provider: providerErrorLabelFromInstanceHint({

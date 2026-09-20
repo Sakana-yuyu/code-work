@@ -317,7 +317,7 @@ export const makeCodeIndexRoot = Effect.fn("makeCodeIndexRoot")(function* (
     // 永久索引中（末尾的 flushPending 正常完成时也会清）。
     setCodeIndexProgress(rootKey, { phase: "scanning", processedFiles: 0, totalFiles: null });
     const pass = yield* Effect.exit(
-      Effect.fn("CodeIndexRoot.reconcilePass")(function* () {
+      Effect.gen(function* () {
         yield* refreshFinder();
         const freshPaths = yield* listIndexableFiles();
         const storedFiles = yield* store.files(rootKey).pipe(
@@ -358,7 +358,7 @@ export const makeCodeIndexRoot = Effect.fn("makeCodeIndexRoot")(function* (
         }
         yield* flushPending();
         yield* Ref.set(lastReconcileAtMs, Date.now());
-      })(),
+      }).pipe(Effect.withSpan("CodeIndexRoot.reconcilePass")),
     );
     if (Exit.isFailure(pass)) {
       clearCodeIndexProgress(rootKey);
@@ -393,13 +393,7 @@ export const makeCodeIndexRoot = Effect.fn("makeCodeIndexRoot")(function* (
   ).pipe(
     Stream.tap(handleWatchEvent),
     Stream.debounce(Duration.millis(CODE_INDEX_FLUSH_QUIET_MS)),
-    Stream.runForEach(() =>
-      flushPending().pipe(
-        Effect.catch((cause) =>
-          Effect.logWarning("Code index trailing flush failed", { rootKey, cause }),
-        ),
-      ),
-    ),
+    Stream.runForEach(() => flushPending()),
     Effect.ignoreCause({ log: true }),
     Effect.forkScoped,
   );

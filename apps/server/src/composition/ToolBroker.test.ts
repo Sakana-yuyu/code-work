@@ -1,5 +1,9 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { EnvironmentId, type ByokDelegationSnapshot } from "@codework/contracts";
+import {
+  EnvironmentId,
+  type ByokDelegationSnapshot,
+  type CompositionTaskCancelResult,
+} from "@codework/contracts";
 import { it, describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -86,7 +90,8 @@ const ToolTestServicesLayer = Layer.mergeAll(
   Layer.mock(CompositionIdeSessionRegistry.CompositionIdeSessionRegistryService)({
     register: () => Effect.void,
     unregister: () => Effect.succeed(false),
-    get: () => Effect.succeed(undefined),
+    get: () =>
+      Effect.succeed(undefined as CompositionIdeSessionRegistry.CompositionIdeAdapter | undefined),
     list: Effect.succeed([]),
     resolve: (input) =>
       Effect.succeed({
@@ -1020,7 +1025,7 @@ const FakeByokDelegationLayer = Layer.succeed(ByokDelegationService.ByokDelegati
     }),
   list: () => Effect.succeed([]),
   cancel: () => Effect.succeed(null),
-  cancelCompositionTask: () => Effect.succeed(undefined),
+  cancelCompositionTask: () => Effect.succeed(undefined as CompositionTaskCancelResult | undefined),
   probeExecutor: () => Effect.succeed(null),
 } satisfies ByokDelegationService.ByokDelegationService);
 

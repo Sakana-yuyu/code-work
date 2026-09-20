@@ -854,24 +854,20 @@ export const makeOmpAdapter = (config: OmpAgentSettings, options: OmpAdapterOpti
           ),
         );
 
-        yield* rpcProcess.streamEvents
-          .pipe(
-            Stream.runForEach((frame) =>
-              Effect.gen(function* () {
-                if (
-                  !readyDelivered.done &&
-                  (frame as { readonly type?: string }).type === "ready"
-                ) {
-                  readyDelivered.done = true;
-                  yield* Deferred.succeed(readyDeferred, frame);
-                  return;
-                }
-                yield* handleOmpEvent(ctx, emitApi, frame);
-              }),
-            ),
-            Effect.forkScoped,
-          )
-          .pipe(Effect.provideService(Scope.Scope, sessionScope));
+        yield* rpcProcess.streamEvents.pipe(
+          Stream.runForEach((frame) =>
+            Effect.gen(function* () {
+              if (!readyDelivered.done && (frame as { readonly type?: string }).type === "ready") {
+                readyDelivered.done = true;
+                yield* Deferred.succeed(readyDeferred, frame);
+                return;
+              }
+              yield* handleOmpEvent(ctx, emitApi, frame);
+            }),
+          ),
+          Effect.forkScoped,
+          Effect.provideService(Scope.Scope, sessionScope),
+        );
 
         yield* readyOrTimeout;
         const negotiated = (yield* rpcProcess.request(
@@ -1039,27 +1035,26 @@ export const makeOmpAdapter = (config: OmpAgentSettings, options: OmpAdapterOpti
             emitApi,
           }).completeTurn("no_agent_invoked");
         }
-      })
-        .pipe(
-          Effect.catchCause((cause) =>
-            Effect.gen(function* () {
-              const terminal = makePifamilyTerminalApi({
-                provider: PROVIDER,
-                ctx,
-                emitApi,
-              });
-              const turn = ctx.turn;
-              if (turn === null || turn.settled) return;
-              if (turn.interrupting) {
-                yield* terminal.abortTurn("interrupted");
-                return;
-              }
-              yield* terminal.failTurn(`OhMyPi prompt failed: ${String(cause)}`);
-            }),
-          ),
-          Effect.forkScoped,
-        )
-        .pipe(Effect.provideService(Scope.Scope, ctx.sessionScope));
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.gen(function* () {
+            const terminal = makePifamilyTerminalApi({
+              provider: PROVIDER,
+              ctx,
+              emitApi,
+            });
+            const turn = ctx.turn;
+            if (turn === null || turn.settled) return;
+            if (turn.interrupting) {
+              yield* terminal.abortTurn("interrupted");
+              return;
+            }
+            yield* terminal.failTurn(`OhMyPi prompt failed: ${String(cause)}`);
+          }),
+        ),
+        Effect.forkScoped,
+        Effect.provideService(Scope.Scope, ctx.sessionScope),
+      );
 
       return { threadId: input.threadId, turnId, resumeCursor: ctx.session.resumeCursor };
     });

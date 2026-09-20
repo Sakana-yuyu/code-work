@@ -2274,7 +2274,7 @@ const makeOrchestrator = (
               if (setupResult.failure._tag === leaseUnavailable._tag) {
                 return Option.none<CompositionDispatchResult>();
               }
-              return yield* Effect.fail(setupResult.failure);
+              return yield* setupResult.failure;
             }
             const preparedStart = setupResult.success;
             return Option.some(

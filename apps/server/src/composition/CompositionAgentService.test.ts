@@ -9,6 +9,7 @@ import {
 } from "./CompositionAgentService.ts";
 import { ByokAgentModelError, type ByokAgentModelDriver } from "./ByokAgentLoop.ts";
 import type * as ToolBroker from "./ToolBroker.ts";
+import type { ProviderInstance } from "../provider/ProviderDriver.ts";
 import type * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import { makeCompositionAgentServiceFromRegistry } from "./CompositionAgentService.ts";
 import { makeCompositionCapabilityRegistry } from "./CapabilityRegistry.ts";
@@ -179,7 +180,7 @@ describe("CompositionAgentService", () => {
     () =>
       Effect.gen(function* () {
         const registry = {
-          getInstance: () => Effect.succeed(void 0),
+          getInstance: () => Effect.succeed(undefined as ProviderInstance | undefined),
           listInstances: Effect.succeed([]),
           listUnavailable: Effect.succeed([]),
           streamChanges: Stream.empty,

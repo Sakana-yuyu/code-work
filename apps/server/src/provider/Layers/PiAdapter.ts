@@ -573,12 +573,11 @@ export const makePiAdapter = (config: PiAgentSettings, options: PiAdapterOptions
           payload: { providerThreadId: state?.sessionId ?? "" },
         });
 
-        yield* rpcProcess.streamEvents
-          .pipe(
-            Stream.runForEach((frame) => handlePiEvent(ctx, emitApi, frame)),
-            Effect.forkScoped,
-          )
-          .pipe(Effect.provideService(Scope.Scope, sessionScope));
+        yield* rpcProcess.streamEvents.pipe(
+          Stream.runForEach((frame) => handlePiEvent(ctx, emitApi, frame)),
+          Effect.forkScoped,
+          Effect.provideService(Scope.Scope, sessionScope),
+        );
 
         yield* forkPifamilyWatchdog({
           ctx,
@@ -699,23 +698,22 @@ export const makePiAdapter = (config: PiAgentSettings, options: PiAdapterOptions
             "no_agent_invoked",
           );
         }
-      })
-        .pipe(
-          Effect.catchCause((cause) =>
-            Effect.gen(function* () {
-              const terminal = makePifamilyTerminalApi({ provider: PROVIDER, ctx, emitApi });
-              const turn = ctx.turn;
-              if (turn === null || turn.settled) return;
-              if (turn.interrupting) {
-                yield* terminal.abortTurn("interrupted");
-                return;
-              }
-              yield* terminal.failTurn(`Pi prompt failed: ${String(cause)}`);
-            }),
-          ),
-          Effect.forkScoped,
-        )
-        .pipe(Effect.provideService(Scope.Scope, ctx.sessionScope));
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.gen(function* () {
+            const terminal = makePifamilyTerminalApi({ provider: PROVIDER, ctx, emitApi });
+            const turn = ctx.turn;
+            if (turn === null || turn.settled) return;
+            if (turn.interrupting) {
+              yield* terminal.abortTurn("interrupted");
+              return;
+            }
+            yield* terminal.failTurn(`Pi prompt failed: ${String(cause)}`);
+          }),
+        ),
+        Effect.forkScoped,
+        Effect.provideService(Scope.Scope, ctx.sessionScope),
+      );
 
       return { threadId: input.threadId, turnId, resumeCursor: ctx.session.resumeCursor };
     });

@@ -634,15 +634,15 @@ export const makeMulticaDaemonRuntimeAdapter = (
           task,
         });
         if (resolved !== undefined) {
-          try {
-            binding = normalizeExecutionBinding(resolved);
-          } catch (cause) {
-            return yield* adapterFailure(
-              runtimeId,
-              "task_execution_binding_invalid",
-              cause instanceof Error ? cause.message : String(cause),
-            );
-          }
+          binding = yield* Effect.try({
+            try: () => normalizeExecutionBinding(resolved),
+            catch: (cause) =>
+              adapterFailure(
+                runtimeId,
+                "task_execution_binding_invalid",
+                cause instanceof Error ? cause.message : String(cause),
+              ),
+          });
           taskExecutionBindings.set(runtimeTaskId, binding);
         }
       }
@@ -834,7 +834,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
 
   const getTaskMcpLease = (capabilityHandshakeId: string) =>
     options.taskMcpLeaseBridge === undefined
-      ? Effect.succeed<MulticaTaskMcpLease | undefined>(undefined)
+      ? Effect.succeed(undefined as MulticaTaskMcpLease | undefined)
       : options.taskMcpLeaseBridge.get(capabilityHandshakeId);
 
   const revokeTaskMcpLeases = () =>
@@ -1019,23 +1019,24 @@ export const makeMulticaDaemonRuntimeAdapter = (
       }
       let executionBinding: MulticaTaskExecutionBinding | undefined;
       if (options.taskExecutionBridge !== undefined) {
-        try {
-          executionBinding = normalizeExecutionBinding({
-            taskId: input.taskId,
-            runId: input.runId,
-            agentId,
-            capabilityGrantIds,
-            ...(input.capabilityHandshakeId === undefined
-              ? {}
-              : { capabilityHandshakeId: input.capabilityHandshakeId }),
-          });
-        } catch (cause) {
-          return yield* adapterFailure(
-            runtimeId,
-            "task_execution_binding_invalid",
-            cause instanceof Error ? cause.message : String(cause),
-          );
-        }
+        executionBinding = yield* Effect.try({
+          try: () =>
+            normalizeExecutionBinding({
+              taskId: input.taskId,
+              runId: input.runId,
+              agentId,
+              capabilityGrantIds,
+              ...(input.capabilityHandshakeId === undefined
+                ? {}
+                : { capabilityHandshakeId: input.capabilityHandshakeId }),
+            }),
+          catch: (cause) =>
+            adapterFailure(
+              runtimeId,
+              "task_execution_binding_invalid",
+              cause instanceof Error ? cause.message : String(cause),
+            ),
+        });
       }
       const existing = dispatchedTasks.get(idempotencyKey);
       if (existing !== undefined) {
@@ -1316,7 +1317,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
       Stream.mapEffect(({ source, frame }) => {
         if (source === "control") {
           if (!isControlHintFrame(frame)) {
-            return Effect.succeed<ProviderRuntimeEvent | undefined>(undefined);
+            return Effect.succeed(undefined as ProviderRuntimeEvent | undefined);
           }
           return handleControlFrame(frame).pipe(Effect.as(undefined));
         }

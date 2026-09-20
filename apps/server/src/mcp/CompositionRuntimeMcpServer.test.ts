@@ -46,7 +46,10 @@ const nonRevokingRegistry = Layer.succeed(
   CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistry,
   {
     activate: () => Effect.die("unused"),
-    resolve: () => Effect.succeed(undefined),
+    resolve: () =>
+      Effect.succeed(
+        undefined as CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBinding | undefined,
+      ),
     revokeHandshake: () => Effect.void,
     revokeRun: () => Effect.void,
     revokeRuntime: () => Effect.void,

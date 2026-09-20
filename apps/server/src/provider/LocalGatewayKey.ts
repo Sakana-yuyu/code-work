@@ -59,7 +59,7 @@ const readLocalGatewayKeysUnlocked = (
         return [];
       }
     }),
-    Effect.catch(() => Effect.succeed([])),
+    Effect.orElseSucceed(() => []),
   );
 
 export const readLocalGatewayKeys = (
@@ -119,7 +119,16 @@ export const rotateLocalGatewayKey = (
       Effect.flatMap((records) => {
         const index = records.findIndex((record) => record.id === id);
         const previous = index < 0 ? undefined : records[index];
-        if (previous === undefined) return Effect.succeed(undefined);
+        if (previous === undefined) {
+          return Effect.succeed(
+            undefined as
+              | {
+                  readonly record: LocalGatewayKeyRecord;
+                  readonly records: readonly LocalGatewayKeyRecord[];
+                }
+              | undefined,
+          );
+        }
         const record = {
           ...previous,
           key: createKeyValue(),

@@ -380,7 +380,7 @@ export const importLocalAccount = (
     const credentialRef = `local-account-${id}-${NodeCrypto.createHash("sha256").update(id).digest("hex").slice(0, 12)}`;
     const previousCredential = yield* secretStore
       .get(credentialRef)
-      .pipe(Effect.catch(() => Effect.succeed(Option.none<Uint8Array>())));
+      .pipe(Effect.orElseSucceed(() => Option.none<Uint8Array>()));
     const expiresIn =
       typeof credential.expires_in === "number" && credential.expires_in > 0
         ? credential.expires_in
@@ -499,7 +499,7 @@ export const removeLocalAccount = (
     if (account === undefined) return;
     const previousCredential = yield* secretStore
       .get(account.credentialRef)
-      .pipe(Effect.catch(() => Effect.succeed(Option.none<Uint8Array>())));
+      .pipe(Effect.orElseSucceed(() => Option.none<Uint8Array>()));
     yield* secretStore
       .remove(account.credentialRef)
       .pipe(Effect.mapError(() => new LocalAccountError({ detail: "删除本地账号凭据失败。" })));

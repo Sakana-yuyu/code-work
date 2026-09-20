@@ -433,31 +433,35 @@ const quarantineClaimed = (
   code: string,
   detail: string,
 ): Effect.Effect<void, CompositionRunStartStoreError> =>
-  Effect.gen(function* () {
-    yield* store.quarantine({
-      runId: intent.runId,
-      expectedRevision: intent.revision,
-      claimId: intent.claimId ?? "",
-      ownerEpoch: intent.ownerEpoch,
-      outcomeCode: code,
-      outcomeDetail: detail,
-      quarantinedAtUnixMs: Math.max(yield* Clock.currentTimeMillis, intent.updatedAtUnixMs),
-    });
-  });
+  Clock.currentTimeMillis.pipe(
+    Effect.flatMap((nowUnixMs) =>
+      store.quarantine({
+        runId: intent.runId,
+        expectedRevision: intent.revision,
+        claimId: intent.claimId ?? "",
+        ownerEpoch: intent.ownerEpoch,
+        outcomeCode: code,
+        outcomeDetail: detail,
+        quarantinedAtUnixMs: Math.max(nowUnixMs, intent.updatedAtUnixMs),
+      }),
+    ),
+  );
 
 const releaseAcceptedClaim = (
   store: CompositionRunStartStoreShape,
   intent: CompositionRunStartIntent,
 ): Effect.Effect<void, CompositionRunStartStoreError> =>
-  Effect.gen(function* () {
-    yield* store.releaseAcceptedRecovery({
-      runId: intent.runId,
-      expectedRevision: intent.revision,
-      claimId: intent.claimId ?? "",
-      ownerEpoch: intent.ownerEpoch,
-      releasedAtUnixMs: Math.max(yield* Clock.currentTimeMillis, intent.updatedAtUnixMs),
-    });
-  });
+  Clock.currentTimeMillis.pipe(
+    Effect.flatMap((nowUnixMs) =>
+      store.releaseAcceptedRecovery({
+        runId: intent.runId,
+        expectedRevision: intent.revision,
+        claimId: intent.claimId ?? "",
+        ownerEpoch: intent.ownerEpoch,
+        releasedAtUnixMs: Math.max(nowUnixMs, intent.updatedAtUnixMs),
+      }),
+    ),
+  );
 
 export const makeCompositionRunStartRecoveryExecutor = <E>(
   options: CompositionRunStartRecoveryExecutorOptions<E>,

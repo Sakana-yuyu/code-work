@@ -459,13 +459,11 @@ export const recoverCompositionRunStartCapabilities = Effect.fn(
     Effect.catchTag("CompositionRunStartCapabilityDecision", (decision) =>
       Effect.succeed(decision.outcome),
     ),
-    Effect.catch(() =>
-      Effect.succeed(
-        outcome(
-          "Deferred",
-          "run_start_capability_persistence_unavailable",
-          "Capability Grant 恢复事务暂时失败，Run Start 恢复已延后。",
-        ),
+    Effect.orElseSucceed(() =>
+      outcome(
+        "Deferred",
+        "run_start_capability_persistence_unavailable",
+        "Capability Grant 恢复事务暂时失败，Run Start 恢复已延后。",
       ),
     ),
   );

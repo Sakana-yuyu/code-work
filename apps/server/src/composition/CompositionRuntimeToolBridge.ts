@@ -194,14 +194,14 @@ export const makeCompositionRuntimeToolBridge = (
 
       const taskOption = yield* dependencies.taskStore
         .getTask(input.taskId)
-        .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+        .pipe(Effect.orElseSucceed(() => Option.none()));
       if (Option.isNone(taskOption)) {
         return { ok: false, errorCode: "task_not_found" } as const;
       }
 
       const runOption = yield* dependencies.taskStore
         .getRun(input.runId)
-        .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+        .pipe(Effect.orElseSucceed(() => Option.none()));
       if (Option.isNone(runOption)) {
         return { ok: false, errorCode: "run_not_found" } as const;
       }
@@ -273,7 +273,7 @@ export const makeCompositionRuntimeToolBridge = (
           const execute = Effect.gen(function* () {
             const inputOption = yield* dependencies.inputStore
               .get(input.taskId)
-              .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+              .pipe(Effect.orElseSucceed(() => Option.none()));
             if (Option.isNone(inputOption) || inputOption.value.taskId !== input.taskId) {
               return denied(input, "workspace_input_missing");
             }
@@ -300,10 +300,8 @@ export const makeCompositionRuntimeToolBridge = (
                 workspaceRoot,
               })
               .pipe(
-                Effect.catch(() =>
-                  Effect.succeed(
-                    denied(input, "tool_broker_failed") as ToolBroker.ToolBrokerResult,
-                  ),
+                Effect.orElseSucceed(
+                  () => denied(input, "tool_broker_failed") as ToolBroker.ToolBrokerResult,
                 ),
               );
           });

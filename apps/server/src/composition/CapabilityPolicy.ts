@@ -179,10 +179,10 @@ export const makeCompositionCapabilityPolicy = (
             })
             .pipe(
               Effect.catchTags({
-                CapabilityGrantNotFoundError: () => Effect.succeed(undefined),
-                CapabilityGrantScopeMismatchError: () => Effect.succeed(undefined),
-                CapabilityGrantExpiredError: () => Effect.succeed(undefined),
-                CapabilityGrantRevokedError: () => Effect.succeed(undefined),
+                CapabilityGrantNotFoundError: () => Effect.void,
+                CapabilityGrantScopeMismatchError: () => Effect.void,
+                CapabilityGrantExpiredError: () => Effect.void,
+                CapabilityGrantRevokedError: () => Effect.void,
               }),
             );
           if (grant !== undefined) {

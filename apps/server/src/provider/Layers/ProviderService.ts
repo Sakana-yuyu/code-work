@@ -266,7 +266,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   );
   const codeIndexEnabled = serverSettings.getSettings.pipe(
     Effect.map((settings) => settings.codeIndexEnabled),
-    Effect.catch(() => Effect.succeed(false)),
+    Effect.orElseSucceed(() => false),
   );
 
   const prepareMcpSession = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) =>
