@@ -399,6 +399,9 @@ const TurnCompletedPayload = Schema.Struct({
   modelUsage: Schema.optional(UnknownRecordSchema),
   totalCostUsd: Schema.optional(Schema.Number),
   errorMessage: Schema.optional(TrimmedNonEmptyStringSchema),
+  // Provider-reported turn wall duration (e.g. codex turn/completed
+  // turn.durationMs). Optional: only adapters whose protocol reports it set it.
+  durationMs: Schema.optional(NonNegativeInt),
 });
 export type TurnCompletedPayload = typeof TurnCompletedPayload.Type;
 

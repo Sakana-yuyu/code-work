@@ -1080,6 +1080,12 @@ function mapToRuntimeEvents(
       return [];
     }
     const errorMessage = trimText(payload.turn.error?.message);
+    const durationMs =
+      typeof payload.turn.durationMs === "number" &&
+      Number.isInteger(payload.turn.durationMs) &&
+      payload.turn.durationMs >= 0
+        ? payload.turn.durationMs
+        : undefined;
     return [
       {
         ...runtimeEventBase(event, canonicalThreadId),
@@ -1087,6 +1093,7 @@ function mapToRuntimeEvents(
         payload: {
           state: toTurnStatus(payload.turn.status),
           ...(errorMessage ? { errorMessage } : {}),
+          ...(durationMs !== undefined ? { durationMs } : {}),
         },
       },
     ];

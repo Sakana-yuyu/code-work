@@ -627,6 +627,57 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("turn/completed 透传上游 durationMs，缺省时不产出该字段", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
+        Effect.forkChild,
+      );
+      yield* runtime.emit({
+        id: asEventId("evt-turn-completed-duration"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "turn/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        payload: {
+          threadId: "thread-1",
+          turn: {
+            id: "turn-1",
+            status: "completed",
+            durationMs: 41_000,
+            startedAt: 1_778_000_000,
+            completedAt: 1_778_000_041,
+            error: null,
+            items: [],
+          },
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-turn-completed-noduration"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:01:00.000Z",
+        method: "turn/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-2"),
+        payload: {
+          threadId: "thread-1",
+          turn: { id: "turn-2", status: "completed", error: null, items: [] },
+        },
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      NodeAssert.deepStrictEqual(
+        events.map((event) => ({ type: event.type, payload: event.payload })),
+        [
+          { type: "turn.completed", payload: { state: "completed", durationMs: 41_000 } },
+          { type: "turn.completed", payload: { state: "completed" } },
+        ],
+      );
+    }),
+  );
+
   it.effect("does not reactivate an idle child after a parent interaction", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

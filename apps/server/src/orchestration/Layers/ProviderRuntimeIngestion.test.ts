@@ -2516,6 +2516,81 @@ describe("ProviderRuntimeIngestion", () => {
     }),
   );
 
+  effectIt.effect("回合完成上报的耗时落到该轮上下文快照，缺耗时字段不产生行", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("turn-duration-report");
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("turn-duration-start"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId,
+        turnId,
+      });
+      harness.emit({
+        type: "thread.token-usage.updated",
+        eventId: asEventId("turn-duration-usage"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        threadId,
+        turnId,
+        payload: {
+          usage: { usedTokens: 1200, inputTokens: 1100, totalProcessedTokens: 5000 },
+        },
+      });
+      harness.emit({
+        type: "turn.completed",
+        eventId: asEventId("turn-duration-complete"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:42.000Z",
+        threadId,
+        turnId,
+        payload: { state: "completed", durationMs: 41_000 },
+      });
+      yield* Effect.promise(() => harness.drain());
+      const thread = (yield* Effect.promise(() => harness.readModel())).threads.find(
+        (entry) => entry.id === threadId,
+      );
+      expect(
+        thread?.activities.findLast((entry) => entry.kind === "context-window.updated")?.payload,
+      ).toMatchObject({
+        usedTokens: 1200,
+        inputTokens: 1100,
+        totalProcessedTokens: 5000,
+        durationMs: 41_000,
+      });
+      // A turn.completed without durationMs must not emit a synthetic row.
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("turn-noduration-start"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:01:00.000Z",
+        threadId,
+        turnId: asTurnId("turn-no-duration"),
+      });
+      harness.emit({
+        type: "turn.completed",
+        eventId: asEventId("turn-noduration-complete"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:01:30.000Z",
+        threadId,
+        turnId: asTurnId("turn-no-duration"),
+        payload: { state: "completed" },
+      });
+      yield* Effect.promise(() => harness.drain());
+      const after = (yield* Effect.promise(() => harness.readModel())).threads.find(
+        (entry) => entry.id === threadId,
+      );
+      const rowsForEmptyTurn = (after?.activities ?? []).filter(
+        (entry) =>
+          entry.kind === "context-window.updated" && entry.turnId === asTurnId("turn-no-duration"),
+      );
+      expect(rowsForEmptyTurn).toHaveLength(0);
+    }),
+  );
+
   effectIt.effect.each(["codex", "claudeAgent"] as const)(
     "%s 会话重建按真实计数范围恢复预算",
     (providerName) =>

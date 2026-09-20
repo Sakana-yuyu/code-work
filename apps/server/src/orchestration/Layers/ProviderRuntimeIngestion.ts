@@ -848,6 +848,32 @@ export function runtimeEventToActivities(
       ];
     }
 
+    case "turn.completed": {
+      // Providers that report turn duration only on completion (codex
+      // turn/completed carries turn.durationMs) still deserve "模型用时" in
+      // the session-stats popover. Emit a context-window row carrying the
+      // duration; the dispatch loop merges the thread's last usage cursor so
+      // the row stays resolvable and supersedes the turn's previous snapshot
+      // row — the count is unchanged. Without a cursor the row is
+      // non-resolvable and passes through harmlessly.
+      const durationMs = event.payload.durationMs;
+      if (durationMs === undefined) {
+        return [];
+      }
+      return [
+        {
+          id: event.eventId,
+          createdAt: event.createdAt,
+          tone: "info",
+          kind: "context-window.updated",
+          summary: "Context window updated",
+          payload: { durationMs },
+          turnId: toTurnId(event.turnId) ?? null,
+          ...maybeSequence,
+        },
+      ];
+    }
+
     case "account.rate-limits.updated": {
       // 订阅额度的「最新态」：stable-id 活动原地替换，不随回合累积；
       // payload 里带上 provider，客户端跨线程聚合时才分得清来源。
@@ -1501,9 +1527,9 @@ const make = Effect.gen(function* () {
                           profile.status === "available" && profile.agentId !== currentAgentId,
                       )?.agentId,
                   ),
-                  Effect.catchCause(() => Effect.succeed(undefined)),
+                  Effect.catchCause(() => Effect.void),
                 )
-              : Effect.succeed(undefined)
+              : Effect.void
           : undefined;
       const userPrompt = input.userPrompt?.trim() || "未提供用户原始请求";
       const decision = input.directive.cleanText.slice(0, 12_000).trim();
@@ -1721,7 +1747,7 @@ const make = Effect.gen(function* () {
             })
             .pipe(
               Effect.catchTag("ThreadGoalStoreDomainError", (error) =>
-                error.code === "stale-version" ? Effect.succeed(undefined) : Effect.fail(error),
+                error.code === "stale-version" ? Effect.void : Effect.fail(error),
               ),
             );
           if (updated === undefined) {
@@ -2770,12 +2796,18 @@ const make = Effect.gen(function* () {
 
       const activities = runtimeEventToActivities(event, taskTitle).map((activity) => {
         const cursor =
-          event.type === "thread.token-usage.updated"
+          event.type === "thread.token-usage.updated" || event.type === "turn.completed"
             ? lastSeenThreadTokens.get(thread.id)
             : undefined;
-        return cursor && activity.kind === "context-window.updated"
-          ? { ...activity, payload: cursor }
-          : activity;
+        if (cursor === undefined || activity.kind !== "context-window.updated") {
+          return activity;
+        }
+        // turn.completed rows carry only the provider-reported durationMs, so
+        // spread the cursor underneath; for token-usage events the cursor
+        // already contains the event's own usage fields, same result as before.
+        const extras =
+          activity.payload !== null && typeof activity.payload === "object" ? activity.payload : {};
+        return { ...activity, payload: { ...cursor, ...extras } };
       });
       yield* Effect.forEach(activities, (activity) =>
         providerCommandId(event, "thread-activity-append").pipe(
