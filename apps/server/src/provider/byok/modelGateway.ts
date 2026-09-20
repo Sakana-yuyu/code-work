@@ -10,9 +10,11 @@
  * adapters instead of their own logins. The gateway is mounted on the server's
  * existing HTTP listener under `/byok-gw/{protocol}/*` and forwards
  * same-protocol requests to the adapter whose id the client sent as the
- * `model` field — pure passthrough plus auth substitution. Cross-protocol
- * translation is deliberately out of scope: an anthropic request can only
- * route to an anthropic adapter, an openai request to an openai adapter.
+ * `model` field — pure passthrough plus auth substitution. One cross-protocol
+ * bridge exists: anthropic requests may reach openai-protocol adapters through
+ * `gatewayAnthropicBridge` (Messages → chat completions), so Claude harnesses
+ * see every channel; the reverse bridge (Responses → Messages) does not exist
+ * yet, so openai-routed harnesses never see anthropic adapters.
  *
  * The gateway token lives in the server secret store, reaches harnesses only
  * through child-process environment variables, and never appears in settings
@@ -50,6 +52,14 @@ import * as NodeCrypto from "node:crypto";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
+  BRIDGEABLE_ANTHROPIC_PATHS,
+  anthropicMessagesToChatBody,
+  chatCompletionToAnthropicMessage,
+  chatErrorToAnthropicType,
+  estimateAnthropicPromptTokens,
+  transformChatStreamToAnthropicSse,
+} from "./gatewayAnthropicBridge.ts";
+import {
   credentialAuthKind,
   credentialToken,
   ensureLocalAccountCredential,
@@ -63,6 +73,7 @@ import {
 import { matchLocalGatewayKey, readLocalGatewayKeys } from "../LocalGatewayKey.ts";
 import { localPoolUsageStore } from "../LocalPoolUsage.ts";
 import { parseByokCustomHeaders } from "../Layers/byokChatClient.ts";
+import { byokModelCapabilities } from "../Layers/ByokProvider.ts";
 
 /** URL prefix the gateway is mounted under. */
 export const BYOK_GATEWAY_ROUTE_PREFIX = "/byok-gw";
@@ -254,6 +265,10 @@ const isGatewayRoutable = (
  * (`resolveClaudeApiModelId` may emit `<slug>[1m]`), so one trailing
  * `[…]` bracket group is stripped before matching; adapter ids never contain
  * brackets themselves.
+ *
+ * Anthropic-protocol requests fall back to openai-protocol adapters, which the
+ * gateway serves through the Messages → chat-completions bridge; the reverse
+ * has no bridge yet, so openai requests never reach anthropic adapters.
  */
 export const pickGatewayAdapter = (
   routes: readonly GatewayAdapterRoute[],
@@ -264,6 +279,14 @@ export const pickGatewayAdapter = (
   const candidates = routes.filter(
     (route) => route.protocol === protocol && (route.id === model || route.id === normalized),
   );
+  if (candidates.length === 0 && protocol === "anthropic") {
+    return routes.find(
+      (route) =>
+        route.protocol === "openai" &&
+        route.localProvider === undefined &&
+        (route.id === model || route.id === normalized),
+    );
+  }
   if (candidates.length === 0) return undefined;
   const local = candidates.filter((route) => route.localProvider !== undefined);
   if (local.length > 0) return local[0];
@@ -279,6 +302,7 @@ export const routedServerProviderModels = (
   settings: ServerSettings,
   protocol: GatewayProtocol,
   sourceInstanceId?: string,
+  nativeModels: readonly ServerProviderModel[] = [],
 ): readonly ServerProviderModel[] =>
   gatewayAdapterRoutes(settings, sourceInstanceId)
     .filter((route) => route.protocol === protocol)
@@ -292,7 +316,9 @@ export const routedServerProviderModels = (
         name: route.displayName.trim().length > 0 ? route.displayName : route.modelId,
         ...(subProvider.length > 0 ? { subProvider } : {}),
         isCustom: false,
-        capabilities: null,
+        capabilities:
+          nativeModels.find((model) => model.slug === route.id || model.slug === route.modelId)
+            ?.capabilities ?? (protocol === "openai" ? byokModelCapabilities(route.modelId) : null),
       };
     });
 
@@ -322,11 +348,28 @@ export const prepareRoutedProviderSnapshot = (
     Effect.orElseSucceed(() => undefined),
     Effect.map((settings) => {
       const models = settings
-        ? routedServerProviderModels(
-            settings,
-            snapshot.driver === "claudeAgent" ? "anthropic" : "openai",
-            config.byokSourceInstanceId,
-          )
+        ? snapshot.driver === "claudeAgent"
+          ? // Claude 同时拿到 anthropic 通道（直通）与 openai 通道（桥接）。
+            [
+              ...routedServerProviderModels(
+                settings,
+                "anthropic",
+                config.byokSourceInstanceId,
+                snapshot.models,
+              ),
+              ...routedServerProviderModels(
+                settings,
+                "openai",
+                config.byokSourceInstanceId,
+                snapshot.models,
+              ),
+            ]
+          : routedServerProviderModels(
+              settings,
+              "openai",
+              config.byokSourceInstanceId,
+              snapshot.models,
+            )
         : [];
       return applyRoutedProviderAvailability({
         ...snapshot,
@@ -710,6 +753,17 @@ const errorMessage = (body: unknown): string => {
   return "BYOK gateway request failed.";
 };
 
+const safeJsonParse = (text: string): unknown => {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 type GatewayHandlerMode = "byok" | "cliProxy";
 
 const requestHeader = (
@@ -730,6 +784,137 @@ const cliProxyModelsProtocol = (request: HttpServerRequest.HttpServerRequest): G
     ? "anthropic"
     : "openai";
 };
+
+/**
+ * Serves a Messages (or count_tokens) request against an openai-protocol
+ * adapter by translating both directions. Errors keep the upstream status so
+ * the client sees the adapter's own 401/429/etc.
+ */
+const bridgedAnthropicRequest = (input: {
+  readonly method: string;
+  readonly requestPath: string;
+  readonly bodyText: string | undefined;
+  readonly adapter: GatewayAdapterRoute;
+  readonly httpClient: HttpClient.HttpClient;
+}): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> =>
+  Effect.gen(function* () {
+    if (input.method !== "POST" || input.bodyText === undefined) {
+      return HttpServerResponse.jsonUnsafe(
+        {
+          type: "error",
+          error: {
+            type: "invalid_request_error",
+            message: "Bridged Messages requests must POST a JSON body.",
+          },
+        },
+        { status: 405 },
+      );
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(input.bodyText);
+    } catch {
+      body = undefined;
+    }
+    if (body === undefined) {
+      return HttpServerResponse.jsonUnsafe(
+        {
+          type: "error",
+          error: { type: "invalid_request_error", message: "Request body is not valid JSON." },
+        },
+        { status: 400 },
+      );
+    }
+
+    if (input.requestPath === "/v1/messages/count_tokens") {
+      return HttpServerResponse.jsonUnsafe(
+        { input_tokens: estimateAnthropicPromptTokens(body) },
+        { status: 200 },
+      );
+    }
+
+    const wantsStream = isRecord(body) && body.stream === true;
+    const forwardHeaders: Record<string, string> = {
+      authorization: `Bearer ${input.adapter.apiKey}`,
+      "content-type": "application/json",
+    };
+    const customHeaderValues = parseByokCustomHeaders(input.adapter.customHeaders);
+    if (customHeaderValues !== undefined) Object.assign(forwardHeaders, customHeaderValues);
+
+    const target = joinOpenAITarget(input.adapter.baseURL, "/v1/chat/completions");
+    const attemptResult = yield* input.httpClient
+      .execute(
+        HttpClientRequest.post(target).pipe(
+          HttpClientRequest.setHeaders(forwardHeaders),
+          HttpClientRequest.bodyText(
+            JSON.stringify(anthropicMessagesToChatBody(body, input.adapter.modelId)),
+            "application/json",
+          ),
+        ),
+      )
+      .pipe(
+        Effect.map((upstream) => ({ ok: true as const, upstream })),
+        Effect.catch((cause) => Effect.succeed({ ok: false as const, cause })),
+      );
+    if (!attemptResult.ok) {
+      yield* Effect.logWarning("BYOK gateway bridged upstream request failed", {
+        model: input.adapter.id,
+        cause:
+          attemptResult.cause instanceof Error
+            ? attemptResult.cause.message
+            : String(attemptResult.cause),
+      });
+      return HttpServerResponse.jsonUnsafe(
+        {
+          type: "error",
+          error: {
+            type: "api_error",
+            message: "The BYOK gateway could not reach the adapter's endpoint.",
+          },
+        },
+        { status: 502 },
+      );
+    }
+    const upstream = attemptResult.upstream;
+    if (upstream.status >= 400) {
+      const detail = yield* upstream.text.pipe(Effect.catch(() => Effect.succeed("")));
+      return HttpServerResponse.jsonUnsafe(
+        {
+          type: "error",
+          error: {
+            type: chatErrorToAnthropicType(upstream.status),
+            message:
+              errorMessage(safeJsonParse(detail)) || "The bridged BYOK adapter returned an error.",
+          },
+        },
+        { status: upstream.status },
+      );
+    }
+    if (!wantsStream) {
+      const detail = yield* upstream.text.pipe(Effect.catch(() => Effect.succeed("")));
+      const parsed = safeJsonParse(detail);
+      if (parsed === undefined) {
+        return HttpServerResponse.jsonUnsafe(
+          {
+            type: "error",
+            error: {
+              type: "api_error",
+              message: "The bridged BYOK adapter returned invalid JSON.",
+            },
+          },
+          { status: 502 },
+        );
+      }
+      return HttpServerResponse.jsonUnsafe(
+        chatCompletionToAnthropicMessage(parsed, input.adapter.modelId),
+        { status: 200 },
+      );
+    }
+    return HttpServerResponse.stream(
+      transformChatStreamToAnthropicSse(upstream.stream, input.adapter.modelId),
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    );
+  });
 
 const gatewayHandler = (
   request: HttpServerRequest.HttpServerRequest,
@@ -813,7 +998,15 @@ const gatewayHandler = (
       (route) => internalToken || route.localProvider !== undefined,
     );
     if (method === "GET" && restPath.join("/") === "v1/models") {
-      const models = routes.filter((route) => route.protocol === protocol);
+      const models = routes.filter(
+        (route) =>
+          route.protocol === protocol ||
+          // Claude 客户端的目录还包含可桥接的 openai 通道；本地官方账号
+          // 路由永远只按原生协议发布。
+          (protocol === "anthropic" &&
+            route.protocol === "openai" &&
+            route.localProvider === undefined),
+      );
       return HttpServerResponse.jsonUnsafe(
         protocol === "openai"
           ? {
@@ -878,6 +1071,24 @@ const gatewayHandler = (
         protocol,
         anthropicError(404, "not_found_error", "该本地账号池路径不在允许的模型 API 范围内。"),
       );
+    }
+
+    // Anthropic 请求 × openai 通道：Messages → chat-completions 桥接，让
+    // Claude 系客户端用上 openai 协议的 BYOK 通道。本地官方账号路由恒按
+    // 原生协议直通，不进桥。
+    if (
+      protocol === "anthropic" &&
+      adapter.localProvider === undefined &&
+      adapter.protocol === "openai" &&
+      BRIDGEABLE_ANTHROPIC_PATHS.has(requestPath)
+    ) {
+      return yield* bridgedAnthropicRequest({
+        method,
+        requestPath,
+        bodyText,
+        adapter,
+        httpClient,
+      });
     }
 
     const localProvider = adapter.localProvider;

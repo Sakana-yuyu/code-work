@@ -754,3 +754,28 @@ export function hasServerAcknowledgedLocalDispatch(input: {
     input.localDispatch.sessionUpdatedAt !== (session?.updatedAt ?? null)
   );
 }
+
+/**
+ * 排队消息取消/编辑共用的分发守卫。只有消息仍在本机排队缓存里、且正是
+ * 当前正在分发的那个才拦截（避免队列重发造成重复）；刷新后本机缓存为空、
+ * submission 找不到时不能拦截——服务端队列才是事实源，否则按钮全部失效。
+ */
+export function resolveQueuedMessageGuard<
+  TSubmission extends {
+    readonly input: { readonly message: { readonly messageId: string } };
+  },
+>(input: {
+  readonly submissions: ReadonlyArray<TSubmission>;
+  readonly rawMessageId: string;
+  readonly dispatchingMessageId: string | undefined;
+}): { readonly submission: TSubmission | undefined; readonly blocked: boolean } {
+  const submission = input.submissions.find(
+    (candidate) => String(candidate.input.message.messageId) === input.rawMessageId,
+  );
+  const submissionMessageId = submission?.input.message.messageId;
+  return {
+    submission,
+    blocked:
+      submissionMessageId !== undefined && input.dispatchingMessageId === submissionMessageId,
+  };
+}

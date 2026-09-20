@@ -556,6 +556,7 @@ export const ja: Record<string, string> = {
   createNewThreadIn: "{{title}} で新しいスレッドを作成",
   createWorktree: "ワークツリーを作成",
   customFontSize: "カスタムフォントサイズ",
+  customModelService: "カスタムモデルサービス",
   default: "デフォルト",
   defaultGrouping: "デフォルトのグループ化",
   detachedHead: "(detached HEAD)",
@@ -2693,4 +2694,9 @@ export const ja: Record<string, string> = {
   "threads.worklog.previousEntries_plural": "前のログエントリ {{countValue}} 件",
   "threads.worklog.previousToolCalls": "前のツール呼び出し {{countValue}} 件",
   "threads.worklog.previousToolCalls_plural": "前のツール呼び出し {{countValue}} 件",
+  "threads.worklog.breakdown.reads": "読み取り {{countValue}}",
+  "threads.worklog.breakdown.edits": "編集 {{countValue}}",
+  "threads.worklog.breakdown.commands": "実行 {{countValue}}",
+  "threads.worklog.breakdown.searches": "検索 {{countValue}}",
+  "threads.worklog.breakdown.other": "その他 {{countValue}}",
 };

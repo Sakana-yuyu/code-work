@@ -2110,6 +2110,33 @@ describe("deriveWorkLogEntries context window handling", () => {
   });
 });
 
+describe("deriveWorkLogEntries account quota handling", () => {
+  // 订阅额度是「最新态」活动：输入框额度芯片直接消费完整活动列表，
+  // 工作日志里只会出现一行没有内容的伪工具行，所以不进工作日志。
+  it("excludes account rate limit updates from the work log", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "account-quota:thread-1",
+        turnId: "turn-1",
+        kind: "account.rate-limits.updated",
+        summary: "Account rate limits updated",
+        tone: "info",
+        payload: { rateLimits: { five_hour: { usedPercent: 12 } }, provider: "claude" },
+      }),
+      makeActivity({
+        id: "tool-1",
+        turnId: "turn-1",
+        kind: "tool.completed",
+        summary: "Ran command",
+        tone: "tool",
+      }),
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.label).toBe("Ran command");
+  });
+});
+
 describe("isLatestTurnSettled", () => {
   const latestTurn = {
     turnId: TurnId.make("turn-1"),

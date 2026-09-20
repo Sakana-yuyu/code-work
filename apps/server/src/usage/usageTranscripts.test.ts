@@ -3,6 +3,8 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   GROK_COST_USD_TICKS_PER_DOLLAR,
   initialCodexScanState,
+  mightCarryUsage,
+  parseByokLine,
   parseClaudeLine,
   parseCodexLine,
   parseGrokLine,
@@ -562,5 +564,75 @@ describe("parseGrokLine", () => {
 
     const records = parseGrokLine(line);
     expect(records[0]?.timestampMs).toBe(1_786_372_566_000);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* BYOK engine                                                                */
+/* -------------------------------------------------------------------------- */
+
+/** Shaped after a record written by `byokUsageLog`. */
+function byokLine(overrides: {
+  model?: string;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  threadId?: string;
+  timestampMs?: number;
+}): string {
+  return JSON.stringify({
+    type: "byok_model_usage",
+    timestampMs: overrides.timestampMs ?? 1788900000000,
+    threadId: overrides.threadId ?? "th_01",
+    model: overrides.model ?? "deepseek-chat",
+    inputTokens: overrides.inputTokens ?? 12000,
+    cachedInputTokens: overrides.cachedInputTokens ?? 4000,
+    outputTokens: overrides.outputTokens ?? 800,
+    reasoningTokens: overrides.reasoningTokens ?? 300,
+  });
+}
+
+describe("mightCarryUsage", () => {
+  it("gates byok lines on the self-describing record type", () => {
+    expect(mightCarryUsage(byokLine({}), "byok")).toBe(true);
+    expect(mightCarryUsage(JSON.stringify({ role: "assistant" }), "byok")).toBe(false);
+  });
+});
+
+describe("parseByokLine", () => {
+  it("splits total input into uncached and cached portions", () => {
+    const record = parseByokLine(byokLine({}));
+
+    expect(record).not.toBeNull();
+    expect(record?.provider).toBe("byok");
+    expect(record?.model).toBe("deepseek-chat");
+    expect(record?.sessionId).toBe("th_01");
+    expect(record?.timestampMs).toBe(1788900000000);
+    expect(record?.totals).toEqual({
+      uncachedInputTokens: 8000,
+      cachedInputTokens: 4000,
+      cacheCreationTokens: 0,
+      outputTokens: 800,
+      reasoningTokens: 300,
+    });
+    // BYOK writes one record per model response and nothing copies records
+    // across files, so there is no dedupe key.
+    expect(record?.dedupeKey).toBeNull();
+    expect(record?.reportedCostUsd).toBeNull();
+  });
+
+  it("clamps reasoning tokens to the output tokens they are a subset of", () => {
+    const record = parseByokLine(byokLine({ outputTokens: 100, reasoningTokens: 400 }));
+    expect(record?.totals.reasoningTokens).toBe(100);
+  });
+
+  it("rejects malformed, foreign, and zero-token lines", () => {
+    expect(parseByokLine("not json")).toBeNull();
+    expect(parseByokLine(JSON.stringify({ type: "byok_model_usage" }))).toBeNull();
+    expect(parseByokLine(byokLine({ model: "" }))).toBeNull();
+    expect(
+      parseByokLine(byokLine({ inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 })),
+    ).toBeNull();
   });
 });

@@ -1,3 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -10,6 +15,11 @@ import {
   type CodeGraphMaintSpawnImpl,
   type CodeGraphMaintSpawnedChild,
 } from "./codeGraphMaintenance.ts";
+import {
+  isCodeGraphInitInFlight,
+  spawnCodeGraphIndexInit,
+  type CodeGraphSpawnImpl,
+} from "./codeGraphIndex.ts";
 import { getCodeGraphIndexProgress, setCodeGraphProgress } from "./codeGraphProgress.ts";
 
 type FakeMaintChild = {
@@ -255,5 +265,75 @@ describe("reindexCodeGraph", () => {
     });
     expect(result.succeeded).toBe(false);
     expect(result.message).toContain("init");
+  });
+});
+
+/** 记录 spawn 实参的脚本桩：断言命令选择时用。 */
+const maintSpawnRecordingArgs = (
+  script: (child: FakeMaintChild) => void,
+  calls: Array<{ command: string; args: ReadonlyArray<string> }>,
+): CodeGraphMaintSpawnImpl => {
+  const child = makeMaintChild();
+  queueMicrotask(() => script(child));
+  return (command, args) => {
+    calls.push({ command, args });
+    return child.child;
+  };
+};
+
+describe("reindexCodeGraph command choice", () => {
+  it("runs `init` for a project without an existing index", async () => {
+    const root =
+      process.platform === "win32" ? "Z:\\codegraph-init-first" : "/tmp/codegraph-init-first";
+    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+    const result = await reindexCodeGraph(root, {
+      spawnImpl: maintSpawnRecordingArgs((child) => {
+        child.emitStdout("● 5 nodes, 3 edges\n└ Done\n");
+        child.emit("close", 0);
+      }, calls),
+    });
+    expect(result.succeeded).toBe(true);
+    const flat = calls[0]!.args.map((arg) => arg.replaceAll('"', ""));
+    expect(flat).toEqual(["init", root]);
+  });
+
+  it("runs `index` for a project that already has an index", async () => {
+    const root = await NodeFS.mkdtemp(NodePath.join(NodeOS.tmpdir(), "codegraph-reindex-"));
+    try {
+      await NodeFS.mkdir(NodePath.join(root, ".codegraph"));
+      const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+      const result = await reindexCodeGraph(root, {
+        spawnImpl: maintSpawnRecordingArgs((child) => {
+          child.emit("close", 0);
+        }, calls),
+      });
+      expect(result.succeeded).toBe(true);
+      expect(calls[0]!.args.map((arg) => arg.replaceAll('"', ""))).toEqual(["index"]);
+    } finally {
+      await NodeFS.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not spawn a second build while the background init is in flight", async () => {
+    const root =
+      process.platform === "win32" ? "Z:\\codegraph-init-inflight" : "/tmp/codegraph-init-inflight";
+    const hangingChild = {
+      on: () => ({}),
+      stdout: null,
+      stderr: null,
+      unref: () => {},
+    };
+    spawnCodeGraphIndexInit({ root, spawnImpl: () => hangingChild as never });
+    expect(isCodeGraphInitInFlight(root)).toBe(true);
+    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+    const result = await reindexCodeGraph(root, {
+      spawnImpl: (command, args) => {
+        calls.push({ command, args });
+        return makeMaintChild().child;
+      },
+    });
+    expect(result.succeeded).toBe(true);
+    expect(result.message).toContain("后台");
+    expect(calls).toHaveLength(0);
   });
 });

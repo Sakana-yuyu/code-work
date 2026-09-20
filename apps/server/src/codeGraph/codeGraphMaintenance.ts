@@ -1,15 +1,19 @@
 // @effect-diagnostics nodeBuiltinImport:off - 直接拉起用户全局安装的 codegraph CLI。
+// @effect-diagnostics globalTimers:off - 独立 Promise/Node 回调边界保留原生计时器，超时不终止索引进程。
 /**
  * CodeGraph CLI 维护链路：一键安装（npm 全局包）、`status --json` 投影读取、
- * `sync` 增量同步与 `index` 重建。全部是对上游 CLI 的一次性子进程调用，
- * 失败一律返回结果对象（fail-open），绝不把 CLI 缺失上升为服务器错误。
+ * `sync` 增量同步、`init` 首建与 `index` 全量重建。全部是对上游 CLI 的
+ * 一次性子进程调用，失败一律返回结果对象（fail-open），绝不把 CLI 缺失上升
+ * 为服务器错误。
  *
  * @module codeGraphMaintenance
  */
+import * as DateTime from "effect/DateTime";
 import { spawn } from "node:child_process";
 
 import type { CodeGraphInstallState } from "@codework/contracts";
 
+import { hasCodeGraphIndex, isCodeGraphInitInFlight } from "./codeGraphIndex.ts";
 import {
   applyCodeGraphOutput,
   getCodeGraphIndexProgress,
@@ -37,7 +41,7 @@ const setInstallState = (status: CodeGraphInstallState["status"], message?: stri
   installState = {
     status,
     message: message ?? null,
-    updatedAt: Date.now(),
+    updatedAt: DateTime.toEpochMillis(DateTime.nowUnsafe()),
   };
 };
 
@@ -164,7 +168,7 @@ let versionCache: { readonly version: string | null; readonly expiresAt: number 
 export const readCodeGraphCliVersion = async (
   options?: CodeGraphMaintenanceOptions,
 ): Promise<string | null> => {
-  const now = Date.now();
+  const now = DateTime.toEpochMillis(DateTime.nowUnsafe());
   if (versionCache !== null && versionCache.expiresAt > now) {
     return versionCache.version;
   }
@@ -356,15 +360,17 @@ export const syncCodeGraphIndex = async (
 };
 
 /**
- * `codegraph index`：全量重建。输出与 init 同族，阶段进度写入同一张
- * 进度表供设置页展示；完成后返回摘要。
+ * `init`（首建）与 `index`（全量重建）共用的完整构建：输出与 init 同族，
+ * 阶段进度写入同一张进度表供设置页展示；完成后返回摘要。
  */
-export const reindexCodeGraph = async (
+const runFullIndexBuild = async (
   workspaceRoot: string,
+  commandLabel: string,
+  args: ReadonlyArray<string>,
   options?: CodeGraphMaintenanceOptions,
 ): Promise<{ readonly succeeded: boolean; readonly message: string | null }> => {
   const outcome = await runCodeGraphCommand({
-    args: ["index"],
+    args,
     cwd: workspaceRoot,
     timeoutMs: REINDEX_TIMEOUT_MS,
     onOutput: (chunk) => applyCodeGraphOutput(workspaceRoot, chunk),
@@ -376,7 +382,7 @@ export const reindexCodeGraph = async (
   if (outcome.code !== 0) {
     return {
       succeeded: false,
-      message: firstLine(outcome.stderr) ?? `index 退出码 ${outcome.code ?? "null"}`,
+      message: firstLine(outcome.stderr) ?? `${commandLabel} 退出码 ${outcome.code ?? "null"}`,
     };
   }
   // 输出解析已经落了 complete；输出缺失时在这里兜底。
@@ -384,4 +390,24 @@ export const reindexCodeGraph = async (
     setCodeGraphProgress(workspaceRoot, "complete");
   }
   return { succeeded: true, message: firstLine(outcome.stdout) };
+};
+
+/**
+ * 面板上的「建立/重建索引」：已初始化的项目跑 `codegraph index` 全量重建；
+ * 未初始化的项目上游会直接报 "[ERR] CodeGraph not initialized"，首建必须走
+ * `codegraph init <path>`——与 agent 回合的自动建索引同一条命令（实测
+ * init 本身就是非交互的：初始化并默认建索引；1.6.0 新增的 --yes 不需要）。auto-init
+ * 在飞时绝不并行拉起第二个构建进程，进度由在飞进程写入的进度表展示。
+ */
+export const reindexCodeGraph = async (
+  workspaceRoot: string,
+  options?: CodeGraphMaintenanceOptions,
+): Promise<{ readonly succeeded: boolean; readonly message: string | null }> => {
+  if (!hasCodeGraphIndex(workspaceRoot)) {
+    if (isCodeGraphInitInFlight(workspaceRoot)) {
+      return { succeeded: true, message: "索引正在后台建立中。" };
+    }
+    return runFullIndexBuild(workspaceRoot, "init", ["init", workspaceRoot], options);
+  }
+  return runFullIndexBuild(workspaceRoot, "index", ["index"], options);
 };

@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - 测试直接创建磁盘 fixture 并验证 Node 子进程边界。
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -116,11 +117,7 @@ describe("spawnCodeGraphIndexInit", () => {
     expect(spawned).toHaveLength(1);
     expect(spawned[0]?.command).toBe("codegraph");
     // Windows 走 shell 派生时模块会给参数包裹双引号；剥掉引号后应与原始参数一致。
-    expect((spawned[0]?.args ?? []).map((arg) => arg.replaceAll('"', ""))).toEqual([
-      "init",
-      "--yes",
-      root,
-    ]);
+    expect((spawned[0]?.args ?? []).map((arg) => arg.replaceAll('"', ""))).toEqual(["init", root]);
 
     // 同一 root 在 init 进行中不重复拉起。
     expect(spawnCodeGraphIndexInit(options)).toBe(false);

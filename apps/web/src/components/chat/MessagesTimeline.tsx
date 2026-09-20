@@ -1907,11 +1907,16 @@ function WorkGroupToggleTimelineRow({
             : t("timeline.showFewerLogEntries")}
         </span>
       ) : (
-        <span className="font-medium text-foreground">
-          {t(row.onlyToolEntries ? "timeline.earlierToolCalls" : "timeline.earlierLogEntries", {
-            count: row.hiddenCount,
-          })}
-        </span>
+        <>
+          <span className="font-medium text-foreground">
+            {t(row.onlyToolEntries ? "timeline.earlierToolCalls" : "timeline.earlierLogEntries", {
+              count: row.hiddenCount,
+            })}
+          </span>
+          {row.breakdown ? (
+            <span className="min-w-0 flex-1 truncate text-secondary-label">{row.breakdown}</span>
+          ) : null}
+        </>
       )}
     </button>
   );

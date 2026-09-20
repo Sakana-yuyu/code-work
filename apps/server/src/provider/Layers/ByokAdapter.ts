@@ -32,6 +32,7 @@ import {
   type ProviderRuntimeEvent,
   type ProviderSession,
   type ServerSettings,
+  type ServerSettingsError,
   ThreadId,
   TurnId,
 } from "@codework/contracts";
@@ -63,6 +64,7 @@ import {
 } from "../../codeGraph/codeGraphIndex.ts";
 import { runByokAgentLoop, type ByokAgentToolCall } from "../../composition/ByokAgentLoop.ts";
 import { makeByokModelDriver } from "../../composition/OpenAiByokModelDriver.ts";
+import { appendByokUsageRecord } from "../../usage/byokUsageLog.ts";
 import {
   compositionToolCapabilityId,
   listCompositionAgentTools,
@@ -222,7 +224,7 @@ export interface ByokAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
   readonly toolBroker?: ToolBroker["Service"];
   /** 读取全局 ServerSettings（当前只取 codeGraphEnabled）；缺省或失败视为关闭。 */
-  readonly getServerSettings?: Effect.Effect<ServerSettings, unknown>;
+  readonly getServerSettings?: Effect.Effect<ServerSettings, ServerSettingsError>;
 }
 
 const BYOK_PROJECT_TOOL_NAMES: ReadonlySet<string> = new Set([
@@ -441,6 +443,30 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           : undefined);
       if (activeTokens === undefined || !Number.isSafeInteger(activeTokens) || activeTokens < 0)
         return;
+
+      // 用量页只扫 CLI 会话记录，BYOK 引擎在进程内没有 transcript，所以把
+      // 每次模型响应追加进自己的 JSONL 日志（usage/byokUsageLog）。写失败
+      // 静默丢弃，绝不影响回合。
+      const recordedAtMs = yield* Clock.currentTimeMillis;
+      const recordedOutputTokens = Math.max(0, Math.trunc(usage.outputTokens ?? 0));
+      const recordedCachedInputTokens = Math.max(0, Math.trunc(usage.cachedInputTokens ?? 0));
+      const recordedInputTokens = Math.max(
+        0,
+        Math.trunc(usage.inputTokens ?? Math.max(0, activeTokens - recordedOutputTokens)),
+      );
+      appendByokUsageRecord(serverConfig.stateDir, {
+        type: "byok_model_usage",
+        timestampMs: recordedAtMs,
+        threadId: ctx.session.threadId,
+        model: adapter.modelId,
+        inputTokens: recordedInputTokens,
+        cachedInputTokens: recordedCachedInputTokens,
+        outputTokens: recordedOutputTokens,
+        reasoningTokens: Math.min(
+          recordedOutputTokens,
+          Math.max(0, Math.trunc(usage.reasoningTokens ?? 0)),
+        ),
+      });
 
       const maxTokens =
         Number.isSafeInteger(adapter.contextWindowTokens) && adapter.contextWindowTokens > 0
@@ -862,7 +888,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       if (options?.getServerSettings !== undefined) {
         const codeGraphEnabled = yield* options.getServerSettings.pipe(
           Effect.map((settings) => settings.codeGraphEnabled),
-          Effect.catch(() => Effect.succeed(false)),
+          Effect.orElseSucceed(() => false),
         );
         if (codeGraphEnabled) {
           if (hasCodeGraphIndex(ctx.cwd)) {

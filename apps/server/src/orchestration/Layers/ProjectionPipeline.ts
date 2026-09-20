@@ -1,6 +1,7 @@
 import {
   ApprovalRequestId,
   type ChatAttachment,
+  type MessageId,
   type OrchestrationEvent,
   type OrchestrationSessionStatus,
   ThreadId,
@@ -1191,13 +1192,14 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           if (event.payload.activity.kind !== "provider.turn.start.failed") return;
           const payload = event.payload.activity.payload;
           if (typeof payload !== "object" || payload === null || !("messageId" in payload)) return;
-          const pending = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
+          const pendingRows = yield* projectionTurnRepository.listPendingTurnStartsByThreadId({
             threadId: event.payload.threadId,
           });
           // 失败事件只结算对应请求；迟到的失败不能删除后续追加输入的排队记录。
-          if (Option.isSome(pending) && pending.value.messageId === payload.messageId) {
-            yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
+          if (pendingRows.some((row) => row.messageId === payload.messageId)) {
+            yield* projectionTurnRepository.deletePendingTurnStartByMessageId({
               threadId: event.payload.threadId,
+              messageId: payload.messageId as MessageId,
             });
           }
           return;
@@ -1209,6 +1211,15 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             sourceProposedPlanThreadId: event.payload.sourceProposedPlan?.threadId ?? null,
             sourceProposedPlanId: event.payload.sourceProposedPlan?.planId ?? null,
             requestedAt: event.payload.createdAt,
+          });
+          return;
+        }
+
+        case "thread.turn-start-cancelled": {
+          // 取消只撤下对应排队请求，其余排队消息不受影响。
+          yield* projectionTurnRepository.deletePendingTurnStartByMessageId({
+            threadId: event.payload.threadId,
+            messageId: event.payload.messageId,
           });
           return;
         }
@@ -1344,9 +1355,13 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             });
           }
 
-          yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
-            threadId: event.payload.threadId,
-          });
+          // 采纳只结算被吸收的排队请求；其余排队消息保持等待下一回合。
+          if (Option.isSome(pendingTurnStart)) {
+            yield* projectionTurnRepository.deletePendingTurnStartByMessageId({
+              threadId: event.payload.threadId,
+              messageId: pendingTurnStart.value.messageId,
+            });
+          }
           return;
         }
 

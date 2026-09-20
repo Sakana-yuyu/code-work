@@ -415,6 +415,44 @@ describe("gatewayAdapterRoutes groupName", () => {
 });
 
 describe("routedServerProviderModels", () => {
+  it("共享渠道按实际模型保留思考强度，未知模型不伪造能力", () => {
+    const settings = settingsWithInstances({
+      byok: {
+        driver: "byok",
+        enabled: true,
+        config: byokConfig([
+          adapter({ id: "route-known", protocol: "openai", modelId: "gpt-6-astra" }),
+          adapter({ id: "route-unknown", protocol: "openai", modelId: "unknown-model" }),
+        ]),
+      },
+    });
+    const models = routedServerProviderModels(settings, "openai");
+    expect(models[0]?.capabilities?.optionDescriptors).toEqual([
+      expect.objectContaining({
+        id: "reasoningEffort",
+        type: "select",
+        options: expect.arrayContaining([expect.objectContaining({ id: "high" })]),
+      }),
+    ]);
+    expect(models[1]?.capabilities?.optionDescriptors).toEqual([]);
+    const capabilities = {
+      ...models[0]!.capabilities!,
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select" as const,
+          options: [{ id: "medium", label: "Medium", isDefault: true }],
+          currentValue: "medium",
+        },
+      ],
+    };
+    const native = [{ slug: "gpt-6-astra", name: "GPT", isCustom: false, capabilities }];
+    expect(
+      routedServerProviderModels(settings, "openai", undefined, native)[0]?.capabilities,
+    ).toEqual(capabilities);
+  });
+
   it("prefers the group label and falls back to the raw model id", () => {
     const models = routedServerProviderModels(
       settingsWithInstances({
@@ -463,18 +501,19 @@ describe("prepareRoutedProviderSnapshot", () => {
     },
   });
   it.effect.each([
-    ["codex", "openai-route"],
-    ["claudeAgent", "anthropic-route"],
-    ["grok", "openai-route"],
-    ["opencode", "byok_gateway/openai-route"],
-  ])("%s 仅保留所选共享渠道与协议的模型", ([driver, slug]) =>
+    ["codex", ["openai-route"]],
+    // Claude 拿到 anthropic 通道（直通）与 openai 通道（桥接）。
+    ["claudeAgent", ["anthropic-route", "openai-route"]],
+    ["grok", ["openai-route"]],
+    ["opencode", ["byok_gateway/openai-route"]],
+  ])("%s 仅保留所选共享渠道与协议（含桥接）的模型", ([driver, slugs]) =>
     Effect.gen(function* () {
       const result = yield* prepareRoutedProviderSnapshot(
         { ...native, driver: driver as ServerProvider["driver"] },
         { routeThroughByok: true, byokSourceInstanceId: "selected" },
         Effect.succeed(settings),
       );
-      expect(result.models.map((model) => model.slug)).toEqual([slug]);
+      expect(result.models.map((model) => model.slug)).toEqual(slugs);
       expect(result.auth.type).toBe("byok");
     }),
   );

@@ -307,45 +307,33 @@ try {
   const mergedPreviewWindowsManifestPath = NodePath.resolve(tempRoot, "release-assets/preview.yml");
   const { arm64Path: winDebugArm64Path, x64Path: winDebugX64Path } =
     writeWindowsBuilderDebugFixtures(tempRoot);
-  NodeChildProcess.execFileSync(
-    "bash",
-    [
-      "-lc",
-      `
-        release_assets_dir=${JSON.stringify(NodePath.resolve(tempRoot, "release-assets"))}
-        shopt -s nullglob
-        found_windows_manifest=false
-        for x64_manifest in "$release_assets_dir"/*-win-x64.yml; do
-          if [[ "$(basename "$x64_manifest")" == builder-debug-* ]]; then
-            continue
-          fi
-
-          arm64_manifest="\${x64_manifest/-x64.yml/-arm64.yml}"
-          output_manifest="\${x64_manifest/-win-x64.yml/.yml}"
-          if [[ ! -f "$arm64_manifest" ]]; then
-            echo "Missing matching arm64 Windows manifest for $x64_manifest" >&2
-            exit 1
-          fi
-
-          found_windows_manifest=true
-          ${JSON.stringify(process.execPath)} ${JSON.stringify(NodePath.resolve(repoRoot, "scripts/merge-update-manifests.ts"))} --platform win \
-            "$arm64_manifest" \
-            "$x64_manifest" \
-            "$output_manifest"
-          rm -f "$arm64_manifest" "$x64_manifest"
-        done
-
-        if [[ "$found_windows_manifest" != true ]]; then
-          echo "No Windows updater manifests found to merge." >&2
-          exit 1
-        fi
-      `,
-    ],
-    {
-      cwd: repoRoot,
-      stdio: "inherit",
-    },
+  const releaseAssetsDir = NodePath.resolve(tempRoot, "release-assets");
+  const windowsManifests = NodeFS.readdirSync(releaseAssetsDir).filter(
+    (name) => name.endsWith("-win-x64.yml") && !name.startsWith("builder-debug-"),
   );
+  if (windowsManifests.length === 0) {
+    throw new Error("没有可合并的 Windows 更新清单。");
+  }
+  for (const name of windowsManifests) {
+    const x64Manifest = NodePath.join(releaseAssetsDir, name);
+    const arm64Manifest = NodePath.join(releaseAssetsDir, name.replace(/-x64\.yml$/, "-arm64.yml"));
+    const outputManifest = NodePath.join(releaseAssetsDir, name.replace(/-win-x64\.yml$/, ".yml"));
+    assertExists(arm64Manifest, "缺少配对的 Windows ARM64 更新清单。");
+    NodeChildProcess.execFileSync(
+      process.execPath,
+      [
+        NodePath.resolve(repoRoot, "scripts/merge-update-manifests.ts"),
+        "--platform",
+        "win",
+        arm64Manifest,
+        x64Manifest,
+        outputManifest,
+      ],
+      { cwd: repoRoot, stdio: "inherit" },
+    );
+    NodeFS.unlinkSync(arm64Manifest);
+    NodeFS.unlinkSync(x64Manifest);
+  }
 
   const mergedWindowsManifest = NodeFS.readFileSync(mergedWindowsManifestPath, "utf8");
   assertContains(

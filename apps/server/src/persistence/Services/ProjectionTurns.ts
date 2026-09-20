@@ -94,6 +94,13 @@ export const GetProjectionPendingTurnStartInput = Schema.Struct({
 });
 export type GetProjectionPendingTurnStartInput = typeof GetProjectionPendingTurnStartInput.Type;
 
+export const DeleteProjectionPendingTurnStartByMessageIdInput = Schema.Struct({
+  threadId: ThreadId,
+  messageId: MessageId,
+});
+export type DeleteProjectionPendingTurnStartByMessageIdInput =
+  typeof DeleteProjectionPendingTurnStartByMessageIdInput.Type;
+
 export const DeleteProjectionTurnsByThreadInput = Schema.Struct({
   threadId: ThreadId,
 });
@@ -129,10 +136,26 @@ export interface ProjectionTurnRepositoryShape {
   ) => Effect.Effect<Option.Option<ProjectionPendingTurnStart>, ProjectionRepositoryError>;
 
   /**
+   * Lists every pending-start placeholder for a thread in request order. A thread can
+   * hold several queued turns at once; each resolves independently by messageId.
+   */
+  readonly listPendingTurnStartsByThreadId: (
+    input: GetProjectionPendingTurnStartInput,
+  ) => Effect.Effect<ReadonlyArray<ProjectionPendingTurnStart>, ProjectionRepositoryError>;
+
+  /**
    * Deletes only pending-start placeholder rows (`turnId = null`) for a thread and leaves concrete turn rows untouched.
    */
   readonly deletePendingTurnStartByThreadId: (
     input: GetProjectionPendingTurnStartInput,
+  ) => Effect.Effect<void, ProjectionRepositoryError>;
+
+  /**
+   * Deletes the pending-start placeholder for one message only, leaving other queued
+   * placeholders intact. No-op when the message is not pending.
+   */
+  readonly deletePendingTurnStartByMessageId: (
+    input: DeleteProjectionPendingTurnStartByMessageIdInput,
   ) => Effect.Effect<void, ProjectionRepositoryError>;
 
   /**

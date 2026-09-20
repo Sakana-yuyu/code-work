@@ -4,7 +4,7 @@ CodeGraph gives agents a pre-indexed knowledge graph of how your code connects �
 
 ## Turn It On
 
-The integration is **on by default** (Settings → Integrations → **CodeGraph code graph**). There is nothing to configure per project: the first time an agent works on a project, Code Work builds the index in the background (running `codegraph init --yes` in the project root) and keeps it out of your way — turns never wait on indexing.
+The integration is **on by default** (Settings → Integrations → **CodeGraph code graph**). There is nothing to configure per project: the first time an agent works on a project, Code Work builds the index in the background (running `codegraph init` in the project root) and keeps it out of your way — turns never wait on indexing.
 
 The only requirement is the CodeGraph CLI on your PATH:
 

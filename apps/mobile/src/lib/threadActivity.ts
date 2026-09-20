@@ -143,6 +143,8 @@ export type ThreadFeedEntry =
       readonly hiddenCount: number;
       readonly expanded: boolean;
       readonly onlyToolActivities: boolean;
+      /** 隐藏条目的构成摘要（「读取 142 · 修改 58」），混有非工具行时缺省。 */
+      readonly breakdown?: string;
     }
   | {
       readonly type: "turn-fold";
@@ -347,6 +349,8 @@ function deriveWorkLogEntries(
     if (activity.kind === "task.updated" && !isTerminalBypassUpdate(activity)) continue;
     if (activity.kind === "tool.progress") continue;
     if (activity.kind === "context-window.updated") continue;
+    // 订阅额度是「最新态」活动，由输入框额度芯片与用量页呈现，不是工作日志行。
+    if (activity.kind === "account.rate-limits.updated") continue;
     if (activity.summary === "Checkpoint captured") continue;
     if (isPlanBoundaryToolActivity(activity)) continue;
     if (isAgentInternalActivity(activity)) continue;
@@ -1411,7 +1415,8 @@ function appendPresentedFeedEntry(
 
   const groupId = entry.id;
   const expanded = expandedWorkGroupIds.has(groupId);
-  const hiddenCount = activities.length - MAX_VISIBLE_WORK_LOG_ENTRIES;
+  const hiddenActivities = activities.slice(0, -MAX_VISIBLE_WORK_LOG_ENTRIES);
+  const hiddenCount = hiddenActivities.length;
   const visibleActivities = expanded ? activities : activities.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES);
 
   for (const activity of visibleActivities) {
@@ -1432,7 +1437,41 @@ function appendPresentedFeedEntry(
     hiddenCount,
     expanded,
     onlyToolActivities: activities.every((activity) => activity.toolLike),
+    breakdown: workLogToggleBreakdown(hiddenActivities) ?? undefined,
   });
+}
+
+/**
+ * 「+N 次更早工具调用」折叠行的构成摘要：隐藏条目全是工具行时按图标分类
+ * 给出读取/修改/命令等计数，混有非工具行时留空（与 onlyToolActivities 同口径）。
+ */
+function workLogToggleBreakdown(hidden: ReadonlyArray<ThreadFeedActivity>): string | null {
+  if (hidden.length === 0 || !hidden.every((activity) => activity.toolLike)) {
+    return null;
+  }
+  const knownIcons = new Set<ThreadFeedActivity["icon"]>(["eye", "edit", "command", "globe"]);
+  const counts = new Map<ThreadFeedActivity["icon"], number>();
+  let other = 0;
+  for (const activity of hidden) {
+    if (knownIcons.has(activity.icon)) {
+      counts.set(activity.icon, (counts.get(activity.icon) ?? 0) + 1);
+    } else {
+      other += 1;
+    }
+  }
+  const parts: string[] = [];
+  const append = (icon: ThreadFeedActivity["icon"], key: string) => {
+    const count = counts.get(icon);
+    if (count !== undefined) parts.push(t(key, { count, countValue: count }));
+  };
+  append("eye", "threads.worklog.breakdown.reads");
+  append("edit", "threads.worklog.breakdown.edits");
+  append("command", "threads.worklog.breakdown.commands");
+  append("globe", "threads.worklog.breakdown.searches");
+  if (other > 0) {
+    parts.push(t("threads.worklog.breakdown.other", { count: other, countValue: other }));
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 /**

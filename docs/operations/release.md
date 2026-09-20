@@ -54,7 +54,7 @@ Release 会先执行质量门禁，再开始桌面矩阵构建。质量门禁包
 5. 运行 `node scripts/check-codegraph-upstream.ts` 对照 npm 上的上游
    `@colbymchenry/codegraph` 最新版本与代码里固定的
    `CODEGRAPH_VALIDATED_CLI_VERSION`。报告有新版本时，审阅上游变更是否影响
-   `codegraph init --yes` / `codegraph explore` 的行为或输出，确认无碍后把
+   `codegraph init` / `codegraph explore` 的行为或输出，确认无碍后把
    基线版本号更新到新版本再发布；有影响则先修复集成。
 
 ## 触发发布

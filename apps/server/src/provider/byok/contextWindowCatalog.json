@@ -1,6 +1,6 @@
 {
   "_comment": "模型上下文目录（与 cursor-byok internal/modelcontext/models.json 保持同步，仅保留 Code Work 用到的字段：上下文窗口、最大输出、视觉能力）。first-match-wins：pattern 按数组顺序匹配，越靠前优先级越高。pattern 经 normalizeModelID 处理后再匹配（小写、去 models/ 前缀、空格/下划线转连字符）。",
-  "_source": "cursor-byok models.json + 本仓库 deepseek 补充 + 2026-09 官方发布核对（Fable/Mythos 5.1、GPT-6 Astra、Gemini 3.8 Flash、DeepSeek V4.1-Flash、Grok 4.6、Qwen3.8-Max）",
+  "_source": "cursor-byok models.json + 本仓库 deepseek 补充 + 2026-09 官方发布核对（Fable/Mythos 5.1、GPT-6 Astra、Gemini 3.8 Flash、DeepSeek V4.1-Flash、Grok 4.6、Qwen3.8-Max）；2026-09-20 按 api-docs.deepseek.com 当前阵容复核：deepseek-flash=V4.1-Flash（1M/384K/视觉）、deepseek-v4-pro GA=1M/384K、V4 系列 384K 输出、deepseek-v4-flash 已并入 V4.1-Flash",
   "rules": [
     {
       "pattern": "^gpt-?6(?:-|$)",
@@ -42,6 +42,13 @@
       "supportsVision": true
     },
     {
+      "pattern": "^deepseek-?flash(?:-|$)",
+      "displayName": "DeepSeek V4.1-Flash（官方 ID deepseek-flash）",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 384000,
+      "supportsVision": true
+    },
+    {
       "pattern": "^grok-?4[.-]?6(?:-|$)",
       "displayName": "Grok 4.6",
       "contextWindowTokens": 500000,
@@ -59,7 +66,7 @@
       "pattern": "^deepseek-(?:chat|reasoner)(?:-|$)",
       "displayName": "DeepSeek V4 兼容别名",
       "contextWindowTokens": 1000000,
-      "maxOutputTokens": 32768,
+      "maxOutputTokens": 384000,
       "supportsVision": false
     },
     {
@@ -277,23 +284,23 @@
     },
     {
       "pattern": "^deepseek-?v?4-flash(?:-|$)",
-      "displayName": "DeepSeek V4 Flash",
+      "displayName": "DeepSeek V4 Flash（已并入 V4.1-Flash）",
       "contextWindowTokens": 1000000,
-      "maxOutputTokens": 32768,
-      "supportsVision": false
+      "maxOutputTokens": 384000,
+      "supportsVision": true
     },
     {
       "pattern": "^deepseek-?v?4-pro(?:-|$)",
       "displayName": "DeepSeek V4 Pro",
       "contextWindowTokens": 1000000,
-      "maxOutputTokens": 32768,
+      "maxOutputTokens": 384000,
       "supportsVision": false
     },
     {
       "pattern": "^deepseek-?v?4(?:-|$)",
       "displayName": "DeepSeek V4",
       "contextWindowTokens": 1000000,
-      "maxOutputTokens": 32768,
+      "maxOutputTokens": 384000,
       "supportsVision": false
     },
     {
@@ -313,8 +320,8 @@
     {
       "pattern": "^deepseek",
       "displayName": "DeepSeek",
-      "contextWindowTokens": 64000,
-      "maxOutputTokens": 4096,
+      "contextWindowTokens": 128000,
+      "maxOutputTokens": 8192,
       "supportsVision": false
     },
     {

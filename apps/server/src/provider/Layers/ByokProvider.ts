@@ -42,7 +42,7 @@ export const EMPTY_BYOK_MODEL_CAPABILITIES: ModelCapabilities = createModelCapab
  * 引擎在 openai 协议请求上透传为 `reasoning_effort`。未收录的模型不显示
  * 该选项，请求也不带该字段。
  */
-const byokModelCapabilities = (modelId: string): ModelCapabilities => {
+export const byokModelCapabilities = (modelId: string): ModelCapabilities => {
   const efforts = catalogCapabilitiesForModel(modelId)?.reasoningEfforts;
   if (efforts === undefined || efforts.length === 0) {
     return EMPTY_BYOK_MODEL_CAPABILITIES;

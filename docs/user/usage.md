@@ -1,9 +1,9 @@
 # Review usage
 
-The Usage page combines Codex, Claude Code, and Grok Build activity from your connected
-environments. It reads the providers' local session history and shows API-equivalent token cost,
-processed tokens, cache savings, provider shares, and model breakdowns. Subscription billing is
-separate from the raw token cost shown here.
+The Usage page combines Codex, Claude Code, Grok Build, and custom model service (BYOK) activity
+from your connected environments. It reads the providers' local session history and shows
+API-equivalent token cost, processed tokens, cache savings, provider shares, and model breakdowns.
+Subscription billing is separate from the raw token cost shown here.
 
 Two tabs sit next to the page title. **App usage** is the transcript-based view described below;
 **Personal plan** gathers everything you pay for — subscription providers and model service supplier
@@ -11,6 +11,10 @@ plans — across every connected environment.
 
 Grok Build totals come from persisted session updates. Interactive turns that never wrote a
 completed-turn record will not appear.
+
+Custom model service totals come from the engine's own per-response log, written locally in the
+server's data directory. Only turns that completed at least one model response are counted, and
+each connected environment counts the turns it ran itself.
 
 ## Mobile server settings
 

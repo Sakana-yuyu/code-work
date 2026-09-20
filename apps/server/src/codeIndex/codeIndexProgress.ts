@@ -6,6 +6,7 @@
  *
  * @module codeIndexProgress
  */
+import * as DateTime from "effect/DateTime";
 import * as NodePath from "node:path";
 
 import type { CodeIndexProgress } from "@codework/contracts";
@@ -31,7 +32,10 @@ export const setCodeIndexProgress = (
   root: string,
   progress: Omit<CodeIndexProgressEntry, "updatedAt">,
 ): void => {
-  progressByRoot.set(normalizeRootKey(root), { ...progress, updatedAt: Date.now() });
+  progressByRoot.set(normalizeRootKey(root), {
+    ...progress,
+    updatedAt: DateTime.toEpochMillis(DateTime.nowUnsafe()),
+  });
 };
 
 export const clearCodeIndexProgress = (root: string): void => {
@@ -42,6 +46,7 @@ export const clearCodeIndexProgress = (root: string): void => {
 export const readActiveCodeIndexProgress = (root: string): CodeIndexProgress | null => {
   const entry = progressByRoot.get(normalizeRootKey(root));
   if (entry === undefined) return null;
-  if (Date.now() - entry.updatedAt > PROGRESS_FRESH_MS) return null;
+  if (DateTime.toEpochMillis(DateTime.nowUnsafe()) - entry.updatedAt > PROGRESS_FRESH_MS)
+    return null;
   return { phase: entry.phase, processedFiles: entry.processedFiles, totalFiles: entry.totalFiles };
 };

@@ -700,6 +700,72 @@ describe("deriveMessagesTimelineRows", () => {
     );
   });
 
+  it("keeps error rows visible when a settled turn failed before any output", () => {
+    const userMessage = (id: string, text: string, createdAt: string) => ({
+      id,
+      kind: "message" as const,
+      createdAt,
+      message: {
+        id: id.replace("entry", "msg") as never,
+        role: "user" as const,
+        text,
+        turnId: null,
+        createdAt,
+        updatedAt: createdAt,
+        streaming: false,
+      },
+    });
+    const workEntry = (
+      id: string,
+      turnId: string,
+      createdAt: string,
+      tone: "tool" | "error",
+      label: string,
+    ) => ({
+      id,
+      kind: "work" as const,
+      createdAt,
+      entry: {
+        id,
+        createdAt,
+        turnId: turnId as never,
+        label,
+        tone,
+      },
+    });
+    const timelineEntries = [
+      userMessage("user-entry-1", "继续", "2026-01-01T00:00:00Z"),
+      toolWorkEntry0("work-entry-tool", "turn-1", "2026-01-01T00:00:08Z"),
+      errorWorkEntry0("work-entry-error", "turn-1", "2026-01-01T00:00:09Z"),
+      userMessage("user-entry-2", "到底完成没有？", "2026-01-01T00:01:00Z"),
+    ];
+    function toolWorkEntry0(id: string, turnId: string, createdAt: string) {
+      return workEntry(id, turnId, createdAt, "tool", "Ran command");
+    }
+    function errorWorkEntry0(id: string, turnId: string, createdAt: string) {
+      return workEntry(id, turnId, createdAt, "error", "unexpected status 401 Unauthorized");
+    }
+
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries,
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:01:01Z",
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+    const rowIds = rows.map((row) => row.id);
+    // Tool bookkeeping of the failed turn is hidden, but the error row must
+    // stay diagnosable in the timeline.
+    expect(rowIds).not.toContain("work-entry-tool");
+    expect(rowIds).toContain("work-entry-error");
+  });
+
   it("hides settled turns that produced no assistant output after an edit-and-resend", () => {
     const userMessage = (id: string, text: string, createdAt: string) => ({
       id,
@@ -1804,6 +1870,131 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
     expect(expandedRows.find((row) => row.kind === "work-toggle")).toMatchObject({
       expanded: true,
+    });
+  });
+
+  it("summarizes hidden tool calls on the collapsed overflow toggle", () => {
+    const toolEntries = [
+      {
+        id: "work-entry-1",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:01Z",
+        entry: {
+          id: "work-1",
+          createdAt: "2026-01-01T00:00:01Z",
+          label: "read",
+          tone: "tool" as const,
+          requestKind: "file-read" as const,
+        },
+      },
+      {
+        id: "work-entry-2",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:02Z",
+        entry: {
+          id: "work-2",
+          createdAt: "2026-01-01T00:00:02Z",
+          label: "read",
+          tone: "tool" as const,
+          requestKind: "file-read" as const,
+        },
+      },
+      {
+        id: "work-entry-3",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:03Z",
+        entry: {
+          id: "work-3",
+          createdAt: "2026-01-01T00:00:03Z",
+          label: "command",
+          tone: "tool" as const,
+          requestKind: "command" as const,
+        },
+      },
+    ];
+    // 非工具行（info 态，如此前的额度活动）占住可见尾部，触发溢出折叠。
+    const timelineEntries = [
+      ...toolEntries,
+      {
+        id: "work-entry-4",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:04Z",
+        entry: {
+          id: "work-4",
+          createdAt: "2026-01-01T00:00:04Z",
+          label: "Account rate limits updated",
+          tone: "info" as const,
+        },
+      },
+    ];
+
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.find((row) => row.kind === "work-toggle")).toMatchObject({
+      hiddenCount: 3,
+      onlyToolEntries: true,
+      summary: null,
+      breakdown: "Read 2 files and ran 1 command",
+    });
+  });
+
+  it("omits the breakdown when hidden entries include non-tool rows", () => {
+    const timelineEntries = [
+      {
+        id: "work-entry-1",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:01Z",
+        entry: {
+          id: "work-1",
+          createdAt: "2026-01-01T00:00:01Z",
+          label: "Account rate limits updated",
+          tone: "info" as const,
+        },
+      },
+      {
+        id: "work-entry-2",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:02Z",
+        entry: {
+          id: "work-2",
+          createdAt: "2026-01-01T00:00:02Z",
+          label: "read",
+          tone: "tool" as const,
+          requestKind: "file-read" as const,
+        },
+      },
+      {
+        id: "work-entry-3",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:03Z",
+        entry: {
+          id: "work-3",
+          createdAt: "2026-01-01T00:00:03Z",
+          label: "command",
+          tone: "tool" as const,
+          requestKind: "command" as const,
+        },
+      },
+    ];
+
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.find((row) => row.kind === "work-toggle")).toMatchObject({
+      hiddenCount: 2,
+      onlyToolEntries: false,
+      breakdown: null,
     });
   });
 

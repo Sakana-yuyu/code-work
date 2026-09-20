@@ -1,9 +1,42 @@
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { ProviderDriverKind, type ProviderOptionDescriptor } from "@codework/contracts";
-import { buildTraitsTriggerDisplay } from "./TraitsPicker";
+import { buildTraitsTriggerDisplay, shouldRenderTraitsControls } from "./TraitsPicker";
+import { createModelCapabilities } from "@codework/shared/model";
 import { getCurrentLanguage, setCurrentLanguage } from "~/i18n/runtime";
 
 const originalLanguage = getCurrentLanguage();
+it("共享渠道使用不透明模型 ID 时仍显示思考强度", () => {
+  const input = {
+    provider: ProviderDriverKind.make("codex"),
+    model: "adapter-opaque-id",
+    prompt: "",
+    modelOptions: undefined,
+    planModeEnabled: false,
+  };
+  const model = {
+    slug: "adapter-opaque-id",
+    name: "gpt-6-astra",
+    isCustom: false,
+    capabilities: createModelCapabilities({
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select",
+          options: [
+            { id: "medium", label: "Medium" },
+            { id: "high", label: "High" },
+          ],
+          currentValue: "high",
+        },
+      ],
+    }),
+  };
+  expect(shouldRenderTraitsControls({ ...input, models: [model] })).toBe(true);
+  expect(shouldRenderTraitsControls({ ...input, models: [{ ...model, capabilities: null }] })).toBe(
+    false,
+  );
+});
 beforeEach(() => setCurrentLanguage("en"));
 afterEach(() => setCurrentLanguage(originalLanguage));
 

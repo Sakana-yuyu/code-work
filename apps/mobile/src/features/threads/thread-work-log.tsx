@@ -296,6 +296,7 @@ export function ThreadWorkGroupToggle(props: {
   readonly hiddenCount: number;
   readonly iconSubtleColor: import("react-native").ColorValue;
   readonly onlyToolActivities: boolean;
+  readonly breakdown?: string;
   readonly onToggle: () => void;
 }) {
   const pressedBackground = useThemeColor("--color-subtle");
@@ -346,8 +347,16 @@ export function ThreadWorkGroupToggle(props: {
             type="monochrome"
           />
         </View>
-        <Text className="font-codework-medium text-xs text-foreground opacity-80">
-          {props.expanded ? expandedLabel : collapsedCountLabel}
+        <Text
+          className="font-codework-medium text-xs text-foreground opacity-80"
+          // 折叠行高度按单行预测量（WORK_GROUP_TOGGLE_HEIGHT），摘要必须同行截断。
+          numberOfLines={1}
+        >
+          {props.expanded
+            ? expandedLabel
+            : props.breakdown
+              ? `${collapsedCountLabel} · ${props.breakdown}`
+              : collapsedCountLabel}
         </Text>
       </Pressable>
     </View>

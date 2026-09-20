@@ -249,6 +249,10 @@ export type MessagesTimelineRow =
       onlyToolEntries: boolean;
       summary: string | null;
       summaryKind: ToolGroupSummaryKind | null;
+      // Collapsed-count rows gain a muted "Read 142, ran 96 commands…" digest
+      // of what the hidden entries were; a bare "+337 earlier tool calls"
+      // carries no signal about a long turn's actual work.
+      breakdown: string | null;
       hasFailure: boolean;
     }
   | {
@@ -709,6 +713,11 @@ function deriveTurnFolds(input: {
       if (entry.id === firstAssistantEntry?.id || entry.id === group.terminalEntry?.id) {
         continue;
       }
+      // Error rows stay outside folds: a failed turn must show its failure
+      // without requiring a click, exactly like the always-kept rows below.
+      if (entry.kind === "work" && entry.entry.tone === "error") {
+        continue;
+      }
       if (entry.kind === "work" && entry.entry.sourceActivityKind === "goal.completed") {
         continue;
       }
@@ -776,7 +785,8 @@ function deriveTurnFolds(input: {
  * "worked for X" fold row. After an edit-and-resend these orphaned stubs are
  * pure noise, so their hideable entries are dropped entirely: no fold row and
  * no rows. Entries the fold machinery always keeps (goal completion, agent
- * spawns, canvas cards) and system messages stay visible.
+ * spawns, canvas cards), system messages, and error rows stay visible — a
+ * failed turn must remain diagnosable, not collapse into silence.
  */
 export function deriveContentlessTurnHiddenEntryIds(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
@@ -825,6 +835,7 @@ export function deriveContentlessTurnHiddenEntryIds(input: {
       // Keep what the fold machinery always keeps visible, plus system rows.
       if (entry.kind === "work") {
         if (
+          entry.entry.tone === "error" ||
           entry.entry.canvas !== undefined ||
           entry.entry.agentSpawn !== undefined ||
           entry.entry.sourceActivityKind === "goal.completed"
@@ -1154,6 +1165,7 @@ export function deriveMessagesTimelineRows(input: {
             onlyToolEntries: true,
             summary: summarizeToolGroup(visibleGroupedEntries),
             summaryKind,
+            breakdown: null,
             hasFailure: workEntryDisplayIndicatesToolFailure(visibleGroupedEntries.at(-1)!),
           });
           if (expanded) {
@@ -1209,6 +1221,7 @@ export function deriveMessagesTimelineRows(input: {
 
           if (hiddenEntries.length > 0) {
             const latestToolEntry = visibleGroupedEntries.findLast(workLogEntryIsToolLike);
+            const hiddenAllToolLike = hiddenEntries.every(workLogEntryIsToolLike);
 
             nextRows.push({
               kind: "work-toggle",
@@ -1217,9 +1230,10 @@ export function deriveMessagesTimelineRows(input: {
               groupId,
               hiddenCount: hiddenEntries.length,
               expanded,
-              onlyToolEntries: hiddenEntries.every(workLogEntryIsToolLike),
+              onlyToolEntries: hiddenAllToolLike,
               summary: null,
               summaryKind: null,
+              breakdown: hiddenAllToolLike ? summarizeToolGroup(hiddenEntries) : null,
               hasFailure:
                 latestToolEntry !== undefined &&
                 workEntryDisplayIndicatesToolFailure(latestToolEntry) &&
@@ -1422,6 +1436,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.onlyToolEntries === bw.onlyToolEntries &&
         a.summary === bw.summary &&
         a.summaryKind === bw.summaryKind &&
+        a.breakdown === bw.breakdown &&
         a.hasFailure === bw.hasFailure
       );
     }

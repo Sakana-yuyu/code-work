@@ -5,7 +5,7 @@
  *
  * Code Work never bundles the CLI; it shells out to whatever `codegraph` is on
  * PATH. With the feature switch on, a turn on a project without a
- * `.codegraph/` index kicks off `codegraph init --yes` in the background
+ * `.codegraph/` index kicks off `codegraph init` in the background
  * (deduped per root, guarded against unsafe roots, never awaited) and the
  * `codegraph.explore` tool answers from the index once it exists. Everything
  * is fail-open: a missing CLI or failed init just leaves the regular toolset
@@ -30,6 +30,7 @@ import {
  * `node scripts/check-codegraph-upstream.ts` and re-verify the integration
  * when the CLI moved.
  */
+// 基线 = 实际跑通 init/index/sync/status/explore 全链路并核实命令面的版本。
 export const CODEGRAPH_VALIDATED_CLI_VERSION = "1.6.0";
 
 export const CODEGRAPH_INDEX_DIR_NAME = ".codegraph";
@@ -102,7 +103,7 @@ export type SpawnCodeGraphInitOptions = {
 };
 
 /**
- * 后台拉起 `codegraph init --yes <root>`：同一 root 去重、绝不抛错、调用方
+ * 后台拉起 `codegraph init <root>`：同一 root 去重、绝不抛错、调用方
  * 永不等待。返回是否真的拉起了新的 init 进程。
  */
 export const spawnCodeGraphIndexInit = (options: SpawnCodeGraphInitOptions): boolean => {
@@ -126,7 +127,10 @@ export const spawnCodeGraphIndexInit = (options: SpawnCodeGraphInitOptions): boo
     // 仅供阶段进度解析；init 期间 server 重启只会丢失进度显示，detached
     // 的 init 本身照常完成。
     const useShell = process.platform === "win32";
-    const args = ["init", "--yes", root].map((arg) => (useShell ? `"${arg}"` : arg));
+    // 上游 init 本身非交互（初始化并默认建索引）；1.6.0 起提供 --yes 跳过
+    // 提示，但本函数只在无 .codegraph 时调用、stdin 又被 ignore，提示无从
+    // 触发也无从阻塞，故不传。
+    const args = ["init", root].map((arg) => (useShell ? `"${arg}"` : arg));
     const child = spawnImpl("codegraph", args, {
       cwd: root,
       shell: useShell,

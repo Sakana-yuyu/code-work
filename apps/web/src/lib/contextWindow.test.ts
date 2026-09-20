@@ -121,6 +121,33 @@ describe("contextWindow", () => {
     ).toBe(100);
   });
 
+  it.each([
+    [
+      {
+        inputTokens: 1000,
+        cachedInputTokens: 800,
+        lastInputTokens: 100,
+        lastCachedInputTokens: 90,
+      },
+      80,
+    ],
+    [{ inputTokens: 1000, lastInputTokens: 100, lastCachedInputTokens: 90 }, 90],
+    [{ cachedInputTokens: 800, lastInputTokens: 100, lastCachedInputTokens: 90 }, 90],
+    [{ inputTokens: 1000, lastCachedInputTokens: 90 }, null],
+    [
+      { inputTokens: 1000, cachedInputTokens: 0, lastInputTokens: 100, lastCachedInputTokens: 90 },
+      0,
+    ],
+  ])("缓存率不得混用累计与单轮字段 %j", (payload, expected) => {
+    expect(
+      deriveCacheHitRate(
+        deriveLatestContextWindowSnapshot([
+          makeActivity("cache-scope", "context-window.updated", { usedTokens: 1000, ...payload }),
+        ]),
+      ),
+    ).toBe(expected);
+  });
+
   it("sums only matched tool lifecycle durations", () => {
     expect(
       deriveToolDurationMs([

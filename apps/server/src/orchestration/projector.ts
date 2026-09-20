@@ -311,6 +311,7 @@ export function projectEvent(
             activities: [],
             checkpoints: [],
             session: null,
+            queuedMessages: [],
           },
           event.type,
           "thread",

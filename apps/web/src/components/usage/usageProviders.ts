@@ -1,6 +1,6 @@
 import type { UsageProviderKind } from "@codework/contracts";
 
-import { ClaudeAI, GrokIcon, type Icon, OpenAI } from "../Icons";
+import { ClaudeAI, CustomModelServiceIcon, GrokIcon, type Icon, OpenAI } from "../Icons";
 import { t } from "~/i18n/runtime";
 
 export type UsageProviderPresentation = {
@@ -36,6 +36,15 @@ export const PROVIDER_PRESENTATION = {
     // Contrast-aware neutral between the Codex series and muted chart chrome.
     color: "color-mix(in oklab, var(--contrast-foreground) 72%, var(--background))",
     mark: GrokIcon,
+  },
+  byok: {
+    get label() {
+      return t("customModelService");
+    },
+    // Violet reads distinctly against the Codex/Claude/Grok neutrals and
+    // holds in both themes.
+    color: "#8b5cf6",
+    mark: CustomModelServiceIcon,
   },
 } satisfies Record<UsageProviderKind, UsageProviderPresentation>;
 

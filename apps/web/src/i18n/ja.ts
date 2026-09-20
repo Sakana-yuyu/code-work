@@ -93,7 +93,7 @@ export const ja: Record<string, string> = {
   "providerConnection.deviceLogin": "Codex デバイスコード サインイン",
   "providerConnection.gateway": "共有チャネル",
   "providerConnection.gatewayHint":
-    "有効なカスタムモデルチャネルから URL・キー・モデルを再利用します。Codex は OpenAI Responses 互換チャネル、Claude は Anthropic Messages 互換チャネルを使用します。他の CLI は対応するプロトコルを使います。OAuth アカウントはベンダー間で共有されません。",
+    "有効なカスタムモデルチャネルから URL・キー・モデルを再利用します。Codex は OpenAI Responses 互換チャネル、Claude は Anthropic Messages 互換チャネルに加えて、ブリッジ経由で OpenAI 互換チャネルを使用します。他の CLI は対応するプロトコルを使います。OAuth アカウントはベンダー間で共有されません。",
   "providerConnection.invalidUrl":
     "資格情報・クエリパラメーター・フラグメントを含まない HTTP(S) ベース URL を入力してください。",
   "providerConnection.keyPlaceholder": "API キーを入力",
@@ -1238,6 +1238,7 @@ export const ja: Record<string, string> = {
   cursorByok: "カスタムモデルサービス",
   custom: "カスタム",
   customInstructions: "カスタムインストラクション",
+  customModelService: "カスタムモデルサービス",
   daily: "毎日",
   day: "日",
   daysOfInactivityBeforeAutoSettle: "自動確定までの無活動日数",

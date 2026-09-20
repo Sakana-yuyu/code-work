@@ -131,7 +131,7 @@ export const deriveProviderInstanceConfigMap = (
     const source = sourceId === undefined ? undefined : merged[sourceId];
     const routes = gatewayAdapterRoutes(settings, sourceId).filter((route) =>
       entry.driver === "claudeAgent"
-        ? route.protocol === "anthropic"
+        ? route.protocol === "anthropic" || route.protocol === "openai"
         : entry.driver === "codex" ||
             entry.driver === "grok" ||
             entry.driver === "opencode" ||

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ByokModelAdapter } from "@codework/contracts";
 
 import { hasCatalogContextWindow, matchContextWindows } from "./ContextWindowMatcher.ts";
+import { catalogCapabilitiesForModel } from "./ContextWindowCatalog.ts";
 
 const adapter = (overrides: Partial<ByokModelAdapter> = {}): ByokModelAdapter => ({
   id: "adapter-1",
@@ -86,14 +87,14 @@ describe("ContextWindowMatcher", () => {
           source: "catalog",
           before: 128_000,
           after: 128_000,
-          maxOutputAfter: 32_768,
+          maxOutputAfter: 384_000,
         },
         {
           adapterId: "deepseek-reasoner",
           source: "catalog",
           before: 128_000,
           after: 128_000,
-          maxOutputAfter: 32_768,
+          maxOutputAfter: 384_000,
         },
       ],
     });
@@ -169,7 +170,57 @@ describe("ContextWindowMatcher", () => {
   it("distinguishes catalog-covered and provider-probe models", () => {
     expect(hasCatalogContextWindow("deepseek-chat")).toBe(true);
     expect(hasCatalogContextWindow("deepseek-v4-flash")).toBe(true);
+    expect(hasCatalogContextWindow("deepseek-flash")).toBe(true);
     expect(hasCatalogContextWindow("glm-5.3")).toBe(true);
     expect(hasCatalogContextWindow("private-model")).toBe(false);
+  });
+
+  it("resolves the deepseek-flash relay alias to V4.1-Flash specs", () => {
+    const result = matchContextWindows([
+      adapter({ modelId: "deepseek-flash", contextWindowTokens: 2_000_000 }),
+    ]);
+
+    expect(result.details[0]).toMatchObject({
+      modelId: "deepseek-flash",
+      source: "catalog",
+      before: 2_000_000,
+      after: 1_000_000,
+      maxOutputAfter: 384_000,
+    });
+  });
+
+  it("falls back to V3-era floors instead of pre-2025 specs for unknown deepseek names", () => {
+    const result = matchContextWindows([
+      adapter({ modelId: "deepseek-custom-thing", contextWindowTokens: 256_000 }),
+    ]);
+
+    expect(result.details[0]).toMatchObject({
+      modelId: "deepseek-custom-thing",
+      source: "catalog",
+      before: 256_000,
+      after: 128_000,
+      maxOutputAfter: 8_192,
+    });
+  });
+
+  // 2026-09 官方口径：V4 系列 384K 输出，V4-Flash 已并入 V4.1-Flash（获得视觉）。
+  it("brings deepseek v4-pro and retired v4-flash ids to the official 384K output", () => {
+    const result = matchContextWindows([
+      adapter({ modelId: "deepseek-v4-pro", contextWindowTokens: 2_000_000 }),
+      adapter({ modelId: "deepseek-v4-flash", contextWindowTokens: 2_000_000 }),
+    ]);
+
+    expect(result.details[0]).toMatchObject({
+      modelId: "deepseek-v4-pro",
+      after: 1_000_000,
+      maxOutputAfter: 384_000,
+    });
+    expect(result.details[1]).toMatchObject({
+      modelId: "deepseek-v4-flash",
+      after: 1_000_000,
+      maxOutputAfter: 384_000,
+    });
+    expect(catalogCapabilitiesForModel("deepseek-v4-flash")?.supportsVision).toBe(true);
+    expect(catalogCapabilitiesForModel("deepseek-v4-pro")?.supportsVision).toBe(false);
   });
 });

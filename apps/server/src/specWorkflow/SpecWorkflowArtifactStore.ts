@@ -6,6 +6,7 @@ import type {
   SpecWorkflowArtifactWriteInput,
 } from "@codework/contracts";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -278,7 +279,10 @@ export const SpecWorkflowArtifactStoreLive = Layer.effect(
         yield* fileSystem
           .makeDirectory(archiveRoot.absolutePath, { recursive: true })
           .pipe(Effect.mapError(toPathError));
-        const dateStamp = new Date(input.archivedAtUnixMs).toISOString().slice(0, 10);
+        const dateStamp = DateTime.formatIso(DateTime.makeUnsafe(input.archivedAtUnixMs)).slice(
+          0,
+          10,
+        );
         const pickTarget = (
           attempt: number,
         ): Effect.Effect<string, SpecWorkflowArtifactStoreError> =>

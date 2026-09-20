@@ -719,3 +719,22 @@ export const AcpAgentIcon: Icon = ({ className, ...props }) => (
     />
   </svg>
 );
+
+/**
+ * 自定义模型服务（BYOK）：无单一品牌标识，用层叠的端点/模型抽象记号，
+ * currentColor 以适配图表与图例的明暗两套底色。
+ */
+export const CustomModelServiceIcon: Icon = ({ className, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 24 24"
+    className={cn("fill-none", className)}
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="m12 3 9 5-9 5-9-5 9-5Z" />
+    <path d="m3 13.5 9 5 9-5" />
+  </svg>
+);

@@ -575,3 +575,145 @@ describe("本地账号网关 runtime smoke", () => {
     await gateway.dispose();
   });
 });
+
+describe("anthropic → openai 桥接", () => {
+  const bridgedSettings = (): ServerSettings =>
+    ({
+      providerInstances: {
+        byok: {
+          driver: "byok",
+          enabled: true,
+          config: {
+            enabled: true,
+            adapters: [
+              {
+                id: "ds-channel",
+                displayName: "DeepSeek",
+                groupName: "ds",
+                protocol: "openai",
+                baseURL: "https://api.deepseek.example/v1",
+                apiKey: "sk-upstream",
+                apiKeyRedacted: false,
+                modelId: "deepseek-chat",
+              },
+            ],
+          },
+        },
+      },
+    }) as unknown as ServerSettings;
+
+  it("把 Messages 请求翻译为 chat/completions，并把响应流翻译回 anthropic SSE", async () => {
+    const gateway = makeGateway(bridgedSettings(), [
+      new Response(
+        'data: {"choices":[{"delta":{"role":"assistant","content":"你好"}}]}\n\n' +
+          'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":9,"completion_tokens":2}}\n\n' +
+          "data: [DONE]\n\n",
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    ]);
+    const response = await gateway.handler(
+      new Request("http://gateway.test/byok-gw/anthropic/v1/messages", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${gateway.token}`,
+          "content-type": "application/json",
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "ds-channel",
+          max_tokens: 128,
+          system: "You are Code Work.",
+          stream: true,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const text = await response.text();
+    expect(text).toContain("event: message_start");
+    expect(text).toContain("text_delta");
+    expect(text).toContain("event: message_stop");
+    expect(text).toContain('"stop_reason":"end_turn"');
+
+    expect(gateway.captured).toHaveLength(1);
+    expect(gateway.captured[0]?.url).toBe("https://api.deepseek.example/v1/chat/completions");
+    expect(gateway.captured[0]?.headers.authorization).toBe("Bearer sk-upstream");
+    expect(gateway.captured[0]?.body).toMatchObject({
+      model: "deepseek-chat",
+      stream: true,
+      max_tokens: 128,
+      messages: [
+        { role: "system", content: "You are Code Work." },
+        { role: "user", content: "hi" },
+      ],
+    });
+    await gateway.dispose();
+  });
+
+  it("count_tokens 直接估算，不请求上游", async () => {
+    const gateway = makeGateway(bridgedSettings(), []);
+    const response = await gateway.handler(
+      new Request("http://gateway.test/byok-gw/anthropic/v1/messages/count_tokens", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${gateway.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "ds-channel",
+          messages: [{ role: "user", content: "x".repeat(40) }],
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ input_tokens: 10 });
+    expect(gateway.captured).toHaveLength(0);
+    await gateway.dispose();
+  });
+
+  it("上游错误按 anthropic 错误形状与原始状态码透传", async () => {
+    const gateway = makeGateway(bridgedSettings(), [
+      new Response(
+        '{"error":{"message":"Authentication Fails, Your api key: ****fe1f is invalid"}}',
+        {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    ]);
+    const response = await gateway.handler(
+      new Request("http://gateway.test/byok-gw/anthropic/v1/messages", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${gateway.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "ds-channel",
+          max_tokens: 16,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      }),
+    );
+    expect(response.status).toBe(401);
+    const body = (await response.json()) as { error?: { type?: string; message?: string } };
+    expect(body.error?.type).toBe("authentication_error");
+    expect(body.error?.message).toContain("fe1f");
+    await gateway.dispose();
+  });
+
+  it("anthropic 目录同时发布直通与可桥接通道，未知模型仍 404", async () => {
+    const gateway = makeGateway(bridgedSettings(), []);
+    const models = await gateway.handler(
+      new Request("http://gateway.test/byok-gw/anthropic/v1/models", {
+        headers: { authorization: `Bearer ${gateway.token}` },
+      }),
+    );
+    expect(models.status).toBe(200);
+    const body = (await models.json()) as { data?: { id?: string }[] };
+    expect(body.data?.map((entry) => entry.id)).toEqual(["ds-channel"]);
+    await gateway.dispose();
+  });
+});

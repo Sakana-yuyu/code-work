@@ -529,6 +529,7 @@ export const en: Record<string, string> = {
   createNewThreadIn: "Create new thread in {{title}}",
   createWorktree: "Create worktree",
   customFontSize: "Custom font size",
+  customModelService: "Custom model services",
   default: "Default",
   defaultGrouping: "Default grouping",
   detachedHead: "(detached HEAD)",
@@ -2641,6 +2642,11 @@ export const en: Record<string, string> = {
   "threads.worklog.previousEntries_plural": "+{{countValue}} previous log entries",
   "threads.worklog.previousToolCalls": "+{{countValue}} previous tool call",
   "threads.worklog.previousToolCalls_plural": "+{{countValue}} previous tool calls",
+  "threads.worklog.breakdown.reads": "Read {{countValue}}",
+  "threads.worklog.breakdown.edits": "Edited {{countValue}}",
+  "threads.worklog.breakdown.commands": "Ran {{countValue}}",
+  "threads.worklog.breakdown.searches": "Searched {{countValue}}",
+  "threads.worklog.breakdown.other": "Other {{countValue}}",
 };
 
 export const zhCN: Record<string, string> = {
@@ -3145,6 +3151,7 @@ export const zhCN: Record<string, string> = {
   createNewThreadIn: "在 {{title}} 中新建线程",
   createWorktree: "创建工作树",
   customFontSize: "自定义字体大小",
+  customModelService: "自定义模型服务",
   default: "默认",
   defaultGrouping: "默认分组",
   detachedHead: "（分离头）",
@@ -5175,4 +5182,9 @@ export const zhCN: Record<string, string> = {
   "threads.worklog.previousEntries_plural": "+之前的 {{countValue}} 条日志",
   "threads.worklog.previousToolCalls": "+之前的 {{countValue}} 次工具调用",
   "threads.worklog.previousToolCalls_plural": "+之前的 {{countValue}} 次工具调用",
+  "threads.worklog.breakdown.reads": "读取 {{countValue}}",
+  "threads.worklog.breakdown.edits": "修改 {{countValue}}",
+  "threads.worklog.breakdown.commands": "运行 {{countValue}}",
+  "threads.worklog.breakdown.searches": "搜索 {{countValue}}",
+  "threads.worklog.breakdown.other": "其他 {{countValue}}",
 };

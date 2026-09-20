@@ -6,6 +6,7 @@
  *
  * @module codeGraphProgress
  */
+import * as DateTime from "effect/DateTime";
 import * as NodePath from "node:path";
 
 import type { CodeGraphIndexPhase, CodeGraphIndexProgress } from "@codework/contracts";
@@ -63,7 +64,7 @@ export const setCodeGraphProgress = (
   progressByRoot.set(normalizeRootKey(root), {
     phase,
     detail: detail ?? null,
-    updatedAt: Date.now(),
+    updatedAt: DateTime.toEpochMillis(DateTime.nowUnsafe()),
   });
 };
 

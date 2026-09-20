@@ -30,6 +30,7 @@ describe("Spec Workflow capability contracts", () => {
       "threadId",
       "enabled",
       "selectedIntent",
+      "flags",
       "expectedRevision",
     ]);
     expect(() => decodeCapability({ ...capability, revision: -1 })).toThrow();

@@ -398,7 +398,7 @@ export const en: Record<string, string> = {
   "providerConnection.nativeHint":
     "Use the CLI's own account and configuration. Saving this mode removes this instance's explicit API-key overrides; it does not log out your CLI account.",
   "providerConnection.gatewayHint":
-    "Reuse URL, key and models from enabled custom model channels. Codex uses OpenAI Responses-compatible channels; Claude uses Anthropic Messages-compatible channels. Other CLIs use their supported protocol. OAuth accounts are not shared between vendors.",
+    "Reuse URL, key and models from enabled custom model channels. Codex uses OpenAI Responses-compatible channels; Claude uses Anthropic Messages-compatible channels plus bridged OpenAI-compatible channels. Other CLIs use their supported protocol. OAuth accounts are not shared between vendors.",
   "providerConnection.login": "Sign in with CLI",
   "providerConnection.deviceLogin": "Codex device-code sign-in",
   "providerConnection.loginFailed":
@@ -1178,6 +1178,7 @@ export const en: Record<string, string> = {
   cursorByok: "Custom model service",
   custom: "custom",
   customInstructions: "Custom instructions",
+  customModelService: "Custom model services",
   daily: "Daily",
   day: "Day",
   daysOfInactivityBeforeAutoSettle: "Days of inactivity before auto-settle",
@@ -6521,7 +6522,7 @@ export const zhCN: Record<string, string> = {
   "providerConnection.nativeHint":
     "使用 CLI 自身的账号和配置。保存此方式会移除此实例显式设置的 API 密钥覆盖，不会注销 CLI 账号。",
   "providerConnection.gatewayHint":
-    "复用已启用的自定义模型渠道中的 URL、密钥和模型。Codex 使用兼容 OpenAI Responses 的渠道，Claude 使用兼容 Anthropic Messages 的渠道；其他 CLI 按支持的协议连接。不同供应商的 OAuth 账号不互通。",
+    "复用已启用的自定义模型渠道中的 URL、密钥和模型。Codex 使用兼容 OpenAI Responses 的渠道，Claude 使用兼容 Anthropic Messages 的渠道，兼容 OpenAI 的渠道会自动桥接给 Claude；其他 CLI 按支持的协议连接。不同供应商的 OAuth 账号不互通。",
   "providerConnection.login": "通过 CLI 登录",
   "providerConnection.deviceLogin": "Codex 设备码登录",
   "providerConnection.loginFailed":
@@ -7239,6 +7240,7 @@ export const zhCN: Record<string, string> = {
   currentVersionOfTheApplication: "应用当前版本。",
   custom: "自定义",
   customInstructions: "自定义指令",
+  customModelService: "自定义模型服务",
   daily: "每日",
   day: "按天",
   daysOfInactivityBeforeAutoSettle: "自动沉寂前的空闲天数",

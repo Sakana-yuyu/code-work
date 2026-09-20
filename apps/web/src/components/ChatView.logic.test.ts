@@ -36,6 +36,7 @@ import {
   reconcileRetainedMountedThreadIds,
   resolveBackgroundDraftWorkspaceOptions,
   resolveDraftPromotionNavigationTarget,
+  resolveQueuedMessageGuard,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   resolveDraftHeroState,
@@ -1043,5 +1044,64 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
     expect(hasServerAcknowledgedLocalDispatch({ ...common, hasPendingApproval: true })).toBe(true);
     expect(hasServerAcknowledgedLocalDispatch({ ...common, hasPendingUserInput: true })).toBe(true);
     expect(hasServerAcknowledgedLocalDispatch({ ...common, threadError: "failed" })).toBe(true);
+  });
+});
+
+describe("resolveQueuedMessageGuard", () => {
+  const queuedSubmission = (messageId: string) => ({
+    environmentId,
+    input: {
+      threadId: ThreadId.make("thread-1"),
+      message: { messageId: MessageId.make(messageId), role: "user" as const, text: "hi" },
+    },
+    createdAt: "2026-09-20T10:00:00.000Z",
+    images: [],
+  });
+
+  it("blocks only when the queued message is the one currently dispatching", () => {
+    const submissions = [queuedSubmission("msg-1"), queuedSubmission("msg-2")];
+
+    const dispatching = resolveQueuedMessageGuard({
+      submissions,
+      rawMessageId: "msg-1",
+      dispatchingMessageId: "msg-1",
+    });
+    expect(dispatching.blocked).toBe(true);
+    expect(dispatching.submission?.input.message.messageId).toBe("msg-1");
+
+    // 另一条排队消息不受正在分发的那条影响。
+    const otherQueued = resolveQueuedMessageGuard({
+      submissions,
+      rawMessageId: "msg-2",
+      dispatchingMessageId: "msg-1",
+    });
+    expect(otherQueued.blocked).toBe(false);
+
+    const idle = resolveQueuedMessageGuard({
+      submissions,
+      rawMessageId: "msg-1",
+      dispatchingMessageId: undefined,
+    });
+    expect(idle.blocked).toBe(false);
+  });
+
+  it("never blocks a message missing from the local cache (e.g. after a refresh)", () => {
+    // 刷新后 queuedTurnSubmissions 为空，分发引用也为空：两者同为 undefined，
+    // 守卫此前误判为“正在分发”导致取消/编辑按钮全部失效。
+    const refreshed = resolveQueuedMessageGuard({
+      submissions: [],
+      rawMessageId: "msg-1",
+      dispatchingMessageId: undefined,
+    });
+    expect(refreshed.blocked).toBe(false);
+    expect(refreshed.submission).toBeUndefined();
+
+    // 刷新后恰有另一条消息正在分发，也不得牵连队列里其余消息。
+    const refreshedWhileDispatching = resolveQueuedMessageGuard({
+      submissions: [],
+      rawMessageId: "msg-1",
+      dispatchingMessageId: "msg-other",
+    });
+    expect(refreshedWhileDispatching.blocked).toBe(false);
   });
 });

@@ -393,6 +393,78 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("codework-base-")))
   },
 );
 
+it.layer(makeProjectionPipelinePrefixedTestLayer("codework-projection-queued-turns-"))(
+  "OrchestrationProjectionPipeline queued turn starts",
+  (it) => {
+    it.effect("keeps multiple queued turn starts and settles them independently", () =>
+      Effect.gen(function* () {
+        const pipeline = yield* OrchestrationProjectionPipeline;
+        const events = yield* OrchestrationEventStore;
+        const sql = yield* SqlClient.SqlClient;
+        const threadId = ThreadId.make("queued-thread-multi");
+        const base = {
+          aggregateKind: "thread" as const,
+          aggregateId: threadId,
+          occurredAt: "2026-01-01T00:00:00.000Z",
+          commandId: null,
+          causationEventId: null,
+          correlationId: null,
+          metadata: {},
+        };
+
+        for (const [index, messageId] of ["queued-a", "queued-b"].entries()) {
+          yield* events.append({
+            ...base,
+            type: "thread.turn-start-requested",
+            eventId: EventId.make(`queued-start-${index}`),
+            payload: {
+              threadId,
+              messageId: MessageId.make(messageId),
+              runtimeMode: "approval-required",
+              createdAt: `2026-01-01T00:0${index}:00.000Z`,
+            },
+          });
+        }
+
+        yield* pipeline.bootstrap;
+
+        const pendingBefore = yield* sql<{ readonly messageId: string }>`
+          SELECT pending_message_id AS "messageId"
+          FROM projection_turns
+          WHERE thread_id = ${threadId} AND turn_id IS NULL AND state = 'pending'
+          ORDER BY requested_at ASC
+        `;
+        assert.deepEqual(
+          pendingBefore.map((row) => row.messageId),
+          ["queued-a", "queued-b"],
+        );
+
+        yield* events.append({
+          ...base,
+          type: "thread.turn-start-cancelled",
+          eventId: EventId.make("queued-cancel-b"),
+          payload: {
+            threadId,
+            messageId: MessageId.make("queued-b"),
+            createdAt: "2026-01-01T00:02:00.000Z",
+          },
+        });
+        yield* pipeline.bootstrap;
+
+        const pendingAfterCancel = yield* sql<{ readonly messageId: string }>`
+          SELECT pending_message_id AS "messageId"
+          FROM projection_turns
+          WHERE thread_id = ${threadId} AND turn_id IS NULL AND state = 'pending'
+        `;
+        assert.deepEqual(
+          pendingAfterCancel.map((row) => row.messageId),
+          ["queued-a"],
+        );
+      }),
+    );
+  },
+);
+
 it.layer(
   Layer.fresh(makeProjectionPipelinePrefixedTestLayer("codework-projection-attachments-safe-")),
 )("OrchestrationProjectionPipeline", (it) => {

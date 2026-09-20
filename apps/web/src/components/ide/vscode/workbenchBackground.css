@@ -15,6 +15,28 @@
   background: transparent;
 }
 
+/* 活动条、侧栏、编辑区与面板的上游 part 把主题底色写成内联 style（activitybarPart
+   / sidebarPart / editorPart / panelPart 的 updateStyles），而主题同步要等扩展注册
+   完才启动，落地前取到的是引导主题——浅色应用里首帧会闪出深色区块。内联样式只能
+   用 !important 压：底色一律改由宿主层绘制——活动条/侧栏用应用侧栏色，编辑区/
+   面板透出工作台根节点的应用底色。主题同步后这些底色本就映射同一批应用变量
+   （activityBar/sideBar.background → --sidebar、editor/panel.background →
+   --background），前后状态一致，带背景装饰的主题仍由下方分区规则覆盖。 */
+.codework-vscode-workbench :is([data-vscode-part="activitybar"], [data-vscode-part="sidebar"]) {
+  background: var(--sidebar, var(--background));
+}
+
+.codework-vscode-workbench
+  :is(
+    [data-vscode-part="activitybar"],
+    [data-vscode-part="sidebar"],
+    [data-vscode-part="editors"],
+    [data-vscode-part="panel"]
+  )
+  :is(.part, .part > .content) {
+  background-color: transparent !important;
+}
+
 :is([data-theme-backdrop], [data-theme-regions~="content"])
   .codework-vscode-workbench
   :is([data-vscode-part="editors"], [data-vscode-part="panel"])

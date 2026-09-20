@@ -16,6 +16,7 @@ import {
   type OrchestrationCheckpointSummary,
   type OrchestrationLatestTurn,
   type OrchestrationMessage,
+  OrchestrationQueuedTurn,
   type OrchestrationProjectShell,
   type OrchestrationProposedPlan,
   type OrchestrationProject,
@@ -117,6 +118,14 @@ const ProjectionLatestTurnDbRowSchema = Schema.Struct({
   sourceProposedPlanId: Schema.NullOr(OrchestrationProposedPlanId),
 });
 const ProjectionStateDbRowSchema = ProjectionState;
+
+const ProjectionQueuedMessageDbRowSchema = Schema.Struct({
+  threadId: ProjectionThread.fields.threadId,
+  messageId: MessageId,
+  text: Schema.String,
+  createdAt: IsoDateTime,
+});
+
 const ProjectionCountsRowSchema = Schema.Struct({
   projectCount: Schema.Number,
   threadCount: Schema.Number,
@@ -703,6 +712,49 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           AND turns.turn_id = threads.latest_turn_id
         WHERE threads.latest_turn_id IS NOT NULL
         ORDER BY turns.thread_id ASC
+      `,
+  });
+
+  const listQueuedMessageRows = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: ProjectionQueuedMessageDbRowSchema,
+    execute: () =>
+      sql`
+        SELECT
+          turns.thread_id AS "threadId",
+          turns.pending_message_id AS "messageId",
+          messages.text AS "text",
+          turns.requested_at AS "createdAt"
+        FROM projection_turns turns
+        JOIN projection_thread_messages messages
+          ON messages.message_id = turns.pending_message_id
+        WHERE turns.turn_id IS NULL
+          AND turns.state = 'pending'
+          AND turns.pending_message_id IS NOT NULL
+          AND turns.checkpoint_turn_count IS NULL
+        ORDER BY turns.thread_id ASC, turns.requested_at ASC
+      `,
+  });
+
+  const listQueuedMessageRowsByThread = SqlSchema.findAll({
+    Request: ThreadIdLookupInput,
+    Result: ProjectionQueuedMessageDbRowSchema,
+    execute: ({ threadId }) =>
+      sql`
+        SELECT
+          turns.thread_id AS "threadId",
+          turns.pending_message_id AS "messageId",
+          messages.text AS "text",
+          turns.requested_at AS "createdAt"
+        FROM projection_turns turns
+        JOIN projection_thread_messages messages
+          ON messages.message_id = turns.pending_message_id
+        WHERE turns.thread_id = ${threadId}
+          AND turns.turn_id IS NULL
+          AND turns.state = 'pending'
+          AND turns.pending_message_id IS NOT NULL
+          AND turns.checkpoint_turn_count IS NULL
+        ORDER BY turns.requested_at ASC, turns.pending_message_id ASC
       `,
   });
 
@@ -1527,6 +1579,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               ),
             ),
           ),
+          listQueuedMessageRows(undefined).pipe(
+            Effect.mapError(
+              toPersistenceSqlOrDecodeError(
+                "ProjectionSnapshotQuery.getSnapshot:listQueuedMessages:query",
+                "ProjectionSnapshotQuery.getSnapshot:listQueuedMessages:decodeRows",
+              ),
+            ),
+          ),
         ]),
       )
       .pipe(
@@ -1541,6 +1601,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             checkpointRows,
             latestTurnRows,
             stateRows,
+            queuedMessageRows,
           ]) =>
             Effect.gen(function* () {
               const messagesByThread = new Map<string, Array<OrchestrationMessage>>();
@@ -1676,6 +1737,16 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 });
               }
 
+              const queuedByThread = new Map<
+                string,
+                Array<Schema.Schema.Type<typeof OrchestrationQueuedTurn>>
+              >();
+              for (const row of queuedMessageRows) {
+                const list = queuedByThread.get(row.threadId) ?? [];
+                list.push({ messageId: row.messageId, text: row.text, createdAt: row.createdAt });
+                queuedByThread.set(row.threadId, list);
+              }
+
               const repositoryIdentities = yield* resolveRepositoryIdentitiesForProjects(
                 projectRows,
                 { includeDeleted: true },
@@ -1725,6 +1796,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 activities: activitiesByThread.get(row.threadId) ?? [],
                 checkpoints: checkpointsByThread.get(row.threadId) ?? [],
                 session: sessionsByThread.get(row.threadId) ?? null,
+                queuedMessages: queuedByThread.get(row.threadId) ?? [],
               }));
 
               const snapshot = {
@@ -1936,6 +2008,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   activities: [],
                   checkpoints: [],
                   session: sessionByThread.get(row.threadId) ?? null,
+                  queuedMessages: [],
                 });
               }
 
@@ -2535,6 +2608,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         checkpointRows,
         latestTurnRow,
         sessionRow,
+        queuedMessageRows,
       ] = yield* Effect.all([
         getActiveThreadRowById({ threadId }).pipe(
           Effect.mapError(
@@ -2603,6 +2677,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             toPersistenceSqlOrDecodeError(
               "ProjectionSnapshotQuery.getThreadDetailById:getSession:query",
               "ProjectionSnapshotQuery.getThreadDetailById:getSession:decodeRow",
+            ),
+          ),
+        ),
+        listQueuedMessageRowsByThread({ threadId }).pipe(
+          Effect.mapError(
+            toPersistenceSqlOrDecodeError(
+              "ProjectionSnapshotQuery.getThreadDetailById:listQueuedMessages:query",
+              "ProjectionSnapshotQuery.getThreadDetailById:listQueuedMessages:decodeRows",
             ),
           ),
         ),
@@ -2689,6 +2771,11 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           completedAt: row.completedAt,
         })),
         session: Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null,
+        queuedMessages: queuedMessageRows.map((row) => ({
+          messageId: row.messageId,
+          text: row.text,
+          createdAt: row.createdAt,
+        })),
       };
 
       return Option.some(

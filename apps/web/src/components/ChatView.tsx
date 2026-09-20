@@ -382,6 +382,7 @@ import {
   readFileAsDataUrl,
   reconcileMountedTerminalThreadIds,
   resolveBackgroundDraftWorkspaceOptions,
+  resolveQueuedMessageGuard,
   resolveDraftHeroState,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
@@ -1360,6 +1361,9 @@ function ChatViewContent(props: ChatViewProps) {
     reportFailure: false,
   });
   const startThreadTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const cancelQueuedTurn = useAtomCommand(threadEnvironment.cancelQueuedTurn, {
+    reportFailure: false,
+  });
   const uploadThreadFeedback = useAtomCommand(threadEnvironment.uploadFeedback, {
     reportFailure: false,
   });
@@ -2866,12 +2870,12 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const queuedMessagesForComposer = useMemo(
     () =>
-      queuedMessagesForThread.map(({ messageId, text }) => ({
-        id: messageId,
-        text,
-        steerable: steerableQueuedMessageIds.has(messageId),
+      (activeThread?.queuedMessages ?? []).map((queued) => ({
+        id: String(queued.messageId),
+        text: queued.text,
+        steerable: steerableQueuedMessageIds.has(String(queued.messageId)),
       })),
-    [queuedMessagesForThread, steerableQueuedMessageIds],
+    [activeThread?.queuedMessages, steerableQueuedMessageIds],
   );
   useEffect(() => {
     if (threadDetailLoading || activeThread === undefined || queuedMessagesForThread.length === 0) {
@@ -4844,14 +4848,24 @@ function ChatViewContent(props: ChatViewProps) {
   }, [activeThreadRef, activeThreadWokeAt, markThreadVisited]);
   const onCancelQueuedMessage = useCallback(
     (rawMessageId: string) => {
-      const queued = queuedTurnSubmissionsRef.current.find(
-        (submission) => String(submission.input.message.messageId) === rawMessageId,
-      );
-      if (queuedTurnDispatchRef.current?.messageId === queued?.input.message.messageId) return;
+      const { submission: queued, blocked } = resolveQueuedMessageGuard({
+        submissions: queuedTurnSubmissionsRef.current,
+        rawMessageId,
+        dispatchingMessageId: queuedTurnDispatchRef.current?.messageId,
+      });
+      // 刷新后本机缓存为空时不能拦截：服务端队列仍是事实源，取消须照常下发。
+      if (blocked) return;
       if (queued) {
         const next = queuedTurnSubmissionsRef.current.filter((submission) => submission !== queued);
         queuedTurnSubmissionsRef.current = next;
         setQueuedTurnSubmissions(next);
+      }
+      const cancelThreadId = queued?.input.threadId ?? activeThread?.id;
+      if (cancelThreadId) {
+        void cancelQueuedTurn({
+          environmentId: queued?.environmentId ?? environmentId,
+          input: { threadId: cancelThreadId, messageId: rawMessageId as MessageId },
+        });
       }
       setQueuedMessageRecords((existing) =>
         existing.filter((message) => message.messageId !== rawMessageId),
@@ -4869,15 +4883,24 @@ function ChatViewContent(props: ChatViewProps) {
       });
       if (supportsAttachmentUploads && queued) releaseAttachmentUploads(queued.images);
     },
-    [setQueuedMessageRecords, supportsAttachmentUploads],
+    [
+      activeThread?.id,
+      cancelQueuedTurn,
+      environmentId,
+      setQueuedMessageRecords,
+      supportsAttachmentUploads,
+    ],
   );
   const onEditQueuedMessage = useCallback(
     (rawMessageId: string) => {
-      // 与取消共用同一条守卫：已进入分发的消息不可再编辑，避免队列重发造成重复。
-      const queued = queuedTurnSubmissionsRef.current.find(
-        (submission) => String(submission.input.message.messageId) === rawMessageId,
-      );
-      if (queuedTurnDispatchRef.current?.messageId === queued?.input.message.messageId) return;
+      const { submission: queued, blocked } = resolveQueuedMessageGuard({
+        submissions: queuedTurnSubmissionsRef.current,
+        rawMessageId,
+        dispatchingMessageId: queuedTurnDispatchRef.current?.messageId,
+      });
+      // 与取消共用同一条守卫：已进入分发的消息不可再编辑，避免队列重发造成
+      // 重复；刷新后本机缓存为空时不拦截，编辑回填走 localStorage 记录。
+      if (blocked) return;
       const record = queuedMessageRecords.find((message) => message.messageId === rawMessageId);
       const text = record?.text ?? "";
       onCancelQueuedMessage(rawMessageId);
@@ -6508,16 +6531,30 @@ function ChatViewContent(props: ChatViewProps) {
         createdAt: messageCreatedAt,
       };
       if (localPresentation?.kind === "queue") {
-        setQueuedTurnSubmissions((existing) => [
-          ...existing,
-          {
-            environmentId,
-            input: turnStartInput,
-            createdAt: messageCreatedAt,
-            images: composerImagesSnapshot,
-          },
-        ]);
-        turnStartSucceeded = true;
+        // Queue is now server-side: dispatch the same turn-start command and let
+        // the orchestrator park it behind the running turn.
+        const startResult = await startThreadTurn({ environmentId, input: turnStartInput });
+        if (startResult._tag === "Failure") {
+          failure = startResult;
+        } else {
+          turnStartSucceeded = true;
+          // Keep the full input client-side only so steer can resend it without
+          // losing attachments/model choice; the server queue is the truth and
+          // survives refresh, this cache just degrades steer after a reload.
+          setQueuedTurnSubmissions((existing) => [
+            ...existing,
+            {
+              environmentId,
+              input: turnStartInput,
+              createdAt: messageCreatedAt,
+              images: composerImagesSnapshot,
+            },
+          ]);
+          if (supportsAttachmentUploads) {
+            releaseAttachmentUploads(composerImagesSnapshot);
+          }
+          acknowledgeActiveThreadWoke();
+        }
       } else {
         if (backgroundThreadRef) {
           beginBackgroundDraftSubmissionByRef(backgroundThreadRef);

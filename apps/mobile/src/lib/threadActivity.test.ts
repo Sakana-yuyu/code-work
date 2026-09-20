@@ -239,6 +239,139 @@ function makeThread(
 }
 
 describe("buildThreadFeed", () => {
+  // 订阅额度是「最新态」活动：输入框额度芯片直接消费完整活动列表，
+  // 工作日志里只会出现一行没有内容的伪工具行，所以不进工作日志。
+  it("excludes account rate limit updates from the work log", () => {
+    const thread = makeThread({
+      id: ThreadId.make("thread-quota"),
+      projectId: ProjectId.make("project-1"),
+      title: "Quota not in work log",
+      activities: [
+        makeActivity({
+          id: EventId.make("account-quota:thread-quota"),
+          kind: "account.rate-limits.updated",
+          tone: "info",
+          summary: "Account rate limits updated",
+          createdAt: "2026-04-01T00:00:01.000Z",
+          payload: { rateLimits: { five_hour: { usedPercent: 12 } }, provider: "claude" },
+        }),
+        makeActivity({
+          id: EventId.make("tool-1"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Ran command",
+          createdAt: "2026-04-01T00:00:02.000Z",
+        }),
+      ],
+    });
+
+    expect(buildThreadFeed(thread)).toMatchObject([
+      { type: "activity-group", activities: [{ id: "tool-1" }] },
+    ]);
+  });
+
+  // 折叠行不能只是一个干巴巴的计数：隐藏条目全是工具行时带构成摘要。
+  it("summarizes hidden tool calls on the work-log toggle", () => {
+    const thread = makeThread({
+      id: ThreadId.make("thread-toggle-breakdown"),
+      projectId: ProjectId.make("project-1"),
+      title: "Toggle breakdown",
+      activities: [
+        makeActivity({
+          id: EventId.make("w1"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Read a",
+          createdAt: "2026-04-01T00:00:01.000Z",
+          turnId: TurnId.make("turn-1"),
+          payload: { requestKind: "file-read" },
+        }),
+        makeActivity({
+          id: EventId.make("w2"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Read b",
+          createdAt: "2026-04-01T00:00:02.000Z",
+          turnId: TurnId.make("turn-1"),
+          payload: { requestKind: "file-read" },
+        }),
+        makeActivity({
+          id: EventId.make("w3"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Read c",
+          createdAt: "2026-04-01T00:00:03.000Z",
+          turnId: TurnId.make("turn-1"),
+          payload: { requestKind: "file-read" },
+        }),
+      ],
+    });
+
+    const presented = deriveThreadFeedPresentation(
+      buildThreadFeed(thread),
+      {
+        turnId: TurnId.make("turn-1"),
+        state: "running",
+        startedAt: "2026-04-01T00:00:01.000Z",
+        completedAt: null,
+      },
+      new Set(),
+    );
+    const toggle = presented.find((entry) => entry.type === "work-toggle");
+
+    expect(toggle).toMatchObject({ hiddenCount: 2, breakdown: "Read 2" });
+  });
+
+  it("omits the work-log toggle breakdown when hidden entries include non-tool rows", () => {
+    const thread = makeThread({
+      id: ThreadId.make("thread-toggle-mixed"),
+      projectId: ProjectId.make("project-1"),
+      title: "Toggle mixed",
+      activities: [
+        makeActivity({
+          id: EventId.make("q1"),
+          kind: "context-compaction",
+          tone: "info",
+          summary: "Context compacted",
+          createdAt: "2026-04-01T00:00:01.000Z",
+          turnId: TurnId.make("turn-1"),
+        }),
+        makeActivity({
+          id: EventId.make("w1"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Read a",
+          createdAt: "2026-04-01T00:00:02.000Z",
+          turnId: TurnId.make("turn-1"),
+          payload: { requestKind: "file-read" },
+        }),
+        makeActivity({
+          id: EventId.make("w2"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Read b",
+          createdAt: "2026-04-01T00:00:03.000Z",
+          turnId: TurnId.make("turn-1"),
+          payload: { requestKind: "file-read" },
+        }),
+      ],
+    });
+
+    const presented = deriveThreadFeedPresentation(
+      buildThreadFeed(thread),
+      {
+        turnId: TurnId.make("turn-1"),
+        state: "running",
+        startedAt: "2026-04-01T00:00:01.000Z",
+        completedAt: null,
+      },
+      new Set(),
+    );
+    const toggle = presented.find((entry) => entry.type === "work-toggle");
+
+    expect(toggle).toMatchObject({ hiddenCount: 2, breakdown: undefined });
+  });
+
   it("exposes MCP Canvas results as an actionable work-log reference", () => {
     const thread = makeThread({
       id: ThreadId.make("thread-canvas"),

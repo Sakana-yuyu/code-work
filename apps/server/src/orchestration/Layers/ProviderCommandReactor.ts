@@ -78,6 +78,7 @@ type ProviderIntentEvent = Extract<
       | "thread.runtime-mode-set"
       | "thread.turn-start-requested"
       | "thread.turn-interrupt-requested"
+      | "thread.turn-start-cancelled"
       | "thread.approval-response-requested"
       | "thread.user-input-response-requested"
       | "thread.session-stop-requested";
@@ -404,6 +405,21 @@ const make = Effect.gen(function* () {
 
   const threadModelSelections = new Map<string, ModelSelection>();
   const pendingTurnSends = new Map<ThreadId, number>();
+  // Queued turn starts the user cancelled before the provider adopted them. The
+  // set lives for the process; the projection row is the durable record and is
+  // also checked right before send.
+  // ponytail: bounded FIFO set — a cancelled messageId is only needed until the
+  // matching turn-start-requested reaches the send check; 1000 is far past any
+  // realistic queue depth and prevents unbounded growth from orphaned cancels.
+  const CANCELLED_TURN_START_MAX = 1000;
+  const cancelledTurnStartMessageIds = new Set<MessageId>();
+  const markTurnStartCancelled = (messageId: MessageId) => {
+    if (cancelledTurnStartMessageIds.size >= CANCELLED_TURN_START_MAX) {
+      const oldest = cancelledTurnStartMessageIds.values().next().value;
+      if (oldest !== undefined) cancelledTurnStartMessageIds.delete(oldest);
+    }
+    cancelledTurnStartMessageIds.add(messageId);
+  };
 
   const syncThreadGoalStatus = (threadId: ThreadId, status: "active" | "paused") => {
     if (Option.isNone(threadGoalStore)) return Effect.void;
@@ -1359,6 +1375,9 @@ const make = Effect.gen(function* () {
       event: Extract<ProviderIntentEvent, { type: "thread.turn-start-requested" }>,
       cwd: string,
     ) {
+      if (cancelledTurnStartMessageIds.has(event.payload.messageId)) {
+        return;
+      }
       const key = turnStartKeyForEvent(event);
       if (yield* hasHandledTurnStartRecently(key)) {
         return;
@@ -1533,7 +1552,12 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           // 会话启动及排队等待期间可能收到预算事件，实际发送前再读一次。
           yield* checkThreadGoalBudget(thread.id);
+          // 排队期间收到取消即丢弃；取消事件在同一事件流中排在 start 之后。
+          if (cancelledTurnStartMessageIds.has(event.payload.messageId)) {
+            return;
+          }
           yield* providerService.sendTurn(sendTurnRequest.value.request);
+          cancelledTurnStartMessageIds.delete(event.payload.messageId);
         }),
       );
       const sendWhenAvailable: typeof send = send.pipe(
@@ -1849,6 +1873,9 @@ const make = Effect.gen(function* () {
       case "thread.turn-start-requested":
         yield* processTurnStartRequested(event);
         return;
+      case "thread.turn-start-cancelled":
+        markTurnStartCancelled(event.payload.messageId);
+        return;
       case "thread.turn-interrupt-requested":
         yield* processTurnInterruptRequested(event);
         return;
@@ -1896,6 +1923,7 @@ const make = Effect.gen(function* () {
         (event.type === "thread.meta-updated" && event.payload.regenerateTitle === true) ||
         event.type === "thread.runtime-mode-set" ||
         event.type === "thread.turn-start-requested" ||
+        event.type === "thread.turn-start-cancelled" ||
         event.type === "thread.turn-interrupt-requested" ||
         event.type === "thread.approval-response-requested" ||
         event.type === "thread.user-input-response-requested" ||

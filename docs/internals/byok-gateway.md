@@ -23,10 +23,10 @@ BYOK 实例保存模型通道，CLI 实例选择其中一条共享线路或聚�
 - 未限定来源：`/byok-gw/anthropic/*`、`/byok-gw/openai/*`。
 - 指定来源：`/byok-gw/anthropic/source/<instanceId>/*`、`/byok-gw/openai/source/<instanceId>/*`；OpenAI 客户端 Base URL 还包含 `/v1`。
 - `gatewayAdapterRoutes(settings, sourceInstanceId)` 只读取选定且已启用的 BYOK 实例，并筛选有 URL、密钥的 `openai` / `anthropic` 通道。来源不存在时得到空列表，不回退到其他实例。
-- `GET /v1/models` 返回当前来源中匹配协议的通道。模型选择器和请求使用通道 ID，转发前 `rewriteGatewayModel` 将其改为上游真实 `modelId`。
-- 有 `model` 字段时必须匹配同协议通道 ID；未知模型返回 404。Claude 模型 ID 的尾部上下文限定符（如 `[1m]`）在匹配时会被移除。没有 `model` 字段的辅助请求，只在该来源与协议恰有一个通道时转发，否则返回 400。
+- `GET /v1/models` 返回当前来源中匹配协议的通道；anthropic 侧目录额外包含可桥接的 `openai` 通道（本地官方账号路由除外）。模型选择器和请求使用通道 ID，转发前 `rewriteGatewayModel` 将其改为上游真实 `modelId`。
+- 有 `model` 字段时优先匹配同协议通道 ID；anthropic 请求未命中时回退到 openai 通道并走桥接（见下），openai 请求永不匹配 anthropic 通道。未知模型返回 404。Claude 模型 ID 的尾部上下文限定符（如 `[1m]`）在匹配时会被移除。没有 `model` 字段的辅助请求，只在该来源与协议恰有一个通道时转发，否则返回 400。
 
-每个请求重新读取服务器设置，因此模型通道的 URL、密钥和模型修改无需重启网关。上游响应流保持原样；网关不会把 Anthropic Messages、OpenAI Responses 或 Chat Completions 相互转换。`openai` 是通道协议分类，不是上游同时支持 Responses 与 Chat Completions 的能力证明。
+每个请求重新读取服务器设置，因此模型通道的 URL、密钥和模型修改无需重启网关。上游响应流默认保持原样；唯一的跨协议桥接是 `gatewayAnthropicBridge.ts`——anthropic 请求（`/v1/messages`、`/v1/messages/count_tokens`）落到 openai 通道时，请求体翻译为 Chat Completions，流式 SSE 翻译回 Messages 事件（含 tool_use / tool_result 与用量），count_tokens 返回估算值。 Responses 与其他方向仍不转换。`openai` 是通道协议分类，不是上游同时支持 Responses 与 Chat Completions 的能力证明。
 
 网关令牌由 `ServerSecretStore.getOrCreateRandom("byok-gateway-token", 32)` 生成，使用常量时间比较鉴权。CLI 通过子进程环境读取令牌；上游密钥由服务器替换，不进入客户端设置响应。CLI 与 Code Work 服务器运行在同一环境，注入的地址使用服务器本机 `127.0.0.1`，客户端通过本地、远程或隧道连接不改变这条路径。
 

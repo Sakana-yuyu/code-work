@@ -266,7 +266,9 @@ function proposedPlanIdFromEvent(event: ProviderRuntimeEvent, threadId: ThreadId
 }
 
 function assistantSegmentBaseKeyFromEvent(event: ProviderRuntimeEvent): string {
-  return String(event.itemId ?? event.turnId ?? event.eventId);
+  return [event.threadId, event.turnId ?? "", event.itemId ?? event.turnId ?? event.eventId]
+    .map(encodeURIComponent)
+    .join(":");
 }
 
 function assistantSegmentMessageId(baseKey: string, segmentIndex: number): MessageId {
@@ -465,7 +467,9 @@ export function runtimeEventToActivities(
           createdAt: event.createdAt,
           tone: "error",
           kind: "runtime.error",
-          summary: "Runtime error",
+          // The adapter-supplied message is the row label so a failed turn is
+          // diagnosable from the work log alone ("Runtime error" helps nobody).
+          summary: truncateDetail(event.payload.message, 120),
           payload: {
             message: truncateDetail(event.payload.message),
           },
@@ -2444,9 +2448,7 @@ const make = Effect.gen(function* () {
       const assistantCompletion =
         event.type === "item.completed" && event.payload.itemType === "assistant_message"
           ? {
-              messageId: MessageId.make(
-                `assistant:${event.itemId ?? event.turnId ?? event.eventId}`,
-              ),
+              messageId: assistantSegmentMessageId(assistantSegmentBaseKeyFromEvent(event), 0),
               fallbackText: event.payload.detail,
             }
           : undefined;
@@ -2672,8 +2674,9 @@ const make = Effect.gen(function* () {
           if (hasCheckpointForTurn(checkpointContext.checkpoints, turnId)) {
             // Already tracked; no-op.
           } else {
-            const assistantMessageId = MessageId.make(
-              `assistant:${event.itemId ?? event.turnId ?? event.eventId}`,
+            const assistantMessageId = assistantSegmentMessageId(
+              assistantSegmentBaseKeyFromEvent(event),
+              0,
             );
             yield* orchestrationEngine.dispatch({
               type: "thread.turn.diff.complete",

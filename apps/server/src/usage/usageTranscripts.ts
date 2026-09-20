@@ -70,6 +70,7 @@ export function totalTokens(totals: UsageTokenTotals): number {
 export function mightCarryUsage(line: string, provider: UsageProviderKind): boolean {
   if (provider === "claude") return line.includes('"usage"');
   if (provider === "grok") return line.includes('"turn_completed"');
+  if (provider === "byok") return line.includes('"byok_model_usage"');
   return line.includes('"token_count"');
 }
 
@@ -483,6 +484,65 @@ export function parseGrokLine(line: string): readonly UsageRecord[] {
     });
   }
   return results;
+}
+
+/* -------------------------------------------------------------------------- */
+/* BYOK engine                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Parses one line of the BYOK engine's own usage log (`byokUsageLog`).
+ *
+ * Each line is one completed model response written by Code Work itself, so
+ * unlike the CLIs' transcripts there is no block repetition, no fork copying,
+ * and no cross-file duplicate: every record is inherently unique and carries
+ * no dedupe key.
+ *
+ * `inputTokens` is total input inclusive of the cached portion, matching how
+ * the OpenAI-protocol drivers report it.
+ */
+export function parseByokLine(line: string): UsageRecord | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+
+  const record = parsed as Record<string, unknown>;
+  if (record["type"] !== "byok_model_usage") return null;
+
+  const timestampMs = int(record["timestampMs"]);
+  if (timestampMs <= 0) return null;
+
+  const model = typeof record["model"] === "string" ? record["model"] : "";
+  if (model.length === 0) return null;
+
+  const cachedInputTokens = int(record["cachedInputTokens"]);
+  const outputTokens = int(record["outputTokens"]);
+  const inputTokens = int(record["inputTokens"]);
+  const totals: UsageTokenTotals = {
+    // BYOK reports input inclusive of the cached portion, matching Codex.
+    uncachedInputTokens: Math.max(0, inputTokens - cachedInputTokens),
+    cachedInputTokens,
+    cacheCreationTokens: 0,
+    outputTokens,
+    reasoningTokens: Math.min(outputTokens, int(record["reasoningTokens"])),
+  };
+
+  if (totalTokens(totals) === 0) return null;
+
+  return {
+    provider: "byok",
+    timestampMs,
+    model,
+    sessionId: typeof record["threadId"] === "string" ? record["threadId"] : "",
+    totals,
+    // Token counts only; pricing falls to the model rate table.
+    reportedCostUsd: null,
+    dedupeKey: null,
+  };
 }
 
 export { EMPTY_TOTALS };

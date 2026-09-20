@@ -43,10 +43,11 @@ export type AccountQuotaSnapshot = {
 export function deriveCacheHitRate(usage: ContextWindowSnapshot | null): number | null {
   if (!usage) return null;
 
-  const cumulativeInputTokens = usage.inputTokens ?? 0;
-  const inputTokens =
-    cumulativeInputTokens > 0 ? cumulativeInputTokens : (usage.lastInputTokens ?? 0);
-  const cachedInputTokens = usage.cachedInputTokens ?? usage.lastCachedInputTokens ?? null;
+  const useCumulative = (usage.inputTokens ?? 0) > 0 && usage.cachedInputTokens != null;
+  const inputTokens = useCumulative ? usage.inputTokens! : (usage.lastInputTokens ?? 0);
+  const cachedInputTokens = useCumulative
+    ? usage.cachedInputTokens!
+    : (usage.lastCachedInputTokens ?? null);
   if (inputTokens <= 0 || cachedInputTokens === null) return null;
 
   return Math.min(100, Math.max(0, (cachedInputTokens / inputTokens) * 100));

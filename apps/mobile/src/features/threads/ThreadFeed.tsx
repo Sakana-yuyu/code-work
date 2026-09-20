@@ -1176,6 +1176,7 @@ function renderFeedEntry(
         hiddenCount={entry.hiddenCount}
         iconSubtleColor={iconSubtleColor}
         onlyToolActivities={entry.onlyToolActivities}
+        breakdown={entry.breakdown}
         onToggle={() => props.onToggleWorkGroup(entry.groupId)}
       />
     );

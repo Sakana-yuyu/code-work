@@ -12,6 +12,7 @@ import {
   type CreateThreadInput,
   type DeleteThreadInput,
   type InterruptThreadTurnInput,
+  type CancelQueuedTurnInput,
   type RespondToThreadApprovalInput,
   type RespondToThreadUserInputInput,
   type RevertThreadCheckpointInput,
@@ -32,6 +33,7 @@ import {
   createThread,
   deleteThread,
   interruptThreadTurn,
+  cancelQueuedTurn,
   respondToThreadApproval,
   respondToThreadUserInput,
   revertThreadCheckpoint,
@@ -177,6 +179,12 @@ export function createThreadEnvironmentAtoms<R, E>(
     interruptTurn: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:interrupt-turn",
       execute: (input: InterruptThreadTurnInput) => interruptThreadTurn(input),
+      scheduler,
+      concurrency,
+    }),
+    cancelQueuedTurn: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:cancel-queued-turn",
+      execute: (input: CancelQueuedTurnInput) => cancelQueuedTurn(input),
       scheduler,
       concurrency,
     }),

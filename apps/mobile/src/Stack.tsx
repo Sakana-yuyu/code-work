@@ -829,6 +829,9 @@ const navigationPathConfig = {
   screens: createPathConfigForStaticNavigation(RootStack) ?? {},
 };
 
-declare module "@react-navigation/native" {
+// React Navigation v7 的根导航参数表接线：core 的全局 RootParamList 从
+// 它自己的 RootNavigator 接口派生，必须增广 @react-navigation/core 本体
+// （增广 re-export 它的 native 不会合入）。
+declare module "@react-navigation/core" {
   interface RootNavigator extends RootStackType {}
 }

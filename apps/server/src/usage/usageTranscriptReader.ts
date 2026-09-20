@@ -20,6 +20,7 @@ import type { UsageProviderKind } from "@codework/contracts";
 import {
   initialCodexScanState,
   mightCarryUsage,
+  parseByokLine,
   parseClaudeLine,
   parseCodexLine,
   parseGrokLine,
@@ -42,14 +43,17 @@ export interface TranscriptFile {
  * `fileName` restricts the walk to a single basename (Grok's `updates.jsonl`).
  * Grok sessions also ship multi-megabyte `chat_history` and `events` logs that
  * never carry usage, so the basename filter keeps a cold scan off those files.
+ * `filePrefix` restricts it to a basename prefix (the BYOK engine's monthly
+ * `byok-usage-YYYY-MM.jsonl` logs) with the same effect.
  */
 export async function listTranscriptFiles(
   root: string,
   sinceMs: number,
-  options?: { readonly fileName?: string },
+  options?: { readonly fileName?: string; readonly filePrefix?: string },
 ): Promise<readonly TranscriptFile[]> {
   const found: TranscriptFile[] = [];
   const fileName = options?.fileName;
+  const filePrefix = options?.filePrefix;
 
   const walk = async (dir: string): Promise<void> => {
     let entries;
@@ -66,6 +70,8 @@ export async function listTranscriptFiles(
       }
       if (fileName !== undefined) {
         if (entry.name !== fileName) continue;
+      } else if (filePrefix !== undefined) {
+        if (!entry.name.startsWith(filePrefix) || !entry.name.endsWith(".jsonl")) continue;
       } else if (!entry.name.endsWith(".jsonl")) {
         continue;
       }
@@ -143,6 +149,13 @@ export async function readTranscriptRecords(
       if (provider === "grok") {
         if (!mightCarryUsage(line, provider)) continue;
         for (const grokRecord of parseGrokLine(line)) records.push(grokRecord);
+        continue;
+      }
+
+      if (provider === "byok") {
+        if (!mightCarryUsage(line, provider)) continue;
+        const record = parseByokLine(line);
+        if (record !== null) records.push(record);
         continue;
       }
 
