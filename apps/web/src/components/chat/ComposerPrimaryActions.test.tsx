@@ -227,6 +227,24 @@ describe("QueuedMessagesPanel", () => {
     expect(markup).toContain("queued task");
     expect(markup).toContain(`aria-label="${t("chat.cancelQueuedMessage")}"`);
     expect(markup).toContain(`aria-label="${t("chat.editQueuedMessage")}"`);
+    // 只有一条排队消息时不显示清空按钮。
+    expect(markup).not.toContain(t("chat.clearQueuedMessages"));
+  });
+
+  it("offers clear-all when several messages are queued", () => {
+    const markup = renderToStaticMarkup(
+      createElement(QueuedMessagesPanel, {
+        messages: [
+          { id: "queued-1", text: "first" },
+          { id: "queued-2", text: "second" },
+        ],
+        onEdit: () => {},
+        onCancel: () => {},
+        onClearAll: () => {},
+      }),
+    );
+
+    expect(markup).toContain(t("chat.clearQueuedMessages"));
   });
 });
 

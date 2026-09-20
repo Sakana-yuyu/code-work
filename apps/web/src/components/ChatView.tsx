@@ -4916,6 +4916,12 @@ function ChatViewContent(props: ChatViewProps) {
       setComposerDraftPrompt,
     ],
   );
+  // 一键清空：逐条走取消路径，分发守卫对每条独立生效，正在分发的自然跳过。
+  const onClearQueuedMessages = useCallback(() => {
+    for (const queued of queuedMessagesForComposer) {
+      onCancelQueuedMessage(queued.id);
+    }
+  }, [onCancelQueuedMessage, queuedMessagesForComposer]);
   const onSteerQueuedMessage = useCallback(
     (rawMessageId: string) => {
       // 引导只在回合运行中可用：立即发送但不打断当前输出，服务端把它并入
@@ -8182,6 +8188,7 @@ function ChatViewContent(props: ChatViewProps) {
                             queuedMessages={queuedMessagesForComposer}
                             onCancelQueuedMessage={onCancelQueuedMessage}
                             onEditQueuedMessage={onEditQueuedMessage}
+                            onClearQueuedMessages={onClearQueuedMessages}
                             {...(phase === "running" &&
                             activeThread?.session?.providerName === "byok"
                               ? { onSteerQueuedMessage }

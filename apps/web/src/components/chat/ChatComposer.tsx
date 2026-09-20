@@ -552,6 +552,7 @@ export interface ChatComposerProps {
   onEditQueuedMessage: (messageId: string) => void;
   /** 提供时排队条带显示引导按钮：立即送达运行中的 agent，不中断当前输出。 */
   onSteerQueuedMessage?: (messageId: string) => void;
+  onClearQueuedMessages?: () => void;
   isServerThread: boolean;
   isLocalDraftThread: boolean;
   forceExpandedOnMobile: boolean;
@@ -671,6 +672,7 @@ export function QueuedMessagesPanel({
   onEdit,
   onCancel,
   onSteer,
+  onClearAll,
 }: {
   readonly messages: ReadonlyArray<{
     readonly id: string;
@@ -682,6 +684,8 @@ export function QueuedMessagesPanel({
   readonly onCancel: (messageId: string) => void;
   /** 引导：不排队等待，立即把该消息发给运行中的 agent（仅 BYOK 纯文本消息提供）。 */
   readonly onSteer?: (messageId: string) => void;
+  /** 多条排队时提供的一键清空。 */
+  readonly onClearAll?: () => void;
 }) {
   return (
     <div
@@ -689,8 +693,19 @@ export function QueuedMessagesPanel({
       data-queued-messages-panel="true"
       role="status"
     >
-      <div className="pb-1.5 text-[11px] text-muted-foreground/70">
-        {t("chat.queuedMessageCount", { count: messages.length })}
+      <div className="flex items-center justify-between gap-2 pb-1.5">
+        <div className="text-[11px] text-muted-foreground/70">
+          {t("chat.queuedMessageCount", { count: messages.length })}
+        </div>
+        {onClearAll && messages.length > 1 ? (
+          <button
+            type="button"
+            className="text-[11px] text-muted-foreground/70 transition-colors hover:text-foreground"
+            onClick={onClearAll}
+          >
+            {t("chat.clearQueuedMessages")}
+          </button>
+        ) : null}
       </div>
       <div className="max-h-40 space-y-1.5 overflow-y-auto">
         {messages.map((message) => (
@@ -764,6 +779,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onCancelQueuedMessage,
     onEditQueuedMessage,
     onSteerQueuedMessage,
+    onClearQueuedMessages,
     isServerThread: _isServerThread,
     isLocalDraftThread: _isLocalDraftThread,
     forceExpandedOnMobile,
@@ -3599,6 +3615,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           onEdit={onEditQueuedMessage}
           onCancel={onCancelQueuedMessage}
           {...(onSteerQueuedMessage ? { onSteer: onSteerQueuedMessage } : {})}
+          {...(onClearQueuedMessages ? { onClearAll: onClearQueuedMessages } : {})}
         />
       ) : null}
       <div className="relative">

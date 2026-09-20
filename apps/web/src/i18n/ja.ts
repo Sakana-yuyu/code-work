@@ -2456,6 +2456,7 @@ export const ja: Record<string, string> = {
   "chat.queuedMessageCount": "{{count}} 件のメッセージをキュー待ち",
   "chat.queuedMessageCount_plural": "{{count}} 件のメッセージをキュー待ち",
   "chat.cancelQueuedMessage": "キューをキャンセル",
+  "chat.clearQueuedMessages": "すべてクリア",
   "chat.editQueuedMessage": "キュー済みメッセージを編集",
   "chat.steerQueuedMessage": "誘導：今すぐ送信（実行中の出力は中断しません）",
   "chat.steerQueuedMessageFailed": "実行中のエージェントへの誘導に失敗しました",
