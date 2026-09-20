@@ -128,8 +128,13 @@ export function useThreadComposerState() {
   const selectedDraft = selectedThreadKey ? composerDrafts[selectedThreadKey] : null;
   const draftMessage = selectedDraft?.text ?? "";
   const draftAttachments = selectedDraft?.attachments ?? [];
-  const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
   const selectedThread = selectedThreadDetail ?? selectedThreadShell;
+  // The count merges the device-local outbox with the server-side queue
+  // (pending turn-starts). They cannot overlap: an outbox entry is removed on
+  // `thread.turn.start` ack, and the server row only appears after that same
+  // submission is projected, so at worst the total dips by one for a frame.
+  const selectedThreadQueueCount =
+    selectedThreadQueuedMessages.length + (selectedThread?.queuedMessages?.length ?? 0);
   const modelSelection = selectedDraft?.modelSelection ?? selectedThread?.modelSelection ?? null;
   const runtimeMode = selectedDraft?.runtimeMode ?? selectedThread?.runtimeMode ?? null;
   const interactionMode = selectedDraft?.interactionMode ?? selectedThread?.interactionMode ?? null;
