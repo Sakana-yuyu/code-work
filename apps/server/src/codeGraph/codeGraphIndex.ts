@@ -13,7 +13,7 @@
  *
  * @module codeGraphIndex
  */
-import { spawn } from "node:child_process";
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -119,7 +119,7 @@ export const spawnCodeGraphIndexInit = (options: SpawnCodeGraphInitOptions): boo
   if (initInFlight.has(key) || initFailedRoots.has(key)) return false;
   initInFlight.add(key);
 
-  const spawnImpl = options.spawnImpl ?? (spawn as unknown as CodeGraphSpawnImpl);
+  const spawnImpl = options.spawnImpl ?? (NodeChildProcess.spawn as unknown as CodeGraphSpawnImpl);
   try {
     // Windows 上全局 npm 垫片是 codegraph.cmd，必须经 shell 拉起；Windows
     // 路径不可能包含双引号，逐参数包裹即为安全的引号处理。POSIX 直接数组

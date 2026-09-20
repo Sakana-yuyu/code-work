@@ -303,6 +303,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             model: "gpt-5-codex",
           },
           interactionMode: "default",
+          queuedMessages: [],
           runtimeMode: "full-access",
           branch: null,
           worktreePath: null,

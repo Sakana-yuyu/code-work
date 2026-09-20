@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import * as NodeFS from "node:fs/promises";
+import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
@@ -48,7 +48,7 @@ describe("appendByokUsageRecord", () => {
   const stateDir = NodePath.join(NodeOS.tmpdir(), "byok-usage-log-test");
 
   afterAll(async () => {
-    await NodeFS.rm(stateDir, { recursive: true, force: true });
+    await NodeFSP.rm(stateDir, { recursive: true, force: true });
   });
 
   it("appends records the usage scan reads back as byok records", async () => {

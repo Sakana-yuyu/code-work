@@ -9,7 +9,7 @@
  * @module codeGraphMaintenance
  */
 import * as DateTime from "effect/DateTime";
-import { spawn } from "node:child_process";
+import * as NodeChildProcess from "node:child_process";
 
 import type { CodeGraphInstallState } from "@codework/contracts";
 
@@ -72,7 +72,7 @@ export interface CodeGraphCommandOutcome {
 }
 
 const defaultSpawn: CodeGraphMaintSpawnImpl = (command, args, options) =>
-  spawn(command, args, {
+  NodeChildProcess.spawn(command, args, {
     ...options,
     stdio: [...options.stdio],
   }) as unknown as CodeGraphMaintSpawnedChild;

@@ -16,7 +16,7 @@
  *
  * @module byokUsageLog
  */
-import * as NodeFS from "node:fs/promises";
+import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
 export const BYOK_USAGE_DIRNAME = "usage";
@@ -68,8 +68,8 @@ export function appendByokUsageRecord(stateDir: string, record: ByokUsageLogReco
   // Serialized so concurrent model responses cannot interleave partial lines.
   appendChain = appendChain
     .then(() =>
-      NodeFS.mkdir(NodePath.dirname(filePath), { recursive: true }).then(() =>
-        NodeFS.appendFile(filePath, line, "utf8"),
+      NodeFSP.mkdir(NodePath.dirname(filePath), { recursive: true }).then(() =>
+        NodeFSP.appendFile(filePath, line, "utf8"),
       ),
     )
     .catch(() => {

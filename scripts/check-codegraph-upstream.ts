@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @effect-diagnostics globalFetch:off globalConsole:off nodeBuiltinImport:off -- Standalone Node CLI run outside any Effect runtime (release checklist helper).
 /**
  * Check the upstream CodeGraph CLI (@colbymchenry/codegraph on npm) for
  * releases newer than the version this integration was validated against.
@@ -10,7 +11,24 @@
  * bump CODEGRAPH_VALIDATED_CLI_VERSION.
  */
 
-import { CODEGRAPH_VALIDATED_CLI_VERSION } from "../apps/server/src/codeGraph/codeGraphIndex.ts";
+import * as NodeFS from "node:fs";
+
+// The scripts tsconfig only covers scripts/**; importing the server source here
+// would drag it into this project (TS6307), so the baseline constant is read
+// from the source text instead.
+const codeGraphIndexSource = NodeFS.readFileSync(
+  new URL("../apps/server/src/codeGraph/codeGraphIndex.ts", import.meta.url),
+  "utf8",
+);
+const baselineMatch = codeGraphIndexSource.match(/CODEGRAPH_VALIDATED_CLI_VERSION = "([^"]+)"/u);
+if (!baselineMatch) {
+  console.error(
+    "✗ 无法从 apps/server/src/codeGraph/codeGraphIndex.ts 解析 CODEGRAPH_VALIDATED_CLI_VERSION。",
+  );
+  process.exitCode = 2;
+  throw new Error("CODEGRAPH_VALIDATED_CLI_VERSION not found");
+}
+const CODEGRAPH_VALIDATED_CLI_VERSION = baselineMatch[1]!;
 
 const PACKAGE = "@colbymchenry/codegraph";
 const UPSTREAM_REPO = "https://github.com/colbymchenry/codegraph";

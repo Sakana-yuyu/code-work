@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import * as NodeFS from "node:fs/promises";
+import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
@@ -298,9 +298,9 @@ describe("reindexCodeGraph command choice", () => {
   });
 
   it("runs `index` for a project that already has an index", async () => {
-    const root = await NodeFS.mkdtemp(NodePath.join(NodeOS.tmpdir(), "codegraph-reindex-"));
+    const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "codegraph-reindex-"));
     try {
-      await NodeFS.mkdir(NodePath.join(root, ".codegraph"));
+      await NodeFSP.mkdir(NodePath.join(root, ".codegraph"));
       const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
       const result = await reindexCodeGraph(root, {
         spawnImpl: maintSpawnRecordingArgs((child) => {
@@ -310,7 +310,7 @@ describe("reindexCodeGraph command choice", () => {
       expect(result.succeeded).toBe(true);
       expect(calls[0]!.args.map((arg) => arg.replaceAll('"', ""))).toEqual(["index"]);
     } finally {
-      await NodeFS.rm(root, { recursive: true, force: true });
+      await NodeFSP.rm(root, { recursive: true, force: true });
     }
   });
 

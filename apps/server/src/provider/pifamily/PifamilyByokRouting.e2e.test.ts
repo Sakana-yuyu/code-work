@@ -339,8 +339,11 @@ describe("pi-family BYOK routing", () => {
       yield* adapter.stopSession(threadId);
     }).pipe(
       Effect.scoped,
-      Effect.provide(ServerConfig.layerTest(process.cwd(), { prefix: "codework-pi-routing-e2e-" })),
-      Effect.provide(NodeServices.layer),
+      Effect.provide(
+        ServerConfig.layerTest(process.cwd(), { prefix: "codework-pi-routing-e2e-" }).pipe(
+          Layer.provideMerge(NodeServices.layer),
+        ),
+      ),
     ),
   );
 
@@ -457,9 +460,10 @@ describe("pi-family BYOK routing", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(
-          ServerConfig.layerTest(process.cwd(), { prefix: "codework-pi-routing-e2e-" }),
+          ServerConfig.layerTest(process.cwd(), { prefix: "codework-pi-routing-e2e-" }).pipe(
+            Layer.provideMerge(NodeServices.layer),
+          ),
         ),
-        Effect.provide(NodeServices.layer),
       ),
   );
 });

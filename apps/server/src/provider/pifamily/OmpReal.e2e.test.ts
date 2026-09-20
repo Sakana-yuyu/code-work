@@ -23,6 +23,7 @@ import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Exit from "effect/Exit";
 import * as PlatformError from "effect/PlatformError";
 import * as Scope from "effect/Scope";
@@ -277,8 +278,11 @@ const realProbe = (): Effect.Effect<void, JsonlRpcProcessError | PlatformError.P
     yield* rpc.close("probe complete");
   }).pipe(
     Effect.scoped,
-    Effect.provide(ServerConfig.layerTest(process.cwd(), { prefix: "codework-omp-real-e2e-" })),
-    Effect.provide(NodeServices.layer),
+    Effect.provide(
+      ServerConfig.layerTest(process.cwd(), { prefix: "codework-omp-real-e2e-" }).pipe(
+        Layer.provideMerge(NodeServices.layer),
+      ),
+    ),
   );
 
 describe("OmpReal (real omp binary)", () => {

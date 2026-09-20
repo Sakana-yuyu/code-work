@@ -17,6 +17,7 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
@@ -193,8 +194,11 @@ const runWithOmpAdapter = (
     yield* body({ adapter, recorder, logPath });
   }).pipe(
     Effect.scoped,
-    Effect.provide(ServerConfig.layerTest(process.cwd(), { prefix: "codework-omp-adapter-test-" })),
-    Effect.provide(NodeServices.layer),
+    Effect.provide(
+      ServerConfig.layerTest(process.cwd(), { prefix: "codework-omp-adapter-test-" }).pipe(
+        Layer.provideMerge(NodeServices.layer),
+      ),
+    ),
   );
 
 describe("makeOmpAdapter", () => {
