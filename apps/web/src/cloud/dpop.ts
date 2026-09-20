@@ -75,7 +75,7 @@ const openDpopDatabase = Effect.fn("web.dpop.openDpopDatabase")(function* () {
   const legacyExists = yield* Effect.tryPromise({
     try: () => indexedDbDatabaseExists(LEGACY_DPOP_DATABASE_NAME),
     catch: (cause) => dpopError("Could not inspect legacy DPoP key storage.", cause),
-  }).pipe(Effect.catch(() => Effect.succeed(false)));
+  }).pipe(Effect.orElseSucceed(() => false));
   if (legacyExists === true) {
     yield* Effect.acquireUseRelease(
       openNamedDpopDatabase(LEGACY_DPOP_DATABASE_NAME),
