@@ -8,25 +8,25 @@ keeping a terminal open.
 Install it with the latest Code Work release:
 
 ```sh
-npx t3@latest service install
+codework service install
 ```
 
 Check whether it is installed:
 
 ```sh
-npx t3@latest service status
+codework service status
 ```
 
 Update or repair it:
 
 ```sh
-npx t3@latest service update
+codework service update
 ```
 
 Stop it and remove it from startup:
 
 ```sh
-npx t3@latest service uninstall
+codework service uninstall
 ```
 
 Updating restarts Code Work briefly. Let active agent work and terminal commands finish first.
@@ -69,5 +69,5 @@ A few more macOS notes:
 Code Work Connect may offer to install the service during setup so the host stays reachable in the
 background. This is only an onboarding shortcut: the service and Code Work Connect are managed separately.
 
-Signing out of Code Work Connect does not remove the service. Use `t3 service uninstall` when you no longer
+Signing out of Code Work Connect does not remove the service. Use `codework service uninstall` when you no longer
 want Code Work to start in the background.

@@ -304,8 +304,20 @@ export const SpecWorkflowArtifactName = Schema.Literals([
   "tasks.md",
   "verify.md",
   "retrospect.md",
+  /** 跨 change 持久的知识索引；存放于工作区 spec/knowledge.md，不属于任何 change。 */
+  "knowledge.md",
 ]);
 export type SpecWorkflowArtifactName = typeof SpecWorkflowArtifactName.Type;
+
+export const SpecWorkflowFlag = Schema.Literals(["design", "strict"]);
+export type SpecWorkflowFlag = typeof SpecWorkflowFlag.Type;
+
+/** 归档落位结果：spec/changes/<name> 被移动到的工作区相对路径。 */
+export const SpecWorkflowArchiveOutcome = Schema.Struct({
+  changeName: TrimmedNonEmptyString,
+  archivedTo: TrimmedNonEmptyString,
+});
+export type SpecWorkflowArchiveOutcome = typeof SpecWorkflowArchiveOutcome.Type;
 
 export const SpecWorkflowArtifactReadInput = Schema.Struct({
   workspaceRoot: TrimmedNonEmptyString,
@@ -339,6 +351,8 @@ export const SpecWorkflowCapability = Schema.Struct({
   enabled: Schema.Boolean,
   /** 缺省兼容旧客户端的完整流程；单节点选择只授权这一部分。 */
   selectedIntent: Schema.optionalKey(SpecWorkflowIntentName),
+  /** 可叠加的执行取向开关：design=视觉关键任务的设计模式，strict=反偷懒/反臆测的严格模式。 */
+  flags: Schema.optionalKey(Schema.Array(SpecWorkflowFlag)),
   revision: NonNegativeInt,
   updatedAt: NonNegativeInt,
 });
@@ -353,6 +367,8 @@ export const SpecWorkflowSetInput = Schema.Struct({
   threadId: ThreadId,
   enabled: Schema.Boolean,
   selectedIntent: Schema.optionalKey(SpecWorkflowIntentName),
+  /** 缺省时保留现有 flags；传空数组清除全部开关。 */
+  flags: Schema.optionalKey(Schema.Array(SpecWorkflowFlag)),
   expectedRevision: Schema.optionalKey(NonNegativeInt),
 });
 export type SpecWorkflowSetInput = typeof SpecWorkflowSetInput.Type;

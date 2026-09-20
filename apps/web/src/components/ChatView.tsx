@@ -2848,9 +2848,30 @@ function ChatViewContent(props: ChatViewProps) {
     () => timelineMessages.filter((message) => !queuedMessageIds.has(String(message.id))),
     [queuedMessageIds, timelineMessages],
   );
+  // 引导仅对纯文本的排队消息开放（带图片附件的消息引导会丢图），且只在
+  // BYOK 线程展示；刷新后仅剩 localStorage 记录时按不可引导处理。
+  const steerableQueuedMessageIds = useMemo(
+    () =>
+      new Set(
+        queuedTurnSubmissions
+          .filter(
+            (submission) =>
+              submission.environmentId === environmentId &&
+              submission.input.threadId === activeThread?.id &&
+              submission.input.message.attachments.length === 0,
+          )
+          .map((submission) => String(submission.input.message.messageId)),
+      ),
+    [activeThread?.id, environmentId, queuedTurnSubmissions],
+  );
   const queuedMessagesForComposer = useMemo(
-    () => queuedMessagesForThread.map(({ messageId, text }) => ({ id: messageId, text })),
-    [queuedMessagesForThread],
+    () =>
+      queuedMessagesForThread.map(({ messageId, text }) => ({
+        id: messageId,
+        text,
+        steerable: steerableQueuedMessageIds.has(messageId),
+      })),
+    [queuedMessagesForThread, steerableQueuedMessageIds],
   );
   useEffect(() => {
     if (threadDetailLoading || activeThread === undefined || queuedMessagesForThread.length === 0) {
@@ -4870,6 +4891,61 @@ function ChatViewContent(props: ChatViewProps) {
       queuedMessageRecords,
       scheduleComposerFocus,
       setComposerDraftPrompt,
+    ],
+  );
+  const onSteerQueuedMessage = useCallback(
+    (rawMessageId: string) => {
+      // 引导只在回合运行中可用：立即发送但不打断当前输出，服务端把它并入
+      // 运行中的回合；与取消/编辑共用分发守卫，避免与排队分发撞车。
+      if (phase !== "running") return;
+      const queued = queuedTurnSubmissionsRef.current.find(
+        (submission) => String(submission.input.message.messageId) === rawMessageId,
+      );
+      if (!queued || queued.environmentId !== environmentId) return;
+      if (queuedTurnDispatchRef.current?.messageId === queued.input.message.messageId) return;
+      void startThreadTurn({ environmentId: queued.environmentId, input: queued.input }).then(
+        (result) => {
+          if (result._tag === "Failure") {
+            if (!isAtomCommandInterrupted(result)) {
+              const error = squashAtomCommandFailure(result);
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: t("chat.steerQueuedMessageFailed"),
+                  description:
+                    error instanceof Error ? error.message : t("composer.failedToSendMessage"),
+                }),
+              );
+            }
+            return;
+          }
+          // 成功：从队列撤下，时间线里的用户消息由投影送达（与排队分发一致，
+          // 乐观行靠相同 messageId 去重）；引导失败时条目留在队列照常等待。
+          const next = queuedTurnSubmissionsRef.current.filter(
+            (submission) => submission !== queued,
+          );
+          queuedTurnSubmissionsRef.current = next;
+          setQueuedTurnSubmissions(next);
+          setQueuedMessageRecords((existing) =>
+            existing.filter((message) => message.messageId !== rawMessageId),
+          );
+          setLocalMessagePresentations((existing) => {
+            if (!(rawMessageId in existing)) return existing;
+            const nextPresentations = { ...existing };
+            delete nextPresentations[rawMessageId];
+            return nextPresentations;
+          });
+          acknowledgeActiveThreadWoke();
+        },
+      );
+    },
+    [
+      acknowledgeActiveThreadWoke,
+      environmentId,
+      phase,
+      setQueuedMessageRecords,
+      startThreadTurn,
+      t,
     ],
   );
   useEffect(() => {
@@ -8069,6 +8145,10 @@ function ChatViewContent(props: ChatViewProps) {
                             queuedMessages={queuedMessagesForComposer}
                             onCancelQueuedMessage={onCancelQueuedMessage}
                             onEditQueuedMessage={onEditQueuedMessage}
+                            {...(phase === "running" &&
+                            activeThread?.session?.providerName === "byok"
+                              ? { onSteerQueuedMessage }
+                              : {})}
                             isServerThread={isServerThread}
                             isLocalDraftThread={isLocalDraftThread}
                             forceExpandedOnMobile={forceExpandedMobileComposer && isDraftHeroState}

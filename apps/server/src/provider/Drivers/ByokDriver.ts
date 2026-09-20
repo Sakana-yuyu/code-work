@@ -118,6 +118,7 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
       const adapter = yield* makeByokAdapter(effectiveConfig, {
         instanceId,
         ...(toolBroker._tag === "Some" ? { toolBroker: toolBroker.value } : {}),
+        getServerSettings: serverSettings.getSettings,
       });
       const textGeneration = yield* makeByokTextGeneration(effectiveConfig);
 

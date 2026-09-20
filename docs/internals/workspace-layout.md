@@ -7,12 +7,12 @@ the task commands.
 
 ## apps
 
-- `apps/server` (`t3`): the execution runtime and the published CLI. Owns orchestration, provider
+- `apps/server` (`codework`): the execution runtime and the published CLI. Owns orchestration, provider
   drivers, checkpointing, VCS, terminals, filesystem access, auth, and the HTTP + WebSocket surface.
   Also serves the built web app.
 - `apps/web` (`@codework/web`): React + Vite UI. Consumes the shared client runtime and adds routing,
   components, and web-specific platform layers.
-- `apps/desktop` (`@codework/desktop`): Electron shell. Supervises a desktop-scoped `t3` backend,
+- `apps/desktop` (`@codework/desktop`): Electron shell. Supervises a desktop-scoped `codework` backend,
   loads the web bundle over the `codework://` protocol, and owns SSH-managed remote environments.
 - `apps/mobile` (`@codework/mobile`): Expo/React Native client. Same client runtime composition as
   web, different platform layer and UI.

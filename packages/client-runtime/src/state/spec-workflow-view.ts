@@ -3,6 +3,7 @@ import type {
   ScopedThreadRef,
   SpecWorkflowCapability,
   SpecWorkflowEvent,
+  SpecWorkflowFlag,
   SpecWorkflowIntentName,
   SpecWorkflowState,
   SpecWorkflowStateEvent,
@@ -56,6 +57,9 @@ export interface SpecWorkflowCapabilityController extends SpecWorkflowCapability
   readonly enabled: boolean;
   readonly toggle: () => Promise<boolean>;
   readonly selectIntent: (intent: SpecWorkflowIntentName) => Promise<boolean>;
+  /** 线程当前启用的执行取向开关；未设置时为空数组。 */
+  readonly flags: ReadonlyArray<SpecWorkflowFlag>;
+  readonly toggleFlag: (flag: SpecWorkflowFlag) => Promise<boolean>;
   readonly workflowState: SpecWorkflowState | null;
   readonly workflowStateIsPending: boolean;
   readonly workflowStateHasError: boolean;
@@ -167,7 +171,11 @@ export function createSpecWorkflowView<R, E>(input: SpecWorkflowViewInput<R, E>)
     const refreshWorkflowState = workflowState.refresh;
 
     const updateCapability = useCallback(
-      async (enabled: boolean, selectedIntent?: SpecWorkflowIntentName) => {
+      async (
+        enabled: boolean,
+        selectedIntent?: SpecWorkflowIntentName,
+        flags?: ReadonlyArray<SpecWorkflowFlag>,
+      ) => {
         if (threadId === null || environmentId === null || capability === null || isMutating) {
           return false;
         }
@@ -179,6 +187,7 @@ export function createSpecWorkflowView<R, E>(input: SpecWorkflowViewInput<R, E>)
               threadId,
               enabled,
               ...(selectedIntent === undefined ? {} : { selectedIntent }),
+              ...(flags === undefined ? {} : { flags: [...flags] }),
               expectedRevision: capability.revision,
             },
           });
@@ -199,6 +208,18 @@ export function createSpecWorkflowView<R, E>(input: SpecWorkflowViewInput<R, E>)
     const selectIntent = useCallback(
       (intent: SpecWorkflowIntentName) => updateCapability(true, intent),
       [updateCapability],
+    );
+    const currentFlags = capability?.flags ?? [];
+    const toggleFlag = useCallback(
+      (flag: SpecWorkflowFlag) =>
+        updateCapability(
+          capability?.enabled ?? false,
+          capability?.selectedIntent,
+          currentFlags.includes(flag)
+            ? currentFlags.filter((active) => active !== flag)
+            : [...currentFlags, flag],
+        ),
+      [capability?.enabled, capability?.selectedIntent, currentFlags, updateCapability],
     );
 
     const runWorkflowCommand = useCallback(
@@ -283,6 +304,8 @@ export function createSpecWorkflowView<R, E>(input: SpecWorkflowViewInput<R, E>)
       isPending: state.isPending || isMutating,
       toggle,
       selectIntent,
+      flags: currentFlags,
+      toggleFlag,
       workflowState: workflowState.state,
       workflowStateIsPending: workflowState.isPending,
       workflowStateHasError: workflowState.hasError,

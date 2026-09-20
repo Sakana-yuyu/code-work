@@ -134,6 +134,11 @@ export type ByokAgentLoopInput = {
   readonly maxContextMessages?: number;
   /** 单条工具结果及参数纠错提示重新注入模型时允许的最大字符数。 */
   readonly maxToolResultChars?: number;
+  /**
+   * 每轮模型请求前取走待注入的用户引导（运行中不中断的追加输入）；返回的
+   * 文本按序作为 user 消息并入本轮上下文。会话侧负责去重与落盘。
+   */
+  readonly takePendingUserMessages?: () => ReadonlyArray<string>;
   readonly onTextCheckpoint?: (
     checkpoint: ByokAgentTextCheckpoint,
   ) => Effect.Effect<void, ByokAgentLoopCheckpointError>;
@@ -168,6 +173,26 @@ const DEFAULT_MAX_CONTEXT_MESSAGES = 17;
 const DEFAULT_MAX_TOOL_RESULT_CHARS = 12_000;
 /** 字符预算触发裁剪后把历史压回到预算的这一比例，留出增长空间以摊薄裁剪频率。 */
 const COMPACTION_RETAIN_RATIO = 0.5;
+/**
+ * 同一响应里视为只读、可在轮内并发执行的工具；其余工具可能互相依赖或
+ * 修改状态（终端、写入、浏览器操控等），一律在屏障点保序串行。
+ */
+const CONCURRENT_READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  "workspace.read_file",
+  "workspace.list_files",
+  "workspace.search_files",
+  "workspace.search_contents",
+  "terminal.snapshot",
+  "ssh.status",
+  "ssh.list_files",
+  "ssh.read_file",
+  "git.status",
+  "git.diff",
+  "preview_status",
+  "preview_snapshot",
+]);
+/** 只读批量的并发上限，避免同一批读把文件系统或上游打满。 */
+const READ_ONLY_TOOL_CONCURRENCY = 4;
 const OUTPUT_TRUNCATION_CONTINUATION_PROMPT =
   "Continue exactly where the previous response stopped. Do not repeat prior text.";
 /** 断流后的同一模型轮次最多重连次数；普通错误不进入该路径。 */
@@ -222,6 +247,17 @@ const collectToolRounds = (
   return rounds;
 };
 
+/**
+ * 最后一个完整工具轮次结束后的下标：其后的游离 user 消息是运行中到达的
+ * 引导（尚未参与任何工具轮次），压缩时必须原样保留，否则引导会被裁掉。
+ */
+const indexAfterLastToolRound = (messages: ReadonlyArray<ByokAgentMessage>): number => {
+  const last = collectToolRounds(messages).at(-1);
+  const lastTool = last?.toolMessages.at(-1);
+  if (lastTool === undefined) return 1;
+  return messages.lastIndexOf(lastTool) + 1;
+};
+
 const compactContextMessages = (
   messages: ReadonlyArray<ByokAgentMessage>,
   maxContextMessages: number,
@@ -243,7 +279,8 @@ const compactContextMessages = (
     retained.unshift(round.assistant, ...round.toolMessages);
     used += size;
   }
-  return [initial, ...retained];
+  const trailing = messages.slice(indexAfterLastToolRound(messages));
+  return [initial, ...retained, ...trailing];
 };
 
 /** 消息在请求里的近似字符开销：正文加思考回放与工具调用参数。 */
@@ -287,7 +324,8 @@ const compactContextByChars = (
     retained.unshift(round.assistant, ...round.toolMessages);
     used += size;
   }
-  return [initial, ...retained];
+  const trailing = messages.slice(indexAfterLastToolRound(messages));
+  return [initial, ...retained, ...trailing];
 };
 
 const contextOverflowRecoveryMessages = (
@@ -408,6 +446,12 @@ export const runByokAgentLoop = (
 
     while (true) {
       rounds += 1;
+
+      // 运行中到达的用户引导在下一轮请求前并入上下文：不中断当前输出，
+      // 模型据此自行判断是否调整方向。
+      for (const steer of input.takePendingUserMessages?.() ?? []) {
+        messages.push({ role: "user", content: steer });
+      }
 
       const compactedMessages =
         contextCharsBudget === undefined
@@ -590,33 +634,57 @@ export const runByokAgentLoop = (
             : {}),
           toolCalls: roundToolCalls,
         });
+        // 相邻只读调用并为一批并发执行；带副作用的调用自成屏障，单独保序执行。
+        const segments: Array<{
+          readonly parallel: boolean;
+          readonly calls: ByokAgentToolCall[];
+        }> = [];
         for (const toolCall of roundToolCalls) {
-          if (input.onToolStarted !== undefined) {
-            yield* input.onToolStarted(toolCall);
+          const parallel = CONCURRENT_READ_ONLY_TOOLS.has(toolCall.canonicalToolName);
+          const last = segments.at(-1);
+          if (parallel && last !== undefined && last.parallel) {
+            last.calls.push(toolCall);
+          } else {
+            segments.push({ parallel, calls: [toolCall] });
           }
-          const result = yield* broker.invoke({
-            taskId: input.taskId,
-            runId: input.runId,
-            agentId: input.agentId,
-            ...(input.runtimeId === undefined ? {} : { runtimeId: input.runtimeId }),
-            ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
-            ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
-            toolCallId: toolCall.toolCallId,
-            canonicalToolName: toolCall.canonicalToolName,
-            arguments: toolCall.arguments,
-            idempotencyKey: `${input.runId}:${toolCall.toolCallId}`,
-            capabilityGrantIds: input.capabilityGrantIds,
-            workspaceRoot: input.workspaceRoot,
+        }
+        const invokeToolCall = (toolCall: ByokAgentToolCall) =>
+          Effect.gen(function* () {
+            if (input.onToolStarted !== undefined) {
+              yield* input.onToolStarted(toolCall);
+            }
+            const result = yield* broker.invoke({
+              taskId: input.taskId,
+              runId: input.runId,
+              agentId: input.agentId,
+              ...(input.runtimeId === undefined ? {} : { runtimeId: input.runtimeId }),
+              ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+              ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
+              toolCallId: toolCall.toolCallId,
+              canonicalToolName: toolCall.canonicalToolName,
+              arguments: toolCall.arguments,
+              idempotencyKey: `${input.runId}:${toolCall.toolCallId}`,
+              capabilityGrantIds: input.capabilityGrantIds,
+              workspaceRoot: input.workspaceRoot,
+            });
+            if (input.onToolCompleted !== undefined) {
+              yield* input.onToolCompleted(toolCall, result);
+            }
+            return [toolCall, result] as const;
           });
-          if (input.onToolCompleted !== undefined) {
-            yield* input.onToolCompleted(toolCall, result);
+        for (const segment of segments) {
+          const executed = yield* Effect.forEach(segment.calls, invokeToolCall, {
+            concurrency: segment.parallel ? READ_ONLY_TOOL_CONCURRENCY : 1,
+          });
+          // 工具结果消息按原始调用顺序回填，保持与 assistant.toolCalls 对齐。
+          for (const [toolCall, result] of executed) {
+            messages.push({
+              role: "tool",
+              toolCallId: toolCall.toolCallId,
+              canonicalToolName: toolCall.canonicalToolName,
+              content: toolResultContent(result, maxToolResultChars, input),
+            });
           }
-          messages.push({
-            role: "tool",
-            toolCallId: toolCall.toolCallId,
-            canonicalToolName: toolCall.canonicalToolName,
-            content: toolResultContent(result, maxToolResultChars, input),
-          });
         }
       }
 

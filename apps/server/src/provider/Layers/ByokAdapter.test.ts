@@ -3,6 +3,7 @@ import { ByokSettings, ProviderInstanceId, ThreadId } from "@codework/contracts"
 import { createModelSelection } from "@codework/shared/model";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
@@ -206,6 +207,123 @@ describe("ByokAdapter", () => {
       );
     });
   }
+
+  it.effect("回合运行中的引导并入当前回合：不新开回合，下一轮请求读到引导", () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const responses = [
+      sse({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call-readme",
+                  function: {
+                    name: "workspace.read_file",
+                    arguments: encodeJson({ cwd: workspaceRoot, relativePath: "README.md" }),
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      }),
+      sse(
+        { choices: [{ delta: { content: "已结合引导调整方向。" }, finish_reason: null }] },
+        { choices: [{ delta: {}, finish_reason: "stop" }] },
+      ),
+    ];
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        if (request.body instanceof HttpBody.Uint8Array) {
+          requests.push(decodeJson(decoder.decode(request.body.body)) as Record<string, unknown>);
+        }
+        const body = responses.shift();
+        if (body === undefined) throw new Error("收到未预期的 BYOK 请求");
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(body, { headers: { "content-type": "text/event-stream" } }),
+        );
+      }),
+    );
+    // 用 Deferred 模拟真实时序：工具执行期间（回合运行中）从独立的
+    // RPC fiber 到达一条引导输入，工具等引导送达后继续。
+    const toolStarted = Deferred.makeUnsafe<void>();
+    const toolRelease = Deferred.makeUnsafe<void>();
+    const toolBroker = ToolBroker.ToolBroker.of({
+      invoke: (input) =>
+        Effect.gen(function* () {
+          yield* Deferred.succeed(toolStarted, undefined);
+          yield* Deferred.await(toolRelease);
+          return {
+            invocationId: `invocation-${input.toolCallId}`,
+            taskId: input.taskId,
+            runId: input.runId,
+            toolCallId: input.toolCallId,
+            canonicalToolName: input.canonicalToolName,
+            status: "succeeded" as const,
+            result: { relativePath: "README.md", contents: "# Code Work" },
+            startedAtUnixMs: 1,
+            finishedAtUnixMs: 2,
+          };
+        }),
+      cancel: () => Effect.void,
+    });
+
+    return Effect.gen(function* () {
+      const adapter = yield* makeByokAdapter(settings, { instanceId, toolBroker });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* adapter.startSession({
+        threadId,
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      const first = yield* adapter.sendTurn({
+        threadId,
+        input: "审查当前项目有什么问题",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      yield* Deferred.await(toolStarted);
+      // 工具挂起、回合运行中：引导必须并入当前回合而不是开新回合。
+      const steered = yield* adapter.sendTurn({
+        threadId,
+        input: "优先检查构建脚本",
+      });
+      expect(String(steered.turnId)).toBe(String(first.turnId));
+      yield* Deferred.succeed(toolRelease, undefined);
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+
+      // 引导没有产生第二个回合。
+      expect(events.filter((event) => event.type === "turn.started")).toHaveLength(1);
+      // 第二轮请求把引导并入上下文末尾。
+      expect(requests).toHaveLength(2);
+      const steerMessage = (requests[1]!.messages as Array<{ role: string; content: string }>).at(
+        -1,
+      );
+      expect(steerMessage?.role).toBe("user");
+      expect(steerMessage?.content).toContain("[用户引导] 优先检查构建脚本");
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "content.delta",
+            payload: expect.objectContaining({ delta: "已结合引导调整方向。" }),
+          }),
+        ]),
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-test-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(NodeServices.layer),
+    );
+  });
 
   it.effect("BYOK Agent 的思考流按模型轮次上报为 reasoning summary", () => {
     const responses = [

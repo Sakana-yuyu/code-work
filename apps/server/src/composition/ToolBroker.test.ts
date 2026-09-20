@@ -684,6 +684,7 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
           "t3.ide.invoke",
           "t3.canvas.create",
           "t3.delegate_task",
+          "t3.codegraph.explore",
           "t3.mcp.preview",
           "t3.runtime.provider",
         ]);

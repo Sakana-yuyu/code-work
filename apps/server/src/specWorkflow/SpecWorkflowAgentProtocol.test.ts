@@ -47,6 +47,30 @@ describe("SpecWorkflowAgentProtocol", () => {
     expect(input).not.toContain("[[SPEC_WORKFLOW_INTENT:");
     expect(input).toContain("只讨论方向");
   });
+  it("知识库纪律始终注入；design/strict 开关渲染为护栏并可叠加", () => {
+    const input = formatSpecWorkflowSelectedInput(
+      { ...capability, selectedIntent: "research", flags: ["design", "strict"] },
+      state,
+      "调研登录模块",
+    );
+    expect(input).toContain("spec/knowledge.md 是知识索引");
+    expect(input).toContain("严格模式");
+    expect(input).toContain("设计模式");
+    expect(input).toContain("research/");
+
+    const guardrails = formatSpecWorkflowAgentInput(state, "继续", ["strict"]);
+    expect(guardrails).toContain("spec/knowledge.md 是知识索引");
+    expect(guardrails).toContain("严格模式");
+    expect(guardrails).not.toContain("设计模式");
+
+    const noFlags = formatSpecWorkflowSelectedInput(
+      { ...capability, selectedIntent: "verify" },
+      state,
+      "验证",
+    );
+    expect(noFlags).toContain("稳定编号");
+    expect(noFlags).not.toContain("严格模式");
+  });
   it("单选节点只授予所选 marker，未批准实施时不派发", () => {
     const input = formatSpecWorkflowSelectedInput(
       { ...capability, selectedIntent: "design" },

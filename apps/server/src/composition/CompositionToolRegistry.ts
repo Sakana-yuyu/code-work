@@ -353,6 +353,18 @@ const descriptors = [
     approval: "never",
     source: "t3",
   },
+  {
+    // CodeGraph 代码知识图谱查询（上游 @colbymchenry/codegraph CLI，逐次
+    // 调 `codegraph explore` 子进程）。只读；索引缺失时 handler 返回上游的
+    // 自守卫指引，模型自然回落到常规工具。
+    capabilityId: "t3.codegraph.explore",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: true, execute: false, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
 ] satisfies ReadonlyArray<CompositionCapabilityDescriptor>;
 
 const agentToolSignatures: ReadonlyMap<
@@ -646,6 +658,27 @@ const agentToolSignatures: ReadonlyMap<
           arguments: { type: "object", description: "操作参数。" },
         },
         required: ["sessionId", "handshakeId", "operation", "arguments"],
+      },
+    },
+  ],
+  [
+    "codegraph.explore",
+    {
+      description:
+        "在 CodeGraph 代码知识图谱上做一次结构化探索，一次返回与查询相关的符号源码与调用路径。适用于需要理解代码关系的场景：跨文件理解、调用链、数据流、架构分析、Bug 根因定位、重构影响范围判断。已知文件位置的简单查找或单文件修改请改用常规搜索/读取工具，避免上下文膨胀。项目未建立 .codegraph 索引时会返回提示，此时改用常规工具，不要反复重试。",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "自然语言查询，描述要理解的代码区域、功能或关系。",
+          },
+          maxFiles: {
+            type: "integer",
+            description: "可选：最多内嵌源码的文件数上限（默认由索引端决定）。",
+          },
+        },
+        required: ["query"],
       },
     },
   ],

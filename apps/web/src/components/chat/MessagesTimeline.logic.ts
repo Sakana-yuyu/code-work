@@ -260,6 +260,15 @@ export type MessagesTimelineRow =
       expanded: boolean;
     }
   | {
+      /** Settled narration segments of the running turn, folded behind one expander. */
+      kind: "narration-fold";
+      id: string;
+      createdAt: string;
+      groupId: string;
+      count: number;
+      expanded: boolean;
+    }
+  | {
       kind: "message";
       id: string;
       createdAt: string;
@@ -761,6 +770,87 @@ function deriveTurnFolds(input: {
   return foldsByAnchorEntryId;
 }
 
+/**
+ * Settled turns whose only content is tool bookkeeping (no assistant text —
+ * typically runs that failed before producing output) render as a bare
+ * "worked for X" fold row. After an edit-and-resend these orphaned stubs are
+ * pure noise, so their hideable entries are dropped entirely: no fold row and
+ * no rows. Entries the fold machinery always keeps (goal completion, agent
+ * spawns, canvas cards) and system messages stay visible.
+ */
+export function deriveContentlessTurnHiddenEntryIds(input: {
+  timelineEntries: ReadonlyArray<TimelineEntry>;
+  latestTurn: TimelineLatestTurn | null;
+  unsettledTurnId: TurnId | null;
+}): ReadonlySet<string> {
+  interface ContentlessTurnGroup {
+    entries: TimelineEntry[];
+    hasStreamingMessage: boolean;
+  }
+  const groupsByTurnId = new Map<TurnId, ContentlessTurnGroup>();
+  for (const entry of input.timelineEntries) {
+    const turnId = timelineEntryTurnId(entry);
+    if (turnId === null) {
+      continue;
+    }
+    let group = groupsByTurnId.get(turnId);
+    if (!group) {
+      group = { entries: [], hasStreamingMessage: false };
+      groupsByTurnId.set(turnId, group);
+    }
+    if (entry.kind === "message" && entry.message.streaming) {
+      group.hasStreamingMessage = true;
+    }
+    group.entries.push(entry);
+  }
+
+  const hiddenEntryIds = new Set<string>();
+  for (const [turnId, group] of groupsByTurnId) {
+    if (turnId === input.unsettledTurnId || turnId === input.latestTurn?.turnId) {
+      continue;
+    }
+    if (group.hasStreamingMessage) {
+      continue;
+    }
+    const hasAssistantText = group.entries.some(
+      (entry) =>
+        entry.kind === "message" &&
+        entry.message.role === "assistant" &&
+        (entry.message.text?.trim().length ?? 0) > 0,
+    );
+    if (hasAssistantText) {
+      continue;
+    }
+    for (const entry of group.entries) {
+      // Keep what the fold machinery always keeps visible, plus system rows.
+      if (entry.kind === "work") {
+        if (
+          entry.entry.canvas !== undefined ||
+          entry.entry.agentSpawn !== undefined ||
+          entry.entry.sourceActivityKind === "goal.completed"
+        ) {
+          continue;
+        }
+        hiddenEntryIds.add(entry.id);
+        continue;
+      }
+      if (entry.kind === "reasoning-summary") {
+        hiddenEntryIds.add(entry.id);
+        continue;
+      }
+      if (
+        entry.kind === "message" &&
+        entry.message.role === "assistant" &&
+        (entry.message.text?.trim().length ?? 0) === 0 &&
+        !entry.message.streaming
+      ) {
+        hiddenEntryIds.add(entry.id);
+      }
+    }
+  }
+  return hiddenEntryIds;
+}
+
 export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   localPluginTimelineEntries?: ReadonlyArray<EnabledLocalPluginTimelineEntry>;
@@ -768,6 +858,7 @@ export function deriveMessagesTimelineRows(input: {
   runningTurnId?: TurnId | null;
   expandedTurnIds?: ReadonlySet<TurnId>;
   expandedWorkGroupIds?: ReadonlySet<string>;
+  expandedNarrationGroupIds?: ReadonlySet<string>;
   isWorking: boolean;
   activeTurnStartedAt: string | null;
   turnDiffSummaryByAssistantMessageId: ReadonlyMap<MessageId, TurnDiffSummary>;
@@ -785,8 +876,17 @@ export function deriveMessagesTimelineRows(input: {
     input.latestTurn ?? null,
     input.runningTurnId ?? null,
   );
-  const foldsByAnchorEntryId = deriveTurnFolds({
+  const hiddenContentlessEntryIds = deriveContentlessTurnHiddenEntryIds({
     timelineEntries,
+    latestTurn: input.latestTurn ?? null,
+    unsettledTurnId,
+  });
+  const visibleEntries =
+    hiddenContentlessEntryIds.size === 0
+      ? timelineEntries
+      : timelineEntries.filter((entry) => !hiddenContentlessEntryIds.has(entry.id));
+  const foldsByAnchorEntryId = deriveTurnFolds({
+    timelineEntries: visibleEntries,
     terminalAssistantMessageIds,
     latestTurn: input.latestTurn ?? null,
     unsettledTurnId,
@@ -800,13 +900,13 @@ export function deriveMessagesTimelineRows(input: {
     }
   }
 
-  let activeTurnHeaderIndex = timelineEntries.length;
+  let activeTurnHeaderIndex = visibleEntries.length;
   if (input.isWorking) {
-    const latestUserMessageIndex = lastUserMessageIndex(timelineEntries);
+    const latestUserMessageIndex = lastUserMessageIndex(visibleEntries);
     const firstOwnedAfterUser =
       unsettledTurnId === null
         ? -1
-        : timelineEntries.findIndex(
+        : visibleEntries.findIndex(
             (entry, index) =>
               index > latestUserMessageIndex && timelineEntryTurnId(entry) === unsettledTurnId,
           );
@@ -817,6 +917,32 @@ export function deriveMessagesTimelineRows(input: {
     input.isWorking &&
     index >= activeTurnHeaderIndex &&
     (unsettledTurnId === null || timelineEntryTurnId(entry) === unsettledTurnId);
+  // Interim narration of the running turn: every finalized text segment folds
+  // behind one expander so the live view keeps only the newest segment —
+  // chatty providers otherwise pile a wall of prose between tool groups.
+  const activeNarrationEntries = visibleEntries.filter(
+    (entry, index) =>
+      entryBelongsToActiveTurn(entry, index) &&
+      entry.kind === "message" &&
+      entry.message.role === "assistant" &&
+      (entry.message.text?.trim().length ?? 0) > 0,
+  );
+  const firstNarrationEntry = activeNarrationEntries[0];
+  const narrationFold =
+    unsettledTurnId !== null &&
+    firstNarrationEntry !== undefined &&
+    activeNarrationEntries.length > 1
+      ? {
+          groupId: `narration:${unsettledTurnId}`,
+          anchorEntryId: firstNarrationEntry.id,
+          createdAt: firstNarrationEntry.createdAt,
+          count: activeNarrationEntries.length - 1,
+          hiddenEntryIds: new Set(activeNarrationEntries.slice(0, -1).map((entry) => entry.id)),
+        }
+      : null;
+  const narrationExpanded =
+    narrationFold !== null &&
+    (input.expandedNarrationGroupIds?.has(narrationFold.groupId) ?? false);
   const workEntryIsInActiveRun = (entry: WorkLogEntry) =>
     input.isWorking &&
     unsettledTurnId !== null &&
@@ -825,7 +951,7 @@ export function deriveMessagesTimelineRows(input: {
   const isVisibleActiveToolEntry = (entry: WorkLogEntry) =>
     workLogEntryIsToolLike(entry) && workEntryIsVisibleInGroup(entry, true);
   const activeEntries = input.isWorking
-    ? timelineEntries.filter((entry, index) => entryBelongsToActiveTurn(entry, index))
+    ? visibleEntries.filter((entry, index) => entryBelongsToActiveTurn(entry, index))
     : [];
   const activeTurnHasVisibleContent = activeEntries.some((entry) => {
     if (entry.kind === "message") {
@@ -845,8 +971,8 @@ export function deriveMessagesTimelineRows(input: {
   });
 
   const activeToolEntries: Array<Extract<TimelineEntry, { kind: "work" }>> = [];
-  for (let index = timelineEntries.length - 1; index >= activeTurnHeaderIndex; index -= 1) {
-    const entry = timelineEntries[index]!;
+  for (let index = visibleEntries.length - 1; index >= activeTurnHeaderIndex; index -= 1) {
+    const entry = visibleEntries[index]!;
     if (
       !entryBelongsToActiveTurn(entry, index) ||
       entry.kind !== "work" ||
@@ -905,8 +1031,8 @@ export function deriveMessagesTimelineRows(input: {
     }
   };
 
-  for (let index = 0; index < timelineEntries.length; index += 1) {
-    const timelineEntry = timelineEntries[index];
+  for (let index = 0; index < visibleEntries.length; index += 1) {
+    const timelineEntry = visibleEntries[index];
     if (!timelineEntry) {
       continue;
     }
@@ -917,6 +1043,24 @@ export function deriveMessagesTimelineRows(input: {
 
     if (timelineEntry.id === activeWorkPlacementEntryId) {
       appendActiveWorkRows();
+    }
+
+    if (narrationFold !== null && timelineEntry.id === narrationFold.anchorEntryId) {
+      nextRows.push({
+        kind: "narration-fold",
+        id: `narration-fold:${narrationFold.groupId}`,
+        createdAt: narrationFold.createdAt,
+        groupId: narrationFold.groupId,
+        count: narrationFold.count,
+        expanded: narrationExpanded,
+      });
+    }
+    if (
+      narrationFold !== null &&
+      !narrationExpanded &&
+      narrationFold.hiddenEntryIds.has(timelineEntry.id)
+    ) {
+      continue;
     }
 
     const anchoredTurnFold = foldsByAnchorEntryId.get(timelineEntry.id);
@@ -942,8 +1086,8 @@ export function deriveMessagesTimelineRows(input: {
     if (timelineEntry.kind === "work") {
       const groupedEntries = [timelineEntry.entry];
       let cursor = index + 1;
-      while (cursor < timelineEntries.length) {
-        const nextEntry = timelineEntries[cursor];
+      while (cursor < visibleEntries.length) {
+        const nextEntry = visibleEntries[cursor];
         if (
           !nextEntry ||
           nextEntry.kind !== "work" ||
@@ -1219,6 +1363,11 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     case "turn-fold": {
       const bf = b as typeof a;
       return a.createdAt === bf.createdAt && a.label === bf.label && a.expanded === bf.expanded;
+    }
+
+    case "narration-fold": {
+      const bn = b as typeof a;
+      return a.createdAt === bn.createdAt && a.count === bn.count && a.expanded === bn.expanded;
     }
 
     case "proposed-plan":

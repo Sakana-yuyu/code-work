@@ -2,6 +2,7 @@ import {
   NonNegativeInt,
   SpecWorkflowCapability,
   SpecWorkflowEvent,
+  SpecWorkflowFlag,
   SpecWorkflowIntentName,
   type SpecWorkflowSetInput,
 } from "@codework/contracts";
@@ -27,10 +28,31 @@ const SpecWorkflowRowSchema = Schema.Struct({
   threadId: Schema.String,
   enabled: Schema.Number,
   selectedIntent: SpecWorkflowIntentName,
+  flagsJson: Schema.String,
   revision: Schema.Number,
   updatedAtUnixMs: Schema.Number,
 });
 type SpecWorkflowRow = typeof SpecWorkflowRowSchema.Type;
+
+const isSpecWorkflowFlag = Schema.is(SpecWorkflowFlag);
+
+/** flags 以 JSON 数组落库；空数组与非法内容都归一为缺省（无开关）。 */
+const parseFlags = (flagsJson: string): SpecWorkflowFlag[] | undefined => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(flagsJson);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed)) return undefined;
+  const flags = parsed.filter(
+    (flag): flag is SpecWorkflowFlag => typeof flag === "string" && isSpecWorkflowFlag(flag),
+  );
+  return flags.length > 0 ? flags : undefined;
+};
+
+const serializeFlags = (flags: ReadonlyArray<SpecWorkflowFlag> | undefined): string =>
+  JSON.stringify(flags ?? []);
 
 const ThreadIdRequest = Schema.Struct({ threadId: Schema.String });
 const SpecWorkflowWriteRequest = Schema.Struct({ ...SpecWorkflowRowSchema.fields });
@@ -44,13 +66,17 @@ const makeDomainError = (
   detail: string,
 ) => new SpecWorkflowCapabilityStoreDomainError({ code, threadId, detail });
 
-const toCapability = (row: SpecWorkflowRow): SpecWorkflowCapability => ({
-  threadId: row.threadId as SpecWorkflowCapability["threadId"],
-  enabled: row.enabled === 1,
-  selectedIntent: row.selectedIntent,
-  revision: row.revision,
-  updatedAt: row.updatedAtUnixMs,
-});
+const toCapability = (row: SpecWorkflowRow): SpecWorkflowCapability => {
+  const flags = parseFlags(row.flagsJson);
+  return {
+    threadId: row.threadId as SpecWorkflowCapability["threadId"],
+    enabled: row.enabled === 1,
+    selectedIntent: row.selectedIntent,
+    ...(flags === undefined ? {} : { flags }),
+    revision: row.revision,
+    updatedAt: row.updatedAtUnixMs,
+  };
+};
 
 const defaultCapability = (threadId: string): SpecWorkflowCapability => ({
   threadId: threadId as SpecWorkflowCapability["threadId"],
@@ -76,6 +102,7 @@ export const SpecWorkflowCapabilityStoreLive = Layer.effect(
           thread_id AS "threadId",
           enabled,
           selected_intent AS "selectedIntent",
+          flags_json AS "flagsJson",
           revision,
           updated_at_unix_ms AS "updatedAtUnixMs"
         FROM thread_spec_workflow_capabilities
@@ -87,13 +114,14 @@ export const SpecWorkflowCapabilityStoreLive = Layer.effect(
       Request: SpecWorkflowWriteRequest,
       execute: (row) => sql`
         INSERT INTO thread_spec_workflow_capabilities (
-          thread_id, enabled, selected_intent, revision, updated_at_unix_ms
+          thread_id, enabled, selected_intent, flags_json, revision, updated_at_unix_ms
         ) VALUES (
-          ${row.threadId}, ${row.enabled}, ${row.selectedIntent}, ${row.revision}, ${row.updatedAtUnixMs}
+          ${row.threadId}, ${row.enabled}, ${row.selectedIntent}, ${row.flagsJson}, ${row.revision}, ${row.updatedAtUnixMs}
         )
         ON CONFLICT (thread_id) DO UPDATE SET
           enabled = excluded.enabled,
           selected_intent = excluded.selected_intent,
+          flags_json = excluded.flags_json,
           revision = excluded.revision,
           updated_at_unix_ms = excluded.updated_at_unix_ms
       `,
@@ -123,11 +151,17 @@ export const SpecWorkflowCapabilityStoreLive = Layer.effect(
       withTransaction(
         Effect.gen(function* () {
           const expectedRevision = input.expectedRevision;
+          const invalidFlags =
+            input.flags !== undefined &&
+            (input.flags.length === 0
+              ? false
+              : !input.flags.every((flag) => isSpecWorkflowFlag(flag)));
           if (
             (expectedRevision !== undefined && !isNonNegativeInteger(expectedRevision)) ||
             typeof input.enabled !== "boolean" ||
             (input.selectedIntent !== undefined &&
-              !Schema.is(SpecWorkflowIntentName)(input.selectedIntent))
+              !Schema.is(SpecWorkflowIntentName)(input.selectedIntent)) ||
+            invalidFlags
           ) {
             return yield* makeDomainError(
               "invalid-input",
@@ -149,10 +183,13 @@ export const SpecWorkflowCapabilityStoreLive = Layer.effect(
             );
           }
           const selectedIntent = input.selectedIntent ?? current?.selectedIntent ?? "workflow";
+          const flags = input.flags ?? parseFlags(current?.flagsJson ?? "[]");
+          const nextFlagsJson = serializeFlags(flags);
           if (
             current !== undefined &&
             current.enabled === (input.enabled ? 1 : 0) &&
-            current.selectedIntent === selectedIntent
+            current.selectedIntent === selectedIntent &&
+            current.flagsJson === nextFlagsJson
           ) {
             return toCapability(current);
           }
@@ -162,6 +199,7 @@ export const SpecWorkflowCapabilityStoreLive = Layer.effect(
             threadId: input.threadId,
             enabled: input.enabled ? 1 : 0,
             selectedIntent,
+            flagsJson: nextFlagsJson,
             revision: currentRevision + 1,
             updatedAtUnixMs: now,
           };

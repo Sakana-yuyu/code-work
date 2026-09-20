@@ -14,11 +14,25 @@ export function formatDuration(durationMs: number): string {
   if (durationMs < 1_000) return `${Math.max(1, Math.round(durationMs))}ms`;
   if (durationMs < 10_000) return `${(durationMs / 1_000).toFixed(1)}s`;
   if (durationMs < 60_000) return `${Math.round(durationMs / 1_000)}s`;
-  const minutes = Math.floor(durationMs / 60_000);
-  const seconds = Math.round((durationMs % 60_000) / 1_000);
-  if (seconds === 0) return `${minutes}m`;
-  if (seconds === 60) return `${minutes + 1}m`;
-  return `${minutes}m ${seconds}s`;
+  if (durationMs < 3_600_000) {
+    const minutes = Math.floor(durationMs / 60_000);
+    const seconds = Math.round((durationMs % 60_000) / 1_000);
+    if (seconds === 0) return `${minutes}m`;
+    if (seconds === 60) return `${minutes + 1}m`;
+    return `${minutes}m ${seconds}s`;
+  }
+  if (durationMs < 86_400_000) {
+    const hours = Math.floor(durationMs / 3_600_000);
+    const minutes = Math.round((durationMs % 3_600_000) / 60_000);
+    if (minutes === 0) return `${hours}h`;
+    if (minutes === 60) return `${hours + 1}h`;
+    return `${hours}h ${minutes}m`;
+  }
+  const days = Math.floor(durationMs / 86_400_000);
+  const hours = Math.round((durationMs % 86_400_000) / 3_600_000);
+  if (hours === 0) return `${days}d`;
+  if (hours === 24) return `${days + 1}d`;
+  return `${days}d ${hours}h`;
 }
 
 export function formatElapsed(startIso: string, endIso: string | undefined): string | null {

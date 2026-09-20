@@ -116,6 +116,13 @@ export const ja: Record<string, string> = {
   "specWorkflow.choose": "工程を選択",
   "specWorkflow.chooseDescription":
     "選択するとチップが表示されます。依頼を送信すると実行し、選択した工程の完了後に停止します。",
+  "specWorkflow.flags.title": "実行スタイル（併用可）",
+  "specWorkflow.flag.design": "デザインモード",
+  "specWorkflow.flag.designDescription":
+    "見た目が重要な作業向け：フロントエンド美学の基準に従い、納品前に視覚詳細を自己点検します。",
+  "specWorkflow.flag.strict": "厳格モード",
+  "specWorkflow.flag.strictDescription":
+    "手抜きと推測を防ぐ：すべての結論に引用可能なコード根拠が必要で、不明点は明示します。",
   "specWorkflow.changeNode": "工程を変更",
   "specWorkflow.remove": "チップを削除してワークフローを無効にする",
   "specWorkflow.saveFailed": "工程の選択を保存できませんでした。更新して再試行してください。",
@@ -1323,7 +1330,7 @@ export const ja: Record<string, string> = {
   "providersMobile.homePath": "ホームパス",
   "providersMobile.homePathPlaceholder": "~/.codex",
   "providersMobile.shadowHomePath": "シャドウホームパス",
-  "providersMobile.shadowHomePathPlaceholder": "~/.codex-t3/personal",
+  "providersMobile.shadowHomePathPlaceholder": "~/.codex/personal",
   "providersMobile.launchArgs": "起動引数",
   "providersMobile.launchArgsPlaceholder": "省略可能な CLI 引数",
   "providersMobile.apiEndpoint": "API エンドポイント",

@@ -26,6 +26,7 @@ import type { ReactNode } from "react";
 
 import { ScreenRotationIcon } from "~/browser/ScreenRotationIcon";
 import { isElectron } from "../../env";
+import { CodeGraphSettingsSection } from "./CodeGraphSettings";
 import { CodeIndexSettingsSection } from "./CodeIndexSettings";
 import { McpServersSettings } from "./McpServersSettings";
 import { SshServersSettings } from "./SshServersSettings";
@@ -485,6 +486,7 @@ export function IntegrationsSettingsPanel() {
       <McpServersSettings />
       <SshServersSettings />
       <CodeIndexSettingsSection />
+      <CodeGraphSettingsSection />
       <SupplierRegistrySettings />
     </SettingsPageContainer>
   );

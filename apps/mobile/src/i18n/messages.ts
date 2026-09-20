@@ -100,6 +100,13 @@ export const en: Record<string, string> = {
   "specWorkflow.choose": "Choose a workflow step",
   "specWorkflow.chooseDescription":
     "Selection adds a pill. Send your request to run it; a single step stops when finished.",
+  "specWorkflow.flags.title": "Execution style (stackable)",
+  "specWorkflow.flag.design": "Design mode",
+  "specWorkflow.flag.designDescription":
+    "For visually critical work: apply frontend aesthetics standards and self-check visual details.",
+  "specWorkflow.flag.strict": "Strict mode",
+  "specWorkflow.flag.strictDescription":
+    "Anti-laziness and anti-guessing: every claim needs quotable code evidence; unknowns are labeled.",
   "specWorkflow.changeNode": "Change workflow step",
   "specWorkflow.remove": "Remove pill and disable workflow",
   "specWorkflow.saveFailed": "Could not save the workflow selection. Refresh and retry.",
@@ -1287,7 +1294,7 @@ export const en: Record<string, string> = {
   "providersMobile.homePath": "Home path",
   "providersMobile.homePathPlaceholder": "~/.codex",
   "providersMobile.shadowHomePath": "Shadow home path",
-  "providersMobile.shadowHomePathPlaceholder": "~/.codex-t3/personal",
+  "providersMobile.shadowHomePathPlaceholder": "~/.codex/personal",
   "providersMobile.launchArgs": "Launch arguments",
   "providersMobile.launchArgsPlaceholder": "Optional CLI arguments",
   "providersMobile.apiEndpoint": "API endpoint",
@@ -2733,6 +2740,13 @@ export const zhCN: Record<string, string> = {
     "保持电脑端 Code Work 运行。检查是否在同一 Wi-Fi、是否允许本地网络访问以及防火墙设置，再创建新的配对链接。请使用电脑的局域网地址，不要使用 localhost 或 127.0.0.1。",
   "specWorkflow.choose": "选择工作流节点",
   "specWorkflow.chooseDescription": "选择后显示胶囊，发送需求时执行；单节点完成后停止。",
+  "specWorkflow.flags.title": "执行取向（可叠加）",
+  "specWorkflow.flag.design": "设计模式",
+  "specWorkflow.flag.designDescription":
+    "适合视觉关键任务：按前端美学标准执行，交付前自查视觉细节。",
+  "specWorkflow.flag.strict": "严格模式",
+  "specWorkflow.flag.strictDescription":
+    "反偷懒、反臆测：每个结论都要有可引用的代码证据，无法证实的明确标注为未知。",
   "specWorkflow.changeNode": "更换工作流节点",
   "specWorkflow.remove": "移除胶囊并停用工作流",
   "specWorkflow.saveFailed": "未能保存工作流选择，请刷新后重试。",
@@ -3875,7 +3889,7 @@ export const zhCN: Record<string, string> = {
   "providersMobile.homePath": "Home 路径",
   "providersMobile.homePathPlaceholder": "例如：~/.codex",
   "providersMobile.shadowHomePath": "Shadow Home 路径",
-  "providersMobile.shadowHomePathPlaceholder": "例如：~/.codex-t3/personal",
+  "providersMobile.shadowHomePathPlaceholder": "例如：~/.codex/personal",
   "providersMobile.launchArgs": "启动参数",
   "providersMobile.launchArgsPlaceholder": "可选 CLI 参数",
   "providersMobile.apiEndpoint": "API 端点",

@@ -1740,6 +1740,8 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
                 indexToolsAvailable: mcpSession.capabilities.includes("index"),
               }
             : {}),
+          // 子代理模式来自实例配置;会话创建即固化,同一会话内保持一致。
+          ...(codexConfig.delegation.enabled ? { subagentModeEnabled: true } : {}),
         };
         const sessionScope = yield* Scope.make("sequential");
         let sessionScopeTransferred = false;

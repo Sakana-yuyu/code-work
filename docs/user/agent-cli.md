@@ -18,7 +18,7 @@ All Agent CLI commands accept the same connection and output options:
 the server, for example:
 
 ```bash
-npx t3 agent status <agent-id> --server "https://host.example/pair#token=..."
+codework agent status <agent-id> --server "https://host.example/pair#token=..."
 ```
 
 The CLI exchanges the credential in a pairing URL for a standard client bearer session. Pairing
@@ -39,7 +39,7 @@ WebSocket endpoints; pairing pages do not proxy Agent CLI traffic.
 If you must use `--access-token`, issue a short-lived token on the server host:
 
 ```bash
-npx t3 auth session issue --ttl 15m --token-only
+codework auth session issue --ttl 15m --token-only
 ```
 
 This command currently issues administrative scopes, so prefer a pairing URL. Protect the token,
@@ -52,26 +52,26 @@ history.
 Read the server's authoritative status snapshot:
 
 ```bash
-npx t3 agent status <agent-id>
+codework agent status <agent-id>
 ```
 
 Print the agent's message log snapshot:
 
 ```bash
-npx t3 logs <agent-id>
+codework logs <agent-id>
 ```
 
 Wait for the latest turn to reach a terminal state:
 
 ```bash
-npx t3 wait <agent-id>
-npx t3 wait <agent-id> --timeout-seconds 120
+codework wait <agent-id>
+codework wait <agent-id> --timeout-seconds 120
 ```
 
 Attach to the latest turn and stream message updates until it reaches a terminal state:
 
 ```bash
-npx t3 attach <agent-id>
+codework attach <agent-id>
 ```
 
 `wait` and `attach` are subscription commands. They observe an existing turn and do not start a new
@@ -82,7 +82,7 @@ turn themselves.
 Send a new prompt to an idle agent:
 
 ```bash
-npx t3 send <agent-id> "Review the failing test and implement the fix."
+codework send <agent-id> "Review the failing test and implement the fix."
 ```
 
 Quote prompts so the shell passes spaces and special characters as one argument.
@@ -90,19 +90,19 @@ Quote prompts so the shell passes spaces and special characters as one argument.
 Move an active agent out of the normal list:
 
 ```bash
-npx t3 archive <agent-id>
+codework archive <agent-id>
 ```
 
 Return an archived agent to the active list:
 
 ```bash
-npx t3 unarchive <agent-id>
+codework unarchive <agent-id>
 ```
 
 Interrupt the agent's current active turn:
 
 ```bash
-npx t3 agent kill <agent-id>
+codework agent kill <agent-id>
 ```
 
 `kill` only interrupts the active turn. It does not delete or archive the agent.
@@ -115,14 +115,14 @@ Commands that read or control an active agent snapshot do not operate on archive
 Create an agent in a project and start its first turn:
 
 ```bash
-npx t3 run --project <project-id> "Investigate the build failure and fix it."
+codework run --project <project-id> "Investigate the build failure and fix it."
 ```
 
 If the project does not have a default model, or if you want to override it, provide both the
 provider instance id and model:
 
 ```bash
-npx t3 run --project <project-id> --provider <provider-id> --model <model> "Add the feature."
+codework run --project <project-id> --provider <provider-id> --model <model> "Add the feature."
 ```
 
 `--provider` and `--model` must be supplied together.
@@ -144,7 +144,7 @@ A token without the required scope is rejected by the server.
 Append `--json` to any command when another program will consume the result:
 
 ```bash
-npx t3 agent status <agent-id> --json
+codework agent status <agent-id> --json
 ```
 
 Streaming commands can emit multiple JSON frames. Consume those frames as they arrive. Do not parse
@@ -152,7 +152,7 @@ the line order of the human-readable output; that format is intended for people 
 
 ## Common Failures
 
-- **The agent is archived:** run `npx t3 unarchive <agent-id>` before commands that require an
+- **The agent is archived:** run `codework unarchive <agent-id>` before commands that require an
   active agent snapshot.
 - **`send` fails:** the prompt must not be empty, and the agent must be active and idle. Wait for or
   interrupt the current turn before sending another prompt.

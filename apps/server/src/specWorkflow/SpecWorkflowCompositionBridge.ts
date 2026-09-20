@@ -21,6 +21,7 @@ import type {
 import type { CompositionTaskStoreError } from "../persistence/Services/CompositionTaskStore.ts";
 import type { CompositionOrchestratorServiceShape } from "../composition/CompositionOrchestratorService.ts";
 import { SpecWorkflowTransitionError, transitionSpecWorkflowState } from "./SpecWorkflowDecider.ts";
+import { formatSpecWorkflowFlagGuardrails } from "./SpecWorkflowAgentProtocol.ts";
 import { routeSpecWorkflowIntent } from "./SpecWorkflowRouter.ts";
 
 export const SpecWorkflowCompositionBridgeErrorCode = Schema.Literals([
@@ -216,6 +217,9 @@ export const dispatchSpecWorkflowStage = (
       },
       input.now,
     );
+    const guardrails = formatSpecWorkflowFlagGuardrails(input.capability.flags);
+    const guardrailBlock =
+      guardrails.length === 0 ? "" : `[Spec Workflow Guardrails]\n${guardrails.join("\n")}\n\n`;
     const dispatch: CompositionDispatchInput = {
       ...identity,
       projectId: input.projectId,
@@ -226,8 +230,8 @@ export const dispatchSpecWorkflowStage = (
       promptDigest: input.promptDigest,
       prompt:
         route.targetStage === "verify"
-          ? `【独立验证】不得复用实施者结论；请基于工作区与验收标准独立检查。\n${input.prompt}`
-          : input.prompt,
+          ? `${guardrailBlock}【独立验证】不得复用实施者结论；请基于工作区与验收标准独立检查。验证台账写入 spec/changes/${input.state.changeName}/verify.md：每条发现使用稳定编号并附可引用的代码证据（引用不出代码就撤销该发现），每个维度最多 3 条，跨轮次对比；未修复的发现升级为失败；证实为误报的结论沉淀到知识库（更新 spec/knowledge/ 子文档与 spec/knowledge.md 索引）。\n${input.prompt}`
+          : `${guardrailBlock}${input.prompt}`,
       workspaceRoot: input.workspaceRoot,
       ...(input.model === undefined ? {} : { model: input.model }),
       ...(input.capabilityIds === undefined ? {} : { capabilityIds: [...input.capabilityIds] }),

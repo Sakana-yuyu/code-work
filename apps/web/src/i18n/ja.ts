@@ -279,6 +279,13 @@ export const ja: Record<string, string> = {
   "specWorkflow.choose": "工程を選択",
   "specWorkflow.chooseDescription":
     "選択するとチップが表示されます。依頼を送信すると実行し、選択した工程の完了後に停止します。",
+  "specWorkflow.flags.title": "実行スタイル（併用可）",
+  "specWorkflow.flag.design": "デザインモード",
+  "specWorkflow.flag.designDescription":
+    "見た目が重要な作業向け：フロントエンド美学の基準に従い、納品前に視覚詳細を自己点検します。",
+  "specWorkflow.flag.strict": "厳格モード",
+  "specWorkflow.flag.strictDescription":
+    "手抜きと推測を防ぐ：すべての結論に引用可能なコード根拠が必要で、不明点は明示します。",
   "specWorkflow.changeNode": "工程を変更",
   "specWorkflow.remove": "チップを削除してワークフローを無効にする",
   "specWorkflow.saveFailed": "工程の選択を保存できませんでした。更新して再試行してください。",
@@ -535,6 +542,8 @@ export const ja: Record<string, string> = {
   "timeline.earlierLogEntries_plural": "+{{count}} 件の過去のログエントリー",
   "timeline.earlierToolCalls": "+{{count}} 件の過去のツール呼び出し",
   "timeline.earlierToolCalls_plural": "+{{count}} 件の過去のツール呼び出し",
+  "timeline.earlierNarration": "+{{count}} 件の以前の出力",
+  "timeline.earlierNarration_plural": "+{{count}} 件の以前の出力",
   "timeline.showFewerLogEntries": "ログエントリーの表示を減らす",
   "timeline.showFewerToolCalls": "ツール呼び出しの表示を減らす",
   "timeline.kickedOffSubagents": "サブエージェントを {{countValue}} 件開始",
@@ -2321,11 +2330,53 @@ export const ja: Record<string, string> = {
   "codeIndex.state.idle": "アイドル",
   "codeIndex.state.indexing": "インデックス中",
   "codeIndex.state.off": "インデックスは無効",
+  "codeIndex.progressScanning": "ファイルを走査中…",
+  "codeIndex.progressExtracting": "{{total}} 件中 {{processed}} 件を索引化済み",
   "codeIndex.projectStats": "{{files}} ファイル · {{symbols}} シンボル",
   "codeIndex.lastIndexed": "{{time}} に索引付け",
   "codeIndex.neverIndexed": "未索引",
   "codeIndex.noProjects": "索引対象のプロジェクトはありません。",
   "codeIndex.refresh": "索引状態を更新",
+  "codeGraph.title": "CodeGraph コードグラフ",
+  "codeGraph.explanation":
+    "CodeGraph はプロジェクトごとにコード関係のナレッジグラフ（呼び出しチェーン、データフロー、アーキテクチャ）を構築します。「コードインデックス」と補完関係です。コードインデックスはシンボル定義の場所を答え、CodeGraph は codegraph.explore ツールでコード同士の関係性を答えます。",
+  "codeGraph.toggle": "CodeGraph 連携を有効化",
+  "codeGraph.toggleDescription":
+    "デフォルトで有効。PATH 上に codegraph CLI（npm i -g @colbymchenry/codegraph）が必要です。未インストールでもエージェントは通常どおり既存ツールを使えます。無効化しても作成済みの索引は削除されません。",
+  "codeGraph.enabledStatus":
+    "カスタムモデルサービスのエージェント ターンで自動的に索引が作られます。下から手動で作成・再構築もできます。",
+  "codeGraph.cliTitle": "codegraph CLI ツール",
+  "codeGraph.cliInstalled": "CLI インストール済み",
+  "codeGraph.cliInstalledDescription":
+    "npm でグローバル インストール済み。バージョンはサーバーの PATH から検出されます。",
+  "codeGraph.cliMissing":
+    "サーバー上に codegraph CLI が見つかりません。インストールされるまで、エージェントは通常どおり既存ツールを使います。",
+  "codeGraph.cliVersion": "バージョン {{version}}",
+  "codeGraph.install": "CLI をインストール",
+  "codeGraph.installing": "インストール中…",
+  "codeGraph.installFailed": "インストールに失敗しました",
+  "codeGraph.state.off": "連携が無効のため、状態は収集されません。",
+  "codeGraph.state.ready": "索引利用可能",
+  "codeGraph.state.uninitialized": "索引なし",
+  "codeGraph.state.reindexRecommended": "再構築を推奨",
+  "codeGraph.phase.queued": "待機中",
+  "codeGraph.phase.scanning": "ファイルをスキャン中",
+  "codeGraph.phase.parsing": "コードを解析中",
+  "codeGraph.phase.resolving": "参照を解決中",
+  "codeGraph.phase.linking": "動的ディスパッチをリンク中",
+  "codeGraph.phase.complete": "索引完了",
+  "codeGraph.phase.failed": "索引作成に失敗",
+  "codeGraph.projectStats": "{{files}} ファイル · {{nodes}} ノード · {{edges}} エッジ",
+  "codeGraph.lastIndexed": "{{time}} に索引化",
+  "codeGraph.neverIndexed": "未索引",
+  "codeGraph.pendingChanges": "{{count}} 件の未同期変更",
+  "codeGraph.sync": "索引を同期",
+  "codeGraph.reindex": "索引を再構築",
+  "codeGraph.buildIndex": "索引を構築",
+  "codeGraph.working": "処理中…",
+  "codeGraph.actionFailed": "操作に失敗しました",
+  "codeGraph.noProjects": "プロジェクトはまだありません。",
+  "codeGraph.refresh": "CodeGraph 状態を更新",
   "settings.agentBrowserAccess": "エージェントのブラウザアクセス",
   "settings.appearance": "外観",
   "settings.archive": "アーカイブ",
@@ -2405,6 +2456,8 @@ export const ja: Record<string, string> = {
   "chat.queuedMessageCount_plural": "{{count}} 件のメッセージをキュー待ち",
   "chat.cancelQueuedMessage": "キューをキャンセル",
   "chat.editQueuedMessage": "キュー済みメッセージを編集",
+  "chat.steerQueuedMessage": "誘導：今すぐ送信（実行中の出力は中断しません）",
+  "chat.steerQueuedMessageFailed": "実行中のエージェントへの誘導に失敗しました",
   "delegationWorkspace.statusRunning": "実行中",
   "delegationWorkspace.statusSucceeded": "完了",
   "delegationWorkspace.statusFailed": "失敗",
@@ -3892,7 +3945,7 @@ export const ja: Record<string, string> = {
   noActivityYet: "まだアクティビティはありません。",
   noAgentsYet: "まだエージェントはありません",
   noAuthorizationCodeWasReturnedReRunCodeworkConnectInYourTerminalAndTryAgain:
-    "認証コードが返されませんでした。ターミナルで `t3 connect` を再実行して、もう一度お試しください。",
+    "認証コードが返されませんでした。ターミナルで `codework connect` を再実行して、もう一度お試しください。",
   nobodyElseHasAccessToThisRepository: "このリポジトリにアクセスできる人は他にいません。",
   nobodyWithAccessMatchesThat: "一致するアクセス権を持つユーザーはいません。",
   noChecksReported: "報告されたチェックなし",
@@ -4226,7 +4279,7 @@ export const ja: Record<string, string> = {
   theWslBackendWillStopThreadsAndProjectsOpenedAgainstWslStaySafeInsideThe:
     "WSL バックエンドは停止します。WSL を対象に開いたスレッドとプロジェクトはディストリビューション内に安全に残りますが、WSL を再度有効にするまで Code Work では利用できません。",
   thisAuthorizationResponseDoesNotMatchAConnectRequestStartedInThisBrowser:
-    "この認証レスポンスは、このブラウザーで開始された接続リクエストと一致しません。ターミナルで `t3 connect` を再実行し、新しく表示された URL をこのブラウザーで開いてください。",
+    "この認証レスポンスは、このブラウザーで開始された接続リクエストと一致しません。ターミナルで `codework connect` を再実行し、新しく表示された URL をこのブラウザーで開いてください。",
   thisBackendIsAlreadyConfiguredForRemoteAccessNetworkExposureChangesMustB:
     "このバックエンドはリモートアクセス用に既に設定されています。ネットワーク公開の変更は、サーバーを起動した場所で行う必要があります。",
   thisClientCanCreateOrRevokeAccessForOtherDevices:
@@ -4753,7 +4806,7 @@ export const ja: Record<string, string> = {
   theIntegratedBrowserIsUnavailableInThisRuntime:
     "このランタイムでは統合ブラウザーを利用できません。",
   theLinkIsMissingItsAuthorizationRequestReRunCodeworkConnectInYourTerminalAndOp:
-    "リンクに認可リクエストが含まれていません。ターミナルで `t3 connect` を再実行し、新しく表示された URL を開いてください。",
+    "リンクに認可リクエストが含まれていません。ターミナルで `codework connect` を再実行し、新しく表示された URL を開いてください。",
   theManagedTunnelWasRemovedAgentActivityPublishingStaysOn:
     "管理対象トンネルは削除されました。エージェントアクティビティの公開は有効なままです。",
   themes2: "テーマ",
@@ -5926,6 +5979,19 @@ export const ja: Record<string, string> = {
   "composer.addGoalDisabledDescription": "ゴールを設定する前にスレッドを作成してください",
   "composer.planMode": "プランモード",
   "composer.planModeDisabledDescription": "設定でプランモードを有効にしてください",
+  "composer.subagentMode": "サブエージェントモード",
+  "composer.subagentModeDisabledDescription":
+    "有効にするとモデルがサブタスクをサブエージェントに委譲します",
+  "composer.subagentModeEnabledDescription": "有効 — モデルはサブタスクを委譲できます",
+  "composer.subagentModeRequiresByok": "カスタムモデルサービスに切り替えると利用できます",
+  "composer.subagentModeSaving": "サブエージェント設定を保存しています",
+  "composer.subagentModeNativeDisabledDescription":
+    "オンにすると、エージェントは独立したサブタスクをネイティブのサブエージェント（Task/collab agents）に並行して任せます",
+  "composer.subagentModeNativeEnabledDescription":
+    "有効 — エージェントはネイティブのサブエージェントで独立したサブタスクを並行処理できます",
+  "composer.subagentModeDisable": "サブエージェントモードをオフにする",
+  "composer.subagentModeSaveFailed":
+    "サブエージェント設定を保存できませんでした。更新して再試行してください。",
   "composer.specWorkflowSection": "組み込みワークフロー",
   "composer.specWorkflow": "Spec ワークフロー",
   "composer.specWorkflowRequiresThread":

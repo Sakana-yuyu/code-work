@@ -8,6 +8,7 @@
 import type { CodeIndexProjectStatus, CodeIndexStatusResult } from "@codework/contracts";
 import { DEFAULT_UNIFIED_SETTINGS } from "@codework/contracts";
 import { RefreshCwIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery, type EnvironmentQueryView } from "../../state/query";
@@ -35,6 +36,18 @@ const formatIndexedAt = (project: CodeIndexProjectStatus): string =>
   project.lastIndexedAt === null
     ? t("codeIndex.neverIndexed")
     : t("codeIndex.lastIndexed", { time: new Date(project.lastIndexedAt).toLocaleString() });
+
+/** 索引推进中的实时进度文案；状态行此刻的统计是半成品，不与进度并列展示。 */
+const progressText = (project: CodeIndexProjectStatus): string => {
+  const progress = project.progress;
+  if (progress === undefined || progress.phase === "scanning" || progress.totalFiles === null) {
+    return t("codeIndex.progressScanning");
+  }
+  return t("codeIndex.progressExtracting", {
+    processed: progress.processedFiles.toLocaleString(),
+    total: progress.totalFiles.toLocaleString(),
+  });
+};
 
 const baseName = (root: string): string => {
   const normalized = root.replaceAll("\\", "/").replace(/\/+$/u, "");
@@ -71,7 +84,8 @@ function CodeIndexToggleSetting() {
   );
 }
 
-function ProjectStatusRow({ project }: { readonly project: CodeIndexProjectStatus }) {
+export function ProjectStatusRow({ project }: { readonly project: CodeIndexProjectStatus }) {
+  const indexing = project.state === "indexing" || project.progress !== undefined;
   return (
     <div className="flex flex-col gap-1 rounded-xl border border-border/60 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div className="min-w-0">
@@ -83,16 +97,24 @@ function ProjectStatusRow({ project }: { readonly project: CodeIndexProjectStatu
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span className={`font-medium ${STATE_BADGE_CLASS[project.state]}`}>
-          {t(STATE_LABELS[project.state])}
-        </span>
-        <span>
-          {t("codeIndex.projectStats", {
-            files: project.fileCount.toLocaleString(),
-            symbols: project.symbolCount.toLocaleString(),
-          })}
-        </span>
-        <span>{formatIndexedAt(project)}</span>
+        {indexing ? (
+          <span className="font-medium text-sky-600 dark:text-sky-400">
+            {progressText(project)}
+          </span>
+        ) : (
+          <>
+            <span className={`font-medium ${STATE_BADGE_CLASS[project.state]}`}>
+              {t(STATE_LABELS[project.state])}
+            </span>
+            <span>
+              {t("codeIndex.projectStats", {
+                files: project.fileCount.toLocaleString(),
+                symbols: project.symbolCount.toLocaleString(),
+              })}
+            </span>
+            <span>{formatIndexedAt(project)}</span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -130,6 +152,19 @@ export function CodeIndexSettingsSection() {
   const query = useEnvironmentQuery(
     environmentId === null ? null : serverEnvironment.codeIndexStatus({ environmentId, input: {} }),
   );
+  const refreshRef = useRef(query.refresh);
+  refreshRef.current = query.refresh;
+  // 索引推进中才轮询：首扫/增量提取的 X/Y 进度靠它实时刷新。
+  const indexing =
+    query.data?.projects.some(
+      (project) => project.state === "indexing" || project.progress !== undefined,
+    ) ?? false;
+
+  useEffect(() => {
+    if (!indexing) return;
+    const id = window.setInterval(() => refreshRef.current(), 3_000);
+    return () => window.clearInterval(id);
+  }, [indexing]);
 
   return (
     <SettingsSection

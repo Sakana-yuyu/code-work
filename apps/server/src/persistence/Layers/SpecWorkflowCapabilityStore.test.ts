@@ -133,6 +133,39 @@ memoryLayer("SpecWorkflowCapabilityStore", (it) => {
       assert.deepEqual(event, { type: "updated", capability: updated });
     }),
   );
+
+  it.effect("flags 可叠加、缺省更新保留现状，清除后回到无开关", () =>
+    Effect.gen(function* () {
+      const store = yield* SpecWorkflowCapabilityStore;
+      const threadId = ThreadId.make("spec-workflow-flags");
+      const initial = yield* store.get(threadId);
+      assert.isUndefined(initial.flags);
+
+      const both = yield* store.set({
+        threadId,
+        enabled: true,
+        flags: ["design", "strict"],
+        expectedRevision: initial.revision,
+      });
+      assert.deepEqual(both.flags, ["design", "strict"]);
+
+      // 缺省 flags 的旧客户端更新不得丢掉已开启的开关。
+      const kept = yield* store.set({
+        threadId,
+        enabled: true,
+        expectedRevision: both.revision,
+      });
+      assert.deepEqual(kept.flags, ["design", "strict"]);
+
+      const cleared = yield* store.set({
+        threadId,
+        enabled: true,
+        flags: [],
+        expectedRevision: kept.revision,
+      });
+      assert.isUndefined(cleared.flags);
+    }),
+  );
 });
 
 it.effect("使用同一 SQLite 文件重建 Store 后仍可恢复开关状态", () => {

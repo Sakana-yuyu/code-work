@@ -1261,6 +1261,30 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverCodeIndexStatus,
       staleTimeMs: 5_000,
     }),
+    // CodeGraph 索引健康卡：统计与阶段进度都在设置页按需刷新。
+    codeGraphStatus: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:code-graph-status",
+      tag: WS_METHODS.serverCodeGraphStatus,
+      staleTimeMs: 5_000,
+    }),
+    codeGraphInstall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:code-graph-install",
+      tag: WS_METHODS.serverCodeGraphInstall,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    codeGraphSync: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:code-graph-sync",
+      tag: WS_METHODS.serverCodeGraphSync,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    codeGraphReindex: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:code-graph-reindex",
+      tag: WS_METHODS.serverCodeGraphReindex,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
     configProjection,
     welcome: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:welcome",

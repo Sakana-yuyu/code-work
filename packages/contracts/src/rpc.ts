@@ -7,6 +7,13 @@ import { IdeError, IdeOpenInput, IdeOpenResult } from "./ide.ts";
 import { ProviderEventQueryInput, ProviderEventQueryResult } from "./providerEventQuery.ts";
 import { AccountQuotaRequest, AccountQuotaResult } from "./accountQuota.ts";
 import { CodeIndexStatusInput, CodeIndexStatusResult } from "./codeIndex.ts";
+import {
+  CodeGraphActionResult,
+  CodeGraphInstallInput,
+  CodeGraphProjectActionInput,
+  CodeGraphStatusInput,
+  CodeGraphStatusResult,
+} from "./codeGraph.ts";
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
@@ -559,6 +566,10 @@ export const WS_METHODS = {
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverQueryProviderEvents: "server.queryProviderEvents",
   serverCodeIndexStatus: "server.codeIndexStatus",
+  serverCodeGraphStatus: "server.codeGraphStatus",
+  serverCodeGraphInstall: "server.codeGraphInstall",
+  serverCodeGraphSync: "server.codeGraphSync",
+  serverCodeGraphReindex: "server.codeGraphReindex",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverGetResourceTelemetryHistory: "server.getResourceTelemetryHistory",
@@ -1228,6 +1239,30 @@ export const WsServerQueryProviderEventsRpc = Rpc.make(WS_METHODS.serverQueryPro
 export const WsServerCodeIndexStatusRpc = Rpc.make(WS_METHODS.serverCodeIndexStatus, {
   payload: CodeIndexStatusInput,
   success: CodeIndexStatusResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerCodeGraphStatusRpc = Rpc.make(WS_METHODS.serverCodeGraphStatus, {
+  payload: CodeGraphStatusInput,
+  success: CodeGraphStatusResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerCodeGraphInstallRpc = Rpc.make(WS_METHODS.serverCodeGraphInstall, {
+  payload: CodeGraphInstallInput,
+  success: CodeGraphActionResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerCodeGraphSyncRpc = Rpc.make(WS_METHODS.serverCodeGraphSync, {
+  payload: CodeGraphProjectActionInput,
+  success: CodeGraphActionResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerCodeGraphReindexRpc = Rpc.make(WS_METHODS.serverCodeGraphReindex, {
+  payload: CodeGraphProjectActionInput,
+  success: CodeGraphActionResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -2132,6 +2167,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetTraceDiagnosticsRpc,
   WsServerQueryProviderEventsRpc,
   WsServerCodeIndexStatusRpc,
+  WsServerCodeGraphStatusRpc,
+  WsServerCodeGraphInstallRpc,
+  WsServerCodeGraphSyncRpc,
+  WsServerCodeGraphReindexRpc,
   WsServerGetProcessDiagnosticsRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerGetResourceTelemetryHistoryRpc,

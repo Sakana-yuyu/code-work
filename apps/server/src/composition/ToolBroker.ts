@@ -13,6 +13,7 @@ import {
   PreviewAutomationTabTargetInput,
   PreviewAutomationTypeInput,
   PreviewAutomationWaitForInput,
+  PositiveInt,
   ProjectReadFileResult,
   ProjectWriteFileResult,
   ReviewDiffPreviewInput,
@@ -31,6 +32,8 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as ProcessRunner from "../processRunner.ts";
+import * as CodeGraphIndex from "../codeGraph/codeGraphIndex.ts";
 import * as PreviewAutomationBroker from "../mcp/PreviewAutomationBroker.ts";
 import { normalizePreviewOpenInput } from "../mcp/toolkits/preview/handlers.ts";
 import * as ByokDelegationService from "../provider/byok/ByokDelegationService.ts";
@@ -136,6 +139,11 @@ const TerminalCloseArguments = Schema.Struct({
 });
 
 const GitStatusArguments = Schema.Struct({ cwd: Schema.String });
+
+const CodeGraphExploreArguments = Schema.Struct({
+  query: TrimmedNonEmptyString,
+  maxFiles: Schema.optionalKey(PositiveInt),
+});
 
 const SshServerRef = TrimmedNonEmptyString;
 const SshStatusArguments = Schema.Struct({ server: SshServerRef });
@@ -316,6 +324,9 @@ const make = Effect.gen(function* () {
     CompositionMcpToolRegistry.CompositionMcpToolRegistry,
   );
   const sshServerService = yield* Effect.serviceOption(SshServerService.SshServerService);
+  // codegraph.explore 逐次拉起上游 CLI 子进程；测试环境可能没有 runner，
+  // 此时工具降级为返回不可用指引而不是让整层构造失败。
+  const processRunner = yield* Effect.serviceOption(ProcessRunner.ProcessRunner);
   const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
   const completed = new Set<string>();
@@ -970,6 +981,60 @@ const make = Effect.gen(function* () {
         ),
     });
   }
+
+  // CodeGraph 代码知识图谱查询：逐次调 `codegraph explore` 子进程（上游为
+  // agent 一次性查询设计的无服务模式）。查询失败/超时/索引缺失都返回指引
+  // 性 payload 让模型回落常规工具，而不是报硬错误打断回合。
+  handlers.set("codegraph.explore", {
+    operation: "read",
+    execute: (input) =>
+      Effect.gen(function* () {
+        const args = yield* Schema.decodeUnknownEffect(CodeGraphExploreArguments)(
+          input.arguments,
+        ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+        if (Option.isNone(processRunner)) {
+          return { output: "codegraph.explore 当前不可用（进程运行器缺失），请改用常规工具。" };
+        }
+        const run = yield* processRunner.value
+          .run({
+            command: "codegraph",
+            args: [
+              "explore",
+              args.query,
+              "--path",
+              input.workspaceRoot,
+              ...(args.maxFiles === undefined ? [] : ["--max-files", String(args.maxFiles)]),
+            ],
+            cwd: input.workspaceRoot,
+            timeout: "120 seconds",
+            timeoutBehavior: "timedOutResult",
+          })
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.succeed({
+                stdout: "",
+                stderr: String(cause),
+                code: null,
+                timedOut: false,
+                stdoutTruncated: false,
+                stderrTruncated: false,
+                stdoutInvalidUtf8: false,
+                stderrInvalidUtf8: false,
+              } satisfies ProcessRunner.ProcessRunOutput),
+            ),
+          );
+        const output = [run.stdout, run.stderr].filter((part) => part.trim() !== "").join("\n");
+        if (run.timedOut) {
+          return {
+            output: `codegraph.explore 查询超时（120s）。请改用常规搜索/读取工具，不要反复重试。${
+              output.trim() === "" ? "" : `\n${output}`
+            }`,
+            timedOut: true,
+          };
+        }
+        return run.stdoutTruncated ? { output, truncated: true } : { output };
+      }),
+  });
 
   const resultBase = (input: ToolBrokerInput, startedAtUnixMs: number) => ({
     invocationId: `invocation-${input.idempotencyKey}`,

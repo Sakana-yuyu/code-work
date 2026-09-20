@@ -17,6 +17,7 @@ export * from "./providerRuntime.ts";
 export * from "./providerEventQuery.ts";
 export * from "./accountQuota.ts";
 export * from "./codeIndex.ts";
+export * from "./codeGraph.ts";
 export * from "./model.ts";
 export * from "./keybindings.ts";
 export * from "./server.ts";

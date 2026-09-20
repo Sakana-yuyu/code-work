@@ -12,6 +12,7 @@ const control: ComposerSpecWorkflowControl = {
   available: true,
   enabled: true,
   selectedIntent: "design",
+  flags: [],
   isPending: false,
   hasError: false,
   workflowState: null,
@@ -19,6 +20,7 @@ const control: ComposerSpecWorkflowControl = {
   workflowStateHasError: false,
   onToggle: async () => true,
   onSelectIntent: async () => true,
+  onToggleFlag: async () => true,
   onApproveProposal: async () => true,
   onRejectProposal: async () => true,
   onCompleteAcceptance: async () => true,
@@ -55,7 +57,24 @@ describe("工作流节点胶囊", () => {
           `specWorkflow.description.${intent}`,
         );
       }
+      expect(markup).toContain(t("specWorkflow.flags.title"));
+      for (const flag of ["design", "strict"] as const) {
+        expect(markup).toContain(t(`specWorkflow.flag.${flag}`));
+        expect(t(`specWorkflow.flag.${flag}Description`)).not.toBe(
+          `specWorkflow.flag.${flag}Description`,
+        );
+      }
     }
+    setCurrentLanguage("zh-CN");
+  });
+
+  it("已启用的执行取向开关带选中态；未选中时无额外 aria-pressed", () => {
+    setCurrentLanguage("zh-CN");
+    const active = renderToStaticMarkup(
+      <SpecWorkflowNodePicker control={{ ...control, flags: ["strict"] }} onSelected={() => {}} />,
+    );
+    expect(active.match(/aria-pressed="true"/g)).toHaveLength(2);
+    expect(active).toContain(t("specWorkflow.flag.strict"));
     setCurrentLanguage("zh-CN");
   });
 });

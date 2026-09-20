@@ -21,6 +21,8 @@ import {
   type ModelUsage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { parseCliArgs } from "@codework/shared/cliArgs";
+
+import { SUBAGENT_MODE_GUIDANCE_PROMPT } from "../SubagentModeGuidance.ts";
 import {
   ApprovalRequestId,
   type CanonicalItemType,
@@ -4312,7 +4314,13 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(input.cwd ? { cwd: input.cwd } : {}),
         ...(apiModelId ? { model: apiModelId } : {}),
         pathToClaudeCodeExecutable: claudeBinaryPath,
-        systemPrompt: { type: "preset", preset: "claude_code" },
+        // 子代理模式:实例开关打开时,往 claude_code 预设 system prompt 追加
+        // 原生子代理指引;关闭时保持默认预设。
+        systemPrompt: {
+          type: "preset",
+          preset: "claude_code",
+          ...(claudeSettings.delegation.enabled ? { append: SUBAGENT_MODE_GUIDANCE_PROMPT } : {}),
+        },
         settingSources: [...CLAUDE_SETTING_SOURCES],
         ...(claudeSettings.fallbackModel ? { fallbackModel: claudeSettings.fallbackModel } : {}),
         ...(claudeSettings.maxTurns ? { maxTurns: Number(claudeSettings.maxTurns) } : {}),

@@ -30,6 +30,16 @@ Provider 只注入所选节点的职责和合法回传指令。`chat/status/stas
 - 实际发送讨论请求后 Provider 仅回复讨论内容。移除胶囊后的只读数据库检查为 `enabled=0`、`selected_intent=chat`、`revision=3`、工作流事件数 0、Composition Task 数 0；隔离项目没有生成 `spec/`。
 - 本次未进行原生 Mobile、Electron 独立壳层或真实 Relay/Tunnel 验收。全局 i18n 脚本仍被工作区已有的非工作流缺失翻译阻塞；新增节点的中英日文案已通过定向测试。
 
+### 2026-09-19：对齐上游 knowledge 知识库、归档落位与 design/strict 开关
+
+对照 kamioj/spec-workflow 上游（0.8.x：knowledge 索引+子文档、`.current` 指针、check-archive、`--design/--strict`）补齐缺失流程：
+
+- **知识库（跨 change 持久）**：`spec/knowledge.md` 是知识索引（每个子文档一行），`spec/knowledge/` 存放领域事实与长文经验子文档。Agent 协议在 research/apply/fix/verify/propose 注入「索引先行、按需打开、已录事实直接信任、矛盾时更新」的读取纪律；research 把新确认的领域事实沉淀为子文档并更新索引；废弃方向草稿快照进 `spec/changes/<name>/research/`。ArtifactStore 为 `knowledge.md` 提供工作区级路径（`spec/knowledge.md`，不受 changeName 校验约束）；子文档由 Agent 用常规文件工具直写。
+- **归档流程**：完整流程归档前由 Server 门禁校验 `retrospect.md` 非空（偏差回顾+证据+遗留项；fix 模式沿用 fix.md 审计语义，不加这道门）；归档状态事件落定后 `SpecWorkflowArtifactStore.archive` 把 `spec/changes/<name>/` 移入 `spec/archive/<UTC 日期-name>/`，同日同名碰撞加 `-2` 序号；移动失败只记录告警不回滚事件（状态机仍是真相来源）。上游 `changes/.current` 指针由本仓线程级 DB 状态承担，不落盘。
+- **verify.md 台账纪律**：verify 节点指令与 Bridge 独立验证 prompt 前缀固定要求——稳定发现编号、每条附可引用代码证据（引用不出即撤销）、每维度最多 3 条、跨轮次对比、未修复发现升级为失败、误报结论沉淀知识库。
+- **design/strict 执行取向开关**：`SpecWorkflowCapability.flags`（可叠加，Migration 080 增列 `flags_json`）。strict=反偷懒/反臆测（结论须可引用证据、未知须标注），design=视觉关键任务按前端美学执行。开关在 Provider 回合输入（`formatSpecWorkflowFlagGuardrails`）和 apply/verify Composition 派发 prompt（Bridge 前缀、Ingestion 派发 prompt）同时注入，保证执行者与决策回合都受约束。Web 胶囊节点选择器与 Mobile 控制面均提供三语开关。
+- 上游的 MCP Server（"Not built yet"）与 ast-grep/Codex 异构评审等外部工具依赖不引入；多执行者 tasks.md 并行（前端/后端双实例）暂不引入，单实施者+独立验证者已覆盖当前场景。
+
 ### 1.1 目标
 
 - 用户从对话输入框的“+”中显式启用“规格驱动开发”。

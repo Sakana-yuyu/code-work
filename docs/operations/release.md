@@ -50,7 +50,12 @@ Release 会先执行质量门禁，再开始桌面矩阵构建。质量门禁包
 1. 版本已经写入对应的包配置和更新逻辑；
 2. 工作区中没有准备误提交的本地缓存或构建产物；
 3. GitHub Actions 所需的生产配置和可选签名密钥已在仓库环境中配置；
-4. 已经接受这是一次真实发布，而不是测试构建。
+4. 已经接受这是一次真实发布，而不是测试构建；
+5. 运行 `node scripts/check-codegraph-upstream.ts` 对照 npm 上的上游
+   `@colbymchenry/codegraph` 最新版本与代码里固定的
+   `CODEGRAPH_VALIDATED_CLI_VERSION`。报告有新版本时，审阅上游变更是否影响
+   `codegraph init --yes` / `codegraph explore` 的行为或输出，确认无碍后把
+   基线版本号更新到新版本再发布；有影响则先修复集成。
 
 ## 触发发布
 

@@ -31,6 +31,7 @@ import {
   RuntimeItemId,
   type ProviderRuntimeEvent,
   type ProviderSession,
+  type ServerSettings,
   ThreadId,
   TurnId,
 } from "@codework/contracts";
@@ -55,6 +56,11 @@ const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.
 import { ServerConfig } from "../../config.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { extractRescuableCanvas, normalizeRescuedCanvas } from "../../canvas/CanvasTextRescue.ts";
+import {
+  CODEGRAPH_GUIDANCE_PROMPT,
+  hasCodeGraphIndex,
+  spawnCodeGraphIndexInit,
+} from "../../codeGraph/codeGraphIndex.ts";
 import { runByokAgentLoop, type ByokAgentToolCall } from "../../composition/ByokAgentLoop.ts";
 import { makeByokModelDriver } from "../../composition/OpenAiByokModelDriver.ts";
 import {
@@ -200,6 +206,14 @@ interface ByokSessionContext {
   turns: Array<ByokTurnSnapshot>;
   activeTurnId: TurnId | undefined;
   activeTurnFiber: Fiber.Fiber<void, unknown> | undefined;
+  /**
+   * 运行中引导窗口：回合循环发出下一次模型请求前仍可能再请求时为 true。
+   * 引导（用户在回合运行中追加、不中断输出的输入）只有窗口打开时才能被
+   * 本回合读到，否则按普通新回合处理。
+   */
+  steerWindowOpen: boolean;
+  /** 已写入历史、等待循环注入的引导文本；窗口关闭时必须清空。 */
+  readonly pendingSteers: Array<string>;
   totalProcessedTokens: number;
   totalModelDurationMs: number;
 }
@@ -207,6 +221,8 @@ interface ByokSessionContext {
 export interface ByokAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
   readonly toolBroker?: ToolBroker["Service"];
+  /** 读取全局 ServerSettings（当前只取 codeGraphEnabled）；缺省或失败视为关闭。 */
+  readonly getServerSettings?: Effect.Effect<ServerSettings, unknown>;
 }
 
 const BYOK_PROJECT_TOOL_NAMES: ReadonlySet<string> = new Set([
@@ -217,6 +233,8 @@ const BYOK_PROJECT_TOOL_NAMES: ReadonlySet<string> = new Set([
   "git.status",
   "git.diff",
   "canvas.create",
+  // CodeGraph 结构化查询：只读，所有模式可用；索引缺失时工具有自守卫指引。
+  "codegraph.explore",
   // 远程服务器只读三件套与本地 workspace 只读同级。
   "ssh.status",
   "ssh.list_files",
@@ -249,6 +267,13 @@ const renderAgentConversation = (messages: ReadonlyArray<ByokChatMessage>): stri
         `${message.role === "assistant" ? "助手" : "用户"}: ${messageTextContext(message)}`,
     )
     .join("\n\n");
+
+/**
+ * 引导文本加框：明确这是回合运行中插入的用户追加输入而不是新任务，
+ * 模型应结合当前进展自行判断是否调整方向，而不是中断重做。
+ */
+const renderByokSteerText = (text: string): string =>
+  `[用户引导] ${text}\n（这是回合运行中追加的引导：请读取后结合当前进展自行判断，必要时调整后续方向；不要中断或重做已完成的工作，也不要把本条当作重新开始的任务。）`;
 
 /** Rough char cost of a message, estimating inline images at a fixed budget. */
 const messageHistoryChars = (message: ByokChatMessage): number =>
@@ -513,6 +538,8 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           turns: [],
           activeTurnId: undefined,
           activeTurnFiber: undefined,
+          steerWindowOpen: false,
+          pendingSteers: [],
           totalProcessedTokens: resumed?.totalProcessedTokens ?? 0,
           totalModelDurationMs: resumed?.totalModelDurationMs ?? 0,
         };
@@ -699,6 +726,9 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       }
       ctx.activeTurnId = undefined;
       ctx.activeTurnFiber = undefined;
+      // 纯文本回合没有循环注入点，窗口随回合关闭；引导已进历史，下一回合可读。
+      ctx.steerWindowOpen = false;
+      ctx.pendingSteers.length = 0;
       yield* updateSession(ctx, { status: "ready" }, true);
 
       if (Exit.isFailure(outcome)) {
@@ -770,7 +800,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       reasoningEffort?: string,
     ) {
       const runtimeMode = isPlanMode ? "approval-required" : ctx.session.runtimeMode;
-      const projectTools = availableProjectTools.filter(
+      let projectTools = availableProjectTools.filter(
         (tool) => runtimeMode === "full-access" || isByokProjectTool(tool.canonicalToolName),
       );
       const effectiveMessages = yield* applyVisionDelegation(ctx, adapter, messages);
@@ -826,11 +856,42 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             },
           });
         }).pipe(Effect.orDie);
+      // CodeGraph：开关开启时，已有索引则注入使用边界指引；没有则后台补建
+      // （per-root 去重、危险根守卫、绝不阻塞回合）。设置读取失败视为关闭。
+      let codeGraphGuidance: string | undefined;
+      if (options?.getServerSettings !== undefined) {
+        const codeGraphEnabled = yield* options.getServerSettings.pipe(
+          Effect.map((settings) => settings.codeGraphEnabled),
+          Effect.catch(() => Effect.succeed(false)),
+        );
+        if (codeGraphEnabled) {
+          if (hasCodeGraphIndex(ctx.cwd)) {
+            codeGraphGuidance = CODEGRAPH_GUIDANCE_PROMPT;
+          } else {
+            yield* Effect.sync(() =>
+              spawnCodeGraphIndexInit({
+                root: ctx.cwd,
+                logWarning: (message, cause) =>
+                  Effect.runFork(Effect.logWarning(message, { cause })),
+              }),
+            );
+          }
+        } else {
+          // 关闭开关时把工具从本轮清单撤下，已建索引保留不动（删除是
+          // 上游 codegraph uninit 的破坏性操作，永远不由我们自动执行）。
+          projectTools = projectTools.filter(
+            (tool) => tool.canonicalToolName !== "codegraph.explore",
+          );
+        }
+      }
       const agentSystemPrompt = [
         systemPrompt,
         "你正在 Code Work 中处理当前项目，可用操作以本轮工具清单为准。",
         `当前项目工作区根目录是：${ctx.cwd}`,
         "当用户要求审查、读取或分析代码时，先使用可用的工作区工具取得证据，不要声称没有项目上下文。",
+        // 长任务的耗时主要来自逐个工具调用的来回轮次：引导模型把独立只读
+        // 操作合并进同一响应并行执行，有依赖或带副作用的操作才逐个等待。
+        "独立的只读操作（同时读多个文件、多处搜索、查看状态与快照等）请在一次响应里合并为多个工具调用并行发起，减少来回轮次；有依赖关系或会修改状态的操作（写入、执行命令、页面操控等）必须等前序结果返回后再发起。",
         isPlanMode
           ? "当前为计划模式，仅分析代码并给出计划，不执行文件修改或命令。"
           : "当用户要求创建或修改文件、执行命令时，使用本轮已授权工具完成操作。",
@@ -838,6 +899,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         // 承载，而不是把结论倒进 markdown 表格或长代码块。
         "当产出独立的分析型交付物（审计、评审、代码地图、量化分析、数据密集结论、对比、时间线）时，优先用 canvas.create 工具承载并随任务推进复用相同 canvasId 更新它，而不是写大段 markdown 表格或长代码块；定向实现、调试等明确交付物不适用。",
         "画布只能通过调用 canvas.create 工具创建：把画布 JSON 写进回复正文或代码块不会生成画布面板。",
+        ...(codeGraphGuidance === undefined ? [] : [codeGraphGuidance]),
       ]
         .filter((part) => part.trim().length > 0)
         .join("\n\n");
@@ -900,6 +962,8 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             onToolCompleted: (toolCall, result) => emitToolRowCompleted(toolCall, result),
             onModelUsage: (usage) =>
               emitThreadTokenUsage(ctx, turnId, adapter, usage).pipe(Effect.orDie),
+            // 每轮请求前取走运行中到达的引导；取走即视为已并入本回合上下文。
+            takePendingUserMessages: () => ctx.pendingSteers.splice(0),
           },
           makeByokModelDriver(httpClient, {
             protocol: adapter.protocol,
@@ -928,10 +992,18 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       yield* updateSession(ctx, { status: "ready" }, true);
 
       if (Exit.isFailure(outcome)) {
-        if (Cause.hasInterruptsOnly(outcome.cause)) return;
+        if (Cause.hasInterruptsOnly(outcome.cause)) {
+          // 中断收口：引导已写入历史，留待下一回合被读到；未注入的排队引导
+          // 丢弃（引导语义只对仍在推进的回合有意义）。
+          ctx.steerWindowOpen = false;
+          ctx.pendingSteers.length = 0;
+          return;
+        }
         const detail =
           Option.getOrUndefined(Cause.findErrorOption(outcome.cause))?.message ??
           "BYOK agent turn failed.";
+        ctx.steerWindowOpen = false;
+        ctx.pendingSteers.length = 0;
         yield* emit({
           ...(yield* makeEventStamp()),
           type: "runtime.error",
@@ -992,6 +1064,9 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
 
       ctx.history.push({ role: "assistant", content: outcome.value.text });
       ctx.history = fitHistory(ctx.history, adapter.contextWindowTokens);
+      // 成功收口：先关引导窗口再清队列，最后到达的引导留在历史里等下一回合。
+      ctx.steerWindowOpen = false;
+      ctx.pendingSteers.length = 0;
       // 历史定型后、终态事件前落盘：turn.completed 即"已可恢复"的回执。
       yield* persistSessionState(ctx);
       yield* emit({
@@ -1023,6 +1098,28 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           issue: `BYOK model selection is bound to instance '${modelSelection.instanceId}', expected '${boundInstanceId}'.`,
         });
       }
+
+      // 运行中引导：回合窗口仍打开时把输入并入当前回合（历史 + 循环下一轮
+      // 注入），绝不打断进行中的输出；窗口已关闭（回合收尾/已结束）则照常
+      // 开新回合，排队消息由此无缝降级为普通发送。
+      if (
+        ctx.steerWindowOpen &&
+        ctx.activeTurnId !== undefined &&
+        ctx.session.status === "running"
+      ) {
+        if (attachments.length > 0) {
+          return yield* new ProviderAdapterValidationError({
+            provider: PROVIDER,
+            operation: "sendTurn",
+            issue: "Steering does not support attachments; resend without images.",
+          });
+        }
+        const steerText = renderByokSteerText(text);
+        ctx.history.push({ role: "user", content: steerText });
+        ctx.pendingSteers.push(steerText);
+        yield* persistSessionState(ctx);
+        return { threadId: input.threadId, turnId: ctx.activeTurnId };
+      }
       const model = modelSelection?.model ?? ctx.session.model;
       const adapter = byokAdapterForModel(byokSettings, model);
       if (adapter === undefined) {
@@ -1038,6 +1135,8 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
 
       const turnId = TurnId.make(`byok-turn-${yield* randomUUIDv4}`);
       ctx.activeTurnId = turnId;
+      ctx.steerWindowOpen = true;
+      ctx.pendingSteers.length = 0;
       yield* updateSession(ctx, {
         status: "running",
         activeTurnId: turnId,
@@ -1135,6 +1234,9 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       const fiber = yield* turnEffect.pipe(
         Effect.catchCause((cause) =>
           Effect.gen(function* () {
+            // 循环体自身缺陷的兜底收口，防止引导窗口悬挂在已死的回合上。
+            ctx.steerWindowOpen = false;
+            ctx.pendingSteers.length = 0;
             const detail =
               Option.getOrUndefined(Cause.findErrorOption(cause))?.message ??
               "BYOK engine turn failed.";

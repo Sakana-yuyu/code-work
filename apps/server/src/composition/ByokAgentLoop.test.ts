@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -175,6 +176,51 @@ describe("ByokAgentLoop", () => {
         model,
         broker,
       );
+    }),
+  );
+
+  it.effect("运行中引导在下一轮模型请求前注入为 user 消息", () =>
+    Effect.gen(function* () {
+      const pendingSteers: Array<string> = [];
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]["messages"]> = [];
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) => Effect.succeed(makeResult(input)),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          modelInputs.push(input.messages);
+          if (input.turn === 1) {
+            // 模拟引导在第一轮执行期间到达：下一轮请求必须读到，第一轮没读到。
+            pendingSteers.push("[用户引导] 顺便确认 README 是否需要同步");
+            return Stream.fromIterable([
+              {
+                type: "tool_call",
+                toolCallId: "read-1",
+                canonicalToolName: "workspace.read_file",
+                arguments: {},
+              },
+              { type: "model_completed" },
+            ]);
+          }
+          return Stream.fromIterable([
+            { type: "text_delta", text: "完成" },
+            { type: "model_completed" },
+          ]);
+        },
+      };
+      const result = yield* runByokAgentLoop(
+        { ...baseInput, takePendingUserMessages: () => pendingSteers.splice(0) },
+        model,
+        broker,
+      );
+      expect(result.text).toBe("完成");
+      expect(modelInputs[0]!.at(-1)).toEqual({ role: "user", content: baseInput.prompt });
+      expect(modelInputs[1]!.at(-1)).toEqual({
+        role: "user",
+        content: "[用户引导] 顺便确认 README 是否需要同步",
+      });
+      expect(pendingSteers).toHaveLength(0);
     }),
   );
 
@@ -1387,6 +1433,145 @@ describe("ByokAgentLoop", () => {
 
       expect(error).toMatchObject({ detail: "rate limited", reason: "rate_limit" });
       expect(modelCalls).toBe(1);
+    }),
+  );
+});
+
+describe("ByokAgentLoop 只读工具轮内并发", () => {
+  const timedBroker = (
+    intervals: Map<string, { start: number; end: number }>,
+    events: string[],
+  ): ToolBroker.ToolBroker["Service"] => ({
+    invoke: (brokerInput) =>
+      Effect.gen(function* () {
+        events.push(`start:${brokerInput.toolCallId}`);
+        const start = yield* Clock.currentTimeMillis;
+        yield* Effect.sleep(50);
+        const end = yield* Clock.currentTimeMillis;
+        intervals.set(brokerInput.toolCallId, { start, end });
+        events.push(`end:${brokerInput.toolCallId}`);
+        return {
+          ...makeResult(brokerInput),
+          result: { contents: `result-${brokerInput.toolCallId}` },
+        };
+      }),
+    cancel: () => Effect.void,
+  });
+
+  it.live("同一响应里的多个只读调用并发执行且结果消息保持原顺序", () =>
+    Effect.gen(function* () {
+      const intervals = new Map<string, { start: number; end: number }>();
+      const events: string[] = [];
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
+      const broker = timedBroker(intervals, events);
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          modelInputs.push(input);
+          return input.turn === 2
+            ? Stream.fromIterable([
+                { type: "text_delta" as const, text: "done" },
+                { type: "model_completed" as const },
+              ])
+            : Stream.fromIterable([
+                {
+                  type: "tool_call" as const,
+                  toolCallId: "call-1",
+                  canonicalToolName: "workspace.read_file",
+                  arguments: { relativePath: "a.txt" },
+                },
+                {
+                  type: "tool_call" as const,
+                  toolCallId: "call-2",
+                  canonicalToolName: "workspace.read_file",
+                  arguments: { relativePath: "b.txt" },
+                },
+                {
+                  type: "tool_call" as const,
+                  toolCallId: "call-3",
+                  canonicalToolName: "workspace.search_files",
+                  arguments: { pattern: "x" },
+                },
+                { type: "model_completed" as const },
+              ]);
+        },
+      };
+
+      yield* runByokAgentLoop({ ...baseInput }, model, broker);
+
+      const first = intervals.get("call-1");
+      const second = intervals.get("call-2");
+      const third = intervals.get("call-3");
+      expect(first && second && third).toBeDefined();
+      if (!first || !second || !third) return;
+      // 三个只读调用互相重叠：后发的调用在前一个结束前已经开始。
+      const earliestEnd = Math.min(first.end, second.end, third.end);
+      expect(second.start).toBeLessThan(earliestEnd);
+      expect(third.start).toBeLessThan(earliestEnd);
+      // 回传给模型的工具消息仍按原始调用顺序排列。
+      const toolOrder = (modelInputs[1]?.messages ?? [])
+        .filter((message) => message.role === "tool")
+        .map((message) => (message.role === "tool" ? message.toolCallId : ""));
+      expect(toolOrder).toEqual(["call-1", "call-2", "call-3"]);
+    }),
+  );
+
+  it.live("带副作用的调用充当屏障，前后只读调用不与之并发", () =>
+    Effect.gen(function* () {
+      const intervals = new Map<string, { start: number; end: number }>();
+      const events: string[] = [];
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
+      const broker = timedBroker(intervals, events);
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          modelInputs.push(input);
+          return input.turn === 2
+            ? Stream.fromIterable([
+                { type: "text_delta" as const, text: "done" },
+                { type: "model_completed" as const },
+              ])
+            : Stream.fromIterable([
+                {
+                  type: "tool_call" as const,
+                  toolCallId: "read-1",
+                  canonicalToolName: "workspace.read_file",
+                  arguments: { relativePath: "a.txt" },
+                },
+                {
+                  type: "tool_call" as const,
+                  toolCallId: "exec-1",
+                  canonicalToolName: "terminal.exec",
+                  arguments: { command: "npm test" },
+                },
+                {
+                  type: "tool_call" as const,
+                  toolCallId: "read-2",
+                  canonicalToolName: "workspace.read_file",
+                  arguments: { relativePath: "b.txt" },
+                },
+                { type: "model_completed" as const },
+              ]);
+        },
+      };
+
+      yield* runByokAgentLoop({ ...baseInput }, model, broker);
+
+      const read1 = intervals.get("read-1");
+      const exec = intervals.get("exec-1");
+      const read2 = intervals.get("read-2");
+      expect(read1 && exec && read2).toBeDefined();
+      if (!read1 || !exec || !read2) return;
+      expect(exec.start).toBeGreaterThanOrEqual(read1.end);
+      expect(read2.start).toBeGreaterThanOrEqual(exec.end);
+      // 事件序列仍按发起顺序成对出现。
+      expect(events.filter((name) => name.startsWith("start:"))).toEqual([
+        "start:read-1",
+        "start:exec-1",
+        "start:read-2",
+      ]);
+      const toolOrder = (modelInputs[1]?.messages ?? [])
+        .filter((message) => message.role === "tool")
+        .map((message) => (message.role === "tool" ? message.toolCallId : ""));
+      expect(toolOrder).toEqual(["read-1", "exec-1", "read-2"]);
     }),
   );
 });

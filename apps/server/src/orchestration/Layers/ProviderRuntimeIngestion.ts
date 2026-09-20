@@ -55,7 +55,10 @@ import { canReplaceThreadTitle } from "../threadTitles.ts";
 import { ThreadGoalStore } from "../../persistence/Services/ThreadGoalStore.ts";
 import { SpecWorkflowCapabilityStore } from "../../persistence/Services/SpecWorkflowCapabilityStore.ts";
 import { SpecWorkflowService } from "../../specWorkflow/SpecWorkflowService.ts";
-import { parseSpecWorkflowIntent } from "../../specWorkflow/SpecWorkflowAgentProtocol.ts";
+import {
+  formatSpecWorkflowFlagGuardrails,
+  parseSpecWorkflowIntent,
+} from "../../specWorkflow/SpecWorkflowAgentProtocol.ts";
 import { CompositionAgentDriverRegistryService } from "../../composition/CompositionAgentDriverRegistry.ts";
 import { compositionProviderAgentId } from "../../composition/CompositionProviderAgentDriverRegistry.ts";
 
@@ -1500,7 +1503,10 @@ const make = Effect.gen(function* () {
           : undefined;
       const userPrompt = input.userPrompt?.trim() || "未提供用户原始请求";
       const decision = input.directive.cleanText.slice(0, 12_000).trim();
-      const prompt = `[User Request]\n${userPrompt}\n\n[Provider Decision]\n${decision}`;
+      const guardrails = formatSpecWorkflowFlagGuardrails(capability.flags);
+      const guardrailBlock =
+        guardrails.length === 0 ? "" : `[Spec Workflow Guardrails]\n${guardrails.join("\n")}\n\n`;
+      const prompt = `${guardrailBlock}[User Request]\n${userPrompt}\n\n[Provider Decision]\n${decision}`;
       const promptDigest = `sha256:${NodeCrypto.createHash("sha256").update(prompt, "utf8").digest("hex")}`;
       const result = yield* specWorkflowService.value
         .dispatch({

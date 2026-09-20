@@ -346,6 +346,23 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "code-graph",
+    title: "codeGraph.title",
+    to: "/settings/integrations",
+    targetId: "code-graph",
+    keywords: [
+      "codegraph",
+      "code graph",
+      "knowledge graph",
+      "call graph",
+      "explore",
+      "代码图谱",
+      "知识图谱",
+      "调用关系",
+      "索引",
+    ],
+  },
+  {
     id: "browser-default-viewport",
     title: "settings.defaultBrowserViewport",
     to: "/settings/integrations",

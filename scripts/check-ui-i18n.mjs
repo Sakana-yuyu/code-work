@@ -201,7 +201,7 @@ const SAME_VALUE_EXEMPTIONS = new Set([
   "{{progress}}%",
   "{{submitModifierLabel}} Enter",
   "~/.codex",
-  "~/.codex-t3/personal",
+  "~/.codex/personal",
   "~/projects/my-app",
 ]);
 const SAME_VALUE_EXEMPTION =

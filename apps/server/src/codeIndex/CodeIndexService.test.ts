@@ -5,10 +5,12 @@ import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import { afterEach, beforeEach, describe, expect } from "vite-plus/test";
 
 import { makeCodeIndexRoot } from "./CodeIndexService.ts";
+import { readActiveCodeIndexProgress } from "./codeIndexProgress.ts";
 import { layerCodeIndexStoreFor } from "./CodeIndexStore.ts";
 
 // makeCodeIndexRoot 需要 effect FileSystem（stat/read）；store 用 :memory:。
@@ -103,6 +105,36 @@ describe("CodeIndexRoot", () => {
       const symbols = yield* root.fileSymbols("goal.ts");
       expect(symbols.map((symbol) => symbol.name)).toEqual(["ThreadGoal", "flushGoal"]);
       expect(yield* root.fileSymbols("notes.md")).toEqual([]);
+    }).pipe(Effect.provide(depsLayer), Effect.scoped),
+  );
+
+  // 真实时间：中途回读进度依赖 fs 往返的自然耗时，TestClock 会让 sleep 永停。
+  it.live("首扫完成不留残余进度；flush 进行中进度可见且按根目录隔离", () =>
+    Effect.gen(function* () {
+      const root = yield* makeCodeIndexRoot(workspaceRoot);
+      // 首扫的 scanning/extracting 条目必须已被清除，状态行回落到常规统计。
+      expect(readActiveCodeIndexProgress(workspaceRoot)).toBeNull();
+
+      // 批量排队后 fork flush：条目在出队瞬间同步落表，200 个文件的真实
+      // fs 往返不可能在首个轮询窗口内跑完，这里的中途回读是确定性的。
+      for (let index = 0; index < 200; index += 1) {
+        yield* root.handleWatchEvent({ filename: `bulk/File${index}.ts` });
+      }
+      expect(readActiveCodeIndexProgress(workspaceRoot)).toBeNull();
+
+      const flushFiber = yield* Effect.forkChild(root.flushPending());
+      yield* Effect.sleep("5 millis");
+      const midFlight = readActiveCodeIndexProgress(workspaceRoot);
+      expect(midFlight?.phase).toBe("extracting");
+      expect(midFlight?.totalFiles).toBe(200);
+      expect(midFlight?.processedFiles).toBeLessThan(200);
+      // 其他根目录读不到本根的进度。
+      expect(
+        readActiveCodeIndexProgress(NodePath.join(NodeOS.tmpdir(), "codework-other-root")),
+      ).toBeNull();
+
+      yield* Fiber.join(flushFiber);
+      expect(readActiveCodeIndexProgress(workspaceRoot)).toBeNull();
     }).pipe(Effect.provide(depsLayer), Effect.scoped),
   );
 });

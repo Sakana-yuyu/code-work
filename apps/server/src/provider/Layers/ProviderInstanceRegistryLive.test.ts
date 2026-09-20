@@ -107,6 +107,7 @@ const makeCodexConfig = (overrides: Partial<CodexSettings>): CodexSettings => ({
   shadowHomePath: "",
   launchArgs: "",
   customModels: [],
+  delegation: { enabled: false },
   ...overrides,
   routeThroughByok: overrides.routeThroughByok ?? false,
 });
@@ -120,6 +121,7 @@ const makeClaudeConfig = (overrides: Partial<ClaudeSettings>): ClaudeSettings =>
   autoCompactWindow: "",
   fallbackModel: "",
   maxTurns: "",
+  delegation: { enabled: false },
   ...overrides,
   routeThroughByok: overrides.routeThroughByok ?? false,
 });

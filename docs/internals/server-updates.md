@@ -14,8 +14,8 @@ The service files under `<baseDir>/runtime` are:
 - `service-state.json`, the launcher's durable selection state;
 - `versions/<version>`, immutable exact-version npm installs.
 
-The launcher is the only runtime writer of `service-state.json`. `t3 service install` and
-`t3 service update` may replace the launcher and state while the unit is stopped. Server children
+The launcher is the only runtime writer of `service-state.json`. `codework service install` and
+`codework service update` may replace the launcher and state while the unit is stopped. Server children
 only communicate with the launcher over their inherited IPC channel.
 
 The state contains one active version and, at most, one update record:

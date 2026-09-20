@@ -12,6 +12,17 @@ import { IsoDateTime, NonNegativeInt, ProjectId } from "./baseSchemas.ts";
 export const CodeIndexProjectState = Schema.Literals(["idle", "indexing", "off"]);
 export type CodeIndexProjectState = typeof CodeIndexProjectState.Type;
 
+/** 首扫/增量提取的实时进度；只在服务端仍在推进时出现。 */
+export const CodeIndexProgress = Schema.Struct({
+  /** scanning=正在扫描文件清单；extracting=正在逐文件提取符号。 */
+  phase: Schema.Literals(["scanning", "extracting"]),
+  /** 本轮已提取的文件数。 */
+  processedFiles: NonNegativeInt,
+  /** 本轮需要提取的文件总数；清单未出时为 null。 */
+  totalFiles: Schema.NullOr(NonNegativeInt),
+});
+export type CodeIndexProgress = typeof CodeIndexProgress.Type;
+
 export const CodeIndexProjectStatus = Schema.Struct({
   projectId: ProjectId,
   /** 索引状态行对应的工作区根目录（绝对路径，仅展示用）。 */
@@ -21,6 +32,8 @@ export const CodeIndexProjectStatus = Schema.Struct({
   symbolCount: NonNegativeInt,
   /** 最近一次完成（增量的或全量的）索引时间；从未索引过为 null。 */
   lastIndexedAt: Schema.NullOr(IsoDateTime),
+  /** 索引正在推进时的实时进度；空闲时缺省。 */
+  progress: Schema.optionalKey(CodeIndexProgress),
 });
 export type CodeIndexProjectStatus = typeof CodeIndexProjectStatus.Type;
 

@@ -470,6 +470,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         launchArgs: "",
         routeThroughByok: false,
         customModels: [],
+        delegation: { enabled: false },
       });
       assert.deepEqual(next.providers.claudeAgent, {
         enabled: true,
@@ -481,6 +482,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         fallbackModel: "",
         maxTurns: "",
         routeThroughByok: false,
+        delegation: { enabled: false },
       });
       assert.deepEqual(
         next.textGenerationModelSelection,
@@ -1138,6 +1140,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         launchArgs: "",
         routeThroughByok: false,
         customModels: [],
+        delegation: { enabled: false },
       });
       assert.deepEqual(next.providers.claudeAgent, {
         enabled: true,
@@ -1149,6 +1152,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         fallbackModel: "",
         maxTurns: "",
         routeThroughByok: false,
+        delegation: { enabled: false },
       });
       assert.deepEqual(next.providers.opencode, {
         // OpenCode is disabled by default; this update only touches paths.

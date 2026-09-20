@@ -740,6 +740,66 @@ export const layer = Layer.effect(
         }
       });
 
+    /** 对齐上游 check-archive：完整流程的归档必须先有 retrospect.md（偏差回顾+证据+遗留项）。 */
+    const requireArchiveRetrospect = (state: SpecWorkflowState, input: SpecWorkflowDispatchInput) =>
+      Effect.gen(function* () {
+        if (state.mode === "fix" || input.intent !== "archive") return;
+        if (Option.isNone(artifacts)) return;
+        const artifact = yield* artifacts.value
+          .read({
+            workspaceRoot: input.workspaceRoot,
+            changeName: state.changeName,
+            artifact: "retrospect.md",
+          })
+          .pipe(
+            Effect.catchTag("SpecWorkflowArtifactStoreError", (error) =>
+              error.code === "artifact-not-found" ? Effect.succeed(null) : Effect.fail(error),
+            ),
+          );
+        if (artifact === null || artifact.contents.trim().length === 0) {
+          return yield* new SpecWorkflowCompositionBridgeError({
+            code: "stage-not-dispatchable",
+            detail:
+              "归档缺少 retrospect.md：请先完成偏差回顾（实际结果与方案的差异、证据、遗留项），沉淀可复用经验到 spec/knowledge/ 并更新 spec/knowledge.md 索引，然后再次请求归档。",
+            workflowId: state.workflowId,
+          });
+        }
+      });
+
+    /** 归档状态落定后把 spec/changes/<name> 移入 spec/archive/<日期-name>；失败不回滚事件，只记录。 */
+    const archiveChangeArtifacts = (state: SpecWorkflowState, input: SpecWorkflowDispatchInput) =>
+      Effect.gen(function* () {
+        if (Option.isNone(artifacts)) {
+          yield* Effect.logWarning("Spec Workflow 归档跳过目录移动：产物存储尚未就绪", {
+            workflowId: state.workflowId,
+            changeName: state.changeName,
+          });
+          return;
+        }
+        const outcome = yield* Effect.result(
+          artifacts.value.archive({
+            workspaceRoot: input.workspaceRoot,
+            changeName: state.changeName,
+            archivedAtUnixMs: yield* Clock.currentTimeMillis,
+          }),
+        );
+        if (outcome._tag === "Failure") {
+          yield* Effect.logWarning("Spec Workflow 归档目录移动失败", {
+            workflowId: state.workflowId,
+            changeName: state.changeName,
+            cause: outcome.failure,
+          });
+          return;
+        }
+        if (outcome.success.archivedTo !== null) {
+          yield* Effect.logInfo("Spec Workflow change 已归档", {
+            workflowId: state.workflowId,
+            changeName: state.changeName,
+            archivedTo: outcome.success.archivedTo,
+          });
+        }
+      });
+
     function dispatch(
       input: SpecWorkflowDispatchInput,
     ): Effect.Effect<SpecWorkflowDispatchResult, SpecWorkflowServiceError> {
@@ -795,6 +855,9 @@ export const layer = Layer.effect(
 
         if (route.action === "advance" && (input.intent === "ship" || input.intent === "archive")) {
           yield* requireFixBatchArtifact(state, input);
+        }
+        if (route.action === "advance" && input.intent === "archive") {
+          yield* requireArchiveRetrospect(state, input);
         }
 
         if (route.action === "show-status") {
@@ -998,6 +1061,9 @@ export const layer = Layer.effect(
           event,
           expectedRevision: state.revision,
         });
+        if (route.targetStage === "archive" && input.intent === "archive") {
+          yield* archiveChangeArtifacts(saved, input);
+        }
         return { route, state: saved, stateEvent: event, task: null };
       });
     }

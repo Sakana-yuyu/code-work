@@ -194,6 +194,15 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
     expect(decodeServerSettings({}).enableLegacyTokenStreaming).toBe(true);
   });
 
+  it("defaults CodeGraph integration on and accepts explicit opt-out", () => {
+    expect(DEFAULT_SERVER_SETTINGS.codeGraphEnabled).toBe(true);
+    expect(decodeServerSettings({}).codeGraphEnabled).toBe(true);
+    expect(Schema.decodeUnknownSync(ServerSettingsPatch)({}).codeGraphEnabled).toBeUndefined();
+    expect(
+      Schema.decodeUnknownSync(ServerSettingsPatch)({ codeGraphEnabled: false }).codeGraphEnabled,
+    ).toBe(false);
+  });
+
   it("defaults text generation to Luna at low reasoning effort", () => {
     expect(DEFAULT_SERVER_SETTINGS.textGenerationModelSelection).toEqual({
       instanceId: ProviderInstanceId.make("codex"),

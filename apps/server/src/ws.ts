@@ -78,6 +78,17 @@ import {
   type CodeIndexProjectStatus,
 } from "@codework/contracts";
 import * as CodeIndex from "./codeIndex/CodeIndexService.ts";
+import { readActiveCodeIndexProgress } from "./codeIndex/codeIndexProgress.ts";
+import {
+  getCodeGraphInstallState,
+  installCodeGraphCli,
+  readCodeGraphCliVersion,
+  readCodeGraphProjectStatus,
+  reindexCodeGraph,
+  syncCodeGraphIndex,
+} from "./codeGraph/codeGraphMaintenance.ts";
+import { getCodeGraphIndexProgress, setCodeGraphProgress } from "./codeGraph/codeGraphProgress.ts";
+import type { CodeGraphProjectIndexStatus } from "@codework/contracts";
 import { resolveServerBackgroundActivitySettings } from "@codework/shared/backgroundActivitySettings";
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
@@ -3306,6 +3317,21 @@ const makeWsRpcLayer = (
               );
               const codeIndexRoots = yield* CodeIndex.CodeIndexRootMap;
               for (const project of shellSnapshot.projects) {
+                // 首扫进行中时 Layer 还在构建，等它完成会让整条状态 RPC
+                // 阻塞；进度表命中就直接报实时进度，绝不触碰 Layer。
+                const activeProgress = readActiveCodeIndexProgress(project.workspaceRoot);
+                if (activeProgress !== null) {
+                  projects.push({
+                    projectId: project.id,
+                    workspaceRoot: project.workspaceRoot,
+                    state: "indexing",
+                    fileCount: 0,
+                    symbolCount: 0,
+                    lastIndexedAt: null,
+                    progress: activeProgress,
+                  });
+                  continue;
+                }
                 // 逐项目打开会触发首扫；单项目打开失败不应拖垮整个状态行。
                 const index = yield* Effect.gen(function* () {
                   const indexRoot = yield* CodeIndex.CodeIndexRoot;
@@ -3336,6 +3362,162 @@ const makeWsRpcLayer = (
                 });
               }
               return { enabled: true, projects };
+            }),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverCodeGraphStatus]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverCodeGraphStatus,
+            Effect.gen(function* () {
+              const serverSettings = yield* ServerSettings.ServerSettingsService;
+              const enabled = yield* serverSettings.getSettings.pipe(
+                Effect.map((settings) => settings.codeGraphEnabled),
+                Effect.catch(() => Effect.succeed(false)),
+              );
+              const install = getCodeGraphInstallState();
+              if (!enabled) {
+                return { enabled, install, cliInstalled: false, cliVersion: null, projects: [] };
+              }
+              const shellSnapshot = yield* projectionSnapshotQuery.getShellSnapshot().pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning("code graph status: shell snapshot load failed", { cause }),
+                ),
+                Effect.orElseSucceed(() => ({
+                  projects: [],
+                  threads: [],
+                  snapshotSequence: 0,
+                  updatedAt: "",
+                })),
+              );
+              // CLI 版本用独立缓存探测（60s），避免设置页每次轮询都拉子进程。
+              const cliVersion = yield* Effect.promise(() => readCodeGraphCliVersion());
+              const projects: CodeGraphProjectIndexStatus[] = [];
+              for (const project of shellSnapshot.projects) {
+                // CLI 缺失或单项目读取失败都按未初始化降级，不拖垮整个状态卡。
+                const read = yield* Effect.promise(() =>
+                  readCodeGraphProjectStatus(project.workspaceRoot),
+                ).pipe(Effect.option);
+                if (Option.isNone(read)) {
+                  projects.push({
+                    projectId: project.id,
+                    workspaceRoot: project.workspaceRoot,
+                    cliInstalled: false,
+                    cliVersion: null,
+                    initialized: false,
+                    fileCount: null,
+                    nodeCount: null,
+                    edgeCount: null,
+                    dbSizeBytes: null,
+                    languages: [],
+                    lastIndexed: null,
+                    pendingChanges: null,
+                    reindexRecommended: false,
+                  });
+                  continue;
+                }
+                const status = read.value;
+                const progress = getCodeGraphIndexProgress(project.workspaceRoot);
+                projects.push({
+                  projectId: project.id,
+                  workspaceRoot: project.workspaceRoot,
+                  cliInstalled: cliVersion !== null || status.cliVersion !== null,
+                  cliVersion: status.cliVersion ?? cliVersion,
+                  initialized: status.initialized,
+                  fileCount: status.fileCount,
+                  nodeCount: status.nodeCount,
+                  edgeCount: status.edgeCount,
+                  dbSizeBytes: status.dbSizeBytes,
+                  languages: [...status.languages],
+                  lastIndexed: status.lastIndexed,
+                  pendingChanges:
+                    status.pendingChanges === null
+                      ? null
+                      : {
+                          added: status.pendingChanges.added,
+                          modified: status.pendingChanges.modified,
+                          removed: status.pendingChanges.removed,
+                        },
+                  reindexRecommended: status.reindexRecommended,
+                  ...(progress === null ? {} : { progress }),
+                });
+              }
+              return { enabled, install, cliInstalled: cliVersion !== null, cliVersion, projects };
+            }),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverCodeGraphInstall]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverCodeGraphInstall,
+            Effect.gen(function* () {
+              const state = yield* Effect.promise(() => installCodeGraphCli());
+              return {
+                message: state.message ?? (state.status === "succeeded" ? null : state.status),
+                succeeded: state.status === "succeeded",
+              };
+            }),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverCodeGraphSync]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverCodeGraphSync,
+            Effect.gen(function* () {
+              // 快照读取失败按「项目不存在」降级为结果对象，不进错误通道。
+              const shellSnapshot = yield* projectionSnapshotQuery.getShellSnapshot().pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning("code graph sync: shell snapshot load failed", { cause }),
+                ),
+                Effect.orElseSucceed(() => ({
+                  projects: [],
+                  threads: [],
+                  snapshotSequence: 0,
+                  updatedAt: "",
+                })),
+              );
+              const workspaceRoot = shellSnapshot.projects.find(
+                (project) => project.id === input.projectId,
+              )?.workspaceRoot;
+              if (workspaceRoot === undefined) {
+                return { message: "项目不存在或已被移除。", succeeded: false };
+              }
+              return yield* Effect.promise(() => syncCodeGraphIndex(workspaceRoot));
+            }),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverCodeGraphReindex]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverCodeGraphReindex,
+            Effect.gen(function* () {
+              const shellSnapshot = yield* projectionSnapshotQuery.getShellSnapshot().pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning("code graph reindex: shell snapshot load failed", { cause }),
+                ),
+                Effect.orElseSucceed(() => ({
+                  projects: [],
+                  threads: [],
+                  snapshotSequence: 0,
+                  updatedAt: "",
+                })),
+              );
+              const workspaceRoot = shellSnapshot.projects.find(
+                (project) => project.id === input.projectId,
+              )?.workspaceRoot;
+              if (workspaceRoot === undefined) {
+                return { message: "项目不存在或已被移除。", succeeded: false };
+              }
+              setCodeGraphProgress(workspaceRoot, "queued");
+              const result = yield* Effect.promise(() => reindexCodeGraph(workspaceRoot));
+              if (!result.succeeded) {
+                setCodeGraphProgress(workspaceRoot, "failed", result.message ?? undefined);
+              }
+              return result;
             }),
             {
               "rpc.aggregate": "server",

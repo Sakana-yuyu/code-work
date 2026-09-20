@@ -167,6 +167,12 @@ export interface CodexSessionRuntimeOptions {
    */
   readonly indexToolsAvailable?: boolean;
   /**
+   * Instance's 子代理模式. Read from the provider instance config when the
+   * adapter creates the session, so all turns of this session share one
+   * definition of the guidance (same refresh cadence as indexToolsAvailable).
+   */
+  readonly subagentModeEnabled?: boolean;
+  /**
    * Extra argv appended after every spawn (e.g. BYOK gateway `-c` overrides).
    * Kept apart from `launchArgs` so shell-style tokenizing cannot strip the
    * TOML quoting these overrides rely on.
@@ -577,6 +583,7 @@ function buildCodexCollaborationMode(input: {
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort;
   readonly browserToolsAvailable?: boolean;
   readonly indexToolsAvailable?: boolean;
+  readonly subagentModeEnabled?: boolean;
 }): EffectCodexSchema.V2TurnStartParams__CollaborationMode | undefined {
   if (input.interactionMode === undefined) {
     return undefined;
@@ -593,6 +600,7 @@ function buildCodexCollaborationMode(input: {
         { model, reasoningEffort },
         input.browserToolsAvailable ?? true,
         input.indexToolsAvailable ?? false,
+        input.subagentModeEnabled ?? false,
       ),
     },
   };
@@ -614,6 +622,8 @@ export function buildTurnStartParams(input: {
   readonly browserToolsAvailable?: boolean;
   /** Whether this session's MCP config granted the index capability. */
   readonly indexToolsAvailable?: boolean;
+  /** Whether the instance's 子代理模式 guidance should ride on every turn. */
+  readonly subagentModeEnabled?: boolean;
 }): Effect.Effect<
   CodexTurnStartParamsWithCollaborationMode,
   CodexErrors.CodexAppServerProtocolParseError
@@ -636,6 +646,7 @@ export function buildTurnStartParams(input: {
     ...(input.effort ? { effort: input.effort } : {}),
     browserToolsAvailable: input.browserToolsAvailable ?? true,
     indexToolsAvailable: input.indexToolsAvailable ?? false,
+    subagentModeEnabled: input.subagentModeEnabled ?? false,
   });
 
   return decodeCodexTurnStartParamsWithCollaborationMode({
@@ -2142,6 +2153,7 @@ export const makeCodexSessionRuntime = (
             // has even if the setting changed after the session started.
             browserToolsAvailable: hasConfiguredMcpServer(options.appServerArgs),
             indexToolsAvailable: options.indexToolsAvailable ?? false,
+            subagentModeEnabled: options.subagentModeEnabled ?? false,
           });
           const method = input.reviewTarget ? "review/start" : "turn/start";
           const rawResponse = input.reviewTarget

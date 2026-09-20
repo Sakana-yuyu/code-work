@@ -332,6 +332,16 @@ export function makeProviderSettingsSchema<const Fields extends Schema.Struct.Fi
   );
 }
 
+/**
+ * 原生 provider（codex/claude）实例的子代理模式配置：开启只注入提示词指引，
+ * 没有 BYOK 那套 delegate_task 服务端门禁。字段名与 BYOK 实例 config 的
+ * `delegation` 对齐，输入框「子代理模式」开关对三种 driver 写同一路径。
+ */
+export const NativeDelegationConfig = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+});
+export type NativeDelegationConfig = typeof NativeDelegationConfig.Type;
+
 export const CodexSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
@@ -363,7 +373,7 @@ export const CodexSettings = makeProviderSettingsSchema(
         description:
           "Account-specific Codex home. Keeps auth.json separate while sharing state from CODEX_HOME.",
         providerSettingsForm: {
-          placeholder: "~/.codex-t3/personal",
+          placeholder: "~/.codex/personal",
           clearWhenEmpty: "omit",
         },
       }),
@@ -389,6 +399,10 @@ export const CodexSettings = makeProviderSettingsSchema(
     ),
     customModels: Schema.Array(Schema.String).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    delegation: NativeDelegationConfig.pipe(
+      Schema.withDecodingDefault(Effect.succeed({})),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
@@ -484,6 +498,10 @@ export const ClaudeSettings = makeProviderSettingsSchema(
           "Serve this instance's models from the BYOK adapters instead of its own login. Official login stays untouched while off.",
         providerSettingsForm: { control: "switch" },
       }),
+    ),
+    delegation: NativeDelegationConfig.pipe(
+      Schema.withDecodingDefault(Effect.succeed({})),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
@@ -1219,6 +1237,12 @@ export const ServerSettings = Schema.Struct({
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /** 代码符号索引：开启后为已知项目维护可检索的声明索引并暴露给 agent。 */
   codeIndexEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /**
+   * CodeGraph 代码知识图谱（上游 @colbymchenry/codegraph CLI）：默认开启。
+   * 开启后为已知项目后台建立 .codegraph 索引，并把 codegraph.explore
+   * 查询工具暴露给 BYOK agent；CLI 未安装时静默降级为普通工具集。
+   */
+  codeGraphEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -1410,6 +1434,7 @@ export const ServerSettingsPatch = Schema.Struct({
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   codeIndexEnabled: Schema.optionalKey(Schema.Boolean),
+  codeGraphEnabled: Schema.optionalKey(Schema.Boolean),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({
       schemaVersion: Schema.optionalKey(Schema.Literal(1)),

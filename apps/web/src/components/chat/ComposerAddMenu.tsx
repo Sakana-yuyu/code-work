@@ -1,5 +1,6 @@
 import type {
   ProviderInteractionMode,
+  SpecWorkflowFlag,
   SpecWorkflowStage,
   SpecWorkflowState,
   SpecWorkflowStatus,
@@ -7,16 +8,19 @@ import type {
 } from "@codework/contracts";
 import { SpecWorkflowIntentName } from "@codework/contracts";
 import {
+  BotIcon,
   CheckIcon,
   ChevronRightIcon,
   CircleAlertIcon,
   FileTextIcon,
   GoalIcon,
   LightbulbIcon,
+  PaletteIcon,
   PauseIcon,
   PaperclipIcon,
   PlayIcon,
   PlusIcon,
+  ShieldCheckIcon,
   SparklesIcon,
   WorkflowIcon,
   XIcon,
@@ -38,6 +42,7 @@ export interface ComposerSpecWorkflowControl {
   readonly available: boolean;
   readonly enabled: boolean;
   readonly selectedIntent: SpecWorkflowIntentName;
+  readonly flags: ReadonlyArray<SpecWorkflowFlag>;
   readonly isPending: boolean;
   readonly hasError: boolean;
   readonly workflowState: SpecWorkflowState | null;
@@ -45,6 +50,7 @@ export interface ComposerSpecWorkflowControl {
   readonly workflowStateHasError: boolean;
   readonly onToggle: () => Promise<boolean>;
   readonly onSelectIntent: (intent: SpecWorkflowIntentName) => Promise<boolean>;
+  readonly onToggleFlag: (flag: SpecWorkflowFlag) => Promise<boolean>;
   readonly onApproveProposal: () => Promise<boolean>;
   readonly onRejectProposal: () => Promise<boolean>;
   readonly onCompleteAcceptance: () => Promise<boolean>;
@@ -52,10 +58,21 @@ export interface ComposerSpecWorkflowControl {
   readonly onResume: () => Promise<boolean>;
 }
 
+export interface ComposerSubagentModeControl {
+  /** 当前选中的 provider 实例是否支持子代理模式（BYOK/codex/claude）。 */
+  readonly available: boolean;
+  /** delegation=BYOK 委派引擎；native=agent 原生子代理的提示词引导。 */
+  readonly kind: "delegation" | "native";
+  readonly enabled: boolean;
+  readonly isPending: boolean;
+  readonly onToggle: () => Promise<boolean>;
+}
+
 export interface ComposerAddMenuProps {
   readonly disabled: boolean;
   readonly interactionMode: ProviderInteractionMode;
   readonly planModeEnabled: boolean;
+  readonly subagentMode: ComposerSubagentModeControl;
   readonly canEditGoal: boolean;
   readonly goal: ThreadGoal | null;
   readonly draftObjective?: string | null;
@@ -352,11 +369,25 @@ export function ComposerGoalControl(props: ComposerGoalControlProps) {
   );
 }
 
+const specWorkflowFlagItems: ReadonlyArray<{
+  readonly flag: SpecWorkflowFlag;
+  readonly icon: ReactNode;
+}> = [
+  { flag: "design", icon: <PaletteIcon className="size-4" /> },
+  { flag: "strict", icon: <ShieldCheckIcon className="size-4" /> },
+];
+
 export function SpecWorkflowNodePicker(props: {
   readonly control: ComposerSpecWorkflowControl;
   readonly onSelected: () => void;
 }) {
   const [error, setError] = useState(false);
+  const runAction = (action: () => Promise<boolean>, onDone: (ok: boolean) => void) => {
+    setError(false);
+    void action()
+      .then(onDone)
+      .catch(() => setError(true));
+  };
   return (
     <div>
       <p className="px-2 py-2 text-xs text-muted-foreground">
@@ -380,17 +411,58 @@ export function SpecWorkflowNodePicker(props: {
               ) : undefined
             }
             onClick={() => {
-              setError(false);
-              void props.control
-                .onSelectIntent(intent)
-                .then((ok) => {
+              runAction(
+                () => props.control.onSelectIntent(intent),
+                (ok) => {
                   if (ok) props.onSelected();
                   else setError(true);
-                })
-                .catch(() => setError(true));
+                },
+              );
             }}
           />
         ))}
+      </div>
+      <div className="border-t border-border/60 px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+        {t("specWorkflow.flags.title")}
+      </div>
+      <div className="flex flex-wrap gap-1.5 px-2 pb-2">
+        {specWorkflowFlagItems.map(({ flag, icon }) => {
+          const active = props.control.flags.includes(flag);
+          return (
+            <button
+              key={flag}
+              type="button"
+              className={`flex min-h-9 flex-1 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs outline-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
+                active
+                  ? "border-primary/40 bg-primary/10 text-foreground"
+                  : "border-border/60 text-muted-foreground hover:bg-accent"
+              }`}
+              disabled={
+                !props.control.available || props.control.isPending || props.control.hasError
+              }
+              aria-pressed={active}
+              title={t(`specWorkflow.flag.${flag}Description`)}
+              onClick={() =>
+                runAction(
+                  () => props.control.onToggleFlag(flag),
+                  () => undefined,
+                )
+              }
+            >
+              <span
+                className={`flex size-6 shrink-0 items-center justify-center rounded-md ${
+                  active ? "bg-primary/20 text-foreground" : "bg-muted/65"
+                }`}
+              >
+                {icon}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-medium">
+                {t(`specWorkflow.flag.${flag}`)}
+              </span>
+              {active ? <CheckIcon className="size-4 shrink-0" /> : null}
+            </button>
+          );
+        })}
       </div>
       {error ? (
         <p role="alert" className="px-2 py-2 text-xs text-destructive">
@@ -465,15 +537,63 @@ export function ComposerSpecWorkflowPill({
   );
 }
 
-export function ComposerAddMenu(props: ComposerAddMenuProps) {
-  const [open, setOpen] = useState(false);
-  const [showWorkflowNodes, setShowWorkflowNodes] = useState(false);
+/**
+ * 子代理模式常驻胶囊：开启后显示在输入框旁的抽屉条里，胶囊上的 X 即可关闭，
+ * 无需再进加号菜单。
+ */
+export function ComposerSubagentModePill({
+  control,
+}: {
+  readonly control: ComposerSubagentModeControl;
+}) {
+  const [error, setError] = useState(false);
+  if (!control.enabled) return null;
+  return (
+    <div data-subagent-mode-pill="true">
+      <div className="flex min-w-0 items-center gap-1.5 bg-transparent px-3 py-1.5 text-xs">
+        <BotIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="min-w-0 truncate font-medium text-foreground">
+          {t("composer.subagentMode")}
+        </span>
+        <span className="min-w-0 flex-1" />
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          aria-label={t("composer.subagentModeDisable")}
+          disabled={control.isPending}
+          onClick={() => {
+            setError(false);
+            void control
+              .onToggle()
+              .then((ok) => setError(!ok))
+              .catch(() => setError(true));
+          }}
+        >
+          <XIcon />
+        </Button>
+      </div>
+      {error ? (
+        <p role="alert" className="px-3 pb-1.5 text-xs text-destructive">
+          {t("composer.subagentModeSaveFailed")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
+export interface ComposerAddMenuBodyProps extends ComposerAddMenuProps {
+  readonly onDismiss: () => void;
+  readonly showWorkflowNodes: boolean;
+  readonly onToggleWorkflowNodes: () => void;
+}
+
+export function ComposerAddMenuBody(props: ComposerAddMenuBodyProps) {
   const runPlugin = (item: ComposerAddMenuPluginItem) => {
     void item
       .run()
       .catch(() => undefined)
-      .finally(() => setOpen(false));
+      .finally(props.onDismiss);
   };
 
   const goalDescription = props.canEditGoal
@@ -492,6 +612,130 @@ export function ComposerAddMenu(props: ComposerAddMenuProps) {
         : props.specWorkflow.enabled
           ? t("composer.specWorkflowEnabledDescription")
           : t("composer.specWorkflowDisabledDescription");
+  const subagentModeDescription = !props.subagentMode.available
+    ? t("composer.subagentModeRequiresByok")
+    : props.subagentMode.isPending
+      ? t("composer.subagentModeSaving")
+      : props.subagentMode.enabled
+        ? t(
+            props.subagentMode.kind === "native"
+              ? "composer.subagentModeNativeEnabledDescription"
+              : "composer.subagentModeEnabledDescription",
+          )
+        : t(
+            props.subagentMode.kind === "native"
+              ? "composer.subagentModeNativeDisabledDescription"
+              : "composer.subagentModeDisabledDescription",
+          );
+
+  return (
+    <div className="p-1.5">
+      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("add")}</div>
+      <ComposerAddMenuItem
+        icon={<PaperclipIcon className="size-4" />}
+        title={t("composer.addFilesAndFolders")}
+        description={t("composer.addFilesAndFoldersDescription")}
+        disabled={props.disabled}
+        onClick={() => {
+          if (props.onAddFileReference()) props.onDismiss();
+        }}
+      />
+      <ComposerAddMenuItem
+        icon={<SparklesIcon className="size-4" />}
+        title={t("composer.addSkill")}
+        description={t("composer.addSkillDescription")}
+        disabled={props.disabled}
+        onClick={() => {
+          if (props.onAddSkillReference()) props.onDismiss();
+        }}
+      />
+      <ComposerAddMenuItem
+        icon={<GoalIcon className="size-4" />}
+        title={t("composer.addGoal")}
+        description={goalDescription}
+        disabled={props.disabled || !props.canEditGoal}
+        onClick={() => {
+          props.onSelectGoal();
+          props.onDismiss();
+        }}
+        trailing={
+          props.goal ? <span className="size-1.5 rounded-full bg-emerald-500" /> : undefined
+        }
+      />
+      <ComposerAddMenuItem
+        icon={<LightbulbIcon className="size-4" />}
+        title={t("composer.planMode")}
+        description={
+          props.planModeEnabled ? planDescription : t("composer.planModeDisabledDescription")
+        }
+        disabled={props.disabled || !props.planModeEnabled}
+        onClick={() => {
+          props.onTogglePlanMode();
+          props.onDismiss();
+        }}
+        trailing={props.interactionMode === "plan" ? <CheckIcon className="size-4" /> : undefined}
+      />
+      <ComposerAddMenuItem
+        icon={<BotIcon className="size-4" />}
+        title={t("composer.subagentMode")}
+        description={subagentModeDescription}
+        disabled={props.disabled || !props.subagentMode.available || props.subagentMode.isPending}
+        onClick={() => {
+          void props.subagentMode
+            .onToggle()
+            .then((changed) => {
+              if (changed) props.onDismiss();
+            })
+            .catch(() => undefined);
+        }}
+        trailing={props.subagentMode.enabled ? <CheckIcon className="size-4" /> : undefined}
+      />
+      <div className="mt-1 border-t border-border/60 px-2 pb-1 pt-3 text-xs font-medium text-muted-foreground">
+        {t("composer.specWorkflowSection")}
+      </div>
+      <ComposerAddMenuItem
+        icon={<WorkflowIcon className="size-4" />}
+        title={t("composer.specWorkflow")}
+        description={specWorkflowDescription}
+        disabled={
+          props.disabled ||
+          !props.specWorkflow.available ||
+          props.specWorkflow.isPending ||
+          props.specWorkflow.hasError
+        }
+        onClick={() => {
+          props.onToggleWorkflowNodes();
+        }}
+        trailing={<ChevronRightIcon className="size-4" />}
+      />
+      {props.showWorkflowNodes ? (
+        <SpecWorkflowNodePicker control={props.specWorkflow} onSelected={props.onDismiss} />
+      ) : null}
+      <SpecWorkflowMenuStatus control={props.specWorkflow} onActionSucceeded={props.onDismiss} />
+      <div className="mt-1 border-t border-border/60 px-2 pb-1 pt-3 text-xs font-medium text-muted-foreground">
+        {t("localPlugins.title")}
+      </div>
+      {props.pluginItems.length > 0 ? (
+        props.pluginItems.map((item) => (
+          <ComposerAddMenuItem
+            key={item.value}
+            icon={item.icon ?? <FileTextIcon className="size-4" />}
+            title={item.title}
+            description={item.description ?? t("localPlugins.title")}
+            disabled={props.disabled}
+            onClick={() => runPlugin(item)}
+          />
+        ))
+      ) : (
+        <div className="px-2.5 py-2 text-xs text-muted-foreground">{t("localPlugins.empty")}</div>
+      )}
+    </div>
+  );
+}
+
+export function ComposerAddMenu(props: ComposerAddMenuProps) {
+  const [open, setOpen] = useState(false);
+  const [showWorkflowNodes, setShowWorkflowNodes] = useState(false);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -518,102 +762,12 @@ export function ComposerAddMenu(props: ComposerAddMenuProps) {
         className="w-[min(25rem,calc(100vw-1.5rem))] max-w-none overflow-hidden rounded-2xl"
         data-composer-add-menu="true"
       >
-        <div className="p-1.5">
-          <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("add")}</div>
-          <ComposerAddMenuItem
-            icon={<PaperclipIcon className="size-4" />}
-            title={t("composer.addFilesAndFolders")}
-            description={t("composer.addFilesAndFoldersDescription")}
-            disabled={props.disabled}
-            onClick={() => {
-              if (props.onAddFileReference()) setOpen(false);
-            }}
-          />
-          <ComposerAddMenuItem
-            icon={<SparklesIcon className="size-4" />}
-            title={t("composer.addSkill")}
-            description={t("composer.addSkillDescription")}
-            disabled={props.disabled}
-            onClick={() => {
-              if (props.onAddSkillReference()) setOpen(false);
-            }}
-          />
-          <ComposerAddMenuItem
-            icon={<GoalIcon className="size-4" />}
-            title={t("composer.addGoal")}
-            description={goalDescription}
-            disabled={props.disabled || !props.canEditGoal}
-            onClick={() => {
-              props.onSelectGoal();
-              setOpen(false);
-            }}
-            trailing={
-              props.goal ? <span className="size-1.5 rounded-full bg-emerald-500" /> : undefined
-            }
-          />
-          <ComposerAddMenuItem
-            icon={<LightbulbIcon className="size-4" />}
-            title={t("composer.planMode")}
-            description={
-              props.planModeEnabled ? planDescription : t("composer.planModeDisabledDescription")
-            }
-            disabled={props.disabled || !props.planModeEnabled}
-            onClick={() => {
-              props.onTogglePlanMode();
-              setOpen(false);
-            }}
-            trailing={
-              props.interactionMode === "plan" ? <CheckIcon className="size-4" /> : undefined
-            }
-          />
-          <div className="mt-1 border-t border-border/60 px-2 pb-1 pt-3 text-xs font-medium text-muted-foreground">
-            {t("composer.specWorkflowSection")}
-          </div>
-          <ComposerAddMenuItem
-            icon={<WorkflowIcon className="size-4" />}
-            title={t("composer.specWorkflow")}
-            description={specWorkflowDescription}
-            disabled={
-              props.disabled ||
-              !props.specWorkflow.available ||
-              props.specWorkflow.isPending ||
-              props.specWorkflow.hasError
-            }
-            onClick={() => {
-              setShowWorkflowNodes((value) => !value);
-            }}
-            trailing={<ChevronRightIcon className="size-4" />}
-          />
-          {showWorkflowNodes ? (
-            <SpecWorkflowNodePicker
-              control={props.specWorkflow}
-              onSelected={() => setOpen(false)}
-            />
-          ) : null}
-          <SpecWorkflowMenuStatus
-            control={props.specWorkflow}
-            onActionSucceeded={() => setOpen(false)}
-          />
-          <div className="mt-1 border-t border-border/60 px-2 pb-1 pt-3 text-xs font-medium text-muted-foreground">
-            {t("localPlugins.title")}
-          </div>
-          {props.pluginItems.length > 0 ? (
-            props.pluginItems.map((item) => (
-              <ComposerAddMenuItem
-                key={item.value}
-                icon={item.icon ?? <FileTextIcon className="size-4" />}
-                title={item.title}
-                description={item.description ?? t("localPlugins.title")}
-                disabled={props.disabled}
-                onClick={() => runPlugin(item)}
-              />
-            ))
-          ) : (
-            <div className="px-2.5 py-2 text-xs text-muted-foreground">
-              {t("localPlugins.empty")}
-            </div>
-          )}
-        </div>
+        <ComposerAddMenuBody
+          {...props}
+          onDismiss={() => setOpen(false)}
+          showWorkflowNodes={showWorkflowNodes}
+          onToggleWorkflowNodes={() => setShowWorkflowNodes((value) => !value)}
+        />
       </PopoverPopup>
     </Popover>
   );

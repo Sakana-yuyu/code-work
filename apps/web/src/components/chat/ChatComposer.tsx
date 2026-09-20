@@ -117,7 +117,13 @@ import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import { ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
-import { ComposerAddMenu, ComposerGoalControl, ComposerSpecWorkflowPill } from "./ComposerAddMenu";
+import {
+  ComposerAddMenu,
+  ComposerGoalControl,
+  ComposerSpecWorkflowPill,
+  ComposerSubagentModePill,
+  type ComposerSubagentModeControl,
+} from "./ComposerAddMenu";
 import { ThreadGoalStatusBar } from "./ThreadGoalStatusBar";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
@@ -254,6 +260,7 @@ import { toastManager } from "../ui/toast";
 import {
   CircleAlertIcon,
   CircleDashedIcon,
+  CompassIcon,
   PencilIcon,
   type LucideIcon,
   LockIcon,
@@ -292,6 +299,7 @@ import {
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
+import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "~/hooks/useSettings";
 import { t } from "~/i18n";
 
 const runtimeModeConfig: Record<
@@ -535,9 +543,15 @@ export interface ChatComposerProps {
   activeThreadId: ThreadId | null;
   activeThreadEnvironmentId: EnvironmentId | undefined;
   activeThread: Thread | undefined;
-  queuedMessages?: ReadonlyArray<{ readonly id: string; readonly text: string }>;
+  queuedMessages?: ReadonlyArray<{
+    readonly id: string;
+    readonly text: string;
+    readonly steerable?: boolean;
+  }>;
   onCancelQueuedMessage: (messageId: string) => void;
   onEditQueuedMessage: (messageId: string) => void;
+  /** 提供时排队条带显示引导按钮：立即送达运行中的 agent，不中断当前输出。 */
+  onSteerQueuedMessage?: (messageId: string) => void;
   isServerThread: boolean;
   isLocalDraftThread: boolean;
   forceExpandedOnMobile: boolean;
@@ -646,16 +660,28 @@ export interface ChatComposerProps {
   onExpandImage: (preview: ExpandedImagePreview) => void;
 }
 
-const EMPTY_QUEUED_MESSAGES: ReadonlyArray<{ readonly id: string; readonly text: string }> = [];
+const EMPTY_QUEUED_MESSAGES: ReadonlyArray<{
+  readonly id: string;
+  readonly text: string;
+  readonly steerable?: boolean;
+}> = [];
 
 export function QueuedMessagesPanel({
   messages,
   onEdit,
   onCancel,
+  onSteer,
 }: {
-  readonly messages: ReadonlyArray<{ readonly id: string; readonly text: string }>;
+  readonly messages: ReadonlyArray<{
+    readonly id: string;
+    readonly text: string;
+    /** 纯文本排队消息才可引导；带图片附件的消息引导会丢图。 */
+    readonly steerable?: boolean;
+  }>;
   readonly onEdit: (messageId: string) => void;
   readonly onCancel: (messageId: string) => void;
+  /** 引导：不排队等待，立即把该消息发给运行中的 agent（仅 BYOK 纯文本消息提供）。 */
+  readonly onSteer?: (messageId: string) => void;
 }) {
   return (
     <div
@@ -679,6 +705,18 @@ export function QueuedMessagesPanel({
             <span className="min-w-0 flex-1 whitespace-pre-wrap break-words leading-relaxed">
               {message.text}
             </span>
+            {onSteer && message.steerable ? (
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => onSteer(message.id)}
+                aria-label={t("chat.steerQueuedMessage")}
+              >
+                <CompassIcon className="size-3.5" />
+              </Button>
+            ) : null}
             <Button
               type="button"
               size="xs"
@@ -725,6 +763,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     queuedMessages = EMPTY_QUEUED_MESSAGES,
     onCancelQueuedMessage,
     onEditQueuedMessage,
+    onSteerQueuedMessage,
     isServerThread: _isServerThread,
     isLocalDraftThread: _isLocalDraftThread,
     forceExpandedOnMobile,
@@ -834,6 +873,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     workflowStateHasError: specWorkflowState.workflowStateHasError,
     onToggle: specWorkflowState.toggle,
     onSelectIntent: specWorkflowState.selectIntent,
+    flags: specWorkflowState.flags,
+    onToggleFlag: specWorkflowState.toggleFlag,
     onApproveProposal: specWorkflowState.approveProposal,
     onRejectProposal: specWorkflowState.rejectProposal,
     onCompleteAcceptance: specWorkflowState.completeAcceptance,
@@ -1120,6 +1161,77 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // disabled.
   const selectedProvider: ProviderDriverKind =
     selectedProviderEntry?.driverKind ?? requestedDriverKind;
+
+  // 子代理模式开关与 /settings/delegation 共用同一份 BYOK 实例委派配置：
+  // 开启即写入 delegation.enabled，让该实例线程的 delegate_task 提交通过服务端门禁。
+  const environmentProviderInstances = useEnvironmentSettings(
+    environmentId,
+    (settings) => settings.providerInstances,
+  );
+  const updateEnvironmentSettingsPatch = useUpdateEnvironmentSettings(environmentId);
+  const subagentInstanceRecord = environmentProviderInstances?.[selectedInstanceId];
+  // BYOK 走自建委派引擎；codex/claude 原生子代理只提示词引导，同一份实例配置驱动。
+  const subagentDriver = subagentInstanceRecord?.driver;
+  const subagentModeAvailable =
+    subagentDriver === "byok" || subagentDriver === "codex" || subagentDriver === "claude";
+  const subagentDelegationConfig =
+    subagentInstanceRecord !== undefined &&
+    subagentInstanceRecord.config !== null &&
+    typeof subagentInstanceRecord.config === "object" &&
+    !Array.isArray(subagentInstanceRecord.config)
+      ? (subagentInstanceRecord.config as { delegation?: { enabled?: unknown } }).delegation
+      : undefined;
+  const subagentModeEnabled = subagentDelegationConfig?.enabled === true;
+  const [subagentModePending, setSubagentModePending] = useState(false);
+  const toggleSubagentMode = useCallback(async (): Promise<boolean> => {
+    if (subagentInstanceRecord === undefined || !subagentModeAvailable) {
+      return false;
+    }
+    setSubagentModePending(true);
+    try {
+      const instanceConfig =
+        subagentInstanceRecord.config !== null &&
+        typeof subagentInstanceRecord.config === "object" &&
+        !Array.isArray(subagentInstanceRecord.config)
+          ? (subagentInstanceRecord.config as Record<string, unknown>)
+          : {};
+      const delegation =
+        instanceConfig.delegation !== null &&
+        typeof instanceConfig.delegation === "object" &&
+        !Array.isArray(instanceConfig.delegation)
+          ? (instanceConfig.delegation as Record<string, unknown>)
+          : {};
+      const result = await updateEnvironmentSettingsPatch({
+        providerInstances: {
+          ...(environmentProviderInstances ?? {}),
+          [selectedInstanceId]: {
+            ...subagentInstanceRecord,
+            config: {
+              ...instanceConfig,
+              delegation: { ...delegation, enabled: !subagentModeEnabled },
+            },
+          },
+        },
+      });
+      return result === null || result._tag === "Success";
+    } finally {
+      setSubagentModePending(false);
+    }
+  }, [
+    environmentProviderInstances,
+    selectedInstanceId,
+    subagentModeAvailable,
+    subagentInstanceRecord,
+    subagentModeEnabled,
+    updateEnvironmentSettingsPatch,
+  ]);
+  const subagentModeControl: ComposerSubagentModeControl = {
+    available: subagentModeAvailable,
+    kind: subagentDriver === "byok" ? "delegation" : "native",
+    enabled: subagentModeEnabled,
+    isPending: subagentModePending,
+    onToggle: toggleSubagentMode,
+  };
 
   const { modelOptions: composerModelOptions, selectedModel } = useEffectiveComposerModelState({
     threadRef: composerDraftTarget,
@@ -3446,11 +3558,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ) : null}
         </div>
       ) : null}
-      {visibleThreadGoal !== null || specWorkflowControl.enabled ? (
+      {visibleThreadGoal !== null || specWorkflowControl.enabled || subagentModeControl.enabled ? (
         <div
           className="chat-composer-top-drawer"
           data-chat-composer-goal-drawer={visibleThreadGoal !== null ? "true" : undefined}
           data-chat-composer-spec-workflow-drawer={specWorkflowControl.enabled ? "true" : undefined}
+          data-chat-composer-subagent-drawer={subagentModeControl.enabled ? "true" : undefined}
         >
           {visibleThreadGoal !== null ? (
             <ThreadGoalStatusBar
@@ -3466,6 +3579,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             />
           ) : null}
           <ComposerSpecWorkflowPill control={specWorkflowControl} />
+          <ComposerSubagentModePill control={subagentModeControl} />
         </div>
       ) : null}
       {isTasksDrawerOpen &&
@@ -3484,6 +3598,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           messages={queuedMessages}
           onEdit={onEditQueuedMessage}
           onCancel={onCancelQueuedMessage}
+          {...(onSteerQueuedMessage ? { onSteer: onSteerQueuedMessage } : {})}
         />
       ) : null}
       <div className="relative">
@@ -3901,6 +4016,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onResumeGoal={onResumeThreadGoal}
                     onClearGoal={onClearThreadGoal}
                     onEditGoalInComposer={editGoalInComposer}
+                    subagentMode={subagentModeControl}
                     specWorkflow={specWorkflowControl}
                   />
                   <ContextWindowMeter

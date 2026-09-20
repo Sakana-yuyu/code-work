@@ -38,7 +38,10 @@ import { SpecWorkflowCapabilityStore } from "../persistence/Services/SpecWorkflo
 import { SpecWorkflowStateStore } from "../persistence/Services/SpecWorkflowStateStore.ts";
 import type { SpecWorkflowStateStoreShape } from "../persistence/Services/SpecWorkflowStateStore.ts";
 import { SpecWorkflowStateStoreLive } from "../persistence/Layers/SpecWorkflowStateStore.ts";
-import { SpecWorkflowArtifactStore } from "./SpecWorkflowArtifactStore.ts";
+import {
+  SpecWorkflowArtifactStore,
+  SpecWorkflowArtifactStoreError,
+} from "./SpecWorkflowArtifactStore.ts";
 import type { SpecWorkflowArtifactStoreShape } from "./SpecWorkflowArtifactStore.ts";
 import { transitionSpecWorkflowState } from "./SpecWorkflowDecider.ts";
 import { layer as SpecWorkflowServiceLayer, SpecWorkflowService } from "./SpecWorkflowService.ts";
@@ -180,6 +183,7 @@ const makeFixArtifactStore = (contents: string): SpecWorkflowArtifactStoreShape 
   read: (input) => Effect.succeed({ ...input, contents }),
   write: (input) => Effect.succeed(input),
   list: () => Effect.succeed(["fix.md"]),
+  archive: () => Effect.succeed({ archivedTo: "spec/archive/2026-09-20-fixes" }),
 });
 
 it.effect("单独编写方案可直接进入人工确认，其他节点不产生任务", () => {
@@ -761,6 +765,100 @@ it.effect("Server service 不允许 ship 绕过 acceptance，并在验收后归�
     assert.equal(archived.route.targetStage, "archive");
     assert.equal(archived.state.stage, "archive");
     assert.equal(archived.state.status, "completed");
+  }).pipe(Effect.provide(runtime.layer));
+});
+
+it.effect("完整流程归档前必须有 retrospect.md，归档落定后把 change 目录移入 archive", () => {
+  let retrospectContents = "";
+  let archivedChangeName: string | undefined;
+  const artifacts: SpecWorkflowArtifactStoreShape = {
+    read: (input) =>
+      input.artifact === "retrospect.md" && retrospectContents.trim().length === 0
+        ? Effect.fail(
+            new SpecWorkflowArtifactStoreError({
+              code: "artifact-not-found",
+              detail: "测试桩：retrospect.md 未写入。",
+              workspaceRoot: input.workspaceRoot,
+              changeName: input.changeName,
+              artifact: input.artifact,
+            }),
+          )
+        : Effect.succeed({ ...input, contents: retrospectContents }),
+    write: (input) => Effect.succeed(input),
+    list: () => Effect.succeed(["retrospect.md"]),
+    archive: (input) =>
+      Effect.gen(function* () {
+        archivedChangeName = input.changeName;
+        return { archivedTo: `spec/archive/2026-09-20-${input.changeName}` };
+      }),
+  };
+  const runtime = makeLayer(() => {}, undefined, undefined, undefined, enabledCapability, {
+    artifacts,
+  });
+
+  return Effect.gen(function* () {
+    const service = yield* SpecWorkflowService;
+    const states = yield* SpecWorkflowStateStore;
+    const baseInput = {
+      workflowId: "workflow-service-retrospect",
+      projectId,
+      threadId,
+      changeName: "service-retrospect-change",
+      mode: "full" as const,
+      intent: "workflow" as const,
+      workspaceRoot: "C:/workspace/service-retrospect",
+      assigneeId: "implementer",
+      prompt: "完成回顾后归档。",
+      promptDigest: "sha256:service-retrospect",
+    };
+    let state = (yield* service.dispatch(baseInput).pipe(Effect.orDie)).state;
+    for (const to of ["design", "propose", "awaitingApproval"] as const) {
+      state = yield* states.append({
+        threadId,
+        event: transitionSpecWorkflowState(
+          state,
+          { type: "advance", to, expectedRevision: state.revision },
+          state.revision + 1,
+        ),
+        expectedRevision: state.revision,
+      });
+    }
+    state = yield* service.reviewProposal({
+      threadId,
+      decision: "approve",
+      expectedRevision: state.revision,
+    });
+    const steps: Array<Record<string, unknown>> = [
+      { type: "advance", to: "apply" },
+      { type: "mark-implementation-complete" },
+      { type: "advance", to: "verify" },
+      { type: "record-verification", passed: true },
+      { type: "advance", to: "acceptance" },
+      { type: "complete-acceptance" },
+    ];
+    for (const step of steps) {
+      state = yield* states.append({
+        threadId,
+        event: transitionSpecWorkflowState(
+          state,
+          { ...step, expectedRevision: state.revision } as Parameters<
+            typeof transitionSpecWorkflowState
+          >[1],
+          state.revision + 1,
+        ),
+        expectedRevision: state.revision,
+      });
+    }
+    assert.equal(state.acceptanceStatus, "passed");
+
+    const blocked = yield* service.dispatch({ ...baseInput, intent: "archive" }).pipe(Effect.flip);
+    assert.equal(blocked._tag, "SpecWorkflowCompositionBridgeError");
+    assert.equal(state.status, "active");
+
+    retrospectContents = "# Retrospect\n\n偏差与遗留项。\n";
+    const archived = yield* service.dispatch({ ...baseInput, intent: "archive" });
+    assert.equal(archived.state.status, "completed");
+    assert.equal(archivedChangeName, "service-retrospect-change");
   }).pipe(Effect.provide(runtime.layer));
 });
 

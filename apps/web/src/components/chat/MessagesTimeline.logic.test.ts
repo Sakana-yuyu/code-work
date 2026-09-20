@@ -700,6 +700,230 @@ describe("deriveMessagesTimelineRows", () => {
     );
   });
 
+  it("hides settled turns that produced no assistant output after an edit-and-resend", () => {
+    const userMessage = (id: string, text: string, createdAt: string) => ({
+      id,
+      kind: "message" as const,
+      createdAt,
+      message: {
+        id: id.replace("entry", "msg") as never,
+        role: "user" as const,
+        text,
+        turnId: null,
+        createdAt,
+        updatedAt: createdAt,
+        streaming: false,
+      },
+    });
+    const toolWorkEntry = (
+      id: string,
+      turnId: string,
+      createdAt: string,
+      lifecycleStatus?: "inProgress",
+    ) => ({
+      id,
+      kind: "work" as const,
+      createdAt,
+      entry: {
+        id,
+        createdAt,
+        turnId: turnId as never,
+        label: "Ran command",
+        tone: "tool" as const,
+        ...(lifecycleStatus ? { toolLifecycleStatus: lifecycleStatus } : {}),
+      },
+    });
+    const timelineEntries = [
+      userMessage("user-entry-1", "Try it", "2026-01-01T00:00:00Z"),
+      toolWorkEntry("work-entry-1", "turn-1", "2026-01-01T00:00:08Z"),
+      userMessage("user-entry-2", "Edited prompt, retry", "2026-01-01T00:01:00Z"),
+      toolWorkEntry("work-entry-2", "turn-2", "2026-01-01T00:01:08Z", "inProgress"),
+    ];
+
+    const rowsAfterResend = deriveMessagesTimelineRows({
+      timelineEntries,
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:01:01Z",
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const rowIds = rowsAfterResend.map((row) => row.id);
+    // The failed turn left only tool bookkeeping behind — no orphan "worked
+    // for X" stub may survive the resend.
+    expect(rowIds).not.toContain("work-entry-1");
+    expect(rowsAfterResend.some((row) => row.kind === "turn-fold")).toBe(false);
+    expect(rowIds).toContain("user-entry-1");
+    expect(rowIds).toContain("user-entry-2");
+    const liveWorkRow = rowsAfterResend.find(
+      (row): row is Extract<(typeof rowsAfterResend)[number], { kind: "work-live" }> =>
+        row.kind === "work-live",
+    );
+    expect(liveWorkRow?.groupedEntries.some((grouped) => grouped.id === "work-entry-2")).toBe(true);
+
+    // Viewing history where the contentless turn is still the latest one keeps
+    // the normal fold behavior instead of erasing it.
+    const rowsOnHistory = deriveMessagesTimelineRows({
+      timelineEntries: timelineEntries.slice(0, 2),
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "error",
+        startedAt: "2026-01-01T00:00:01Z",
+        completedAt: "2026-01-01T00:00:36Z",
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(
+      rowsOnHistory.find(
+        (row): row is Extract<(typeof rowsOnHistory)[number], { kind: "turn-fold" }> =>
+          row.kind === "turn-fold",
+      )?.turnId,
+    ).toBe("turn-1");
+  });
+
+  it("folds earlier narration segments of the running turn behind one expander", () => {
+    const assistantSegment = (index: number, text: string) => ({
+      id: `assistant-seg-${index}-entry`,
+      kind: "message" as const,
+      createdAt: `2026-01-01T00:00:${String(index).padStart(2, "0")}Z`,
+      message: {
+        id: `assistant-seg-${index}` as never,
+        role: "assistant" as const,
+        text,
+        turnId: "turn-1" as never,
+        createdAt: `2026-01-01T00:00:${String(index).padStart(2, "0")}Z`,
+        updatedAt: `2026-01-01T00:00:${String(index).padStart(2, "0")}Z`,
+        streaming: false,
+      },
+    });
+    const timelineEntries = [
+      {
+        id: "user-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:00Z",
+        message: {
+          id: "user-1" as never,
+          role: "user" as const,
+          text: "Do a long task",
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      assistantSegment(1, "Let me start by examining the repository layout."),
+      {
+        id: "work-entry-1",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:10Z",
+        entry: {
+          id: "work-entry-1",
+          createdAt: "2026-01-01T00:00:10Z",
+          turnId: "turn-1" as never,
+          label: "Ran command",
+          tone: "tool" as const,
+        },
+      },
+      assistantSegment(2, "The layout looks fine, checking the tests next."),
+      {
+        id: "work-entry-2",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:20Z",
+        entry: {
+          id: "work-entry-2",
+          createdAt: "2026-01-01T00:00:20Z",
+          turnId: "turn-1" as never,
+          label: "Ran tests",
+          tone: "tool" as const,
+        },
+      },
+      assistantSegment(3, "Now writing the final summary."),
+    ];
+
+    const collapsedRows = deriveMessagesTimelineRows({
+      timelineEntries,
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const collapsedAssistantIds = collapsedRows
+      .filter(
+        (row): row is Extract<(typeof collapsedRows)[number], { kind: "message" }> =>
+          row.kind === "message" && row.message.role === "assistant",
+      )
+      .map((row) => row.id);
+    // Only the newest narration segment stays in the live view.
+    expect(collapsedAssistantIds).toEqual(["assistant-seg-3-entry"]);
+
+    const foldRow = collapsedRows.find(
+      (row): row is Extract<(typeof collapsedRows)[number], { kind: "narration-fold" }> =>
+        row.kind === "narration-fold",
+    );
+    expect(foldRow?.groupId).toBe("narration:turn-1");
+    expect(foldRow?.count).toBe(2);
+    expect(foldRow?.expanded).toBe(false);
+    // The expander sits where the earliest folded segment was.
+    expect(collapsedRows.indexOf(foldRow!)).toBeLessThan(
+      collapsedRows.indexOf(
+        collapsedRows.find(
+          (row): row is Extract<(typeof collapsedRows)[number], { kind: "message" }> =>
+            row.kind === "message" && row.id === "assistant-seg-3-entry",
+        )!,
+      ),
+    );
+
+    const expandedRows = deriveMessagesTimelineRows({
+      timelineEntries,
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: null,
+      expandedNarrationGroupIds: new Set(["narration:turn-1"]),
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const expandedAssistantIds = expandedRows
+      .filter(
+        (row): row is Extract<(typeof expandedRows)[number], { kind: "message" }> =>
+          row.kind === "message" && row.message.role === "assistant",
+      )
+      .map((row) => row.id);
+    expect(expandedAssistantIds).toEqual([
+      "assistant-seg-1-entry",
+      "assistant-seg-2-entry",
+      "assistant-seg-3-entry",
+    ]);
+    expect(
+      expandedRows.find(
+        (row): row is Extract<(typeof expandedRows)[number], { kind: "narration-fold" }> =>
+          row.kind === "narration-fold",
+      )?.expanded,
+    ).toBe(true);
+  });
+
   it("folds assistant messages between the first and terminal messages", () => {
     const timelineEntries = [
       {

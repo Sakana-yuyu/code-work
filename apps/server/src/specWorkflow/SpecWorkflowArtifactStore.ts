@@ -50,6 +50,16 @@ export interface SpecWorkflowArtifactStoreShape {
   readonly list: (
     input: SpecWorkflowArtifactListInput,
   ) => Effect.Effect<ReadonlyArray<SpecWorkflowArtifactName>, SpecWorkflowArtifactStoreError>;
+  readonly archive: (input: {
+    readonly workspaceRoot: string;
+    readonly changeName: string;
+    /** 归档时间戳；目录名取其 UTC 日期，测试可以注入固定值。 */
+    readonly archivedAtUnixMs: number;
+  }) => Effect.Effect<
+    /** archivedTo 为 null 表示没有可归档的 change 目录。 */
+    { readonly archivedTo: string | null },
+    SpecWorkflowArtifactStoreError
+  >;
 }
 
 export class SpecWorkflowArtifactStore extends Context.Service<
@@ -65,10 +75,20 @@ const artifactNames = [
   "tasks.md",
   "verify.md",
   "retrospect.md",
+  "knowledge.md",
 ] as const satisfies ReadonlyArray<SpecWorkflowArtifactName>;
 
 const isArtifactName = (value: string): value is SpecWorkflowArtifactName =>
   artifactNames.includes(value as SpecWorkflowArtifactName);
+
+/** knowledge.md 是跨 change 的工作区级知识索引，不落在 changes 目录下。 */
+const isWorkspaceLevelArtifact = (artifact: SpecWorkflowArtifactName): boolean =>
+  artifact === "knowledge.md";
+
+const workspaceRelativePathFor = (changeName: string, artifact: SpecWorkflowArtifactName): string =>
+  isWorkspaceLevelArtifact(artifact)
+    ? `spec/knowledge.md`
+    : `spec/changes/${changeName}/${artifact}`;
 
 const isSafeChangeName = (value: string): boolean =>
   /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) && value.length <= 100;
@@ -99,6 +119,31 @@ export const SpecWorkflowArtifactStoreLive = Layer.effect(
               changeName,
             }),
           );
+    const resolveArtifact = (
+      input: SpecWorkflowArtifactReadInput | SpecWorkflowArtifactWriteInput,
+    ) =>
+      Effect.gen(function* () {
+        if (!isWorkspaceLevelArtifact(input.artifact))
+          yield* validateChangeName(input.changeName, input.workspaceRoot);
+        const toPathError = (cause: unknown) =>
+          new SpecWorkflowArtifactStoreError({
+            code: "artifact-path-invalid",
+            detail: cause instanceof Error ? cause.message : "Spec Workflow 产物路径无效。",
+            workspaceRoot: input.workspaceRoot,
+            changeName: input.changeName,
+            artifact: input.artifact,
+            cause,
+          });
+        const workspaceRoot = yield* workspacePaths
+          .normalizeWorkspaceRoot(input.workspaceRoot)
+          .pipe(Effect.mapError(toPathError));
+        return yield* workspacePaths
+          .resolveRelativePathWithinRoot({
+            workspaceRoot,
+            relativePath: workspaceRelativePathFor(input.changeName, input.artifact),
+          })
+          .pipe(Effect.mapError(toPathError));
+      });
     const resolve = (
       input: SpecWorkflowArtifactReadInput | SpecWorkflowArtifactListInput,
       relativePath: string,
@@ -124,10 +169,7 @@ export const SpecWorkflowArtifactStoreLive = Layer.effect(
 
     const read: SpecWorkflowArtifactStoreShape["read"] = (input) =>
       Effect.gen(function* () {
-        const resolved = yield* resolve(
-          input,
-          `spec/changes/${input.changeName}/${input.artifact}`,
-        );
+        const resolved = yield* resolveArtifact(input);
         const contents = yield* fileSystem.readFileString(resolved.absolutePath).pipe(
           Effect.mapError(
             (cause) =>
@@ -148,10 +190,7 @@ export const SpecWorkflowArtifactStoreLive = Layer.effect(
 
     const write: SpecWorkflowArtifactStoreShape["write"] = (input) =>
       Effect.gen(function* () {
-        const resolved = yield* resolve(
-          input,
-          `spec/changes/${input.changeName}/${input.artifact}`,
-        );
+        const resolved = yield* resolveArtifact(input);
         yield* writeFileStringAtomically({
           filePath: resolved.absolutePath,
           contents: input.contents,
@@ -193,6 +232,77 @@ export const SpecWorkflowArtifactStoreLive = Layer.effect(
         return entries.filter(isArtifactName);
       });
 
-    return { read, write, list } satisfies SpecWorkflowArtifactStoreShape;
+    const archive: SpecWorkflowArtifactStoreShape["archive"] = (input) =>
+      Effect.gen(function* () {
+        const toStoreError = (
+          code: SpecWorkflowArtifactStoreErrorCode,
+          detail: string,
+          cause?: unknown,
+        ) =>
+          new SpecWorkflowArtifactStoreError({
+            code,
+            detail,
+            workspaceRoot: input.workspaceRoot,
+            changeName: input.changeName,
+            ...(cause === undefined ? {} : { cause }),
+          });
+        if (!isSafeChangeName(input.changeName)) {
+          return yield* toStoreError(
+            "invalid-change-name",
+            "changeName 必须是小写字母、数字和连字符组成的安全名称。",
+          );
+        }
+        const toPathError = (cause: unknown) =>
+          toStoreError(
+            "artifact-path-invalid",
+            cause instanceof Error ? cause.message : "Spec Workflow 产物路径无效。",
+            cause,
+          );
+        const workspaceRoot = yield* workspacePaths
+          .normalizeWorkspaceRoot(input.workspaceRoot)
+          .pipe(Effect.mapError(toPathError));
+        const source = yield* workspacePaths
+          .resolveRelativePathWithinRoot({
+            workspaceRoot,
+            relativePath: `spec/changes/${input.changeName}`,
+          })
+          .pipe(Effect.mapError(toPathError));
+        const sourceExists = yield* fileSystem
+          .exists(source.absolutePath)
+          .pipe(Effect.mapError(toPathError));
+        if (!sourceExists) return { archivedTo: null };
+
+        const archiveRoot = yield* workspacePaths
+          .resolveRelativePathWithinRoot({ workspaceRoot, relativePath: "spec/archive" })
+          .pipe(Effect.mapError(toPathError));
+        yield* fileSystem
+          .makeDirectory(archiveRoot.absolutePath, { recursive: true })
+          .pipe(Effect.mapError(toPathError));
+        const dateStamp = new Date(input.archivedAtUnixMs).toISOString().slice(0, 10);
+        const pickTarget = (
+          attempt: number,
+        ): Effect.Effect<string, SpecWorkflowArtifactStoreError> =>
+          Effect.gen(function* () {
+            const suffix = attempt === 1 ? "" : `-${attempt}`;
+            const candidate = `${archiveRoot.absolutePath}/${dateStamp}-${input.changeName}${suffix}`;
+            const taken = yield* fileSystem.exists(candidate).pipe(Effect.mapError(toPathError));
+            return taken ? yield* pickTarget(attempt + 1) : candidate;
+          });
+        const targetPath = yield* pickTarget(1);
+        yield* fileSystem
+          .rename(source.absolutePath, targetPath)
+          .pipe(
+            Effect.mapError((cause) =>
+              toStoreError(
+                "artifact-write-failed",
+                "移动 Spec Workflow change 到归档目录失败。",
+                cause,
+              ),
+            ),
+          );
+        return { archivedTo: targetPath };
+      });
+
+    return { read, write, list, archive } satisfies SpecWorkflowArtifactStoreShape;
   }),
 );

@@ -19,6 +19,7 @@ import * as NodePath from "node:path";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as LayerMap from "effect/LayerMap";
@@ -29,6 +30,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import { codeIndexLanguageOf, extractSymbols, type ExtractedSymbol } from "./SymbolExtractor.ts";
+import { clearCodeIndexProgress, setCodeIndexProgress } from "./codeIndexProgress.ts";
 import {
   CodeIndexStore,
   layerCodeIndexStore,
@@ -229,9 +231,25 @@ export const makeCodeIndexRoot = Effect.fn("makeCodeIndexRoot")(function* (
 
   const flushPending = Effect.fn("CodeIndexRoot.flushPending")(function* () {
     const queued = yield* Ref.getAndUpdate(pending, () => new Set<string>());
+    if (queued.size === 0) return;
+    // 进度写在模块级表（不是本 layer 的状态里）：首扫发生在 Layer 构建
+    // 期间，状态 RPC 必须能不经构建就读到实时进度。
+    setCodeIndexProgress(rootKey, {
+      phase: "extracting",
+      processedFiles: 0,
+      totalFiles: queued.size,
+    });
+    let processed = 0;
     for (const relativePath of queued) {
       yield* processFile(relativePath);
+      processed += 1;
+      setCodeIndexProgress(rootKey, {
+        phase: "extracting",
+        processedFiles: processed,
+        totalFiles: queued.size,
+      });
     }
+    clearCodeIndexProgress(rootKey);
   });
 
   /**
@@ -295,45 +313,57 @@ export const makeCodeIndexRoot = Effect.fn("makeCodeIndexRoot")(function* (
    * ones. Doubles as the initial scan on root open.
    */
   const reconcile = Effect.fn("CodeIndexRoot.reconcile")(function* () {
-    yield* refreshFinder();
-    const freshPaths = yield* listIndexableFiles();
-    const storedFiles = yield* store.files(rootKey).pipe(
-      Effect.mapError(
-        (cause) =>
-          new CodeIndexError({
-            root,
-            operation: "reconcile",
-            reason: "store files failed.",
-            cause,
-          }),
-      ),
+    // 扫描/统计阶段还不知道总量；失败时清掉残余条目，不让状态行误读成
+    // 永久索引中（末尾的 flushPending 正常完成时也会清）。
+    setCodeIndexProgress(rootKey, { phase: "scanning", processedFiles: 0, totalFiles: null });
+    const pass = yield* Effect.exit(
+      Effect.fn("CodeIndexRoot.reconcilePass")(function* () {
+        yield* refreshFinder();
+        const freshPaths = yield* listIndexableFiles();
+        const storedFiles = yield* store.files(rootKey).pipe(
+          Effect.mapError(
+            (cause) =>
+              new CodeIndexError({
+                root,
+                operation: "reconcile",
+                reason: "store files failed.",
+                cause,
+              }),
+          ),
+        );
+        const storedByPath = new Map<string, IndexedFileRecord>(
+          storedFiles.map((record) => [record.path, record]),
+        );
+        const freshSet = new Set(freshPaths);
+        for (const record of storedFiles) {
+          if (freshSet.has(record.path)) continue;
+          yield* store.removeFile(rootKey, record.path).pipe(
+            Effect.catch((cause) =>
+              Effect.logWarning("Code index could not prune vanished file", {
+                rootKey,
+                path: record.path,
+                cause,
+              }),
+            ),
+          );
+        }
+        for (const relativePath of freshPaths) {
+          const existing = storedByPath.get(relativePath);
+          const stat = yield* statFile(NodePath.join(normalizedRoot, relativePath));
+          if (stat === undefined) continue;
+          const sizeBytes = Number(stat.size);
+          if (existing && existing.mtimeMs === mtimeMsOf(stat) && existing.size === sizeBytes)
+            continue;
+          yield* queuePath(relativePath);
+        }
+        yield* flushPending();
+        yield* Ref.set(lastReconcileAtMs, Date.now());
+      })(),
     );
-    const storedByPath = new Map<string, IndexedFileRecord>(
-      storedFiles.map((record) => [record.path, record]),
-    );
-    const freshSet = new Set(freshPaths);
-    for (const record of storedFiles) {
-      if (freshSet.has(record.path)) continue;
-      yield* store.removeFile(rootKey, record.path).pipe(
-        Effect.catch((cause) =>
-          Effect.logWarning("Code index could not prune vanished file", {
-            rootKey,
-            path: record.path,
-            cause,
-          }),
-        ),
-      );
+    if (Exit.isFailure(pass)) {
+      clearCodeIndexProgress(rootKey);
+      return yield* Effect.failCause(pass.cause);
     }
-    for (const relativePath of freshPaths) {
-      const existing = storedByPath.get(relativePath);
-      const stat = yield* statFile(NodePath.join(normalizedRoot, relativePath));
-      if (stat === undefined) continue;
-      const sizeBytes = Number(stat.size);
-      if (existing && existing.mtimeMs === mtimeMsOf(stat) && existing.size === sizeBytes) continue;
-      yield* queuePath(relativePath);
-    }
-    yield* flushPending();
-    yield* Ref.set(lastReconcileAtMs, Date.now());
   });
 
   // Recursive watching is not exposed by Effect FileSystem; fs.promises.watch

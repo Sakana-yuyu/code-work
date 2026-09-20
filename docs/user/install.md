@@ -11,11 +11,11 @@ At least one provider CLI, installed and authenticated. See [Providers](#provide
 ## Run Without Installing
 
 ```bash
-npx t3@latest
+codework
 ```
 
 This starts the Code Work server on your machine and opens the local web app. Use
-`npx t3@latest --help` for the full CLI reference.
+`codework --help` for the full CLI reference.
 
 ## Desktop App
 

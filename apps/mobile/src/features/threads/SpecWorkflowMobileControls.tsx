@@ -31,6 +31,8 @@ function statusLabel(status: SpecWorkflowStatus): string {
   return t(`specWorkflowMobile.status.${status}`);
 }
 
+const specWorkflowFlags: ReadonlyArray<"design" | "strict"> = ["design", "strict"];
+
 export function SpecWorkflowMobilePicker(props: {
   readonly controller: SpecWorkflowMobileController;
   readonly disabled: boolean;
@@ -48,6 +50,13 @@ export function SpecWorkflowMobilePicker(props: {
         : ("off" as const),
     attributes: { disabled: props.disabled },
   }));
+  const flagActions = specWorkflowFlags.map((flag) => ({
+    id: `flag:${flag}`,
+    title: t(`specWorkflow.flag.${flag}`),
+    subtitle: t(`specWorkflow.flag.${flag}Description`),
+    state: controller.flags.includes(flag) ? ("on" as const) : ("off" as const),
+    attributes: { disabled: props.disabled },
+  }));
   return (
     <ControlPillMenu
       title={t("specWorkflow.choose")}
@@ -55,13 +64,34 @@ export function SpecWorkflowMobilePicker(props: {
         props.includeAttachments
           ? [
               { id: "attachments", title: t("addAttachment") },
-              { id: "workflow-steps", title: t("specWorkflowMobile.title"), subactions: actions },
+              {
+                id: "workflow-steps",
+                title: t("specWorkflowMobile.title"),
+                subactions: actions,
+              },
+              {
+                id: "workflow-flags",
+                title: t("specWorkflow.flags.title"),
+                subactions: flagActions,
+              },
             ]
-          : actions
+          : [...actions, ...flagActions]
       }
       onPressAction={({ nativeEvent }) => {
         if (nativeEvent.event === "attachments") {
           props.includeAttachments?.();
+          return;
+        }
+        if (nativeEvent.event.startsWith("flag:")) {
+          const flag = nativeEvent.event.slice("flag:".length);
+          const known = specWorkflowFlags.find((value) => value === flag);
+          if (known === undefined || props.disabled) return;
+          void controller
+            .toggleFlag(known)
+            .then((ok) => {
+              if (!ok) Alert.alert(t("specWorkflow.saveFailed"));
+            })
+            .catch(() => Alert.alert(t("specWorkflow.saveFailed")));
           return;
         }
         const intent = SpecWorkflowIntentName.literals.find((value) => value === nativeEvent.event);

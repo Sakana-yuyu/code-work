@@ -1,5 +1,7 @@
 import type { ProviderInteractionMode } from "@codework/contracts";
 
+import { SUBAGENT_MODE_GUIDANCE_PROMPT } from "./SubagentModeGuidance.ts";
+
 const CODEWORK_CODE_BROWSER_TOOL_INSTRUCTIONS = `
 
 ## Code Work collaborative browser
@@ -210,6 +212,8 @@ export function buildCodexDeveloperInstructions(
   browserToolsAvailable = true,
   /** Same rule as `browserToolsAvailable`, for the `index_*` symbol tools. */
   indexToolsAvailable = false,
+  /** Instance's 子代理模式: inject the native-subagent guidance block when on. */
+  subagentModeEnabled = false,
 ): string {
   const base =
     interactionMode === "plan"
@@ -217,5 +221,5 @@ export function buildCodexDeveloperInstructions(
       : codexDefaultModeDeveloperInstructions(browserToolsAvailable, indexToolsAvailable);
   return `${base}
 
-<runtime_info>In case you're asked: you are running in Code Work through the Codex harness, as ${toSingleLine(runtime.model)} with ${toSingleLine(runtime.reasoningEffort)} reasoning effort. No need to mention this otherwise.</runtime_info>`;
+<runtime_info>In case you're asked: you are running in Code Work through the Codex harness, as ${toSingleLine(runtime.model)} with ${toSingleLine(runtime.reasoningEffort)} reasoning effort. No need to mention this otherwise.</runtime_info>${subagentModeEnabled ? `\n\n<subagent_mode>${SUBAGENT_MODE_GUIDANCE_PROMPT}</subagent_mode>` : ""}`;
 }
