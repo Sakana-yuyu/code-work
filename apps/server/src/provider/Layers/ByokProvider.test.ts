@@ -4,7 +4,11 @@ import * as Layer from "effect/Layer";
 import { describe, expect, it } from "vite-plus/test";
 import { FetchHttpClient } from "effect/unstable/http";
 
-import { byokModelsFromSettings, checkByokProviderStatus } from "./ByokProvider.ts";
+import {
+  byokModelCapabilities,
+  byokModelsFromSettings,
+  checkByokProviderStatus,
+} from "./ByokProvider.ts";
 
 const asFetch = (
   implementation: (input: string | URL, init?: RequestInit) => Promise<Response>,
@@ -155,5 +159,34 @@ describe("byokModelsFromSettings", () => {
 
     const discovered = result.models.find((model) => model.slug === "flash/deepseek-v9-beta");
     expect(discovered?.subProvider).toBe("DeepSeek官方");
+  });
+});
+
+describe("byokModelCapabilities", () => {
+  it("uses catalog reasoning efforts when the model is cataloged", () => {
+    const caps = byokModelCapabilities("gpt-5.5");
+    const descriptor = caps.optionDescriptors?.find((d) => d.id === "reasoningEffort");
+    expect(descriptor?.type).toBe("select");
+    expect(
+      descriptor?.type === "select" ? descriptor.options.map((option) => option.id) : [],
+    ).toEqual(["none", "low", "medium", "high", "xhigh"]);
+  });
+
+  it("exposes a fallback effort selector for models missing from the catalog", () => {
+    const caps = byokModelCapabilities("some-vendor-model-2099");
+    const descriptor = caps.optionDescriptors?.find((d) => d.id === "reasoningEffort");
+    expect(descriptor?.type).toBe("select");
+    expect(
+      descriptor?.type === "select" ? descriptor.options.map((option) => option.id) : [],
+    ).toEqual(["none", "low", "medium", "high"]);
+    // 不设默认档：用户不点选时请求不携带思考强度字段。
+    expect(
+      descriptor?.type === "select" && descriptor.options.some((option) => option.isDefault),
+    ).toBe(false);
+  });
+
+  it("supports the Claude-style descriptor id for bridged/routed models", () => {
+    const caps = byokModelCapabilities("some-vendor-model-2099", "effort");
+    expect(caps.optionDescriptors?.map((d) => d.id)).toEqual(["effort"]);
   });
 });

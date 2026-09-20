@@ -461,6 +461,55 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect(
+    "forwards explicit effort for BYOK-routed models missing from the static catalog",
+    () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          // BYOK 路由渠道模型不在内置目录；选项由路由快照下发。
+          modelSelection: createModelSelection(
+            ProviderInstanceId.make("claudeAgent"),
+            "glm-5-relay",
+            [{ id: "effort", value: "high" }],
+          ),
+          runtimeMode: "full-access",
+        });
+
+        assert.equal(harness.getLastCreateQueryInput()?.options.effort, "high");
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
+
+  it.effect("drops out-of-enum effort values for BYOK-routed models", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        // "none" 不是 Claude SDK 的合法 effort；显式关闭思考=不发送该字段。
+        modelSelection: createModelSelection(
+          ProviderInstanceId.make("claudeAgent"),
+          "glm-5-relay",
+          [{ id: "effort", value: "none" }],
+        ),
+        runtimeMode: "full-access",
+      });
+
+      assert.equal(harness.getLastCreateQueryInput()?.options.effort, undefined);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("runs Claude SDK sessions with the configured CLAUDE_CONFIG_DIR", () => {
     const harness = makeHarness({ claudeConfig: { homePath: "~/.claude-work" } });
     return Effect.gen(function* () {

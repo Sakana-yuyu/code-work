@@ -86,7 +86,9 @@ import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import {
   getClaudeModelCapabilities,
   isClaudeUltracodeEffort,
+  isBuiltInClaudeModel,
   normalizeClaudeCliEffort,
+  passthroughClaudeEffort,
   resolveClaudeApiModelId,
   resolveClaudeContextWindow,
   resolveClaudeEffort,
@@ -4272,7 +4274,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const apiModelId = modelSelection ? resolveClaudeApiModelId(modelSelection) : undefined;
       const initialContextWindow = selectedClaudeContextWindow(modelSelection);
       const rawEffort = getModelSelectionStringOptionValue(modelSelection, "effort");
-      const effort = resolveClaudeEffort(caps, rawEffort) ?? null;
+      // 静态目录外的模型（BYOK 路由渠道）没有描述符可校验，采信枚举内的
+      // 显式选择；目录内但不支持 effort 的模型（如 Haiku）保持忽略。
+      const effort =
+        resolveClaudeEffort(caps, rawEffort) ??
+        (isBuiltInClaudeModel(modelSelection?.model)
+          ? undefined
+          : passthroughClaudeEffort(rawEffort)) ??
+        null;
       const fastModeSupported = descriptors.some(
         (descriptor) => descriptor.type === "boolean" && descriptor.id === "fastMode",
       );

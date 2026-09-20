@@ -408,6 +408,37 @@ export function resolveClaudeEffort(
 }
 
 /**
+ * Claude Agent SDK `effort` 的合法取值与本地伪档位（ultracode/ultrathink
+ * 由 normalizeClaudeCliEffort 归一）。
+ */
+const CLAUDE_PASSTHROUGH_EFFORTS: ReadonlySet<string> = new Set([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultracode",
+  "ultrathink",
+]);
+
+/** 模型 slug 是否在内置目录中（目录内模型的能力边界以目录为准）。 */
+export function isBuiltInClaudeModel(model: string | null | undefined): boolean {
+  const slug = model?.trim();
+  return slug !== undefined && slug.length > 0
+    ? BUILT_IN_MODELS.some((candidate) => candidate.slug === slug)
+    : false;
+}
+
+/**
+ * 静态目录外的模型（BYOK 路由渠道）没有可校验的 effort 描述符，但选项
+ * 本身就是路由快照下发的：枚举内的显式选择直接采信；"none"（显式关闭
+ * 思考）与未知值一律视为未设置，不往 CLI 发。
+ */
+export function passthroughClaudeEffort(raw: string | null | undefined): string | undefined {
+  return raw != null && CLAUDE_PASSTHROUGH_EFFORTS.has(raw) ? raw : undefined;
+}
+
+/**
  * Normalize a resolved Claude effort value into one suitable for the Claude
  * CLI's `--effort` flag.
  *

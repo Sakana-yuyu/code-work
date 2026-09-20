@@ -303,6 +303,7 @@ export const routedServerProviderModels = (
   protocol: GatewayProtocol,
   sourceInstanceId?: string,
   nativeModels: readonly ServerProviderModel[] = [],
+  effortDescriptorId: "reasoningEffort" | "effort" = "reasoningEffort",
 ): readonly ServerProviderModel[] =>
   gatewayAdapterRoutes(settings, sourceInstanceId)
     .filter((route) => route.protocol === protocol)
@@ -318,7 +319,7 @@ export const routedServerProviderModels = (
         isCustom: false,
         capabilities:
           nativeModels.find((model) => model.slug === route.id || model.slug === route.modelId)
-            ?.capabilities ?? (protocol === "openai" ? byokModelCapabilities(route.modelId) : null),
+            ?.capabilities ?? byokModelCapabilities(route.modelId, effortDescriptorId),
       };
     });
 
@@ -349,19 +350,22 @@ export const prepareRoutedProviderSnapshot = (
     Effect.map((settings) => {
       const models = settings
         ? snapshot.driver === "claudeAgent"
-          ? // Claude 同时拿到 anthropic 通道（直通）与 openai 通道（桥接）。
+          ? // Claude 同时拿到 anthropic 通道（直通）与 openai 通道（桥接）；
+            // Claude 运行时读取的思考强度选项 id 是 "effort"。
             [
               ...routedServerProviderModels(
                 settings,
                 "anthropic",
                 config.byokSourceInstanceId,
                 snapshot.models,
+                "effort",
               ),
               ...routedServerProviderModels(
                 settings,
                 "openai",
                 config.byokSourceInstanceId,
                 snapshot.models,
+                "effort",
               ),
             ]
           : routedServerProviderModels(

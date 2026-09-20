@@ -33,24 +33,30 @@ const BYOK_PRESENTATION = {
   showInteractionModeToggle: false,
 } as const;
 
-export const EMPTY_BYOK_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
-  optionDescriptors: [],
-});
+/**
+ * 思考强度档位保守兜底：openai 协议透传 `reasoning_effort`（none 表示显式
+ * 关闭思考），anthropic 协议映射 thinking:adaptive + output_config.effort。
+ */
+const FALLBACK_REASONING_EFFORTS = ["none", "low", "medium", "high"] as const;
 
 /**
- * 内置目录收录了思考强度档位时，把 `reasoningEffort` 作为模型选项暴露；
- * 引擎在 openai 协议请求上透传为 `reasoning_effort`。未收录的模型不显示
- * 该选项，请求也不带该字段。
+ * BYOK 渠道模型始终暴露思考强度选项：内置目录收录了档位时用目录档位，未
+ * 收录的模型用兜底档位。选项不设默认值——用户不点选时请求不带该字段，
+ * 保持端点原生默认。
  */
-export const byokModelCapabilities = (modelId: string): ModelCapabilities => {
-  const efforts = catalogCapabilitiesForModel(modelId)?.reasoningEfforts;
-  if (efforts === undefined || efforts.length === 0) {
-    return EMPTY_BYOK_MODEL_CAPABILITIES;
-  }
+export const byokModelCapabilities = (
+  modelId: string,
+  descriptorId: "reasoningEffort" | "effort" = "reasoningEffort",
+): ModelCapabilities => {
+  const catalogEfforts = catalogCapabilitiesForModel(modelId)?.reasoningEfforts;
+  const efforts =
+    catalogEfforts !== undefined && catalogEfforts.length > 0
+      ? catalogEfforts
+      : FALLBACK_REASONING_EFFORTS;
   return createModelCapabilities({
     optionDescriptors: [
       {
-        id: "reasoningEffort",
+        id: descriptorId,
         label: "Reasoning",
         type: "select",
         options: efforts.map((effort) => ({ id: effort, label: effort })),
@@ -237,7 +243,8 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
           // Group first (vendor/relay), adapter display name as fallback.
           subProvider: adapter.groupName?.trim() || adapter.displayName,
           isCustom: false,
-          capabilities: EMPTY_BYOK_MODEL_CAPABILITIES,
+          // 发现的模型同样过目录匹配：命中给目录档位，未命中给兜底档位。
+          capabilities: byokModelCapabilities(normalizedModelId),
         });
       }
     }

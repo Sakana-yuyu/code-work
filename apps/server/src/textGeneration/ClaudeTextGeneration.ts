@@ -41,6 +41,8 @@ import {
   isClaudeUltracodeEffort,
   normalizeClaudeCliEffort,
   resolveClaudeApiModelId,
+  isBuiltInClaudeModel,
+  passthroughClaudeEffort,
   resolveClaudeEffort,
 } from "../provider/Layers/ClaudeProvider.ts";
 import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
@@ -133,7 +135,12 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     });
     const findDescriptor = (id: string) => descriptors.find((descriptor) => descriptor.id === id);
     const rawEffortSelection = getModelSelectionStringOptionValue(modelSelection, "effort");
-    const resolvedEffort = resolveClaudeEffort(caps, rawEffortSelection);
+    // 与 ClaudeAdapter 同一口径：目录外模型（BYOK 路由）采信枚举内的显式选择。
+    const resolvedEffort =
+      resolveClaudeEffort(caps, rawEffortSelection) ??
+      (isBuiltInClaudeModel(modelSelection.model)
+        ? undefined
+        : passthroughClaudeEffort(rawEffortSelection));
     const cliEffort = normalizeClaudeCliEffort(resolvedEffort, modelSelection.model);
     const ultracode = isClaudeUltracodeEffort(resolvedEffort);
     const thinkingDescriptor = findDescriptor("thinking");

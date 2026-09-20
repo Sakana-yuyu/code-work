@@ -415,7 +415,7 @@ describe("gatewayAdapterRoutes groupName", () => {
 });
 
 describe("routedServerProviderModels", () => {
-  it("共享渠道按实际模型保留思考强度，未知模型不伪造能力", () => {
+  it("共享渠道按目录保留档位，未知模型给兜底思考强度选项", () => {
     const settings = settingsWithInstances({
       byok: {
         driver: "byok",
@@ -434,7 +434,13 @@ describe("routedServerProviderModels", () => {
         options: expect.arrayContaining([expect.objectContaining({ id: "high" })]),
       }),
     ]);
-    expect(models[1]?.capabilities?.optionDescriptors).toEqual([]);
+    expect(models[1]?.capabilities?.optionDescriptors).toEqual([
+      expect.objectContaining({
+        id: "reasoningEffort",
+        type: "select",
+        options: ["none", "low", "medium", "high"].map((id) => expect.objectContaining({ id })),
+      }),
+    ]);
     const capabilities = {
       ...models[0]!.capabilities!,
       optionDescriptors: [
@@ -451,6 +457,20 @@ describe("routedServerProviderModels", () => {
     expect(
       routedServerProviderModels(settings, "openai", undefined, native)[0]?.capabilities,
     ).toEqual(capabilities);
+  });
+
+  it("claudeAgent 路由渠道使用 Claude 运行时读取的 effort 选项 id", () => {
+    const settings = settingsWithInstances({
+      byok: {
+        driver: "byok",
+        enabled: true,
+        config: byokConfig([adapter({ id: "route-claude", protocol: "anthropic" })]),
+      },
+    });
+    const models = routedServerProviderModels(settings, "anthropic", undefined, [], "effort");
+    expect(models[0]?.capabilities?.optionDescriptors?.map((descriptor) => descriptor.id)).toEqual([
+      "effort",
+    ]);
   });
 
   it("prefers the group label and falls back to the raw model id", () => {
