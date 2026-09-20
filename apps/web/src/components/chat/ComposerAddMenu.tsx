@@ -31,6 +31,7 @@ import type { CommandPaletteActionItem } from "../CommandPalette.logic";
 import { t } from "~/i18n";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ThreadGoalStatusBar } from "./ThreadGoalStatusBar";
 
 type ComposerAddMenuPluginItem = Pick<
@@ -429,38 +430,43 @@ export function SpecWorkflowNodePicker(props: {
         {specWorkflowFlagItems.map(({ flag, icon }) => {
           const active = props.control.flags.includes(flag);
           return (
-            <button
-              key={flag}
-              type="button"
-              className={`flex min-h-9 flex-1 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs outline-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
-                active
-                  ? "border-primary/40 bg-primary/10 text-foreground"
-                  : "border-border/60 text-muted-foreground hover:bg-accent"
-              }`}
-              disabled={
-                !props.control.available || props.control.isPending || props.control.hasError
-              }
-              aria-pressed={active}
-              title={t(`specWorkflow.flag.${flag}Description`)}
-              onClick={() =>
-                runAction(
-                  () => props.control.onToggleFlag(flag),
-                  () => undefined,
-                )
-              }
-            >
-              <span
-                className={`flex size-6 shrink-0 items-center justify-center rounded-md ${
-                  active ? "bg-primary/20 text-foreground" : "bg-muted/65"
-                }`}
+            <Tooltip key={flag}>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    className={`flex min-h-9 flex-1 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs outline-none transition-colors disabled:pointer-events-none disabled:opacity-50 ${
+                      active
+                        ? "border-primary/40 bg-primary/10 text-foreground"
+                        : "border-border/60 text-muted-foreground hover:bg-accent"
+                    }`}
+                    disabled={
+                      !props.control.available || props.control.isPending || props.control.hasError
+                    }
+                    aria-pressed={active}
+                    onClick={() =>
+                      runAction(
+                        () => props.control.onToggleFlag(flag),
+                        () => undefined,
+                      )
+                    }
+                  />
+                }
               >
-                {icon}
-              </span>
-              <span className="min-w-0 flex-1 truncate font-medium">
-                {t(`specWorkflow.flag.${flag}`)}
-              </span>
-              {active ? <CheckIcon className="size-4 shrink-0" /> : null}
-            </button>
+                <span
+                  className={`flex size-6 shrink-0 items-center justify-center rounded-md ${
+                    active ? "bg-primary/20 text-foreground" : "bg-muted/65"
+                  }`}
+                >
+                  {icon}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {t(`specWorkflow.flag.${flag}`)}
+                </span>
+                {active ? <CheckIcon className="size-4 shrink-0" /> : null}
+              </TooltipTrigger>
+              <TooltipPopup>{t(`specWorkflow.flag.${flag}Description`)}</TooltipPopup>
+            </Tooltip>
           );
         })}
       </div>
