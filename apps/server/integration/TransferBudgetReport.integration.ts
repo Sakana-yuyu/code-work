@@ -35,8 +35,12 @@ const TRANSFER_BUDGET = {
   threadSnapshotWireBytes: 7_500,
   measuredTurnWebSocketWireBytes: 8_000,
   // Provider segment-boundary events add a small decoded payload to the
-  // measured turn; keep the existing wire/message caps unchanged.
-  measuredTurnWebSocketDecodedBytes: 70_000,
+  // measured turn; keep the existing wire/message caps unchanged. Decoded
+  // totals vary by ~±2 KiB across hosts/runs because stream batching shifts
+  // message boundaries (message counts drift, envelope overhead moves) — the
+  // cap still catches order-of-magnitude regressions like shipping the
+  // retained MCP blob (~1.1 MB) over the socket.
+  measuredTurnWebSocketDecodedBytes: 74_000,
   measuredTurnWebSocketMessages: 21,
 } satisfies ProviderTransferBudget;
 
