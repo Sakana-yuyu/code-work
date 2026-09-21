@@ -2868,15 +2868,26 @@ function ChatViewContent(props: ChatViewProps) {
       ),
     [activeThread?.id, environmentId, queuedTurnSubmissions],
   );
-  const queuedMessagesForComposer = useMemo(
-    () =>
-      (activeThread?.queuedMessages ?? []).map((queued) => ({
+  const queuedMessagesForComposer = useMemo(() => {
+    // queuedMessages 字段只在详情快照里携带，pending→已分发 的流转不会推送
+    // 字段刷新，订阅流保活期间会残留幻影条目。用与本地 outbox 记录相同的
+    // 启发式过滤：排队消息的 createdAt 即其回合的 requested_at，一旦该回合
+    // 成为 latestTurn（被分发）或更新的回合已起步，条目即视为已出队。
+    const latestTurnRequestedAt = activeThread?.latestTurn?.requestedAt ?? null;
+    return (activeThread?.queuedMessages ?? [])
+      .filter(
+        (queued) => latestTurnRequestedAt === null || queued.createdAt > latestTurnRequestedAt,
+      )
+      .map((queued) => ({
         id: String(queued.messageId),
         text: queued.text,
         steerable: steerableQueuedMessageIds.has(String(queued.messageId)),
-      })),
-    [activeThread?.queuedMessages, steerableQueuedMessageIds],
-  );
+      }));
+  }, [
+    activeThread?.queuedMessages,
+    activeThread?.latestTurn?.requestedAt,
+    steerableQueuedMessageIds,
+  ]);
   useEffect(() => {
     if (threadDetailLoading || activeThread === undefined || queuedMessagesForThread.length === 0) {
       return;
