@@ -4893,7 +4893,7 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const onEditQueuedMessage = useCallback(
     (rawMessageId: string) => {
-      const { submission: queued, blocked } = resolveQueuedMessageGuard({
+      const { blocked } = resolveQueuedMessageGuard({
         submissions: queuedTurnSubmissionsRef.current,
         rawMessageId,
         dispatchingMessageId: queuedTurnDispatchRef.current?.messageId,

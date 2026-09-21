@@ -1219,7 +1219,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           : {};
       const result = await updateEnvironmentSettingsPatch({
         providerInstances: {
-          ...(environmentProviderInstances ?? {}),
+          ...environmentProviderInstances,
           [selectedInstanceId]: {
             ...subagentInstanceRecord,
             config: {

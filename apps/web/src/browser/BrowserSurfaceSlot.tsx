@@ -61,7 +61,7 @@ export function BrowserSurfaceSlot(props: {
     const observer = new ResizeObserver(update);
     observer.observe(element);
     window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
+    window.addEventListener("scroll", update, { capture: true, passive: true });
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", update);

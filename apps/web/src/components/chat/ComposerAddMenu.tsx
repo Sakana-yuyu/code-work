@@ -281,7 +281,6 @@ function SpecWorkflowMenuStatus(props: {
 }
 
 export function ComposerGoalControl(props: ComposerGoalControlProps) {
-  const objective = props.goal?.objective ?? props.draftObjective ?? t("composer.addGoal");
   const disabled = props.goalIsPending;
 
   if (props.goal === null) {
