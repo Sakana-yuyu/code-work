@@ -9,6 +9,8 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import { afterEach, beforeEach, describe, expect } from "vite-plus/test";
 
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
+
 import { makeCodeIndexRoot } from "./CodeIndexService.ts";
 import { readActiveCodeIndexProgress } from "./codeIndexProgress.ts";
 import { layerCodeIndexStoreFor } from "./CodeIndexStore.ts";
@@ -111,30 +113,34 @@ describe("CodeIndexRoot", () => {
   // 真实时间：中途回读进度依赖 fs 往返的自然耗时，TestClock 会让 sleep 永停。
   it.live("首扫完成不留残余进度；flush 进行中进度可见且按根目录隔离", () =>
     Effect.gen(function* () {
+      const platform = yield* HostProcessPlatform;
       const root = yield* makeCodeIndexRoot(workspaceRoot);
       // 首扫的 scanning/extracting 条目必须已被清除，状态行回落到常规统计。
-      expect(readActiveCodeIndexProgress(workspaceRoot)).toBeNull();
+      expect(readActiveCodeIndexProgress(workspaceRoot, platform)).toBeNull();
 
       // 批量排队后 fork flush：条目在出队瞬间同步落表，200 个文件的真实
       // fs 往返不可能在首个轮询窗口内跑完，这里的中途回读是确定性的。
       for (let index = 0; index < 200; index += 1) {
         yield* root.handleWatchEvent({ filename: `bulk/File${index}.ts` });
       }
-      expect(readActiveCodeIndexProgress(workspaceRoot)).toBeNull();
+      expect(readActiveCodeIndexProgress(workspaceRoot, platform)).toBeNull();
 
       const flushFiber = yield* Effect.forkChild(root.flushPending());
       yield* Effect.sleep("5 millis");
-      const midFlight = readActiveCodeIndexProgress(workspaceRoot);
+      const midFlight = readActiveCodeIndexProgress(workspaceRoot, platform);
       expect(midFlight?.phase).toBe("extracting");
       expect(midFlight?.totalFiles).toBe(200);
       expect(midFlight?.processedFiles).toBeLessThan(200);
       // 其他根目录读不到本根的进度。
       expect(
-        readActiveCodeIndexProgress(NodePath.join(NodeOS.tmpdir(), "codework-other-root")),
+        readActiveCodeIndexProgress(
+          NodePath.join(NodeOS.tmpdir(), "codework-other-root"),
+          platform,
+        ),
       ).toBeNull();
 
       yield* Fiber.join(flushFiber);
-      expect(readActiveCodeIndexProgress(workspaceRoot)).toBeNull();
+      expect(readActiveCodeIndexProgress(workspaceRoot, platform)).toBeNull();
     }).pipe(Effect.provide(depsLayer), Effect.scoped),
   );
 });

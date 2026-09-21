@@ -86,6 +86,7 @@ import {
   streamChat,
 } from "./byokChatClient.ts";
 import { getModelSelectionStringOptionValue } from "@codework/shared/model";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import { applyPromptTemplate, renderPromptTemplate } from "../byok/PromptTemplate.ts";
 import {
   buildVisionPrompt,
@@ -901,9 +902,11 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             codeGraphGuidance = CODEGRAPH_GUIDANCE_PROMPT;
           } else {
             const runFork = Effect.runForkWith(yield* Effect.context<never>());
+            const platform = yield* HostProcessPlatform;
             yield* Effect.sync(() =>
               spawnCodeGraphIndexInit({
                 root: ctx.cwd,
+                platform,
                 logWarning: (message, cause) => runFork(Effect.logWarning(message, { cause })),
               }),
             );

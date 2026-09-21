@@ -47,9 +47,9 @@ export const hasCodeGraphIndex = (root: string): boolean => {
   }
 };
 
-const normalizeRootKey = (root: string): string => {
+const normalizeRootKey = (root: string, platform: NodeJS.Platform): string => {
   const resolved = NodePath.resolve(root);
-  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  return platform === "win32" ? resolved.toLowerCase() : resolved;
 };
 
 /**
@@ -59,19 +59,21 @@ const normalizeRootKey = (root: string): string => {
 export const unsafeCodeGraphIndexRootReason = (input: {
   readonly root: string;
   readonly homeDir?: string | undefined;
+  readonly platform: NodeJS.Platform;
 }): string | null => {
   const resolved = NodePath.resolve(input.root);
   if (resolved === NodePath.parse(resolved).root) return "盘符根目录";
   const homeDir = NodePath.resolve(input.homeDir ?? NodeOS.homedir());
-  if (normalizeRootKey(resolved) === normalizeRootKey(homeDir)) return "用户主目录";
+  if (normalizeRootKey(resolved, input.platform) === normalizeRootKey(homeDir, input.platform))
+    return "用户主目录";
   return null;
 };
 
 const initInFlight = new Set<string>();
 const initFailedRoots = new Set<string>();
 
-export const isCodeGraphInitInFlight = (root: string): boolean =>
-  initInFlight.has(normalizeRootKey(root));
+export const isCodeGraphInitInFlight = (root: string, platform: NodeJS.Platform): boolean =>
+  initInFlight.has(normalizeRootKey(root, platform));
 
 /** spawn 结果只用到事件监听与 unref；最小结构便于测试注入。 */
 export interface CodeGraphSpawnedChild {
@@ -97,6 +99,8 @@ export type CodeGraphSpawnImpl = (
 export type SpawnCodeGraphInitOptions = {
   readonly root: string;
   readonly homeDir?: string | undefined;
+  /** 宿主平台：Effect 侧 yield HostProcessPlatform，测试显式给定。 */
+  readonly platform: NodeJS.Platform;
   readonly logWarning?: (message: string, cause?: unknown) => void;
   /** 测试注入点。 */
   readonly spawnImpl?: CodeGraphSpawnImpl;
@@ -108,14 +112,15 @@ export type SpawnCodeGraphInitOptions = {
  */
 export const spawnCodeGraphIndexInit = (options: SpawnCodeGraphInitOptions): boolean => {
   const root = NodePath.resolve(options.root);
+  const platform = options.platform;
   const logWarning = options.logWarning ?? (() => {});
-  const reason = unsafeCodeGraphIndexRootReason({ root, homeDir: options.homeDir });
+  const reason = unsafeCodeGraphIndexRootReason({ root, homeDir: options.homeDir, platform });
   if (reason !== null) {
     logWarning(`跳过 CodeGraph 索引：${root} 是${reason}。`, undefined);
     return false;
   }
   if (hasCodeGraphIndex(root)) return false;
-  const key = normalizeRootKey(root);
+  const key = normalizeRootKey(root, platform);
   if (initInFlight.has(key) || initFailedRoots.has(key)) return false;
   initInFlight.add(key);
 
@@ -126,7 +131,7 @@ export const spawnCodeGraphIndexInit = (options: SpawnCodeGraphInitOptions): boo
     // 派生并 detached，init 不随 server 退出而被杀。stdout/stderr 保持管道
     // 仅供阶段进度解析；init 期间 server 重启只会丢失进度显示，detached
     // 的 init 本身照常完成。
-    const useShell = process.platform === "win32";
+    const useShell = platform === "win32";
     // 上游 init 本身非交互（初始化并默认建索引）；1.6.0 起提供 --yes 跳过
     // 提示，但本函数只在无 .codegraph 时调用、stdin 又被 ignore，提示无从
     // 触发也无从阻塞，故不传。
@@ -138,9 +143,9 @@ export const spawnCodeGraphIndexInit = (options: SpawnCodeGraphInitOptions): boo
       detached: !useShell,
       stdio: ["ignore", "pipe", "pipe"],
     });
-    setCodeGraphProgress(root, "queued");
+    setCodeGraphProgress(root, "queued", undefined, platform);
     const consume = (chunk: unknown): void => {
-      applyCodeGraphOutput(root, chunk);
+      applyCodeGraphOutput(root, chunk, platform);
     };
     child.stdout?.on("data", consume);
     child.stderr?.on("data", consume);
@@ -151,6 +156,7 @@ export const spawnCodeGraphIndexInit = (options: SpawnCodeGraphInitOptions): boo
         root,
         "failed",
         "CLI 启动失败（未安装？可 npm i -g @colbymchenry/codegraph）",
+        platform,
       );
       logWarning(
         `CodeGraph init 启动失败（CLI 未安装？可 npm i -g @colbymchenry/codegraph）：${root}`,
@@ -161,8 +167,8 @@ export const spawnCodeGraphIndexInit = (options: SpawnCodeGraphInitOptions): boo
       initInFlight.delete(key);
       // 没等到完成摘要就退出：按失败展示。释放 in-flight 的既有语义不变
       // （索引仍不存在时允许下一次回合补建）。
-      if (getCodeGraphIndexProgress(root)?.phase !== "complete") {
-        setCodeGraphProgress(root, "failed", "init 进程在完成前退出");
+      if (getCodeGraphIndexProgress(root, platform)?.phase !== "complete") {
+        setCodeGraphProgress(root, "failed", "init 进程在完成前退出", platform);
       }
     });
     child.unref();
@@ -170,7 +176,7 @@ export const spawnCodeGraphIndexInit = (options: SpawnCodeGraphInitOptions): boo
   } catch (cause) {
     initInFlight.delete(key);
     initFailedRoots.add(key);
-    setCodeGraphProgress(root, "failed", "init 无法启动");
+    setCodeGraphProgress(root, "failed", "init 无法启动", platform);
     logWarning(`CodeGraph init 无法启动：${root}`, cause);
     return false;
   }

@@ -40,7 +40,6 @@ import {
   type ProjectEntriesFailure,
   type ProjectFileFailure,
   type ProjectFileOperation,
-  ProjectListCanvasesError,
   ProjectListEntriesError,
   ProjectReadFileError,
   ProjectSearchContentsError,
@@ -90,6 +89,7 @@ import {
 import { getCodeGraphIndexProgress, setCodeGraphProgress } from "./codeGraph/codeGraphProgress.ts";
 import type { CodeGraphProjectIndexStatus } from "@codework/contracts";
 import { resolveServerBackgroundActivitySettings } from "@codework/shared/backgroundActivitySettings";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
@@ -3316,10 +3316,14 @@ const makeWsRpcLayer = (
                 })),
               );
               const codeIndexRoots = yield* CodeIndex.CodeIndexRootMap;
+              const codeIndexPlatform = yield* HostProcessPlatform;
               for (const project of shellSnapshot.projects) {
                 // 首扫进行中时 Layer 还在构建，等它完成会让整条状态 RPC
                 // 阻塞；进度表命中就直接报实时进度，绝不触碰 Layer。
-                const activeProgress = readActiveCodeIndexProgress(project.workspaceRoot);
+                const activeProgress = readActiveCodeIndexProgress(
+                  project.workspaceRoot,
+                  codeIndexPlatform,
+                );
                 if (activeProgress !== null) {
                   projects.push({
                     projectId: project.id,
@@ -3392,12 +3396,13 @@ const makeWsRpcLayer = (
                 })),
               );
               // CLI 版本用独立缓存探测（60s），避免设置页每次轮询都拉子进程。
-              const cliVersion = yield* Effect.promise(() => readCodeGraphCliVersion());
+              const platform = yield* HostProcessPlatform;
+              const cliVersion = yield* Effect.promise(() => readCodeGraphCliVersion({ platform }));
               const projects: CodeGraphProjectIndexStatus[] = [];
               for (const project of shellSnapshot.projects) {
                 // CLI 缺失或单项目读取失败都按未初始化降级，不拖垮整个状态卡。
                 const read = yield* Effect.promise(() =>
-                  readCodeGraphProjectStatus(project.workspaceRoot),
+                  readCodeGraphProjectStatus(project.workspaceRoot, { platform }),
                 ).pipe(Effect.option);
                 if (Option.isNone(read)) {
                   projects.push({
@@ -3418,7 +3423,7 @@ const makeWsRpcLayer = (
                   continue;
                 }
                 const status = read.value;
-                const progress = getCodeGraphIndexProgress(project.workspaceRoot);
+                const progress = getCodeGraphIndexProgress(project.workspaceRoot, platform);
                 projects.push({
                   projectId: project.id,
                   workspaceRoot: project.workspaceRoot,
@@ -3453,7 +3458,8 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.serverCodeGraphInstall,
             Effect.gen(function* () {
-              const state = yield* Effect.promise(() => installCodeGraphCli());
+              const platform = yield* HostProcessPlatform;
+              const state = yield* Effect.promise(() => installCodeGraphCli({ platform }));
               return {
                 message: state.message ?? (state.status === "succeeded" ? null : state.status),
                 succeeded: state.status === "succeeded",
@@ -3485,7 +3491,8 @@ const makeWsRpcLayer = (
               if (workspaceRoot === undefined) {
                 return { message: "项目不存在或已被移除。", succeeded: false };
               }
-              return yield* Effect.promise(() => syncCodeGraphIndex(workspaceRoot));
+              const platform = yield* HostProcessPlatform;
+              return yield* Effect.promise(() => syncCodeGraphIndex(workspaceRoot, { platform }));
             }),
             {
               "rpc.aggregate": "server",
@@ -3512,10 +3519,18 @@ const makeWsRpcLayer = (
               if (workspaceRoot === undefined) {
                 return { message: "项目不存在或已被移除。", succeeded: false };
               }
-              setCodeGraphProgress(workspaceRoot, "queued");
-              const result = yield* Effect.promise(() => reindexCodeGraph(workspaceRoot));
+              const platform = yield* HostProcessPlatform;
+              setCodeGraphProgress(workspaceRoot, "queued", undefined, platform);
+              const result = yield* Effect.promise(() =>
+                reindexCodeGraph(workspaceRoot, { platform }),
+              );
               if (!result.succeeded) {
-                setCodeGraphProgress(workspaceRoot, "failed", result.message ?? undefined);
+                setCodeGraphProgress(
+                  workspaceRoot,
+                  "failed",
+                  result.message ?? undefined,
+                  platform,
+                );
               }
               return result;
             }),

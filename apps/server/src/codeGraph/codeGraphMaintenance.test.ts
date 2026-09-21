@@ -15,11 +15,7 @@ import {
   type CodeGraphMaintSpawnImpl,
   type CodeGraphMaintSpawnedChild,
 } from "./codeGraphMaintenance.ts";
-import {
-  isCodeGraphInitInFlight,
-  spawnCodeGraphIndexInit,
-  type CodeGraphSpawnImpl,
-} from "./codeGraphIndex.ts";
+import { isCodeGraphInitInFlight, spawnCodeGraphIndexInit } from "./codeGraphIndex.ts";
 import { getCodeGraphIndexProgress, setCodeGraphProgress } from "./codeGraphProgress.ts";
 
 type FakeMaintChild = {
@@ -77,6 +73,8 @@ const maintSpawnScripted = (
 };
 
 const failing = maintSpawnThrowing(new Error("spawn codegraph ENOENT"));
+
+const TEST_PLATFORM: NodeJS.Platform = "win32";
 
 describe("parseCodeGraphStatusJson", () => {
   it("reads the full status payload", () => {
@@ -149,20 +147,28 @@ describe("readCodeGraphCliVersion", () => {
       return child.child;
     };
     // 第一次拉子进程探测；60s 缓存内的第二次轮询不再拉。
-    expect(await readCodeGraphCliVersion({ spawnImpl: spawnCounting })).toBe("1.5.0");
-    expect(await readCodeGraphCliVersion({ spawnImpl: spawnCounting })).toBe("1.5.0");
+    expect(
+      await readCodeGraphCliVersion({ platform: TEST_PLATFORM, spawnImpl: spawnCounting }),
+    ).toBe("1.5.0");
+    expect(
+      await readCodeGraphCliVersion({ platform: TEST_PLATFORM, spawnImpl: spawnCounting }),
+    ).toBe("1.5.0");
     expect(spawnCount).toBe(1);
     // 安装成功清掉版本缓存：下一次探测重新拉子进程（这里走 CLI 缺失路径得 null）。
     await installCodeGraphCli({
+      platform: TEST_PLATFORM,
       spawnImpl: maintSpawnScripted((child) => child.emit("close", 0)),
     });
-    expect(await readCodeGraphCliVersion({ spawnImpl: failing })).toBeNull();
+    expect(
+      await readCodeGraphCliVersion({ platform: TEST_PLATFORM, spawnImpl: failing }),
+    ).toBeNull();
   });
 });
 
 describe("installCodeGraphCli", () => {
   it("reports success on npm exit 0", async () => {
     const state = await installCodeGraphCli({
+      platform: TEST_PLATFORM,
       spawnImpl: maintSpawnScripted((child) => child.emit("close", 0)),
     });
     expect(state.status).toBe("succeeded");
@@ -171,6 +177,7 @@ describe("installCodeGraphCli", () => {
 
   it("reports failure with the exit code on npm exit 1", async () => {
     const state = await installCodeGraphCli({
+      platform: TEST_PLATFORM,
       spawnImpl: maintSpawnScripted((child) => child.emit("close", 1)),
     });
     expect(state.status).toBe("failed");
@@ -179,6 +186,7 @@ describe("installCodeGraphCli", () => {
 
   it("reports failure when npm itself is missing", async () => {
     const state = await installCodeGraphCli({
+      platform: TEST_PLATFORM,
       spawnImpl: maintSpawnThrowing(new Error("spawn npm ENOENT")),
     });
     expect(state.status).toBe("failed");
@@ -192,9 +200,9 @@ describe("installCodeGraphCli", () => {
       spawnCount += 1;
       return child.child;
     };
-    const first = installCodeGraphCli({ spawnImpl });
+    const first = installCodeGraphCli({ platform: TEST_PLATFORM, spawnImpl });
     // 第一条 install 的同步前缀已把状态推进到 running；第二条只登记不重复拉起。
-    const second = installCodeGraphCli({ spawnImpl });
+    const second = installCodeGraphCli({ platform: TEST_PLATFORM, spawnImpl });
     expect(spawnCount).toBe(1);
     expect(getCodeGraphInstallState().status).toBe("running");
     child.emit("close", 0);
@@ -210,13 +218,17 @@ describe("installCodeGraphCli", () => {
 
 describe("syncCodeGraphIndex", () => {
   it("fails with the manual-install hint when the CLI is missing", async () => {
-    const result = await syncCodeGraphIndex("Z:\\codegraph-sync-missing", { spawnImpl: failing });
+    const result = await syncCodeGraphIndex("Z:\\codegraph-sync-missing", {
+      platform: TEST_PLATFORM,
+      spawnImpl: failing,
+    });
     expect(result.succeeded).toBe(false);
     expect(result.message).toContain("npm i -g");
   });
 
   it("surfaces the first stderr line on nonzero exit", async () => {
     const result = await syncCodeGraphIndex("Z:\\codegraph-sync-fail", {
+      platform: TEST_PLATFORM,
       spawnImpl: maintSpawnScripted((child) => {
         child.emitStderr("index locked by another process\n");
         child.emit("close", 1);
@@ -228,6 +240,7 @@ describe("syncCodeGraphIndex", () => {
 
   it("returns the summary line on success", async () => {
     const result = await syncCodeGraphIndex("Z:\\codegraph-sync-ok", {
+      platform: TEST_PLATFORM,
       spawnImpl: maintSpawnScripted((child) => {
         child.emitStdout("Synced 3 changed files\n");
         child.emit("close", 0);
@@ -240,10 +253,10 @@ describe("syncCodeGraphIndex", () => {
 
 describe("reindexCodeGraph", () => {
   it("feeds phase output into the shared progress store and completes", async () => {
-    const root =
-      process.platform === "win32" ? "Z:\\codegraph-reindex-ok" : "/tmp/codegraph-reindex-ok";
-    setCodeGraphProgress(root, "queued");
+    const root = "Z:\\codegraph-reindex-ok";
+    setCodeGraphProgress(root, "queued", undefined, TEST_PLATFORM);
     const result = await reindexCodeGraph(root, {
+      platform: TEST_PLATFORM,
       spawnImpl: maintSpawnScripted((child) => {
         child.emitStdout("Scanning files...\nParsing code...\n");
         child.emitStdout("● 11 nodes, 9 edges in 300ms\n└ Done\n");
@@ -251,13 +264,14 @@ describe("reindexCodeGraph", () => {
       }),
     });
     expect(result.succeeded).toBe(true);
-    const progress = getCodeGraphIndexProgress(root);
+    const progress = getCodeGraphIndexProgress(root, TEST_PLATFORM);
     expect(progress?.phase).toBe("complete");
     expect(progress?.detail).toContain("11 nodes");
   });
 
   it("returns the failure reason on nonzero exit", async () => {
     const result = await reindexCodeGraph("Z:\\codegraph-reindex-fail", {
+      platform: TEST_PLATFORM,
       spawnImpl: maintSpawnScripted((child) => {
         child.emitStderr("no index to rebuild; run codegraph init first\n");
         child.emit("close", 1);
@@ -283,10 +297,10 @@ const maintSpawnRecordingArgs = (
 
 describe("reindexCodeGraph command choice", () => {
   it("runs `init` for a project without an existing index", async () => {
-    const root =
-      process.platform === "win32" ? "Z:\\codegraph-init-first" : "/tmp/codegraph-init-first";
+    const root = "Z:\\codegraph-init-first";
     const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
     const result = await reindexCodeGraph(root, {
+      platform: TEST_PLATFORM,
       spawnImpl: maintSpawnRecordingArgs((child) => {
         child.emitStdout("● 5 nodes, 3 edges\n└ Done\n");
         child.emit("close", 0);
@@ -303,6 +317,7 @@ describe("reindexCodeGraph command choice", () => {
       await NodeFSP.mkdir(NodePath.join(root, ".codegraph"));
       const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
       const result = await reindexCodeGraph(root, {
+        platform: TEST_PLATFORM,
         spawnImpl: maintSpawnRecordingArgs((child) => {
           child.emit("close", 0);
         }, calls),
@@ -315,18 +330,22 @@ describe("reindexCodeGraph command choice", () => {
   });
 
   it("does not spawn a second build while the background init is in flight", async () => {
-    const root =
-      process.platform === "win32" ? "Z:\\codegraph-init-inflight" : "/tmp/codegraph-init-inflight";
+    const root = "Z:\\codegraph-init-inflight";
     const hangingChild = {
       on: () => ({}),
       stdout: null,
       stderr: null,
       unref: () => {},
     };
-    spawnCodeGraphIndexInit({ root, spawnImpl: () => hangingChild as never });
-    expect(isCodeGraphInitInFlight(root)).toBe(true);
+    spawnCodeGraphIndexInit({
+      root,
+      platform: TEST_PLATFORM,
+      spawnImpl: () => hangingChild as never,
+    });
+    expect(isCodeGraphInitInFlight(root, TEST_PLATFORM)).toBe(true);
     const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
     const result = await reindexCodeGraph(root, {
+      platform: TEST_PLATFORM,
       spawnImpl: (command, args) => {
         calls.push({ command, args });
         return makeMaintChild().child;

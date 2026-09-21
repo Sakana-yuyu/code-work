@@ -17,9 +17,9 @@ export interface CodeIndexProgressEntry extends CodeIndexProgress {
 
 const progressByRoot = new Map<string, CodeIndexProgressEntry>();
 
-const normalizeRootKey = (root: string): string => {
+const normalizeRootKey = (root: string, platform: NodeJS.Platform): string => {
   const resolved = NodePath.resolve(root);
-  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  return platform === "win32" ? resolved.toLowerCase() : resolved;
 };
 
 /**
@@ -31,20 +31,24 @@ const PROGRESS_FRESH_MS = 120_000;
 export const setCodeIndexProgress = (
   root: string,
   progress: Omit<CodeIndexProgressEntry, "updatedAt">,
+  platform: NodeJS.Platform,
 ): void => {
-  progressByRoot.set(normalizeRootKey(root), {
+  progressByRoot.set(normalizeRootKey(root, platform), {
     ...progress,
     updatedAt: DateTime.toEpochMillis(DateTime.nowUnsafe()),
   });
 };
 
-export const clearCodeIndexProgress = (root: string): void => {
-  progressByRoot.delete(normalizeRootKey(root));
+export const clearCodeIndexProgress = (root: string, platform: NodeJS.Platform): void => {
+  progressByRoot.delete(normalizeRootKey(root, platform));
 };
 
 /** 未在推进（缺失或超时未刷新）时返回 null，状态行回落到常规 status。 */
-export const readActiveCodeIndexProgress = (root: string): CodeIndexProgress | null => {
-  const entry = progressByRoot.get(normalizeRootKey(root));
+export const readActiveCodeIndexProgress = (
+  root: string,
+  platform: NodeJS.Platform,
+): CodeIndexProgress | null => {
+  const entry = progressByRoot.get(normalizeRootKey(root, platform));
   if (entry === undefined) return null;
   if (DateTime.toEpochMillis(DateTime.nowUnsafe()) - entry.updatedAt > PROGRESS_FRESH_MS)
     return null;

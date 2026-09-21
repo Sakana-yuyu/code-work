@@ -68,29 +68,40 @@ const fakeSpawnImpl =
     return child.child;
   };
 
+const TEST_PLATFORM: NodeJS.Platform = "win32";
+
 const spawnOptions = (root: string, child: FakeChild): SpawnCodeGraphInitOptions => ({
   root,
   homeDir: NodeOS.tmpdir(),
+  platform: TEST_PLATFORM,
   spawnImpl: fakeSpawnImpl(child),
 });
 
 describe("unsafeCodeGraphIndexRootReason", () => {
   it("rejects drive roots and the home directory itself", () => {
     const homeDir = NodeOS.tmpdir();
-    expect(unsafeCodeGraphIndexRootReason({ root: homeDir, homeDir })).toBe("用户主目录");
+    expect(
+      unsafeCodeGraphIndexRootReason({ root: homeDir, homeDir, platform: TEST_PLATFORM }),
+    ).toBe("用户主目录");
     const driveRoot = NodePath.parse(NodePath.resolve(homeDir)).root;
-    expect(unsafeCodeGraphIndexRootReason({ root: driveRoot, homeDir })).toBe("盘符根目录");
+    expect(
+      unsafeCodeGraphIndexRootReason({ root: driveRoot, homeDir, platform: TEST_PLATFORM }),
+    ).toBe("盘符根目录");
   });
 
   it("accepts ordinary project directories, case-insensitively on Windows", () => {
     const homeDir = NodePath.join(NodeOS.tmpdir(), "projects");
     const projectDir = NodePath.join(homeDir, "demo");
-    expect(unsafeCodeGraphIndexRootReason({ root: projectDir, homeDir })).toBeNull();
-    if (process.platform === "win32") {
-      expect(
-        unsafeCodeGraphIndexRootReason({ root: projectDir.toUpperCase(), homeDir }),
-      ).toBeNull();
-    }
+    expect(
+      unsafeCodeGraphIndexRootReason({ root: projectDir, homeDir, platform: TEST_PLATFORM }),
+    ).toBeNull();
+    expect(
+      unsafeCodeGraphIndexRootReason({
+        root: projectDir.toUpperCase(),
+        homeDir,
+        platform: TEST_PLATFORM,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -141,18 +152,16 @@ describe("spawnCodeGraphIndexInit", () => {
       spawnCodeGraphIndexInit({
         root: NodeOS.tmpdir(),
         homeDir: NodeOS.tmpdir(),
+        platform: TEST_PLATFORM,
         spawnImpl,
       }),
     ).toBe(false);
 
     const indexed = makeTempRoot();
     NodeFS.mkdirSync(NodePath.join(indexed, ".codegraph"));
-    expect(
-      spawnCodeGraphIndexInit({
-        root: indexed,
-        spawnImpl,
-      }),
-    ).toBe(false);
+    expect(spawnCodeGraphIndexInit({ root: indexed, platform: TEST_PLATFORM, spawnImpl })).toBe(
+      false,
+    );
     expect(spawned).toHaveLength(0);
   });
 
@@ -187,18 +196,18 @@ describe("spawnCodeGraphIndexInit progress capture", () => {
   it("walks queued → phase lines → complete from init stdout", () => {
     const root = makeTempRoot();
     const child = makeFakeChild();
-    setCodeGraphProgress(root, "queued");
+    setCodeGraphProgress(root, "queued", undefined, TEST_PLATFORM);
     expect(spawnCodeGraphIndexInit(spawnOptions(root, child))).toBe(true);
 
     child.emitStdout("\x1b[36m◆  Scanning files...\x1b[39m\nParsing code...\n");
-    expect(getCodeGraphIndexProgress(root)?.phase).toBe("parsing");
+    expect(getCodeGraphIndexProgress(root, TEST_PLATFORM)?.phase).toBe("parsing");
 
     child.emitStderr("Resolving refs...\n");
-    expect(getCodeGraphIndexProgress(root)?.phase).toBe("resolving");
+    expect(getCodeGraphIndexProgress(root, TEST_PLATFORM)?.phase).toBe("resolving");
 
     child.emitStdout("● 13 nodes, 10 edges in 948ms\n└ Done\n");
     child.emit("close");
-    const progress = getCodeGraphIndexProgress(root);
+    const progress = getCodeGraphIndexProgress(root, TEST_PLATFORM);
     expect(progress?.phase).toBe("complete");
     expect(progress?.detail).toContain("13 nodes");
   });
@@ -210,7 +219,7 @@ describe("spawnCodeGraphIndexInit progress capture", () => {
 
     child.emitStdout("Scanning files...\n");
     child.emit("close");
-    const progress = getCodeGraphIndexProgress(root);
+    const progress = getCodeGraphIndexProgress(root, TEST_PLATFORM);
     expect(progress?.phase).toBe("failed");
     // 释放 in-flight 的既有语义不变：仍允许下一次回合补建。
     expect(spawnCodeGraphIndexInit(spawnOptions(root, makeFakeChild()))).toBe(true);
@@ -227,7 +236,7 @@ describe("spawnCodeGraphIndexInit progress capture", () => {
       }),
     ).toBe(true);
     child.emit("error", new Error("ENOENT"));
-    const progress = getCodeGraphIndexProgress(root);
+    const progress = getCodeGraphIndexProgress(root, TEST_PLATFORM);
     expect(progress?.phase).toBe("failed");
     expect(warnings).toHaveLength(1);
   });

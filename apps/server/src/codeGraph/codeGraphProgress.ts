@@ -22,7 +22,7 @@ const PHASE_LINE_MATCHERS: ReadonlyArray<{
   { phase: "linking", needle: "Linking dynamic dispatch" },
 ];
 
-const ANSI_ESCAPE = /\x1b\[[0-9;]*[A-Za-z]/gu;
+const ANSI_ESCAPE = /\u001b\[[0-9;]*[A-Za-z]/gu;
 
 const stripAnsi = (text: string): string => text.replace(ANSI_ESCAPE, "");
 
@@ -48,20 +48,23 @@ export const parseCodeGraphProgressLine = (
 
 const progressByRoot = new Map<string, CodeGraphIndexProgress>();
 
-const normalizeRootKey = (root: string): string => {
+const normalizeRootKey = (root: string, platform: NodeJS.Platform): string => {
   const resolved = NodePath.resolve(root);
-  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  return platform === "win32" ? resolved.toLowerCase() : resolved;
 };
 
-export const getCodeGraphIndexProgress = (root: string): CodeGraphIndexProgress | null =>
-  progressByRoot.get(normalizeRootKey(root)) ?? null;
+export const getCodeGraphIndexProgress = (
+  root: string,
+  platform: NodeJS.Platform,
+): CodeGraphIndexProgress | null => progressByRoot.get(normalizeRootKey(root, platform)) ?? null;
 
 export const setCodeGraphProgress = (
   root: string,
   phase: CodeGraphIndexPhase,
-  detail?: string,
+  detail: string | undefined,
+  platform: NodeJS.Platform,
 ): void => {
-  progressByRoot.set(normalizeRootKey(root), {
+  progressByRoot.set(normalizeRootKey(root, platform), {
     phase,
     detail: detail ?? null,
     updatedAt: DateTime.toEpochMillis(DateTime.nowUnsafe()),
@@ -69,7 +72,11 @@ export const setCodeGraphProgress = (
 };
 
 /** 把一段 CLI 输出应用到某个 root 的进度上；返回是否出现了完成摘要。 */
-export const applyCodeGraphOutput = (root: string, chunk: unknown): boolean => {
+export const applyCodeGraphOutput = (
+  root: string,
+  chunk: unknown,
+  platform: NodeJS.Platform,
+): boolean => {
   const text =
     typeof chunk === "string" ? chunk : Buffer.isBuffer(chunk) ? chunk.toString("utf8") : "";
   if (text.length === 0) return false;
@@ -81,17 +88,17 @@ export const applyCodeGraphOutput = (root: string, chunk: unknown): boolean => {
     if (parsed === null) continue;
     if (parsed.phase === "complete") {
       sawComplete = true;
-      const existing = progressByRoot.get(normalizeRootKey(root));
+      const existing = progressByRoot.get(normalizeRootKey(root, platform));
       const merged =
         parsed.detail === undefined
           ? (existing?.detail ?? null)
           : existing?.phase === "complete" && existing.detail !== null
             ? `${existing.detail}; ${parsed.detail}`
             : parsed.detail;
-      setCodeGraphProgress(root, "complete", merged ?? undefined);
+      setCodeGraphProgress(root, "complete", merged ?? undefined, platform);
       continue;
     }
-    setCodeGraphProgress(root, parsed.phase);
+    setCodeGraphProgress(root, parsed.phase, undefined, platform);
   }
   return sawComplete;
 };

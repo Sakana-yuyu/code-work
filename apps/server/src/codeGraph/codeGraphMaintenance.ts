@@ -83,7 +83,7 @@ const decode = (chunk: unknown): string =>
 const collect = (stream: { on(event: "data", listener: (chunk: unknown) => void): unknown }) => {
   let text = "";
   return {
-    promise: new Promise<string>((resolve) => {
+    promise: new Promise<string>(() => {
       stream.on("data", (chunk: unknown) => {
         text += decode(chunk);
         if (text.length > OUTPUT_MAX_BYTES) {
@@ -98,12 +98,13 @@ const collect = (stream: { on(event: "data", listener: (chunk: unknown) => void)
 
 const runCodeGraphCommand = async (input: {
   readonly args: ReadonlyArray<string>;
+  readonly platform: NodeJS.Platform;
   readonly cwd?: string;
   readonly timeoutMs: number;
   readonly onOutput?: (chunk: unknown) => void;
   readonly spawnImpl?: CodeGraphMaintSpawnImpl;
 }): Promise<CodeGraphCommandOutcome> => {
-  const useShell = process.platform === "win32";
+  const useShell = input.platform === "win32";
   const args = input.args.map((arg) => (useShell ? `"${arg}"` : arg));
   const spawnImpl = input.spawnImpl ?? defaultSpawn;
   return await new Promise<CodeGraphCommandOutcome>((resolve) => {
@@ -157,6 +158,8 @@ const runCodeGraphCommand = async (input: {
 };
 
 export interface CodeGraphMaintenanceOptions {
+  /** 宿主平台：Effect 侧 yield HostProcessPlatform，测试显式给定。 */
+  readonly platform: NodeJS.Platform;
   readonly spawnImpl?: CodeGraphMaintSpawnImpl;
 }
 
@@ -166,7 +169,7 @@ const CLI_MISSING_HINT = "未找到 codegraph CLI，可 npm i -g @colbymchenry/c
 let versionCache: { readonly version: string | null; readonly expiresAt: number } | null = null;
 
 export const readCodeGraphCliVersion = async (
-  options?: CodeGraphMaintenanceOptions,
+  options: CodeGraphMaintenanceOptions,
 ): Promise<string | null> => {
   const now = DateTime.toEpochMillis(DateTime.nowUnsafe());
   if (versionCache !== null && versionCache.expiresAt > now) {
@@ -174,8 +177,9 @@ export const readCodeGraphCliVersion = async (
   }
   const outcome = await runCodeGraphCommand({
     args: ["--version"],
+    platform: options.platform,
     timeoutMs: VERSION_TIMEOUT_MS,
-    ...(options === undefined ? {} : { spawnImpl: options.spawnImpl }),
+    ...(options.spawnImpl === undefined ? {} : { spawnImpl: options.spawnImpl }),
   });
   const version = outcome.spawnFailed || outcome.code !== 0 ? null : firstLine(outcome.stdout);
   versionCache = { version, expiresAt: now + 60_000 };
@@ -192,14 +196,14 @@ const firstLine = (text: string): string | null => {
  * 返回并提示手动安装。同锁在飞时直接返回当前状态。
  */
 export const installCodeGraphCli = async (
-  options?: CodeGraphMaintenanceOptions,
+  options: CodeGraphMaintenanceOptions,
 ): Promise<CodeGraphInstallState> => {
   if (installState.status === "queued" || installState.status === "running") {
     return installState;
   }
   setInstallState("queued");
-  const useShell = process.platform === "win32";
-  const spawnImpl = options?.spawnImpl;
+  const useShell = options.platform === "win32";
+  const spawnImpl = options.spawnImpl;
   let child: ReturnType<CodeGraphMaintSpawnImpl> | null = null;
   try {
     child = (spawnImpl ?? defaultSpawn)(
@@ -321,13 +325,14 @@ export const parseCodeGraphStatusJson = (text: string): CodeGraphProjectStatusRe
 
 export const readCodeGraphProjectStatus = async (
   workspaceRoot: string,
-  options?: CodeGraphMaintenanceOptions,
+  options: CodeGraphMaintenanceOptions,
 ): Promise<CodeGraphProjectStatusRead> => {
   const outcome = await runCodeGraphCommand({
     args: ["status", "--json"],
+    platform: options.platform,
     cwd: workspaceRoot,
     timeoutMs: STATUS_TIMEOUT_MS,
-    ...(options === undefined ? {} : { spawnImpl: options.spawnImpl }),
+    ...(options.spawnImpl === undefined ? {} : { spawnImpl: options.spawnImpl }),
   });
   if (outcome.spawnFailed || outcome.code !== 0) {
     // CLI 缺失或 status 失败：仅反映 CLI 版本信息缺失，项目按未初始化降级。
@@ -339,13 +344,14 @@ export const readCodeGraphProjectStatus = async (
 /** `codegraph sync`：把自上次索引以来的变更并入索引；返回结果摘要。 */
 export const syncCodeGraphIndex = async (
   workspaceRoot: string,
-  options?: CodeGraphMaintenanceOptions,
+  options: CodeGraphMaintenanceOptions,
 ): Promise<{ readonly succeeded: boolean; readonly message: string | null }> => {
   const outcome = await runCodeGraphCommand({
     args: ["sync"],
+    platform: options.platform,
     cwd: workspaceRoot,
     timeoutMs: SYNC_TIMEOUT_MS,
-    ...(options === undefined ? {} : { spawnImpl: options.spawnImpl }),
+    ...(options.spawnImpl === undefined ? {} : { spawnImpl: options.spawnImpl }),
   });
   if (outcome.spawnFailed) {
     return { succeeded: false, message: CLI_MISSING_HINT };
@@ -367,14 +373,15 @@ const runFullIndexBuild = async (
   workspaceRoot: string,
   commandLabel: string,
   args: ReadonlyArray<string>,
-  options?: CodeGraphMaintenanceOptions,
+  options: CodeGraphMaintenanceOptions,
 ): Promise<{ readonly succeeded: boolean; readonly message: string | null }> => {
   const outcome = await runCodeGraphCommand({
     args,
+    platform: options.platform,
     cwd: workspaceRoot,
     timeoutMs: REINDEX_TIMEOUT_MS,
-    onOutput: (chunk) => applyCodeGraphOutput(workspaceRoot, chunk),
-    ...(options === undefined ? {} : { spawnImpl: options.spawnImpl }),
+    onOutput: (chunk) => applyCodeGraphOutput(workspaceRoot, chunk, options.platform),
+    ...(options.spawnImpl === undefined ? {} : { spawnImpl: options.spawnImpl }),
   });
   if (outcome.spawnFailed) {
     return { succeeded: false, message: CLI_MISSING_HINT };
@@ -386,8 +393,8 @@ const runFullIndexBuild = async (
     };
   }
   // 输出解析已经落了 complete；输出缺失时在这里兜底。
-  if (getCodeGraphIndexProgress(workspaceRoot)?.phase !== "complete") {
-    setCodeGraphProgress(workspaceRoot, "complete");
+  if (getCodeGraphIndexProgress(workspaceRoot, options.platform)?.phase !== "complete") {
+    setCodeGraphProgress(workspaceRoot, "complete", undefined, options.platform);
   }
   return { succeeded: true, message: firstLine(outcome.stdout) };
 };
@@ -401,10 +408,10 @@ const runFullIndexBuild = async (
  */
 export const reindexCodeGraph = async (
   workspaceRoot: string,
-  options?: CodeGraphMaintenanceOptions,
+  options: CodeGraphMaintenanceOptions,
 ): Promise<{ readonly succeeded: boolean; readonly message: string | null }> => {
   if (!hasCodeGraphIndex(workspaceRoot)) {
-    if (isCodeGraphInitInFlight(workspaceRoot)) {
+    if (isCodeGraphInitInFlight(workspaceRoot, options.platform)) {
       return { succeeded: true, message: "索引正在后台建立中。" };
     }
     return runFullIndexBuild(workspaceRoot, "init", ["init", workspaceRoot], options);

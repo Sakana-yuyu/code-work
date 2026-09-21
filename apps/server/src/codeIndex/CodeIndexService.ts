@@ -14,6 +14,7 @@
  */
 import { FileFinder } from "@ff-labs/fff-node";
 import { isCodeworkCanvasArtifactPath } from "@codework/shared/path";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as Context from "effect/Context";
@@ -159,6 +160,7 @@ export const makeCodeIndexRoot = Effect.fn("makeCodeIndexRoot")(function* (
 > {
   const fs = yield* FileSystem.FileSystem;
   const store = yield* CodeIndexStore;
+  const hostPlatform = yield* HostProcessPlatform;
   const normalizedRoot = NodePath.resolve(root);
   const rootKey = normalizedRoot;
 
@@ -234,22 +236,30 @@ export const makeCodeIndexRoot = Effect.fn("makeCodeIndexRoot")(function* (
     if (queued.size === 0) return;
     // 进度写在模块级表（不是本 layer 的状态里）：首扫发生在 Layer 构建
     // 期间，状态 RPC 必须能不经构建就读到实时进度。
-    setCodeIndexProgress(rootKey, {
-      phase: "extracting",
-      processedFiles: 0,
-      totalFiles: queued.size,
-    });
+    setCodeIndexProgress(
+      rootKey,
+      {
+        phase: "extracting",
+        processedFiles: 0,
+        totalFiles: queued.size,
+      },
+      hostPlatform,
+    );
     let processed = 0;
     for (const relativePath of queued) {
       yield* processFile(relativePath);
       processed += 1;
-      setCodeIndexProgress(rootKey, {
-        phase: "extracting",
-        processedFiles: processed,
-        totalFiles: queued.size,
-      });
+      setCodeIndexProgress(
+        rootKey,
+        {
+          phase: "extracting",
+          processedFiles: processed,
+          totalFiles: queued.size,
+        },
+        hostPlatform,
+      );
     }
-    clearCodeIndexProgress(rootKey);
+    clearCodeIndexProgress(rootKey, hostPlatform);
   });
 
   /**
@@ -315,7 +325,11 @@ export const makeCodeIndexRoot = Effect.fn("makeCodeIndexRoot")(function* (
   const reconcile = Effect.fn("CodeIndexRoot.reconcile")(function* () {
     // 扫描/统计阶段还不知道总量；失败时清掉残余条目，不让状态行误读成
     // 永久索引中（末尾的 flushPending 正常完成时也会清）。
-    setCodeIndexProgress(rootKey, { phase: "scanning", processedFiles: 0, totalFiles: null });
+    setCodeIndexProgress(
+      rootKey,
+      { phase: "scanning", processedFiles: 0, totalFiles: null },
+      hostPlatform,
+    );
     const pass = yield* Effect.exit(
       Effect.gen(function* () {
         yield* refreshFinder();
@@ -361,7 +375,7 @@ export const makeCodeIndexRoot = Effect.fn("makeCodeIndexRoot")(function* (
       }).pipe(Effect.withSpan("CodeIndexRoot.reconcilePass")),
     );
     if (Exit.isFailure(pass)) {
-      clearCodeIndexProgress(rootKey);
+      clearCodeIndexProgress(rootKey, hostPlatform);
       return yield* Effect.failCause(pass.cause);
     }
   });
