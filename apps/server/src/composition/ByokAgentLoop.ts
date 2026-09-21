@@ -190,6 +190,7 @@ const CONCURRENT_READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   "git.diff",
   "preview_status",
   "preview_snapshot",
+  "skills.load",
 ]);
 /** 只读批量的并发上限，避免同一批读把文件系统或上游打满。 */
 const READ_ONLY_TOOL_CONCURRENCY = 4;

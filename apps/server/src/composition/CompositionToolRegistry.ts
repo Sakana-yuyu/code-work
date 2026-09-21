@@ -365,6 +365,17 @@ const descriptors = [
     approval: "never",
     source: "t3",
   },
+  {
+    // 技能按名称加载：只读且按名解析（不接受任意路径），用户级目录下的
+    // SKILL.md 也借此进入模型可读范围。BYOK 回合与组合任务共用同一实现。
+    capabilityId: "t3.skills.load",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: true, execute: false, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
 ] satisfies ReadonlyArray<CompositionCapabilityDescriptor>;
 
 const agentToolSignatures: ReadonlyMap<
@@ -658,6 +669,20 @@ const agentToolSignatures: ReadonlyMap<
           arguments: { type: "object", description: "操作参数。" },
         },
         required: ["sessionId", "handshakeId", "operation", "arguments"],
+      },
+    },
+  ],
+  [
+    "skills.load",
+    {
+      description:
+        "按名称加载一个技能的完整 SKILL.md 指引（用户级与项目级 .agents/.claude/.codex/skills 目录）。用户消息中的 $名称 引用已在发送前展开；需要主动启用某个已知技能时使用本工具。",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "技能名称，即 SKILL.md frontmatter 的 name。" },
+        },
+        required: ["name"],
       },
     },
   ],

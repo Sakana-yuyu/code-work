@@ -27,8 +27,10 @@ import {
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -53,6 +55,7 @@ import { PROVIDER_AGENT_PREFIX } from "./CompositionProviderAgentDriverRegistry.
 import * as CompositionToolInvocationCoordinator from "./CompositionToolInvocationCoordinator.ts";
 import * as CompositionToolInvocationStartupRecovery from "./CompositionToolInvocationStartupRecovery.ts";
 import { writeCanvasArtifact } from "../canvas/CanvasArtifact.ts";
+import { discoverByokSkills, loadSkillByName } from "../skillDiscovery.ts";
 import type {
   CompositionToolInvocation,
   CompositionToolInvocationClaimResult,
@@ -96,7 +99,13 @@ const WorkspaceSearchContentsArguments = Schema.Struct({
   wholeWord: Schema.optional(Schema.Boolean),
   useRegex: Schema.optional(Schema.Boolean),
 });
+
 type WorkspaceSearchContentsArguments = typeof WorkspaceSearchContentsArguments.Type;
+
+const SkillsLoadArguments = Schema.Struct({
+  name: TrimmedNonEmptyString,
+});
+const decodeSkillsLoadArguments = Schema.decodeUnknownEffect(SkillsLoadArguments);
 
 /** 模型给出的 limit 一律夹紧到契约上限内，超界不再单独报错。 */
 const boundedPositiveInt = (value: number | undefined, fallback: number, max: number): number => {
@@ -327,9 +336,23 @@ const make = Effect.gen(function* () {
   // codegraph.explore 逐次拉起上游 CLI 子进程；测试环境可能没有 runner，
   // 此时工具降级为返回不可用指引而不是让整层构造失败。
   const processRunner = yield* Effect.serviceOption(ProcessRunner.ProcessRunner);
+  const fileSystem = yield* Effect.serviceOption(FileSystem.FileSystem);
+  const path = yield* Effect.serviceOption(Path.Path);
   const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
   const completed = new Set<string>();
+  // 工具 handler 的 execute 签名要求 R=never；技能发现需要真实文件系统，
+  // 用 make 阶段拿到的服务实例就地补齐（缺失时 skills.load 返回不可用观察）。
+  const withFileSystem = <A, E>(
+    effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>,
+  ): Effect.Effect<Option.Option<A>, E> =>
+    Option.isSome(fileSystem) && Option.isSome(path)
+      ? effect.pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem.value),
+          Effect.provideService(Path.Path, path.value),
+          Effect.asSome,
+        )
+      : Effect.succeed(Option.none<A>());
 
   const handlers = new Map<string, ToolHandler>([
     [
@@ -440,6 +463,38 @@ const make = Effect.gen(function* () {
               wholeWord: args.wholeWord ?? false,
               useRegex: args.useRegex ?? false,
             });
+          }),
+      },
+    ],
+    [
+      // 技能按名解析（用户级 + 项目级技能目录），不接受任意路径，因此可以
+      // 安全地把用户级 SKILL.md 读进上下文；未命中时返回可用名清单供模型自纠错。
+      "skills.load",
+      {
+        operation: "read",
+        execute: (input) =>
+          Effect.gen(function* () {
+            const args = yield* decodeSkillsLoadArguments(input.arguments).pipe(
+              Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+            );
+            const skill = Option.getOrUndefined(
+              yield* withFileSystem(loadSkillByName(args.name, input.workspaceRoot)),
+            );
+            if (skill === undefined) {
+              const available = Option.getOrElse(
+                yield* withFileSystem(discoverByokSkills(input.workspaceRoot)),
+                (): ReadonlyArray<never> => [],
+              ).map((candidate) => candidate.name);
+              return {
+                ok: false as const,
+                error: {
+                  code: "skill_not_found",
+                  detail: `Skill '${args.name}' is not available.`,
+                  available,
+                },
+              };
+            }
+            return { ok: true as const, ...skill };
           }),
       },
     ],

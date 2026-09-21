@@ -8,7 +8,12 @@
  *
  * @module provider/Drivers/ByokDriver
  */
-import { ByokSettings, ProviderDriverKind, type ServerProvider } from "@codework/contracts";
+import {
+  ByokSettings,
+  ProviderDriverKind,
+  type ServerProvider,
+  type ServerProviderSkill,
+} from "@codework/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -19,6 +24,8 @@ import { HttpClient } from "effect/unstable/http";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { discoverByokSkills } from "../../skillDiscovery.ts";
+import { CompositionMcpToolRegistry } from "../../composition/CompositionMcpToolRegistry.ts";
 import { makeByokTextGeneration } from "../../textGeneration/ByokTextGeneration.ts";
 import { makeByokModelDriver } from "../../composition/OpenAiByokModelDriver.ts";
 import { CompositionAgentServiceError } from "../../composition/CompositionAgentService.ts";
@@ -98,7 +105,18 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
     Effect.gen(function* () {
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService;
+      const serverConfig = yield* ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
       const toolBroker = yield* Effect.serviceOption(ToolBroker.ToolBroker);
+      const mcpToolRegistry = yield* Effect.serviceOption(CompositionMcpToolRegistry);
+      // BYOK 是内置引擎、没有宿主 CLI 帮忙解析技能目录：快照列出用户级 +
+      // 服务器 cwd 项目级技能，composer 的 $ 与 / 技能菜单由此取数。
+      const discoverSkills = discoverByokSkills(serverConfig.cwd).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+        Effect.orElseSucceed((): ReadonlyArray<ServerProviderSkill> => []),
+      );
       const processEnv = mergeProviderInstanceEnvironment(environment);
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
@@ -118,14 +136,16 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
       const adapter = yield* makeByokAdapter(effectiveConfig, {
         instanceId,
         ...(toolBroker._tag === "Some" ? { toolBroker: toolBroker.value } : {}),
+        ...(mcpToolRegistry._tag === "Some" ? { mcpToolRegistry: mcpToolRegistry.value } : {}),
         getServerSettings: serverSettings.getSettings,
       });
       const textGeneration = yield* makeByokTextGeneration(effectiveConfig);
 
-      const checkProvider = checkByokProviderStatus(effectiveConfig).pipe(
-        Effect.map(stampIdentity),
-        Effect.provideService(HttpClient.HttpClient, httpClient),
-      );
+      const checkProvider = Effect.zipWith(
+        checkByokProviderStatus(effectiveConfig),
+        discoverSkills,
+        (draft, skills) => ({ ...draft, skills: [...skills] }),
+      ).pipe(Effect.map(stampIdentity), Effect.provideService(HttpClient.HttpClient, httpClient));
 
       const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, serverSettings);
       const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<ByokSettings>>({
@@ -134,7 +154,11 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
         streamSettings: snapshotSettings.streamSettings,
         haveSettingsChanged: haveProviderSnapshotSettingsChanged,
         initialSnapshot: (settings) =>
-          buildInitialByokProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
+          Effect.zipWith(
+            buildInitialByokProviderSnapshot(settings.provider),
+            discoverSkills,
+            (draft, skills) => ({ ...draft, skills: [...skills] }),
+          ).pipe(Effect.map(stampIdentity)),
         checkProvider,
       }).pipe(
         Effect.mapError(

@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { HttpBody, HttpClient, HttpClientResponse } from "effect/unstable/http";
@@ -207,6 +208,121 @@ describe("ByokAdapter", () => {
       );
     });
   }
+
+  it.effect("$技能引用展开为技能内容，MCP 工具并入模型工具清单", () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const responses = [
+      sse(
+        { choices: [{ delta: { content: "按技能执行。" }, finish_reason: null }] },
+        {
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
+        },
+      ),
+    ];
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        if (request.body instanceof HttpBody.Uint8Array) {
+          requests.push(decodeJson(decoder.decode(request.body.body)) as Record<string, unknown>);
+        }
+        const body = responses.shift();
+        if (body === undefined) throw new Error("收到未预期的 BYOK 请求");
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(body, { headers: { "content-type": "text/event-stream" } }),
+        );
+      }),
+    );
+    const toolBroker = ToolBroker.ToolBroker.of({
+      invoke: () => Effect.die("本测试不执行工具"),
+      cancel: () => Effect.void,
+    });
+    const mcpToolRegistry = {
+      list: () =>
+        Effect.succeed([
+          {
+            canonicalToolName: "mcp.demo.echo",
+            serverId: "demo",
+            toolName: "echo",
+            description: "Echo back the input text.",
+            inputSchema: { type: "object", properties: { text: { type: "string" } } },
+            operation: "read" as const,
+            trusted: true,
+            status: "available" as const,
+            capabilityDescriptor: {
+              capabilityId: "t3.mcp.demo.echo",
+              kind: "mcp" as const,
+              version: "1",
+              status: "available" as const,
+              grants: { read: true, execute: false, mutate: false },
+              approval: "never" as const,
+              source: "t3" as const,
+            },
+          },
+        ]),
+    };
+
+    return Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix: "byok-skills-test-" });
+      const skillDir = path.join(cwd, ".agents", "skills", "review-checklist");
+      yield* fileSystem.makeDirectory(skillDir, { recursive: true });
+      yield* fileSystem.writeFileString(
+        path.join(skillDir, "SKILL.md"),
+        "---\nname: review-checklist\ndescription: 代码评审清单\n---\n按清单逐项检查。\n",
+      );
+
+      const adapter = yield* makeByokAdapter(settings, {
+        instanceId,
+        toolBroker,
+        mcpToolRegistry,
+      });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* adapter.startSession({
+        threadId,
+        cwd,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      yield* adapter.sendTurn({
+        threadId,
+        input: "请用 $review-checklist 审查当前项目",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      yield* Fiber.join(eventsFiber);
+
+      expect(requests).toHaveLength(1);
+      const messages = requests[0]!.messages as Array<{ role: string; content: string }>;
+      const systemMessage = messages.find((message) => message.role === "system");
+      expect(systemMessage?.content).toContain("review-checklist");
+      expect(systemMessage?.content).toContain("mcp.<serverId>.<tool>");
+      const userMessage = messages.find(
+        (message) => message.role === "user" && message.content.includes("review-checklist"),
+      );
+      expect(userMessage?.content).toContain("请用 $review-checklist 审查当前项目");
+      expect(userMessage?.content).toContain("按清单逐项检查");
+      expect(requests[0]).toMatchObject({
+        tools: expect.arrayContaining([
+          expect.objectContaining({
+            function: expect.objectContaining({ name: "mcp_demo_echo" }),
+          }),
+          expect.objectContaining({
+            function: expect.objectContaining({ name: "skills_load" }),
+          }),
+        ]),
+      });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(process.cwd(), { prefix: "byok-adapter-test-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(NodeServices.layer),
+    );
+  });
 
   it.effect("回合运行中的引导并入当前回合：不新开回合，下一轮请求读到引导", () => {
     const requests: Array<Record<string, unknown>> = [];

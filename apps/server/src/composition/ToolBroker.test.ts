@@ -690,6 +690,7 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
           "t3.canvas.create",
           "t3.delegate_task",
           "t3.codegraph.explore",
+          "t3.skills.load",
           "t3.mcp.preview",
           "t3.runtime.provider",
         ]);
@@ -808,6 +809,45 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
           capabilityGrantIds: ["t3.workspace.search_files"],
         });
         expect(rejected).toMatchObject({ status: "failed", errorCode: "tool_arguments_invalid" });
+      }),
+    );
+
+    it.effect("skills.load 按名读取项目技能，未命中返回可用清单", () =>
+      Effect.gen(function* () {
+        const broker = yield* ToolBroker.ToolBroker;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(
+          cwd,
+          ".agents/skills/review-checklist/SKILL.md",
+          "---\nname: review-checklist\ndescription: 代码评审清单\n---\n按清单逐项检查。\n",
+        );
+
+        const loaded = yield* broker.invoke({
+          ...baseInput(cwd),
+          canonicalToolName: "skills.load",
+          arguments: { name: "review-checklist" },
+          idempotencyKey: "idempotency-skills-1",
+          capabilityGrantIds: ["t3.skills.load"],
+        });
+        expect(loaded.status).toBe("succeeded");
+        expect(loaded.result).toMatchObject({ ok: true, name: "review-checklist" });
+        expect((loaded.result as { contents: string }).contents).toContain("按清单逐项检查");
+
+        const missing = yield* broker.invoke({
+          ...baseInput(cwd),
+          canonicalToolName: "skills.load",
+          arguments: { name: "missing-skill" },
+          idempotencyKey: "idempotency-skills-2",
+          capabilityGrantIds: ["t3.skills.load"],
+        });
+        expect(missing.status).toBe("succeeded");
+        expect(missing.result).toMatchObject({
+          ok: false,
+          error: {
+            code: "skill_not_found",
+            available: expect.arrayContaining(["review-checklist"]),
+          },
+        });
       }),
     );
 

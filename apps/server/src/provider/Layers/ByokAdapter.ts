@@ -62,7 +62,13 @@ import {
   hasCodeGraphIndex,
   spawnCodeGraphIndexInit,
 } from "../../codeGraph/codeGraphIndex.ts";
-import { runByokAgentLoop, type ByokAgentToolCall } from "../../composition/ByokAgentLoop.ts";
+import {
+  runByokAgentLoop,
+  type ByokAgentTool,
+  type ByokAgentToolCall,
+} from "../../composition/ByokAgentLoop.ts";
+import type { CompositionMcpToolRegistryShape } from "../../composition/CompositionMcpToolRegistry.ts";
+import { discoverByokSkills } from "../../skillDiscovery.ts";
 import { makeByokModelDriver } from "../../composition/OpenAiByokModelDriver.ts";
 import { appendByokUsageRecord } from "../../usage/byokUsageLog.ts";
 import {
@@ -224,6 +230,8 @@ interface ByokSessionContext {
 export interface ByokAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
   readonly toolBroker?: ToolBroker["Service"];
+  /** 已连接 MCP Server 的工具注册表；缺省时 BYOK 回合只暴露内置工具。 */
+  readonly mcpToolRegistry?: Pick<CompositionMcpToolRegistryShape, "list">;
   /** 读取全局 ServerSettings（当前只取 codeGraphEnabled）；缺省或失败视为关闭。 */
   readonly getServerSettings?: Effect.Effect<ServerSettings, ServerSettingsError>;
 }
@@ -242,6 +250,8 @@ const BYOK_PROJECT_TOOL_NAMES: ReadonlySet<string> = new Set([
   "ssh.status",
   "ssh.list_files",
   "ssh.read_file",
+  // 技能加载只读且按名解析，所有模式可用。
+  "skills.load",
 ]);
 const BYOK_FULL_ACCESS_TOOL_NAMES: ReadonlySet<string> = new Set([
   ...BYOK_PROJECT_TOOL_NAMES,
@@ -277,6 +287,38 @@ const renderAgentConversation = (messages: ReadonlyArray<ByokChatMessage>): stri
  */
 const renderByokSteerText = (text: string): string =>
   `[用户引导] ${text}\n（这是回合运行中追加的引导：请读取后结合当前进展自行判断，必要时调整后续方向；不要中断或重做已完成的工作，也不要把本条当作重新开始的任务。）`;
+
+/**
+ * 用户消息里的 `$名称` 是技能引用（composer 的 $/技能菜单插入此格式）。
+ * BYOK 没有宿主 CLI 替我们展开引用：在入历史前把匹配到的 SKILL.md 全文
+ * 附加到消息尾部，让模型直接拿到技能指引。未知名称保持原文不展开。
+ */
+const SKILL_REFERENCE_PATTERN = /\$([A-Za-z0-9][\w-]*)/g;
+
+const expandSkillReferences = Effect.fn("byokExpandSkillReferences")(function* (
+  text: string,
+  cwd: string,
+): Effect.fn.Return<string, never, FileSystem.FileSystem | Path.Path> {
+  const referenced = new Set<string>();
+  for (const match of text.matchAll(SKILL_REFERENCE_PATTERN)) {
+    if (match[1] !== undefined) referenced.add(match[1]);
+  }
+  if (referenced.size === 0) return text;
+  const skills = yield* discoverByokSkills(cwd);
+  const fileSystem = yield* FileSystem.FileSystem;
+  const blocks: string[] = [];
+  for (const name of referenced) {
+    const skill = skills.find((candidate) => candidate.name === name);
+    if (skill === undefined) continue;
+    const contents = yield* fileSystem
+      .readFileString(skill.path)
+      .pipe(Effect.orElseSucceed(() => undefined));
+    if (contents === undefined) continue;
+    blocks.push(`<skill name="${skill.name}" path="${skill.path}">\n${contents}\n</skill>`);
+  }
+  if (blocks.length === 0) return text;
+  return `${text}\n\n用户显式引用了以下技能，按其指引执行：\n\n${blocks.join("\n\n")}`;
+});
 
 /** Rough char cost of a message, estimating inline images at a fixed budget. */
 const messageHistoryChars = (message: ByokChatMessage): number =>
@@ -830,6 +872,25 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       let projectTools = availableProjectTools.filter(
         (tool) => runtimeMode === "full-access" || isByokProjectTool(tool.canonicalToolName),
       );
+      // 已连接 MCP Server 的工具按 canonical 名并入本轮清单：读类工具各模式
+      // 可用，写/执行类与本地写入工具同级、仅 full-access 放行。
+      const mcpDescriptors =
+        options?.mcpToolRegistry === undefined
+          ? []
+          : yield* options.mcpToolRegistry.list().pipe(Effect.orElseSucceed(() => []));
+      const mcpTools: ByokAgentTool[] = mcpDescriptors
+        .filter(
+          (descriptor) =>
+            descriptor.status === "available" &&
+            (runtimeMode === "full-access" || descriptor.operation === "read"),
+        )
+        .map((descriptor) => ({
+          canonicalToolName: descriptor.canonicalToolName,
+          description: descriptor.description,
+          parameters: descriptor.inputSchema,
+        }));
+      projectTools = [...projectTools, ...mcpTools];
+      const discoveredSkills = yield* discoverByokSkills(ctx.cwd);
       const effectiveMessages = yield* applyVisionDelegation(ctx, adapter, messages);
       // 工具时间线行的发射器提出来共用：agent loop 的每个工具调用与文本抢救
       // 改道的 canvas.create 都走同一对 item.started/item.completed。
@@ -934,6 +995,21 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         // 承载，而不是把结论倒进 markdown 表格或长代码块。
         "当产出独立的分析型交付物（审计、评审、代码地图、量化分析、数据密集结论、对比、时间线）时，优先用 canvas.create 工具承载并随任务推进复用相同 canvasId 更新它，而不是写大段 markdown 表格或长代码块；定向实现、调试等明确交付物不适用。",
         "画布只能通过调用 canvas.create 工具创建：把画布 JSON 写进回复正文或代码块不会生成画布面板。",
+        ...(discoveredSkills.length === 0
+          ? []
+          : [
+              `当前可用技能（用户消息中的 $名称 引用已在发送前展开为该技能的完整内容；需要主动使用某个技能时调用 skills.load 按名称加载其 SKILL.md 指引）：\n${discoveredSkills
+                .map(
+                  (skill) =>
+                    `- ${skill.name}${skill.description === undefined ? "" : ` — ${skill.description}`}`,
+                )
+                .join("\n")}`,
+            ]),
+        ...(mcpTools.length === 0
+          ? []
+          : [
+              "以 mcp.<serverId>.<tool> 命名的工具来自用户在设置中连接的 MCP Server，可与内置工具一样直接调用。",
+            ]),
         ...(codeGraphGuidance === undefined ? [] : [codeGraphGuidance]),
       ]
         .filter((part) => part.trim().length > 0)
@@ -1118,6 +1194,13 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       const ctx = yield* requireSession(input.threadId);
       const text = input.input?.trim() ?? "";
       const attachments = input.attachments ?? [];
+      // $技能名 引用在发送前展开为 SKILL.md 全文；模型读到的文本与历史都含
+      // 展开内容，时间线上的用户消息保持原文。adapter 接口方法要求 R=never，
+      // 用构造期拿到的文件系统实例就地提供。
+      const promptText = yield* expandSkillReferences(text, ctx.cwd).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+      );
       if (!text && attachments.length === 0) {
         return yield* new ProviderAdapterValidationError({
           provider: PROVIDER,
@@ -1149,7 +1232,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             issue: "Steering does not support attachments; resend without images.",
           });
         }
-        const steerText = renderByokSteerText(text);
+        const steerText = renderByokSteerText(promptText);
         ctx.history.push({ role: "user", content: steerText });
         ctx.pendingSteers.push(steerText);
         yield* persistSessionState(ctx);
@@ -1189,8 +1272,8 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       // Resolve image attachments to inline base64 parts from the server-side
       // attachment store; nothing client-supplied is trusted beyond its id.
       const contentParts: ByokContentPart[] = [];
-      if (text.length > 0) {
-        contentParts.push({ type: "text", text });
+      if (promptText.length > 0) {
+        contentParts.push({ type: "text", text: promptText });
       }
       for (const attachment of attachments) {
         if (attachment.type !== "image") continue;
@@ -1253,7 +1336,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         modelSelection === undefined
           ? undefined
           : getModelSelectionStringOptionValue(modelSelection, "reasoningEffort");
-      const turnEffect =
+      const turnEffect = (
         options?.toolBroker !== undefined && text.length > 0 && attachments.length === 0
           ? runAgentTurn(
               ctx,
@@ -1265,7 +1348,11 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               input.interactionMode === "plan",
               reasoningEffort,
             )
-          : runTurn(ctx, turnId, adapter, messages, systemPrompt, reasoningEffort);
+          : runTurn(ctx, turnId, adapter, messages, systemPrompt, reasoningEffort)
+      ).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+      );
       const fiber = yield* turnEffect.pipe(
         Effect.catchCause((cause) =>
           Effect.gen(function* () {

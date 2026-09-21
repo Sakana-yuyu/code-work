@@ -34,4 +34,12 @@ describe("BYOK ssh.* tool grouping", () => {
     expect(isByokFullAccessTool("ssh.status")).toBe(true);
     expect(isByokFullAccessTool("ssh.read_file")).toBe(true);
   });
+
+  it("skills.load 与 codegraph.explore 同属只读 project 组", () => {
+    expect(isByokProjectTool("skills.load")).toBe(true);
+    expect(isByokProjectTool("codegraph.explore")).toBe(true);
+    expect(isByokFullAccessTool("skills.load")).toBe(true);
+    // MCP 工具按 canonical 名逐描述符判定，不走静态集合。
+    expect(isByokProjectTool("mcp.demo.echo")).toBe(false);
+  });
 });
