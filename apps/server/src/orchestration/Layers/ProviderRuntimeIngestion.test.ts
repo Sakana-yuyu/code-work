@@ -372,6 +372,7 @@ describe("ProviderRuntimeIngestion", () => {
       providerService: provider.service,
       goalStore,
       drain,
+      runtime,
     };
   }
 
@@ -3713,7 +3714,7 @@ describe("ProviderRuntimeIngestion", () => {
     expect(resumedMessage?.text).toBe(" second half");
     expect(resumedMessage?.streaming).toBe(false);
 
-    const events = await Effect.runPromise(
+    const events = await harness.runtime.runPromise(
       Stream.runCollect(harness.engine.readEvents(0)).pipe(
         Effect.map((chunk) => Array.from(chunk)),
       ),
@@ -3857,7 +3858,7 @@ describe("ProviderRuntimeIngestion", () => {
     const harness = await createHarness({ serverSettings: { enableLegacyTokenStreaming: true } });
     const now = "2026-01-01T00:00:00.000Z";
 
-    await Effect.runPromise(
+    await harness.runtime.runPromise(
       harness.engine.dispatch({
         type: "thread.turn.start",
         commandId: CommandId.make("cmd-turn-start-streaming-mode"),
@@ -4081,7 +4082,7 @@ describe("ProviderRuntimeIngestion", () => {
         ),
     );
 
-    const events = await Effect.runPromise(
+    const events = await harness.runtime.runPromise(
       Stream.runCollect(harness.engine.readEvents(0)).pipe(
         Effect.map((chunk) => Array.from(chunk)),
       ),
