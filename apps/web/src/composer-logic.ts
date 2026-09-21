@@ -24,6 +24,22 @@ export function composerSubmissionIntentForEnter(input: {
   return input.modifierKey && input.isDraftThread ? "background" : "foreground";
 }
 
+/**
+ * ↑ recalls the newest queued message back into the composer for editing — the
+ * same path as the queue row's edit button. Only fires on an empty draft so the
+ * key keeps its default caret behavior inside multiline text.
+ */
+export function queuedMessageRecallTargetId(input: {
+  readonly prompt: string;
+  readonly goalComposerActive: boolean;
+  readonly queuedMessages: ReadonlyArray<{ readonly id: string }>;
+}): string | null {
+  if (input.goalComposerActive) return null;
+  const text = input.prompt.split(INLINE_TERMINAL_CONTEXT_PLACEHOLDER).join("").trim();
+  if (text.length !== 0) return null;
+  return input.queuedMessages.at(-1)?.id ?? null;
+}
+
 const isInlineTokenSegment = (
   segment:
     | { type: "text"; text: string }

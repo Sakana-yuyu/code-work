@@ -8,6 +8,7 @@ import {
   expandCollapsedComposerCursor,
   isCollapsedCursorAdjacentToInlineToken,
   parseStandaloneComposerSlashCommand,
+  queuedMessageRecallTargetId,
   replaceTextRange,
 } from "./composer-logic";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
@@ -413,5 +414,48 @@ describe("parseStandaloneComposerSlashCommand", () => {
 
   it("ignores slash commands with extra message text", () => {
     expect(parseStandaloneComposerSlashCommand("/plan explain this")).toBeNull();
+  });
+});
+
+describe("queuedMessageRecallTargetId", () => {
+  const queued = [{ id: "m1" }, { id: "m2" }];
+
+  it("recalls the newest queued message when the draft is empty", () => {
+    expect(
+      queuedMessageRecallTargetId({
+        prompt: "",
+        goalComposerActive: false,
+        queuedMessages: queued,
+      }),
+    ).toBe("m2");
+  });
+
+  it("keeps ArrowUp caret behavior when the draft has text", () => {
+    expect(
+      queuedMessageRecallTargetId({
+        prompt: "partial",
+        goalComposerActive: false,
+        queuedMessages: queued,
+      }),
+    ).toBeNull();
+  });
+
+  it("treats a terminal-context-only draft as empty", () => {
+    expect(
+      queuedMessageRecallTargetId({
+        prompt: INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
+        goalComposerActive: false,
+        queuedMessages: queued,
+      }),
+    ).toBe("m2");
+  });
+
+  it("does nothing without queued messages or in the goal composer", () => {
+    expect(
+      queuedMessageRecallTargetId({ prompt: "", goalComposerActive: false, queuedMessages: [] }),
+    ).toBeNull();
+    expect(
+      queuedMessageRecallTargetId({ prompt: "", goalComposerActive: true, queuedMessages: queued }),
+    ).toBeNull();
   });
 });

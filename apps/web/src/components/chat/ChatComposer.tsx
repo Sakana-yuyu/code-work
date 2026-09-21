@@ -40,6 +40,7 @@ import {
   type ComposerTrigger,
   collapseExpandedComposerCursor,
   composerSubmissionIntentForEnter,
+  queuedMessageRecallTargetId,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
   replaceTextRange,
@@ -2576,6 +2577,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       if ((key === "Enter" || key === "Tab") && selectedItem) {
         onSelectComposerItem(selectedItem);
+        return true;
+      }
+    }
+    // ↑ 召回最近一条排队消息回 composer 重编（与队列行的「编辑」按钮同一
+    // 路径）。只在输入框为空时生效，避免抢占多行文本里的光标上移。
+    if (key === "ArrowUp") {
+      const recallMessageId = queuedMessageRecallTargetId({
+        prompt,
+        goalComposerActive: isGoalComposerActive,
+        queuedMessages,
+      });
+      if (recallMessageId !== null) {
+        onEditQueuedMessage(recallMessageId);
         return true;
       }
     }
