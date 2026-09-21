@@ -27,6 +27,7 @@ import {
   joinAnthropicTarget,
   joinOpenAITarget,
   isRetryableLocalGatewayStatus,
+  isRetryableRelayGatewayStatus,
   mergeGrokManagedConfig,
   openCodeGatewayConfigContent,
   pickGatewayAdapter,
@@ -323,6 +324,10 @@ describe("local gateway failover", () => {
   it("只对鉴权、限流和服务端失败换号", () => {
     expect([401, 403, 429, 500, 503].every(isRetryableLocalGatewayStatus)).toBe(true);
     expect([200, 400, 404].some(isRetryableLocalGatewayStatus)).toBe(false);
+  });
+  it("中转通道只重试上游内部故障，限流与客户端错误直接透传", () => {
+    expect([500, 502, 503].every(isRetryableRelayGatewayStatus)).toBe(true);
+    expect([200, 400, 401, 403, 404, 429].some(isRetryableRelayGatewayStatus)).toBe(false);
   });
 });
 
@@ -670,6 +675,7 @@ it("共享线路严格隔离，真实 HTTP 转发保留模型映射、流和限�
     apiKey: string | string[] | undefined;
     body: unknown;
   }[] = [];
+  let flakyAttempts = 0;
   const upstream = NodeHttp.createServer(async (request, response) => {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -679,6 +685,14 @@ it("共享线路严格隔离，真实 HTTP 转发保留模型映射、流和限�
       apiKey: request.headers["x-api-key"],
       body: JSON.parse(Buffer.concat(chunks).toString()),
     });
+    if (request.url?.includes("flaky")) {
+      flakyAttempts += 1;
+      if (flakyAttempts === 1) {
+        response.writeHead(503, { "content-type": "application/json" });
+        response.end('{"error":{"message":"auth_unavailable: no auth available"}}');
+        return;
+      }
+    }
     if (request.url?.includes("limited")) {
       response.writeHead(429, {
         "content-type": "application/json",
@@ -793,6 +807,11 @@ it("共享线路严格隔离，真实 HTTP 转发保留模型映射、流和限�
       apiKey: "claude-key",
       body: { model: "claude-model" },
     });
+    // 上游瞬时 5xx：网关在交付响应流前重试，第二次成功即透传成功流。
+    const flaky = await request("openai/source/team/v1/flaky", "same-id");
+    expect(flaky.status).toBe(200);
+    expect(await flaky.text()).toBe('data: {"delta":"hello"}\n\ndata: [DONE]\n\n');
+    expect(calls.filter((call) => call.url.includes("flaky"))).toHaveLength(2);
     expect(anthropicGatewayEnv("http://localhost", "key", "team").ANTHROPIC_BASE_URL).toBe(
       "http://localhost/byok-gw/anthropic/source/team",
     );

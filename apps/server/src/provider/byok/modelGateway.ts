@@ -22,6 +22,8 @@
  *
  * @module provider/byok/modelGateway
  */
+import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -72,7 +74,7 @@ import {
 } from "../LocalAccountPool.ts";
 import { matchLocalGatewayKey, readLocalGatewayKeys } from "../LocalGatewayKey.ts";
 import { localPoolUsageStore } from "../LocalPoolUsage.ts";
-import { parseByokCustomHeaders } from "../Layers/byokChatClient.ts";
+import { parseByokCustomHeaders, parseRetryAfterMs } from "../Layers/byokChatClient.ts";
 import { byokModelCapabilities } from "../Layers/ByokProvider.ts";
 
 /** URL prefix the gateway is mounted under. */
@@ -574,6 +576,22 @@ const allowedGatewayPath = (
 export const isRetryableLocalGatewayStatus = (status: number): boolean =>
   status === 401 || status === 403 || status === 429 || status >= 500;
 
+/**
+ * 中转通道没有账号可换，只对上游内部故障（5xx）与传输错误重试；429 连同
+ * retry-after 原样透传给 CLI，由客户端按自己的退避策略处理，不在网关内叠加等待。
+ */
+export const isRetryableRelayGatewayStatus = (status: number): boolean => status >= 500;
+
+/** 中转通道单请求的最大上游尝试次数；只在响应流交付 CLI 前重放。 */
+export const RELAY_GATEWAY_MAX_ATTEMPTS = 3;
+const RELAY_GATEWAY_RETRY_BASE_MS = 500;
+const RELAY_GATEWAY_RETRY_AFTER_MAX_MS = 5_000;
+
+const relayGatewayRetryDelay = (
+  attempt: number,
+  retryAfterMs: number | undefined,
+): Duration.Duration => Duration.millis(retryAfterMs ?? RELAY_GATEWAY_RETRY_BASE_MS * 2 ** attempt);
+
 export interface GatewayUsageTotals {
   inputTokens: number;
   outputTokens: number;
@@ -844,77 +862,109 @@ const bridgedAnthropicRequest = (input: {
     if (customHeaderValues !== undefined) Object.assign(forwardHeaders, customHeaderValues);
 
     const target = joinOpenAITarget(input.adapter.baseURL, "/v1/chat/completions");
-    const attemptResult = yield* input.httpClient
-      .execute(
-        HttpClientRequest.post(target).pipe(
-          HttpClientRequest.setHeaders(forwardHeaders),
-          HttpClientRequest.bodyText(
-            JSON.stringify(anthropicMessagesToChatBody(body, input.adapter.modelId)),
-            "application/json",
+    // 与直通路径同一策略：上游 5xx/传输失败在交付响应流前有界重试。
+    for (let attempt = 0; attempt < RELAY_GATEWAY_MAX_ATTEMPTS; attempt += 1) {
+      const attemptResult = yield* input.httpClient
+        .execute(
+          HttpClientRequest.post(target).pipe(
+            HttpClientRequest.setHeaders(forwardHeaders),
+            HttpClientRequest.bodyText(
+              JSON.stringify(anthropicMessagesToChatBody(body, input.adapter.modelId)),
+              "application/json",
+            ),
           ),
-        ),
-      )
-      .pipe(
-        Effect.map((upstream) => ({ ok: true as const, upstream })),
-        Effect.catch((cause) => Effect.succeed({ ok: false as const, cause })),
-      );
-    if (!attemptResult.ok) {
-      yield* Effect.logWarning("BYOK gateway bridged upstream request failed", {
-        model: input.adapter.id,
-        cause:
-          attemptResult.cause instanceof Error
-            ? attemptResult.cause.message
-            : String(attemptResult.cause),
-      });
-      return HttpServerResponse.jsonUnsafe(
-        {
-          type: "error",
-          error: {
-            type: "api_error",
-            message: "The BYOK gateway could not reach the adapter's endpoint.",
-          },
-        },
-        { status: 502 },
-      );
-    }
-    const upstream = attemptResult.upstream;
-    if (upstream.status >= 400) {
-      const detail = yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
-      return HttpServerResponse.jsonUnsafe(
-        {
-          type: "error",
-          error: {
-            type: chatErrorToAnthropicType(upstream.status),
-            message:
-              errorMessage(safeJsonParse(detail)) || "The bridged BYOK adapter returned an error.",
-          },
-        },
-        { status: upstream.status },
-      );
-    }
-    if (!wantsStream) {
-      const detail = yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
-      const parsed = safeJsonParse(detail);
-      if (parsed === undefined) {
+        )
+        .pipe(
+          Effect.map((upstream) => ({ ok: true as const, upstream })),
+          Effect.catch((cause) => Effect.succeed({ ok: false as const, cause })),
+        );
+      if (!attemptResult.ok) {
+        if (attempt + 1 < RELAY_GATEWAY_MAX_ATTEMPTS) {
+          yield* Effect.sleep(relayGatewayRetryDelay(attempt, undefined));
+          continue;
+        }
+        yield* Effect.logWarning("BYOK gateway bridged upstream request failed", {
+          model: input.adapter.id,
+          cause:
+            attemptResult.cause instanceof Error
+              ? attemptResult.cause.message
+              : String(attemptResult.cause),
+        });
         return HttpServerResponse.jsonUnsafe(
           {
             type: "error",
             error: {
               type: "api_error",
-              message: "The bridged BYOK adapter returned invalid JSON.",
+              message: "The BYOK gateway could not reach the adapter's endpoint.",
             },
           },
           { status: 502 },
         );
       }
-      return HttpServerResponse.jsonUnsafe(
-        chatCompletionToAnthropicMessage(parsed, input.adapter.modelId),
-        { status: 200 },
+      const upstream = attemptResult.upstream;
+      if (upstream.status >= 400) {
+        if (
+          isRetryableRelayGatewayStatus(upstream.status) &&
+          attempt + 1 < RELAY_GATEWAY_MAX_ATTEMPTS
+        ) {
+          const retryAfterMs = parseRetryAfterMs(
+            upstream.headers["retry-after"],
+            DateTime.toEpochMillis(yield* DateTime.now),
+            RELAY_GATEWAY_RETRY_AFTER_MAX_MS,
+          );
+          yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
+          yield* Effect.sleep(relayGatewayRetryDelay(attempt, retryAfterMs));
+          continue;
+        }
+        const detail = yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
+        return HttpServerResponse.jsonUnsafe(
+          {
+            type: "error",
+            error: {
+              type: chatErrorToAnthropicType(upstream.status),
+              message:
+                errorMessage(safeJsonParse(detail)) ||
+                "The bridged BYOK adapter returned an error.",
+            },
+          },
+          { status: upstream.status },
+        );
+      }
+      if (!wantsStream) {
+        const detail = yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
+        const parsed = safeJsonParse(detail);
+        if (parsed === undefined) {
+          return HttpServerResponse.jsonUnsafe(
+            {
+              type: "error",
+              error: {
+                type: "api_error",
+                message: "The bridged BYOK adapter returned invalid JSON.",
+              },
+            },
+            { status: 502 },
+          );
+        }
+        return HttpServerResponse.jsonUnsafe(
+          chatCompletionToAnthropicMessage(parsed, input.adapter.modelId),
+          { status: 200 },
+        );
+      }
+      return HttpServerResponse.stream(
+        transformChatStreamToAnthropicSse(upstream.stream, input.adapter.modelId),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
       );
     }
-    return HttpServerResponse.stream(
-      transformChatStreamToAnthropicSse(upstream.stream, input.adapter.modelId),
-      { status: 200, headers: { "content-type": "text/event-stream" } },
+    // 循环最后一次尝试必然返回；此处只为满足类型收敛。
+    return HttpServerResponse.jsonUnsafe(
+      {
+        type: "error",
+        error: {
+          type: "api_error",
+          message: "The BYOK gateway could not reach the adapter's endpoint.",
+        },
+      },
+      { status: 502 },
     );
   });
 
@@ -1105,8 +1155,10 @@ const gatewayHandler = (
             adapter.modelId,
           );
     let localAccount = nextLocalAccount();
-    // ponytail: 每请求最多换号一次，响应流开始后不再重放请求。
-    for (let attempt = 0; attempt < (localProvider === undefined ? 1 : 2); attempt += 1) {
+    // 本地账号池每请求最多换号一次；中转通道无号可换，改为对上游 5xx 与
+    // 传输失败做有界重试。两种路径都只在响应流交付给 CLI 之前重放请求。
+    const maxAttempts = localProvider === undefined ? RELAY_GATEWAY_MAX_ATTEMPTS : 2;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       let localCredential: Record<string, unknown> | undefined;
       let localToken = "";
       let localAccountId: string | undefined;
@@ -1251,8 +1303,15 @@ const gatewayHandler = (
           markLocalAccountFailure(localAccountId, 503);
           localPoolUsageStore.recordRequest(localAccountId, adapter.localProvider ?? "", false);
         }
-        localAccount = attempt === 0 ? nextLocalAccount() : undefined;
-        if (localAccount !== undefined) continue;
+        if (localProvider === undefined) {
+          if (attempt + 1 < maxAttempts) {
+            yield* Effect.sleep(relayGatewayRetryDelay(attempt, undefined));
+            continue;
+          }
+        } else {
+          localAccount = attempt === 0 ? nextLocalAccount() : undefined;
+          if (localAccount !== undefined) continue;
+        }
         yield* Effect.logWarning("BYOK gateway upstream request failed", {
           protocol,
           model: model ?? "(none)",
@@ -1279,8 +1338,19 @@ const gatewayHandler = (
           upstream.status < 400,
         );
       }
-      const retryable = isRetryableLocalGatewayStatus(upstream.status);
-      if (localProvider !== undefined && retryable && attempt === 0) {
+      if (localProvider === undefined) {
+        if (isRetryableRelayGatewayStatus(upstream.status) && attempt + 1 < maxAttempts) {
+          const retryAfterMs = parseRetryAfterMs(
+            upstream.headers["retry-after"],
+            DateTime.toEpochMillis(yield* DateTime.now),
+            RELAY_GATEWAY_RETRY_AFTER_MAX_MS,
+          );
+          // 丢弃中间失败响应，后续只透传最后一次尝试的完整响应，避免混合两个响应。
+          yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
+          yield* Effect.sleep(relayGatewayRetryDelay(attempt, retryAfterMs));
+          continue;
+        }
+      } else if (isRetryableLocalGatewayStatus(upstream.status) && attempt === 0) {
         localAccount = nextLocalAccount();
         if (localAccount !== undefined) {
           // 丢弃首个错误响应，后续只透传新账号的完整流，避免混合两个响应。

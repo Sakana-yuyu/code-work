@@ -379,7 +379,11 @@ const classifyTransportError = (
     : { reason: "transport_error", retryable: true };
 };
 
-const parseRetryAfterMs = (raw: string | undefined, nowUnixMs: number): number | undefined => {
+export const parseRetryAfterMs = (
+  raw: string | undefined,
+  nowUnixMs: number,
+  maxMs: number = BYOK_RETRY_AFTER_MAX_MS,
+): number | undefined => {
   const value = raw?.trim();
   if (value === undefined || value.length === 0) return undefined;
 
@@ -394,7 +398,7 @@ const parseRetryAfterMs = (raw: string | undefined, nowUnixMs: number): number |
     }
   }
   if (delayMs === undefined || !Number.isSafeInteger(delayMs) || delayMs < 0) return undefined;
-  return Math.min(delayMs, BYOK_RETRY_AFTER_MAX_MS);
+  return Math.min(delayMs, maxMs);
 };
 
 const providerPayloadErrorDetail = (payload: Record<string, unknown>): string | undefined => {
