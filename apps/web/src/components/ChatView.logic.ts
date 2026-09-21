@@ -756,6 +756,30 @@ export function hasServerAcknowledgedLocalDispatch(input: {
 }
 
 /**
+ * 排队面板的可见性规则。服务端 `queuedMessages` 携带线程的全部待启动回合
+ * 占位（含正在被派发的那一条），面板只展示「排在运行中回合之后」的条目：
+ * 会话不在 running 时，pending 行必然是下一条正在派发（会话启动中）或刚被
+ * 采纳/撤下的残留，按 Reasonix 的 shelf 语义隐藏——正在被处理的条目不属于
+ * 队列。running 期间再叠加 createdAt 启发式，丢弃已被 latestTurn 吸收的
+ * 陈旧快照条目。
+ */
+export function resolveVisibleQueuedMessages<
+  TQueued extends { readonly messageId: string; readonly createdAt: string },
+>(input: {
+  readonly queuedMessages: ReadonlyArray<TQueued> | undefined;
+  readonly phase: SessionPhase;
+  readonly latestTurnRequestedAt: string | null;
+}): ReadonlyArray<TQueued> {
+  if (input.phase !== "running") {
+    return [];
+  }
+  const latestTurnRequestedAt = input.latestTurnRequestedAt;
+  return (input.queuedMessages ?? []).filter(
+    (queued) => latestTurnRequestedAt === null || queued.createdAt > latestTurnRequestedAt,
+  );
+}
+
+/**
  * 排队消息取消/编辑共用的分发守卫。只有消息仍在本机排队缓存里、且正是
  * 当前正在分发的那个才拦截（避免队列重发造成重复）；刷新后本机缓存为空、
  * submission 找不到时不能拦截——服务端队列才是事实源，否则按钮全部失效。

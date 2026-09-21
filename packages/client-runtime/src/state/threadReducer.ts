@@ -7,6 +7,7 @@ import type {
   OrchestrationEvent,
   OrchestrationLatestTurn,
   OrchestrationMessage,
+  OrchestrationQueuedTurn,
   OrchestrationSession,
   OrchestrationThread,
   OrchestrationThreadActivity,
@@ -34,6 +35,76 @@ const activityOrder = O.combineAll<OrchestrationThreadActivity>([
   O.mapInput(O.String, (a) => a.createdAt),
   O.mapInput(O.String, (a) => a.id),
 ]);
+
+/**
+ * The thread's durable queued turn starts, whether the loaded `queuedMessages`
+ * field was decoded (new servers) or defaulted (older servers). Every mutation
+ * goes through this helper so the optional field stays optional on the type
+ * while the reducer treats the queue as always present.
+ */
+function threadQueuedMessages(thread: OrchestrationThread): ReadonlyArray<OrchestrationQueuedTurn> {
+  return thread.queuedMessages ?? [];
+}
+
+/**
+ * Server-side queue transitions, mirrored from the turn projection in
+ * ProjectionPipeline.ts so the detail stream keeps `queuedMessages` current
+ * without waiting for a full snapshot:
+ *
+ * - enqueue on `thread.turn-start-requested`
+ * - withdraw on `thread.turn-start-cancelled`
+ * - adopt when a session adopts a turn (`thread.session-set` running with an
+ *   active turn): only that head entry leaves the queue; later entries wait
+ * - clear on terminal session statuses, or on a matching
+ *   `provider.turn.start.failed` activity
+ */
+function queueTurnStart(
+  thread: OrchestrationThread,
+  entry: OrchestrationQueuedTurn,
+): ReadonlyArray<OrchestrationQueuedTurn> {
+  const current = threadQueuedMessages(thread);
+  if (current.some((queued) => queued.messageId === entry.messageId)) {
+    return current;
+  }
+  return [...current, entry];
+}
+
+function dequeueTurnStart(
+  thread: OrchestrationThread,
+  messageId: MessageId | string,
+): ReadonlyArray<OrchestrationQueuedTurn> {
+  const current = threadQueuedMessages(thread);
+  if (!current.some((queued) => queued.messageId === messageId)) {
+    return current;
+  }
+  return current.filter((queued) => queued.messageId !== messageId);
+}
+
+/**
+ * Adoption settles exactly one queued request per running session-set: the
+ * projection adopts the oldest pending row (ORDER BY requested_at ASC,
+ * pending_message_id ASC LIMIT 1) and leaves later entries waiting.
+ */
+function adoptOldestQueuedTurnStart(
+  thread: OrchestrationThread,
+): ReadonlyArray<OrchestrationQueuedTurn> {
+  const current = threadQueuedMessages(thread);
+  if (current.length === 0) {
+    return current;
+  }
+  let oldestIndex = 0;
+  for (let index = 1; index < current.length; index += 1) {
+    const entry = current[index]!;
+    const oldest = current[oldestIndex]!;
+    if (
+      entry.createdAt < oldest.createdAt ||
+      (entry.createdAt === oldest.createdAt && entry.messageId < oldest.messageId)
+    ) {
+      oldestIndex = index;
+    }
+  }
+  return current.filter((_, index) => index !== oldestIndex);
+}
 
 /**
  * Matches the validity rule in `deriveLatestContextWindowSnapshot` (and the
@@ -101,6 +172,7 @@ export function applyThreadDetailEvent(
           activities: [],
           checkpoints: [],
           session: null,
+          queuedMessages: [],
         },
       };
 
@@ -254,7 +326,16 @@ export function applyThreadDetailEvent(
       };
 
     // ── Turn lifecycle ──────────────────────────────────────────────
-    case "thread.turn-start-requested":
+    case "thread.turn-start-requested": {
+      // The turn-start request is the enqueue transition: its message lands in
+      // `queuedMessages` until a session adopts it or a cancel withdraws it.
+      // The message body arrives in the paired `thread.message-sent` (same
+      // command, strictly earlier), so the text is read back from `messages`.
+      const queuedEntry: OrchestrationQueuedTurn = {
+        messageId: event.payload.messageId,
+        text: thread.messages.find((message) => message.id === event.payload.messageId)?.text ?? "",
+        createdAt: event.payload.createdAt,
+      };
       return {
         kind: "updated",
         thread: {
@@ -264,6 +345,18 @@ export function applyThreadDetailEvent(
             : {}),
           runtimeMode: event.payload.runtimeMode,
           interactionMode: event.payload.interactionMode,
+          queuedMessages: queueTurnStart(thread, queuedEntry),
+          updatedAt: event.occurredAt,
+        },
+      };
+    }
+
+    case "thread.turn-start-cancelled":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          queuedMessages: dequeueTurnStart(thread, event.payload.messageId),
           updatedAt: event.occurredAt,
         },
       };
@@ -394,6 +487,18 @@ export function applyThreadDetailEvent(
       // Leaving the "running" session status is the turn-end signal: settle a
       // still-running latest turn so its duration reflects the whole turn.
       const settledTurnState = settledTurnStateForSessionStatus(event.payload.session.status);
+      // Queue mirror of the turn projection: a running session adopts the
+      // oldest queued request into its turn; a terminal session drops every
+      // queued request (the projection deletes the thread's pending rows).
+      const session = event.payload.session;
+      const queuedMessages =
+        session.status === "running" && session.activeTurnId !== null
+          ? adoptOldestQueuedTurnStart(thread)
+          : session.status === "error" ||
+              session.status === "stopped" ||
+              session.status === "interrupted"
+            ? []
+            : threadQueuedMessages(thread);
       const latestTurn: OrchestrationLatestTurn | null =
         event.payload.session.status === "running" && event.payload.session.activeTurnId !== null
           ? {
@@ -432,6 +537,7 @@ export function applyThreadDetailEvent(
           ...thread,
           session: event.payload.session,
           latestTurn,
+          queuedMessages,
           updatedAt: event.occurredAt,
         },
       };
@@ -597,9 +703,29 @@ export function applyThreadDetailEvent(
         Arr.sort(activityOrder),
       );
 
+      // A failed turn start settles its queue entry without a terminal
+      // session-set (e.g. a provider switch rejected while running): the
+      // projection deletes the matching pending row, so the queue mirrors it.
+      const turnStartFailedMessageId =
+        activity.kind === "provider.turn.start.failed" &&
+        typeof activity.payload === "object" &&
+        activity.payload !== null &&
+        "messageId" in activity.payload &&
+        typeof activity.payload.messageId === "string"
+          ? activity.payload.messageId
+          : null;
+
       return {
         kind: "updated",
-        thread: { ...thread, activities, updatedAt: event.occurredAt },
+        thread: {
+          ...thread,
+          activities,
+          queuedMessages:
+            turnStartFailedMessageId === null
+              ? threadQueuedMessages(thread)
+              : dequeueTurnStart(thread, turnStartFailedMessageId),
+          updatedAt: event.occurredAt,
+        },
       };
     }
 

@@ -570,6 +570,250 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.latestTurn?.state).toBe("running");
       }
     });
+
+    it("adopts only the oldest queued turn start when a running session adopts a turn", () => {
+      const threadWithQueue: OrchestrationThread = {
+        ...baseThread,
+        queuedMessages: [
+          {
+            messageId: MessageId.make("msg-queued-1"),
+            text: "first queued",
+            createdAt: "2026-04-01T07:55:00.000Z",
+          },
+          {
+            messageId: MessageId.make("msg-queued-2"),
+            text: "second queued",
+            createdAt: "2026-04-01T07:56:00.000Z",
+          },
+        ],
+      };
+
+      const result = applyThreadDetailEvent(threadWithQueue, {
+        ...baseEventFields,
+        sequence: 9,
+        occurredAt: "2026-04-01T08:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: TurnId.make("turn-2"),
+            lastError: null,
+            updatedAt: "2026-04-01T08:00:00.000Z",
+          },
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.queuedMessages?.map((queued) => queued.messageId)).toEqual([
+          "msg-queued-2",
+        ]);
+      }
+    });
+
+    it("clears queued turn starts when the session reaches a terminal status", () => {
+      const threadWithQueue: OrchestrationThread = {
+        ...baseThread,
+        queuedMessages: [
+          {
+            messageId: MessageId.make("msg-queued-1"),
+            text: "first queued",
+            createdAt: "2026-04-01T07:55:00.000Z",
+          },
+        ],
+      };
+
+      const result = applyThreadDetailEvent(threadWithQueue, {
+        ...baseEventFields,
+        sequence: 9,
+        occurredAt: "2026-04-01T08:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "error",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: "boom",
+            updatedAt: "2026-04-01T08:00:00.000Z",
+          },
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.queuedMessages).toEqual([]);
+      }
+    });
+
+    it("keeps queued turn starts while the session is ready between turns", () => {
+      const threadWithQueue: OrchestrationThread = {
+        ...baseThread,
+        queuedMessages: [
+          {
+            messageId: MessageId.make("msg-queued-1"),
+            text: "first queued",
+            createdAt: "2026-04-01T07:55:00.000Z",
+          },
+        ],
+      };
+
+      const result = applyThreadDetailEvent(threadWithQueue, {
+        ...baseEventFields,
+        sequence: 9,
+        occurredAt: "2026-04-01T08:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.session-set",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "ready",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: "2026-04-01T08:00:00.000Z",
+          },
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.queuedMessages).toHaveLength(1);
+      }
+    });
+  });
+
+  describe("queued turn starts", () => {
+    const threadWithUserMessage: OrchestrationThread = {
+      ...baseThread,
+      messages: [
+        {
+          id: MessageId.make("msg-user-1"),
+          role: "user",
+          text: "queued body",
+          turnId: null,
+          streaming: false,
+          createdAt: "2026-04-01T07:00:00.000Z",
+          updatedAt: "2026-04-01T07:00:00.000Z",
+        },
+      ],
+    };
+
+    const turnStartRequestedEvent = {
+      ...baseEventFields,
+      sequence: 8,
+      occurredAt: "2026-04-01T07:00:00.000Z",
+      aggregateKind: "thread" as const,
+      aggregateId: ThreadId.make("thread-1"),
+      type: "thread.turn-start-requested" as const,
+      payload: {
+        threadId: ThreadId.make("thread-1"),
+        messageId: MessageId.make("msg-user-1"),
+        runtimeMode: "full-access" as const,
+        interactionMode: "default" as const,
+        createdAt: "2026-04-01T07:00:00.000Z",
+      },
+    };
+
+    it("enqueues the requested turn start with the message text", () => {
+      const result = applyThreadDetailEvent(threadWithUserMessage, turnStartRequestedEvent);
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.queuedMessages).toEqual([
+          {
+            messageId: "msg-user-1",
+            text: "queued body",
+            createdAt: "2026-04-01T07:00:00.000Z",
+          },
+        ]);
+      }
+    });
+
+    it("does not enqueue the same message twice", () => {
+      const first = applyThreadDetailEvent(threadWithUserMessage, turnStartRequestedEvent);
+      if (first.kind !== "updated") {
+        throw new Error("expected updated");
+      }
+      const second = applyThreadDetailEvent(first.thread, turnStartRequestedEvent);
+
+      expect(second.kind).toBe("updated");
+      if (second.kind === "updated") {
+        expect(second.thread.queuedMessages).toHaveLength(1);
+      }
+    });
+
+    it("withdraws the queued entry on thread.turn-start-cancelled", () => {
+      const first = applyThreadDetailEvent(threadWithUserMessage, turnStartRequestedEvent);
+      if (first.kind !== "updated") {
+        throw new Error("expected updated");
+      }
+
+      const result = applyThreadDetailEvent(first.thread, {
+        ...baseEventFields,
+        sequence: 9,
+        occurredAt: "2026-04-01T07:01:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.turn-start-cancelled",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          messageId: MessageId.make("msg-user-1"),
+          createdAt: "2026-04-01T07:01:00.000Z",
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.queuedMessages).toEqual([]);
+      }
+    });
+
+    it("drops the queue entry when its turn start fails without a terminal session", () => {
+      const first = applyThreadDetailEvent(threadWithUserMessage, turnStartRequestedEvent);
+      if (first.kind !== "updated") {
+        throw new Error("expected updated");
+      }
+
+      const result = applyThreadDetailEvent(first.thread, {
+        ...baseEventFields,
+        sequence: 9,
+        occurredAt: "2026-04-01T07:02:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.activity-appended",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          activity: {
+            id: EventId.make("event-activity-1"),
+            tone: "error",
+            kind: "provider.turn.start.failed",
+            summary: "Provider turn start failed",
+            payload: { messageId: "msg-user-1" },
+            turnId: null,
+            createdAt: "2026-04-01T07:02:00.000Z",
+          },
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.queuedMessages).toEqual([]);
+      }
+    });
   });
 
   describe("thread.session-stop-requested", () => {

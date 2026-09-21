@@ -383,6 +383,7 @@ import {
   reconcileMountedTerminalThreadIds,
   resolveBackgroundDraftWorkspaceOptions,
   resolveQueuedMessageGuard,
+  resolveVisibleQueuedMessages,
   resolveDraftHeroState,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
@@ -2869,23 +2870,22 @@ function ChatViewContent(props: ChatViewProps) {
     [activeThread?.id, environmentId, queuedTurnSubmissions],
   );
   const queuedMessagesForComposer = useMemo(() => {
-    // queuedMessages 字段只在详情快照里携带，pending→已分发 的流转不会推送
-    // 字段刷新，订阅流保活期间会残留幻影条目。用与本地 outbox 记录相同的
-    // 启发式过滤：排队消息的 createdAt 即其回合的 requested_at，一旦该回合
-    // 成为 latestTurn（被分发）或更新的回合已起步，条目即视为已出队。
-    const latestTurnRequestedAt = activeThread?.latestTurn?.requestedAt ?? null;
-    return (activeThread?.queuedMessages ?? [])
-      .filter(
-        (queued) => latestTurnRequestedAt === null || queued.createdAt > latestTurnRequestedAt,
-      )
-      .map((queued) => ({
-        id: String(queued.messageId),
-        text: queued.text,
-        steerable: steerableQueuedMessageIds.has(String(queued.messageId)),
-      }));
+    // 排队条目的成员关系由详情流事件增量维护（turn-start-requested/cancelled
+    // + session-set 采纳）；可见性走 resolveVisibleQueuedMessages：只在回合
+    // 运行中展示，派发窗口（首条消息的会话启动期）不再被误报为排队。
+    return resolveVisibleQueuedMessages({
+      queuedMessages: activeThread?.queuedMessages,
+      phase,
+      latestTurnRequestedAt: activeThread?.latestTurn?.requestedAt ?? null,
+    }).map((queued) => ({
+      id: String(queued.messageId),
+      text: queued.text,
+      steerable: steerableQueuedMessageIds.has(String(queued.messageId)),
+    }));
   }, [
     activeThread?.queuedMessages,
     activeThread?.latestTurn?.requestedAt,
+    phase,
     steerableQueuedMessageIds,
   ]);
   useEffect(() => {
@@ -4913,13 +4913,19 @@ function ChatViewContent(props: ChatViewProps) {
       // 重复；刷新后本机缓存为空时不拦截，编辑回填走 localStorage 记录。
       if (blocked) return;
       const record = queuedMessageRecords.find((message) => message.messageId === rawMessageId);
-      const text = record?.text ?? "";
+      // 本机记录缺失时（记录被清理、跨端排队）回退到服务端排队条目的原文，
+      // 编辑不再静默空转。
+      const serverQueuedText = activeThread?.queuedMessages?.find(
+        (queued) => String(queued.messageId) === rawMessageId,
+      )?.text;
+      const text = record?.text ?? serverQueuedText ?? "";
       onCancelQueuedMessage(rawMessageId);
       if (text.trim().length === 0) return;
       setComposerDraftPrompt(composerDraftTarget, text);
       scheduleComposerFocus();
     },
     [
+      activeThread?.queuedMessages,
       composerDraftTarget,
       onCancelQueuedMessage,
       queuedMessageRecords,

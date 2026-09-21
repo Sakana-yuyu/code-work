@@ -37,6 +37,7 @@ import {
   resolveBackgroundDraftWorkspaceOptions,
   resolveDraftPromotionNavigationTarget,
   resolveQueuedMessageGuard,
+  resolveVisibleQueuedMessages,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   resolveDraftHeroState,
@@ -1103,5 +1104,57 @@ describe("resolveQueuedMessageGuard", () => {
       dispatchingMessageId: "msg-other",
     });
     expect(refreshedWhileDispatching.blocked).toBe(false);
+  });
+});
+
+describe("resolveVisibleQueuedMessages", () => {
+  const queuedEntry = (messageId: string, createdAt: string) => ({
+    messageId,
+    text: `body of ${messageId}`,
+    createdAt,
+  });
+
+  it("hides the queue while no turn is running (the pending row is mid-dispatch, not queued)", () => {
+    // 首条消息的派发窗口：会话仍在 starting/ready，pending 行正在被派发，
+    // 面板不得把它误报为“已排队”。
+    const queuedMessages = [queuedEntry("msg-1", "2026-09-21T10:00:00.000Z")];
+    for (const phase of ["disconnected", "connecting", "ready"] as const) {
+      expect(
+        resolveVisibleQueuedMessages({ queuedMessages, phase, latestTurnRequestedAt: null }),
+      ).toEqual([]);
+    }
+  });
+
+  it("shows queued entries while a turn is running", () => {
+    const queuedMessages = [queuedEntry("msg-2", "2026-09-21T10:01:00.000Z")];
+    expect(
+      resolveVisibleQueuedMessages({
+        queuedMessages,
+        phase: "running",
+        latestTurnRequestedAt: "2026-09-21T10:00:00.000Z",
+      }),
+    ).toEqual(queuedMessages);
+  });
+
+  it("drops entries already adopted by the latest turn (stale snapshot safety net)", () => {
+    const adopted = queuedEntry("msg-1", "2026-09-21T10:00:00.000Z");
+    const waiting = queuedEntry("msg-2", "2026-09-21T10:01:00.000Z");
+    expect(
+      resolveVisibleQueuedMessages({
+        queuedMessages: [adopted, waiting],
+        phase: "running",
+        latestTurnRequestedAt: "2026-09-21T10:00:00.000Z",
+      }),
+    ).toEqual([waiting]);
+  });
+
+  it("treats a missing queuedMessages field (older servers) as an empty queue", () => {
+    expect(
+      resolveVisibleQueuedMessages({
+        queuedMessages: undefined,
+        phase: "running",
+        latestTurnRequestedAt: null,
+      }),
+    ).toEqual([]);
   });
 });
