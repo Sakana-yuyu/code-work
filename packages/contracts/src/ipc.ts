@@ -734,6 +734,10 @@ export const DesktopPreviewAnnotationThemeSchema: Schema.Codec<DesktopPreviewAnn
     fontMono: Schema.String,
   });
 
+/** Resolved app language the annotation overlay renders in ("system" never crosses the wire). */
+export const DesktopAnnotationLanguageSchema = Schema.Literals(["zh-CN", "en", "ja"]);
+export type DesktopAnnotationLanguage = typeof DesktopAnnotationLanguageSchema.Type;
+
 export interface DesktopPreviewRecordingFrame {
   tabId: string;
   data: string;
@@ -1056,6 +1060,10 @@ export const DesktopPreviewAnnotationThemeInputSchema = Schema.Struct({
   theme: DesktopPreviewAnnotationThemeSchema,
 });
 
+export const DesktopPreviewAnnotationLanguageInputSchema = Schema.Struct({
+  language: DesktopAnnotationLanguageSchema,
+});
+
 export const DesktopPreviewArtifactInputSchema = Schema.Struct({
   path: Schema.String.check(Schema.isTrimmed()).check(Schema.isNonEmpty()),
 });
@@ -1227,6 +1235,8 @@ export interface DesktopPreviewBridge {
    */
   getPreviewConfig: (environmentId: EnvironmentId) => Promise<DesktopPreviewWebviewConfig>;
   setAnnotationTheme: (theme: DesktopPreviewAnnotationTheme) => Promise<void>;
+  /** Push the app's resolved display language into the in-page annotation overlay. */
+  setAnnotationLanguage: (language: DesktopAnnotationLanguage) => Promise<void>;
   /**
    * Activate the in-page element picker for the given tab. Resolves with
    * the picked annotation and its attach/send intent, or `null` when the

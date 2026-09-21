@@ -6,6 +6,7 @@
  * here). Single layer-scoped browser session partition.
  */
 import type {
+  DesktopAnnotationLanguage,
   DesktopPreviewAnnotationTheme,
   DesktopPreviewColorScheme,
   DesktopPreviewFavicon,
@@ -55,6 +56,7 @@ import { PREVIEW_PICTURE_IN_PICTURE_FRAME_CHANNEL } from "../ipc/channels.ts";
 import * as BrowserSession from "./BrowserSession.ts";
 import {
   ANNOTATION_CAPTURED_CHANNEL,
+  ANNOTATION_LANGUAGE_CHANNEL,
   ANNOTATION_THEME_CHANNEL,
   CANCEL_PICK_CHANNEL,
   ELEMENT_PICKED_CHANNEL,
@@ -496,6 +498,9 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   );
 
   const annotationThemeRef = yield* Ref.make(DEFAULT_ANNOTATION_THEME);
+  // Null until the renderer pushes the app's resolved display language; the
+  // preload falls back to its OS-locale resolution before then.
+  const annotationLanguageRef = yield* Ref.make<DesktopAnnotationLanguage | null>(null);
   const mainWindowRef = yield* Ref.make<Option.Option<BrowserWindow>>(Option.none());
   const tabsRef = yield* SynchronizedRef.make<ReadonlyMap<string, PreviewTabState>>(new Map());
   const attachedRef = yield* Ref.make<ReadonlyMap<number, ManagedListeners>>(new Map());
@@ -1898,6 +1903,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     }
     const attached = yield* Ref.get(attachedRef);
     const annotationTheme = yield* Ref.get(annotationThemeRef);
+    const annotationLanguage = yield* Ref.get(annotationLanguageRef);
     const currentAttachment = attached.get(webContentsId);
     if (tab.webContentsId === webContentsId && currentAttachment?.webContents === wc) {
       // The guest we already own re-announced itself, so nothing about the tab
@@ -1907,6 +1913,11 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       yield* attempt({ operation: "registerWebview.sendTheme", tabId, webContentsId }, () =>
         wc.send(ANNOTATION_THEME_CHANNEL, annotationTheme),
       );
+      if (annotationLanguage !== null) {
+        yield* attempt({ operation: "registerWebview.sendLanguage", tabId, webContentsId }, () =>
+          wc.send(ANNOTATION_LANGUAGE_CHANNEL, annotationLanguage),
+        );
+      }
       return;
     }
     const replacedWebContentsId =
@@ -2014,6 +2025,11 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     yield* attempt({ operation: "registerWebview.sendTheme", tabId, webContentsId }, () =>
       wc.send(ANNOTATION_THEME_CHANNEL, annotationTheme),
     );
+    if (annotationLanguage !== null) {
+      yield* attempt({ operation: "registerWebview.sendLanguage", tabId, webContentsId }, () =>
+        wc.send(ANNOTATION_LANGUAGE_CHANNEL, annotationLanguage),
+      );
+    }
     const latestNavStatus = (yield* SynchronizedRef.get(tabsRef)).get(tabId)?.navStatus;
     if (
       pendingUrl &&
@@ -2200,10 +2216,36 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     );
   });
 
+  const setAnnotationLanguage = Effect.fn("PreviewManager.setAnnotationLanguage")(function* (
+    language: DesktopAnnotationLanguage,
+  ) {
+    yield* Ref.set(annotationLanguageRef, language);
+    const tabs = yield* SynchronizedRef.get(tabsRef);
+    yield* Effect.forEach(
+      tabs.values(),
+      (tab) => {
+        if (tab.webContentsId == null) return Effect.void;
+        const wc = webContents.fromId(tab.webContentsId);
+        return !wc || wc.isDestroyed()
+          ? Effect.void
+          : attempt(
+              {
+                operation: "setAnnotationLanguage",
+                tabId: tab.tabId,
+                webContentsId: tab.webContentsId,
+              },
+              () => wc.send(ANNOTATION_LANGUAGE_CHANNEL, language),
+            ).pipe(Effect.ignore);
+      },
+      { discard: true },
+    );
+  });
+
   const pickElement = Effect.fn("PreviewManager.pickElement")(function* (tabId: string) {
     const wc = yield* requireWebContents(tabId);
     yield* cancelPickElement(tabId);
     const annotationTheme = yield* Ref.get(annotationThemeRef);
+    const annotationLanguage = yield* Ref.get(annotationLanguageRef);
     return yield* Effect.callback<PreviewAnnotationSubmissionResult | null, PreviewManagerError>(
       (resume) => {
         const cleanup = Effect.fn("PreviewManager.cleanupPickElement")(function* () {
@@ -2290,7 +2332,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
             wc.once("destroyed", onDestroyed);
             wc.once("did-start-navigation", onNavigated);
             if (!wc.isFocused()) wc.focus();
-            wc.send(START_PICK_CHANNEL, annotationTheme);
+            wc.send(START_PICK_CHANNEL, annotationTheme, annotationLanguage);
           });
           yield* Ref.update(pickSessionsRef, (sessions) =>
             replaceMap(sessions, (copy) => {
@@ -3748,6 +3790,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     resetZoom: (tabId: string) => applyZoom(tabId, () => DEFAULT_ZOOM_FACTOR),
     revealArtifact,
     saveRecording,
+    setAnnotationLanguage,
     setAnnotationTheme,
     setAudioMuted,
     setColorScheme,
@@ -4074,6 +4117,9 @@ export class PreviewManager extends Context.Service<
     readonly setAnnotationTheme: (
       theme: DesktopPreviewAnnotationTheme,
     ) => Effect.Effect<void, PreviewManagerError>;
+    readonly setAnnotationLanguage: (
+      language: DesktopAnnotationLanguage,
+    ) => Effect.Effect<void, PreviewManagerError>;
     readonly pickElement: (
       tabId: string,
     ) => Effect.Effect<PreviewAnnotationSubmissionResult | null, PreviewManagerError>;
@@ -4193,6 +4239,7 @@ export const make = Effect.gen(function* PreviewManagerMake() {
         );
     }),
     setAnnotationTheme: operations.setAnnotationTheme,
+    setAnnotationLanguage: operations.setAnnotationLanguage,
     pickElement: operations.pickElement,
     cancelPickElement: operations.cancelPickElement,
     captureScreenshot: operations.captureScreenshot,

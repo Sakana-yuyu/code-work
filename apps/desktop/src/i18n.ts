@@ -3,7 +3,17 @@ import { en, ja, zhCN } from "./i18n.messages.js";
 export type DesktopLanguage = "zh-CN" | "en" | "ja";
 export type TranslateParams = Readonly<Record<string, string | number | undefined>>;
 
+// The renderer's app-language setting reaches isolated contexts (the preview
+// annotation preload) through this override; without it these contexts only
+// see the OS locale and drift from the language the user picked in Settings.
+let languageOverride: DesktopLanguage | null = null;
+
+export function setDesktopLanguageOverride(language: DesktopLanguage | null): void {
+  languageOverride = language;
+}
+
 function resolveLanguage(): DesktopLanguage {
+  if (languageOverride) return languageOverride;
   const override = process.env.CODEWORK_DESKTOP_LANGUAGE;
   if (override === "en" || override === "zh-CN" || override === "ja") return override;
   const locale = Intl.DateTimeFormat().resolvedOptions().locale;

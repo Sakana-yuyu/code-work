@@ -1,4 +1,5 @@
 import {
+  DesktopPreviewAnnotationLanguageInputSchema,
   DesktopPreviewAnnotationThemeInputSchema,
   DesktopPreviewArtifactInputSchema,
   DesktopPreviewAutomationClickInputSchema,
@@ -239,6 +240,16 @@ export const setAnnotationTheme = DesktopIpc.makeIpcMethod({
   }),
 });
 
+export const setAnnotationLanguage = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PREVIEW_SET_ANNOTATION_LANGUAGE_CHANNEL,
+  payload: DesktopPreviewAnnotationLanguageInputSchema,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.preview.setAnnotationLanguage")(function* ({ language }) {
+    const manager = yield* PreviewManager.PreviewManager;
+    yield* manager.setAnnotationLanguage(language);
+  }),
+});
+
 export const pickElement = DesktopIpc.makeIpcMethod({
   channel: IpcChannels.PREVIEW_PICK_ELEMENT_CHANNEL,
   payload: DesktopPreviewTabInputSchema,
@@ -388,6 +399,7 @@ export const methods = [
   clearCache,
   getPreviewConfig,
   setAnnotationTheme,
+  setAnnotationLanguage,
   pickElement,
   cancelPickElement,
   captureScreenshot,

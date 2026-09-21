@@ -6,6 +6,7 @@ import { useEffect, useMemo } from "react";
 
 import { isElectron } from "~/env";
 import { useTheme } from "~/hooks/useTheme";
+import { getCurrentLanguage, subscribeLanguage } from "~/i18n/runtime";
 import { useActivePreviewSessions } from "~/previewStateStore";
 
 import { readPreviewAnnotationTheme } from "./annotationTheme";
@@ -68,6 +69,19 @@ export function ElectronBrowserHost() {
       headObserver.disconnect();
     };
   }, [resolvedTheme]);
+
+  // The annotation overlay lives in an isolated webview preload that cannot
+  // read the app's language setting; push the resolved language down the same
+  // channel as the annotation theme.
+  useEffect(() => {
+    const preview = window.desktopBridge?.preview;
+    if (!preview || !preview.setAnnotationLanguage) return;
+    const syncLanguage = () => {
+      void preview.setAnnotationLanguage(getCurrentLanguage()).catch(() => {});
+    };
+    syncLanguage();
+    return subscribeLanguage(syncLanguage);
+  }, []);
 
   useEffect(() => {
     const preview = window.desktopBridge?.preview;

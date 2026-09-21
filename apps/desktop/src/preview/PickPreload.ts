@@ -2,6 +2,7 @@
 import { ipcRenderer } from "electron";
 import { getElementContext } from "react-grab/primitives";
 import type {
+  DesktopAnnotationLanguage,
   DesktopPreviewAnnotationTheme,
   PickedElementPayload,
   PickedElementStackFrame,
@@ -16,9 +17,10 @@ import type {
 
 import { resolveAnnotationSubmission } from "./AnnotationKeyboard.ts";
 import { previewAnnotationStyles } from "./AnnotationStyles.generated.ts";
-import { t } from "../i18n.js";
+import { setDesktopLanguageOverride, t } from "../i18n.js";
 import {
   ANNOTATION_CAPTURED_CHANNEL,
+  ANNOTATION_LANGUAGE_CHANNEL,
   ANNOTATION_THEME_CHANNEL,
   CANCEL_PICK_CHANNEL,
   ELEMENT_PICKED_CHANNEL,
@@ -47,6 +49,7 @@ interface SelectedElement {
 interface AnnotationSession {
   teardown: (notifyMain: boolean) => void;
   applyTheme: (theme: DesktopPreviewAnnotationTheme) => void;
+  applyLanguage: () => void;
 }
 
 let activeSession: AnnotationSession | null = null;
@@ -819,14 +822,14 @@ function startAnnotation(): void {
     gap.value = computed.gap === "normal" ? "0px" : computed.gap;
   };
 
-  const tools: ReadonlyArray<[AnnotationTool, string, string]> = [
-    ["select", t("pick.tool.select"), t("pick.tool.selectTooltip")],
-    ["marquee", t("pick.tool.region"), t("pick.tool.regionTooltip")],
-    ["draw", t("pick.tool.draw"), t("pick.tool.drawTooltip")],
-    ["erase", t("pick.tool.erase"), t("pick.tool.eraseTooltip")],
+  const tools: ReadonlyArray<readonly [AnnotationTool, string, string]> = [
+    ["select", "pick.tool.select", "pick.tool.selectTooltip"],
+    ["marquee", "pick.tool.region", "pick.tool.regionTooltip"],
+    ["draw", "pick.tool.draw", "pick.tool.drawTooltip"],
+    ["erase", "pick.tool.erase", "pick.tool.eraseTooltip"],
   ];
-  for (const [candidate, label, title] of tools) {
-    const button = createButton(label, title);
+  for (const [candidate, labelKey, titleKey] of tools) {
+    const button = createButton(t(labelKey), t(titleKey));
     button.className += " h-8 px-2.5 text-sm";
     button.addEventListener("click", () => {
       tool = candidate;
@@ -1292,15 +1295,47 @@ function startAnnotation(): void {
   activeSession = {
     teardown,
     applyTheme: (theme) => applyAnnotationTheme(host, theme),
+    // Relabel the always-visible chrome when the app language changes
+    // mid-pick. The expanded style panel keeps its build-time language until
+    // the next pick session — switching language with it open is a rare edge.
+    applyLanguage: () => {
+      comment.placeholder = t("pick.describeChange");
+      submit.textContent = pendingCapture ? t("pick.capturing") : t("pick.attach");
+      submit.title = t("pick.attachTooltip");
+      const adjustKey = editorExpanded ? "pick.collapseEditor" : "pick.expandEditor";
+      adjust.title = t(adjustKey);
+      adjust.setAttribute("aria-label", t(adjustKey));
+      dragHandle.title = t("pick.dragEditor");
+      for (const [candidate, labelKey, titleKey] of tools) {
+        const button = toolButtons.get(candidate);
+        if (!button) continue;
+        button.textContent = t(labelKey);
+        button.title = t(titleKey);
+      }
+    },
   };
 }
 
-ipcRenderer.on(START_PICK_CHANNEL, (_event, theme: DesktopPreviewAnnotationTheme | undefined) => {
-  if (theme) annotationTheme = theme;
-  startAnnotation();
-});
+ipcRenderer.on(
+  START_PICK_CHANNEL,
+  (
+    _event,
+    theme: DesktopPreviewAnnotationTheme | undefined,
+    language: DesktopAnnotationLanguage | null | undefined,
+  ) => {
+    if (theme) annotationTheme = theme;
+    // Land the app language before the overlay builds so every label starts
+    // translated; without it this isolated context only sees the OS locale.
+    if (language) setDesktopLanguageOverride(language);
+    startAnnotation();
+  },
+);
 ipcRenderer.on(ANNOTATION_THEME_CHANNEL, (_event, theme: DesktopPreviewAnnotationTheme) => {
   annotationTheme = theme;
   activeSession?.applyTheme(theme);
+});
+ipcRenderer.on(ANNOTATION_LANGUAGE_CHANNEL, (_event, language: DesktopAnnotationLanguage) => {
+  setDesktopLanguageOverride(language);
+  activeSession?.applyLanguage();
 });
 ipcRenderer.on(CANCEL_PICK_CHANNEL, () => activeSession?.teardown(false));
