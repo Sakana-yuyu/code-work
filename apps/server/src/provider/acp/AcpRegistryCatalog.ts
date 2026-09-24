@@ -109,12 +109,17 @@ export function parseAcpRegistryCatalog(
       /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*@\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/i.test(
         npx.package,
       );
+    const packageVersion =
+      typeof npx?.package === "string"
+        ? npx.package.match(/@(\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?)$/i)?.[1]
+        : undefined;
+    const matchingVersion = typeof agent.version === "string" && agent.version === packageVersion;
     const safeArgs =
       Array.isArray(args) &&
       args.every((arg) => typeof arg === "string" && /^[a-z0-9_./:=@+-]+$/i.test(arg));
     const npxRunner = platform === "win32" ? "cmd.exe /d /s /c npx" : "npx";
     const command =
-      safePackage && safeArgs && (env === null || Object.keys(env).length === 0)
+      safePackage && matchingVersion && safeArgs && (env === null || Object.keys(env).length === 0)
         ? `${npxRunner} -y ${npx.package}${args.length > 0 ? ` ${args.join(" ")}` : ""}`
         : null;
     const binary = record(distribution?.binary);

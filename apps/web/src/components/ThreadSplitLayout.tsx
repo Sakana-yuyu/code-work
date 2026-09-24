@@ -1,5 +1,5 @@
 import type { ScopedThreadRef } from "@codework/contracts";
-import { Columns2Icon, Rows2Icon, XIcon } from "lucide-react";
+import { ArrowLeftRightIcon, Columns2Icon, Rows2Icon, XIcon } from "lucide-react";
 import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
@@ -30,6 +30,7 @@ export function ThreadSplitLayout(props: {
   const toggleOrientation = useThreadSplitStore((state) => state.toggleOrientation);
   const closeSecondaryThread = useThreadSplitStore((state) => state.closeSecondaryThread);
   const closeTertiaryThread = useThreadSplitStore((state) => state.closeTertiaryThread);
+  const swapSecondaryAndTertiary = useThreadSplitStore((state) => state.swapSecondaryAndTertiary);
   const setDividerRatio = useThreadSplitStore((state) => state.setDividerRatio);
   const setSecondaryDividerRatio = useThreadSplitStore((state) => state.setSecondaryDividerRatio);
   const secondaryShell = useThreadShell(secondaryThreadRef);
@@ -245,6 +246,16 @@ export function ThreadSplitLayout(props: {
               routeKind="server"
               reserveTitleBarControlInset
             />
+            <Button
+              aria-label={t("swapSplitConversations")}
+              className="absolute top-1 right-10 z-[70] size-7 rounded-full border border-border/70 bg-background/85 p-0 shadow-sm backdrop-blur-sm hover:bg-accent"
+              onClick={swapSecondaryAndTertiary}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <ArrowLeftRightIcon className="size-3.5" />
+            </Button>
             <Button
               aria-label={t("closeThirdSplitConversation")}
               className="absolute top-1 right-2 z-[70] size-7 rounded-full border border-border/70 bg-background/85 p-0 shadow-sm backdrop-blur-sm hover:bg-accent"

@@ -32,6 +32,8 @@ import { useProjects } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { serverEnvironment } from "~/state/server";
+import { vcsEnvironment } from "~/state/vcs";
+import { reviewEnvironment } from "~/state/review";
 import { randomUUID } from "~/lib/utils";
 import { t } from "~/i18n";
 
@@ -310,6 +312,7 @@ export function TaskGraphPanel() {
   );
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [showTaskDiff, setShowTaskDiff] = useState(false);
   const [actionReason, setActionReason] = useState("");
   const [retryCapabilityIds, setRetryCapabilityIds] = useState("");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -348,6 +351,22 @@ export function TaskGraphPanel() {
   );
   const selectedSnapshot =
     snapshots.find(({ task }) => task.taskId === selectedTaskId) ?? snapshots[0] ?? null;
+  const taskGitQuery = useEnvironmentQuery(
+    environmentId === null || !selectedSnapshot?.workspaceRoot
+      ? null
+      : vcsEnvironment.status({
+          environmentId,
+          input: { cwd: selectedSnapshot.workspaceRoot },
+        }),
+  );
+  const taskDiffQuery = useEnvironmentQuery(
+    !showTaskDiff || environmentId === null || !selectedSnapshot?.workspaceRoot
+      ? null
+      : reviewEnvironment.diffPreview({
+          environmentId,
+          input: { cwd: selectedSnapshot.workspaceRoot },
+        }),
+  );
   const selectedRunId = selectedSnapshot?.latestRun?.runId;
   const eventsQuery = useEnvironmentQuery(
     environmentId === null || selectedSnapshot === null || selectedRunId === undefined
@@ -379,7 +398,9 @@ export function TaskGraphPanel() {
   const refreshTaskState = useCallback(() => {
     tasksQuery.refresh();
     eventsQuery.refresh();
-  }, [eventsQuery, tasksQuery]);
+    taskGitQuery.refresh();
+    taskDiffQuery.refresh();
+  }, [eventsQuery, taskDiffQuery, taskGitQuery, tasksQuery]);
 
   useEffect(() => {
     if (availableProfiles.length === 0) return;
@@ -422,6 +443,8 @@ export function TaskGraphPanel() {
   }, [environmentId, refreshTaskState]);
 
   useEffect(() => setActiveDraftId(null), [environmentId]);
+
+  useEffect(() => setShowTaskDiff(false), [selectedTaskId, environmentId]);
 
   const updateChild = (nodeId: string, patch: Partial<ChildDraft>) => {
     setChildren((current) =>
@@ -975,6 +998,104 @@ export function TaskGraphPanel() {
                     {t("runtime", { runtimeId: selectedSnapshot.latestRun.runtimeId })}
                   </Badge>
                 ) : null}
+              </div>
+              <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-3 text-xs">
+                <h4 className="font-medium">{t("taskGraph.gitReviewTitle")}</h4>
+                {selectedSnapshot.workspaceRoot ? (
+                  <>
+                    <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
+                      {selectedSnapshot.workspaceRoot}
+                    </p>
+                    {taskGitQuery.data?.isRepo ? (
+                      <>
+                        <p className="mt-2">
+                          {t("taskGraph.gitReviewBranch", {
+                            branch: taskGitQuery.data.refName ?? t("taskGraph.gitReviewDetached"),
+                          })}
+                        </p>
+                        <p className="mt-1 text-muted-foreground">
+                          {t("taskGraph.gitReviewCounts", {
+                            changed: taskGitQuery.data.workingTree.files.length,
+                          })}
+                        </p>
+                        {taskGitQuery.data.aheadOfDefaultCount !== undefined ? (
+                          <p className="mt-1 text-muted-foreground">
+                            {t("taskGraph.gitReviewAhead", {
+                              ahead: taskGitQuery.data.aheadOfDefaultCount,
+                            })}
+                          </p>
+                        ) : null}
+                        {taskGitQuery.data.workingTree.files.slice(0, 8).map((file) => (
+                          <p key={file.path} className="mt-1 truncate font-mono text-[11px]">
+                            {file.path}
+                          </p>
+                        ))}
+                        {taskGitQuery.data.workingTree.files.length > 8 ? (
+                          <p className="mt-1 text-muted-foreground">
+                            {t("taskGraph.gitReviewMore", {
+                              count: taskGitQuery.data.workingTree.files.length - 8,
+                            })}
+                          </p>
+                        ) : null}
+                        <p className="mt-2 text-[11px] text-muted-foreground">
+                          {t("taskGraph.gitReviewCaveat")}
+                        </p>
+                        <Button
+                          className="mt-2"
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                          onClick={() => setShowTaskDiff((value) => !value)}
+                        >
+                          {showTaskDiff ? t("taskGraph.hideDiff") : t("taskGraph.showDiff")}
+                        </Button>
+                        {showTaskDiff ? (
+                          <div className="mt-2 space-y-2" data-task-git-diff>
+                            {taskDiffQuery.error ? (
+                              <p className="text-destructive">
+                                {t("taskGraph.gitDiffUnavailable")}
+                              </p>
+                            ) : taskDiffQuery.data ? (
+                              taskDiffQuery.data.sources.length === 0 ? (
+                                <p className="text-muted-foreground">
+                                  {t("taskGraph.gitDiffEmpty")}
+                                </p>
+                              ) : (
+                                taskDiffQuery.data.sources.map((source) => (
+                                  <section key={source.id}>
+                                    <h5 className="font-medium">{source.title}</h5>
+                                    <pre className="mt-1 max-h-72 overflow-auto rounded-md bg-background p-2 text-[11px]">
+                                      {source.diff}
+                                    </pre>
+                                    {source.truncated ? (
+                                      <p className="text-warning">
+                                        {t("taskGraph.gitDiffTruncated")}
+                                      </p>
+                                    ) : null}
+                                  </section>
+                                ))
+                              )
+                            ) : (
+                              <p className="text-muted-foreground">{t("loading")}</p>
+                            )}
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="mt-2 text-muted-foreground">
+                        {taskGitQuery.error
+                          ? t("taskGraph.gitReviewUnavailable")
+                          : taskGitQuery.data
+                            ? t("taskGraph.gitReviewNotRepo")
+                            : t("loading")}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="mt-2 text-muted-foreground">
+                    {t("taskGraph.gitReviewNoWorkspace")}
+                  </p>
+                )}
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
                 <Button

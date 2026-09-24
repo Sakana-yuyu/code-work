@@ -89,6 +89,12 @@ describe("thread split persistence", () => {
       secondaryThreadRef: secondary,
       tertiaryThreadRef: tertiary,
     });
+    useThreadSplitStore.getState().swapSecondaryAndTertiary();
+    expect(useThreadSplitStore.getState()).toMatchObject({
+      secondaryThreadRef: tertiary,
+      tertiaryThreadRef: secondary,
+    });
+    useThreadSplitStore.getState().swapSecondaryAndTertiary();
     useThreadSplitStore.getState().closeSecondaryThread();
     expect(useThreadSplitStore.getState()).toMatchObject({
       secondaryThreadRef: tertiary,

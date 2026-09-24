@@ -54,7 +54,12 @@ describe("ACP registry catalog", () => {
       parseAcpRegistryCatalog(
         {
           agents: [
-            { id: "cline", name: "Cline", distribution: { npx: { package: "cline@3.0.64" } } },
+            {
+              id: "cline",
+              name: "Cline",
+              version: "3.0.64",
+              distribution: { npx: { package: "cline@3.0.64" } },
+            },
           ],
         },
         "linux",
@@ -91,6 +96,24 @@ describe("ACP registry catalog", () => {
     ).toBe(true);
   });
 
+  it("refuses a package whose pinned version differs from the registry entry", () => {
+    const entries = parseAcpRegistryCatalog(
+      {
+        agents: [
+          {
+            id: "cline",
+            name: "Cline",
+            version: "3.0.64",
+            distribution: { npx: { package: "cline@3.0.63" } },
+          },
+        ],
+      },
+      "linux",
+      "x64",
+    );
+    expect(entries[0]).toMatchObject({ command: null, availability: "manual" });
+  });
+
   it("uses the server platform when a registry entry has only a binary distribution", () => {
     const payload = {
       agents: [
@@ -118,8 +141,18 @@ describe("ACP registry catalog", () => {
     const entries = parseAcpRegistryCatalog(
       {
         agents: [
-          { id: "cline", name: "Cline", distribution: { npx: { package: "cline@3.0.64" } } },
-          { id: "other", name: "Other", distribution: { npx: { package: "other@1.0.0" } } },
+          {
+            id: "cline",
+            name: "Cline",
+            version: "3.0.64",
+            distribution: { npx: { package: "cline@3.0.64" } },
+          },
+          {
+            id: "other",
+            name: "Other",
+            version: "1.0.0",
+            distribution: { npx: { package: "other@1.0.0" } },
+          },
         ],
       },
       "linux",
@@ -156,7 +189,12 @@ describe("ACP registry catalog", () => {
           return new Response(
             JSON.stringify({
               agents: [
-                { id: "cline", name: "Cline", distribution: { npx: { package: "cline@3.0.64" } } },
+                {
+                  id: "cline",
+                  name: "Cline",
+                  version: "3.0.64",
+                  distribution: { npx: { package: "cline@3.0.64" } },
+                },
               ],
             }),
             { status: 200 },

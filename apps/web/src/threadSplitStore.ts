@@ -18,6 +18,7 @@ interface ThreadSplitState {
   openSecondaryThread: (threadRef: ScopedThreadRef) => void;
   closeSecondaryThread: () => void;
   closeTertiaryThread: () => void;
+  swapSecondaryAndTertiary: () => void;
   setDividerRatio: (ratio: number) => void;
   setSecondaryDividerRatio: (ratio: number) => void;
   toggleOrientation: () => void;
@@ -97,6 +98,15 @@ export const useThreadSplitStore = create<ThreadSplitState>()(
           tertiaryThreadRef: null,
         })),
       closeTertiaryThread: () => set({ tertiaryThreadRef: null }),
+      swapSecondaryAndTertiary: () =>
+        set((state) =>
+          state.secondaryThreadRef === null || state.tertiaryThreadRef === null
+            ? state
+            : {
+                secondaryThreadRef: state.tertiaryThreadRef,
+                tertiaryThreadRef: state.secondaryThreadRef,
+              },
+        ),
       setDividerRatio: (ratio) => set({ dividerRatio: Math.min(0.75, Math.max(0.25, ratio)) }),
       setSecondaryDividerRatio: (ratio) =>
         set({ secondaryDividerRatio: Math.min(0.75, Math.max(0.25, ratio)) }),

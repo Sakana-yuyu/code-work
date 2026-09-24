@@ -83,9 +83,27 @@ export function classifyAcpCommandProbe(input: {
   readonly exitCode: number;
 }): { readonly status: "ready" | "error"; readonly message: string } {
   if (input.exitCode !== 0) {
+    const output = `${input.stdout}\n${input.stderr}`;
+    if (
+      /(?:unknown|unrecognized|invalid|unsupported)\s+(?:option|argument)\s*:?\s*["']?--version\b/i.test(
+        output,
+      )
+    ) {
+      return {
+        status: "ready",
+        message: "命令已启动，但 Agent 不支持版本探测；实际 ACP 握手会在会话启动时确认。",
+      };
+    }
+    const hint = /\bE404\b|\b404 Not Found\b/i.test(output)
+      ? "未找到指定版本的软件包。"
+      : /\bEACCES\b|\bEPERM\b/i.test(output)
+        ? "请检查软件包目录权限。"
+        : /\bENOTFOUND\b|\bETIMEDOUT\b/i.test(output)
+          ? "请检查所连环境的网络和包仓库连接。"
+          : "请检查安装状态和启动参数。";
     return {
       status: "error",
-      message: `ACP Agent 探测返回退出码 ${input.exitCode}；请检查安装状态和启动参数。`,
+      message: `ACP Agent 探测返回退出码 ${input.exitCode}；${hint}`,
     };
   }
   const text = `${input.stdout}\n${input.stderr}`.trim();

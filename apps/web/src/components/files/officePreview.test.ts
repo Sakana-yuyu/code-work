@@ -30,7 +30,43 @@ describe("Office 内容预览", () => {
         '<worksheet><row><c r="A1" t="s"><v>0</v></c><c r="B1"><v>42</v></c></row></worksheet>',
     });
     expect(await parseOfficePreview("data.xlsx", bytes)).toEqual([
-      { title: "xl/worksheets/sheet1.xml", lines: ["A1: 收入  |  B1: 42"] },
+      {
+        title: "xl/worksheets/sheet1.xml",
+        lines: [],
+        table: {
+          columns: ["A", "B"],
+          rows: [{ index: 1, values: ["收入", "42"] }],
+          truncated: false,
+        },
+      },
+    ]);
+  });
+
+  it("按工作簿关系显示真实工作表名称、顺序和稀疏单元格", async () => {
+    const bytes = await officeBytes({
+      "xl/workbook.xml":
+        '<workbook xmlns:r="urn:r"><sheets><sheet name="预算" r:id="rId2"/><sheet name="收入" r:id="rId1"/></sheets></workbook>',
+      "xl/_rels/workbook.xml.rels":
+        '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="/xl/worksheets/sheet2.xml"/></Relationships>',
+      "xl/worksheets/sheet1.xml":
+        '<worksheet><row r="3"><c r="A3" t="inlineStr"><is><t>项目</t></is></c><c r="C3"><v>12</v></c></row></worksheet>',
+      "xl/worksheets/sheet2.xml": '<worksheet><row r="1"><c r="B1"><v>20</v></c></row></worksheet>',
+    });
+    expect(await parseOfficePreview("data.xlsx", bytes)).toEqual([
+      {
+        title: "预算",
+        lines: [],
+        table: { columns: ["B"], rows: [{ index: 1, values: ["20"] }], truncated: false },
+      },
+      {
+        title: "收入",
+        lines: [],
+        table: {
+          columns: ["A", "C"],
+          rows: [{ index: 3, values: ["项目", "12"] }],
+          truncated: false,
+        },
+      },
     ]);
   });
 
@@ -45,6 +81,19 @@ describe("Office 内容预览", () => {
       { title: "ppt/slides/slide1.xml", lines: ["第一页"] },
       { title: "ppt/slides/slide2.xml", lines: ["第二页"] },
     ]);
+  });
+
+  it("工作表超出预览行数时明确标出截断", async () => {
+    const rows = Array.from(
+      { length: 501 },
+      (_, index) => `<row r="${index + 1}"><c r="A${index + 1}"><v>${index}</v></c></row>`,
+    ).join("");
+    const bytes = await officeBytes({
+      "xl/worksheets/sheet1.xml": `<worksheet>${rows}</worksheet>`,
+    });
+    const [sheet] = await parseOfficePreview("large.xlsx", bytes);
+    expect(sheet?.table?.rows).toHaveLength(500);
+    expect(sheet?.table?.truncated).toBe(true);
   });
 
   it("拒绝过大或损坏的文件", async () => {

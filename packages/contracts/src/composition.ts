@@ -561,6 +561,8 @@ export type CompositionTaskEventsResult = typeof CompositionTaskEventsResult.Typ
 export const CompositionTaskSnapshot = Schema.Struct({
   task: CompositionTask,
   latestRun: Schema.optional(CompositionTaskRun),
+  /** 执行输入中的工作目录；旧任务或已清理输入的任务可能缺失。 */
+  workspaceRoot: Schema.optional(TrimmedNonEmptyString),
 });
 export type CompositionTaskSnapshot = typeof CompositionTaskSnapshot.Type;
 

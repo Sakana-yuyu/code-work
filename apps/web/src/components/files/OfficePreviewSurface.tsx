@@ -152,7 +152,44 @@ export function OfficePreviewSurface(props: {
       {sections.map((section) => (
         <section key={section.title} className="mb-6">
           <h3 className="mb-2 border-b border-border/60 pb-1 font-medium">{section.title}</h3>
-          {section.lines.length > 0 ? (
+          {section.table && section.table.columns.length > 0 ? (
+            <div className="overflow-auto rounded-md border border-border/60">
+              <table className="w-max min-w-full border-collapse text-left text-xs">
+                <thead className="sticky top-0 bg-muted">
+                  <tr>
+                    <th className="border-b border-r border-border/60 px-2 py-1.5">#</th>
+                    {section.table.columns.map((column) => (
+                      <th key={column} className="border-b border-r border-border/60 px-2 py-1.5">
+                        {column}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {section.table.rows.map((row) => (
+                    <tr key={row.index}>
+                      <th className="border-b border-r border-border/60 bg-muted/40 px-2 py-1 font-normal tabular-nums">
+                        {row.index}
+                      </th>
+                      {row.values.map((value, index) => (
+                        <td
+                          key={section.table?.columns[index]}
+                          className="max-w-72 min-w-20 border-b border-r border-border/40 px-2 py-1 align-top break-words whitespace-pre-wrap"
+                        >
+                          {value}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {section.table.truncated ? (
+                <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                  {t("officePreview.truncated")}
+                </p>
+              ) : null}
+            </div>
+          ) : section.lines.length > 0 ? (
             <p className="break-words whitespace-pre-wrap">{section.lines.join("\n")}</p>
           ) : (
             <p className="text-muted-foreground">{t("officePreview.noText")}</p>

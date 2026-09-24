@@ -7,6 +7,14 @@ const MAX_OUTPUT_CHARS = 80_000;
 export interface OfficePreviewSection {
   readonly title: string;
   readonly lines: ReadonlyArray<string>;
+  readonly table?: {
+    readonly columns: ReadonlyArray<string>;
+    readonly rows: ReadonlyArray<{
+      readonly index: number;
+      readonly values: ReadonlyArray<string>;
+    }>;
+    readonly truncated: boolean;
+  };
 }
 
 type BoundedZipEntry = JSZipObject & {
@@ -74,10 +82,33 @@ function boundedLines(lines: ReadonlyArray<string>, budget: { remaining: number 
     if (budget.remaining <= 0) break;
     const normalized = line.trim();
     if (!normalized) continue;
-    result.push(normalized.slice(0, budget.remaining));
-    budget.remaining -= normalized.length;
+    const bounded = normalized.slice(0, budget.remaining);
+    result.push(bounded);
+    budget.remaining -= bounded.length;
   }
   return result;
+}
+
+function columnOrdinal(column: string): number {
+  return [...column].reduce((value, letter) => value * 26 + letter.charCodeAt(0) - 64, 0);
+}
+
+function workbookSheetNames(workbook: Document | null, relationships: Document | null) {
+  const names = new Map<string, string>();
+  if (!workbook || !relationships) return names;
+  const targets = new Map(
+    Array.from(relationships.getElementsByTagName("Relationship"), (relation) => [
+      relation.getAttribute("Id"),
+      relation.getAttribute("Target"),
+    ]),
+  );
+  for (const sheet of Array.from(workbook.getElementsByTagName("sheet"))) {
+    const target = targets.get(sheet.getAttribute("r:id"));
+    const matched = target?.match(/^(?:\/?xl\/)?worksheets\/([a-z0-9_-]+\.xml)$/i);
+    const title = sheet.getAttribute("name");
+    if (matched && title) names.set(`xl/worksheets/${matched[1]}`, title.slice(0, 120));
+  }
+  return names;
 }
 
 /** 仅提取可见文字与单元格值，不执行文档中的宏、链接或脚本。 */
@@ -124,33 +155,75 @@ export async function parseOfficePreview(
     return slides;
   }
   if (/\.xlsx$/i.test(path)) {
+    const workbook = await part("xl/workbook.xml");
+    const relationships = await part("xl/_rels/workbook.xml.rels");
+    const sheetNames = workbookSheetNames(workbook, relationships);
     const sharedStrings = await part("xl/sharedStrings.xml");
     const strings = sharedStrings
       ? Array.from(sharedStrings.getElementsByTagName("si"), (element) => textIn(element, "t"))
       : [];
-    const names = Object.keys(zip.files)
+    const fallbackNames = Object.keys(zip.files)
       .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/.test(name))
-      .sort((a, b) => Number(a.match(/\d+/)?.[0]) - Number(b.match(/\d+/)?.[0]))
-      .slice(0, 50);
+      .sort((a, b) => Number(a.match(/\d+/)?.[0]) - Number(b.match(/\d+/)?.[0]));
+    const mappedNames = [...sheetNames.keys()].filter((name) => zip.file(name) !== null);
+    const allNames = mappedNames.length > 0 ? mappedNames : fallbackNames;
+    const names = allNames.slice(0, 50);
     if (names.length === 0) throw new Error("Office worksheets are missing");
     const sheets: OfficePreviewSection[] = [];
     for (const name of names) {
       if (budget.remaining <= 0) break;
       const sheet = await part(name);
       if (!sheet) continue;
-      const lines = Array.from(sheet.getElementsByTagName("row"))
-        .slice(0, 500)
-        .map((row) =>
-          Array.from(row.getElementsByTagName("c"))
-            .slice(0, 100)
-            .map((cell) => {
-              const raw = cell.getElementsByTagName("v")[0]?.textContent ?? textIn(cell, "t");
-              const value = cell.getAttribute("t") === "s" ? (strings[Number(raw)] ?? "") : raw;
-              return `${cell.getAttribute("r") ?? ""}: ${value}`;
-            })
-            .join("  |  "),
-        );
-      sheets.push({ title: name, lines: boundedLines(lines, budget) });
+      const columns = new Set<string>();
+      const sourceRows = Array.from(sheet.getElementsByTagName("row"));
+      let truncatedCells = false;
+      const sparseRows = sourceRows.slice(0, 500).map((row, rowIndex) => {
+        const index = Number(row.getAttribute("r")) || rowIndex + 1;
+        const values = new Map<string, string>();
+        const cells = Array.from(row.getElementsByTagName("c"));
+        if (cells.length > 100) truncatedCells = true;
+        for (const cell of cells.slice(0, 100)) {
+          if (budget.remaining <= 0) break;
+          const column = cell
+            .getAttribute("r")
+            ?.match(/^([A-Z]+)\d+$/i)?.[1]
+            ?.toUpperCase();
+          if (!column) continue;
+          const raw = cell.getElementsByTagName("v")[0]?.textContent ?? textIn(cell, "t");
+          const value = cell.getAttribute("t") === "s" ? (strings[Number(raw)] ?? "") : raw;
+          const bounded = value.slice(0, budget.remaining);
+          budget.remaining -= bounded.length;
+          columns.add(column);
+          values.set(column, bounded);
+        }
+        return { index, values };
+      });
+      const allColumns = [...columns].sort(
+        (left, right) => columnOrdinal(left) - columnOrdinal(right),
+      );
+      const orderedColumns = allColumns.slice(0, 50);
+      const visibleRows = sparseRows.slice(
+        0,
+        Math.max(1, Math.floor(2_000 / Math.max(1, orderedColumns.length))),
+      );
+      sheets.push({
+        title: sheetNames.get(name) ?? name,
+        lines: [],
+        table: {
+          columns: orderedColumns,
+          rows: visibleRows.map((row) => ({
+            index: row.index,
+            values: orderedColumns.map((column) => row.values.get(column) ?? ""),
+          })),
+          truncated:
+            allNames.length > names.length ||
+            sourceRows.length > sparseRows.length ||
+            truncatedCells ||
+            allColumns.length > orderedColumns.length ||
+            sparseRows.length > visibleRows.length ||
+            budget.remaining <= 0,
+        },
+      });
     }
     return sheets;
   }
