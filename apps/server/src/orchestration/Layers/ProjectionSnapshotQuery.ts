@@ -12,6 +12,7 @@ import {
   OrchestrationThread,
   OrchestrationThreadDetailSnapshot,
   ProjectScript,
+  ProviderInstanceId,
   TurnId,
   type OrchestrationCheckpointSummary,
   type OrchestrationLatestTurn,
@@ -84,6 +85,7 @@ const ProjectionProjectDbRowSchema = ProjectionProject.mapFields(
 const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
   Struct.assign({
     isStreaming: Schema.Number,
+    providerInstanceId: Schema.NullOr(ProviderInstanceId),
     attachments: Schema.NullOr(Schema.fromJsonString(Schema.Array(ChatAttachment))),
   }),
 );
@@ -547,6 +549,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           thread_id AS "threadId",
           turn_id AS "turnId",
           role,
+          provider_instance_id AS "providerInstanceId",
           text,
           attachments_json AS "attachments",
           is_streaming AS "isStreaming",
@@ -1035,6 +1038,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           thread_id AS "threadId",
           turn_id AS "turnId",
           role,
+          provider_instance_id AS "providerInstanceId",
           text,
           attachments_json AS "attachments",
           is_streaming AS "isStreaming",
@@ -1280,6 +1284,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           thread_id AS "threadId",
           turn_id AS "turnId",
           role,
+          provider_instance_id AS "providerInstanceId",
           text,
           attachments_json AS "attachments",
           is_streaming AS "isStreaming",
@@ -1631,6 +1636,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 threadMessages.push({
                   id: row.messageId,
                   role: row.role,
+                  ...(row.providerInstanceId !== null
+                    ? { providerInstanceId: row.providerInstanceId }
+                    : {}),
                   text: row.text,
                   ...(row.attachments !== null ? { attachments: row.attachments } : {}),
                   turnId: row.turnId,
@@ -2736,6 +2744,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           const message = {
             id: row.messageId,
             role: row.role,
+            ...(row.providerInstanceId !== null
+              ? { providerInstanceId: row.providerInstanceId }
+              : {}),
             text: row.text,
             turnId: row.turnId,
             streaming: row.isStreaming === 1,

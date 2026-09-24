@@ -1,4 +1,11 @@
-import { CheckpointRef, EnvironmentId, MessageId, TurnId } from "@codework/contracts";
+import {
+  CheckpointRef,
+  EnvironmentId,
+  MessageId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  TurnId,
+} from "@codework/contracts";
 import { codexFeedbackMessage } from "@codework/client-runtime/state/threads";
 import { createRef, type ReactNode, type Ref } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -242,6 +249,45 @@ function buildAssistantTimelineEntry(text: string) {
 }
 
 describe("MessagesTimeline", () => {
+  it("同一时间线标明不同 Agent 的回复来源", () => {
+    const codex = buildAssistantTimelineEntry("Codex 完成设计");
+    const claude = buildAssistantTimelineEntry("Claude 继续实现");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        providers={
+          new Map([
+            ["codex", { displayName: "Codex", driverKind: ProviderDriverKind.make("codex") }],
+            [
+              "claudeAgent",
+              { displayName: "Claude", driverKind: ProviderDriverKind.make("claudeAgent") },
+            ],
+          ])
+        }
+        timelineEntries={[
+          {
+            ...codex,
+            message: { ...codex.message, providerInstanceId: ProviderInstanceId.make("codex") },
+          },
+          {
+            ...claude,
+            id: "entry-claude",
+            message: {
+              ...claude.message,
+              id: MessageId.make("message-claude"),
+              providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-assistant-provider="codex"');
+    expect(markup).toContain('data-assistant-provider="claudeAgent"');
+    expect(markup).toContain("Codex 完成设计");
+    expect(markup).toContain("Claude 继续实现");
+  });
+
   it("以转义文本渲染带独立 tone 的本地插件 Timeline 事件", () => {
     const html = renderToStaticMarkup(
       <MessagesTimeline

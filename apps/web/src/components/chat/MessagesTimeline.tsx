@@ -6,6 +6,7 @@ import {
   type CanvasReference,
   type EnvironmentId,
   type MessageId,
+  type ProviderDriverKind,
   type ScopedThreadRef,
   type ServerProviderSkill,
   type ThreadId,
@@ -88,6 +89,7 @@ import { resolveCanvasReferenceForFiles } from "~/canvas";
 import { shouldAutoExpandChangedFiles } from "./changedFilesPresentation";
 import { keepTimelineEndVisibleAfterOverlayGrowth } from "./timelineScrollAnchoring";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { PROVIDER_ICON_BY_PROVIDER } from "./providerIconUtils";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
@@ -152,6 +154,7 @@ import {
 
 interface TimelineRowSharedState {
   timestampFormat: TimestampFormat;
+  providers: ReadonlyMap<string, { displayName: string; driverKind: ProviderDriverKind }>;
   routeThreadKey: string;
   threadRef: ScopedThreadRef | null;
   markdownCwd: string | undefined;
@@ -183,6 +186,7 @@ interface TimelineRowActivityState {
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
+const EMPTY_PROVIDERS: TimelineRowSharedState["providers"] = new Map();
 const TimelineRowActivityCtx = createContext<TimelineRowActivityState>(null!);
 const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FADE_HEADER = <div className="h-10 sm:h-12" />;
@@ -229,6 +233,7 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
 // ---------------------------------------------------------------------------
 
 interface MessagesTimelineProps {
+  providers?: TimelineRowSharedState["providers"];
   agentPanelModel?: AgentPanelModel;
   onOpenAgents?: () => void;
   onOpenCanvas?: (canvas: CanvasReference) => void;
@@ -278,6 +283,7 @@ interface MessagesTimelineProps {
 // ---------------------------------------------------------------------------
 
 export const MessagesTimeline = memo(function MessagesTimeline({
+  providers = EMPTY_PROVIDERS,
   isWorking,
   workingStepLabel = null,
   activeTurnStartedAt,
@@ -568,6 +574,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
+      providers,
       routeThreadKey,
       threadRef: parseScopedThreadKey(routeThreadKey),
       markdownCwd,
@@ -591,6 +598,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }),
     [
       timestampFormat,
+      providers,
       routeThreadKey,
       markdownCwd,
       resolvedTheme,
@@ -1403,10 +1411,27 @@ function NarrationFoldTimelineRow({
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+  const providerInstanceId = row.message.providerInstanceId;
+  const provider = providerInstanceId ? ctx.providers.get(providerInstanceId) : undefined;
+  const providerName = providerInstanceId ? (provider?.displayName ?? providerInstanceId) : null;
+  const ProviderIcon = provider ? PROVIDER_ICON_BY_PROVIDER[provider.driverKind] : undefined;
 
   return (
     <>
       <div className="relative min-w-0 px-1 py-0.5">
+        {providerName ? (
+          <div
+            className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground"
+            data-assistant-provider={providerInstanceId}
+          >
+            {ProviderIcon ? (
+              <ProviderIcon className="size-3 shrink-0" aria-hidden="true" />
+            ) : (
+              <BotIcon className="size-3 shrink-0" aria-hidden="true" />
+            )}
+            <span>{providerName}</span>
+          </div>
+        ) : null}
         <ChatMarkdown
           text={messageText}
           cwd={ctx.markdownCwd}

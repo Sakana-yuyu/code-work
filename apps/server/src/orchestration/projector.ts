@@ -522,6 +522,9 @@ export function projectEvent(
           {
             id: payload.messageId,
             role: payload.role,
+            ...(payload.providerInstanceId !== undefined
+              ? { providerInstanceId: payload.providerInstanceId }
+              : {}),
             text: payload.text,
             ...(payload.attachments !== undefined ? { attachments: payload.attachments } : {}),
             turnId: payload.turnId,
@@ -547,6 +550,9 @@ export function projectEvent(
                     streaming: message.streaming,
                     updatedAt: message.updatedAt,
                     turnId: message.turnId,
+                    ...(message.providerInstanceId !== undefined
+                      ? { providerInstanceId: message.providerInstanceId }
+                      : {}),
                     ...(message.attachments !== undefined
                       ? { attachments: message.attachments }
                       : {}),

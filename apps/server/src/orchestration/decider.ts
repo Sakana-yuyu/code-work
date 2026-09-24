@@ -422,6 +422,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             messageId: message.messageId,
             imported: true,
             role: message.role,
+            ...(message.role === "assistant"
+              ? { providerInstanceId: command.modelSelection.instanceId }
+              : {}),
             text: message.text,
             turnId: null,
             streaming: false,
@@ -1325,7 +1328,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.message.assistant.delta": {
-      yield* requireThread({
+      const thread = yield* requireThread({
         readModel,
         command,
         threadId: command.threadId,
@@ -1342,6 +1345,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           threadId: command.threadId,
           messageId: command.messageId,
           role: "assistant",
+          ...(thread.session?.providerInstanceId
+            ? { providerInstanceId: thread.session.providerInstanceId }
+            : {}),
           text: command.delta,
           turnId: command.turnId ?? null,
           streaming: true,
@@ -1352,7 +1358,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
 
     case "thread.message.assistant.complete": {
-      yield* requireThread({
+      const thread = yield* requireThread({
         readModel,
         command,
         threadId: command.threadId,
@@ -1369,6 +1375,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           threadId: command.threadId,
           messageId: command.messageId,
           role: "assistant",
+          ...(thread.session?.providerInstanceId
+            ? { providerInstanceId: thread.session.providerInstanceId }
+            : {}),
           text: "",
           turnId: command.turnId ?? null,
           streaming: false,

@@ -89,6 +89,7 @@ import Migration0077 from "./Migrations/077_SpecWorkflowSelectedIntent.ts";
 import Migration0078 from "./Migrations/078_CompositionGoalLoopRetryIntents.ts";
 import Migration0079 from "./Migrations/079_CompositionTaskRunModelSnapshot.ts";
 import Migration0080 from "./Migrations/080_SpecWorkflowCapabilityFlags.ts";
+import Migration0081 from "./Migrations/081_ProjectionThreadMessageProviderInstance.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -183,6 +184,7 @@ export const migrationEntries = [
   [78, "CompositionGoalLoopRetryIntents", Migration0078],
   [79, "CompositionTaskRunModelSnapshot", Migration0079],
   [80, "SpecWorkflowCapabilityFlags", Migration0080],
+  [81, "ProjectionThreadMessageProviderInstance", Migration0081],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

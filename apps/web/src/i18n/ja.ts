@@ -4493,9 +4493,6 @@ export const ja: Record<string, string> = {
   addToChat: "チャットに追加",
   agentActivityDisabled: "エージェントアクティビティを無効にしました",
   agentActivityEnabled: "エージェントアクティビティを有効にしました",
-  agentSwitchLockedForThreadDescription:
-    "エージェントごとの会話コンテキストは共有されず、途中で切り替えるとこれまでの経過が失われます。他のエージェントを使うには新しい会話を開始してください。",
-  agentSwitchLockedForThreadTitle: "この会話は現在のエージェントに固定されています",
   allChecksHavePassed: "すべてのチェックに合格しました",
   alwaysAllowThisSession: "このセッションでは常に許可",
   anErrorOccurredWhileCopying: "コピー中にエラーが発生しました。",

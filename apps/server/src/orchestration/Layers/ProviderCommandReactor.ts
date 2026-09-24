@@ -160,6 +160,7 @@ const FIRST_USER_CONTEXT_TRUNCATION_MARKER = "\n[First user message truncated]";
 
 type ThreadTitleMessage = {
   readonly role: "user" | "assistant" | "system";
+  readonly providerInstanceId?: string | undefined;
   readonly text: string;
   readonly attachments?: ReadonlyArray<ChatAttachment> | undefined;
 };
@@ -176,7 +177,11 @@ function formatThreadTitleSection(message: ThreadTitleMessage): string | undefin
     ...(text.length > 0 ? [text] : []),
     ...(attachmentSummary.length > 0 ? [`[Attachments: ${attachmentSummary}]`] : []),
   ].join("\n");
-  return contents.length > 0 ? `${message.role.toUpperCase()}:\n${contents}` : undefined;
+  const roleLabel =
+    message.role === "assistant" && message.providerInstanceId
+      ? `ASSISTANT (${message.providerInstanceId})`
+      : message.role.toUpperCase();
+  return contents.length > 0 ? `${roleLabel}:\n${contents}` : undefined;
 }
 
 function limitFirstUserSection(section: string): string {
@@ -689,10 +694,11 @@ const make = Effect.gen(function* () {
     }
     const providers = yield* providerRegistry.getProviders;
     const requiresNewThread =
-      providers.find((snapshot) => snapshot.instanceId === input.currentModelSelection.instanceId)
+      input.currentModelSelection.instanceId === requestedModelSelection.instanceId &&
+      (providers.find((snapshot) => snapshot.instanceId === input.currentModelSelection.instanceId)
         ?.requiresNewThreadForModelChange === true ||
-      providers.find((snapshot) => snapshot.instanceId === requestedModelSelection.instanceId)
-        ?.requiresNewThreadForModelChange === true;
+        providers.find((snapshot) => snapshot.instanceId === requestedModelSelection.instanceId)
+          ?.requiresNewThreadForModelChange === true);
     if (!requiresNewThread) {
       return;
     }

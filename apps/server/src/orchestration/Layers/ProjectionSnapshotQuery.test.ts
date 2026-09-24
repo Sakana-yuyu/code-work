@@ -139,6 +139,11 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           '2026-02-24T00:00:05.000Z'
         )
       `;
+      yield* sql`
+        UPDATE projection_thread_messages
+        SET provider_instance_id = 'codex'
+        WHERE message_id = 'message-1'
+      `;
 
       yield* sql`
         INSERT INTO projection_thread_proposed_plans (
@@ -341,6 +346,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             {
               id: asMessageId("message-1"),
               role: "assistant",
+              providerInstanceId: ProviderInstanceId.make("codex"),
               text: "hello from projection",
               turnId: asTurnId("turn-1"),
               streaming: false,

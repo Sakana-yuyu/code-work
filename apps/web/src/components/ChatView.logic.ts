@@ -530,20 +530,13 @@ export function getStartedThreadModelChangeBlockReason(input: {
     (snapshot) => snapshot.instanceId === input.nextModelSelection.instanceId,
   );
   if (
-    currentProvider?.requiresNewThreadForModelChange === true ||
-    nextProvider?.requiresNewThreadForModelChange === true
+    currentModelSelection.instanceId === input.nextModelSelection.instanceId &&
+    (currentProvider?.requiresNewThreadForModelChange === true ||
+      nextProvider?.requiresNewThreadForModelChange === true)
   ) {
     return {
       title: t("startANewChatToChangeModels"),
       description: t("thisProviderDoesNotAllowSwitchingModelsAfterAConversationHasStarted"),
-    };
-  }
-  // 已开始的对话锁定在当前 Agent 实例上：各 Agent 的会话上下文互不相通，
-  // 中途换 Agent 会丢掉全部进展。同一实例内换模型保持允许。
-  if (currentModelSelection.instanceId !== input.nextModelSelection.instanceId) {
-    return {
-      title: t("agentSwitchLockedForThreadTitle"),
-      description: t("agentSwitchLockedForThreadDescription"),
     };
   }
   return null;

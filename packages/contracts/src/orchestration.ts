@@ -284,6 +284,7 @@ export type OrchestrationMessageRole = typeof OrchestrationMessageRole.Type;
 export const OrchestrationMessage = Schema.Struct({
   id: MessageId,
   role: OrchestrationMessageRole,
+  providerInstanceId: Schema.optional(ProviderInstanceId),
   text: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
   turnId: Schema.NullOr(TurnId),
@@ -1339,6 +1340,7 @@ export const ThreadMessageSentPayload = Schema.Struct({
   messageId: MessageId,
   imported: Schema.optional(Schema.Boolean),
   role: OrchestrationMessageRole,
+  providerInstanceId: Schema.optional(ProviderInstanceId),
   text: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
   turnId: Schema.NullOr(TurnId),

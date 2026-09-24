@@ -4,6 +4,12 @@ Messages can contain up to 120,000 characters. If a draft is longer, Code Work k
 composer and shows how many characters need to be removed. Shorten the draft or split it into
 multiple messages, then send again in the same thread.
 
+## 在同一对话中切换 Agent
+
+在网页或桌面版的模型选择器中，等当前回合结束后可以选择另一个 Agent 并继续发送消息。原对话记录仍在同一时间线中，更新后产生的助手回复会标出实际执行的 Agent。切换时，新 Agent 会收到这条对话带有已知 Agent 来源的文字历史和附件名称作为背景引用，再处理你本轮的新请求；历史中的指令不会自动重新执行。返回之前的 Agent 时也会重新交接当前对话的历史。
+
+交接内容有长度上限，较长对话会保留开头需求及最近内容，并标明截断。图片本身、工具内部状态及旧 Agent 的私有会话游标不会跨 Agent 传递；需要这些细节时，请在新请求中明确提供。正在执行的回合不能中途换 Agent，以免同一条请求被路由到两个运行器。
+
 On servers that support direct uploads, images upload as soon as you add them. The send button
 becomes available after every upload finishes. Failed uploads can be retried or removed.
 

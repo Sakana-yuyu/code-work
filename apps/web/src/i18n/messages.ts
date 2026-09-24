@@ -4447,9 +4447,6 @@ export const en: Record<string, string> = {
   addToChat: "Add to chat",
   agentActivityDisabled: "Agent activity disabled",
   agentActivityEnabled: "Agent activity enabled",
-  agentSwitchLockedForThreadDescription:
-    "Agents don't share conversation context — switching mid-thread would discard this thread's progress. Start a new conversation to use another agent.",
-  agentSwitchLockedForThreadTitle: "This conversation is bound to its agent",
   allChecksHavePassed: "All checks have passed",
   alwaysAllowThisSession: "Always allow this session",
   anErrorOccurredWhileCopying: "An error occurred while copying.",
@@ -10412,9 +10409,6 @@ export const zhCN: Record<string, string> = {
   addToChat: "添加到聊天",
   agentActivityDisabled: "Agent 活动已禁用",
   agentActivityEnabled: "Agent 活动已启用",
-  agentSwitchLockedForThreadDescription:
-    "各 Agent 的对话上下文互不相通，中途切换会丢失当前进展。请新建对话来使用其他 Agent。",
-  agentSwitchLockedForThreadTitle: "此对话已绑定当前 Agent",
   allChecksHavePassed: "所有检查均已通过",
   alwaysAllowThisSession: "始终允许此会话",
   anErrorOccurredWhileCopying: "复制时发生错误。",

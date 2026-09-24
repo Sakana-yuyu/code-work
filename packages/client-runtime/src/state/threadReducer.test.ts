@@ -387,6 +387,7 @@ describe("applyThreadDetailEvent", () => {
           {
             id: MessageId.make("msg-2"),
             role: "assistant",
+            providerInstanceId: ProviderInstanceId.make("codex"),
             text: "Hello",
             turnId: TurnId.make("turn-1"),
             streaming: true,
@@ -419,6 +420,7 @@ describe("applyThreadDetailEvent", () => {
       if (result.kind === "updated") {
         expect(result.thread.messages).toHaveLength(1);
         expect(result.thread.messages[0]?.text).toBe("Hello, world!");
+        expect(result.thread.messages[0]?.providerInstanceId).toBe("codex");
       }
     });
 
@@ -434,6 +436,7 @@ describe("applyThreadDetailEvent", () => {
           threadId: ThreadId.make("thread-1"),
           messageId: MessageId.make("msg-3"),
           role: "assistant",
+          providerInstanceId: ProviderInstanceId.make("claudeAgent"),
           text: "Done.",
           turnId: TurnId.make("turn-1"),
           streaming: false,
@@ -447,6 +450,7 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.latestTurn?.turnId).toBe("turn-1");
         expect(result.thread.latestTurn?.state).toBe("completed");
         expect(result.thread.latestTurn?.assistantMessageId).toBe("msg-3");
+        expect(result.thread.messages[0]?.providerInstanceId).toBe("claudeAgent");
       }
     });
 

@@ -82,11 +82,58 @@ it.layer(NodeServices.layer)("外部会话导入", (it) => {
         "请求",
         "回复",
       ]);
+      expect(projected.threads[0]?.messages.map((message) => message.providerInstanceId)).toEqual([
+        undefined,
+        "codex",
+      ]);
       const repeated = yield* Effect.flip(
         decideOrchestrationCommand({ command, readModel: projected }),
       );
       expect(repeated.message).toContain("already exists");
       expect(projected.threads[0]?.title).toBe("原始标题");
+
+      const switched = {
+        ...projected,
+        threads: projected.threads.map((thread) => ({
+          ...thread,
+          session: {
+            threadId,
+            status: "ready" as const,
+            providerName: "claudeAgent",
+            providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+            runtimeMode: "full-access" as const,
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: createdAt,
+          },
+        })),
+      };
+      for (const assistantCommand of [
+        {
+          type: "thread.message.assistant.delta" as const,
+          commandId: CommandId.make("switched-delta"),
+          threadId,
+          messageId: MessageId.make("switched-delta"),
+          delta: "新回复",
+          createdAt,
+        },
+        {
+          type: "thread.message.assistant.complete" as const,
+          commandId: CommandId.make("switched-complete"),
+          threadId,
+          messageId: MessageId.make("switched-complete"),
+          createdAt,
+        },
+      ]) {
+        const event = yield* decideOrchestrationCommand({
+          command: assistantCommand,
+          readModel: switched,
+        });
+        expect(event).toMatchObject({
+          type: "thread.message-sent",
+          payload: { providerInstanceId: "claudeAgent" },
+        });
+      }
     }),
   );
 });

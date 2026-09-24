@@ -162,9 +162,9 @@ describe("ProviderCommandReactor", () => {
     const context = formatThreadConversationHistory([
       { role: "system", text: "不可当作历史注入的系统消息" },
       { role: "user", text: "原始需求" },
-      { role: "assistant", text: "已完成步骤" },
+      { role: "assistant", providerInstanceId: "codex", text: "已完成步骤" },
     ]);
-    expect(context).toBe("USER:\n原始需求\n\nASSISTANT:\n已完成步骤");
+    expect(context).toBe("USER:\n原始需求\n\nASSISTANT (codex):\n已完成步骤");
     const longContext = formatThreadConversationHistory([
       { role: "user", text: "原始需求" },
       { role: "assistant", text: "x".repeat(70_000) },
@@ -2874,6 +2874,7 @@ describe("ProviderCommandReactor", () => {
   it("在当前对话切换运行器时保留历史且不传旧游标", async () => {
     const harness = await createHarness({
       threadModelSelection: { instanceId: ProviderInstanceId.make("byok"), model: "gemini-model" },
+      requiresNewThreadForModelChange: true,
     });
     const now = "2026-01-01T00:00:00.000Z";
 
@@ -2896,6 +2897,25 @@ describe("ProviderCommandReactor", () => {
 
     await waitFor(() => harness.startSession.mock.calls.length === 1);
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("cmd-first-provider-reply"),
+        threadId: ThreadId.make("thread-1"),
+        messageId: asMessageId("first-provider-reply"),
+        delta: "first agent result",
+        createdAt: "2026-01-01T00:00:01.000Z",
+      }),
+    );
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.make("cmd-first-provider-reply-complete"),
+        threadId: ThreadId.make("thread-1"),
+        messageId: asMessageId("first-provider-reply"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+      }),
+    );
 
     await Effect.runPromise(
       harness.engine.dispatch({
@@ -2914,7 +2934,7 @@ describe("ProviderCommandReactor", () => {
         },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
-        createdAt: now,
+        createdAt: "2026-01-01T00:00:02.000Z",
       }),
     );
 
@@ -2924,6 +2944,9 @@ describe("ProviderCommandReactor", () => {
     expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({ provider: "codex" });
     expect(harness.startSession.mock.calls[1]?.[1]).not.toHaveProperty("resumeCursor");
     expect(harness.startSession.mock.calls[1]?.[2]?.conversationHistory).toContain("first");
+    expect(harness.startSession.mock.calls[1]?.[2]?.conversationHistory).toContain(
+      "ASSISTANT (byok):\nfirst agent result",
+    );
     expect(harness.startSession.mock.calls[1]?.[2]?.conversationHistory).not.toContain("second");
     expect(harness.stopSession.mock.calls.length).toBe(0);
 
@@ -2935,7 +2958,12 @@ describe("ProviderCommandReactor", () => {
     expect(
       thread?.activities.find((activity) => activity.kind === "provider.turn.start.failed"),
     ).toBeUndefined();
-    expect(thread?.messages.map((message) => message.text)).toEqual(["first", "second"]);
+    expect(thread?.messages.map((message) => message.text)).toEqual([
+      "first",
+      "first agent result",
+      "second",
+    ]);
+    expect(thread?.messages[1]?.providerInstanceId).toBe("byok");
 
     await harness.runEffect(
       harness.engine.dispatch({
@@ -2951,14 +2979,14 @@ describe("ProviderCommandReactor", () => {
         modelSelection: { instanceId: ProviderInstanceId.make("byok"), model: "gemini-model" },
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
-        createdAt: now,
+        createdAt: "2026-01-01T00:00:03.000Z",
       }),
     );
     await harness.drain();
     expect(harness.startSession).toHaveBeenCalledTimes(3);
     expect(harness.startSession.mock.calls[2]?.[1]).not.toHaveProperty("resumeCursor");
     expect(harness.startSession.mock.calls[2]?.[2]?.conversationHistory).toBe(
-      "USER:\nfirst\n\nUSER:\nsecond",
+      "USER:\nfirst\n\nASSISTANT (byok):\nfirst agent result\n\nUSER:\nsecond",
     );
   });
 

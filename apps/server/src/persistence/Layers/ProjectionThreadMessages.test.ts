@@ -1,4 +1,4 @@
-import { MessageId, ThreadId } from "@codework/contracts";
+import { MessageId, ProviderInstanceId, ThreadId } from "@codework/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -12,6 +12,39 @@ const layer = it.layer(
 );
 
 layer("ProjectionThreadMessageRepository", (it) => {
+  it.effect("keeps the assistant's provider instance after later message updates", () =>
+    Effect.gen(function* () {
+      const repository = yield* ProjectionThreadMessageRepository;
+      const threadId = ThreadId.make("thread-provider-attribution");
+      const messageId = MessageId.make("message-provider-attribution");
+      const createdAt = "2026-02-28T19:00:00.000Z";
+      yield* repository.upsert({
+        messageId,
+        threadId,
+        turnId: null,
+        role: "assistant",
+        providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+        text: "first",
+        isStreaming: true,
+        createdAt,
+        updatedAt: createdAt,
+      });
+      yield* repository.upsert({
+        messageId,
+        threadId,
+        turnId: null,
+        role: "assistant",
+        text: "final",
+        isStreaming: false,
+        createdAt,
+        updatedAt: createdAt,
+      });
+      const rows = yield* repository.listByThreadId({ threadId });
+      assert.equal(rows[0]?.providerInstanceId, "claudeAgent");
+      assert.equal(rows[0]?.text, "final");
+    }),
+  );
+
   it.effect("preserves existing attachments when upsert omits attachments", () =>
     Effect.gen(function* () {
       const repository = yield* ProjectionThreadMessageRepository;

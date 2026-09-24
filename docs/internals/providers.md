@@ -1,5 +1,7 @@
 # Provider architecture
 
+同一线程可在回合结束后切换 Provider 实例。切换时 `ProviderCommandReactor` 重新创建目标实例的会话，以已落库的线程消息构建限长历史交接，并排除当前及尚未执行的排队消息。`ProviderService` 只在目标实例没有兼容续聊游标时将这段历史附在首次普通请求前；原生控制命令不消费交接历史。运行中的回合保持路由锁定。助手消息事件在生成时写入 `providerInstanceId`，内存、数据库与客户端都从事件读取归属，供同一时间线展示来源；旧消息缺少此字段时保持无来源标识。
+
 > For maintainers. Using Code Work? See [docs/user](../user/).
 
 A provider is the agent runtime that does the actual work. Code Work supports several, and the

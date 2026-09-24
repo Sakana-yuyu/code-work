@@ -1575,6 +1575,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
             threadId,
             status: "running",
             providerName: "claude",
+            providerInstanceId: ProviderInstanceId.make("claude"),
             runtimeMode: "full-access",
             activeTurnId: turnId,
             lastError: null,
@@ -1599,6 +1600,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           threadId,
           messageId: MessageId.make("message-tl-interim"),
           role: "assistant",
+          providerInstanceId: ProviderInstanceId.make("claude"),
           text: "interim commentary",
           turnId,
           streaming: false,
@@ -1608,6 +1610,13 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
       });
 
       yield* projectionPipeline.bootstrap;
+
+      const messageRows = yield* sql<{ readonly providerInstanceId: string | null }>`
+        SELECT provider_instance_id AS "providerInstanceId"
+        FROM projection_thread_messages
+        WHERE message_id = 'message-tl-interim'
+      `;
+      assert.equal(messageRows[0]?.providerInstanceId, "claude");
 
       const runningRows = yield* sql<{
         readonly state: string;

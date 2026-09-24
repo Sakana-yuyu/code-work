@@ -2436,6 +2436,16 @@ function ChatViewContent(props: ChatViewProps) {
     versionMismatchServerLabel,
   ]);
   const providerStatuses = serverConfig?.providers ?? EMPTY_PROVIDERS;
+  const timelineProviders = useMemo(
+    () =>
+      new Map(
+        deriveProviderInstanceEntries(providerStatuses).map((provider) => [
+          provider.instanceId,
+          { displayName: provider.displayName, driverKind: provider.driverKind },
+        ]),
+      ),
+    [providerStatuses],
+  );
   const unlockedSelectedProvider = resolveSelectableProvider(
     providerStatuses,
     selectedProviderByThreadId ?? threadProvider,
@@ -8075,6 +8085,7 @@ function ChatViewContent(props: ChatViewProps) {
           <div className="relative flex min-h-0 flex-1 flex-col">
             {/* Messages — LegendList handles virtualization and scrolling internally */}
             <MessagesTimeline
+              providers={timelineProviders}
               agentPanelModel={agentPanelModel}
               onOpenAgents={addAgentsSurface}
               key={activeThread.id}

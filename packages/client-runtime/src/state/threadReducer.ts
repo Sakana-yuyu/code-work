@@ -389,6 +389,9 @@ export function applyThreadDetailEvent(
       const message: OrchestrationMessage = {
         id: event.payload.messageId,
         role: event.payload.role,
+        ...(event.payload.providerInstanceId !== undefined
+          ? { providerInstanceId: event.payload.providerInstanceId }
+          : {}),
         text: event.payload.text,
         ...(event.payload.attachments !== undefined
           ? { attachments: event.payload.attachments }
@@ -406,6 +409,9 @@ export function applyThreadDetailEvent(
               ? entry
               : {
                   ...entry,
+                  ...(message.providerInstanceId !== undefined
+                    ? { providerInstanceId: message.providerInstanceId }
+                    : {}),
                   text: message.streaming
                     ? `${entry.text}${message.text}`
                     : message.text.length > 0

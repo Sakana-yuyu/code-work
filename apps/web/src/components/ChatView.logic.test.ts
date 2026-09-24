@@ -623,7 +623,7 @@ describe("getStartedThreadModelChangeBlockReason", () => {
     ).toBeNull();
   });
 
-  it("blocks switching the agent instance on a started thread with a friendly reason", () => {
+  it("allows switching the agent instance on a started thread", () => {
     expect(
       getStartedThreadModelChangeBlockReason({
         providers,
@@ -637,13 +637,10 @@ describe("getStartedThreadModelChangeBlockReason", () => {
           model: "claude-sonnet-5",
         },
       }),
-    ).toEqual({
-      title: "This conversation is bound to its agent",
-      description: expect.stringContaining("Start a new conversation"),
-    });
+    ).toBeNull();
   });
 
-  it("blocks started-session model changes when either provider requires a new thread", () => {
+  it("allows changing agents even when one provider restricts in-session model changes", () => {
     expect(
       getStartedThreadModelChangeBlockReason({
         providers,
@@ -655,6 +652,23 @@ describe("getStartedThreadModelChangeBlockReason", () => {
         nextModelSelection: {
           instanceId: ProviderInstanceId.make("grok"),
           model: "grok-build",
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("blocks changing models within a restricted agent instance", () => {
+    expect(
+      getStartedThreadModelChangeBlockReason({
+        providers,
+        hasStartedSession: true,
+        currentModelSelection: {
+          instanceId: ProviderInstanceId.make("grok"),
+          model: "grok-build",
+        },
+        nextModelSelection: {
+          instanceId: ProviderInstanceId.make("grok"),
+          model: "grok-other",
         },
       }),
     ).toEqual({

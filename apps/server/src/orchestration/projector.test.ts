@@ -449,6 +449,7 @@ describe("orchestration projector", () => {
             threadId: "thread-1",
             messageId: "assistant:msg-1",
             role: "assistant",
+            providerInstanceId: "codex",
             text: "hello",
             turnId: "turn-1",
             streaming: true,
@@ -486,8 +487,63 @@ describe("orchestration projector", () => {
     const message = afterComplete.threads[0]?.messages[0];
     expect(message?.id).toBe("assistant:msg-1");
     expect(message?.text).toBe("hello");
+    expect(message?.providerInstanceId).toBe("codex");
     expect(message?.streaming).toBe(false);
     expect(message?.updatedAt).toBe(completeAt);
+
+    const afterSwitch = await Effect.runPromise(
+      projectEvent(
+        afterComplete,
+        makeEvent({
+          sequence: 4,
+          type: "thread.session-set",
+          aggregateKind: "thread",
+          aggregateId: "thread-1",
+          occurredAt: completeAt,
+          commandId: "cmd-switch-provider",
+          payload: {
+            threadId: "thread-1",
+            session: {
+              threadId: "thread-1",
+              status: "ready",
+              providerName: "claudeAgent",
+              providerInstanceId: "claudeAgent",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: completeAt,
+            },
+          },
+        }),
+      ),
+    );
+    const afterNewAssistant = await Effect.runPromise(
+      projectEvent(
+        afterSwitch,
+        makeEvent({
+          sequence: 5,
+          type: "thread.message-sent",
+          aggregateKind: "thread",
+          aggregateId: "thread-1",
+          occurredAt: completeAt,
+          commandId: "cmd-new-assistant",
+          payload: {
+            threadId: "thread-1",
+            messageId: "assistant:msg-2",
+            role: "assistant",
+            providerInstanceId: "claudeAgent",
+            text: "new agent",
+            turnId: "turn-2",
+            streaming: false,
+            createdAt: completeAt,
+            updatedAt: completeAt,
+          },
+        }),
+      ),
+    );
+    expect(afterNewAssistant.threads[0]?.messages.map((entry) => entry.providerInstanceId)).toEqual(
+      ["codex", "claudeAgent"],
+    );
   });
 
   it("prunes reverted turn messages from in-memory thread snapshot", async () => {
