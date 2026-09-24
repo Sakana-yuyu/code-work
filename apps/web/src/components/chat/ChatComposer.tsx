@@ -126,6 +126,7 @@ import {
   type ComposerSubagentModeControl,
 } from "./ComposerAddMenu";
 import { ThreadGoalStatusBar } from "./ThreadGoalStatusBar";
+import { ThreadReferenceDialog } from "./ThreadReferenceDialog";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import {
@@ -1381,6 +1382,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     null,
   );
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
+  const [threadReferenceOpen, setThreadReferenceOpen] = useState(false);
   const [isInterrupting, setIsInterrupting] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
@@ -4040,6 +4042,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onAddSkillReference={() =>
                       insertComposerTextAtEnd("$", { ensureLeadingBoundary: true })
                     }
+                    onAddThreadReference={() => setThreadReferenceOpen(true)}
                     onTogglePlanMode={toggleInteractionMode}
                     onSelectGoal={selectGoalComposer}
                     onSetGoal={onSetThreadGoal}
@@ -4189,6 +4192,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           </div>
         </div>
       </div>
+      <ThreadReferenceDialog
+        open={threadReferenceOpen}
+        onOpenChange={setThreadReferenceOpen}
+        currentThreadRef={activeThread ? { environmentId, threadId: activeThread.id } : null}
+        onInsert={(text) => {
+          insertComposerTextAtEnd(text);
+        }}
+      />
     </form>
   );
 });

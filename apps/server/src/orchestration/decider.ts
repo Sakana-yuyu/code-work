@@ -383,6 +383,81 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    case "thread.import": {
+      yield* requireProject({ readModel, command, projectId: command.projectId });
+      yield* requireThreadAbsent({ readModel, command, threadId: command.threadId });
+      const created: Omit<OrchestrationEvent, "sequence"> = {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.created",
+        payload: {
+          threadId: command.threadId,
+          projectId: command.projectId,
+          title: command.title,
+          modelSelection: command.modelSelection,
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt: command.createdAt,
+          updatedAt: command.createdAt,
+        },
+      };
+      const messages: Array<Omit<OrchestrationEvent, "sequence">> = [];
+      for (const message of command.messages) {
+        messages.push({
+          ...(yield* withEventBase({
+            aggregateKind: "thread",
+            aggregateId: command.threadId,
+            occurredAt: message.createdAt,
+            commandId: command.commandId,
+          })),
+          type: "thread.message-sent",
+          payload: {
+            threadId: command.threadId,
+            messageId: message.messageId,
+            imported: true,
+            role: message.role,
+            text: message.text,
+            turnId: null,
+            streaming: false,
+            createdAt: message.createdAt,
+            updatedAt: message.createdAt,
+          },
+        });
+      }
+      const activityBase = yield* withEventBase({
+        aggregateKind: "thread",
+        aggregateId: command.threadId,
+        occurredAt: command.importedAt,
+        commandId: command.commandId,
+      });
+      const provenance: Omit<OrchestrationEvent, "sequence"> = {
+        ...activityBase,
+        type: "thread.activity-appended",
+        payload: {
+          threadId: command.threadId,
+          activity: {
+            id: activityBase.eventId,
+            tone: "info",
+            kind: "external.session.imported",
+            summary: "已导入外部 CLI 会话",
+            payload: {
+              provider: command.provider,
+              nativeSessionId: command.nativeSessionId,
+            },
+            turnId: null,
+            createdAt: command.importedAt,
+          },
+        },
+      };
+      return [created, ...messages, provenance];
+    }
+
     case "thread.delete": {
       yield* requireThread({
         readModel,

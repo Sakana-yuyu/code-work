@@ -9,6 +9,8 @@ import {
 } from "@codework/contracts";
 import {
   createByokEnvironmentAtoms,
+  createExternalSessionEnvironmentAtoms,
+  createThreadReferenceEnvironmentAtoms,
   createServerEnvironmentAtoms,
 } from "@codework/client-runtime/state/server";
 import { createEnvironmentServerConfigsAtom } from "@codework/client-runtime/state/shell";
@@ -25,6 +27,10 @@ export const serverEnvironment = createServerEnvironmentAtoms(connectionAtomRunt
   initialConfigValueAtom: environmentSession.initialConfigValueAtom,
 });
 export const byokEnvironment = createByokEnvironmentAtoms(connectionAtomRuntime);
+export const externalSessionEnvironment =
+  createExternalSessionEnvironmentAtoms(connectionAtomRuntime);
+export const threadReferenceEnvironment =
+  createThreadReferenceEnvironmentAtoms(connectionAtomRuntime);
 export const environmentServerConfigsAtom = createEnvironmentServerConfigsAtom({
   catalogValueAtom: environmentCatalog.catalogValueAtom,
   serverConfigValueAtom: serverEnvironment.configValueAtom,

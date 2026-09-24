@@ -50,6 +50,25 @@ const TERMINAL_STATUSES: ReadonlySet<CompositionTaskStatus> = new Set([
 
 type GraphSchedule = "serial" | "parallel";
 
+const BOARD_COLUMNS = ["todo", "running", "attention", "done"] as const;
+type BoardColumn = (typeof BOARD_COLUMNS)[number];
+
+export function taskBoardColumn(status: CompositionTaskStatus): BoardColumn {
+  switch (status) {
+    case "queued":
+      return "todo";
+    case "dispatched":
+    case "resuming":
+    case "running":
+      return "running";
+    case "completed":
+    case "cancelled":
+      return "done";
+    default:
+      return "attention";
+  }
+}
+
 type ChildDraft = {
   readonly nodeId: string;
   readonly driverId: string;
@@ -241,6 +260,7 @@ export function TaskGraphPanel() {
   const [workspaceRoot, setWorkspaceRoot] = useState("");
   const [leaderPrompt, setLeaderPrompt] = useState("");
   const [schedule, setSchedule] = useState<GraphSchedule>("parallel");
+  const [maxConcurrencyText, setMaxConcurrencyText] = useState("2");
   const [children, setChildren] = useState<ReadonlyArray<ChildDraft>>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [actionReason, setActionReason] = useState("");
@@ -387,7 +407,13 @@ export function TaskGraphPanel() {
       leaderPrompt.trim() === "" ||
       projectId.trim() === "" ||
       effectiveChildren.length === 0 ||
-      effectiveChildren.some((child) => child.prompt.trim() === "" || child.driverId.trim() === "")
+      effectiveChildren.some(
+        (child) => child.prompt.trim() === "" || child.driverId.trim() === "",
+      ) ||
+      (schedule === "parallel" &&
+        (!Number.isInteger(Number(maxConcurrencyText)) ||
+          Number(maxConcurrencyText) < 1 ||
+          Number(maxConcurrencyText) > 64))
     ) {
       setActionError(t("taskGraph.completeFields"));
       return;
@@ -422,6 +448,7 @@ export function TaskGraphPanel() {
           child.dependsOnPrevious && index > 0 ? [effectiveChildren[index - 1]!.nodeId] : [],
       })),
       schedule,
+      maxConcurrency: schedule === "serial" ? 1 : Number(maxConcurrencyText),
     };
     await runCommand("execute", executeGraph, request);
   };
@@ -572,6 +599,18 @@ export function TaskGraphPanel() {
                     </Select>
                   </label>
                 </div>
+                <label className="mt-3 block space-y-1 text-xs">
+                  <span className="text-muted-foreground">{t("taskGraph.maxConcurrency")}</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={64}
+                    value={maxConcurrencyText}
+                    onValueChange={setMaxConcurrencyText}
+                    disabled={schedule === "serial"}
+                    size="sm"
+                  />
+                </label>
                 {leaderProfile ? (
                   <div className="mt-3">
                     <DriverBoundaryNotice profile={leaderProfile} />
@@ -692,23 +731,40 @@ export function TaskGraphPanel() {
         <div className="min-w-0 space-y-3">
           <div className="rounded-xl border border-border/60 px-3 py-3 sm:px-4">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-medium">{t("taskGraph.recentTasks")}</h3>
+              <h3 className="text-sm font-medium">{t("taskGraph.boardTitle")}</h3>
               <span className="text-[11px] text-muted-foreground">{snapshots.length}</span>
             </div>
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 space-y-3" data-task-board>
               {snapshots.length === 0 ? (
                 <p className="text-xs text-muted-foreground">{t("taskGraph.empty")}</p>
               ) : (
-                snapshots.map((snapshot) => (
-                  <TaskSnapshotRow
-                    key={snapshot.task.taskId}
-                    snapshot={snapshot}
-                    selected={
-                      snapshot.task.taskId === (selectedTaskId ?? snapshots[0]?.task.taskId)
-                    }
-                    onSelect={() => setSelectedTaskId(snapshot.task.taskId)}
-                  />
-                ))
+                BOARD_COLUMNS.map((column) => {
+                  const rows = snapshots.filter(
+                    ({ task }) => taskBoardColumn(task.status) === column,
+                  );
+                  return (
+                    <section key={column} data-task-board-column={column}>
+                      <h4 className="mb-1.5 flex items-center justify-between text-xs font-medium">
+                        {t(`taskGraph.board.${column}`)}
+                        <Badge variant="secondary" size="sm">
+                          {rows.length}
+                        </Badge>
+                      </h4>
+                      <div className="space-y-1.5">
+                        {rows.map((snapshot) => (
+                          <TaskSnapshotRow
+                            key={snapshot.task.taskId}
+                            snapshot={snapshot}
+                            selected={
+                              snapshot.task.taskId === (selectedTaskId ?? snapshots[0]?.task.taskId)
+                            }
+                            onSelect={() => setSelectedTaskId(snapshot.task.taskId)}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })
               )}
             </div>
           </div>

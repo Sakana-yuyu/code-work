@@ -4,7 +4,10 @@ import type {
   ResolvedKeybindingsConfig,
   ScopedThreadRef,
 } from "@codework/contracts";
-import { isWorkspaceImagePreviewPath } from "@codework/shared/filePreview";
+import {
+  isWorkspaceImagePreviewPath,
+  isWorkspaceOfficePreviewPath,
+} from "@codework/shared/filePreview";
 import { VirtualizedFile, type SelectedLineRange } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/editor";
 import { EditProvider, File, type FileOptions, Virtualizer } from "@pierre/diffs/react";
@@ -41,6 +44,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 
 import FileBrowserPanel from "./FileBrowserPanel";
+import { OfficePreviewSurface } from "./OfficePreviewSurface";
 import {
   type FileCommentAnnotationEntry,
   type FileCommentAnnotationGroup,
@@ -752,7 +756,8 @@ export default function FilePreviewPanel({
     reportFailure: false,
   });
   const isImage = relativePath !== null && isWorkspaceImagePreviewPath(relativePath);
-  const file = useProjectFileQuery(environmentId, cwd, relativePath, !isImage);
+  const isOffice = relativePath !== null && isWorkspaceOfficePreviewPath(relativePath);
+  const file = useProjectFileQuery(environmentId, cwd, relativePath, !isImage && !isOffice);
   const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
   // Reading markdown rendered is a preference, not a property of one file. Keeping
   // it on the panel meant a thread switch dropped it and forced source back.
@@ -984,6 +989,14 @@ export default function FilePreviewPanel({
               absolutePath={absolutePath}
               alt={relativePath}
             />
+          ) : relativePath && isOffice && absolutePath ? (
+            <OfficePreviewSurface
+              key={`${environmentId}:${absolutePath}`}
+              environmentId={environmentId}
+              threadRef={threadRef}
+              absolutePath={absolutePath}
+              relativePath={relativePath}
+            />
           ) : relativePath && file.error && file.data === null ? (
             <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-xs leading-relaxed text-destructive">
               {file.error}
@@ -1072,7 +1085,9 @@ export default function FilePreviewPanel({
               selectedPath={relativePath}
               selectedPathRevealId={revealRequestId}
               onOpenFile={onOpenFile}
-              {...(relativePath && !isImage ? { onRefreshSelectedFile: file.refresh } : {})}
+              {...(relativePath && !isImage && !isOffice
+                ? { onRefreshSelectedFile: file.refresh }
+                : {})}
             />
           </aside>
         ) : null}

@@ -981,6 +981,33 @@ it.effect("服务重建后从持久化绑定恢复尚未发送的历史", () => 
 
 historyRouting.layer("ProviderServiceLive 历史重建", (it) => {
   const routing = historyRouting;
+  it.effect("导入时只记录游标，首次续聊使用原生会话", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("thread-external-import-resume");
+      const resumeCursor = { threadId: "550e8400-e29b-41d4-a716-446655440000" };
+      const before = routing.codex.startSession.mock.calls.length;
+      yield* provider.rememberExternalSession({
+        threadId,
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        resumeCursor,
+      });
+      assert.equal(routing.codex.startSession.mock.calls.length, before);
+      assert.deepEqual(
+        Option.getOrThrow(yield* directory.getBinding(threadId)).resumeCursor,
+        resumeCursor,
+      );
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "approval-required",
+      });
+      assert.deepEqual(routing.codex.startSession.mock.lastCall?.[0].resumeCursor, resumeCursor);
+    }),
+  );
   it.effect("转接后丢弃旧实例晚到事件，停止失败仍保留旧实例收尾", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;

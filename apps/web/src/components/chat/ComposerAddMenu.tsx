@@ -20,6 +20,7 @@ import {
   PaperclipIcon,
   PlayIcon,
   PlusIcon,
+  QuoteIcon,
   ShieldCheckIcon,
   SparklesIcon,
   WorkflowIcon,
@@ -82,6 +83,7 @@ export interface ComposerAddMenuProps {
   readonly pluginItems: ReadonlyArray<ComposerAddMenuPluginItem>;
   readonly onAddFileReference: () => boolean;
   readonly onAddSkillReference: () => boolean;
+  readonly onAddThreadReference: () => void;
   readonly onTogglePlanMode: () => void;
   readonly onSelectGoal: () => void;
   readonly onSetGoal: (objective: string) => Promise<boolean>;
@@ -652,6 +654,16 @@ export function ComposerAddMenuBody(props: ComposerAddMenuBodyProps) {
         disabled={props.disabled}
         onClick={() => {
           if (props.onAddSkillReference()) props.onDismiss();
+        }}
+      />
+      <ComposerAddMenuItem
+        icon={<QuoteIcon className="size-4" />}
+        title={t("threadReference.menuTitle")}
+        description={t("threadReference.menuDescription")}
+        disabled={props.disabled}
+        onClick={() => {
+          props.onAddThreadReference();
+          props.onDismiss();
         }}
       />
       <ComposerAddMenuItem

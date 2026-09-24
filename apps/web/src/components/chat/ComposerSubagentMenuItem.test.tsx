@@ -53,6 +53,7 @@ const renderMenuBody = (
       pluginItems={[]}
       onAddFileReference={() => true}
       onAddSkillReference={() => true}
+      onAddThreadReference={() => {}}
       onTogglePlanMode={() => {}}
       onSelectGoal={() => {}}
       onSetGoal={async () => true}

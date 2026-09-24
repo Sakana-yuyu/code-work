@@ -87,7 +87,7 @@ vi.mock("~/state/use-atom-command", () => ({
   },
 }));
 
-import { TaskGraphPanel } from "./TaskGraphPanel";
+import { TaskGraphPanel, taskBoardColumn } from "./TaskGraphPanel";
 
 const profile = (
   overrides: Partial<CompositionAgentDriverProfile> = {},
@@ -151,6 +151,14 @@ function renderPanel(): string {
 }
 
 describe("TaskGraphPanel", () => {
+  it("把任务状态归入可操作的看板阶段", () => {
+    expect(taskBoardColumn("queued")).toBe("todo");
+    expect(taskBoardColumn("running")).toBe("running");
+    expect(taskBoardColumn("in_review")).toBe("attention");
+    expect(taskBoardColumn("failed")).toBe("attention");
+    expect(taskBoardColumn("completed")).toBe("done");
+  });
+
   beforeEach(() => {
     mocks.environment = null;
     mocks.driverQuery.data = null;

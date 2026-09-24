@@ -3076,6 +3076,10 @@ function ChatViewContent(props: ChatViewProps) {
     const defaultInstanceId = defaultInstanceIdForDriver(selectedProvider);
     return providerStatuses.find((status) => status.instanceId === defaultInstanceId) ?? null;
   }, [activeProviderInstanceId, providerStatuses, selectedProvider]);
+  const importedSessionUnavailable =
+    activeThreadId?.startsWith("external_") === true &&
+    threadActivities.some((activity) => activity.kind === "external.session.imported") &&
+    activeProviderStatus?.status !== "ready";
   const [resumeCompactionPermanentlyDismissed, setResumeCompactionPermanentlyDismissed] =
     useLocalStorage(
       `t3code:resume-compaction-dismissed:${environmentId}:${activeProviderInstanceId ?? "claudeAgent"}`,
@@ -8222,7 +8226,9 @@ function ChatViewContent(props: ChatViewProps) {
                                 ? t("composer.sendingFeedback")
                                 : threadDetailLoading
                                   ? t("composer.messagesLoading")
-                                  : null
+                                  : importedSessionUnavailable
+                                    ? t("externalSessionsReadOnly")
+                                    : null
                             }
                             isPreparingWorktree={isPreparingWorktree}
                             externalDrawerAttached={externalComposerDrawerAttached}

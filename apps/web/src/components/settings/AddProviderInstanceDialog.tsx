@@ -14,7 +14,7 @@ import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hook
 import { cn } from "../../lib/utils";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { Button } from "../ui/button";
-import { ACPRegistryIcon, Gemini, GithubCopilotIcon, type Icon } from "../Icons";
+import { Gemini, GithubCopilotIcon, type Icon } from "../Icons";
 import {
   Dialog,
   DialogDescription,
@@ -37,6 +37,7 @@ import {
   type WizardNavigation,
 } from "./AddProviderInstanceDialog.logic";
 import { AddProviderInstanceWizardSteps } from "./AddProviderInstanceWizardSteps";
+import { AcpRegistryCatalogPicker } from "./AcpRegistryCatalogPicker";
 import { t } from "~/i18n";
 
 const PROVIDER_ACCENT_SWATCHES = [
@@ -93,13 +94,6 @@ const COMING_SOON_DRIVER_OPTIONS: readonly ComingSoonDriverOption[] = [
       return t("gemini");
     },
     icon: Gemini,
-  },
-  {
-    value: ProviderDriverKind.make("acpRegistry"),
-    get label() {
-      return t("acpRegistry");
-    },
-    icon: ACPRegistryIcon,
   },
 ];
 
@@ -452,6 +446,13 @@ export function AddProviderInstanceDialog({
                       "animate-in fade-in-50 duration-150 motion-reduce:animate-none",
                   )}
                 >
+                  {driver === "acpAgent" && wizardStep === 2 ? (
+                    <AcpRegistryCatalogPicker
+                      environmentId={environmentId}
+                      selectedCommand={String(configDraft.command ?? "")}
+                      onSelect={(command) => setConfigDraft({ ...configDraft, command })}
+                    />
+                  ) : null}
                   <ProviderSettingsForm
                     definition={driverOption}
                     value={configDraft}

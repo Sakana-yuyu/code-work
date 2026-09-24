@@ -46,6 +46,50 @@ import { followStreamInEnvironment } from "./runtime.ts";
 
 export type ServerUpdateStage = "downloading" | "installing" | "resuming";
 
+export function createExternalSessionEnvironmentAtoms<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+) {
+  const scanScheduler = createAtomCommandScheduler();
+  const importScheduler = createAtomCommandScheduler();
+  return {
+    scan: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:external-sessions:scan",
+      tag: WS_METHODS.serverScanExternalSessions,
+      scheduler: scanScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.projectId]),
+      },
+    }),
+    importSession: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:external-sessions:import",
+      tag: WS_METHODS.serverImportExternalSession,
+      scheduler: importScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.projectId, input.sessionId]),
+      },
+    }),
+  };
+}
+
+export function createThreadReferenceEnvironmentAtoms<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+) {
+  return {
+    getReference: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:thread-reference:get",
+      tag: WS_METHODS.serverGetThreadReference,
+      scheduler: createAtomCommandScheduler(),
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.threadId]),
+      },
+    }),
+  };
+}
+
 export function createByokEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
@@ -58,6 +102,12 @@ export function createByokEnvironmentAtoms<R, E>(
     supplierCatalog: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:byok:supplier-catalog",
       tag: WS_METHODS.serverGetByokSupplierCatalog,
+      staleTimeMs: 300_000,
+      idleTtlMs: 300_000,
+    }),
+    acpRegistryCatalog: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:acp:registry-catalog",
+      tag: WS_METHODS.serverGetAcpRegistryCatalog,
       staleTimeMs: 300_000,
       idleTtlMs: 300_000,
     }),

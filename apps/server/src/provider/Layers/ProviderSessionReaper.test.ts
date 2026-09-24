@@ -162,6 +162,7 @@ describe("ProviderSessionReaper", () => {
     );
 
     const providerService: ProviderServiceShape = {
+      rememberExternalSession: () => unsupported(),
       startSession: () => unsupported(),
       sendTurn: () => unsupported(),
       interruptTurn: () => unsupported(),

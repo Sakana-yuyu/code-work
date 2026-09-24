@@ -6,6 +6,8 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -18,6 +20,8 @@ import {
   AuthSessionId,
   ClientSurface,
   CommandId,
+  CodexSettings,
+  ClaudeSettings,
   type DiscoveredLocalServerList,
   EventId,
   type EditorId,
@@ -37,6 +41,8 @@ import {
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
   type ProjectId,
+  MessageId,
+  ProviderInstanceId,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
   type ProjectFileOperation,
@@ -121,6 +127,12 @@ import * as ByokModelDiscovery from "./provider/byok/ByokModelDiscoveryService.t
 import * as ByokBalance from "./provider/byok/ByokBalanceService.ts";
 import * as ByokDelegation from "./provider/byok/ByokDelegationService.ts";
 import * as ByokAdaptersImport from "./provider/byok/ByokAdaptersImport.ts";
+import { getAcpRegistryCatalog } from "./provider/acp/AcpRegistryCatalog.ts";
+import { resolveClaudeHomePath } from "./provider/Drivers/ClaudeHome.ts";
+import { resolveCodexHomeLayout } from "./provider/Drivers/CodexHomeLayout.ts";
+import { readExternalSession, scanExternalSessions } from "./provider/externalSessions.ts";
+import { deriveProviderInstanceConfigMap } from "./provider/Layers/ProviderInstanceRegistryHydration.ts";
+import { buildThreadReference } from "./orchestration/threadReference.ts";
 import {
   applySupplierCredentialUpdate,
   buildSupplierProviderInstancePatch,
@@ -210,6 +222,8 @@ const isCompositionTaskRpcError = Schema.is(CompositionTaskRpcError);
 const isCompositionMcpRuntimeRpcError = Schema.is(CompositionMcpRuntimeRpcError);
 const isThreadGoalRpcError = Schema.is(ThreadGoalRpcError);
 const isSpecWorkflowRpcError = Schema.is(SpecWorkflowRpcError);
+const decodeCodexSettings = Schema.decodeUnknownEffect(CodexSettings);
+const decodeClaudeSettings = Schema.decodeUnknownEffect(ClaudeSettings);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
@@ -1014,6 +1028,56 @@ const makeWsRpcLayer = (
       const serverCommandId = (tag: string) =>
         randomUUID.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
 
+      const scanProjectExternalSessions = (projectId: ProjectId) =>
+        Effect.gen(function* () {
+          const project = yield* projectionSnapshotQuery.getProjectShellById(projectId);
+          if (Option.isNone(project)) return null;
+          const settings = yield* serverSettings.getSettings;
+          const platform = yield* HostProcessPlatform;
+          const path = yield* Path.Path;
+          const fileSystem = yield* FileSystem.FileSystem;
+          const sources = yield* Effect.forEach(
+            Object.entries(deriveProviderInstanceConfigMap(settings)),
+            ([providerInstanceId, instance]) =>
+              Effect.gen(function* () {
+                if (instance.driver === "codex") {
+                  const config = yield* decodeCodexSettings(instance.config).pipe(
+                    Effect.orElseSucceed(() => null),
+                  );
+                  if (config === null) return null;
+                  const home = yield* resolveCodexHomeLayout(config);
+                  return {
+                    provider: "codex" as const,
+                    dir: path.join(home.sharedHomePath, "sessions"),
+                    providerInstanceId,
+                  };
+                }
+                if (instance.driver === "claudeAgent") {
+                  const config = yield* decodeClaudeSettings(instance.config).pipe(
+                    Effect.orElseSucceed(() => null),
+                  );
+                  if (config === null) return null;
+                  const home = yield* resolveClaudeHomePath(config);
+                  const nested = path.join(home, ".claude", "projects");
+                  return {
+                    provider: "claudeAgent" as const,
+                    dir: (yield* fileSystem.exists(nested)) ? nested : path.join(home, "projects"),
+                    providerInstanceId,
+                  };
+                }
+                return null;
+              }),
+          );
+          const sessions = yield* Effect.tryPromise(() =>
+            scanExternalSessions({
+              projectRoot: project.value.workspaceRoot,
+              sources: sources.filter((source) => source !== null),
+              platform,
+            }),
+          );
+          return { project: project.value, sessions };
+        });
+
       const loadAuthAccessSnapshot = () =>
         Effect.all({
           pairingLinks: serverAuth.listPairingLinks(),
@@ -1539,14 +1603,34 @@ const makeWsRpcLayer = (
       const dispatchNormalizedCommand = (
         normalizedCommand: OrchestrationCommand,
       ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> => {
-        const dispatchEffect =
-          normalizedCommand.type === "thread.turn.start" && normalizedCommand.bootstrap
-            ? dispatchBootstrapTurnStart(normalizedCommand)
-            : dispatchFromClient(normalizedCommand).pipe(
-                Effect.mapError((cause) =>
-                  toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
-                ),
-              );
+        const dispatchEffect = Effect.gen(function* () {
+          if (
+            normalizedCommand.type === "thread.turn.start" &&
+            normalizedCommand.threadId.startsWith("external_")
+          ) {
+            const sessions = yield* providerService.listSessions();
+            const session = sessions.find((item) => item.threadId === normalizedCommand.threadId);
+            const providers = yield* providerRegistry.getProviders;
+            const provider = providers.find(
+              (item) => item.instanceId === session?.providerInstanceId,
+            );
+            if (!session?.resumeCursor || provider?.status !== "ready") {
+              return yield* new OrchestrationDispatchCommandError({
+                message:
+                  "This imported CLI session is read-only until its original provider can resume it.",
+              });
+            }
+          }
+          const commandEffect =
+            normalizedCommand.type === "thread.turn.start" && normalizedCommand.bootstrap
+              ? dispatchBootstrapTurnStart(normalizedCommand)
+              : dispatchFromClient(normalizedCommand).pipe(
+                  Effect.mapError((cause) =>
+                    toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+                  ),
+                );
+          return yield* commandEffect;
+        });
 
         return startup
           .enqueueCommand(dispatchEffect)
@@ -2378,6 +2462,204 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.serverGetByokSupplierCatalog,
             Effect.succeed(byokModelDiscovery.catalog),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverGetAcpRegistryCatalog]: (_input) =>
+          observeRpcEffect(WS_METHODS.serverGetAcpRegistryCatalog, getAcpRegistryCatalog, {
+            "rpc.aggregate": "server",
+          }),
+        [WS_METHODS.serverScanExternalSessions]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverScanExternalSessions,
+            Effect.gen(function* () {
+              const found = yield* scanProjectExternalSessions(input.projectId);
+              if (found === null) return { sessions: [], error: "project-not-found" };
+              const providers = yield* providerRegistry.getProviders;
+              const sessions = yield* Effect.forEach(
+                found.sessions,
+                (candidate) =>
+                  projectionSnapshotQuery
+                    .getThreadShellById(ThreadId.make(`external_${candidate.id}`))
+                    .pipe(
+                      Effect.map((existing) => ({
+                        id: candidate.id,
+                        provider: candidate.provider,
+                        title: candidate.title,
+                        createdAt: candidate.createdAt,
+                        modifiedAt: candidate.modifiedAt,
+                        canResume:
+                          candidate.canResume &&
+                          providers.some(
+                            (provider) =>
+                              provider.driver === candidate.provider &&
+                              provider.instanceId === candidate.providerInstanceId &&
+                              provider.enabled &&
+                              provider.installed &&
+                              provider.status === "ready" &&
+                              provider.availability !== "unavailable",
+                          ),
+                        imported: Option.isSome(existing),
+                      })),
+                    ),
+                { concurrency: 8 },
+              );
+              return { sessions, error: null };
+            }).pipe(
+              Effect.catchCause(() => Effect.succeed({ sessions: [], error: "scan-failed" })),
+            ),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverImportExternalSession]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverImportExternalSession,
+            Effect.gen(function* () {
+              const found = yield* scanProjectExternalSessions(input.projectId);
+              if (found === null) {
+                return {
+                  threadId: null,
+                  imported: false,
+                  truncated: false,
+                  error: "project-not-found",
+                };
+              }
+              const candidate = found.sessions.find((entry) => entry.id === input.sessionId);
+              if (!candidate) {
+                return {
+                  threadId: null,
+                  imported: false,
+                  truncated: false,
+                  error: "session-not-found",
+                };
+              }
+              const threadId = ThreadId.make(`external_${candidate.id}`);
+              const providers = yield* providerRegistry.getProviders;
+              const provider = providers.find(
+                (entry) =>
+                  entry.driver === candidate.provider &&
+                  entry.instanceId === candidate.providerInstanceId &&
+                  entry.enabled &&
+                  entry.installed &&
+                  entry.status === "ready" &&
+                  entry.availability !== "unavailable",
+              );
+              const selectedModel =
+                provider?.models.find((model) => model.isDefault)?.slug ??
+                provider?.models[0]?.slug ??
+                "default";
+              const modelSelection =
+                found.project.defaultModelSelection !== null &&
+                found.project.defaultModelSelection.instanceId === provider?.instanceId
+                  ? found.project.defaultModelSelection
+                  : {
+                      instanceId:
+                        provider?.instanceId ?? ProviderInstanceId.make(candidate.provider),
+                      model: selectedModel,
+                    };
+              const bindResumeCursor = Effect.gen(function* () {
+                if (!provider || !candidate.canResume) return;
+                yield* providerService.rememberExternalSession({
+                  threadId,
+                  provider: provider.driver,
+                  providerInstanceId: modelSelection.instanceId,
+                  resumeCursor:
+                    candidate.provider === "codex"
+                      ? { threadId: candidate.nativeSessionId }
+                      : { resume: candidate.nativeSessionId },
+                });
+              });
+              const existing = yield* projectionSnapshotQuery.getThreadShellById(threadId);
+              if (Option.isSome(existing)) {
+                yield* bindResumeCursor;
+                if (
+                  provider &&
+                  candidate.canResume &&
+                  existing.value.modelSelection.instanceId !== modelSelection.instanceId
+                ) {
+                  yield* dispatchFromClient({
+                    type: "thread.meta.update",
+                    commandId: yield* serverCommandId("external-session-provider"),
+                    threadId,
+                    modelSelection,
+                  });
+                }
+                return { threadId, imported: false, truncated: false, error: null };
+              }
+              const transcript = yield* Effect.tryPromise(() => readExternalSession(candidate));
+              if (transcript.messages.length === 0) {
+                return {
+                  threadId: null,
+                  imported: false,
+                  truncated: false,
+                  error: "empty-session",
+                };
+              }
+              yield* dispatchFromClient({
+                type: "thread.import",
+                commandId: yield* serverCommandId("external-session-import"),
+                threadId,
+                projectId: input.projectId,
+                title: candidate.title,
+                modelSelection,
+                provider: candidate.provider,
+                nativeSessionId: candidate.nativeSessionId,
+                createdAt: candidate.createdAt,
+                importedAt: yield* DateTime.now.pipe(Effect.map(DateTime.formatIso)),
+                messages: transcript.messages.map((message, index) => ({
+                  messageId: MessageId.make(`${threadId}_${index}`),
+                  ...message,
+                })),
+              });
+              yield* bindResumeCursor;
+              return { threadId, imported: true, truncated: transcript.truncated, error: null };
+            }).pipe(
+              Effect.catchCause(() =>
+                Effect.succeed({
+                  threadId: null,
+                  imported: false,
+                  truncated: false,
+                  error: "import-failed",
+                }),
+              ),
+            ),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverGetThreadReference]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverGetThreadReference,
+            projectionSnapshotQuery.getThreadDetailSnapshot(input.threadId, { turnLimit: 4 }).pipe(
+              Effect.map((snapshot) => {
+                if (Option.isNone(snapshot) || snapshot.value.thread.deletedAt !== null) {
+                  return {
+                    threadId: input.threadId,
+                    projectId: null,
+                    title: null,
+                    excerpt: "",
+                    truncated: false,
+                    error: "thread-not-found" as const,
+                  };
+                }
+                const thread = snapshot.value.thread;
+                const reference = buildThreadReference(thread);
+                return {
+                  threadId: input.threadId,
+                  projectId: thread.projectId,
+                  title: thread.title,
+                  ...reference,
+                  truncated: reference.truncated || snapshot.value.page?.hasMore === true,
+                  error: reference.excerpt.length === 0 ? ("thread-empty" as const) : null,
+                };
+              }),
+              Effect.catchCause(() =>
+                Effect.succeed({
+                  threadId: input.threadId,
+                  projectId: null,
+                  title: null,
+                  excerpt: "",
+                  truncated: false,
+                  error: "thread-not-found" as const,
+                }),
+              ),
+            ),
             { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverDiscoverByokModels]: (input) =>

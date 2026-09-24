@@ -1427,7 +1427,29 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     ),
   );
 
+  const rememberExternalSession: ProviderServiceMethod<"rememberExternalSession"> = (input) =>
+    Effect.gen(function* () {
+      const existing = yield* directory.getBinding(input.threadId);
+      if (Option.isSome(existing)) return;
+      const instance = yield* registry.getInstanceInfo(input.providerInstanceId);
+      if (instance.driverKind !== input.provider || !instance.enabled) {
+        return yield* toValidationError(
+          "ProviderService.rememberExternalSession",
+          `Provider instance '${input.providerInstanceId}' cannot resume this external session.`,
+        );
+      }
+      yield* directory.upsert({
+        threadId: input.threadId,
+        provider: input.provider,
+        providerInstanceId: input.providerInstanceId,
+        runtimeMode: "approval-required",
+        status: "stopped",
+        resumeCursor: input.resumeCursor,
+      });
+    });
+
   return {
+    rememberExternalSession,
     startSession,
     sendTurn,
     interruptTurn,

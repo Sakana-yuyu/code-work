@@ -210,7 +210,7 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
         });
         const probe = yield* Effect.gen(function* () {
           const child = yield* spawner.spawn(
-            ChildProcess.make(acpCommand, ["--version"], {
+            ChildProcess.make(acpCommand, [...acpArgs, "--version"], {
               env: injectedEnv,
               extendEnv: true,
             }),

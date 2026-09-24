@@ -2,6 +2,14 @@ import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { CliProxyError, CliProxyRequest, CliProxyResult } from "./cliProxy.ts";
+import { AcpRegistryCatalogResult } from "./acpRegistry.ts";
+import { ThreadReferenceRequest, ThreadReferenceResult } from "./threadReferences.ts";
+import {
+  ExternalSessionImportRequest,
+  ExternalSessionImportResult,
+  ExternalSessionScanRequest,
+  ExternalSessionScanResult,
+} from "./externalSessions.ts";
 import { IdeError, IdeOpenInput, IdeOpenResult } from "./ide.ts";
 
 import { ProviderEventQueryInput, ProviderEventQueryResult } from "./providerEventQuery.ts";
@@ -504,6 +512,10 @@ export const WS_METHODS = {
   serverDisconnectMcpServer: "server.disconnectMcpServer",
   serverRefreshMcpServer: "server.refreshMcpServer",
   serverGetByokSupplierCatalog: "server.getByokSupplierCatalog",
+  serverGetAcpRegistryCatalog: "server.getAcpRegistryCatalog",
+  serverScanExternalSessions: "server.scanExternalSessions",
+  serverImportExternalSession: "server.importExternalSession",
+  serverGetThreadReference: "server.getThreadReference",
   serverDiscoverByokModels: "server.discoverByokModels",
   serverBenchmarkByokModel: "server.benchmarkByokModel",
   serverMatchByokContextWindows: "server.matchByokContextWindows",
@@ -752,6 +764,30 @@ export const WsServerRefreshMcpServerRpc = Rpc.make(WS_METHODS.serverRefreshMcpS
 export const WsServerGetByokSupplierCatalogRpc = Rpc.make(WS_METHODS.serverGetByokSupplierCatalog, {
   payload: Schema.Struct({}),
   success: Schema.Array(ByokSupplierCatalogEntry),
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerGetAcpRegistryCatalogRpc = Rpc.make(WS_METHODS.serverGetAcpRegistryCatalog, {
+  payload: Schema.Struct({}),
+  success: AcpRegistryCatalogResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerScanExternalSessionsRpc = Rpc.make(WS_METHODS.serverScanExternalSessions, {
+  payload: ExternalSessionScanRequest,
+  success: ExternalSessionScanResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerImportExternalSessionRpc = Rpc.make(WS_METHODS.serverImportExternalSession, {
+  payload: ExternalSessionImportRequest,
+  success: ExternalSessionImportResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerGetThreadReferenceRpc = Rpc.make(WS_METHODS.serverGetThreadReference, {
+  payload: ThreadReferenceRequest,
+  success: ThreadReferenceResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -2106,6 +2142,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerDisconnectMcpServerRpc,
   WsServerRefreshMcpServerRpc,
   WsServerGetByokSupplierCatalogRpc,
+  WsServerGetAcpRegistryCatalogRpc,
+  WsServerScanExternalSessionsRpc,
+  WsServerImportExternalSessionRpc,
+  WsServerGetThreadReferenceRpc,
   WsServerDiscoverByokModelsRpc,
   WsServerBenchmarkByokModelRpc,
   WsServerMatchByokContextWindowsRpc,

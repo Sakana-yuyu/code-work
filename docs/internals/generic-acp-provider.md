@@ -23,8 +23,12 @@
 
 BYOK 源变化时，`ProviderInstanceRegistryHydration.ts` 只在 `routeThroughByok: true` 的 acpAgent 实例上计算 `__byokSourceFingerprint` 并触发忙碌边界内的实例重建。
 
+## ACP 目录
+
+新增 `server.getAcpRegistryCatalog` 读取 ACP 官方目录。服务端按自身平台标记二进制条目的可用性，只把参数安全且固定版本的 npx 分发转换为可选择的启动命令；目录失败时向导仍保留手工命令入口。选择条目只填写现有 `acpAgent.command`，实例保存、探测与会话启动继续走原有驱动。npx 可能在探测时下载软件包，界面会先明确提示。目录查询需要环境读取权限，并限制响应大小与等待时间。
+
 ## 尚未提供的
 
-- **没有 ACP 目录（catalog）**。应用内 "ACP Registry" 仍保持 coming-soon 入口（`apps/web/src/components/settings/AddProviderInstanceDialog.tsx` 的 `COMING_SOON_DRIVER_OPTIONS`），不会列出可一键添加的 agent；用户只能手工填命令。
+- 二进制和 uvx 分发暂不自动安装；目录会显示它们的手工配置或平台不可用状态。目录选择支持 npx 固定版本条目。
 - 模型路由完全由 agent 自身解释，Code Work 不经网关校验其模型清单（`customModels` 只是展示目录）。
 - 通用 agent 的工具面、审批语义取决于各自 ACP 实现，Code Work 只保证 fs/terminal 请求的工作区约束与审批链兜底。

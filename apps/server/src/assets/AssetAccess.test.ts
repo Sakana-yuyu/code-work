@@ -148,7 +148,7 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(testLayer)),
   );
 
-  it.effect("issues exact workspace URLs for image previews", () =>
+  it.effect("issues exact workspace URLs for image and Office previews", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -158,9 +158,11 @@ describe("AssetAccess", () => {
       const assetsDirectory = path.join(root, "assets");
       const imagePath = path.join(assetsDirectory, "icon.png");
       const siblingPath = path.join(assetsDirectory, "other.png");
+      const officePath = path.join(assetsDirectory, "report.docx");
       yield* fileSystem.makeDirectory(assetsDirectory, { recursive: true });
       yield* fileSystem.writeFile(imagePath, new Uint8Array([137, 80, 78, 71]));
       yield* fileSystem.writeFile(siblingPath, new Uint8Array([137, 80, 78, 71]));
+      yield* fileSystem.writeFile(officePath, new Uint8Array([80, 75, 3, 4]));
       const canonicalImagePath = yield* fileSystem.realPath(imagePath);
 
       const result = yield* issueAssetUrl({
@@ -181,6 +183,22 @@ describe("AssetAccess", () => {
       });
       expect(yield* resolveAsset(token, "other.png")).toBeNull();
       expect(yield* resolveAsset(token, "../icon.png")).toBeNull();
+
+      const officeResult = yield* issueAssetUrl({
+        resource: {
+          _tag: "workspace-file",
+          threadId: ThreadId.make("thread-1"),
+          path: officePath,
+        },
+        workspaceRoot: root,
+      });
+      const officeSuffix = officeResult.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+      const officeToken = officeSuffix.slice(0, officeSuffix.indexOf("/"));
+      expect(yield* resolveAsset(officeToken, "report.docx")).toEqual({
+        kind: "file",
+        path: yield* fileSystem.realPath(officePath),
+      });
+      expect(yield* resolveAsset(officeToken, "other.png")).toBeNull();
     }).pipe(Effect.provide(testLayer)),
   );
 

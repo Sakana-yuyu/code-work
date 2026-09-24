@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   isWorkspaceBrowserPreviewPath,
   isWorkspaceImagePreviewPath,
+  isWorkspaceOfficePreviewPath,
   isWorkspacePreviewEntryPath,
 } from "./filePreview.ts";
 
@@ -31,6 +32,14 @@ describe("workspace file previews", () => {
     "rejects non-preview path %s",
     (path) => {
       expect(isWorkspacePreviewEntryPath(path)).toBe(false);
+    },
+  );
+
+  it.each(["report.docx", "data.XLSX", "deck.pptx"])(
+    "recognizes exact Office preview path %s",
+    (path) => {
+      expect(isWorkspaceOfficePreviewPath(path)).toBe(true);
+      expect(isWorkspacePreviewEntryPath(path)).toBe(true);
     },
   );
 });

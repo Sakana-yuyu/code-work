@@ -147,6 +147,7 @@ vp run dev        # 维护者启动本地开发环境
 - [源码控制集成](./docs/user/source-control.md)
 - [IDE 工作区](./docs/user/workspace-ide.md)
 - [Claude Provider](./docs/user/providers-claude.md)
+- [导入 CLI 历史会话](./docs/user/import-cli-sessions.md)
 - [使用量与计划](./docs/user/usage.md)
 - [Agent CLI](./docs/user/agent-cli.md)
 - [Linux 后台服务](./docs/user/background-service.md)

@@ -43,6 +43,7 @@ import {
   ClockIcon,
   FolderIcon,
   FolderPlusIcon,
+  ImportIcon,
   GitBranchIcon,
   MessageSquareIcon,
   PinIcon,
@@ -120,6 +121,7 @@ import {
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import { useThreadSplitStore } from "../threadSplitStore";
+import { ExternalSessionImportDialog } from "./ExternalSessionImportDialog";
 import { formatRelativeTimeLabel, parseTimestampDate } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
 import { cn } from "~/lib/utils";
@@ -1894,6 +1896,7 @@ export default function Sidebar() {
     },
   });
   const [projectScopeMenuOpen, setProjectScopeMenuOpen] = useState(false);
+  const [externalSessionImportOpen, setExternalSessionImportOpen] = useState(false);
   const newThreadContext = useHandleNewThread();
   const openAddProjectCommandPalette = useCallback(
     () => openCommandPalette({ open: "add-project" }),
@@ -1973,6 +1976,15 @@ export default function Sidebar() {
   const projectGroups = useMemo(
     () => sortLogicalProjectsForSidebar(unsortedProjectGroups, threads, sidebarProjectSortOrder),
     [sidebarProjectSortOrder, threads, unsortedProjectGroups],
+  );
+  const externalSessionProjects = useMemo(
+    () =>
+      projectGroups.map((group) => ({
+        environmentId: group.environmentId,
+        projectId: group.id,
+        name: group.displayName,
+      })),
+    [projectGroups],
   );
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   // Threads on non-primary environments (Code Work Connect, hosted) resolve their
@@ -3595,6 +3607,22 @@ export default function Sidebar() {
                       <SidebarMenuButton
                         size="icon"
                         type="button"
+                        onClick={() => setExternalSessionImportOpen(true)}
+                        disabled={projects.length === 0}
+                        aria-label={t("externalSessionsTitle")}
+                      />
+                    }
+                  >
+                    <ImportIcon />
+                  </TooltipTrigger>
+                  <TooltipPopup side="right">{t("externalSessionsTitle")}</TooltipPopup>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <SidebarMenuButton
+                        size="icon"
+                        type="button"
                         className="relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
                         onClick={handleNewThreadClick}
                         disabled={projects.length === 0}
@@ -4227,6 +4255,14 @@ export default function Sidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarChromeFooter />
+      <ExternalSessionImportDialog
+        open={externalSessionImportOpen}
+        onOpenChange={setExternalSessionImportOpen}
+        projects={externalSessionProjects}
+        onOpenThread={(environmentId, threadId) =>
+          navigateToThread(scopeThreadRef(environmentId, threadId))
+        }
+      />
     </>
   );
 }

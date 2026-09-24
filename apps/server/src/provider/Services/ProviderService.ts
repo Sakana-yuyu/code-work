@@ -16,6 +16,7 @@ import type {
   CompositionRuntimeCapabilityHandshakeResult,
   ProviderInterruptTurnInput,
   ProviderInstanceId,
+  ProviderDriverKind,
   ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
   ProviderRuntimeEvent,
@@ -44,6 +45,13 @@ import type { ProviderInstanceRoutingInfo } from "./ProviderAdapterRegistry.ts";
  * ProviderServiceShape - Service API for provider session and turn orchestration.
  */
 export interface ProviderServiceShape {
+  /** 记录外部 CLI 的原生恢复游标；不会启动 Provider 进程。 */
+  readonly rememberExternalSession: (input: {
+    readonly threadId: ThreadId;
+    readonly provider: ProviderDriverKind;
+    readonly providerInstanceId: ProviderInstanceId;
+    readonly resumeCursor: unknown;
+  }) => Effect.Effect<void, ProviderServiceError>;
   /**
    * Start a provider session.
    */

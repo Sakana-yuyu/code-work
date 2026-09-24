@@ -1,4 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import Mime from "@effect/platform-node/Mime";
+import * as NodeFSP from "node:fs/promises";
 import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -88,6 +90,7 @@ export const browserApiCorsLayer = Layer.unwrap(
         : {}),
       allowedMethods: browserApiCorsAllowedMethods,
       allowedHeaders: browserApiCorsAllowedHeaders,
+      exposedHeaders: ["etag"],
       maxAge: 600,
     });
   }),
@@ -203,37 +206,57 @@ export const otlpTracesProxyRouteLayer = HttpRouter.add(
   ),
 );
 
-export const assetRouteLayer = HttpRouter.add(
-  "GET",
-  `${ASSET_ROUTE_PREFIX}/*`,
-  Effect.gen(function* () {
-    const request = yield* HttpServerRequest.HttpServerRequest;
-    const url = HttpServerRequest.toURL(request);
-    if (Option.isNone(url)) {
-      return HttpServerResponse.text("Bad Request", { status: 400 });
-    }
+const serveAsset = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const headOnly = request.method === "HEAD";
+  if (request.method !== "GET" && !headOnly) return HttpServerResponse.empty({ status: 405 });
+  const url = HttpServerRequest.toURL(request);
+  if (Option.isNone(url)) {
+    return HttpServerResponse.text("Bad Request", { status: 400 });
+  }
 
-    const suffix = url.value.pathname.slice(`${ASSET_ROUTE_PREFIX}/`.length);
-    const separatorIndex = suffix.indexOf("/");
-    if (separatorIndex <= 0) {
-      return HttpServerResponse.text("Not Found", { status: 404 });
-    }
+  const suffix = url.value.pathname.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+  const separatorIndex = suffix.indexOf("/");
+  if (separatorIndex <= 0) {
+    return HttpServerResponse.text("Not Found", { status: 404 });
+  }
 
-    const asset = yield* resolveAsset(
-      suffix.slice(0, separatorIndex),
-      suffix.slice(separatorIndex + 1),
+  const asset = yield* resolveAsset(
+    suffix.slice(0, separatorIndex),
+    suffix.slice(separatorIndex + 1),
+  );
+  if (!asset) {
+    return HttpServerResponse.text("Not Found", { status: 404 });
+  }
+  if (asset.path.toLowerCase().match(/\.(?:docx|xlsx|pptx)$/)) {
+    const info = yield* Effect.tryPromise(() => NodeFSP.stat(asset.path)).pipe(
+      Effect.orElseSucceed(() => null),
     );
-    if (!asset) {
-      return HttpServerResponse.text("Not Found", { status: 404 });
+    if (!info) return HttpServerResponse.text("Not Found", { status: 404 });
+    const etag = `"${info.size.toString(16)}-${info.mtimeMs.toString(16)}"`;
+    const headers = {
+      ...assetResponseHeaders(asset.path),
+      "Cache-Control": "private, no-cache",
+      ETag: etag,
+    };
+    if (request.headers["if-none-match"] === etag) {
+      return HttpServerResponse.empty({ status: 304, headers });
     }
-    return yield* HttpServerResponse.file(asset.path, {
-      status: 200,
-      headers: assetResponseHeaders(asset.path),
-    }).pipe(
+    if (headOnly) return HttpServerResponse.empty({ status: 200, headers });
+    return yield* HttpServerResponse.file(asset.path, { status: 200, headers }).pipe(
       Effect.orElseSucceed(() => HttpServerResponse.text("Internal Server Error", { status: 500 })),
     );
-  }),
-);
+  }
+  if (headOnly) return HttpServerResponse.empty({ status: 405 });
+  return yield* HttpServerResponse.file(asset.path, {
+    status: 200,
+    headers: assetResponseHeaders(asset.path),
+  }).pipe(
+    Effect.orElseSucceed(() => HttpServerResponse.text("Internal Server Error", { status: 500 })),
+  );
+});
+
+export const assetRouteLayer = HttpRouter.add("*", `${ASSET_ROUTE_PREFIX}/*`, serveAsset);
 
 export const attachmentUploadRouteLayer = HttpRouter.add(
   "POST",
