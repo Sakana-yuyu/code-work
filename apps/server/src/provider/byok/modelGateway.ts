@@ -20,9 +20,11 @@
  *
  * @module provider/byok/modelGateway
  */
+import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -706,6 +708,35 @@ export const tapGatewayUsageStream = <E>(
     ),
   );
 };
+
+/** 响应头只能证明上游已接受请求；账号成败在响应流结束时结算。 */
+export const trackLocalGatewayStream = <E>(
+  stream: Stream.Stream<Uint8Array, E>,
+  protocol: GatewayProtocol,
+  accountId: string,
+  provider: string,
+): Stream.Stream<Uint8Array, E> =>
+  tapGatewayUsageStream(stream, protocol, (totals) => {
+    if (totals.inputTokens > 0 || totals.outputTokens > 0) {
+      localPoolUsageStore.recordTokens(accountId, totals.inputTokens, totals.outputTokens);
+    }
+  }).pipe(
+    Stream.onExit((exit) =>
+      Effect.sync(() => {
+        if (Exit.isSuccess(exit)) {
+          localPoolUsageStore.recordRequest(accountId, provider, true);
+        } else if (
+          exit.cause.reasons.length > 0 &&
+          exit.cause.reasons.every(Cause.isInterruptReason)
+        ) {
+          localPoolUsageStore.recordCanceled(accountId, provider);
+        } else {
+          localPoolUsageStore.recordRequest(accountId, provider, false);
+          markLocalAccountFailure(accountId, 503);
+        }
+      }),
+    ),
+  );
 
 const nonEmptyCredentialField = (
   credential: Record<string, unknown> | undefined,
@@ -1485,11 +1516,9 @@ const gatewayHandler = (
               )
             : undefined;
         markLocalAccountFailure(localAccountId, upstream.status, retryAfterMs);
-        localPoolUsageStore.recordRequest(
-          localAccountId,
-          adapter.localProvider ?? "",
-          upstream.status < 400,
-        );
+        if (upstream.status >= 400) {
+          localPoolUsageStore.recordRequest(localAccountId, adapter.localProvider ?? "", false);
+        }
       }
       if (localProvider === undefined) {
         if (isRetryableRelayGatewayStatus(upstream.status) && attempt + 1 < maxAttempts) {
@@ -1518,12 +1547,12 @@ const gatewayHandler = (
       }
       let responseStream = upstream.stream;
       if (localAccountId !== undefined && upstream.status < 400) {
-        const accountId = localAccountId;
-        responseStream = tapGatewayUsageStream(upstream.stream, protocol, (totals) => {
-          if (totals.inputTokens > 0 || totals.outputTokens > 0) {
-            localPoolUsageStore.recordTokens(accountId, totals.inputTokens, totals.outputTokens);
-          }
-        });
+        responseStream = trackLocalGatewayStream(
+          upstream.stream,
+          protocol,
+          localAccountId,
+          adapter.localProvider ?? "",
+        );
       }
       return HttpServerResponse.stream(responseStream, { status: upstream.status, headers });
     }

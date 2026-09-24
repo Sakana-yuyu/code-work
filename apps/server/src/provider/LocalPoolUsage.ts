@@ -14,6 +14,8 @@ export interface LocalPoolUsageEntry {
   readonly provider: string;
   readonly requests: number;
   readonly failed: number;
+  /** 客户端在上游正常结束前取消的请求数，不计作供应商失败。 */
+  readonly canceled?: number;
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly lastUsedAt: string | null;
@@ -25,6 +27,7 @@ export interface LocalPoolUsageAccountState {
   readonly provider: string;
   readonly requests: number;
   readonly failed: number;
+  readonly canceled?: number;
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly lastUsedAt: string | null;
@@ -39,6 +42,7 @@ export interface LocalPoolUsageState {
 export interface LocalPoolUsageStore {
   /** 一次账号请求落地（含失败尝试）；失败按尝试次数计。 */
   readonly recordRequest: (accountId: string, provider: string, ok: boolean) => void;
+  readonly recordCanceled: (accountId: string, provider: string) => void;
   /** 一次流结束后累积的 token 统计。 */
   readonly recordTokens: (accountId: string, inputTokens: number, outputTokens: number) => void;
   /** 记录/清除账号冷却（unix ms；null 清除）。随脏快照持久化，重启后仍生效。 */
@@ -98,6 +102,14 @@ export const createLocalPoolUsageStore = (): LocalPoolUsageStore => {
         failed: ok ? current.failed : current.failed + 1,
         lastUsedAt: new Date().toISOString(),
       })),
+    recordCanceled: (accountId, provider) =>
+      mutate(accountId, provider, (current) => ({
+        ...current,
+        provider,
+        requests: current.requests + 1,
+        canceled: (current.canceled ?? 0) + 1,
+        lastUsedAt: new Date().toISOString(),
+      })),
     recordTokens: (accountId, inputTokens, outputTokens) =>
       mutate(accountId, accounts.get(accountId)?.provider ?? "", (current) => ({
         ...current,
@@ -136,6 +148,7 @@ export const createLocalPoolUsageStore = (): LocalPoolUsageStore => {
             provider: state.provider,
             requests: state.requests,
             failed: state.failed,
+            ...(state.canceled === undefined ? {} : { canceled: state.canceled }),
             inputTokens: state.inputTokens,
             outputTokens: state.outputTokens,
             lastUsedAt: state.lastUsedAt,
@@ -162,6 +175,9 @@ export const createLocalPoolUsageStore = (): LocalPoolUsageStore => {
           provider: incoming.provider,
           requests: Math.max(current?.requests ?? 0, incoming.requests),
           failed: Math.max(current?.failed ?? 0, incoming.failed),
+          ...(Math.max(current?.canceled ?? 0, incoming.canceled ?? 0) > 0
+            ? { canceled: Math.max(current?.canceled ?? 0, incoming.canceled ?? 0) }
+            : {}),
           inputTokens: Math.max(current?.inputTokens ?? 0, incoming.inputTokens),
           outputTokens: Math.max(current?.outputTokens ?? 0, incoming.outputTokens),
           lastUsedAt: incoming.lastUsedAt ?? current?.lastUsedAt ?? null,

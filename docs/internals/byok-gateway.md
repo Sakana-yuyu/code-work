@@ -14,9 +14,13 @@ BYOK 实例保存模型通道，CLI 实例选择其中一条共享线路或聚�
 
 本地账号收到 429 后按上游 `Retry-After` 冷却该账号，支持秒数和 HTTP 日期，最多接受 24 小时；缺少或无法解析该头时维持默认 60 秒。后续较短的失败冷却不会提前解除已有冷却。中转通道的 429 仍直接交给调用方，不进入本地账号池的冷却逻辑。
 
+成功响应头不立即计为成功：本地账号请求在响应流完整结束后计成功，流中途报错计失败并冷却当前账号，客户端取消单独计数且不触发账号冷却。流开始后仍不重放到其他账号；请求数、失败数、取消数和 token 统计随账号池用量快照持久化。
+
 账号池故障转移参考（检索日期 2026-09-24）：关键词 `cc-switch max_retries failover providers`；采用 [cc-switch forwarder](https://github.com/farion1231/cc-switch/blob/main/src-tauri/src/proxy/forwarder.rs) 和 [默认代理配置](https://github.com/farion1231/cc-switch/blob/main/src-tauri/src/proxy/types.rs)，其中默认 3 次重试表示最多 4 个不同上游。Code Work 沿用已有 Effect 网关与账号冷却存储，将四次尝试限制在本地账号池、响应流交付之前。
 
 BYOK Agent 在一轮模型回复中先输出正文再调用工具时，会把正文、同轮思考及工具调用保存在同一条 assistant 消息中回放；思考签名只属于发出它的模型轮次。工具结果仍按原始调用顺序回传，避免后续轮次失去先前已说明的意图或把旧签名误用到新的思考块。
+
+模型流在尚未输出任何文字或工具调用前断开时，同一轮最多重连 10 次；等待时间从 250 毫秒倍增并封顶 2 秒，取消会中断等待。跨模型轮次复用相同工具协议 ID 时，回传模型的 ID 不变，但本地工具调用的幂等键和时间线活动 ID 会区分轮次，避免误判为旧调用。
 
 实现依据（检索日期 2026-09-05）：关键词为 `Codex auth.json account_id`、`Claude OAuth token refresh`、`Grok CLI OAuth chat proxy`；采用 [OpenAI Codex 登录存储](https://github.com/openai/codex/blob/main/codex-rs/login/src/auth/storage.rs)、[xAI Grok CLI 设置](https://docs.x.ai/build/settings) 和 [CLIProxyAPI 的公开执行器实现](https://github.com/router-for-me/CLIProxyAPI/tree/main/internal/runtime/executor)，用于确认凭据字段、官方端点和协议头。CPA 源码只作为公开协议参考，运行时不依赖它。
 

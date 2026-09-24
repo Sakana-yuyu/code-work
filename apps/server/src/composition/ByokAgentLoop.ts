@@ -6,6 +6,7 @@ import {
   type RuntimeMode,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -149,11 +150,13 @@ export type ByokAgentLoopInput = {
   /** 每个工具调用开始执行时回调一次，用于向用户展示工具活动。 */
   readonly onToolStarted?: (
     toolCall: ByokAgentToolCall,
+    activityItemId: string,
   ) => Effect.Effect<void, ByokAgentLoopCheckpointError>;
   /** 将内部 ToolBroker 调用回写成统一的 Provider Runtime 活动。 */
   readonly onToolCompleted?: (
     toolCall: ByokAgentToolCall,
     result: ToolBroker.ToolBrokerResult,
+    activityItemId: string,
   ) => Effect.Effect<void, ByokAgentLoopCheckpointError>;
   readonly onModelUsage?: (
     usage: ByokAgentModelUsage,
@@ -198,6 +201,8 @@ const OUTPUT_TRUNCATION_CONTINUATION_PROMPT =
   "Continue exactly where the previous response stopped. Do not repeat prior text.";
 /** 断流后的同一模型轮次最多重连次数；普通错误不进入该路径。 */
 const MAX_STREAM_DISCONNECT_RETRIES = 10;
+const STREAM_DISCONNECT_RETRY_BASE_MS = 250;
+const STREAM_DISCONNECT_RETRY_MAX_MS = 2_000;
 const utf8Encoder = new TextEncoder();
 
 const boundedInteger = (value: number | undefined, fallback: number, min: number, max: number) =>
@@ -434,7 +439,7 @@ export const runByokAgentLoop = (
       COMPOSITION_AGENT_LOOP_MAX_TOOL_RESULT_CHARS,
     );
     const messages: ByokAgentMessage[] = [{ role: "user", content: input.prompt }];
-    const seenToolCallIds = new Set<string>();
+    const usedActivityItemIds = new Set<string>();
     let text = "";
     let rounds = 0;
     let checkpointChunkIndex = 0;
@@ -580,6 +585,14 @@ export const runByokAgentLoop = (
           !terminalFailure
         ) {
           streamDisconnectRetryCount += 1;
+          yield* Effect.sleep(
+            Duration.millis(
+              Math.min(
+                STREAM_DISCONNECT_RETRY_MAX_MS,
+                STREAM_DISCONNECT_RETRY_BASE_MS * 2 ** (streamDisconnectRetryCount - 1),
+              ),
+            ),
+          );
           completion = yield* complete(modelMessages);
           continue;
         }
@@ -594,6 +607,8 @@ export const runByokAgentLoop = (
       let roundReasoning = "";
       let roundReasoningSignature = "";
       const roundToolCalls: ByokAgentToolCall[] = [];
+      const roundToolCallIds = new Set<string>();
+      const activityItemIds = new Map<string, string>();
 
       for (const event of events) {
         if (event.type === "reasoning_signature") {
@@ -611,11 +626,21 @@ export const runByokAgentLoop = (
           terminal = true;
           continue;
         }
-        if (seenToolCallIds.has(event.toolCallId)) {
+        if (roundToolCallIds.has(event.toolCallId)) {
           continue;
         }
-
-        seenToolCallIds.add(event.toolCallId);
+        roundToolCallIds.add(event.toolCallId);
+        let activityItemId = event.toolCallId;
+        if (usedActivityItemIds.has(activityItemId)) {
+          activityItemId = `${event.toolCallId}:round:${rounds}`;
+          let collision = 1;
+          while (usedActivityItemIds.has(activityItemId)) {
+            activityItemId = `${event.toolCallId}:round:${rounds}:${collision}`;
+            collision += 1;
+          }
+        }
+        usedActivityItemIds.add(activityItemId);
+        activityItemIds.set(event.toolCallId, activityItemId);
         roundToolCalls.push({
           toolCallId: event.toolCallId,
           canonicalToolName: event.canonicalToolName,
@@ -652,8 +677,9 @@ export const runByokAgentLoop = (
         }
         const invokeToolCall = (toolCall: ByokAgentToolCall) =>
           Effect.gen(function* () {
+            const activityItemId = activityItemIds.get(toolCall.toolCallId) ?? toolCall.toolCallId;
             if (input.onToolStarted !== undefined) {
-              yield* input.onToolStarted(toolCall);
+              yield* input.onToolStarted(toolCall, activityItemId);
             }
             const result = yield* broker.invoke({
               taskId: input.taskId,
@@ -665,12 +691,12 @@ export const runByokAgentLoop = (
               toolCallId: toolCall.toolCallId,
               canonicalToolName: toolCall.canonicalToolName,
               arguments: toolCall.arguments,
-              idempotencyKey: `${input.runId}:${toolCall.toolCallId}`,
+              idempotencyKey: `${input.runId}:${activityItemId}`,
               capabilityGrantIds: input.capabilityGrantIds,
               workspaceRoot: input.workspaceRoot,
             });
             if (input.onToolCompleted !== undefined) {
-              yield* input.onToolCompleted(toolCall, result);
+              yield* input.onToolCompleted(toolCall, result, activityItemId);
             }
             return [toolCall, result] as const;
           });

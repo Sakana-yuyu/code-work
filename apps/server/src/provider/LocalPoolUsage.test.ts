@@ -27,6 +27,19 @@ describe("LocalPoolUsage", () => {
     restored.hydrate(parseLocalPoolUsageState(JSON.stringify(snapshot))!);
     expect(restored.list()[0]).toMatchObject({ id: "a", provider: "codex", requests: 1 });
   });
+  it("客户端取消单独计数并随快照恢复，不增加供应商失败数", () => {
+    const store = createLocalPoolUsageStore();
+    store.recordCanceled("a", "codex");
+    expect(store.list()[0]).toMatchObject({
+      requests: 1,
+      failed: 0,
+      canceled: 1,
+    });
+
+    const restored = createLocalPoolUsageStore();
+    restored.hydrate(parseLocalPoolUsageState(JSON.stringify(store.takeDirtySnapshot()))!);
+    expect(restored.list()[0]).toMatchObject({ requests: 1, failed: 0, canceled: 1 });
+  });
   it("水合按最大值合并，不覆盖启动后的新增记录", () => {
     const store = createLocalPoolUsageStore();
     store.recordRequest("a", "codex", true);

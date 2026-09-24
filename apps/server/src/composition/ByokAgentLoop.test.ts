@@ -1,14 +1,18 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ToolBroker from "./ToolBroker.ts";
 import { listCompositionAgentTools } from "./CompositionToolRegistry.ts";
 import {
   ByokAgentModelError,
   runByokAgentLoop,
+  type ByokAgentMessage,
   type ByokAgentModelDriver,
 } from "./ByokAgentLoop.ts";
 
@@ -1155,11 +1159,108 @@ describe("ByokAgentLoop", () => {
         },
       };
 
-      const result = yield* runByokAgentLoop(baseInput, model, broker);
+      const fiber = yield* Effect.forkChild(runByokAgentLoop(baseInput, model, broker));
+      yield* TestClock.adjust(Duration.millis(249));
+      expect(modelCalls).toBe(1);
+      yield* TestClock.adjust(Duration.millis(1));
+      expect(modelCalls).toBe(2);
+      yield* TestClock.adjust(Duration.seconds(20));
+      const result = yield* Fiber.join(fiber);
 
       expect(result.text).toBe("recovered");
       expect(result.rounds).toBe(1);
       expect(modelCalls).toBe(11);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("断线等待期间取消后不再调用模型或工具", () =>
+    Effect.gen(function* () {
+      let modelCalls = 0;
+      let brokerCalls = 0;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            brokerCalls += 1;
+            return makeResult(input);
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: () => {
+          modelCalls += 1;
+          return Stream.fail(
+            new ByokAgentModelError({
+              code: "byok_engine_error",
+              detail: "stream disconnected",
+              reason: "transport_error",
+            }),
+          );
+        },
+      };
+
+      const fiber = yield* Effect.forkChild(runByokAgentLoop(baseInput, model, broker));
+      yield* TestClock.adjust(Duration.millis(1));
+      expect(modelCalls).toBe(1);
+      yield* Fiber.interrupt(fiber);
+      yield* TestClock.adjust(Duration.seconds(20));
+      expect(modelCalls).toBe(1);
+      expect(brokerCalls).toBe(0);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("跨轮复用工具协议 ID 时分别执行并使用不同活动与幂等 ID", () =>
+    Effect.gen(function* () {
+      const invocationKeys: string[] = [];
+      const startedActivityIds: string[] = [];
+      const completedActivityIds: string[] = [];
+      let finalMessages: ReadonlyArray<ByokAgentMessage> = [];
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            invocationKeys.push(input.idempotencyKey);
+            return makeResult(input);
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          if (input.turn === 3) {
+            finalMessages = input.messages;
+            return Stream.fromIterable([{ type: "model_completed" as const }]);
+          }
+          return Stream.fromIterable([
+            {
+              type: "tool_call" as const,
+              toolCallId: "reused-id",
+              canonicalToolName: "workspace.read_file",
+              arguments: { relativePath: `${input.turn}.txt` },
+            },
+            { type: "model_completed" as const },
+          ]);
+        },
+      };
+
+      yield* runByokAgentLoop(
+        {
+          ...baseInput,
+          onToolStarted: (_, activityItemId) =>
+            Effect.sync(() => {
+              startedActivityIds.push(activityItemId);
+            }),
+          onToolCompleted: (_, __, activityItemId) =>
+            Effect.sync(() => {
+              completedActivityIds.push(activityItemId);
+            }),
+        },
+        model,
+        broker,
+      );
+
+      expect(invocationKeys).toHaveLength(2);
+      expect(new Set(invocationKeys).size).toBe(2);
+      expect(startedActivityIds).toEqual(completedActivityIds);
+      expect(new Set(startedActivityIds).size).toBe(2);
+      expect(finalMessages.filter((message) => message.role === "tool")).toHaveLength(2);
     }),
   );
 

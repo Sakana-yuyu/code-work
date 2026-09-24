@@ -894,7 +894,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       const effectiveMessages = yield* applyVisionDelegation(ctx, adapter, messages);
       // 工具时间线行的发射器提出来共用：agent loop 的每个工具调用与文本抢救
       // 改道的 canvas.create 都走同一对 item.started/item.completed。
-      const emitToolRowStarted = (toolCall: ByokAgentToolCall) =>
+      const emitToolRowStarted = (toolCall: ByokAgentToolCall, activityItemId?: string) =>
         makeEventStamp().pipe(
           Effect.flatMap((stamp) =>
             emit({
@@ -903,7 +903,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               provider: PROVIDER,
               threadId: ctx.session.threadId,
               turnId,
-              itemId: RuntimeItemId.make(toolCall.toolCallId),
+              itemId: RuntimeItemId.make(activityItemId ?? toolCall.toolCallId),
               payload: {
                 itemType: "mcp_tool_call",
                 status: "inProgress",
@@ -917,7 +917,11 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           ),
           Effect.orDie,
         );
-      const emitToolRowCompleted = (toolCall: ByokAgentToolCall, result: ToolBrokerResult) =>
+      const emitToolRowCompleted = (
+        toolCall: ByokAgentToolCall,
+        result: ToolBrokerResult,
+        activityItemId?: string,
+      ) =>
         makeEventStamp().pipe(
           Effect.flatMap((stamp) =>
             emit({
@@ -926,7 +930,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               provider: PROVIDER,
               threadId: ctx.session.threadId,
               turnId,
-              itemId: RuntimeItemId.make(toolCall.toolCallId),
+              itemId: RuntimeItemId.make(activityItemId ?? toolCall.toolCallId),
               payload: {
                 itemType: "mcp_tool_call",
                 status: result.status === "succeeded" ? "completed" : "failed",
@@ -1069,8 +1073,10 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
                   },
                 });
               }).pipe(Effect.orDie),
-            onToolStarted: (toolCall) => emitToolRowStarted(toolCall),
-            onToolCompleted: (toolCall, result) => emitToolRowCompleted(toolCall, result),
+            onToolStarted: (toolCall, activityItemId) =>
+              emitToolRowStarted(toolCall, activityItemId),
+            onToolCompleted: (toolCall, result, activityItemId) =>
+              emitToolRowCompleted(toolCall, result, activityItemId),
             onModelUsage: (usage) =>
               emitThreadTokenUsage(ctx, turnId, adapter, usage).pipe(Effect.orDie),
             // 每轮请求前取走运行中到达的引导；取走即视为已并入本回合上下文。

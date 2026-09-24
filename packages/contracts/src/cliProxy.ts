@@ -52,6 +52,8 @@ export const CliProxyAccountUsage = Schema.Struct({
   provider: Schema.String,
   requests: NonNegativeInt,
   failed: NonNegativeInt,
+  /** 客户端中断的流式请求，不计入供应商失败。 */
+  canceled: Schema.optional(NonNegativeInt),
   inputTokens: NonNegativeInt,
   outputTokens: NonNegativeInt,
   lastUsedAt: Schema.NullOr(Schema.String),

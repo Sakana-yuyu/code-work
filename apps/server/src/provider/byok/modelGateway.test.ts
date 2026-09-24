@@ -2,6 +2,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeHttp from "node:http";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpRouter } from "effect/unstable/http";
@@ -13,6 +14,7 @@ import {
   type ServerSettings,
 } from "@codework/contracts";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
+import { localPoolUsageStore } from "../LocalPoolUsage.ts";
 import { layerTest } from "../../serverSettings.ts";
 
 import {
@@ -35,6 +37,7 @@ import {
   routedServerProviderModels,
   rewriteGatewayModel,
   tapGatewayUsageStream,
+  trackLocalGatewayStream,
   type GatewayUsageTotals,
 } from "./modelGateway.ts";
 
@@ -48,6 +51,73 @@ const settingsWithInstances = (
 const byokConfig = (adapters: readonly Record<string, unknown>[]): unknown => ({
   enabled: true,
   adapters,
+});
+
+describe("本地账号流式终态统计", () => {
+  it.effect("响应头不提前计成功，完整流结束后才结算", () =>
+    Effect.gen(function* () {
+      const accountId = "stream-complete-fixture";
+      const body = new TextEncoder().encode(
+        'data: {"usage":{"input_tokens":5,"output_tokens":2}}\n\ndata: [DONE]\n\n',
+      );
+      const stream = trackLocalGatewayStream(Stream.make(body), "openai", accountId, "codex");
+      expect(localPoolUsageStore.list().find((entry) => entry.id === accountId)).toBeUndefined();
+
+      yield* Stream.runDrain(stream);
+
+      expect(localPoolUsageStore.list().find((entry) => entry.id === accountId)).toMatchObject({
+        requests: 1,
+        failed: 0,
+        inputTokens: 5,
+        outputTokens: 2,
+      });
+    }),
+  );
+
+  it.effect("流中断按失败结算并冷却当前账号", () =>
+    Effect.gen(function* () {
+      const accountId = "stream-failed-fixture";
+      const stream = trackLocalGatewayStream(
+        Stream.make(new TextEncoder().encode("data: partial\n\n")).pipe(
+          Stream.concat(Stream.fail(new Error("upstream disconnected"))),
+        ),
+        "openai",
+        accountId,
+        "codex",
+      );
+
+      const exit = yield* Effect.exit(Stream.runDrain(stream));
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(localPoolUsageStore.list().find((entry) => entry.id === accountId)).toMatchObject({
+        requests: 1,
+        failed: 1,
+      });
+      expect(localPoolUsageStore.cooldownUntilUnixMs(accountId)).toBeGreaterThan(0);
+    }),
+  );
+
+  it.effect("客户端取消单独计数，不算供应商失败或触发冷却", () =>
+    Effect.gen(function* () {
+      const accountId = "stream-canceled-fixture";
+      const stream = trackLocalGatewayStream(
+        Stream.fromEffect(Effect.interrupt),
+        "openai",
+        accountId,
+        "codex",
+      );
+
+      const exit = yield* Effect.exit(Stream.runDrain(stream));
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(localPoolUsageStore.list().find((entry) => entry.id === accountId)).toMatchObject({
+        requests: 1,
+        failed: 0,
+        canceled: 1,
+      });
+      expect(localPoolUsageStore.cooldownUntilUnixMs(accountId)).toBeUndefined();
+    }),
+  );
 });
 
 const adapter = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({

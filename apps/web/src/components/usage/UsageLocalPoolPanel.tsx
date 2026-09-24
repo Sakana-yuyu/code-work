@@ -68,6 +68,13 @@ export function UsageLocalPoolPanel() {
                       : ""}
                   </span>
                 ) : null}
+                {(entry.canceled ?? 0) > 0 ? (
+                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                    {t("usage.poolUsage.canceled", {
+                      countValue: formatCount(entry.canceled ?? 0),
+                    })}
+                  </span>
+                ) : null}
                 {entry.cooldownUntilUnixMs !== undefined &&
                 entry.cooldownUntilUnixMs > Date.now() ? (
                   <span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-600 tabular-nums dark:text-amber-400">

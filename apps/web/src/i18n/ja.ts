@@ -2346,6 +2346,7 @@ export const ja: Record<string, string> = {
     "ゲートウェイがアカウントごとに呼び出しとトークンを集計します。トークンはストリーミング応答から収集され、サーバー再起動後も保持されます。",
   "usage.poolUsage.requests": "{{countValue}} 回の呼び出し",
   "usage.poolUsage.failed": "{{countValue}} 回失敗",
+  "usage.poolUsage.canceled": "{{countValue}} 回キャンセル",
   "usage.poolUsage.failedRatio": "失敗率 {{value}}",
   "usage.poolUsage.cooldownUntil": "{{value}} までクールダウン",
   "usage.poolUsage.tokens": "入力 {{input}} · 出力 {{output}}",
