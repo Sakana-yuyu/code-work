@@ -350,6 +350,120 @@ describe("ByokAgentLoop", () => {
     ]);
   });
 
+  it.effect("工具调用前的正文随同轮回放，思考签名不会串到下一轮", () =>
+    Effect.gen(function* () {
+      let thirdInput: Parameters<ByokAgentModelDriver["complete"]>[0] | undefined;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) => Effect.succeed(makeResult(input)),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          if (input.turn === 3) {
+            thirdInput = input;
+            return Stream.fromIterable([{ type: "model_completed" as const }]);
+          }
+          return Stream.fromIterable(
+            input.turn === 1
+              ? [
+                  { type: "text_delta" as const, text: "先确认文件位置。" },
+                  { type: "reasoning_delta" as const, text: "第一轮思考" },
+                  { type: "reasoning_signature" as const, signature: "sig-first" },
+                  {
+                    type: "tool_call" as const,
+                    toolCallId: "first-call",
+                    canonicalToolName: "workspace.read_file",
+                    arguments: { relativePath: "a.txt" },
+                  },
+                  { type: "model_completed" as const },
+                ]
+              : [
+                  { type: "reasoning_delta" as const, text: "第二轮思考" },
+                  {
+                    type: "tool_call" as const,
+                    toolCallId: "second-call",
+                    canonicalToolName: "workspace.read_file",
+                    arguments: { relativePath: "b.txt" },
+                  },
+                  { type: "model_completed" as const },
+                ],
+          );
+        },
+      };
+
+      yield* runByokAgentLoop(baseInput, model, broker);
+
+      const assistantMessages = thirdInput?.messages.filter(
+        (message) => message.role === "assistant",
+      );
+      expect(assistantMessages).toEqual([
+        expect.objectContaining({
+          content: "先确认文件位置。",
+          reasoningContent: "第一轮思考",
+          reasoningSignature: "sig-first",
+        }),
+        expect.objectContaining({ content: "", reasoningContent: "第二轮思考" }),
+      ]);
+      expect(assistantMessages?.[1]).not.toHaveProperty("reasoningSignature");
+    }),
+  );
+
+  it.effect("截断续写后调用工具时回放完整的本轮正文", () =>
+    Effect.gen(function* () {
+      let modelCalls = 0;
+      let thirdInput: Parameters<ByokAgentModelDriver["complete"]>[0] | undefined;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) => Effect.succeed(makeResult(input)),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          modelCalls += 1;
+          if (modelCalls === 1) {
+            return Stream.succeed({ type: "text_delta" as const, text: "已经确认目标，" }).pipe(
+              Stream.concat(
+                Stream.fail(
+                  new ByokAgentModelError({
+                    code: "byok_engine_error",
+                    detail: "output truncated",
+                    reason: "output_truncated",
+                  }),
+                ),
+              ),
+            );
+          }
+          if (modelCalls === 2) {
+            return Stream.fromIterable([
+              { type: "text_delta" as const, text: "现在读取文件。" },
+              {
+                type: "tool_call" as const,
+                toolCallId: "continued-call",
+                canonicalToolName: "workspace.read_file",
+                arguments: { relativePath: "a.txt" },
+              },
+              { type: "model_completed" as const },
+            ]);
+          }
+          thirdInput = input;
+          return Stream.fromIterable([{ type: "model_completed" as const }]);
+        },
+      };
+
+      yield* runByokAgentLoop(baseInput, model, broker);
+
+      expect(modelCalls).toBe(3);
+      expect(thirdInput?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            content: "已经确认目标，现在读取文件。",
+            toolCalls: [expect.objectContaining({ toolCallId: "continued-call" })],
+          }),
+        ]),
+      );
+    }),
+  );
+
   it.effect("流式回调：思考增量与工具开始事件按发生顺序到达", () =>
     Effect.gen(function* () {
       const reasoningDeltas: string[] = [];

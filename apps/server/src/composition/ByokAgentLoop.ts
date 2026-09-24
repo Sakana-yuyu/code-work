@@ -441,12 +441,12 @@ export const runByokAgentLoop = (
     let cumulativeUtf8Bytes = 0;
     let reasoningChunkIndex = 0;
     let cumulativeReasoningUtf8Bytes = 0;
-    let roundReasoningSignature = "";
     let contextOverflowRecoveryUsed = false;
     let outputTruncationRecoveryUsed = false;
 
     while (true) {
       rounds += 1;
+      const turnTextStart = text.length;
 
       // 运行中到达的用户引导在下一轮请求前并入上下文：不中断当前输出，
       // 模型据此自行判断是否调整方向。
@@ -592,6 +592,7 @@ export const runByokAgentLoop = (
       const events = completion.events;
       let terminal = false;
       let roundReasoning = "";
+      let roundReasoningSignature = "";
       const roundToolCalls: ByokAgentToolCall[] = [];
 
       for (const event of events) {
@@ -628,7 +629,7 @@ export const runByokAgentLoop = (
         // 拆成多条消息会被逐条校验拒掉。
         messages.push({
           role: "assistant",
-          content: "",
+          content: text.slice(turnTextStart),
           ...(roundReasoning.length > 0 ? { reasoningContent: roundReasoning } : {}),
           ...(roundReasoning.length > 0 && roundReasoningSignature.length > 0
             ? { reasoningSignature: roundReasoningSignature }

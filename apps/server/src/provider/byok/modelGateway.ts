@@ -592,6 +592,7 @@ export const RELAY_GATEWAY_MAX_ATTEMPTS = 3;
 export const LOCAL_GATEWAY_MAX_ATTEMPTS = 4;
 const RELAY_GATEWAY_RETRY_BASE_MS = 500;
 const RELAY_GATEWAY_RETRY_AFTER_MAX_MS = 5_000;
+const LOCAL_GATEWAY_RETRY_AFTER_MAX_MS = 24 * 60 * 60 * 1_000;
 
 const relayGatewayRetryDelay = (
   attempt: number,
@@ -1475,7 +1476,15 @@ const gatewayHandler = (
         return yield* bridgedResponsesRequest({ bodyText, adapter, httpClient });
       }
       if (localAccountId !== undefined) {
-        markLocalAccountFailure(localAccountId, upstream.status);
+        const retryAfterMs =
+          upstream.status === 429
+            ? parseRetryAfterMs(
+                upstream.headers["retry-after"],
+                DateTime.toEpochMillis(yield* DateTime.now),
+                LOCAL_GATEWAY_RETRY_AFTER_MAX_MS,
+              )
+            : undefined;
+        markLocalAccountFailure(localAccountId, upstream.status, retryAfterMs);
         localPoolUsageStore.recordRequest(
           localAccountId,
           adapter.localProvider ?? "",

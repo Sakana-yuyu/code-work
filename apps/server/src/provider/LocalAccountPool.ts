@@ -208,10 +208,23 @@ export const pickLocalAccount = (
 };
 
 /** 上游限流/鉴权失败只冷却当前账号，避免把整个账号池判死。 */
-export const markLocalAccountFailure = (id: string, status: number): void => {
+export const markLocalAccountFailure = (
+  id: string,
+  status: number,
+  retryAfterMs?: number,
+): void => {
   if (status === 401) needsRefresh.add(id);
   if (status === 401 || status === 403 || status === 429 || status >= 500) {
-    localPoolUsageStore.setCooldown(id, Date.now() + (status === 429 ? 60_000 : 15_000));
+    const cooldownMs =
+      status === 429 && retryAfterMs !== undefined && Number.isFinite(retryAfterMs)
+        ? Math.max(0, retryAfterMs)
+        : status === 429
+          ? 60_000
+          : 15_000;
+    localPoolUsageStore.setCooldown(
+      id,
+      Math.max(localPoolUsageStore.cooldownUntilUnixMs(id) ?? 0, Date.now() + cooldownMs),
+    );
   }
 };
 

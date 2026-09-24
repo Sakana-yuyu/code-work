@@ -325,4 +325,18 @@ describe("LocalAccountPool", () => {
     expect(localPoolUsageStore.cooldownUntilUnixMs("a") ?? 0).toBeLessThanOrEqual(Date.now());
     expect(pickLocalAccount(value, "codex")?.id).toBe("a");
   });
+  it("429 按上游等待时间冷却，后续短故障不会缩短已有冷却", () => {
+    try {
+      const startedAt = Date.now();
+      markLocalAccountFailure("a", 429, 90_000);
+      const firstCooldown = localPoolUsageStore.cooldownUntilUnixMs("a") ?? 0;
+      expect(firstCooldown).toBeGreaterThanOrEqual(startedAt + 90_000);
+      expect(firstCooldown).toBeLessThanOrEqual(Date.now() + 90_000);
+
+      markLocalAccountFailure("a", 503);
+      expect(localPoolUsageStore.cooldownUntilUnixMs("a")).toBe(firstCooldown);
+    } finally {
+      localPoolUsageStore.setCooldown("a", null);
+    }
+  });
 });

@@ -12,7 +12,11 @@ BYOK 实例保存模型通道，CLI 实例选择其中一条共享线路或聚�
 
 这是请求级代理，不会修改正在运行的官方 CLI 进程，也不会在已开始的流式响应中切换账号。当前账号在响应体开始前遇到网络错误、401、403、429 或 5xx 时，按模型和实例范围换用未尝试过的健康账号；单请求最多尝试四个，账号不足时提前停止，最终失败时保留最后一次上游错误。官方 OAuth 刷新协议和系统 keyring/Keychain 仍可能要求用户通过官方 CLI 重新登录；本地导入是凭据材料的受控保存与轮询入口，不等价于官方 API 兼容性保证。
 
+本地账号收到 429 后按上游 `Retry-After` 冷却该账号，支持秒数和 HTTP 日期，最多接受 24 小时；缺少或无法解析该头时维持默认 60 秒。后续较短的失败冷却不会提前解除已有冷却。中转通道的 429 仍直接交给调用方，不进入本地账号池的冷却逻辑。
+
 账号池故障转移参考（检索日期 2026-09-24）：关键词 `cc-switch max_retries failover providers`；采用 [cc-switch forwarder](https://github.com/farion1231/cc-switch/blob/main/src-tauri/src/proxy/forwarder.rs) 和 [默认代理配置](https://github.com/farion1231/cc-switch/blob/main/src-tauri/src/proxy/types.rs)，其中默认 3 次重试表示最多 4 个不同上游。Code Work 沿用已有 Effect 网关与账号冷却存储，将四次尝试限制在本地账号池、响应流交付之前。
+
+BYOK Agent 在一轮模型回复中先输出正文再调用工具时，会把正文、同轮思考及工具调用保存在同一条 assistant 消息中回放；思考签名只属于发出它的模型轮次。工具结果仍按原始调用顺序回传，避免后续轮次失去先前已说明的意图或把旧签名误用到新的思考块。
 
 实现依据（检索日期 2026-09-05）：关键词为 `Codex auth.json account_id`、`Claude OAuth token refresh`、`Grok CLI OAuth chat proxy`；采用 [OpenAI Codex 登录存储](https://github.com/openai/codex/blob/main/codex-rs/login/src/auth/storage.rs)、[xAI Grok CLI 设置](https://docs.x.ai/build/settings) 和 [CLIProxyAPI 的公开执行器实现](https://github.com/router-for-me/CLIProxyAPI/tree/main/internal/runtime/executor)，用于确认凭据字段、官方端点和协议头。CPA 源码只作为公开协议参考，运行时不依赖它。
 
