@@ -10,7 +10,9 @@
 
 !include "LogicLib.nsh"
 
-Var codeWorkRecoveredInstall
+!ifndef BUILD_UNINSTALLER
+  Var codeWorkRecoveredInstall
+!endif
 
 Function .onVerifyInstDir
   Push $R0

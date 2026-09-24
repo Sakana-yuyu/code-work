@@ -557,6 +557,11 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.match(nsisHookScript, /\$codeWorkRecoveredInstall == "true"/);
       assert.match(nsisHookScript, /\$keepShortcuts == "true"/);
       assert.match(nsisHookScript, /\$\{FileExists\} "\$newDesktopLink"/);
+      // electron-builder 也会将钩子载入卸载器；仅安装器使用的变量不能触发 NSIS 警告。
+      assert.match(
+        nsisHookScript,
+        /!ifndef BUILD_UNINSTALLER\s+Var codeWorkRecoveredInstall\s+!endif/,
+      );
       // Native binaries and helper executables cannot load from inside an
       // asar; everything else stays packed. The Claude SDK platform packages
       // and .bin shims never ship.
