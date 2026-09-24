@@ -547,6 +547,16 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.match(nsisHookScript, /\$\{APP_FILENAME\}/);
       // "选盘后自动填充子目录"依赖刷新目录页输入框（NSIS 目录页控件 1018）。
       assert.match(nsisHookScript, /GetDlgItem \$R2 \$HWNDPARENT 1018/);
+      // 卸载器因文件占用返回 2 时，新版必须装入独立目录并更新启动入口。
+      assert.match(nsisHookScript, /!macro customUnInstallCheck\b/);
+      assert.match(nsisHookScript, /!macro customUnInstallCheckCurrentUser\b/);
+      assert.match(nsisHookScript, /\$R0 == 2/);
+      assert.match(nsisHookScript, /\$INSTDIR-v\$\{VERSION\}/);
+      assert.match(nsisHookScript, /StrCpy \$appExe "\$INSTDIR\\\$\{APP_EXECUTABLE_FILENAME\}"/);
+      assert.match(nsisHookScript, /!macro customInstall\b/);
+      assert.match(nsisHookScript, /\$codeWorkRecoveredInstall == "true"/);
+      assert.match(nsisHookScript, /\$keepShortcuts == "true"/);
+      assert.match(nsisHookScript, /\$\{FileExists\} "\$newDesktopLink"/);
       // Native binaries and helper executables cannot load from inside an
       // asar; everything else stays packed. The Claude SDK platform packages
       // and .bin shims never ship.
