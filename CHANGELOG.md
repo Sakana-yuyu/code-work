@@ -7,7 +7,7 @@
 
 更早的历史版本见 [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases)。
 
-## 1.0.23
+## 1.0.24
 
 ### 新增
 
