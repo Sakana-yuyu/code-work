@@ -1954,6 +1954,54 @@ const make = Effect.gen(function* () {
       }
     });
 
+  // 终止回合只收尾已生成文字，不把部分回复当作成功结果执行目标或 Spec 指令。
+  const settleInterruptedAssistantMessagesForTurn = (input: {
+    event: ProviderRuntimeEvent;
+    threadId: ThreadId;
+    turnId: TurnId;
+    messages: ReadonlyArray<OrchestrationMessage>;
+    createdAt: string;
+  }) =>
+    Effect.gen(function* () {
+      const assistantMessageIds = yield* getAssistantMessageIdsForTurn(
+        input.threadId,
+        input.turnId,
+      );
+      yield* Effect.forEach(
+        assistantMessageIds,
+        (messageId) =>
+          Effect.gen(function* () {
+            const bufferedText = yield* takeBufferedAssistantText(messageId);
+            const hasBufferedText = hasRenderableAssistantText(bufferedText);
+            if (hasBufferedText) {
+              yield* orchestrationEngine.dispatch({
+                type: "thread.message.assistant.delta",
+                commandId: yield* providerCommandId(input.event, "assistant-delta-on-interrupt"),
+                threadId: input.threadId,
+                messageId,
+                delta: bufferedText,
+                turnId: input.turnId,
+                createdAt: input.createdAt,
+              });
+            }
+            if (findMessageById(input.messages, messageId) || hasBufferedText) {
+              yield* orchestrationEngine.dispatch({
+                type: "thread.message.assistant.complete",
+                commandId: yield* providerCommandId(input.event, "assistant-complete-on-interrupt"),
+                threadId: input.threadId,
+                messageId,
+                turnId: input.turnId,
+                createdAt: input.createdAt,
+              });
+            }
+            yield* clearAssistantMessageState(messageId);
+          }),
+        { concurrency: 1 },
+      ).pipe(Effect.asVoid);
+      yield* clearAssistantMessageIdsForTurn(input.threadId, input.turnId);
+      yield* clearAssistantSegmentStateForTurn(input.threadId, input.turnId);
+    });
+
   const upsertProposedPlan = (input: {
     event: ProviderRuntimeEvent;
     threadId: ThreadId;
@@ -2209,6 +2257,8 @@ const make = Effect.gen(function* () {
         switch (event.type) {
           case "session.exited":
             return true;
+          case "session.state.changed":
+            return !conflictsWithActiveTurn;
           case "session.started":
           case "thread.started":
             return true;
@@ -2259,10 +2309,14 @@ const make = Effect.gen(function* () {
               return "running";
             case "session.exited":
               return "stopped";
-            case "turn.completed":
-              return normalizeRuntimeTurnState(event.payload.state) === "failed"
+            case "turn.completed": {
+              const turnState = normalizeRuntimeTurnState(event.payload.state);
+              return turnState === "failed"
                 ? "error"
-                : "ready";
+                : turnState === "interrupted" || turnState === "cancelled"
+                  ? "interrupted"
+                  : "ready";
+            }
             case "turn.aborted":
               return "interrupted";
             case "session.started":
@@ -2564,7 +2618,10 @@ const make = Effect.gen(function* () {
         });
       }
 
-      if (event.type === "turn.completed") {
+      if (
+        event.type === "turn.completed" &&
+        normalizeRuntimeTurnState(event.payload.state) === "completed"
+      ) {
         const detailedThread = yield* getLoadedThreadDetail();
         const messages = detailedThread?.messages ?? [];
         const proposedPlans = detailedThread?.proposedPlans ?? [];
@@ -2623,6 +2680,39 @@ const make = Effect.gen(function* () {
             yield* applyAssistantGoalTermination(thread.id, event, pendingGoal);
           }
           yield* pauseThreadGoalIfActive(thread.id, pendingGoal?.goalId);
+        }
+      }
+
+      const interruptedTurnId =
+        event.type === "turn.aborted" && shouldApplyThreadLifecycle
+          ? eventTurnId
+          : event.type === "turn.completed" &&
+              normalizeRuntimeTurnState(event.payload.state) !== "completed" &&
+              shouldApplyThreadLifecycle
+            ? eventTurnId
+            : event.type === "session.state.changed" &&
+                event.payload.state === "error" &&
+                shouldApplyThreadLifecycle
+              ? (activeTurnId ?? undefined)
+              : event.type === "session.exited"
+                ? (eventTurnId ?? activeTurnId ?? undefined)
+                : undefined;
+      if (interruptedTurnId) {
+        const detailedThread = yield* getLoadedThreadDetail();
+        yield* settleInterruptedAssistantMessagesForTurn({
+          event,
+          threadId: thread.id,
+          turnId: interruptedTurnId,
+          messages: detailedThread?.messages ?? [],
+          createdAt: now,
+        });
+        if (
+          event.type === "turn.completed" ||
+          (event.type === "session.state.changed" && event.payload.state === "error")
+        ) {
+          yield* clearBufferedProposedPlan(proposedPlanIdForTurn(thread.id, interruptedTurnId));
+          pendingGoalTerminations.delete(providerTurnKey(thread.id, interruptedTurnId));
+          yield* pauseThreadGoalIfActive(thread.id);
         }
       }
 
@@ -2737,7 +2827,11 @@ const make = Effect.gen(function* () {
       } else if (!conflictsWithActiveTurn) {
         if (event.type === "turn.plan.updated") {
           threadPlanProgress.recordPlanProgress(thread.id, event.payload.plan);
-        } else if (event.type === "turn.completed" || event.type === "turn.aborted") {
+        } else if (
+          event.type === "turn.completed" ||
+          event.type === "turn.aborted" ||
+          (event.type === "session.state.changed" && event.payload.state === "error")
+        ) {
           threadPlanProgress.clearThreadPlanProgress(thread.id);
         }
       }

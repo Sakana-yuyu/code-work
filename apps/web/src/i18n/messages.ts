@@ -4336,6 +4336,7 @@ export const en: Record<string, string> = {
   toolCallFailed2: "{{label}}, tool call failed",
   toolCallFailed3: "{{summary}}, tool call failed",
   toolCalls: "tool calls",
+  toolGroupIncludesFailure: "{{summary}}, includes a failed tool call",
   toolOnTheServerHostToEnableChangeRequestFeatures:
     "tool on the server host to enable change request features.",
   toQuit: "to Quit",
@@ -10301,6 +10302,7 @@ export const zhCN: Record<string, string> = {
   toolCallFailed2: "{{label}}、工具调用失败",
   toolCallFailed3: "{{summary}}、工具调用失败",
   toolCalls: "工具调用",
+  toolGroupIncludesFailure: "{{summary}}，包含失败的工具调用",
   toolOnTheServerHostToEnableChangeRequestFeatures: "服务器主机上的工具，用于启用更改请求功能。",
   toQuit: "退出",
   "quitHold.holdToQuit": "长按 {{shortcut}} 退出",

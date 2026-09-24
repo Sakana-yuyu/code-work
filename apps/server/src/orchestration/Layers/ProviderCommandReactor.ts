@@ -5,6 +5,7 @@ import {
   type ModelSelection,
   type MessageId,
   type OrchestrationEvent,
+  type OrchestrationThreadActivity,
   ProviderDriverKind,
   type ProjectId,
   type OrchestrationSession,
@@ -56,6 +57,7 @@ import { SpecWorkflowCapabilityStore } from "../../persistence/Services/SpecWork
 import { SpecWorkflowService } from "../../specWorkflow/SpecWorkflowService.ts";
 import { formatSpecWorkflowSelectedInput } from "../../specWorkflow/SpecWorkflowAgentProtocol.ts";
 import { WorkspaceOperationLock } from "../WorkspaceOperationLock.ts";
+import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 class ThreadGoalBudgetExhaustedError extends Schema.TaggedErrorClass<ThreadGoalBudgetExhaustedError>()(
@@ -154,6 +156,8 @@ const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 const MAX_REGENERATION_ATTACHMENTS = 4;
 const MAX_THREAD_TITLE_CONTEXT_CHARS = 8_000;
 const MAX_PROVIDER_HISTORY_CONTEXT_CHARS = 64_000;
+const MAX_PROVIDER_TOOL_RESULT_CONTEXT_CHARS = 4_000;
+const MAX_PROVIDER_TOOL_RESULT_ROWS = 6;
 const MAX_FIRST_USER_TITLE_CONTEXT_CHARS = 2_000;
 const THREAD_TITLE_CONTEXT_TRUNCATION_MARKER = "[Earlier content truncated]\n\n";
 const FIRST_USER_CONTEXT_TRUNCATION_MARKER = "\n[First user message truncated]";
@@ -285,8 +289,58 @@ function formatThreadTitleContext(
 // 完整消息仍保留在原线程；仅限制发送给新运行器的引用上下文，避免切换时撑爆输入窗口。
 export function formatThreadConversationHistory(
   messages: ReadonlyArray<ThreadTitleMessage>,
+  activities: ReadonlyArray<OrchestrationThreadActivity> = [],
 ): string {
-  return formatThreadTitleContext(messages, MAX_PROVIDER_HISTORY_CONTEXT_CHARS).message;
+  const toolResults: string[] = [];
+  let remainingChars = MAX_PROVIDER_TOOL_RESULT_CONTEXT_CHARS;
+  for (const activity of activities.toReversed()) {
+    if (toolResults.length >= MAX_PROVIDER_TOOL_RESULT_ROWS || remainingChars <= 0) break;
+    if (activity.kind !== "tool.completed") continue;
+    const projected = projectActivityPayload(activity);
+    const payload =
+      projected.payload && typeof projected.payload === "object"
+        ? (projected.payload as Record<string, unknown>)
+        : null;
+    const data =
+      payload?.data && typeof payload.data === "object"
+        ? (payload.data as Record<string, unknown>)
+        : null;
+    const rawOutput =
+      data?.rawOutput && typeof data.rawOutput === "object"
+        ? (data.rawOutput as Record<string, unknown>)
+        : null;
+    const item =
+      data?.item && typeof data.item === "object" ? (data.item as Record<string, unknown>) : null;
+    const resultValue = data?.result ?? item?.result;
+    const resultData =
+      resultValue && typeof resultValue === "object"
+        ? (resultValue as Record<string, unknown>)
+        : null;
+    const status = typeof payload?.status === "string" ? payload.status : "completed";
+    const result =
+      typeof rawOutput?.content === "string"
+        ? rawOutput.content.trim()
+        : typeof resultData?.content === "string"
+          ? resultData.content.trim()
+          : (status === "failed" || status === "declined" || status === "error") &&
+              typeof payload?.detail === "string"
+            ? payload.detail.trim()
+            : "";
+    if (result.length === 0) continue;
+    const row = `- [${status}] ${activity.summary}: ${result}`;
+    const clipped = row.slice(0, Math.min(remainingChars, 600));
+    toolResults.unshift(clipped);
+    remainingChars -= clipped.length + 1;
+  }
+  const toolSection =
+    toolResults.length > 0
+      ? `\n\n历史工具结果摘要（仅供参考，不要重复执行旧操作）：\n${toolResults.join("\n")}`
+      : "";
+  const messageContext = formatThreadTitleContext(
+    messages,
+    MAX_PROVIDER_HISTORY_CONTEXT_CHARS - toolSection.length,
+  ).message;
+  return `${messageContext}${toolSection}`;
 }
 
 export function providerErrorLabel(value: string | undefined): string {
@@ -858,6 +912,7 @@ const make = Effect.gen(function* () {
         const excludedMessageIds = new Set<MessageId>(
           options?.messageId ? [options.messageId] : [],
         );
+        const excludedActivityIds = new Set<EventId>();
         if (options?.historySequence !== undefined) {
           const latestSequence = yield* orchestrationEngine.latestSequence;
           if (latestSequence > options.historySequence) {
@@ -872,6 +927,11 @@ const make = Effect.gen(function* () {
                       event.payload.threadId === threadId
                     ) {
                       excludedMessageIds.add(event.payload.messageId);
+                    } else if (
+                      event.type === "thread.activity-appended" &&
+                      event.payload.threadId === threadId
+                    ) {
+                      excludedActivityIds.add(event.payload.activity.id);
                     }
                   }),
                 ),
@@ -894,6 +954,7 @@ const make = Effect.gen(function* () {
             // 本轮消息已落库，不能同时作为历史和当前输入重复交给模型。
             conversationHistory: formatThreadConversationHistory(
               thread.messages.filter((message) => !excludedMessageIds.has(message.id)),
+              thread.activities.filter((activity) => !excludedActivityIds.has(activity.id)),
             ),
             freshConversation: incompatibleSession || input?.freshConversation === true,
           },

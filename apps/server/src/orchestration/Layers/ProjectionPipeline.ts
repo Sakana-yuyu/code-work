@@ -1016,6 +1016,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             threadId: event.payload.threadId,
             turnId: event.payload.turnId,
             role: event.payload.role,
+            firstSequence: event.sequence,
             ...(event.payload.providerInstanceId !== undefined
               ? { providerInstanceId: event.payload.providerInstanceId }
               : {}),

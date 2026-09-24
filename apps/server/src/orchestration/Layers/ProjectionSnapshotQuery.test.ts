@@ -39,6 +39,65 @@ const projectionSnapshotLayer = it.layer(
 );
 
 projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
+  it.effect("相同时间戳的消息在全量和单线程快照中保持事件顺序", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id, title, workspace_root, scripts_json, created_at, updated_at, deleted_at
+        ) VALUES (
+          'project-order', 'Order', '/tmp/project-order', '[]',
+          '2026-09-24T00:00:00.000Z', '2026-09-24T00:00:00.000Z', NULL
+        )
+      `;
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
+          latest_turn_id, pending_approval_count, pending_user_input_count,
+          has_actionable_proposed_plan, created_at, updated_at, deleted_at
+        ) VALUES (
+          'thread-order', 'project-order', 'Order',
+          '{"instanceId":"codex","model":"default"}', 'full-access', 'default',
+          NULL, 0, 0, 0, '2026-09-24T00:00:00.000Z', '2026-09-24T00:00:00.000Z', NULL
+        )
+      `;
+      for (const [messageId, sequence] of [
+        ["z-user", 7],
+        ["a-assistant", 8],
+      ] as const) {
+        yield* sql`
+          INSERT INTO projection_thread_messages (
+            message_id, thread_id, turn_id, role, first_sequence, text,
+            is_streaming, created_at, updated_at
+          ) VALUES (
+            ${messageId}, 'thread-order', NULL, 'user', ${sequence}, ${messageId}, 0,
+            '2026-09-24T00:00:00.000Z', '2026-09-24T00:00:00.000Z'
+          )
+        `;
+      }
+      const expected = ["z-user", "a-assistant"];
+      const full = yield* snapshotQuery.getSnapshot();
+      assert.deepEqual(
+        full.threads
+          .find((thread) => thread.id === "thread-order")
+          ?.messages.map((message) => String(message.id)),
+        expected,
+      );
+      const detail = yield* snapshotQuery.getThreadDetailById(ThreadId.make("thread-order"));
+      assert.equal(detail._tag, "Some");
+      if (detail._tag === "Some") {
+        assert.deepEqual(
+          detail.value.messages.map((message) => String(message.id)),
+          expected,
+        );
+      }
+      yield* sql`DELETE FROM projection_thread_messages WHERE thread_id = 'thread-order'`;
+      yield* sql`DELETE FROM projection_threads WHERE thread_id = 'thread-order'`;
+      yield* sql`DELETE FROM projection_projects WHERE project_id = 'project-order'`;
+    }),
+  );
+
   it.effect("hydrates read model from projection tables and computes snapshot sequence", () =>
     Effect.gen(function* () {
       const snapshotQuery = yield* ProjectionSnapshotQuery;

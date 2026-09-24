@@ -584,6 +584,8 @@ export const isRetryableRelayGatewayStatus = (status: number): boolean => status
 
 /** 中转通道单请求的最大上游尝试次数；只在响应流交付 CLI 前重放。 */
 export const RELAY_GATEWAY_MAX_ATTEMPTS = 3;
+/** 本地账号池单请求最多尝试四个不同账号，避免故障时扫完整个大池。 */
+export const LOCAL_GATEWAY_MAX_ATTEMPTS = 4;
 const RELAY_GATEWAY_RETRY_BASE_MS = 500;
 const RELAY_GATEWAY_RETRY_AFTER_MAX_MS = 5_000;
 
@@ -1155,9 +1157,10 @@ const gatewayHandler = (
             adapter.modelId,
           );
     let localAccount = nextLocalAccount();
-    // 本地账号池每请求最多换号一次；中转通道无号可换，改为对上游 5xx 与
+    // 账号池按失败账号去重后换号；中转通道无号可换，改为对上游 5xx 与
     // 传输失败做有界重试。两种路径都只在响应流交付给 CLI 之前重放请求。
-    const maxAttempts = localProvider === undefined ? RELAY_GATEWAY_MAX_ATTEMPTS : 2;
+    const maxAttempts =
+      localProvider === undefined ? RELAY_GATEWAY_MAX_ATTEMPTS : LOCAL_GATEWAY_MAX_ATTEMPTS;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       let localCredential: Record<string, unknown> | undefined;
       let localToken = "";
@@ -1191,7 +1194,7 @@ const gatewayHandler = (
         if (token === undefined) {
           markLocalAccountFailure(localAccountId, 401);
           localPoolUsageStore.recordRequest(localAccountId, adapter.localProvider ?? "", false);
-          localAccount = attempt === 0 ? nextLocalAccount() : undefined;
+          localAccount = attempt + 1 < maxAttempts ? nextLocalAccount() : undefined;
           if (localAccount !== undefined) continue;
           return errorResponse(
             protocol,
@@ -1309,7 +1312,7 @@ const gatewayHandler = (
             continue;
           }
         } else {
-          localAccount = attempt === 0 ? nextLocalAccount() : undefined;
+          localAccount = attempt + 1 < maxAttempts ? nextLocalAccount() : undefined;
           if (localAccount !== undefined) continue;
         }
         yield* Effect.logWarning("BYOK gateway upstream request failed", {
@@ -1350,7 +1353,7 @@ const gatewayHandler = (
           yield* Effect.sleep(relayGatewayRetryDelay(attempt, retryAfterMs));
           continue;
         }
-      } else if (isRetryableLocalGatewayStatus(upstream.status) && attempt === 0) {
+      } else if (isRetryableLocalGatewayStatus(upstream.status) && attempt + 1 < maxAttempts) {
         localAccount = nextLocalAccount();
         if (localAccount !== undefined) {
           // 丢弃首个错误响应，后续只透传新账号的完整流，避免混合两个响应。

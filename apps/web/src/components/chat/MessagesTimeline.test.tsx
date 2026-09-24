@@ -1145,7 +1145,7 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("C:/Users/mike/dev-stuff/codework/apps/web/src/session-logic.ts");
   });
 
-  it("keeps mixed-success tool groups neutral", () => {
+  it("shows an earlier failure in a mixed-success tool group", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...buildProps()}
@@ -1181,10 +1181,10 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("Ran 2 commands");
-    expect(markup).not.toContain('aria-label="Tool call failed"');
+    expect(markup).toContain('aria-label="Ran 2 commands, includes a failed tool call"');
   });
 
-  it("keeps mixed work logs neutral after a later tool call succeeds", () => {
+  it("keeps a hidden tool failure visible after a later call succeeds", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...buildProps()}
@@ -1231,7 +1231,44 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toMatch(/\+2 previous log entries/i);
-    expect(markup).not.toContain('aria-label="Hidden work includes a failure"');
+    expect(markup).toContain('aria-label="Hidden work includes a failure"');
+  });
+
+  it("shows newly spawned subagents as working before their roster arrives", () => {
+    const turnId = TurnId.make("turn-spawn-pending");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        isWorking
+        latestTurn={{
+          turnId,
+          state: "running",
+          startedAt: MESSAGE_CREATED_AT,
+          completedAt: null,
+        }}
+        runningTurnId={turnId}
+        timelineEntries={[
+          {
+            id: "entry-agent-spawn",
+            kind: "work",
+            createdAt: MESSAGE_CREATED_AT,
+            entry: {
+              id: "work-agent-spawn",
+              createdAt: MESSAGE_CREATED_AT,
+              turnId,
+              label: "Kicked off agents",
+              tone: "info",
+              agentSpawn: { workflowId: null, agentTaskIds: ["agent-1", "agent-2"] },
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("Kicked off 2 subagents");
+    expect(markup).toContain("Working");
+    expect(markup).toContain("Open Agents");
+    expect(markup).not.toContain("Completed");
   });
 
   it("shows the animated one-line label for a live tool group", () => {

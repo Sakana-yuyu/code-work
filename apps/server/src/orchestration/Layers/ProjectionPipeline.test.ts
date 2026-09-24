@@ -1611,12 +1611,21 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
 
       yield* projectionPipeline.bootstrap;
 
-      const messageRows = yield* sql<{ readonly providerInstanceId: string | null }>`
-        SELECT provider_instance_id AS "providerInstanceId"
+      const messageRows = yield* sql<{
+        readonly providerInstanceId: string | null;
+        readonly firstSequence: number | null;
+      }>`
+        SELECT
+          provider_instance_id AS "providerInstanceId",
+          first_sequence AS "firstSequence"
         FROM projection_thread_messages
         WHERE message_id = 'message-tl-interim'
       `;
       assert.equal(messageRows[0]?.providerInstanceId, "claude");
+      const eventRows = yield* sql<{ readonly sequence: number }>`
+        SELECT sequence FROM orchestration_events WHERE event_id = 'evt-tl3'
+      `;
+      assert.equal(messageRows[0]?.firstSequence, eventRows[0]?.sequence);
 
       const runningRows = yield* sql<{
         readonly state: string;

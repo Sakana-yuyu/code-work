@@ -8,12 +8,145 @@ import {
   deriveStableCanvasReferences,
   computeMessageDurationStart,
   deriveMessagesTimelineRows,
+  deriveMessagesTimelineRowsWithCachedHistory,
   normalizeCompactToolLabel,
   reconcileExpandedTurnIdsAfterLatestTurnChange,
   resolveAssistantMessageCopyState,
   shouldPreserveAssistantLineBreaks,
   type TimelineLatestTurn,
+  type MessagesTimelineRowsInput,
 } from "./MessagesTimeline.logic";
+
+describe("deriveMessagesTimelineRowsWithCachedHistory", () => {
+  it("reuses settled history during streaming and invalidates after an older page arrives", () => {
+    const oldUser = {
+      id: "old-user" as never,
+      role: "user" as const,
+      text: "Earlier question",
+      turnId: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+      streaming: false,
+    };
+    const oldReply = {
+      id: "old-reply" as never,
+      role: "assistant" as const,
+      text: "Earlier answer",
+      turnId: "old-turn" as never,
+      createdAt: "2026-01-01T00:00:01Z",
+      updatedAt: "2026-01-01T00:00:02Z",
+      streaming: false,
+    };
+    const currentUser = {
+      id: "current-user" as never,
+      role: "user" as const,
+      text: "New question",
+      turnId: null,
+      createdAt: "2026-01-01T00:00:03Z",
+      updatedAt: "2026-01-01T00:00:03Z",
+      streaming: false,
+    };
+    const historicalEntries: MessagesTimelineRowsInput["timelineEntries"] = [
+      { id: oldUser.id, kind: "message", createdAt: oldUser.createdAt, message: oldUser },
+      {
+        id: "old-tool",
+        kind: "work",
+        createdAt: "2026-01-01T00:00:00.500Z",
+        entry: {
+          id: "old-tool",
+          createdAt: "2026-01-01T00:00:00.500Z",
+          label: "Read file",
+          tone: "tool",
+          turnId: oldReply.turnId,
+          toolLifecycleStatus: "completed",
+        },
+      },
+      { id: oldReply.id, kind: "message", createdAt: oldReply.createdAt, message: oldReply },
+    ];
+    const latestTurn: TimelineLatestTurn = {
+      turnId: "current-turn" as never,
+      state: "running",
+      startedAt: currentUser.createdAt,
+      completedAt: null,
+    };
+    const summaries = new Map();
+    const expandedTurnIds = new Set<never>();
+    const makeInput = (text: string, prefix = historicalEntries): MessagesTimelineRowsInput => ({
+      timelineEntries: [
+        ...prefix,
+        {
+          id: currentUser.id,
+          kind: "message",
+          createdAt: currentUser.createdAt,
+          message: currentUser,
+        },
+        {
+          id: "current-reply",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:04Z",
+          message: {
+            id: "current-reply" as never,
+            role: "assistant",
+            text,
+            turnId: latestTurn.turnId,
+            createdAt: "2026-01-01T00:00:04Z",
+            updatedAt: "2026-01-01T00:00:05Z",
+            streaming: true,
+          },
+        },
+      ],
+      latestTurn,
+      runningTurnId: latestTurn.turnId,
+      expandedTurnIds,
+      isWorking: true,
+      activeTurnStartedAt: latestTurn.startedAt,
+      turnDiffSummaryByAssistantMessageId: summaries,
+      revertTurnCountByUserMessageId: new Map([[oldUser.id, 1]]),
+    });
+
+    const first = deriveMessagesTimelineRowsWithCachedHistory(makeInput("A"), null);
+    const streamedInput = makeInput("A little more");
+    const streamed = deriveMessagesTimelineRowsWithCachedHistory(streamedInput, first.history);
+    expect(streamed.reusedHistory).toBe(true);
+    expect(streamed.rows[0]).toBe(first.rows[0]);
+    expect(streamed.rows).toEqual(deriveMessagesTimelineRows(streamedInput));
+
+    const olderUser = {
+      id: "older-user" as never,
+      role: "user" as const,
+      text: "Older question",
+      turnId: null,
+      createdAt: "2025-12-31T23:59:59Z",
+      updatedAt: "2025-12-31T23:59:59Z",
+      streaming: false,
+    };
+    const olderInput = makeInput("A little more", [
+      { id: olderUser.id, kind: "message", createdAt: olderUser.createdAt, message: olderUser },
+      ...historicalEntries,
+    ]);
+    const afterPage = deriveMessagesTimelineRowsWithCachedHistory(olderInput, streamed.history);
+    expect(afterPage.reusedHistory).toBe(false);
+    expect(afterPage.rows).toEqual(deriveMessagesTimelineRows(olderInput));
+
+    const steeredInput = makeInput("A little more", [
+      ...historicalEntries,
+      {
+        id: "current-before-steer",
+        kind: "message",
+        createdAt: "2026-01-01T00:00:02Z",
+        message: {
+          ...oldReply,
+          id: "current-before-steer" as never,
+          turnId: latestTurn.turnId,
+          text: "Working before the new user message",
+        },
+      },
+    ]);
+    const afterSteer = deriveMessagesTimelineRowsWithCachedHistory(steeredInput, streamed.history);
+    expect(afterSteer.reusedHistory).toBe(false);
+    expect(afterSteer.rows).toEqual(deriveMessagesTimelineRows(steeredInput));
+  });
+});
 
 describe("shouldPreserveAssistantLineBreaks", () => {
   it("preserves Claude insight formatting without changing regular markdown", () => {
@@ -1999,10 +2132,10 @@ describe("deriveMessagesTimelineRows", () => {
   });
 
   it.each([
-    ["recovered", ["failed", "completed"], false],
+    ["a prior failure", ["failed", "completed"], true],
     ["ending in failure", ["completed", "failed"], true],
     ["failed", ["failed", "failed"], true],
-  ] as const)("uses the final call for %s tool groups", (_, statuses, hasFailure) => {
+  ] as const)("preserves failure visibility for %s tool groups", (_, statuses, hasFailure) => {
     const timelineEntries = statuses.map((status, index) => ({
       id: `work-entry-${index}`,
       kind: "work" as const,
@@ -2032,14 +2165,14 @@ describe("deriveMessagesTimelineRows", () => {
   });
 
   it.each([
-    ["the later success is hidden", ["failed", "completed", "info"], false],
-    ["the later success is visible", ["failed", "info", "completed"], false],
-    ["an error-toned entry recovers", ["error", "info", "completed"], false],
+    ["the later success is hidden", ["failed", "completed", "info"], true],
+    ["the later success is visible", ["failed", "info", "completed"], true],
+    ["an error-toned entry recovers", ["error", "info", "completed"], true],
     ["the final failure is hidden", ["completed", "failed", "info"], true],
     ["the final failure is visible", ["failed", "info", "failed"], true],
     ["the only failure is visible", ["completed", "info", "failed"], false],
   ] as const)(
-    "uses the final tool call for mixed work groups when %s",
+    "preserves hidden failure visibility for mixed work groups when %s",
     (_, statuses, hasFailure) => {
       const timelineEntries = statuses.map((status, index) => {
         const id = `work-${index}`;

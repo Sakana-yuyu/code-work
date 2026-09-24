@@ -417,6 +417,34 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(thread.session?.status).toBe("error");
     expect(thread.session?.lastError).toBe("turn failed");
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-retried"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      turnId: asTurnId("turn-2"),
+    });
+    await waitForThread(
+      harness.readModel,
+      (entry) => entry.session?.status === "running" && entry.session.activeTurnId === "turn-2",
+    );
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-retry-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      createdAt: "2026-01-01T00:00:02.000Z",
+      turnId: asTurnId("turn-2"),
+      payload: { state: "completed" },
+    });
+    const recoveredThread = await waitForThread(
+      harness.readModel,
+      (entry) => entry.session?.status === "ready" && entry.latestTurn?.turnId === "turn-2",
+    );
+    expect(recoveredThread.latestTurn?.state).toBe("completed");
+    expect(recoveredThread.session?.lastError).toBeNull();
   });
 
   it("applies provider session.state.changed transitions directly", async () => {
@@ -1149,6 +1177,345 @@ describe("ProviderRuntimeIngestion", () => {
     expect(message?.text).toBe("hello world");
     expect(message?.streaming).toBe(false);
   });
+
+  it.each(["buffered", "streaming"] as const)(
+    "中断时保留已生成文字并结束流式状态（%s）",
+    async (delivery) => {
+      const harness = await createHarness({
+        serverSettings: { enableLegacyTokenStreaming: delivery === "streaming" },
+      });
+      const now = "2026-01-01T00:00:00.000Z";
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("turn-aborted-partial");
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("evt-aborted-partial-started"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+      });
+      await waitForThread(
+        harness.readModel,
+        (thread) => thread.session?.status === "running" && thread.session.activeTurnId === turnId,
+      );
+      harness.emit({
+        type: "content.delta",
+        eventId: asEventId("evt-aborted-partial-delta"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+        itemId: asItemId("item-aborted-partial"),
+        payload: { streamKind: "assistant_text", delta: "已完成一部分" },
+      });
+      await harness.drain();
+      harness.emit({
+        type: "turn.aborted",
+        eventId: asEventId("evt-aborted-partial-aborted"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+        payload: { reason: "Interrupted by user." },
+      });
+
+      const thread = await waitForThread(
+        harness.readModel,
+        (entry) =>
+          entry.session?.status === "interrupted" &&
+          entry.messages.some(
+            (message: ProviderRuntimeTestMessage) =>
+              message.turnId === turnId && message.text === "已完成一部分" && !message.streaming,
+          ),
+      );
+      expect(thread.latestTurn?.state).toBe("interrupted");
+      expect(
+        thread.messages.filter((message: ProviderRuntimeTestMessage) => message.turnId === turnId),
+      ).toHaveLength(1);
+    },
+  );
+
+  it.each(["buffered", "streaming"] as const)(
+    "运行器异常退出时保留已有文字并结束流式状态（%s）",
+    async (delivery) => {
+      const harness = await createHarness({
+        serverSettings: { enableLegacyTokenStreaming: delivery === "streaming" },
+      });
+      const now = "2026-01-01T00:00:00.000Z";
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("turn-exited-partial");
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("evt-exited-partial-started"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+      });
+      await waitForThread(
+        harness.readModel,
+        (thread) => thread.session?.status === "running" && thread.session.activeTurnId === turnId,
+      );
+      harness.emit({
+        type: "content.delta",
+        eventId: asEventId("evt-exited-partial-delta"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+        itemId: asItemId("item-exited-partial"),
+        payload: { streamKind: "assistant_text", delta: "退出前的回复" },
+      });
+      await harness.drain();
+      harness.emit({
+        type: "session.exited",
+        eventId: asEventId("evt-exited-partial-session-exited"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+      });
+
+      const thread = await waitForThread(
+        harness.readModel,
+        (entry) =>
+          entry.session?.status === "stopped" &&
+          entry.messages.some(
+            (message: ProviderRuntimeTestMessage) =>
+              message.turnId === turnId && message.text === "退出前的回复" && !message.streaming,
+          ),
+      );
+      expect(thread.latestTurn?.state).toBe("interrupted");
+      expect(
+        thread.messages.filter((message: ProviderRuntimeTestMessage) => message.turnId === turnId),
+      ).toHaveLength(1);
+    },
+  );
+
+  it.each(["buffered", "streaming"] as const)(
+    "会话错误终止当前回复并保留失败状态（%s）",
+    async (delivery) => {
+      const harness = await createHarness({
+        serverSettings: { enableLegacyTokenStreaming: delivery === "streaming" },
+      });
+      const now = "2026-01-01T00:00:00.000Z";
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("turn-session-error-partial");
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("evt-session-error-started"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+      });
+      await waitForThread(
+        harness.readModel,
+        (thread) => thread.session?.status === "running" && thread.session.activeTurnId === turnId,
+      );
+      harness.emit({
+        type: "content.delta",
+        eventId: asEventId("evt-session-error-delta"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+        itemId: asItemId("item-session-error-partial"),
+        payload: { streamKind: "assistant_text", delta: "错误前的回复" },
+      });
+      await harness.drain();
+      harness.emit({
+        type: "session.state.changed",
+        eventId: asEventId("evt-session-error-terminal"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        threadId,
+        payload: { state: "error", reason: "upstream failed" },
+      });
+
+      const thread = await waitForThread(
+        harness.readModel,
+        (entry) =>
+          entry.session?.status === "error" &&
+          entry.messages.some(
+            (message: ProviderRuntimeTestMessage) =>
+              message.turnId === turnId && message.text === "错误前的回复" && !message.streaming,
+          ),
+      );
+      expect(thread.latestTurn?.state).toBe("error");
+      expect(thread.session?.lastError).toBe("upstream failed");
+      expect(
+        thread.messages.filter((message: ProviderRuntimeTestMessage) => message.turnId === turnId),
+      ).toHaveLength(1);
+    },
+  );
+
+  it("旧回合的会话错误不会终止新回合", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const activeTurnId = asTurnId("turn-current-after-steer");
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-current-after-steer-started"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId,
+      turnId: activeTurnId,
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) =>
+        thread.session?.status === "running" && thread.session.activeTurnId === activeTurnId,
+    );
+    harness.emit({
+      type: "session.state.changed",
+      eventId: asEventId("evt-stale-session-error"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId,
+      turnId: asTurnId("turn-superseded"),
+      payload: { state: "error", reason: "old turn failed" },
+    });
+    await harness.drain();
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) => entry.session?.activeTurnId === activeTurnId,
+    );
+    expect(thread.session?.status).toBe("running");
+    expect(thread.latestTurn?.state).toBe("running");
+    expect(thread.session?.lastError).toBeNull();
+  });
+
+  it.each([
+    ["failed", "buffered", "error", "error"],
+    ["failed", "streaming", "error", "error"],
+    ["cancelled", "buffered", "interrupted", "interrupted"],
+    ["cancelled", "streaming", "interrupted", "interrupted"],
+    ["interrupted", "buffered", "interrupted", "interrupted"],
+    ["interrupted", "streaming", "interrupted", "interrupted"],
+  ] as const)(
+    "非成功回执保留部分回复且标记真实结局（%s，%s）",
+    async (state, delivery, expectedSessionStatus, expectedTurnState) => {
+      const harness = await createHarness({
+        serverSettings: { enableLegacyTokenStreaming: delivery === "streaming" },
+      });
+      const now = "2026-01-01T00:00:00.000Z";
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("turn-non-success");
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("evt-non-success-started"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+      });
+      await waitForThread(
+        harness.readModel,
+        (thread) => thread.session?.status === "running" && thread.session.activeTurnId === turnId,
+      );
+      harness.emit({
+        type: "content.delta",
+        eventId: asEventId("evt-non-success-delta"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+        itemId: asItemId("item-non-success"),
+        payload: { streamKind: "assistant_text", delta: "部分回复" },
+      });
+      await harness.drain();
+      harness.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-non-success-completed"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+        payload: { state, ...(state === "failed" ? { errorMessage: "调用失败" } : {}) },
+      });
+
+      const thread = await waitForThread(
+        harness.readModel,
+        (entry) =>
+          entry.session?.status === expectedSessionStatus &&
+          entry.messages.some(
+            (message: ProviderRuntimeTestMessage) =>
+              message.turnId === turnId && message.text === "部分回复" && !message.streaming,
+          ),
+      );
+      expect(thread.latestTurn?.state).toBe(expectedTurnState);
+      expect(thread.session?.lastError).toBe(state === "failed" ? "调用失败" : null);
+      expect(
+        thread.messages.filter((message: ProviderRuntimeTestMessage) => message.turnId === turnId),
+      ).toHaveLength(1);
+    },
+  );
+
+  effectIt.effect("失败回执不会把部分回复中的完成标记执行为 Goal 完成", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const now = "2026-01-01T00:00:00.000Z";
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("turn-failed-goal-marker");
+      yield* harness.goalStore.set({
+        threadId,
+        objective: "验证迁移",
+        tokenBudget: null,
+      });
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("evt-failed-goal-started"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+      });
+      yield* Effect.promise(() =>
+        waitForThread(
+          harness.readModel,
+          (thread) =>
+            thread.session?.status === "running" && thread.session.activeTurnId === turnId,
+        ),
+      );
+      harness.emit({
+        type: "content.delta",
+        eventId: asEventId("evt-failed-goal-delta"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+        itemId: asItemId("item-failed-goal"),
+        payload: {
+          streamKind: "assistant_text",
+          delta: "迁移完成 [[GOAL_COMPLETE: 全部测试通过]]",
+        },
+      });
+      yield* Effect.promise(harness.drain);
+      harness.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-failed-goal-completed"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: now,
+        threadId,
+        turnId,
+        payload: { state: "failed", errorMessage: "提供方失败" },
+      });
+
+      const thread = yield* Effect.promise(() =>
+        waitForThread(
+          harness.readModel,
+          (entry) => entry.session?.status === "error" && entry.latestTurn?.state === "error",
+        ),
+      );
+      yield* Effect.promise(harness.drain);
+      const goal = yield* harness.goalStore.get(threadId);
+      expect(Option.isSome(goal) && goal.value.status).toBe("paused");
+      expect(
+        thread.activities.some((activity: { kind: string }) => activity.kind === "goal.completed"),
+      ).toBe(false);
+    }),
+  );
 
   it("uses assistant item completion detail when no assistant deltas were streamed", async () => {
     const harness = await createHarness();

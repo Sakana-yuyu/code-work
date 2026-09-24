@@ -2,6 +2,7 @@ import {
   classifyTaskAgentKind,
   EventId,
   MessageId,
+  ProviderInstanceId,
   ThreadId,
   TurnId,
   type OrchestrationThreadActivity,
@@ -1994,6 +1995,37 @@ describe("deriveWorkLogEntries", () => {
 });
 
 describe("deriveTimelineEntries", () => {
+  it("同时间戳消息保留服务端投影顺序", () => {
+    const createdAt = "2026-02-23T00:00:01.000Z";
+    const entries = deriveTimelineEntries(
+      [
+        {
+          id: MessageId.make("z-user-message"),
+          role: "user",
+          text: "first",
+          createdAt,
+          turnId: null,
+          updatedAt: createdAt,
+          streaming: false,
+        },
+        {
+          id: MessageId.make("a-assistant-message"),
+          role: "assistant",
+          text: "reply",
+          createdAt,
+          turnId: null,
+          updatedAt: createdAt,
+          streaming: false,
+          providerInstanceId: ProviderInstanceId.make("byok"),
+        },
+      ],
+      [],
+      [],
+    );
+
+    expect(entries.map((entry) => entry.id)).toEqual(["z-user-message", "a-assistant-message"]);
+  });
+
   it("includes proposed plans alongside messages and work entries in chronological order", () => {
     const entries = deriveTimelineEntries(
       [

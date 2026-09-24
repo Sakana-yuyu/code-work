@@ -91,6 +91,16 @@ const makeGateway = (
               "codex-a": { api_key: "codex-key-a" },
               "codex-root": { api_key: "codex-root-key" },
               "codex-b": { api_key: "codex-key-b" },
+              "codex-pool-1": { api_key: "pool-key-1" },
+              "codex-pool-2": { api_key: "pool-key-2" },
+              "codex-pool-3": { api_key: "pool-key-3" },
+              "codex-pool-4": { api_key: "pool-key-4" },
+              "codex-pool-5": { api_key: "pool-key-5" },
+              "codex-limit-1": { api_key: "limit-key-1" },
+              "codex-limit-2": { api_key: "limit-key-2" },
+              "codex-limit-3": { api_key: "limit-key-3" },
+              "codex-limit-4": { api_key: "limit-key-4" },
+              "codex-limit-5": { api_key: "limit-key-5" },
               "codex-external": { api_key: "codex-external-key" },
               "codex-oauth": { access_token: "codex-oauth-token", account_id: "acct-1" },
               "claude-oauth": { access_token: "claude-oauth-token" },
@@ -191,6 +201,100 @@ describe("本地账号网关 runtime smoke", () => {
       new Set(["Bearer codex-key-a", "Bearer codex-key-b"]),
     );
     expect(gateway.captured[1]?.body).toMatchObject({ model: "gpt-5.4", stream: true });
+    await gateway.dispose();
+  });
+
+  it("按不同账号连续故障转移，第四个账号成功时只返回最后一次响应", async () => {
+    const accountIds = ["codex-pool-1", "codex-pool-2", "codex-pool-3", "codex-pool-4"];
+    const accounts = Object.fromEntries(
+      accountIds.map((id) => [
+        id,
+        {
+          id,
+          provider: "codex",
+          authKind: "api-key",
+          displayName: id,
+          credentialRef: id,
+          enabled: true,
+          models: ["gpt-5.4"],
+        },
+      ]),
+    );
+    const settings = localSettings("codex-pool", "codex", "codex", accountIds, accounts);
+    const gateway = makeGateway(settings, [
+      new Response("first failed", { status: 401 }),
+      new Response("second limited", { status: 429 }),
+      new Response("third unavailable", { status: 503 }),
+      new Response('{"output":[{"type":"message","content":[]}]}', {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    ]);
+    const route = gatewayAdapterRoutes(settings, "codex-pool")[0];
+    if (route === undefined) throw new Error("本地 Codex 路由未发布");
+    const response = await gateway.handler(
+      new Request("http://gateway.test/byok-gw/openai/v1/responses", {
+        method: "POST",
+        headers: { authorization: `Bearer ${gateway.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: route.id, input: [] }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('"output"');
+    expect(gateway.captured.map((request) => request.headers.authorization)).toEqual([
+      "Bearer pool-key-1",
+      "Bearer pool-key-2",
+      "Bearer pool-key-3",
+      "Bearer pool-key-4",
+    ]);
+    await gateway.dispose();
+  });
+
+  it("大账号池单请求只尝试四个账号", async () => {
+    const accountIds = [
+      "codex-limit-1",
+      "codex-limit-2",
+      "codex-limit-3",
+      "codex-limit-4",
+      "codex-limit-5",
+    ];
+    const accounts = Object.fromEntries(
+      accountIds.map((id) => [
+        id,
+        {
+          id,
+          provider: "codex",
+          authKind: "api-key",
+          displayName: id,
+          credentialRef: id,
+          enabled: true,
+          models: ["gpt-5.5"],
+        },
+      ]),
+    );
+    const settings = localSettings("codex-pool-limited", "codex", "codex", accountIds, accounts);
+    const gateway = makeGateway(settings, [
+      new Response("unavailable", { status: 503 }),
+      new Response("unavailable", { status: 503 }),
+      new Response("unavailable", { status: 503 }),
+      new Response("unavailable", { status: 503 }),
+      new Response("fifth should not be used", { status: 200 }),
+    ]);
+    const route = gatewayAdapterRoutes(settings, "codex-pool-limited")[0];
+    if (route === undefined) throw new Error("本地 Codex 路由未发布");
+    const response = await gateway.handler(
+      new Request("http://gateway.test/byok-gw/openai/v1/responses", {
+        method: "POST",
+        headers: { authorization: `Bearer ${gateway.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: route.id, input: [] }),
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.text()).toBe("unavailable");
+    expect(gateway.captured).toHaveLength(4);
+    expect(new Set(gateway.captured.map((request) => request.headers.authorization)).size).toBe(4);
     await gateway.dispose();
   });
 

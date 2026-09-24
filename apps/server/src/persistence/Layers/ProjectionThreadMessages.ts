@@ -21,6 +21,7 @@ const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
   Struct.assign({
     isStreaming: Schema.Number,
     providerInstanceId: Schema.NullOr(ProviderInstanceId),
+    firstSequence: Schema.NullOr(Schema.Number),
     attachments: Schema.NullOr(Schema.fromJsonString(Schema.Array(ChatAttachment))),
   }),
 );
@@ -33,6 +34,7 @@ function toProjectionThreadMessage(
     threadId: row.threadId,
     turnId: row.turnId,
     role: row.role,
+    ...(row.firstSequence !== null ? { firstSequence: row.firstSequence } : {}),
     ...(row.providerInstanceId !== null ? { providerInstanceId: row.providerInstanceId } : {}),
     text: row.text,
     isStreaming: row.isStreaming === 1,
@@ -56,6 +58,7 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           thread_id,
           turn_id,
           role,
+          first_sequence,
           provider_instance_id,
           text,
           attachments_json,
@@ -68,6 +71,7 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           ${row.threadId},
           ${row.turnId},
           ${row.role},
+          ${row.firstSequence ?? null},
           ${row.providerInstanceId ?? null},
           ${row.text},
           COALESCE(
@@ -87,6 +91,10 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           thread_id = excluded.thread_id,
           turn_id = excluded.turn_id,
           role = excluded.role,
+          first_sequence = COALESCE(
+            projection_thread_messages.first_sequence,
+            excluded.first_sequence
+          ),
           provider_instance_id = COALESCE(
             excluded.provider_instance_id,
             projection_thread_messages.provider_instance_id
@@ -113,6 +121,7 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           thread_id AS "threadId",
           turn_id AS "turnId",
           role,
+          first_sequence AS "firstSequence",
           provider_instance_id AS "providerInstanceId",
           text,
           attachments_json AS "attachments",
@@ -135,6 +144,7 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           thread_id AS "threadId",
           turn_id AS "turnId",
           role,
+          first_sequence AS "firstSequence",
           provider_instance_id AS "providerInstanceId",
           text,
           attachments_json AS "attachments",
@@ -143,7 +153,7 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           updated_at AS "updatedAt"
         FROM projection_thread_messages
         WHERE thread_id = ${threadId}
-        ORDER BY created_at ASC, message_id ASC
+        ORDER BY created_at ASC, first_sequence ASC, message_id ASC
       `,
   });
 

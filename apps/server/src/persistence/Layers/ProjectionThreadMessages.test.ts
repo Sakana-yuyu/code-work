@@ -12,6 +12,50 @@ const layer = it.layer(
 );
 
 layer("ProjectionThreadMessageRepository", (it) => {
+  it.effect("相同时间戳按首次事件顺序读取，后续流式更新不改变位置", () =>
+    Effect.gen(function* () {
+      const repository = yield* ProjectionThreadMessageRepository;
+      const threadId = ThreadId.make("thread-message-order");
+      const createdAt = "2026-02-28T19:00:00.000Z";
+      for (const [messageId, firstSequence] of [
+        ["z-user", 12],
+        ["a-assistant", 13],
+      ] as const) {
+        yield* repository.upsert({
+          messageId: MessageId.make(messageId),
+          threadId,
+          turnId: null,
+          role: messageId === "z-user" ? "user" : "assistant",
+          firstSequence,
+          text: messageId,
+          isStreaming: false,
+          createdAt,
+          updatedAt: createdAt,
+        });
+      }
+      yield* repository.upsert({
+        messageId: MessageId.make("a-assistant"),
+        threadId,
+        turnId: null,
+        role: "assistant",
+        firstSequence: 14,
+        text: "completed",
+        isStreaming: false,
+        createdAt,
+        updatedAt: createdAt,
+      });
+      const messages = yield* repository.listByThreadId({ threadId });
+      assert.deepEqual(
+        messages.map((message) => [String(message.messageId), message.firstSequence]),
+        [
+          ["z-user", 12],
+          ["a-assistant", 13],
+        ],
+      );
+      assert.equal(messages[1]?.text, "completed");
+    }),
+  );
+
   it.effect("keeps the assistant's provider instance after later message updates", () =>
     Effect.gen(function* () {
       const repository = yield* ProjectionThreadMessageRepository;

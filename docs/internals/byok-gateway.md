@@ -10,7 +10,9 @@ BYOK 实例保存模型通道，CLI 实例选择其中一条共享线路或聚�
 
 外部 Agent 访问使用独立的 `local-gateway-keys` SecretStore key ring。`CliProxy` 的 create/rotate/revoke/list RPC 只返回摘要，创建和轮换结果携带一次性明文 Key；HTTP 网关同时接受内部 `byok-gateway-token` 与外部 Key，但后者会把路由过滤为 `localProvider`，不能读取普通 BYOK 凭据。Key 是随机高熵值，比较使用常量时间比较；SecretStore 读取或 key ring 解析失败时拒绝请求。外部 URL 仍复用 `/byok-gw/openai/v1` 和 `/byok-gw/anthropic`，服务端默认回环监听，跨主机暴露必须由部署者配置可达监听地址和 HTTPS 反代。
 
-这是请求级代理，不会修改正在运行的官方 CLI 进程，也不会在已开始的流式响应中切换账号。首个账号在响应体开始前遇到网络错误、401、403、429 或 5xx 时，最多换用一个健康账号重放；没有第二个健康账号时保留原错误。官方 OAuth 刷新协议和系统 keyring/Keychain 仍可能要求用户通过官方 CLI 重新登录；本地导入是凭据材料的受控保存与轮询入口，不等价于官方 API 兼容性保证。
+这是请求级代理，不会修改正在运行的官方 CLI 进程，也不会在已开始的流式响应中切换账号。当前账号在响应体开始前遇到网络错误、401、403、429 或 5xx 时，按模型和实例范围换用未尝试过的健康账号；单请求最多尝试四个，账号不足时提前停止，最终失败时保留最后一次上游错误。官方 OAuth 刷新协议和系统 keyring/Keychain 仍可能要求用户通过官方 CLI 重新登录；本地导入是凭据材料的受控保存与轮询入口，不等价于官方 API 兼容性保证。
+
+账号池故障转移参考（检索日期 2026-09-24）：关键词 `cc-switch max_retries failover providers`；采用 [cc-switch forwarder](https://github.com/farion1231/cc-switch/blob/main/src-tauri/src/proxy/forwarder.rs) 和 [默认代理配置](https://github.com/farion1231/cc-switch/blob/main/src-tauri/src/proxy/types.rs)，其中默认 3 次重试表示最多 4 个不同上游。Code Work 沿用已有 Effect 网关与账号冷却存储，将四次尝试限制在本地账号池、响应流交付之前。
 
 实现依据（检索日期 2026-09-05）：关键词为 `Codex auth.json account_id`、`Claude OAuth token refresh`、`Grok CLI OAuth chat proxy`；采用 [OpenAI Codex 登录存储](https://github.com/openai/codex/blob/main/codex-rs/login/src/auth/storage.rs)、[xAI Grok CLI 设置](https://docs.x.ai/build/settings) 和 [CLIProxyAPI 的公开执行器实现](https://github.com/router-for-me/CLIProxyAPI/tree/main/internal/runtime/executor)，用于确认凭据字段、官方端点和协议头。CPA 源码只作为公开协议参考，运行时不依赖它。
 

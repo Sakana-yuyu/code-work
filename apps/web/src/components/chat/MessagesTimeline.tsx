@@ -92,7 +92,7 @@ import { MessageCopyButton } from "./MessageCopyButton";
 import { PROVIDER_ICON_BY_PROVIDER } from "./providerIconUtils";
 import {
   computeStableMessagesTimelineRows,
-  deriveMessagesTimelineRows,
+  deriveMessagesTimelineRowsWithCachedHistory,
   normalizeCompactToolLabel,
   reconcileExpandedTurnIdsAfterLatestTurnChange,
   resolveAssistantMessageCopyState,
@@ -107,6 +107,7 @@ import {
   toolGroupAction,
   workEntryIsVisibleInGroup,
   type StableMessagesTimelineRowsState,
+  type CachedTimelineHistory,
   type MessagesTimelineRow,
   TIMELINE_MINIMAP_MIN_ITEMS,
   type TimelineLatestTurn,
@@ -452,9 +453,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     );
   }, [latestTurn]);
 
-  const rawRows = useMemo(
-    () =>
-      deriveMessagesTimelineRows({
+  const historyRowsCache = useRef<CachedTimelineHistory | null>(null);
+  const rawRows = useMemo(() => {
+    const derived = deriveMessagesTimelineRowsWithCachedHistory(
+      {
         timelineEntries,
         localPluginTimelineEntries,
         latestTurn,
@@ -466,21 +468,24 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         activeTurnStartedAt,
         turnDiffSummaryByAssistantMessageId,
         revertTurnCountByUserMessageId,
-      }),
-    [
-      timelineEntries,
-      localPluginTimelineEntries,
-      latestTurn,
-      runningTurnId,
-      expandedTurnIds,
-      expandedWorkGroupIds,
-      expandedNarrationGroupIds,
-      isWorking,
-      activeTurnStartedAt,
-      turnDiffSummaryByAssistantMessageId,
-      revertTurnCountByUserMessageId,
-    ],
-  );
+      },
+      historyRowsCache.current,
+    );
+    historyRowsCache.current = derived.history;
+    return derived.rows;
+  }, [
+    timelineEntries,
+    localPluginTimelineEntries,
+    latestTurn,
+    runningTurnId,
+    expandedTurnIds,
+    expandedWorkGroupIds,
+    expandedNarrationGroupIds,
+    isWorking,
+    activeTurnStartedAt,
+    turnDiffSummaryByAssistantMessageId,
+    revertTurnCountByUserMessageId,
+  ]);
   const rows = useStableRows(rawRows);
   const canvasState = useRef<TimelineCanvasReferences>({
     canvasReferences: [],
@@ -1876,7 +1881,9 @@ function WorkGroupToggleTimelineRow({
       <button
         type="button"
         className="group/tool-group flex min-h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-0.5 py-0.5 text-left text-sm leading-relaxed transition-colors duration-150 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-        aria-label={row.hasFailure ? t("toolCallFailed3", { summary: row.summary }) : undefined}
+        aria-label={
+          row.hasFailure ? t("toolGroupIncludesFailure", { summary: row.summary }) : undefined
+        }
         aria-expanded={row.expanded}
         onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
       >
@@ -2891,6 +2898,7 @@ const stopRowToggle = (e: { stopPropagation: () => void }) => e.stopPropagation(
 const AgentSpawnCtaRow = memo(function AgentSpawnCtaRow(props: { workEntry: TimelineWorkEntry }) {
   const { workEntry } = props;
   const { agentPanelModel, onOpenAgents } = use(TimelineRowCtx);
+  const { isWorking, latestTurnId } = use(TimelineRowActivityCtx);
   const spawn = workEntry.agentSpawn;
   if (!spawn) {
     return null;
@@ -2923,7 +2931,10 @@ const AgentSpawnCtaRow = memo(function AgentSpawnCtaRow(props: { workEntry: Time
     coordinatorStatus === "failed" ||
     coordinatorStatus === "cancelled" ||
     coordinatorStatus === "interrupted";
-  const live = workflowGroup !== undefined ? !coordinatorSettled : running + waiting > 0;
+  const awaitingRoster =
+    agents.length === 0 && isWorking && workEntry.turnId === latestTurnId && agentCount > 0;
+  const live =
+    workflowGroup !== undefined ? !coordinatorSettled : awaitingRoster || running + waiting > 0;
   // Same rule as the panel footer: providers may aggregate member usage into
   // the coordinator, so count the coordinator only when no members exist.
   const totalTokens = agents.reduce(

@@ -556,7 +556,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           created_at AS "createdAt",
           updated_at AS "updatedAt"
         FROM projection_thread_messages
-        ORDER BY thread_id ASC, created_at ASC, message_id ASC
+        ORDER BY thread_id ASC, created_at ASC, first_sequence ASC, message_id ASC
       `,
   });
 
@@ -1046,7 +1046,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           updated_at AS "updatedAt"
         FROM projection_thread_messages
         WHERE thread_id = ${threadId}
-        ORDER BY created_at ASC, message_id ASC
+        ORDER BY created_at ASC, first_sequence ASC, message_id ASC
       `,
   });
 
@@ -1318,7 +1318,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               AND created_at < ${beforeAnchorAt}
             )
           )
-        ORDER BY created_at ASC, message_id ASC
+        ORDER BY created_at ASC, first_sequence ASC, message_id ASC
       `,
   });
 

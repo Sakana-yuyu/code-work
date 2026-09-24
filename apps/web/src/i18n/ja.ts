@@ -4383,6 +4383,7 @@ export const ja: Record<string, string> = {
   toolCallFailed2: "{{label}}、ツール呼び出しが失敗しました",
   toolCallFailed3: "{{summary}}、ツール呼び出しが失敗しました",
   toolCalls: "ツール呼び出し",
+  toolGroupIncludesFailure: "{{summary}}、失敗したツール呼び出しが含まれています",
   toolOnTheServerHostToEnableChangeRequestFeatures:
     "ツールをサーバーホストにインストールすると、変更リクエスト機能が有効になります。",
   toQuit: "で終了",

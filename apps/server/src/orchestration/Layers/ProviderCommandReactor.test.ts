@@ -179,6 +179,61 @@ describe("ProviderCommandReactor", () => {
     ).toBeLessThanOrEqual(64_000);
   });
 
+  it("转接工具结果有界，跳过没有结果的旧工具操作", () => {
+    const activities = Array.from({ length: 9 }, (_, index) => ({
+      id: EventId.make(`tool-result-${index}`),
+      tone: "tool" as const,
+      kind: "tool.completed",
+      summary: `工具 ${index}`,
+      payload: {
+        status: "completed",
+        itemType: "dynamic_tool_call",
+        data: { rawOutput: { content: `结果 ${index} ${"x".repeat(5_000)}` } },
+      },
+      turnId: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    }));
+    const context = formatThreadConversationHistory(
+      [{ role: "user", text: "x".repeat(70_000) }],
+      [
+        ...activities,
+        {
+          id: EventId.make("tool-without-result"),
+          tone: "tool",
+          kind: "tool.completed",
+          summary: "旧命令",
+          payload: { status: "completed", detail: "不要再次执行的命令" },
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    );
+    expect(context.length).toBeLessThanOrEqual(64_000);
+    expect(context).toContain("工具 8");
+    expect(context).not.toContain("工具 0");
+    expect(context).not.toContain("不要再次执行的命令");
+
+    const mcpContext = formatThreadConversationHistory(
+      [],
+      [
+        {
+          id: EventId.make("mcp-result"),
+          tone: "tool",
+          kind: "tool.completed",
+          summary: "查询文档",
+          payload: {
+            status: "completed",
+            itemType: "mcp_tool_call",
+            data: { result: { content: "已找到配置说明" } },
+          },
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    );
+    expect(mcpContext).toContain("已找到配置说明");
+  });
+
   async function createHarness(input?: {
     readonly baseDir?: string;
     readonly threadModelSelection?: ModelSelection;
@@ -2884,7 +2939,7 @@ describe("ProviderCommandReactor", () => {
         commandId: CommandId.make("cmd-turn-start-provider-switch-1"),
         threadId: ThreadId.make("thread-1"),
         message: {
-          messageId: asMessageId("user-message-provider-switch-1"),
+          messageId: asMessageId("z-user-message-provider-switch-1"),
           role: "user",
           text: "first",
           attachments: [],
@@ -2902,9 +2957,9 @@ describe("ProviderCommandReactor", () => {
         type: "thread.message.assistant.delta",
         commandId: CommandId.make("cmd-first-provider-reply"),
         threadId: ThreadId.make("thread-1"),
-        messageId: asMessageId("first-provider-reply"),
+        messageId: asMessageId("a-first-provider-reply"),
         delta: "first agent result",
-        createdAt: "2026-01-01T00:00:01.000Z",
+        createdAt: now,
       }),
     );
     await harness.runEffect(
@@ -2912,8 +2967,29 @@ describe("ProviderCommandReactor", () => {
         type: "thread.message.assistant.complete",
         commandId: CommandId.make("cmd-first-provider-reply-complete"),
         threadId: ThreadId.make("thread-1"),
-        messageId: asMessageId("first-provider-reply"),
-        createdAt: "2026-01-01T00:00:01.000Z",
+        messageId: asMessageId("a-first-provider-reply"),
+        createdAt: now,
+      }),
+    );
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.make("cmd-first-provider-tool-result"),
+        threadId: ThreadId.make("thread-1"),
+        activity: {
+          id: EventId.make("activity-first-provider-tool-result"),
+          tone: "tool",
+          kind: "tool.completed",
+          summary: "配置检查",
+          payload: {
+            itemType: "dynamic_tool_call",
+            status: "completed",
+            data: { rawOutput: { content: "配置检查：通过" } },
+          },
+          turnId: null,
+          createdAt: now,
+        },
+        createdAt: now,
       }),
     );
 
@@ -2943,11 +3019,9 @@ describe("ProviderCommandReactor", () => {
     await waitFor(() => harness.sendTurn.mock.calls.length === 2);
     expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({ provider: "codex" });
     expect(harness.startSession.mock.calls[1]?.[1]).not.toHaveProperty("resumeCursor");
-    expect(harness.startSession.mock.calls[1]?.[2]?.conversationHistory).toContain("first");
-    expect(harness.startSession.mock.calls[1]?.[2]?.conversationHistory).toContain(
-      "ASSISTANT (byok):\nfirst agent result",
+    expect(harness.startSession.mock.calls[1]?.[2]?.conversationHistory).toBe(
+      "USER:\nfirst\n\nASSISTANT (byok):\nfirst agent result\n\n历史工具结果摘要（仅供参考，不要重复执行旧操作）：\n- [completed] 配置检查: 配置检查：通过",
     );
-    expect(harness.startSession.mock.calls[1]?.[2]?.conversationHistory).not.toContain("second");
     expect(harness.stopSession.mock.calls.length).toBe(0);
 
     const readModel = await harness.readModel();
@@ -2986,7 +3060,7 @@ describe("ProviderCommandReactor", () => {
     expect(harness.startSession).toHaveBeenCalledTimes(3);
     expect(harness.startSession.mock.calls[2]?.[1]).not.toHaveProperty("resumeCursor");
     expect(harness.startSession.mock.calls[2]?.[2]?.conversationHistory).toBe(
-      "USER:\nfirst\n\nASSISTANT (byok):\nfirst agent result\n\nUSER:\nsecond",
+      "USER:\nfirst\n\nASSISTANT (byok):\nfirst agent result\n\nUSER:\nsecond\n\n历史工具结果摘要（仅供参考，不要重复执行旧操作）：\n- [completed] 配置检查: 配置检查：通过",
     );
   });
 
@@ -3156,11 +3230,34 @@ describe("ProviderCommandReactor", () => {
           runtimeMode: "approval-required",
           createdAt,
         });
+        if (id === "z-earlier" || id === "b-current") {
+          yield* harness.engine.dispatch({
+            type: "thread.activity.append",
+            commandId: CommandId.make(`tool-result-${id}`),
+            threadId,
+            activity: {
+              id: EventId.make(`tool-result-${id}`),
+              tone: "tool",
+              kind: "tool.completed",
+              summary: "检查结果",
+              payload: {
+                status: "completed",
+                itemType: "dynamic_tool_call",
+                data: { rawOutput: { content: id === "z-earlier" ? "历史结果" : "排队结果" } },
+              },
+              turnId: null,
+              createdAt,
+            },
+            createdAt,
+          });
+        }
       }
       yield* Deferred.succeed(release, undefined);
       yield* Effect.promise(harness.drain);
       expect(harness.startSession).toHaveBeenCalledTimes(3);
-      expect(harness.startSession.mock.calls[1]?.[2]?.conversationHistory).toBe("USER:\n已有消息");
+      expect(harness.startSession.mock.calls[1]?.[2]?.conversationHistory).toBe(
+        "USER:\n已有消息\n\n历史工具结果摘要（仅供参考，不要重复执行旧操作）：\n- [completed] 检查结果: 历史结果",
+      );
     }),
   );
 

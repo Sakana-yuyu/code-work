@@ -862,7 +862,7 @@ export function deriveContentlessTurnHiddenEntryIds(input: {
   return hiddenEntryIds;
 }
 
-export function deriveMessagesTimelineRows(input: {
+export interface MessagesTimelineRowsInput {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   localPluginTimelineEntries?: ReadonlyArray<EnabledLocalPluginTimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
@@ -874,7 +874,11 @@ export function deriveMessagesTimelineRows(input: {
   activeTurnStartedAt: string | null;
   turnDiffSummaryByAssistantMessageId: ReadonlyMap<MessageId, TurnDiffSummary>;
   revertTurnCountByUserMessageId: ReadonlyMap<MessageId, number | null>;
-}): MessagesTimelineRow[] {
+}
+
+export function deriveMessagesTimelineRows(
+  input: MessagesTimelineRowsInput,
+): MessagesTimelineRow[] {
   const timelineEntries = input.timelineEntries.filter(
     (entry) => entry.kind !== "work" || entry.entry.canvas === undefined,
   );
@@ -1166,7 +1170,7 @@ export function deriveMessagesTimelineRows(input: {
             summary: summarizeToolGroup(visibleGroupedEntries),
             summaryKind,
             breakdown: null,
-            hasFailure: workEntryDisplayIndicatesToolFailure(visibleGroupedEntries.at(-1)!),
+            hasFailure: visibleGroupedEntries.some(workEntryDisplayIndicatesToolFailure),
           });
           if (expanded) {
             for (const [entryIndex, workEntry] of visibleGroupedEntries.entries()) {
@@ -1220,7 +1224,6 @@ export function deriveMessagesTimelineRows(input: {
           }
 
           if (hiddenEntries.length > 0) {
-            const latestToolEntry = visibleGroupedEntries.findLast(workLogEntryIsToolLike);
             const hiddenAllToolLike = hiddenEntries.every(workLogEntryIsToolLike);
 
             nextRows.push({
@@ -1234,10 +1237,7 @@ export function deriveMessagesTimelineRows(input: {
               summary: null,
               summaryKind: null,
               breakdown: hiddenAllToolLike ? summarizeToolGroup(hiddenEntries) : null,
-              hasFailure:
-                latestToolEntry !== undefined &&
-                workEntryDisplayIndicatesToolFailure(latestToolEntry) &&
-                hiddenEntries.some(workEntryDisplayIndicatesToolFailure),
+              hasFailure: hiddenEntries.some(workEntryDisplayIndicatesToolFailure),
             });
           }
         }
@@ -1317,6 +1317,116 @@ export function deriveMessagesTimelineRows(input: {
   }
 
   return mergeLocalPluginTimelineRows(nextRows, input.localPluginTimelineEntries ?? []);
+}
+
+export interface CachedTimelineHistory {
+  entries: ReadonlyArray<TimelineEntry>;
+  boundaryIndex: number;
+  rows: MessagesTimelineRow[];
+  expandedTurnIds: ReadonlySet<TurnId> | undefined;
+  expandedWorkGroupIds: ReadonlySet<string> | undefined;
+  turnDiffSummaries: ReadonlyMap<MessageId, TurnDiffSummary>;
+  revertCounts: ReadonlyMap<MessageId, number | null>;
+}
+
+function sameTimelineEntrySource(left: TimelineEntry, right: TimelineEntry): boolean {
+  if (left.kind !== right.kind || left.id !== right.id || left.createdAt !== right.createdAt) {
+    return false;
+  }
+  switch (left.kind) {
+    case "message":
+      return left.message === (right as typeof left).message;
+    case "work":
+      return left.entry === (right as typeof left).entry;
+    case "turn-plan":
+      return left.turnPlan === (right as typeof left).turnPlan;
+    case "proposed-plan":
+      return left.proposedPlan === (right as typeof left).proposedPlan;
+    case "reasoning-summary": {
+      const summaries = (right as typeof left).summaries;
+      return (
+        left.summaries.length === summaries.length &&
+        left.summaries.every((s, i) => s === summaries[i])
+      );
+    }
+  }
+}
+
+/** 当前回合流式更新时，历史源及历史显示选项不变才复用已推导的历史行。 */
+export function deriveMessagesTimelineRowsWithCachedHistory(
+  input: MessagesTimelineRowsInput,
+  previous: CachedTimelineHistory | null,
+): { rows: MessagesTimelineRow[]; history: CachedTimelineHistory | null; reusedHistory: boolean } {
+  const { timelineEntries, runningTurnId } = input;
+  const boundaryIndex = lastUserMessageIndex(timelineEntries);
+  const canCache =
+    input.isWorking &&
+    runningTurnId !== null &&
+    runningTurnId !== undefined &&
+    input.latestTurn?.turnId === runningTurnId &&
+    input.latestTurn.state === "running" &&
+    (input.localPluginTimelineEntries?.length ?? 0) === 0 &&
+    boundaryIndex > 0;
+  if (!canCache) {
+    return { rows: deriveMessagesTimelineRows(input), history: null, reusedHistory: false };
+  }
+
+  let hasCurrentTurnInHistory = false;
+  let sameHistory =
+    previous !== null &&
+    previous.boundaryIndex === boundaryIndex &&
+    previous.expandedTurnIds === input.expandedTurnIds &&
+    previous.expandedWorkGroupIds === input.expandedWorkGroupIds &&
+    previous.turnDiffSummaries === input.turnDiffSummaryByAssistantMessageId;
+  for (let index = 0; index < boundaryIndex; index += 1) {
+    const entry = timelineEntries[index]!;
+    if (timelineEntryTurnId(entry) === runningTurnId) {
+      hasCurrentTurnInHistory = true;
+    }
+    if (sameHistory && previous) {
+      const prior = previous.entries[index];
+      sameHistory =
+        prior !== undefined &&
+        sameTimelineEntrySource(entry, prior) &&
+        (entry.kind !== "message" ||
+          entry.message.role !== "user" ||
+          previous.revertCounts.get(entry.message.id) ===
+            input.revertTurnCountByUserMessageId.get(entry.message.id));
+    }
+  }
+  if (hasCurrentTurnInHistory) {
+    return { rows: deriveMessagesTimelineRows(input), history: null, reusedHistory: false };
+  }
+  if (sameHistory && previous) {
+    const rows = [
+      ...previous.rows,
+      ...deriveMessagesTimelineRows({
+        ...input,
+        timelineEntries: timelineEntries.slice(boundaryIndex),
+      }),
+    ];
+    return { rows, history: previous, reusedHistory: true };
+  }
+
+  const rows = deriveMessagesTimelineRows(input);
+  const boundaryId = timelineEntries[boundaryIndex]!.id;
+  const rowIndex = rows.findIndex((row) => row.kind === "message" && row.id === boundaryId);
+  if (rowIndex < 0) {
+    return { rows, history: null, reusedHistory: false };
+  }
+  return {
+    rows,
+    history: {
+      entries: timelineEntries.slice(0, boundaryIndex),
+      boundaryIndex,
+      rows: rows.slice(0, rowIndex),
+      expandedTurnIds: input.expandedTurnIds,
+      expandedWorkGroupIds: input.expandedWorkGroupIds,
+      turnDiffSummaries: input.turnDiffSummaryByAssistantMessageId,
+      revertCounts: input.revertTurnCountByUserMessageId,
+    },
+    reusedHistory: false,
+  };
 }
 
 function mergeLocalPluginTimelineRows(
