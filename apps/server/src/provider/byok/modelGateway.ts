@@ -10,11 +10,9 @@
  * adapters instead of their own logins. The gateway is mounted on the server's
  * existing HTTP listener under `/byok-gw/{protocol}/*` and forwards
  * same-protocol requests to the adapter whose id the client sent as the
- * `model` field — pure passthrough plus auth substitution. One cross-protocol
- * bridge exists: anthropic requests may reach openai-protocol adapters through
- * `gatewayAnthropicBridge` (Messages → chat completions), so Claude harnesses
- * see every channel; the reverse bridge (Responses → Messages) does not exist
- * yet, so openai-routed harnesses never see anthropic adapters.
+ * `model` field. Anthropic Messages can bridge to OpenAI Chat Completions;
+ * Codex Responses can bridge to Chat Completions when a relay has no Responses
+ * endpoint. Responses → Anthropic Messages remains unsupported.
  *
  * The gateway token lives in the server secret store, reaches harnesses only
  * through child-process environment variables, and never appears in settings
@@ -61,6 +59,12 @@ import {
   estimateAnthropicPromptTokens,
   transformChatStreamToAnthropicSse,
 } from "./gatewayAnthropicBridge.ts";
+import {
+  chatCompletionToResponses,
+  chatCompletionToResponsesSse,
+  responsesToChatRequest,
+  transformChatStreamToResponsesSse,
+} from "./gatewayResponsesBridge.ts";
 import {
   credentialAuthKind,
   credentialToken,
@@ -970,6 +974,132 @@ const bridgedAnthropicRequest = (input: {
     );
   });
 
+/** Responses 端点明确不存在时，回退到同一通道的 Chat Completions。 */
+const bridgedResponsesRequest = (input: {
+  readonly bodyText: string | undefined;
+  readonly adapter: GatewayAdapterRoute;
+  readonly httpClient: HttpClient.HttpClient;
+}): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> =>
+  Effect.gen(function* () {
+    const source = safeJsonParse(input.bodyText ?? "");
+    const translated = responsesToChatRequest(
+      source,
+      input.adapter.modelId,
+      Math.floor(DateTime.toEpochMillis(yield* DateTime.now) / 1_000),
+    );
+    if (!translated.ok) {
+      return HttpServerResponse.jsonUnsafe(
+        { error: { type: "invalid_request_error", message: translated.reason } },
+        { status: 422 },
+      );
+    }
+    const request = translated.value;
+    const forwardHeaders: Record<string, string> = {
+      authorization: `Bearer ${input.adapter.apiKey}`,
+      "content-type": "application/json",
+    };
+    const customHeaders = parseByokCustomHeaders(input.adapter.customHeaders);
+    if (customHeaders !== undefined) Object.assign(forwardHeaders, customHeaders);
+    const target = joinOpenAITarget(input.adapter.baseURL, "/v1/chat/completions");
+    for (let attempt = 0; attempt < RELAY_GATEWAY_MAX_ATTEMPTS; attempt += 1) {
+      const result = yield* input.httpClient
+        .execute(
+          HttpClientRequest.post(target).pipe(
+            HttpClientRequest.setHeaders(forwardHeaders),
+            HttpClientRequest.bodyText(JSON.stringify(request.body), "application/json"),
+          ),
+        )
+        .pipe(
+          Effect.map((upstream) => ({ ok: true as const, upstream })),
+          Effect.catch((cause) => Effect.succeed({ ok: false as const, cause })),
+        );
+      if (!result.ok) {
+        if (attempt + 1 < RELAY_GATEWAY_MAX_ATTEMPTS) {
+          yield* Effect.sleep(relayGatewayRetryDelay(attempt, undefined));
+          continue;
+        }
+        return HttpServerResponse.jsonUnsafe(
+          {
+            error: {
+              type: "api_error",
+              message: "The BYOK gateway could not reach the adapter's endpoint.",
+            },
+          },
+          { status: 502 },
+        );
+      }
+      const upstream = result.upstream;
+      if (upstream.status >= 400) {
+        const detail = yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
+        if (
+          isRetryableRelayGatewayStatus(upstream.status) &&
+          attempt + 1 < RELAY_GATEWAY_MAX_ATTEMPTS
+        ) {
+          const retryAfterMs = parseRetryAfterMs(
+            upstream.headers["retry-after"],
+            DateTime.toEpochMillis(yield* DateTime.now),
+            RELAY_GATEWAY_RETRY_AFTER_MAX_MS,
+          );
+          yield* Effect.sleep(relayGatewayRetryDelay(attempt, retryAfterMs));
+          continue;
+        }
+        return HttpServerResponse.jsonUnsafe(
+          {
+            error: {
+              type: "upstream_error",
+              message:
+                errorMessage(safeJsonParse(detail)) ||
+                "The bridged BYOK adapter returned an error.",
+            },
+          },
+          {
+            status: upstream.status,
+            headers: {
+              ...(upstream.headers["retry-after"]
+                ? { "retry-after": upstream.headers["retry-after"] }
+                : {}),
+              ...(upstream.headers["x-request-id"]
+                ? { "x-request-id": upstream.headers["x-request-id"] }
+                : {}),
+            },
+          },
+        );
+      }
+      if (request.stream && upstream.headers["content-type"]?.includes("text/event-stream")) {
+        return HttpServerResponse.stream(
+          transformChatStreamToResponsesSse(upstream.stream, request),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          },
+        );
+      }
+      const detail = yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
+      const converted = chatCompletionToResponses(safeJsonParse(detail), request);
+      if (!converted.ok) {
+        return HttpServerResponse.jsonUnsafe(
+          { error: { type: "api_error", message: converted.reason } },
+          { status: 502 },
+        );
+      }
+      return request.stream
+        ? HttpServerResponse.stream(
+            Stream.make(new TextEncoder().encode(chatCompletionToResponsesSse(converted.body))),
+            { status: 200, headers: { "content-type": "text/event-stream" } },
+          )
+        : HttpServerResponse.jsonUnsafe(converted.body, { status: 200 });
+    }
+    return HttpServerResponse.jsonUnsafe(
+      {
+        error: {
+          type: "api_error",
+          message: "The bridged BYOK adapter could not complete the request.",
+        },
+      },
+      { status: 502 },
+    );
+  });
+
 const gatewayHandler = (
   request: HttpServerRequest.HttpServerRequest,
   mode: GatewayHandlerMode = "byok",
@@ -1333,6 +1463,17 @@ const gatewayHandler = (
         );
       }
       const upstream = attemptResult.upstream;
+      if (
+        protocol === "openai" &&
+        method === "POST" &&
+        requestPath === "/v1/responses" &&
+        adapter.localProvider === undefined &&
+        (upstream.status === 404 || upstream.status === 405 || upstream.status === 501)
+      ) {
+        // 端点缺失才转换；真实支持 Responses 的通道保持原生数据流。
+        yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
+        return yield* bridgedResponsesRequest({ bodyText, adapter, httpClient });
+      }
       if (localAccountId !== undefined) {
         markLocalAccountFailure(localAccountId, upstream.status);
         localPoolUsageStore.recordRequest(

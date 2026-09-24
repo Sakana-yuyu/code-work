@@ -10,7 +10,7 @@ every turn, while official logins keep working exactly as before.
 网页与桌面端在供应商配置顶部的 **连接与登录** 统一选择连接方式，下方不再重复显示“改用模型服务提供模型”开关。已有的网关开关配置会自动对应到该入口，无需重新配置。
 
 - **原生账号（默认）或 URL / API Key：** 使用该 CLI 自己的账号或独立连接，不经过共享模型网关。
-- **共享模型渠道：** 通过本地模型服务网关调用共享模型，模型列表也切换为这些渠道中的模型。Claude 会自动桥接兼容 OpenAI 的渠道；Codex 需要渠道实际支持 OpenAI Responses 协议。选择后点击 **保存** 生效；切回原生账号或 URL / API Key 并保存即可关闭共享路由。
+- **共享模型渠道：** 通过本地模型服务网关调用共享模型，模型列表也切换为这些渠道中的模型。Claude 会自动桥接兼容 OpenAI 的渠道；Codex 优先使用 Responses，遇到不提供该端点的 OpenAI 中转时会尝试 Chat Completions 桥接。选择后点击 **保存** 生效；切回原生账号或 URL / API Key 并保存即可关闭共享路由。
 
 同一页面可以编辑共享模型服务的 URL、密钥和模型；修改共享渠道也会影响其他使用它的 CLI。高级环境变量入口保留。URL / API Key 直接连接目前适用于 Codex 和 Claude。
 
@@ -40,7 +40,7 @@ plus openai-protocol adapters (served through the bridge), a routed Codex instan
 openai-protocol adapters; OpenCode discovers the injected gateway provider through its own
 inventory.
 
-转发请求时，网关会把内部渠道 ID 替换为渠道配置的上游模型名，并保留请求的 JSON 类型和流式设置。Codex 使用 Responses API；OpenAI 协议渠道还需要实际支持 `/responses`，网关不会把 Chat Completions 自动转换成 Responses。Codex 的会话、健康检查和辅助生成使用同一网关配置。各供应商 OAuth 账号仍由各自 CLI 管理，不共享或转换登录凭据。
+转发请求时，网关会把内部渠道 ID 替换为渠道配置的上游模型名。Codex 使用 Responses API；普通 OpenAI 中转的 `/responses` 返回 404、405 或 501 时，网关会将可表达的请求改发 `/chat/completions`，再把回复转回 Responses。带服务端存储会话状态或不支持的工具类型会明确报错。Codex 的会话、健康检查和辅助生成使用同一网关配置。各供应商 OAuth 账号仍由各自 CLI 管理，不共享或转换登录凭据。
 
 A routed Grok instance lists openai-protocol adapters. The Grok CLI has no base-url environment
 variable, so routing manages a marker-wrapped block of `[model."…"]` tables inside the user's

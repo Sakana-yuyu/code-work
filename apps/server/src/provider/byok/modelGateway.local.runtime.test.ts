@@ -821,3 +821,128 @@ describe("anthropic → openai 桥接", () => {
     await gateway.dispose();
   });
 });
+
+describe("Responses → Chat Completions 回退", () => {
+  const settings = (): ServerSettings =>
+    ({
+      providerInstances: {
+        byok: {
+          driver: "byok",
+          enabled: true,
+          config: {
+            enabled: true,
+            adapters: [
+              {
+                id: "chat-only",
+                displayName: "Chat only",
+                protocol: "openai",
+                baseURL: "https://relay.example/v1",
+                apiKey: "relay-secret",
+                modelId: "chat-model",
+              },
+            ],
+          },
+        },
+      },
+    }) as unknown as ServerSettings;
+
+  const send = (gateway: ReturnType<typeof makeGateway>, input: Record<string, unknown>) =>
+    gateway.handler(
+      new Request("http://gateway.test/byok-gw/openai/v1/responses", {
+        method: "POST",
+        headers: { authorization: `Bearer ${gateway.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: "chat-only", input: "hi", stream: true, ...input }),
+      }),
+    );
+
+  it("端点不存在时转换请求与流式回复，保留上游凭据边界", async () => {
+    const gateway = makeGateway(settings(), [
+      new Response('{"error":{"message":"not found"}}', { status: 404 }),
+      new Response(
+        'data: {"choices":[{"delta":{"content":"hello"}}]}\n\n' +
+          'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":1}}\n\n' +
+          "data: [DONE]\n\n",
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    ]);
+    const response = await send(gateway, { instructions: "Be concise." });
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).toContain("event: response.output_text.delta");
+    expect(text).toContain("event: response.completed");
+    expect(text).toContain('"input_tokens":2');
+    expect(gateway.captured.map((item) => item.url)).toEqual([
+      "https://relay.example/v1/responses",
+      "https://relay.example/v1/chat/completions",
+    ]);
+    expect(gateway.captured.map((item) => item.headers.authorization)).toEqual([
+      "Bearer relay-secret",
+      "Bearer relay-secret",
+    ]);
+    expect(gateway.captured[1]?.body).toMatchObject({
+      model: "chat-model",
+      stream: true,
+      messages: [
+        { role: "system", content: "Be concise." },
+        { role: "user", content: "hi" },
+      ],
+    });
+    await gateway.dispose();
+  });
+
+  it("原生 Responses 成功时保持原样；无法转换的请求不发第二次上游调用", async () => {
+    const native = makeGateway(settings(), [new Response("native response", { status: 200 })]);
+    expect(await (await send(native, {})).text()).toBe("native response");
+    expect(native.captured).toHaveLength(1);
+    await native.dispose();
+
+    const unsupported = makeGateway(settings(), [new Response("not found", { status: 404 })]);
+    const response = await send(unsupported, { previous_response_id: "resp-old" });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ error: { type: "invalid_request_error" } });
+    expect(unsupported.captured).toHaveLength(1);
+    await unsupported.dispose();
+  });
+
+  it("Chat 端点的限流状态保留给客户端", async () => {
+    const gateway = makeGateway(settings(), [
+      new Response("not found", { status: 404 }),
+      new Response('{"error":{"message":"rate limited"}}', {
+        status: 429,
+        headers: { "retry-after": "9" },
+      }),
+    ]);
+    const response = await send(gateway, {});
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("9");
+    expect(await response.json()).toMatchObject({ error: { message: "rate limited" } });
+    expect(gateway.captured).toHaveLength(2);
+    await gateway.dispose();
+  });
+
+  it("非流式 Chat JSON 回复转换成 Responses JSON", async () => {
+    const gateway = makeGateway(settings(), [
+      new Response("not found", { status: 404 }),
+      new Response(
+        JSON.stringify({
+          choices: [{ finish_reason: "stop", message: { content: "完成" } }],
+          usage: { prompt_tokens: 4, completion_tokens: 2 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    ]);
+    const response = await send(gateway, { stream: false });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      object: "response",
+      status: "completed",
+      output: [{ type: "message", content: [{ type: "output_text", text: "完成" }] }],
+      usage: { input_tokens: 4, output_tokens: 2, total_tokens: 6 },
+    });
+    expect(gateway.captured[1]?.body).toMatchObject({
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(gateway.captured[1]?.body).not.toHaveProperty("stream");
+    await gateway.dispose();
+  });
+});

@@ -30,7 +30,7 @@
 | Grok     | OpenAI Chat Completions |
 | OpenCode | OpenAI Chat Completions |
 
-Code Work 网关按原协议转发。标为 OpenAI 的通道不一定同时支持 Responses 和 Chat Completions；例如只提供 Chat Completions 的服务不能直接供 Codex 使用。先确认服务支持对应接口，再选择模型。
+Code Work 网关优先按原协议转发。如果 Codex 所选 OpenAI 通道的 Responses 端点明确返回 404、405 或 501，网关会尝试把文本、图片 URL 和常见工具调用转换成同一通道的 Chat Completions 请求，并将回复转回 Responses。部分 Responses 特性没有等价表达，例如引用上一次服务端存储回复的请求或未知工具类型；这些请求会显示明确错误，不会默默丢弃上下文。建议优先使用原生支持 Responses 的线路，使用 Chat 专属线路时先用实际任务验证工具能力。Anthropic 专属线路目前不能作为 Codex 的 Responses 后端。
 
 CLI 正在运行当前轮次时，修改它的连接模式或所选线路可以保存，但会显示“配置已保存，等待当前轮次结束后生效”。等待切换期间，该实例的新启动或新一轮请求会提示稍后重试。直接编辑共享线路中的地址、密钥或模型，则会影响网关收到的后续请求；需要保持任务线路稳定时，应在任务结束后编辑。需要恢复原生账号时，切回 **原生账号** 并保存；手机端关闭 BYOK 路由。Grok 的共享线路使用独立账号目录，避免改写个人默认 Grok 目录。
 

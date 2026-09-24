@@ -5,9 +5,9 @@
  * OpenAI chat-completions endpoints. When a routed Claude instance selects one
  * of those channels, the gateway bridges instead of passing through: requests
  * are translated Messages → chat completions, and responses (streaming SSE or
- * JSON) are translated back. Codex keeps its per-protocol passthrough — a
- * Responses → Messages bridge does not exist yet, so anthropic-protocol
- * adapters stay invisible to openai-routed harnesses.
+ * JSON) are translated back. Codex can separately fall back from Responses to
+ * Chat Completions; a Responses → Anthropic Messages bridge does not exist,
+ * so anthropic-protocol adapters stay invisible to openai-routed harnesses.
  *
  * Pure translation lives here; HTTP concerns (status, headers, error
  * rendering) stay in modelGateway.
