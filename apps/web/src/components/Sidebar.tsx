@@ -3230,6 +3230,7 @@ export default function Sidebar() {
                 threadKey,
                 useThreadSplitStore.getState().primaryThreadRef,
                 useThreadSplitStore.getState().secondaryThreadRef,
+                useThreadSplitStore.getState().tertiaryThreadRef,
               ),
               isRunning:
                 thread.session?.status === "running" && thread.session.activeTurnId != null,

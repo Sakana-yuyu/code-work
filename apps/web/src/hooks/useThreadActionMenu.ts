@@ -149,6 +149,7 @@ export function useThreadActionMenu(input: {
             scopedThreadKey(threadRef),
             splitState.primaryThreadRef,
             splitState.secondaryThreadRef,
+            splitState.tertiaryThreadRef,
           ),
           isRunning: thread.session?.status === "running" && thread.session.activeTurnId != null,
           supports,

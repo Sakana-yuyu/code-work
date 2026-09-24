@@ -127,7 +127,10 @@ import * as ByokModelDiscovery from "./provider/byok/ByokModelDiscoveryService.t
 import * as ByokBalance from "./provider/byok/ByokBalanceService.ts";
 import * as ByokDelegation from "./provider/byok/ByokDelegationService.ts";
 import * as ByokAdaptersImport from "./provider/byok/ByokAdaptersImport.ts";
-import { getAcpRegistryCatalog } from "./provider/acp/AcpRegistryCatalog.ts";
+import {
+  getAcpRegistryCatalog,
+  withAcpRegistryDiagnostics,
+} from "./provider/acp/AcpRegistryCatalog.ts";
 import { resolveClaudeHomePath } from "./provider/Drivers/ClaudeHome.ts";
 import { resolveCodexHomeLayout } from "./provider/Drivers/CodexHomeLayout.ts";
 import { readExternalSession, scanExternalSessions } from "./provider/externalSessions.ts";
@@ -2465,9 +2468,27 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverGetAcpRegistryCatalog]: (_input) =>
-          observeRpcEffect(WS_METHODS.serverGetAcpRegistryCatalog, getAcpRegistryCatalog, {
-            "rpc.aggregate": "server",
-          }),
+          observeRpcEffect(
+            WS_METHODS.serverGetAcpRegistryCatalog,
+            Effect.gen(function* () {
+              const catalog = yield* getAcpRegistryCatalog;
+              if (catalog.error !== null) return catalog;
+              const settings = yield* serverSettings.getSettings.pipe(
+                Effect.orElseSucceed(() => null),
+              );
+              if (settings === null) return catalog;
+              const providers = yield* providerRegistry.getProviders;
+              return {
+                ...catalog,
+                entries: withAcpRegistryDiagnostics(
+                  catalog.entries,
+                  deriveProviderInstanceConfigMap(settings),
+                  providers,
+                ),
+              };
+            }),
+            { "rpc.aggregate": "server" },
+          ),
         [WS_METHODS.serverScanExternalSessions]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverScanExternalSessions,

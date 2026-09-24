@@ -1,10 +1,15 @@
 import { describe, expect, it } from "@effect/vitest";
 import { HostProcessArchitecture, HostProcessPlatform } from "@codework/shared/hostProcess";
+import { ProviderInstanceId } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { FetchHttpClient } from "effect/unstable/http";
 
-import { getAcpRegistryCatalog, parseAcpRegistryCatalog } from "./AcpRegistryCatalog.ts";
+import {
+  getAcpRegistryCatalog,
+  parseAcpRegistryCatalog,
+  withAcpRegistryDiagnostics,
+} from "./AcpRegistryCatalog.ts";
 
 const runCatalog = (fetchImplementation: typeof globalThis.fetch) =>
   getAcpRegistryCatalog.pipe(
@@ -107,6 +112,39 @@ describe("ACP registry catalog", () => {
     expect(() => parseAcpRegistryCatalog({ agents: {} }, "linux", "x64")).toThrow(
       "Invalid ACP registry payload",
     );
+  });
+
+  it("reports the matching configured instance without confusing package versions", () => {
+    const entries = parseAcpRegistryCatalog(
+      {
+        agents: [
+          { id: "cline", name: "Cline", distribution: { npx: { package: "cline@3.0.64" } } },
+          { id: "other", name: "Other", distribution: { npx: { package: "other@1.0.0" } } },
+        ],
+      },
+      "linux",
+      "x64",
+    );
+    const instances = {
+      acp_cline: { driver: "acpAgent", config: { command: "npx -y cline@3.0.64" } },
+      acp_older: { driver: "acpAgent", config: { command: "npx -y cline@3.0.63" } },
+    };
+    const provider = {
+      instanceId: ProviderInstanceId.make("acp_cline"),
+      enabled: true,
+      installed: true,
+      status: "ready" as const,
+      availability: "available" as const,
+    };
+    expect(withAcpRegistryDiagnostics(entries, instances, [provider])).toMatchObject([
+      { id: "cline", configuredStatus: "ready" },
+      { id: "other", configuredStatus: "not-configured" },
+    ]);
+    expect(
+      withAcpRegistryDiagnostics(entries, instances, [
+        { ...provider, installed: false, status: "error" },
+      ])[0]?.configuredStatus,
+    ).toBe("missing");
   });
 
   it.effect("reads the official registry URL through the server HTTP client", () =>

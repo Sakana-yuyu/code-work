@@ -7,6 +7,9 @@ export const AcpRegistryCatalogEntry = Schema.Struct({
   version: Schema.NullOr(Schema.String),
   command: Schema.NullOr(Schema.String),
   availability: Schema.Literals(["installable", "manual", "unsupported-platform"]),
+  configuredStatus: Schema.optional(
+    Schema.Literals(["not-configured", "checking", "ready", "missing", "error", "disabled"]),
+  ),
 });
 export type AcpRegistryCatalogEntry = typeof AcpRegistryCatalogEntry.Type;
 

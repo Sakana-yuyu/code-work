@@ -77,6 +77,27 @@ const MAINTENANCE = makeStaticProviderMaintenanceResolver(
 
 const decodeAcpSettings = Schema.decodeSync(AcpAgentSettings);
 
+export function classifyAcpCommandProbe(input: {
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly exitCode: number;
+}): { readonly status: "ready" | "error"; readonly message: string } {
+  if (input.exitCode !== 0) {
+    return {
+      status: "error",
+      message: `ACP Agent 探测返回退出码 ${input.exitCode}；请检查安装状态和启动参数。`,
+    };
+  }
+  const text = `${input.stdout}\n${input.stderr}`.trim();
+  return {
+    status: "ready",
+    message:
+      text.length > 0
+        ? `命令已配置；探测输出：${text.slice(0, 120)}`
+        : "命令已配置；模型与登录由 ACP 会话确认。",
+  };
+}
+
 export type GenericAcpDriverEnv =
   | BackgroundPolicy.BackgroundPolicy
   | ChildProcessSpawner.ChildProcessSpawner
@@ -242,8 +263,8 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
             },
           });
         }
-        const [stdout, stderr] = probe.success;
-        const text = `${stdout}\n${stderr}`.trim();
+        const [stdout, stderr, exitCode] = probe.success;
+        const outcome = classifyAcpCommandProbe({ stdout, stderr, exitCode });
         return buildServerProvider({
           presentation: PRESENTATION,
           enabled: effectiveConfig.enabled,
@@ -252,14 +273,10 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
           probe: {
             installed: true,
             version: null,
-            // 命令可用即可选：认证在 ACP 会话握手时确认，失败会在回合中明确报错；
-            // warning 会被模型选择器判为「受限」，让显式配置的命令永远无法发起会话。
-            status: "ready",
+            // 认证在 ACP 会话握手时确认；探测退出码必须成功，不能仅凭进程启动就标为可用。
+            status: outcome.status,
             auth: { status: "unknown" },
-            message:
-              text.length > 0
-                ? `命令已配置；探测输出：${text.slice(0, 120)}`
-                : "命令已配置；模型与登录由 ACP 会话确认。",
+            message: outcome.message,
           },
         });
       }).pipe(Effect.map(stampIdentity));

@@ -30,16 +30,18 @@ export type ThreadActionMenuId =
 
 /**
  * "Open beside" only means something for a thread that is not already on
- * screen: the main-view thread and the split-pane thread are both excluded,
+ * screen: the main-view thread and both split panes are excluded,
  * otherwise the action would silently do nothing.
  */
 export function canOpenThreadBeside(
   threadKey: string,
   primaryThreadRef: ScopedThreadRef | null,
   secondaryThreadRef: ScopedThreadRef | null,
+  tertiaryThreadRef: ScopedThreadRef | null = null,
 ): boolean {
   if (primaryThreadRef && scopedThreadKey(primaryThreadRef) === threadKey) return false;
   if (secondaryThreadRef && scopedThreadKey(secondaryThreadRef) === threadKey) return false;
+  if (tertiaryThreadRef && scopedThreadKey(tertiaryThreadRef) === threadKey) return false;
   return true;
 }
 

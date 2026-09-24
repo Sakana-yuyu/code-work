@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Encoding from "effect/Encoding";
+import * as Schema from "effect/Schema";
 
 import {
   squashAtomCommandFailure,
@@ -29,6 +30,7 @@ import {
 import { usePrimaryEnvironment } from "~/state/environments";
 import { useProjects } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
+import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { serverEnvironment } from "~/state/server";
 import { randomUUID } from "~/lib/utils";
 import { t } from "~/i18n";
@@ -73,8 +75,32 @@ type ChildDraft = {
   readonly nodeId: string;
   readonly driverId: string;
   readonly prompt: string;
+  readonly workspaceRoot: string;
   readonly dependsOnPrevious: boolean;
 };
+
+const SavedTaskGraphDraft = Schema.Struct({
+  id: Schema.String,
+  projectId: Schema.String,
+  workspaceRoot: Schema.String,
+  leaderDriverId: Schema.String,
+  leaderPrompt: Schema.String,
+  schedule: Schema.Literals(["serial", "parallel"]),
+  maxConcurrencyText: Schema.String,
+  children: Schema.Array(
+    Schema.Struct({
+      nodeId: Schema.String,
+      driverId: Schema.String,
+      prompt: Schema.String,
+      workspaceRoot: Schema.String,
+      dependsOnPrevious: Schema.Boolean,
+    }),
+  ),
+  savedAtUnixMs: Schema.Number,
+});
+type SavedTaskGraphDraft = typeof SavedTaskGraphDraft.Type;
+const SavedTaskGraphDrafts = Schema.Array(SavedTaskGraphDraft);
+const EMPTY_SAVED_DRAFTS: ReadonlyArray<SavedTaskGraphDraft> = [];
 
 const STATUS_KEYS: Readonly<Record<CompositionTaskStatus, string>> = {
   queued: "squadRun.status.queued",
@@ -121,8 +147,23 @@ const makeChildDraft = (index: number, driverId: string): ChildDraft => ({
   nodeId: `child-${index + 1}`,
   driverId,
   prompt: "",
+  workspaceRoot: "",
   dependsOnPrevious: index > 0,
 });
+
+/** 空路径继承主任务目录；并行子任务必须映射到各自独立的目录。 */
+export function parallelChildWorkspacesAreDistinct(
+  leaderWorkspaceRoot: string,
+  children: ReadonlyArray<Pick<ChildDraft, "workspaceRoot">>,
+): boolean {
+  const roots = children.map((child) =>
+    (child.workspaceRoot.trim() || leaderWorkspaceRoot.trim())
+      .replace(/[\\/]+$/, "")
+      .replaceAll("\\", "/")
+      .toLowerCase(),
+  );
+  return roots.every(Boolean) && new Set(roots).size === roots.length;
+}
 
 const displayId = (value: string): string =>
   value.length > 18 ? `${value.slice(0, 18)}...` : value;
@@ -262,6 +303,12 @@ export function TaskGraphPanel() {
   const [schedule, setSchedule] = useState<GraphSchedule>("parallel");
   const [maxConcurrencyText, setMaxConcurrencyText] = useState("2");
   const [children, setChildren] = useState<ReadonlyArray<ChildDraft>>([]);
+  const [savedDrafts, setSavedDrafts] = useLocalStorage(
+    `codework:task-graph-drafts:${environmentId ?? "none"}`,
+    EMPTY_SAVED_DRAFTS,
+    SavedTaskGraphDrafts,
+  );
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [actionReason, setActionReason] = useState("");
   const [retryCapabilityIds, setRetryCapabilityIds] = useState("");
@@ -294,6 +341,10 @@ export function TaskGraphPanel() {
         (left, right) => right.task.updatedAtUnixMs - left.task.updatedAtUnixMs,
       ),
     [tasksQuery.data?.tasks],
+  );
+  const visibleDrafts = useMemo(
+    () => savedDrafts.filter((draft) => projectId === "" || draft.projectId === projectId),
+    [projectId, savedDrafts],
   );
   const selectedSnapshot =
     snapshots.find(({ task }) => task.taskId === selectedTaskId) ?? snapshots[0] ?? null;
@@ -370,12 +421,60 @@ export function TaskGraphPanel() {
     return () => window.clearInterval(timer);
   }, [environmentId, refreshTaskState]);
 
+  useEffect(() => setActiveDraftId(null), [environmentId]);
+
   const updateChild = (nodeId: string, patch: Partial<ChildDraft>) => {
     setChildren((current) =>
       (current.length > 0 ? current : defaultChildren).map((child) =>
         child.nodeId === nodeId ? { ...child, ...patch } : child,
       ),
     );
+  };
+
+  const saveDraft = () => {
+    if (environmentId === null || projectId.trim() === "" || leaderPrompt.trim() === "") {
+      setActionError(t("taskGraph.draftNeedsPrompt"));
+      return;
+    }
+    if (
+      leaderPrompt.length > 20_000 ||
+      effectiveChildren.some((child) => child.prompt.length > 20_000)
+    ) {
+      setActionError(t("taskGraph.draftTooLong"));
+      return;
+    }
+    const id = activeDraftId ?? randomUUID();
+    const draft: SavedTaskGraphDraft = {
+      id,
+      projectId: projectId.trim(),
+      workspaceRoot: workspaceRoot.trim(),
+      leaderDriverId: effectiveLeaderDriverId,
+      leaderPrompt,
+      schedule,
+      maxConcurrencyText,
+      children: effectiveChildren,
+      savedAtUnixMs: Date.now(),
+    };
+    setSavedDrafts((current) => [draft, ...current.filter((item) => item.id !== id)].slice(0, 20));
+    setActiveDraftId(id);
+    setActionError(null);
+  };
+
+  const loadDraft = (draft: SavedTaskGraphDraft) => {
+    setActiveDraftId(draft.id);
+    setProjectId(draft.projectId);
+    setWorkspaceRoot(draft.workspaceRoot);
+    setLeaderDriverId(draft.leaderDriverId);
+    setLeaderPrompt(draft.leaderPrompt);
+    setSchedule(draft.schedule);
+    setMaxConcurrencyText(draft.maxConcurrencyText);
+    setChildren(draft.children);
+    setActionError(null);
+  };
+
+  const removeDraft = (id: string) => {
+    setSavedDrafts((current) => current.filter((draft) => draft.id !== id));
+    if (activeDraftId === id) setActiveDraftId(null);
   };
 
   const runCommand = async <A, B, C>(
@@ -386,7 +485,7 @@ export function TaskGraphPanel() {
     }) => Promise<AtomCommandResult<B, C>>,
     input: A,
   ) => {
-    if (environmentId === null) return;
+    if (environmentId === null) return false;
     setPendingAction(label);
     setActionError(null);
     const result = await command({ environmentId, input });
@@ -397,6 +496,7 @@ export function TaskGraphPanel() {
       refreshTaskState();
     }
     setPendingAction(null);
+    return result._tag !== "Failure";
   };
 
   const submitGraph = async () => {
@@ -416,6 +516,13 @@ export function TaskGraphPanel() {
           Number(maxConcurrencyText) > 64))
     ) {
       setActionError(t("taskGraph.completeFields"));
+      return;
+    }
+    if (
+      schedule === "parallel" &&
+      !parallelChildWorkspacesAreDistinct(workspaceRoot, effectiveChildren)
+    ) {
+      setActionError(t("taskGraph.parallelWorkspaceConflict"));
       return;
     }
 
@@ -443,14 +550,15 @@ export function TaskGraphPanel() {
         mode: schedule,
         promptDigest: promptDigest(child.prompt),
         prompt: child.prompt,
-        workspaceRoot: workspaceRoot.trim(),
+        workspaceRoot: child.workspaceRoot.trim() || workspaceRoot.trim(),
         dependsOnNodeIds:
           child.dependsOnPrevious && index > 0 ? [effectiveChildren[index - 1]!.nodeId] : [],
       })),
       schedule,
       maxConcurrency: schedule === "serial" ? 1 : Number(maxConcurrencyText),
     };
-    await runCommand("execute", executeGraph, request);
+    const started = await runCommand("execute", executeGraph, request);
+    if (started && activeDraftId !== null) removeDraft(activeDraftId);
   };
 
   const selectedTaskIsTerminal =
@@ -537,15 +645,41 @@ export function TaskGraphPanel() {
       <div className="grid gap-4 px-3 pb-3 sm:px-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
         <div className="min-w-0 space-y-3">
           {availableProfiles.length === 0 && !driverQuery.isPending ? (
-            <SettingsRow
-              title={t("taskGraph.notReadyTitle")}
-              description={t("taskGraph.notReadyDescription")}
-              status={
-                environmentId === null || projects.length === 0
-                  ? t("taskGraph.noProjectContext")
-                  : undefined
-              }
-            />
+            <>
+              <SettingsRow
+                title={t("taskGraph.notReadyTitle")}
+                description={t("taskGraph.notReadyDescription")}
+                status={
+                  environmentId === null || projects.length === 0
+                    ? t("taskGraph.noProjectContext")
+                    : undefined
+                }
+              />
+              {environmentId !== null && projects.length > 0 ? (
+                <div className="rounded-xl border border-border/60 px-3 py-3 sm:px-4">
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    {t("taskGraph.draftWithoutDriverHint")}
+                  </p>
+                  <label className="block space-y-1 text-xs">
+                    <span className="text-muted-foreground">{t("taskGraph.projectId")}</span>
+                    <Input value={projectId} onValueChange={setProjectId} size="sm" />
+                  </label>
+                  <label className="mt-3 block space-y-1 text-xs">
+                    <span className="text-muted-foreground">{t("taskGraph.leaderPrompt")}</span>
+                    <Textarea
+                      value={leaderPrompt}
+                      onChange={(event) => setLeaderPrompt(event.target.value)}
+                      placeholder={t("taskGraph.leaderPromptPlaceholder")}
+                      size="sm"
+                    />
+                  </label>
+                  <Button className="mt-3" onClick={saveDraft}>
+                    <PlusIcon />
+                    {activeDraftId === null ? t("taskGraph.saveDraft") : t("taskGraph.updateDraft")}
+                  </Button>
+                </div>
+              ) : null}
+            </>
           ) : null}
           {availableProfiles.length > 0 ? (
             <>
@@ -691,6 +825,19 @@ export function TaskGraphPanel() {
                             label={t("taskGraph.childDriver")}
                           />
                         </label>
+                        <label className="min-w-0 space-y-1 text-xs">
+                          <span className="text-muted-foreground">
+                            {t("taskGraph.childWorkspaceRoot")}
+                          </span>
+                          <Input
+                            value={child.workspaceRoot}
+                            onValueChange={(value) =>
+                              updateChild(child.nodeId, { workspaceRoot: value })
+                            }
+                            placeholder={t("taskGraph.childWorkspaceRootPlaceholder")}
+                            size="sm"
+                          />
+                        </label>
                         <label className="flex items-end gap-2 pb-1 text-xs text-muted-foreground">
                           <input
                             type="checkbox"
@@ -715,14 +862,19 @@ export function TaskGraphPanel() {
                     </div>
                   ))}
                 </div>
-                <Button
-                  className="mt-3 w-full sm:w-auto"
-                  onClick={() => void submitGraph()}
-                  disabled={pendingAction !== null || availableProfiles.length === 0}
-                >
-                  <PlayIcon />
-                  {pendingAction === "execute" ? t("taskGraph.starting") : t("taskGraph.run")}
-                </Button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={saveDraft} disabled={environmentId === null}>
+                    <PlusIcon />
+                    {activeDraftId === null ? t("taskGraph.saveDraft") : t("taskGraph.updateDraft")}
+                  </Button>
+                  <Button
+                    onClick={() => void submitGraph()}
+                    disabled={pendingAction !== null || availableProfiles.length === 0}
+                  >
+                    <PlayIcon />
+                    {pendingAction === "execute" ? t("taskGraph.starting") : t("taskGraph.run")}
+                  </Button>
+                </div>
               </div>
             </>
           ) : null}
@@ -732,25 +884,57 @@ export function TaskGraphPanel() {
           <div className="rounded-xl border border-border/60 px-3 py-3 sm:px-4">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-medium">{t("taskGraph.boardTitle")}</h3>
-              <span className="text-[11px] text-muted-foreground">{snapshots.length}</span>
+              <span className="text-[11px] text-muted-foreground">
+                {snapshots.length + visibleDrafts.length}
+              </span>
             </div>
             <div className="mt-3 space-y-3" data-task-board>
-              {snapshots.length === 0 ? (
+              {snapshots.length === 0 && visibleDrafts.length === 0 ? (
                 <p className="text-xs text-muted-foreground">{t("taskGraph.empty")}</p>
               ) : (
                 BOARD_COLUMNS.map((column) => {
                   const rows = snapshots.filter(
                     ({ task }) => taskBoardColumn(task.status) === column,
                   );
+                  const draftRows = column === "todo" ? visibleDrafts : [];
                   return (
                     <section key={column} data-task-board-column={column}>
                       <h4 className="mb-1.5 flex items-center justify-between text-xs font-medium">
                         {t(`taskGraph.board.${column}`)}
                         <Badge variant="secondary" size="sm">
-                          {rows.length}
+                          {rows.length + draftRows.length}
                         </Badge>
                       </h4>
                       <div className="space-y-1.5">
+                        {draftRows.map((draft) => (
+                          <div
+                            key={draft.id}
+                            className="flex items-start gap-2 rounded-lg border border-border/60 p-2"
+                            data-task-board-draft
+                          >
+                            <button
+                              className="min-w-0 flex-1 text-left"
+                              onClick={() => loadDraft(draft)}
+                              type="button"
+                            >
+                              <span className="block truncate text-xs font-medium">
+                                {draft.leaderPrompt.trim().split("\n")[0]}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {t("taskGraph.localDraft")}
+                              </span>
+                            </button>
+                            <Button
+                              aria-label={t("taskGraph.deleteDraft")}
+                              onClick={() => removeDraft(draft.id)}
+                              size="icon-sm"
+                              type="button"
+                              variant="ghost-muted"
+                            >
+                              <Trash2Icon />
+                            </Button>
+                          </div>
+                        ))}
                         {rows.map((snapshot) => (
                           <TaskSnapshotRow
                             key={snapshot.task.taskId}

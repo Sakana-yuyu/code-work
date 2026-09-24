@@ -1,6 +1,7 @@
 "use client";
 
 import type { EnvironmentId } from "@codework/contracts";
+import type { AcpRegistryCatalogEntry } from "@codework/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { useMemo, useState } from "react";
@@ -15,6 +16,17 @@ interface AcpRegistryCatalogPickerProps {
   readonly selectedCommand: string;
   readonly onSelect: (command: string) => void;
 }
+
+const CONFIGURED_STATUS_KEYS: Readonly<
+  Record<NonNullable<AcpRegistryCatalogEntry["configuredStatus"]>, string>
+> = {
+  "not-configured": "acpRegistryNotConfigured",
+  checking: "acpRegistryChecking",
+  ready: "acpRegistryReady",
+  missing: "acpRegistryMissing",
+  error: "acpRegistryFailed",
+  disabled: "acpRegistryDisabled",
+};
 
 /** 目录来自所选环境的服务端；手工命令始终可用。 */
 export function AcpRegistryCatalogPicker({
@@ -60,6 +72,11 @@ export function AcpRegistryCatalogPicker({
               <div className="flex items-start gap-2 p-2" key={entry.id}>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-xs font-medium">{entry.name}</div>
+                  {entry.configuredStatus && entry.configuredStatus !== "not-configured" ? (
+                    <div className="text-[11px] text-muted-foreground">
+                      {t(CONFIGURED_STATUS_KEYS[entry.configuredStatus])}
+                    </div>
+                  ) : null}
                   <div className="line-clamp-2 text-[11px] text-muted-foreground">
                     {entry.description}
                   </div>

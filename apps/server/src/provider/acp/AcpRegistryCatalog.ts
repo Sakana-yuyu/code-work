@@ -1,4 +1,8 @@
-import type { AcpRegistryCatalogEntry, AcpRegistryCatalogResult } from "@codework/contracts";
+import type {
+  AcpRegistryCatalogEntry,
+  AcpRegistryCatalogResult,
+  ServerProvider,
+} from "@codework/contracts";
 import { HostProcessArchitecture, HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -9,6 +13,60 @@ import { collectUint8StreamText } from "../../stream/collectUint8StreamText.ts";
 const REGISTRY_URL = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 const MAX_REGISTRY_BYTES = 2 * 1024 * 1024;
 const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
+
+type ConfiguredStatus = NonNullable<AcpRegistryCatalogEntry["configuredStatus"]>;
+
+/** 目录项只关联同一环境中启动命令完全一致的 ACP 实例，避免把其他版本误标为可用。 */
+export function withAcpRegistryDiagnostics(
+  entries: ReadonlyArray<AcpRegistryCatalogEntry>,
+  instances: Readonly<Record<string, { readonly driver: string; readonly config?: unknown }>>,
+  providers: ReadonlyArray<
+    Pick<ServerProvider, "instanceId" | "enabled" | "installed" | "status" | "availability">
+  >,
+): AcpRegistryCatalogEntry[] {
+  const providerById = new Map<string, (typeof providers)[number]>(
+    providers.map((provider) => [provider.instanceId, provider]),
+  );
+  const configured = new Map<string, ConfiguredStatus[]>();
+  for (const [instanceId, instance] of Object.entries(instances)) {
+    if (instance.driver !== "acpAgent") continue;
+    const command = record(instance.config)?.command;
+    if (typeof command !== "string" || command.trim().length === 0) continue;
+    const provider = providerById.get(instanceId);
+    const status: ConfiguredStatus =
+      provider === undefined
+        ? "checking"
+        : !provider.enabled
+          ? "disabled"
+          : !provider.installed
+            ? "missing"
+            : provider.availability === "unavailable" || provider.status === "error"
+              ? "error"
+              : provider.status === "ready"
+                ? "ready"
+                : "checking";
+    const key = command.trim();
+    configured.set(key, [...(configured.get(key) ?? []), status]);
+  }
+  const priority: ReadonlyArray<ConfiguredStatus> = [
+    "ready",
+    "checking",
+    "error",
+    "missing",
+    "disabled",
+  ];
+  return entries.map((entry) => {
+    const command = entry.command;
+    return {
+      ...entry,
+      configuredStatus:
+        command === null
+          ? "not-configured"
+          : (priority.find((status) => configured.get(command)?.includes(status)) ??
+            "not-configured"),
+    };
+  });
+}
 
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)

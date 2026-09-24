@@ -23,12 +23,17 @@ export function ThreadSplitLayout(props: {
 }) {
   const { primaryThreadRef, children } = props;
   const secondaryThreadRef = useThreadSplitStore((state) => state.secondaryThreadRef);
+  const tertiaryThreadRef = useThreadSplitStore((state) => state.tertiaryThreadRef);
   const dividerRatio = useThreadSplitStore((state) => state.dividerRatio);
+  const secondaryDividerRatio = useThreadSplitStore((state) => state.secondaryDividerRatio);
   const orientation = useThreadSplitStore((state) => state.orientation);
   const toggleOrientation = useThreadSplitStore((state) => state.toggleOrientation);
   const closeSecondaryThread = useThreadSplitStore((state) => state.closeSecondaryThread);
+  const closeTertiaryThread = useThreadSplitStore((state) => state.closeTertiaryThread);
   const setDividerRatio = useThreadSplitStore((state) => state.setDividerRatio);
+  const setSecondaryDividerRatio = useThreadSplitStore((state) => state.setSecondaryDividerRatio);
   const secondaryShell = useThreadShell(secondaryThreadRef);
+  const tertiaryShell = useThreadShell(tertiaryThreadRef);
   const shellsBootstrapped = useAllEnvironmentShellsBootstrapped();
   const wideViewport = useMediaQuery({ min: 768 });
   const sideBySide = wideViewport && orientation === "horizontal";
@@ -38,6 +43,10 @@ export function ThreadSplitLayout(props: {
       closeSecondaryThread();
     }
   }, [closeSecondaryThread, secondaryThreadRef, secondaryShell, shellsBootstrapped]);
+  useEffect(() => {
+    if (!shellsBootstrapped || tertiaryThreadRef === null) return;
+    if (tertiaryShell === null) closeTertiaryThread();
+  }, [closeTertiaryThread, tertiaryThreadRef, tertiaryShell, shellsBootstrapped]);
   // Publish the main-view thread so menu builders can tell which threads are
   // already on screen ("open beside" is a no-op for both panes).
   useEffect(() => {
@@ -52,36 +61,85 @@ export function ThreadSplitLayout(props: {
     secondaryThreadRef !== null &&
     scopedThreadKey(secondaryThreadRef) !==
       (primaryThreadRef === null ? null : scopedThreadKey(primaryThreadRef));
+  const tertiaryIsDistinct =
+    secondaryIsDistinct &&
+    secondaryThreadRef !== null &&
+    tertiaryThreadRef !== null &&
+    scopedThreadKey(tertiaryThreadRef) !== scopedThreadKey(secondaryThreadRef) &&
+    scopedThreadKey(tertiaryThreadRef) !==
+      (primaryThreadRef === null ? null : scopedThreadKey(primaryThreadRef));
+  useEffect(() => {
+    if (secondaryThreadRef !== null && !secondaryIsDistinct) closeSecondaryThread();
+    if (tertiaryThreadRef !== null && !tertiaryIsDistinct) closeTertiaryThread();
+  }, [
+    closeSecondaryThread,
+    closeTertiaryThread,
+    secondaryIsDistinct,
+    secondaryThreadRef,
+    tertiaryIsDistinct,
+    tertiaryThreadRef,
+  ]);
+  const secondaryPercent =
+    (1 - dividerRatio) * (tertiaryIsDistinct ? secondaryDividerRatio : 1) * 100;
+  const tertiaryPercent = (1 - dividerRatio) * (1 - secondaryDividerRatio) * 100;
+  const dividerClassName = cn(
+    "group relative z-30 shrink-0 border-border/70 bg-background/80 hover:bg-accent/60",
+    sideBySide
+      ? "h-full w-1.5 cursor-col-resize border-x"
+      : "h-2 w-full cursor-row-resize border-y",
+  );
 
   const handleDividerPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLDivElement>, divider: "primary" | "secondary") => {
       if (!secondaryIsDistinct || event.button !== 0) return;
       const container = event.currentTarget.parentElement;
       if (!container) return;
       const bounds = container.getBoundingClientRect();
-      const primary = container.querySelector<HTMLElement>("[data-thread-split-primary]");
-      const secondary = container.querySelector<HTMLElement>("[data-thread-split-secondary]");
-      let nextRatio = dividerRatio;
+      let firstRatio = dividerRatio;
+      let secondRatio = secondaryDividerRatio;
       const updateRatio = (clientX: number, clientY: number) => {
         const total = sideBySide ? bounds.width : bounds.height;
         const offset = sideBySide ? clientX - bounds.left : clientY - bounds.top;
         if (total <= 0) return;
-        nextRatio = Math.min(0.75, Math.max(0.25, offset / total));
-        primary?.style.setProperty("--thread-split-primary", `${nextRatio * 100}%`);
-        secondary?.style.setProperty("--thread-split-secondary", `${(1 - nextRatio) * 100}%`);
+        if (divider === "primary") {
+          firstRatio = Math.min(tertiaryIsDistinct ? 0.6 : 0.75, Math.max(0.25, offset / total));
+        } else {
+          secondRatio = Math.min(
+            0.75,
+            Math.max(0.25, (offset - firstRatio * total) / ((1 - firstRatio) * total)),
+          );
+        }
+        container.style.setProperty("--thread-split-primary", `${firstRatio * 100}%`);
+        container.style.setProperty(
+          "--thread-split-secondary",
+          `${(1 - firstRatio) * (tertiaryIsDistinct ? secondRatio : 1) * 100}%`,
+        );
+        container.style.setProperty(
+          "--thread-split-tertiary",
+          `${(1 - firstRatio) * (1 - secondRatio) * 100}%`,
+        );
       };
       const onPointerMove = (moveEvent: PointerEvent) =>
         updateRatio(moveEvent.clientX, moveEvent.clientY);
       const onPointerUp = () => {
         window.removeEventListener("pointermove", onPointerMove);
         window.removeEventListener("pointerup", onPointerUp);
-        setDividerRatio(nextRatio);
+        if (divider === "primary") setDividerRatio(firstRatio);
+        else setSecondaryDividerRatio(secondRatio);
       };
       updateRatio(event.clientX, event.clientY);
       window.addEventListener("pointermove", onPointerMove);
       window.addEventListener("pointerup", onPointerUp, { once: true });
     },
-    [dividerRatio, secondaryIsDistinct, setDividerRatio, sideBySide],
+    [
+      dividerRatio,
+      secondaryDividerRatio,
+      secondaryIsDistinct,
+      setDividerRatio,
+      setSecondaryDividerRatio,
+      sideBySide,
+      tertiaryIsDistinct,
+    ],
   );
 
   if (!secondaryIsDistinct || secondaryThreadRef === null) {
@@ -94,6 +152,13 @@ export function ThreadSplitLayout(props: {
         "flex h-full min-h-0 min-w-0 flex-1 overflow-hidden",
         sideBySide ? "flex-row" : "flex-col",
       )}
+      style={
+        {
+          "--thread-split-primary": `${dividerRatio * 100}%`,
+          "--thread-split-secondary": `${secondaryPercent}%`,
+          "--thread-split-tertiary": `${tertiaryPercent}%`,
+        } as CSSProperties
+      }
     >
       <section
         data-thread-split-primary
@@ -103,20 +168,14 @@ export function ThreadSplitLayout(props: {
             ? "h-full w-[var(--thread-split-primary)] flex-none"
             : "h-[var(--thread-split-primary)] w-full flex-none",
         )}
-        style={{ "--thread-split-primary": `${dividerRatio * 100}%` } as CSSProperties}
       >
         {children}
       </section>
       <div
         aria-label={t("resizeConversationSplit")}
         aria-orientation={sideBySide ? "vertical" : "horizontal"}
-        className={cn(
-          "group relative z-30 shrink-0 border-border/70 bg-background/80 hover:bg-accent/60",
-          sideBySide
-            ? "h-full w-1.5 cursor-col-resize border-x"
-            : "h-2 w-full cursor-row-resize border-y",
-        )}
-        onPointerDown={handleDividerPointerDown}
+        className={dividerClassName}
+        onPointerDown={(event) => handleDividerPointerDown(event, "primary")}
         role="separator"
       >
         <div
@@ -134,7 +193,6 @@ export function ThreadSplitLayout(props: {
             ? "h-full w-[var(--thread-split-secondary)] flex-none"
             : "h-[var(--thread-split-secondary)] w-full flex-none",
         )}
-        style={{ "--thread-split-secondary": `${(1 - dividerRatio) * 100}%` } as CSSProperties}
       >
         <ChatView
           environmentId={secondaryThreadRef.environmentId}
@@ -163,6 +221,43 @@ export function ThreadSplitLayout(props: {
           <XIcon className="size-3.5" />
         </Button>
       </section>
+      {tertiaryIsDistinct && tertiaryThreadRef !== null ? (
+        <>
+          <div
+            aria-label={t("resizeConversationSplit")}
+            aria-orientation={sideBySide ? "vertical" : "horizontal"}
+            className={dividerClassName}
+            onPointerDown={(event) => handleDividerPointerDown(event, "secondary")}
+            role="separator"
+          />
+          <section
+            data-thread-split-tertiary
+            className={cn(
+              "relative flex min-h-0 min-w-0 flex-col overflow-hidden",
+              sideBySide
+                ? "h-full w-[var(--thread-split-tertiary)] flex-none"
+                : "h-[var(--thread-split-tertiary)] w-full flex-none",
+            )}
+          >
+            <ChatView
+              environmentId={tertiaryThreadRef.environmentId}
+              threadId={tertiaryThreadRef.threadId}
+              routeKind="server"
+              reserveTitleBarControlInset
+            />
+            <Button
+              aria-label={t("closeThirdSplitConversation")}
+              className="absolute top-1 right-2 z-[70] size-7 rounded-full border border-border/70 bg-background/85 p-0 shadow-sm backdrop-blur-sm hover:bg-accent"
+              onClick={closeTertiaryThread}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <XIcon className="size-3.5" />
+            </Button>
+          </section>
+        </>
+      ) : null}
     </div>
   );
 }

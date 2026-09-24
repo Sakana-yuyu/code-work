@@ -87,7 +87,11 @@ vi.mock("~/state/use-atom-command", () => ({
   },
 }));
 
-import { TaskGraphPanel, taskBoardColumn } from "./TaskGraphPanel";
+import {
+  TaskGraphPanel,
+  parallelChildWorkspacesAreDistinct,
+  taskBoardColumn,
+} from "./TaskGraphPanel";
 
 const profile = (
   overrides: Partial<CompositionAgentDriverProfile> = {},
@@ -151,6 +155,20 @@ function renderPanel(): string {
 }
 
 describe("TaskGraphPanel", () => {
+  it("rejects parallel children targeting the same workspace", () => {
+    expect(
+      parallelChildWorkspacesAreDistinct("C:\\repo", [
+        { workspaceRoot: "" },
+        { workspaceRoot: "C:/repo/" },
+      ]),
+    ).toBe(false);
+    expect(
+      parallelChildWorkspacesAreDistinct("C:\\repo", [
+        { workspaceRoot: "C:/repo-worktree-a" },
+        { workspaceRoot: "C:/repo-worktree-b" },
+      ]),
+    ).toBe(true);
+  });
   it("把任务状态归入可操作的看板阶段", () => {
     expect(taskBoardColumn("queued")).toBe("todo");
     expect(taskBoardColumn("running")).toBe("running");
