@@ -26,6 +26,7 @@ import {
   inferByokProtocol,
   type ByokProtocolMismatchIssue,
 } from "@codework/client-runtime/byok/protocol";
+import { canRetainByokAdapterCredentials } from "@codework/client-runtime/byok/credential-scope";
 
 import { cn, randomUUID } from "../../lib/utils";
 import { Badge } from "../ui/badge";
@@ -289,6 +290,28 @@ export function readByokModelAdapters(config: unknown): ReadonlyArray<ByokModelA
         : { customHeaders: "" }),
       ...(record["customHeadersRedacted"] === true ? { customHeadersRedacted: true } : {}),
       modelId: typeof record["modelId"] === "string" ? record["modelId"] : "",
+      ...(typeof record["supplierID"] === "string" && record["supplierID"].trim()
+        ? { supplierID: record["supplierID"].trim() }
+        : {}),
+      ...(typeof record["modelCatalogURL"] === "string" && record["modelCatalogURL"].trim()
+        ? { modelCatalogURL: record["modelCatalogURL"].trim() }
+        : {}),
+      ...(Array.isArray(record["modelCatalogURLs"])
+        ? {
+            modelCatalogURLs: record["modelCatalogURLs"].flatMap((url) =>
+              typeof url === "string" && url.trim() ? [url.trim()] : [],
+            ),
+          }
+        : {}),
+      ...(record["modelCatalogStatus"] === "openai_models" ||
+      record["modelCatalogStatus"] === "gemini_models" ||
+      record["modelCatalogStatus"] === "custom_url" ||
+      record["modelCatalogStatus"] === "manual_only"
+        ? { modelCatalogStatus: record["modelCatalogStatus"] }
+        : {}),
+      ...(typeof record["appendModelCatalogCandidates"] === "boolean"
+        ? { appendModelCatalogCandidates: record["appendModelCatalogCandidates"] }
+        : {}),
       contextWindowTokens:
         typeof record["contextWindowTokens"] === "number" &&
         Number.isFinite(record["contextWindowTokens"])
@@ -345,8 +368,8 @@ const emptyFormState = (): AdapterFormState => ({
   balanceUserID: "",
 });
 
-const formStateFromAdapter = (adapter: ByokModelAdapter): AdapterFormState => ({
-  supplier: "custom",
+export const formStateFromAdapter = (adapter: ByokModelAdapter): AdapterFormState => ({
+  supplier: adapter.supplierID ?? "custom",
   displayName: adapter.displayName,
   groupName: adapter.groupName ?? "",
   protocol: adapter.protocol,
@@ -560,7 +583,7 @@ export function relayEditFormFromAdapters(
 }
 
 /**
- * 把通道级编辑落到通道内全部适配器。密钥与余额令牌为空时逐成员保留原值
+ * 把通道级编辑落到通道内全部适配器。同一目标下密钥与余额令牌为空时逐成员保留原值
  * （含脱敏标记与密钥来源引用），非空时整体替换。余额档案/用户 ID 与预填值
  * （首个成员的原值）一致时视为未改动，逐成员保留，避免混合配置被静默洗掉。
  */
@@ -583,6 +606,11 @@ export function applyRelayEdit(
     first === undefined || balanceUserID === (first.balanceUserID ?? "");
   return adapters.map((current) => {
     if (!memberIds.has(current.id)) return current;
+    const retainsStoredCredentials = canRetainByokAdapterCredentials(current, {
+      ...(current.supplierID ? { supplierID: current.supplierID } : {}),
+      protocol: draft.protocol,
+      baseURL,
+    });
     const {
       groupName: _oldGroup,
       balanceProfile: _oldProfile,
@@ -591,6 +619,10 @@ export function applyRelayEdit(
       apiKeySourceAdapterId: _oldKeySource,
       balanceAccessTokenRedacted: _oldBalanceTokenRedacted,
       customHeadersRedacted: _oldCustomHeadersRedacted,
+      modelCatalogURL: _oldModelCatalogURL,
+      modelCatalogURLs: _oldModelCatalogURLs,
+      modelCatalogStatus: _oldModelCatalogStatus,
+      appendModelCatalogCandidates: _oldAppendModelCatalogCandidates,
       ...rest
     } = current;
     return {
@@ -601,11 +633,24 @@ export function applyRelayEdit(
       ...(apiKey
         ? { apiKey }
         : {
-            ...(current.apiKeyRedacted ? { apiKeyRedacted: true } : {}),
-            ...(current.apiKeySourceAdapterId !== undefined
+            ...(!retainsStoredCredentials ? { apiKey: "" } : {}),
+            ...(retainsStoredCredentials && current.apiKeyRedacted ? { apiKeyRedacted: true } : {}),
+            ...(retainsStoredCredentials && current.apiKeySourceAdapterId !== undefined
               ? { apiKeySourceAdapterId: current.apiKeySourceAdapterId }
               : {}),
           }),
+      ...(retainsStoredCredentials && _oldModelCatalogURL
+        ? { modelCatalogURL: _oldModelCatalogURL }
+        : {}),
+      ...(retainsStoredCredentials && _oldModelCatalogURLs
+        ? { modelCatalogURLs: _oldModelCatalogURLs }
+        : {}),
+      ...(retainsStoredCredentials && _oldModelCatalogStatus
+        ? { modelCatalogStatus: _oldModelCatalogStatus }
+        : {}),
+      ...(retainsStoredCredentials && _oldAppendModelCatalogCandidates !== undefined
+        ? { appendModelCatalogCandidates: _oldAppendModelCatalogCandidates }
+        : {}),
       // 自定义请求头：非空整体替换；勾选清除时全部成员写空并去掉标记；
       // 留空且未勾选清除时逐成员保留原值与脱敏标记。
       ...(customHeaders
@@ -613,21 +658,29 @@ export function applyRelayEdit(
         : draft.clearCustomHeaders
           ? { customHeaders: "" }
           : {
-              ...(current.customHeadersRedacted ? { customHeadersRedacted: true } : {}),
+              ...(retainsStoredCredentials && current.customHeadersRedacted
+                ? { customHeadersRedacted: true }
+                : {}),
+              ...(!retainsStoredCredentials ? { customHeaders: "" } : {}),
             }),
-      ...(balanceProfileUntouched && current.balanceProfile !== undefined
+      ...(retainsStoredCredentials &&
+      balanceProfileUntouched &&
+      current.balanceProfile !== undefined
         ? { balanceProfile: current.balanceProfile }
-        : draft.balanceProfile !== "auto"
+        : !balanceProfileUntouched && draft.balanceProfile !== "auto"
           ? { balanceProfile: draft.balanceProfile }
           : {}),
       ...(balanceAccessToken
         ? { balanceAccessToken }
         : {
-            ...(current.balanceAccessTokenRedacted ? { balanceAccessTokenRedacted: true } : {}),
+            ...(retainsStoredCredentials && current.balanceAccessTokenRedacted
+              ? { balanceAccessTokenRedacted: true }
+              : {}),
+            ...(!retainsStoredCredentials ? { balanceAccessToken: "" } : {}),
           }),
-      ...(balanceUserIDUntouched && current.balanceUserID !== undefined
+      ...(retainsStoredCredentials && balanceUserIDUntouched && current.balanceUserID !== undefined
         ? { balanceUserID: current.balanceUserID }
-        : balanceUserID
+        : !balanceUserIDUntouched && balanceUserID
           ? { balanceUserID }
           : {}),
     };
@@ -931,6 +984,11 @@ export function ByokModelAdaptersSection({
       supplier,
       protocol: template.protocol,
       baseURL: template.baseURL,
+      apiKey: "",
+      customHeaders: "",
+      balanceProfile: "auto",
+      balanceAccessToken: "",
+      balanceUserID: "",
       modelId: "",
       displayName: "",
       contextWindowTokens: String(DEFAULT_CONTEXT_WINDOW_TOKENS),
@@ -987,14 +1045,22 @@ export function ByokModelAdaptersSection({
       editing === "new" || editing === null
         ? undefined
         : adapters.find((adapter) => adapter.id === editing);
-    const retainsStoredApiKey = apiKey.length === 0 && existingAdapter?.apiKeyRedacted === true;
+    const retainsStoredCredentials = canRetainByokAdapterCredentials(existingAdapter, {
+      supplierID: form.supplier === "custom" ? undefined : form.supplier,
+      protocol: form.protocol,
+      baseURL,
+    });
+    const retainsStoredApiKey =
+      apiKey.length === 0 && retainsStoredCredentials && existingAdapter?.apiKeyRedacted === true;
     if (!apiKey && !retainsStoredApiKey) {
       setError(t("byokAdapters.apiKeyRequired"));
       return;
     }
     const balanceAccessToken = form.balanceAccessToken.trim();
     const retainsStoredBalanceToken =
-      balanceAccessToken.length === 0 && existingAdapter?.balanceAccessTokenRedacted === true;
+      balanceAccessToken.length === 0 &&
+      retainsStoredCredentials &&
+      existingAdapter?.balanceAccessTokenRedacted === true;
     const balanceUserID = form.balanceUserID.trim();
     const modelId = form.modelId.trim();
     if (!modelId) {
@@ -1023,6 +1089,7 @@ export function ByokModelAdaptersSection({
     const retainsStoredCustomHeaders =
       customHeaders.length === 0 &&
       !form.clearStoredCustomHeaders &&
+      retainsStoredCredentials &&
       existingAdapter?.customHeadersRedacted === true;
     // 协议尊重表单显式选择：导入时已按模型名推断过（draftModelSelectionPatch 等），
     // 这里不再强制改写，避免覆盖「OpenAI 兼容中转挂 Claude」的合法配置。
@@ -1052,6 +1119,18 @@ export function ByokModelAdaptersSection({
       contextWindowTokens,
       ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
       ...(form.supplier !== "custom" ? { supplierID: form.supplier } : {}),
+      ...(retainsStoredCredentials && existingAdapter?.modelCatalogURL
+        ? { modelCatalogURL: existingAdapter.modelCatalogURL }
+        : {}),
+      ...(retainsStoredCredentials && existingAdapter?.modelCatalogURLs
+        ? { modelCatalogURLs: existingAdapter.modelCatalogURLs }
+        : {}),
+      ...(retainsStoredCredentials && existingAdapter?.modelCatalogStatus
+        ? { modelCatalogStatus: existingAdapter.modelCatalogStatus }
+        : {}),
+      ...(retainsStoredCredentials && existingAdapter?.appendModelCatalogCandidates !== undefined
+        ? { appendModelCatalogCandidates: existingAdapter.appendModelCatalogCandidates }
+        : {}),
       ...(supplierTemplates.find((entry) => entry.id === form.supplier)?.modelCatalogURLs
         ? {
             modelCatalogURLs: supplierTemplates.find((entry) => entry.id === form.supplier)
@@ -1304,6 +1383,20 @@ export function ByokModelAdaptersSection({
     }
     if (selectedRelayEditMembers.length === 0) {
       setRelayEditTarget(null);
+      return;
+    }
+    if (
+      !relayEditForm.apiKey.trim() &&
+      selectedRelayEditMembers.some(
+        (member) =>
+          !canRetainByokAdapterCredentials(member, {
+            ...(member.supplierID ? { supplierID: member.supplierID } : {}),
+            protocol: relayEditForm.protocol,
+            baseURL,
+          }),
+      )
+    ) {
+      setRelayEditError(t("byokAdapters.apiKeyRequired"));
       return;
     }
     setRelayEditSaving(true);

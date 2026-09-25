@@ -22,6 +22,7 @@ type Adapter = {
   readonly contextWindowTokens: number;
   readonly supplierID?: string;
   readonly modelCatalogURL?: string;
+  readonly modelCatalogURLs?: readonly string[];
   readonly modelCatalogStatus?: "openai_models" | "gemini_models" | "custom_url" | "manual_only";
 };
 
@@ -246,6 +247,60 @@ describe("ByokModelDiscoveryService", () => {
     ]);
     expect(requested?.url).toBe("https://discovery.test/models");
     expect(requested?.headers.get("authorization")).toBe("Bearer sk-test-key");
+  });
+
+  it("切换供应商后不向旧模板目录发送新 Key", async () => {
+    const requests: Request[] = [];
+    const result = await runDiscover(
+      makeSettings("supplier-switch", [
+        adapter({
+          id: "switched",
+          supplierID: "openrouter",
+          baseURL: "https://openrouter.ai/api/v1",
+          apiKey: "sk-new-provider",
+          modelCatalogURL: "",
+          modelCatalogURLs: ["https://api.deepseek.com/v1/models"],
+        }),
+      ]),
+      asFetch(async (input, init) => {
+        requests.push(new Request(String(input), init));
+        return new Response(JSON.stringify({ data: [{ id: "openai/gpt-4.1" }] }), {
+          status: 200,
+        });
+      }),
+      { instanceId: "supplier-switch", adapterId: "switched", forceRefresh: true },
+    );
+
+    expect(result.status).toBe("ready");
+    expect(requests.map((request) => request.url)).toEqual(["https://openrouter.ai/api/v1/models"]);
+    expect(requests[0]?.headers.get("authorization")).toBe("Bearer sk-new-provider");
+  });
+
+  it("自定义中转地址不自动调用所选供应商的官方目录", async () => {
+    const requests: Request[] = [];
+    const result = await runDiscover(
+      makeSettings("custom-relay", [
+        adapter({
+          id: "relay",
+          supplierID: "openrouter",
+          baseURL: "https://relay.example.test/v1",
+          modelCatalogURL: "",
+          modelCatalogURLs: ["https://openrouter.ai/api/v1/models"],
+        }),
+      ]),
+      asFetch(async (input, init) => {
+        requests.push(new Request(String(input), init));
+        return new Response(JSON.stringify({ data: [{ id: "openai/gpt-4.1" }] }), {
+          status: 200,
+        });
+      }),
+      { instanceId: "custom-relay", adapterId: "relay", forceRefresh: true },
+    );
+
+    expect(result.status).toBe("ready");
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://relay.example.test/v1/models",
+    ]);
   });
 
   it("enriches discovered models with catalog context and max output when the relay omits them", async () => {

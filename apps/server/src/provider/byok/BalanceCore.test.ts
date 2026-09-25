@@ -11,10 +11,15 @@ import {
   lookupDotPath,
   normalizeBalanceWindow,
   parseDeepSeekBalance,
+  parseMoonshotBalance,
+  parseNovitaAccount,
   parseNewAPIQuota,
   parseNumericDotPath,
   parseNumericField,
   parseOpenAIBilling,
+  parseOpenRouterCredits,
+  parseOpenRouterKeyLimit,
+  parseStepFunAccount,
   parseZhipuBalance,
   resolveBalanceProfile,
   shouldCacheBalanceResult,
@@ -107,6 +112,50 @@ describe("BalanceCore", () => {
     expect(parseDeepSeekBalance({ balance_infos: [] })).toBeUndefined();
   });
 
+  it("按 Moonshot 区域解析余额并保留零值", () => {
+    expect(
+      parseMoonshotBalance({ code: 0, status: true, data: { available_balance: "0" } }, "CNY"),
+    ).toMatchObject({ source: "moonshot", currency: "CNY", remaining: 0 });
+    expect(
+      parseMoonshotBalance({ code: 0, status: true, data: { available_balance: 12.5 } }, "USD"),
+    ).toMatchObject({ currency: "USD", remaining: 12.5 });
+    expect(
+      parseMoonshotBalance({ code: 401, status: false, data: { available_balance: 7 } }, "CNY"),
+    ).toBeUndefined();
+    expect(parseMoonshotBalance({ data: { cash_balance: 7 } }, "CNY")).toBeUndefined();
+  });
+
+  it("StepFun 开放平台余额只读取账户 balance，不混入充值或赠额", () => {
+    expect(
+      parseStepFunAccount(
+        { object: "account", type: "prepaid", balance: 0, total_cash_balance: 15 },
+        "CNY",
+      ),
+    ).toMatchObject({ source: "stepfun_account", currency: "CNY", remaining: 0 });
+    expect(
+      parseStepFunAccount(
+        { object: "account", type: "postpaid", balance: "4.25", total_voucher_balance: 12 },
+        "USD",
+      ),
+    ).toMatchObject({ currency: "USD", remaining: 4.25 });
+    expect(
+      parseStepFunAccount({ object: "account", total_cash_balance: 10 }, "CNY"),
+    ).toBeUndefined();
+    expect(parseStepFunAccount({ object: "error", balance: 5 }, "CNY")).toBeUndefined();
+  });
+
+  it("Novita 积分按万分之一美元换算，缺失字段不当作零余额", () => {
+    expect(parseNovitaAccount({ credit_balance: "125000" })).toMatchObject({
+      source: "novita_account",
+      currency: "USD",
+      remaining: 12.5,
+    });
+    expect(parseNovitaAccount({ credit_balance: "0" })).toMatchObject({ remaining: 0 });
+    expect(parseNovitaAccount({})).toBeUndefined();
+    expect(parseNovitaAccount({ credit_balance: "invalid" })).toBeUndefined();
+    expect(parseNovitaAccount({ credit_balance: -100 })).toBeUndefined();
+  });
+
   it("converts OpenAI total_usage cents and recognizes unlimited totals", () => {
     expect(
       parseOpenAIBilling({ system_hard_limit_usd: "20" }, { total_usage: "1250" }),
@@ -115,6 +164,34 @@ describe("BalanceCore", () => {
     expect(unlimited).toMatchObject({ unlimited: true });
     expect(unlimited).not.toHaveProperty("total");
     expect(parseOpenAIBilling({})).toBeUndefined();
+  });
+
+  it("将 OpenRouter 账户额度与单 Key 限额分别归一化", () => {
+    expect(
+      parseOpenRouterCredits({ data: { total_credits: 100.5, total_usage: 25.75 } }),
+    ).toMatchObject({
+      source: "openrouter_credits",
+      total: 100.5,
+      used: 25.75,
+      remaining: 74.75,
+    });
+    expect(parseOpenRouterCredits({ data: { total_credits: 0, total_usage: 0 } })).toMatchObject({
+      remaining: 0,
+    });
+    expect(parseOpenRouterCredits({ data: { total_credits: 10 } })).toBeUndefined();
+    expect(parseOpenRouterCredits({ data: { total_credits: -1, total_usage: 0 } })).toBeUndefined();
+
+    expect(parseOpenRouterKeyLimit({ data: { limit: 100, limit_remaining: 74.5 } })).toMatchObject({
+      source: "openrouter_key_limit",
+      total: 100,
+      remaining: 74.5,
+    });
+    const uncapped = parseOpenRouterKeyLimit({
+      data: { limit: null, limit_remaining: null },
+    });
+    expect(uncapped).toMatchObject({ source: "openrouter_key_limit", unlimited: false });
+    expect(uncapped).not.toHaveProperty("remaining");
+    expect(parseOpenRouterKeyLimit({ data: { limit: 100 } })).toBeUndefined();
   });
 
   it("normalizes window fractions and statuses", () => {

@@ -27,6 +27,7 @@ import {
 
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 import type {
   ProviderToolBrokerBridge,
   ProviderToolBrokerInvocation,
@@ -1321,6 +1322,19 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
             assert.equal(toolCompleted.payload.detail, "cat server/package.json");
             assert.equal(String(toolCompleted.itemId), "tool-call-1");
           }
+          const toolActivities = turnEvents
+            .flatMap((event) => runtimeEventToActivities(event))
+            .filter((activity) => activity.kind.startsWith("tool."));
+          assert.includeMembers(
+            toolActivities.map((activity) => activity.kind),
+            ["tool.updated", "tool.completed"],
+          );
+          assert.isTrue(
+            toolActivities.every(
+              (activity) =>
+                (activity.payload as Record<string, unknown>).toolCallId === "tool-call-1",
+            ),
+          );
 
           const contentDelta = turnEvents.find((event) => event.type === "content.delta");
           assert.isDefined(contentDelta);

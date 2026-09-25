@@ -28,6 +28,10 @@ source-control writer model.
 The phone does not copy server credentials or start local desktop processes; it only controls the
 selected, already-running Code Work server.
 
+## 手机端工作日志
+
+线程中的工作日志会显示运行中的工具，随后以完成或失败状态更新该工具记录。较早的工作记录可折叠查看；运行中的工具和失败详情会保留在时间线中。工具事件来自当前连接的 Code Work 服务端，手机断线期间不会推断工具状态。
+
 ## 手机端电脑预览
 
 手机端线程页的“电脑预览”读取的是同一 Code Work Server 上电脑端预览标签页的状态。手机不

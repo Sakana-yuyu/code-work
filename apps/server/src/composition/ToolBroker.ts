@@ -26,6 +26,7 @@ import {
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -500,6 +501,33 @@ const make = Effect.gen(function* () {
     ],
   ]);
 
+  const TERMINAL_EXEC_OUTPUT_TIMEOUT = "8 seconds";
+  const terminalCommandVisible = (snapshot: TerminalSessionSnapshot): boolean =>
+    snapshot.status === "exited" || snapshot.status === "error" || snapshot.history.length > 0;
+  // exec 在进程刚拉起时历史是空的。短命令等到退出或第一段输出再交给模型，
+  // 避免它把空快照当成“脚本没有输出”后再开新终端重试。
+  const awaitTerminalCommandOutput = (
+    terminalManager: TerminalManager.TerminalManager["Service"],
+    threadId: string,
+    terminalId: string,
+    started: TerminalSessionSnapshot,
+  ) =>
+    Effect.gen(function* () {
+      if (terminalCommandVisible(started)) return started;
+      const settled = yield* Deferred.make<TerminalSessionSnapshot>();
+      const unsubscribe = yield* terminalManager.attachStream({ threadId, terminalId }, (event) => {
+        if (event.type !== "snapshot" || !terminalCommandVisible(event.snapshot)) {
+          return Effect.void;
+        }
+        return Deferred.succeed(settled, event.snapshot).pipe(Effect.ignore);
+      });
+      const outcome = yield* Deferred.await(settled).pipe(
+        Effect.timeoutOption(TERMINAL_EXEC_OUTPUT_TIMEOUT),
+        Effect.ensuring(Effect.sync(unsubscribe)),
+      );
+      return Option.isSome(outcome) ? outcome.value : started;
+    });
+
   if (Option.isSome(terminalManager)) {
     handlers.set("terminal.open", {
       operation: "execute",
@@ -545,7 +573,7 @@ const make = Effect.gen(function* () {
             input.arguments,
           ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
           if (args.cwd !== input.workspaceRoot) return yield* new ToolArgumentsInvalidError(input);
-          return yield* terminalManager.value.runCommand({
+          const started = yield* terminalManager.value.runCommand({
             threadId: input.runId,
             terminalId: args.terminalId,
             cwd: input.workspaceRoot,
@@ -556,6 +584,12 @@ const make = Effect.gen(function* () {
             ...(args.worktreePath === undefined ? {} : { worktreePath: args.worktreePath }),
             ...(args.env === undefined ? {} : { env: args.env }),
           });
+          return yield* awaitTerminalCommandOutput(
+            terminalManager.value,
+            input.runId,
+            args.terminalId,
+            started,
+          );
         }),
     });
     handlers.set("terminal.snapshot", {

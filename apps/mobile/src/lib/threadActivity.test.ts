@@ -576,6 +576,166 @@ describe("buildThreadFeed", () => {
     );
   });
 
+  it("keeps a running tool visible until its completion replaces the row", () => {
+    const turnId = TurnId.make("turn-live-tool");
+    const startedTool = makeActivity({
+      id: EventId.make("tool-started"),
+      kind: "tool.started",
+      tone: "tool",
+      summary: "Searching files started",
+      createdAt: "2026-04-01T00:00:00.500Z",
+      turnId,
+      payload: {
+        toolCallId: "search-1",
+        title: "Searching files",
+        itemType: "command_execution",
+      },
+    });
+    const runningTool = makeActivity({
+      id: EventId.make("tool-running"),
+      kind: "tool.updated",
+      tone: "tool",
+      summary: "Searching files",
+      createdAt: "2026-04-01T00:00:01.000Z",
+      turnId,
+      payload: {
+        toolCallId: "search-1",
+        title: "Searching files",
+        itemType: "command_execution",
+        status: "inProgress",
+      },
+    });
+    const thread = makeThread({
+      id: ThreadId.make("thread-live-tool"),
+      projectId: ProjectId.make("project-1"),
+      title: "Live tool",
+      latestTurn: {
+        turnId,
+        state: "running",
+        requestedAt: "2026-04-01T00:00:00.000Z",
+        startedAt: "2026-04-01T00:00:00.000Z",
+        completedAt: null,
+        assistantMessageId: null,
+      },
+      activities: [startedTool],
+    });
+
+    const started = deriveThreadFeedPresentation(
+      buildThreadFeed(thread),
+      thread.latestTurn,
+      new Set(),
+    );
+    expect(started[0]).toMatchObject({
+      type: "activity-group",
+      activities: [{ id: "tool-started", status: "inProgress" }],
+    });
+
+    const running = deriveThreadFeedPresentation(
+      buildThreadFeed({ ...thread, activities: [startedTool, runningTool] }),
+      thread.latestTurn,
+      new Set(),
+    );
+    expect(running[0]).toMatchObject({
+      type: "activity-group",
+      activities: [{ id: "tool-running", status: "inProgress" }],
+    });
+
+    const completed = deriveThreadFeedPresentation(
+      buildThreadFeed({
+        ...thread,
+        activities: [
+          startedTool,
+          runningTool,
+          makeActivity({
+            id: EventId.make("tool-done"),
+            kind: "tool.completed",
+            tone: "tool",
+            summary: "Searching files completed",
+            createdAt: "2026-04-01T00:00:02.000Z",
+            turnId,
+            payload: {
+              toolCallId: "search-1",
+              title: "Searching files",
+              itemType: "command_execution",
+              status: "completed",
+            },
+          }),
+        ],
+      }),
+      thread.latestTurn,
+      new Set(),
+    );
+    expect(completed[0]).toMatchObject({
+      type: "activity-group",
+      activities: [{ id: "tool-done", status: "success" }],
+    });
+  });
+
+  it("folds interleaved tool starts and completions by call ID", () => {
+    const turnId = TurnId.make("turn-parallel-tools");
+    const activities = [
+      makeActivity({
+        id: EventId.make("a-start"),
+        kind: "tool.started",
+        tone: "tool",
+        summary: "Search started",
+        createdAt: "2026-04-01T00:00:01.000Z",
+        turnId,
+        payload: { itemType: "mcp_tool_call", title: "Search", toolCallId: "a" },
+      }),
+      makeActivity({
+        id: EventId.make("b-start"),
+        kind: "tool.started",
+        tone: "tool",
+        summary: "Search started",
+        createdAt: "2026-04-01T00:00:02.000Z",
+        turnId,
+        payload: { itemType: "mcp_tool_call", title: "Search", toolCallId: "b" },
+      }),
+      makeActivity({
+        id: EventId.make("a-done"),
+        kind: "tool.completed",
+        tone: "tool",
+        summary: "Search completed",
+        createdAt: "2026-04-01T00:00:03.000Z",
+        turnId,
+        payload: {
+          itemType: "mcp_tool_call",
+          title: "Search",
+          toolCallId: "a",
+          status: "failed",
+          detail: "Search unavailable",
+        },
+      }),
+      makeActivity({
+        id: EventId.make("b-done"),
+        kind: "tool.completed",
+        tone: "tool",
+        summary: "Search completed",
+        createdAt: "2026-04-01T00:00:04.000Z",
+        turnId,
+        payload: { itemType: "mcp_tool_call", title: "Search", toolCallId: "b" },
+      }),
+    ];
+    const thread = makeThread({
+      id: ThreadId.make("thread-parallel-tools"),
+      projectId: ProjectId.make("project-1"),
+      title: "Parallel tools",
+      activities,
+    });
+
+    const feed = buildThreadFeed(thread);
+    expect(feed).toMatchObject([
+      {
+        type: "activity-group",
+        activities: [
+          { id: "a-done", status: "failure", detail: "Search unavailable" },
+          { id: "b-done", status: "success" },
+        ],
+      },
+    ]);
+  });
+
   it("keeps MCP inputs available to expanded mobile work rows", () => {
     const turnId = TurnId.make("turn-mcp");
     const thread = makeThread({

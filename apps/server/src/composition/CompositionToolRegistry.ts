@@ -473,7 +473,7 @@ const agentToolSignatures: ReadonlyMap<
     "terminal.exec",
     {
       description:
-        "在工作区终端启动程序，返回当前快照；后续用 terminal.snapshot 读取输出和退出状态。command 是程序名或绝对路径，参数单独传 args。PowerShell 脚本使用 command=powershell.exe、args=[-NoProfile,-Command,脚本内容]。",
+        "在工作区终端启动程序。短命令会等到退出或出现输出后返回快照；超时仍在运行时返回当前快照，再用 terminal.snapshot 读取后续输出。command 是程序名或绝对路径，参数单独传 args。PowerShell 脚本使用 command=powershell.exe、args=[-NoProfile,-Command,脚本内容]。",
       parameters: {
         type: "object",
         properties: {

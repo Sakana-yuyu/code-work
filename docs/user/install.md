@@ -84,6 +84,9 @@ Kimi uses its official ACP entrypoint (`kimi acp`) for Code Work sessions. Run `
 on the server machine; the provider card reports whether the CLI is installed, while the first ACP
 session confirms the account state.
 
+Antigravity 使用 `agy` 的 Headless 模式。聊天会在运行时显示正文增量、工具进度和失败详情；
+工具权限需在 Antigravity CLI 中预先配置，Headless 运行不会弹出交互授权窗口。
+
 Run the login command on the machine running the Code Work server, not on the device you browse
 from.
 

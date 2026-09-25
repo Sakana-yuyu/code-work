@@ -28,6 +28,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { byokEnvironment, serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { inferByokProtocol } from "@codework/client-runtime/byok/protocol";
+import { canRetainByokAdapterCredentials } from "@codework/client-runtime/byok/credential-scope";
 import { SettingsEnvironmentPicker } from "./components/SettingsEnvironmentPicker";
 import {
   adapterFormFromAdapter,
@@ -41,6 +42,7 @@ import {
   readByokDelegation,
   readByokModelAdapters,
   readByokPromptTemplate,
+  supplierSelectionPatch,
   type MobileByokAdapterForm,
 } from "./SettingsByokRouteScreen.logic";
 import {
@@ -442,7 +444,12 @@ function ByokInstanceCard(props: {
       setAdapterError(t("byokMobile.contextRequired"));
       return;
     }
-    if (!adapterForm.apiKey.trim() && existing?.apiKeyRedacted !== true) {
+    const retainsStoredCredentials = canRetainByokAdapterCredentials(existing, {
+      ...(adapterForm.supplierID.trim() ? { supplierID: adapterForm.supplierID.trim() } : {}),
+      protocol: adapterForm.protocol,
+      baseURL: adapterForm.baseURL,
+    });
+    if (!adapterForm.apiKey.trim() && !(retainsStoredCredentials && existing?.apiKeyRedacted)) {
       setAdapterError(t("byokMobile.apiKeyRequired"));
       return;
     }
@@ -1089,13 +1096,7 @@ function AdapterEditor(props: {
                 key={entry.id}
                 label={entry.label}
                 disabled={props.disabled}
-                onPress={() =>
-                  props.onChange({
-                    supplierID: entry.id,
-                    protocol: entry.protocol,
-                    baseURL: entry.defaultBaseURL,
-                  })
-                }
+                onPress={() => props.onChange(supplierSelectionPatch(entry))}
               />
             ))}
           </View>

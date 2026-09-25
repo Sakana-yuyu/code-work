@@ -32,7 +32,7 @@ import {
   filterModelCatalogByType,
 } from "./ModelCatalog.ts";
 import { publicSupplierCatalog } from "./SupplierCatalogTransport.ts";
-import { supplierTemplate } from "./SupplierCatalog.ts";
+import { SUPPLIER_TEMPLATES, supplierTemplate } from "./SupplierCatalog.ts";
 import { catalogCapabilitiesForModel } from "./ContextWindowCatalog.ts";
 import { matchContextWindows } from "./ContextWindowMatcher.ts";
 import { parseByokCustomHeaders, streamChat } from "../Layers/byokChatClient.ts";
@@ -58,6 +58,9 @@ const estimateBenchmarkTextTokens = (text: string): number =>
       Math.round(text.replace(/\s+/gu, "").length / 8),
   );
 const cacheRef = Effect.runSync(Ref.make(new Map<string, CacheEntry>()));
+const knownTemplateCatalogURLs = new Set(
+  SUPPLIER_TEMPLATES.flatMap((template) => template.modelCatalog.urls),
+);
 
 type ModelDiscoveryTarget = Pick<
   ByokModelAdapter,
@@ -245,7 +248,19 @@ const discoverTarget = (target: ModelDiscoveryTarget) =>
                 : template.type,
           baseURL: target.baseURL,
           ...(target.modelCatalogURL ? { modelCatalogURL: target.modelCatalogURL } : {}),
-          modelCatalogURLs: [...(target.modelCatalogURLs ?? []), ...template.modelCatalog.urls],
+          // 模板目录只允许使用当前推理地址的 origin；旧供应商残留的模板地址也不能接收新密钥。
+          modelCatalogURLs: [...(target.modelCatalogURLs ?? []), ...template.modelCatalog.urls]
+            .filter((url) => {
+              try {
+                return new URL(url).origin === new URL(target.baseURL).origin;
+              } catch {
+                return false;
+              }
+            })
+            .filter(
+              (url) =>
+                !knownTemplateCatalogURLs.has(url) || template.modelCatalog.urls.includes(url),
+            ),
           appendGeneratedCandidates:
             target.appendModelCatalogCandidates ?? template.modelCatalog.appendCandidates,
         }),

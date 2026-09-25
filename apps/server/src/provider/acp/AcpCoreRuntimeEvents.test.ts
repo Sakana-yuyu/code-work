@@ -1,5 +1,6 @@
 import { ProviderDriverKind, RuntimeRequestId, TurnId } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
+import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 
 import {
   makeAcpAssistantItemEvent,
@@ -11,6 +12,32 @@ import {
 } from "./AcpCoreRuntimeEvents.ts";
 
 describe("AcpCoreRuntimeEvents", () => {
+  it.each(["cursor", "grok"])("%s 的 ACP 工具失败保留同一调用 ID 与详情", (driver) => {
+    const event = makeAcpToolCallEvent({
+      stamp: { eventId: `failed-${driver}` as never, createdAt: "2026-03-27T00:00:00.000Z" },
+      provider: ProviderDriverKind.make(driver),
+      threadId: "thread-1" as never,
+      turnId: TurnId.make("turn-1"),
+      toolCall: {
+        toolCallId: "tool-failed-1",
+        kind: "execute",
+        status: "failed",
+        title: "Terminal",
+        detail: "命令执行失败",
+        data: { command: "check" },
+      },
+      rawPayload: { sessionId: "session-1" },
+    });
+
+    expect(event).toMatchObject({ type: "item.completed", payload: { status: "failed" } });
+    expect(runtimeEventToActivities(event)).toMatchObject([
+      {
+        kind: "tool.completed",
+        payload: { toolCallId: "tool-failed-1", status: "failed", detail: "命令执行失败" },
+      },
+    ]);
+  });
+
   it("maps ACP permission requests to canonical runtime events", () => {
     const stamp = { eventId: "event-1" as never, createdAt: "2026-03-27T00:00:00.000Z" };
     const turnId = TurnId.make("turn-1");

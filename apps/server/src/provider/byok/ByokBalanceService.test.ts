@@ -21,7 +21,7 @@ type Adapter = {
   readonly modelId: string;
   readonly contextWindowTokens: number;
   readonly supplierID?: string;
-  readonly balanceProfile?: "auto" | "general" | "newapi" | "none";
+  readonly balanceProfile?: "auto" | "general" | "newapi" | "official" | "none";
   readonly balanceAccessToken?: string;
   readonly balanceUserID?: string;
 };
@@ -154,6 +154,66 @@ describe("ByokBalanceService", () => {
     expect(seenUserID).toBe("42");
   });
 
+  it("同长度 API Key 轮换后不复用上一账号的余额缓存", async () => {
+    const seenKeys: string[] = [];
+    const fetchBalance = asFetch(async (input, init) => {
+      const authorization = new Headers(init?.headers).get("authorization") ?? "";
+      if (String(input).includes("billing/usage")) return jsonResponse({ total_usage: 0 });
+      seenKeys.push(authorization);
+      return jsonResponse({ hard_limit_usd: authorization === "Bearer sk-AAAAA" ? 5 : 9 });
+    });
+    const input = { instanceId: "cache-api-key", adapterId: "adapter-balance" };
+    const first = await runBalance(
+      makeSettings(input.instanceId, [adapter({ apiKey: "sk-AAAAA" })]),
+      fetchBalance,
+      input,
+    );
+    const second = await runBalance(
+      makeSettings(input.instanceId, [adapter({ apiKey: "sk-BBBBB" })]),
+      fetchBalance,
+      input,
+    );
+
+    expect(first.remaining).toBe(5);
+    expect(second.remaining).toBe(9);
+    expect(second.cached).not.toBe(true);
+    expect(seenKeys).toEqual(["Bearer sk-AAAAA", "Bearer sk-BBBBB"]);
+    expect(JSON.stringify(second)).not.toContain("sk-BBBBB");
+  });
+
+  it("同长度余额 Token 轮换后重新查询 NewAPI 余额", async () => {
+    const seenTokens: string[] = [];
+    const fetchBalance = asFetch(async (_input, init) => {
+      const authorization = new Headers(init?.headers).get("authorization") ?? "";
+      seenTokens.push(authorization);
+      return jsonResponse({
+        success: true,
+        data: { quota: authorization === "Bearer token-a" ? 5_000_000 : 10_000_000 },
+      });
+    });
+    const input = { instanceId: "cache-balance-token", adapterId: "adapter-balance" };
+    const first = await runBalance(
+      makeSettings(input.instanceId, [
+        adapter({ balanceProfile: "newapi", balanceAccessToken: "token-a" }),
+      ]),
+      fetchBalance,
+      input,
+    );
+    const second = await runBalance(
+      makeSettings(input.instanceId, [
+        adapter({ balanceProfile: "newapi", balanceAccessToken: "token-b" }),
+      ]),
+      fetchBalance,
+      input,
+    );
+
+    expect(first.remaining).toBe(10);
+    expect(second.remaining).toBe(20);
+    expect(second.cached).not.toBe(true);
+    expect(seenTokens).toEqual(["Bearer token-a", "Bearer token-b"]);
+    expect(JSON.stringify(second)).not.toContain("token-b");
+  });
+
   it("queries DeepSeek's official balance endpoint for an official DeepSeek base URL", async () => {
     let seenURL = "";
     let seenAuthorization = "";
@@ -207,6 +267,320 @@ describe("ByokBalanceService", () => {
     expect(requestedURLs).not.toContain("https://api.deepseek.com/user/balance");
   });
 
+  it("分别查询 Moonshot 国内和国际余额，零余额仍是成功结果", async () => {
+    for (const [host, currency, value] of [
+      ["api.moonshot.cn", "CNY", "0"],
+      ["api.moonshot.ai", "USD", "14.75"],
+    ] as const) {
+      let requestedURL = "";
+      let authorization = "";
+      const instanceId = `moonshot-${currency}`;
+      const result = await runBalance(
+        makeSettings(instanceId, [
+          adapter({
+            supplierID: "kimi",
+            baseURL: `https://${host}/anthropic`,
+            apiKey: "moonshot-test-key",
+          }),
+        ]),
+        asFetch(async (input, init) => {
+          requestedURL = String(input);
+          authorization = new Headers(init?.headers).get("authorization") ?? "";
+          return jsonResponse({ code: 0, status: true, data: { available_balance: value } });
+        }),
+        { instanceId, adapterId: "adapter-balance" },
+      );
+
+      expect(requestedURL).toBe(`https://${host}/v1/users/me/balance`);
+      expect(authorization).toBe("Bearer moonshot-test-key");
+      expect(result).toMatchObject({ supported: true, source: "moonshot", currency });
+      expect(result.remaining).toBe(Number(value));
+      expect(JSON.stringify(result)).not.toContain("moonshot-test-key");
+    }
+  });
+
+  it("Moonshot 官方接口拒绝请求时保持查询失败且不回退到通用计费", async () => {
+    const requestedURLs: string[] = [];
+    const result = await runBalance(
+      makeSettings("moonshot-failed", [
+        adapter({ supplierID: "kimi", baseURL: "https://api.moonshot.cn/anthropic" }),
+      ]),
+      asFetch(async (input) => {
+        requestedURLs.push(String(input));
+        return jsonResponse({ error: "invalid key" }, 403);
+      }),
+      { instanceId: "moonshot-failed", adapterId: "adapter-balance" },
+    );
+
+    expect(requestedURLs).toEqual(["https://api.moonshot.cn/v1/users/me/balance"]);
+    expect(result).toMatchObject({ supported: false, error: { code: "upstream_http" } });
+    expect(result).not.toHaveProperty("remaining");
+  });
+
+  it("Novita 官方通道查询账户余额，零余额、无字段与 HTTP 失败分别保留", async () => {
+    for (const [caseName, response, expected] of [
+      [
+        "positive",
+        jsonResponse({ credit_balance: "125000" }),
+        { supported: true, remaining: 12.5 },
+      ],
+      ["zero", jsonResponse({ credit_balance: "0" }), { supported: true, remaining: 0 }],
+      [
+        "missing",
+        jsonResponse({ data: {} }),
+        { supported: false, error: { code: "invalid_payload" } },
+      ],
+      [
+        "http",
+        jsonResponse({ error: "invalid key" }, 401),
+        { supported: false, error: { code: "upstream_http" } },
+      ],
+    ] as const) {
+      const urls: string[] = [];
+      let authorization = "";
+      const instanceId = `novita-${caseName}`;
+      const result = await runBalance(
+        makeSettings(instanceId, [
+          adapter({
+            supplierID: "novita",
+            baseURL: "https://api.novita.ai/anthropic",
+            apiKey: "novita-test-key",
+          }),
+        ]),
+        asFetch(async (input, init) => {
+          urls.push(String(input));
+          authorization = new Headers(init?.headers).get("authorization") ?? "";
+          return response;
+        }),
+        { instanceId, adapterId: "adapter-balance" },
+      );
+      expect(urls).toEqual(["https://api.novita.ai/v3/user"]);
+      expect(authorization).toBe("Bearer novita-test-key");
+      expect(result).toMatchObject(expected);
+      expect(JSON.stringify(result)).not.toContain("novita-test-key");
+      if (caseName === "missing" || caseName === "http")
+        expect(result).not.toHaveProperty("remaining");
+    }
+  });
+
+  it("Novita 相似域名不发送密钥到官方余额接口", async () => {
+    const urls: string[] = [];
+    await runBalance(
+      makeSettings("novita-lookalike", [
+        adapter({ supplierID: "novita", baseURL: "https://api.novita.ai.example.test/anthropic" }),
+      ]),
+      asFetch(async (input) => {
+        urls.push(String(input));
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+      { instanceId: "novita-lookalike", adapterId: "adapter-balance" },
+    );
+    expect(urls).not.toContain("https://api.novita.ai/v3/user");
+  });
+
+  it("StepFun 国内与国际开放平台 API 各自查询账户余额", async () => {
+    for (const [host, supplierID, currency, balance] of [
+      ["api.stepfun.com", "stepfun_api", "CNY", 0],
+      ["api.stepfun.ai", "stepfun_api_en", "USD", 8.75],
+    ] as const) {
+      const instanceId = `stepfun-${currency}`;
+      let requestedURL = "";
+      let authorization = "";
+      const result = await runBalance(
+        makeSettings(instanceId, [
+          adapter({ supplierID, baseURL: `https://${host}/v1`, apiKey: "stepfun-test-key" }),
+        ]),
+        asFetch(async (input, init) => {
+          requestedURL = String(input);
+          authorization = new Headers(init?.headers).get("authorization") ?? "";
+          return jsonResponse({
+            object: "account",
+            type: "prepaid",
+            balance,
+            total_cash_balance: 100,
+            total_voucher_balance: 200,
+          });
+        }),
+        { instanceId, adapterId: "adapter-balance" },
+      );
+
+      expect(requestedURL).toBe(`https://${host}/v1/accounts`);
+      expect(authorization).toBe("Bearer stepfun-test-key");
+      expect(result).toMatchObject({
+        supported: true,
+        source: "stepfun_account",
+        currency,
+        remaining: balance,
+      });
+      expect(JSON.stringify(result)).not.toContain("stepfun-test-key");
+    }
+  });
+
+  it("Step Plan 与相似中转域名不被当作 StepFun 开放平台账户", async () => {
+    const plan = await runBalance(
+      makeSettings("stepfun-plan", [
+        adapter({ supplierID: "stepfun", baseURL: "https://api.stepfun.com/step_plan" }),
+      ]),
+      asFetch(async () => {
+        throw new Error("Step Plan 未接入套餐用量接口");
+      }),
+      { instanceId: "stepfun-plan", adapterId: "adapter-balance" },
+    );
+    expect(plan.error?.code).toBe("unsupported_profile");
+
+    const requestedURLs: string[] = [];
+    await runBalance(
+      makeSettings("stepfun-relay", [
+        adapter({ supplierID: "stepfun_api", baseURL: "https://api.stepfun.com.relay.test/v1" }),
+      ]),
+      asFetch(async (input) => {
+        requestedURLs.push(String(input));
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+      { instanceId: "stepfun-relay", adapterId: "adapter-balance" },
+    );
+    expect(requestedURLs.length).toBeGreaterThan(0);
+    expect(
+      requestedURLs.every((url) => url.startsWith("https://api.stepfun.com.relay.test/")),
+    ).toBe(true);
+  });
+
+  it("已知但未接入余额接口的官方模板不盲探通用计费路径", async () => {
+    for (const [supplierID, baseURL] of [
+      ["openai", "https://api.openai.com/v1"],
+      ["stepfun", "https://api.stepfun.com/step_plan"],
+    ] as const) {
+      const instanceId = `unsupported-${supplierID}`;
+      const result = await runBalance(
+        makeSettings(instanceId, [adapter({ supplierID, baseURL })]),
+        asFetch(async () => {
+          throw new Error("未接入接口不应发起请求");
+        }),
+        { instanceId, adapterId: "adapter-balance" },
+      );
+      expect(result.error?.code).toBe("unsupported_profile");
+    }
+  });
+
+  it("Novita 中转仍可显式选择通用计费档案", async () => {
+    const result = await runBalance(
+      makeSettings("novita-relay", [
+        adapter({
+          supplierID: "novita",
+          baseURL: "https://api.novita.ai.relay.test/v1",
+          balanceProfile: "general",
+        }),
+      ]),
+      asFetch(async (input) =>
+        String(input).includes("billing/usage")
+          ? jsonResponse({ total_usage: 0 })
+          : jsonResponse({ hard_limit_usd: 10 }),
+      ),
+      { instanceId: "novita-relay", adapterId: "adapter-balance" },
+    );
+    expect(result).toMatchObject({ source: "openai_billing", remaining: 10 });
+  });
+
+  it("使用 OpenRouter 管理密钥查询账户余额且不回显凭据", async () => {
+    let requestedURL = "";
+    let authorization = "";
+    const result = await runBalance(
+      makeSettings("openrouter-account", [
+        adapter({
+          supplierID: "openrouter",
+          baseURL: "https://openrouter.ai/api/v1",
+          apiKey: "sk-or-chat",
+          balanceAccessToken: "sk-or-management",
+          balanceProfile: "official",
+        }),
+      ]),
+      asFetch(async (input, init) => {
+        requestedURL = String(input);
+        authorization = new Headers(init?.headers).get("authorization") ?? "";
+        return jsonResponse({ data: { total_credits: 100.5, total_usage: 25.75 } });
+      }),
+      { instanceId: "openrouter-account", adapterId: "adapter-balance" },
+    );
+
+    expect(requestedURL).toBe("https://openrouter.ai/api/v1/credits");
+    expect(authorization).toBe("Bearer sk-or-management");
+    expect(result).toMatchObject({
+      source: "openrouter_credits",
+      total: 100.5,
+      used: 25.75,
+      remaining: 74.75,
+    });
+    expect(JSON.stringify(result)).not.toContain("sk-or-management");
+    expect(JSON.stringify(result)).not.toContain("sk-or-chat");
+  });
+
+  it("普通 OpenRouter Key 只显示本 Key 限额，零值仍是成功结果", async () => {
+    let requestedURL = "";
+    const result = await runBalance(
+      makeSettings("openrouter-key", [
+        adapter({ supplierID: "openrouter", baseURL: "https://openrouter.ai/api/v1" }),
+      ]),
+      asFetch(async (input) => {
+        requestedURL = String(input);
+        return jsonResponse({ data: { limit: 50, limit_remaining: 0 } });
+      }),
+      { instanceId: "openrouter-key", adapterId: "adapter-balance" },
+    );
+
+    expect(requestedURL).toBe("https://openrouter.ai/api/v1/key");
+    expect(result).toMatchObject({
+      supported: true,
+      source: "openrouter_key_limit",
+      total: 50,
+      remaining: 0,
+    });
+  });
+
+  it("OpenRouter 管理密钥被拒绝时保留查询失败，不退回 Key 限额", async () => {
+    const requestedURLs: string[] = [];
+    const result = await runBalance(
+      makeSettings("openrouter-forbidden", [
+        adapter({
+          supplierID: "openrouter",
+          baseURL: "https://openrouter.ai/api/v1",
+          balanceAccessToken: "sk-or-invalid-management",
+        }),
+      ]),
+      asFetch(async (input) => {
+        requestedURLs.push(String(input));
+        return jsonResponse({ error: { message: "Only management keys" } }, 403);
+      }),
+      { instanceId: "openrouter-forbidden", adapterId: "adapter-balance" },
+    );
+
+    expect(requestedURLs).toEqual(["https://openrouter.ai/api/v1/credits"]);
+    expect(result.supported).toBe(false);
+    expect(result.error?.code).toBe("upstream_http");
+  });
+
+  it("相似 OpenRouter 中转域名不接收管理密钥", async () => {
+    const requestedURLs: string[] = [];
+    const seenHeaders: string[] = [];
+    await runBalance(
+      makeSettings("openrouter-relay", [
+        adapter({
+          supplierID: "openrouter",
+          baseURL: "https://openrouter.ai.relay.test/api/v1",
+          balanceAccessToken: "sk-or-management",
+        }),
+      ]),
+      asFetch(async (input, init) => {
+        requestedURLs.push(String(input));
+        seenHeaders.push(new Headers(init?.headers).get("authorization") ?? "");
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+      { instanceId: "openrouter-relay", adapterId: "adapter-balance" },
+    );
+
+    expect(requestedURLs).not.toContain("https://openrouter.ai/api/v1/credits");
+    expect(seenHeaders).not.toContain("Bearer sk-or-management");
+  });
+
   it("reports native gemini adapters as unsupported without any request", async () => {
     const result = await runBalance(
       makeSettings("instance-3", [
@@ -223,6 +597,75 @@ describe("ByokBalanceService", () => {
 
     expect(result.supported).toBe(false);
     expect(result.error?.code).toBe("unsupported_profile");
+  });
+
+  it("does not auto-probe SiliconFlow's retired account endpoint or generic billing paths", async () => {
+    for (const [supplierID, baseURL] of [
+      ["siliconflow", "https://api.siliconflow.cn/v1"],
+      ["siliconflow_en", "https://api.siliconflow.com/v1"],
+    ] as const) {
+      const result = await runBalance(
+        makeSettings(`instance-${supplierID}`, [adapter({ supplierID, baseURL })]),
+        asFetch(async () => {
+          throw new Error("官方地址的自动余额查询不应发起请求");
+        }),
+        { instanceId: `instance-${supplierID}`, adapterId: "adapter-balance" },
+      );
+
+      expect(result.supported).toBe(false);
+      expect(result.error?.code).toBe("unsupported_profile");
+    }
+  });
+
+  it("does not classify a SiliconFlow-like relay hostname as the official API", async () => {
+    const requestedURLs: string[] = [];
+    const result = await runBalance(
+      makeSettings("instance-siliconflow-relay", [
+        adapter({
+          supplierID: "siliconflow",
+          baseURL: "https://api.siliconflow.cn.relay.test/v1",
+        }),
+      ]),
+      asFetch(async (input) => {
+        requestedURLs.push(String(input));
+        if (String(input).endsWith("/v1/dashboard/billing/subscription")) {
+          return jsonResponse({ hard_limit_usd: 10 });
+        }
+        if (String(input).includes("billing/usage")) return jsonResponse({ total_usage: 0 });
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+      { instanceId: "instance-siliconflow-relay", adapterId: "adapter-balance" },
+    );
+
+    expect(requestedURLs).toContain(
+      "https://api.siliconflow.cn.relay.test/v1/dashboard/billing/subscription",
+    );
+    expect(result.supported).toBe(true);
+  });
+
+  it("keeps an explicitly selected relay billing profile on the SiliconFlow host", async () => {
+    const requestedURLs: string[] = [];
+    const result = await runBalance(
+      makeSettings("instance-siliconflow-general", [
+        adapter({
+          supplierID: "siliconflow",
+          baseURL: "https://api.siliconflow.cn/v1",
+          balanceProfile: "general",
+        }),
+      ]),
+      asFetch(async (input) => {
+        requestedURLs.push(String(input));
+        if (String(input).endsWith("/v1/dashboard/billing/subscription")) {
+          return jsonResponse({ hard_limit_usd: 10 });
+        }
+        if (String(input).includes("billing/usage")) return jsonResponse({ total_usage: 0 });
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+      { instanceId: "instance-siliconflow-general", adapterId: "adapter-balance" },
+    );
+
+    expect(requestedURLs).toContain("https://api.siliconflow.cn/v1/dashboard/billing/subscription");
+    expect(result.supported).toBe(true);
   });
 
   it("reports missing credentials without leaking anything", async () => {
@@ -251,10 +694,38 @@ describe("ByokBalanceService", () => {
     expect(result.error?.code).toBe("unsupported_profile");
   });
 
-  it("overrides a stored none profile when the host has an official balance endpoint", async () => {
-    // Adapters created before DeepSeek gained a verified balance
-    // implementation carry a stamped `balanceProfile: "none"`; the official
-    // host detection must override that legacy stamp.
+  it("缺少密钥时仍把明确不查询和无公开接口归为不支持", async () => {
+    for (const [instanceId, overrides] of [
+      ["instance-none-no-key", { balanceProfile: "none", apiKey: "" }],
+      [
+        "instance-gemini-no-key",
+        {
+          protocol: "gemini",
+          baseURL: "https://generativelanguage.googleapis.com/v1beta",
+          apiKey: "",
+        },
+      ],
+      [
+        "instance-siliconflow-no-key",
+        {
+          supplierID: "siliconflow",
+          baseURL: "https://api.siliconflow.cn/v1",
+          apiKey: "",
+        },
+      ],
+    ] as const) {
+      const result = await runBalance(
+        makeSettings(instanceId, [adapter(overrides)]),
+        asFetch(async () => {
+          throw new Error("不支持查询的通道不应发出网络请求");
+        }),
+        { instanceId, adapterId: "adapter-balance" },
+      );
+      expect(result).toMatchObject({ supported: false, error: { code: "unsupported_profile" } });
+    }
+  });
+
+  it("已明确选择不查询的通道在新增官方接口后仍保持不查询", async () => {
     const result = await runBalance(
       makeSettings("instance-deepseek-none", [
         adapter({
@@ -264,21 +735,13 @@ describe("ByokBalanceService", () => {
           balanceProfile: "none",
         }),
       ]),
-      asFetch(async () =>
-        jsonResponse({
-          is_available: true,
-          balance_infos: [{ currency: "CNY", total_balance: "18.25" }],
-        }),
-      ),
+      asFetch(async () => {
+        throw new Error("已选择不查询，不应发出网络请求");
+      }),
       { instanceId: "instance-deepseek-none", adapterId: "adapter-balance" },
     );
 
-    expect(result).toMatchObject({
-      supported: true,
-      source: "deepseek",
-      currency: "CNY",
-      remaining: 18.25,
-    });
+    expect(result).toMatchObject({ supported: false, error: { code: "unsupported_profile" } });
   });
 
   it("dashboard 聚合全部 BYOK 实例并区分 ok/unsupported/error，不泄漏密钥", async () => {

@@ -4,9 +4,11 @@ import {
   type ByokDelegationConfig,
   type ByokModelAdapter,
   type ByokPromptTemplateConfig,
+  type ByokSupplierCatalogEntry,
   type ProviderInstanceConfig,
   type ProviderInstanceId,
 } from "@codework/contracts";
+import { canRetainByokAdapterCredentials } from "@codework/client-runtime/byok/credential-scope";
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 
 export const DEFAULT_BYOK_DELEGATION: ByokDelegationConfig = {
@@ -247,6 +249,25 @@ export function adapterFormFromAdapter(adapter?: ByokModelAdapter): MobileByokAd
   };
 }
 
+/** 切换渠道后须重新选择模型，避免把旧供应商的模型请求路由到新地址。 */
+export function supplierSelectionPatch(
+  supplier: Pick<ByokSupplierCatalogEntry, "id" | "protocol" | "defaultBaseURL">,
+): Partial<MobileByokAdapterForm> {
+  return {
+    supplierID: supplier.id === "custom" ? "" : supplier.id,
+    protocol: supplier.protocol,
+    baseURL: supplier.defaultBaseURL,
+    apiKey: "",
+    modelId: "",
+    displayName: "",
+    contextWindowTokens: String(DEFAULT_CONTEXT_WINDOW_TOKENS),
+    maxOutputTokens: "",
+    balanceProfile: "auto",
+    balanceAccessToken: "",
+    balanceUserID: "",
+  };
+}
+
 export function buildByokAdapter(
   form: MobileByokAdapterForm,
   adapterId: string,
@@ -256,15 +277,28 @@ export function buildByokAdapter(
     groupName: _oldGroupName,
     supplierID: _oldSupplierID,
     apiKeyRedacted: _oldApiKeyRedacted,
+    apiKeySourceAdapterId: _oldApiKeySourceAdapterId,
+    balanceProfile: _oldBalanceProfile,
     balanceAccessTokenRedacted: _oldBalanceAccessTokenRedacted,
+    balanceUserID: _oldBalanceUserID,
     maxOutputTokens: _oldMaxOutputTokens,
     customHeaders: _oldCustomHeaders,
+    customHeadersRedacted: _oldCustomHeadersRedacted,
+    modelCatalogURL: _oldModelCatalogURL,
+    modelCatalogURLs: _oldModelCatalogURLs,
+    modelCatalogStatus: _oldModelCatalogStatus,
+    appendModelCatalogCandidates: _oldAppendModelCatalogCandidates,
     ...preserved
   } = existing ?? {};
   const apiKey = form.apiKey.trim();
   const balanceAccessToken = form.balanceAccessToken.trim();
   const maxOutputTokensRaw = form.maxOutputTokens.trim();
   const maxOutputTokens = maxOutputTokensRaw === "" ? undefined : Number(maxOutputTokensRaw);
+  const retainsStoredCredentials = canRetainByokAdapterCredentials(existing, {
+    ...(form.supplierID.trim() ? { supplierID: form.supplierID.trim() } : {}),
+    protocol: form.protocol,
+    baseURL: form.baseURL,
+  });
   return {
     ...preserved,
     id: adapterId,
@@ -273,18 +307,40 @@ export function buildByokAdapter(
     protocol: form.protocol,
     baseURL: form.baseURL.trim(),
     apiKey,
-    ...(apiKey.length === 0 && existing?.apiKeyRedacted === true ? { apiKeyRedacted: true } : {}),
+    ...(apiKey.length === 0 && retainsStoredCredentials && existing?.apiKeyRedacted === true
+      ? { apiKeyRedacted: true }
+      : {}),
+    ...(apiKey.length === 0 && retainsStoredCredentials && _oldApiKeySourceAdapterId
+      ? { apiKeySourceAdapterId: _oldApiKeySourceAdapterId }
+      : {}),
     modelId: form.modelId.trim(),
     contextWindowTokens: Number(form.contextWindowTokens.trim()),
     // 移动端不编辑自定义请求头：编辑已有通道时原样保留（密钥不出服务端）。
-    customHeaders: _oldCustomHeaders ?? "",
+    customHeaders: retainsStoredCredentials ? (_oldCustomHeaders ?? "") : "",
+    ...(retainsStoredCredentials && _oldCustomHeadersRedacted
+      ? { customHeadersRedacted: true }
+      : {}),
     ...(maxOutputTokens !== undefined && Number.isInteger(maxOutputTokens) && maxOutputTokens > 0
       ? { maxOutputTokens }
       : {}),
     ...(form.supplierID.trim() ? { supplierID: form.supplierID.trim() } : {}),
+    ...(retainsStoredCredentials && _oldModelCatalogURL
+      ? { modelCatalogURL: _oldModelCatalogURL }
+      : {}),
+    ...(retainsStoredCredentials && _oldModelCatalogURLs
+      ? { modelCatalogURLs: _oldModelCatalogURLs }
+      : {}),
+    ...(retainsStoredCredentials && _oldModelCatalogStatus
+      ? { modelCatalogStatus: _oldModelCatalogStatus }
+      : {}),
+    ...(retainsStoredCredentials && _oldAppendModelCatalogCandidates !== undefined
+      ? { appendModelCatalogCandidates: _oldAppendModelCatalogCandidates }
+      : {}),
     ...(form.balanceProfile !== "auto" ? { balanceProfile: form.balanceProfile } : {}),
     balanceAccessToken,
-    ...(balanceAccessToken.length === 0 && existing?.balanceAccessTokenRedacted === true
+    ...(balanceAccessToken.length === 0 &&
+    retainsStoredCredentials &&
+    existing?.balanceAccessTokenRedacted === true
       ? { balanceAccessTokenRedacted: true }
       : {}),
     ...(form.balanceUserID.trim() ? { balanceUserID: form.balanceUserID.trim() } : {}),

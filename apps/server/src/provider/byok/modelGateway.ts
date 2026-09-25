@@ -226,9 +226,16 @@ export const gatewayAdapterRoutes = (
             ),
         );
       const models = [...new Set(accounts.flatMap((account) => account?.models ?? []))];
-      // 官方 OAuth auth.json 通常没有 models 字段；请求本身携带模型时，
-      // 用该模型生成一次性目录路由，交给 pickLocalAccount 的空模型通配规则选账号。
-      if (models.length === 0 && requestedModel?.trim()) models.push(requestedModel.trim());
+      // 同池的其他账号即使声明了模型列表，无声明的账号仍可按请求模型通配；
+      // 仅为请求生成一次性路由，交给 pickLocalAccount 校验实际可选账号。
+      const requestedModelId = requestedModel?.trim();
+      if (
+        requestedModelId &&
+        !models.includes(requestedModelId) &&
+        accounts.some((account) => account?.models.length === 0)
+      ) {
+        models.push(requestedModelId);
+      }
       // 没有能力声明时不发布虚构模型；账号必须在导入凭据中声明可用模型。
       for (const modelId of models) {
         routes.push({
@@ -1535,7 +1542,7 @@ const gatewayHandler = (
       } else if (isRetryableLocalGatewayStatus(upstream.status) && attempt + 1 < maxAttempts) {
         localAccount = nextLocalAccount();
         if (localAccount !== undefined) {
-          // 丢弃首个错误响应，后续只透传新账号的完整流，避免混合两个响应。
+          // 丢弃当前错误响应，后续只透传新账号的完整流，避免混合多个响应。
           yield* upstream.text.pipe(Effect.orElseSucceed(() => ""));
           continue;
         }

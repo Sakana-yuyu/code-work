@@ -422,6 +422,57 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("px-1 text-sm leading-relaxed text-muted-foreground");
   });
 
+  it("shows one expandable history row while the current BYOK tool stays visible", () => {
+    const turnId = TurnId.make("turn-running-byok");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        isWorking
+        activeTurnStartedAt="2026-03-17T19:12:20.000Z"
+        latestTurn={{
+          turnId,
+          state: "running",
+          startedAt: "2026-03-17T19:12:20.000Z",
+          completedAt: null,
+        }}
+        timelineEntries={[
+          ...Array.from({ length: 4 }, (_, index) => ({
+            id: `reasoning-${index}`,
+            kind: "reasoning-summary" as const,
+            createdAt: `2026-03-17T19:12:2${index}.000Z`,
+            summaries: [
+              {
+                id: `summary-${index}`,
+                turnId,
+                createdAt: `2026-03-17T19:12:2${index}.000Z`,
+                text: `Old summary ${index}`,
+              },
+            ],
+          })),
+          {
+            id: "current-tool",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:25.000Z",
+            entry: {
+              id: "current-tool",
+              turnId,
+              createdAt: "2026-03-17T19:12:25.000Z",
+              label: "Terminal.snapshot",
+              tone: "tool",
+              toolLifecycleStatus: "inProgress",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-timeline-row-kind="activity-fold"');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain("4 earlier activity updates");
+    expect(markup).toContain("Terminal.snapshot");
+    expect(markup).not.toContain("Old summary");
+  });
+
   it("uses the larger leading inset only when the top fade is enabled", () => {
     const timelineEntries = [buildUserTimelineEntry("Hello")];
 

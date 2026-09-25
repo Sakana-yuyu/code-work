@@ -15,6 +15,10 @@
       "types": "./src/byok/protocol.ts",
       "default": "./src/byok/protocol.ts"
     },
+    "./byok/credential-scope": {
+      "types": "./src/byok/credentialScope.ts",
+      "default": "./src/byok/credentialScope.ts"
+    },
     "./composition/squad-builder": {
       "types": "./src/composition/squadBuilder.ts",
       "default": "./src/composition/squadBuilder.ts"

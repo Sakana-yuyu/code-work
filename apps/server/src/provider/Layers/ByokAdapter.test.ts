@@ -12,6 +12,7 @@ import * as Stream from "effect/Stream";
 import { HttpBody, HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import { ServerConfig } from "../../config.ts";
+import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 import * as ToolBroker from "../../composition/ToolBroker.ts";
 import { makeByokAdapter } from "./ByokAdapter.ts";
 
@@ -547,6 +548,16 @@ describe("ByokAdapter", () => {
           expect.objectContaining({ type: "item.started" }),
           expect.objectContaining({ type: "turn.completed", payload: { state: "completed" } }),
         ]),
+      );
+      const toolActivities = events
+        .flatMap((event) => runtimeEventToActivities(event))
+        .filter((activity) => activity.kind.startsWith("tool."));
+      expect(toolActivities.map((activity) => activity.kind)).toEqual([
+        "tool.started",
+        "tool.completed",
+      ]);
+      expect((toolActivities[0]?.payload as Record<string, unknown>).toolCallId).toBe(
+        (toolActivities[1]?.payload as Record<string, unknown>).toolCallId,
       );
     }).pipe(
       Effect.scoped,

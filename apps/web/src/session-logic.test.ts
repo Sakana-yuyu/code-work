@@ -1059,24 +1059,38 @@ describe("deriveWorkLogEntries", () => {
     });
   });
 
-  it("omits tool started entries and keeps completed entries", () => {
-    const activities: OrchestrationThreadActivity[] = [
-      makeActivity({
-        id: "tool-complete",
-        createdAt: "2026-02-23T00:00:03.000Z",
-        summary: "Tool call complete",
-        kind: "tool.completed",
-      }),
-      makeActivity({
-        id: "tool-start",
-        createdAt: "2026-02-23T00:00:02.000Z",
-        summary: "Tool call",
-        kind: "tool.started",
-      }),
-    ];
+  it("shows a started-only tool and folds its completion into one row", () => {
+    const started = makeActivity({
+      id: "tool-start",
+      createdAt: "2026-02-23T00:00:02.000Z",
+      summary: "Run tests started",
+      kind: "tool.started",
+      payload: { itemType: "mcp_tool_call", toolCallId: "call-1", title: "Run tests" },
+    });
+    expect(deriveWorkLogEntries([started])).toMatchObject([
+      { id: "tool-start", sourceActivityKind: "tool.started", toolLifecycleStatus: "inProgress" },
+    ]);
 
-    const entries = deriveWorkLogEntries(activities);
-    expect(entries.map((entry) => entry.id)).toEqual(["tool-complete"]);
+    const completed = makeActivity({
+      id: "tool-complete",
+      createdAt: "2026-02-23T00:00:03.000Z",
+      summary: "Run tests completed",
+      kind: "tool.completed",
+      payload: {
+        itemType: "mcp_tool_call",
+        toolCallId: "call-1",
+        title: "Run tests",
+        status: "failed",
+        detail: "Exit code 1",
+      },
+    });
+    expect(deriveWorkLogEntries([completed, started])).toMatchObject([
+      {
+        id: "tool-complete",
+        toolLifecycleStatus: "failed",
+        detail: "Exit code 1",
+      },
+    ]);
   });
 
   it("omits task.started but shows task.progress and task.completed", () => {

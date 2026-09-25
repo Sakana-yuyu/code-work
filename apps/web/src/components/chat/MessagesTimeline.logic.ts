@@ -256,6 +256,14 @@ export type MessagesTimelineRow =
       hasFailure: boolean;
     }
   | {
+      kind: "activity-fold";
+      id: string;
+      createdAt: string;
+      groupId: string;
+      count: number;
+      expanded: boolean;
+    }
+  | {
       kind: "turn-fold";
       id: string;
       createdAt: string;
@@ -448,12 +456,12 @@ function omitSupersededLifecycleMarkers<T>(
       workEntry.itemType ?? "",
       normalizedLabel,
     ].join("\u001f");
-    const isStatuslessIdlessMarker =
+    const isIdlessMarker =
       workEntry.toolCallId === undefined &&
-      workEntry.toolLifecycleStatus === undefined &&
       (workEntry.sourceActivityKind === "tool.started" ||
-        workEntry.sourceActivityKind === "tool.updated");
-    if (isStatuslessIdlessMarker && laterTerminalIdentities.has(identity)) continue;
+        (workEntry.sourceActivityKind === "tool.updated" &&
+          workEntry.toolLifecycleStatus === undefined));
+    if (isIdlessMarker && laterTerminalIdentities.has(identity)) continue;
 
     reversedEntries.push(entry);
     if (
@@ -1316,7 +1324,73 @@ export function deriveMessagesTimelineRows(
     appendWorkingRow();
   }
 
-  return mergeLocalPluginTimelineRows(nextRows, input.localPluginTimelineEntries ?? []);
+  const compactRows = foldActiveActivityRows(nextRows, unsettledTurnId, input);
+  return mergeLocalPluginTimelineRows(compactRows, input.localPluginTimelineEntries ?? []);
+}
+
+/** 将长时间运行的过程记录收成一行，正文、失败和当前工具仍留在时间线。 */
+function foldActiveActivityRows(
+  rows: MessagesTimelineRow[],
+  turnId: TurnId | null,
+  input: Pick<
+    Parameters<typeof deriveMessagesTimelineRows>[0],
+    "isWorking" | "expandedWorkGroupIds"
+  >,
+): MessagesTimelineRow[] {
+  if (!input.isWorking || turnId === null) return rows;
+  const workingIndex = rows.findIndex((row) => row.kind === "working");
+  if (workingIndex < 0) return rows;
+  const groupId = `activity:${turnId}`;
+  const foldedIndexes: number[] = [];
+  for (let index = workingIndex + 1; index < rows.length; index += 1) {
+    const row = rows[index]!;
+    if (row.kind === "reasoning-summary") {
+      foldedIndexes.push(index);
+    } else if (row.kind === "work-toggle" && !row.hasFailure) {
+      foldedIndexes.push(index);
+    } else if (
+      row.kind === "work" &&
+      row.groupedEntries.every(
+        (entry) =>
+          workLogEntryIsToolLike(entry) &&
+          entry.agentSpawn === undefined &&
+          entry.canvas === undefined &&
+          entry.tone !== "error" &&
+          entry.sourceActivityKind !== "goal.completed" &&
+          !workEntryDisplayIndicatesToolFailure(entry),
+      )
+    ) {
+      foldedIndexes.push(index);
+    }
+  }
+  if (foldedIndexes.length < 3) return rows;
+  const expanded = input.expandedWorkGroupIds?.has(groupId) ?? false;
+  // 用户已展开某个工具组时，保持完整上下文，避免新增事件把它折回去。
+  if (
+    !expanded &&
+    rows.slice(workingIndex + 1).some((row) => {
+      return (row.kind === "work-toggle" || row.kind === "work-live") && row.expanded;
+    })
+  ) {
+    return rows;
+  }
+  const foldedIndexSet = new Set(foldedIndexes);
+  const firstIndex = foldedIndexes[0]!;
+  const result: MessagesTimelineRow[] = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    if (index === firstIndex) {
+      result.push({
+        kind: "activity-fold",
+        id: `activity-fold:${turnId}`,
+        createdAt: rows[index]!.createdAt!,
+        groupId,
+        count: foldedIndexes.length,
+        expanded,
+      });
+    }
+    if (expanded || !foldedIndexSet.has(index)) result.push(rows[index]!);
+  }
+  return result;
 }
 
 export interface CachedTimelineHistory {
@@ -1492,6 +1566,11 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     case "narration-fold": {
       const bn = b as typeof a;
       return a.createdAt === bn.createdAt && a.count === bn.count && a.expanded === bn.expanded;
+    }
+
+    case "activity-fold": {
+      const bf = b as typeof a;
+      return a.createdAt === bf.createdAt && a.count === bf.count && a.expanded === bf.expanded;
     }
 
     case "proposed-plan":

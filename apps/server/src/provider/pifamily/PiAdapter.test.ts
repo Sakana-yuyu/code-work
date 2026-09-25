@@ -34,6 +34,7 @@ import {
 } from "@codework/contracts";
 
 import { ServerConfig } from "../../config.ts";
+import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 import { makePiAdapter } from "../Layers/PiAdapter.ts";
 import type { ProviderAdapterError } from "../Errors.ts";
 import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
@@ -222,6 +223,12 @@ describe("makePiAdapter", () => {
           expect(toolCompleted).toMatchObject({
             payload: { itemType: "command_execution", status: "completed" },
           });
+          expect(
+            recorder.events
+              .flatMap((event) => runtimeEventToActivities(event))
+              .filter((activity) => activity.kind.startsWith("tool."))
+              .map((activity) => activity.kind),
+          ).toEqual(["tool.started", "tool.completed"]);
 
           assertAllEventsDecode(recorder.events);
           yield* adapter.stopSession(threadId);

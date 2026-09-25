@@ -183,6 +183,49 @@ describe("gatewayAdapterRoutes", () => {
     expect(routes[0]?.apiKey).toBe("sk-relay");
   });
 
+  it("多供应商模型分别路由到所选供应商的地址、凭据和模型", () => {
+    const routes = gatewayAdapterRoutes(
+      settingsWithInstances({
+        byok: {
+          driver: "byok",
+          enabled: true,
+          config: byokConfig([
+            adapter({
+              id: "deepseek-model",
+              supplierID: "deepseek",
+              protocol: "openai",
+              baseURL: "https://api.deepseek.com/v1",
+              apiKey: "sk-deepseek",
+              modelId: "deepseek-chat",
+            }),
+            adapter({
+              id: "openrouter-model",
+              supplierID: "openrouter",
+              protocol: "openai",
+              baseURL: "https://openrouter.ai/api/v1",
+              apiKey: "sk-openrouter",
+              modelId: "openai/gpt-4.1",
+            }),
+          ]),
+        },
+      }),
+      "byok",
+    );
+
+    expect(pickGatewayAdapter(routes, "openai", "deepseek-model")).toMatchObject({
+      supplierID: "deepseek",
+      baseURL: "https://api.deepseek.com/v1",
+      apiKey: "sk-deepseek",
+      modelId: "deepseek-chat",
+    });
+    expect(pickGatewayAdapter(routes, "openai", "openrouter-model")).toMatchObject({
+      supplierID: "openrouter",
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: "sk-openrouter",
+      modelId: "openai/gpt-4.1",
+    });
+  });
+
   it("drops adapters without credentials or a gateway protocol", () => {
     const routes = gatewayAdapterRoutes(
       settingsWithInstances({
@@ -304,6 +347,42 @@ describe("gatewayAdapterRoutes", () => {
     expect(pickGatewayAdapter(routes, "openai", "local:codex:codex:gpt-5.4")?.localProvider).toBe(
       "codex",
     );
+  });
+  it("混合模型限制与通配账号时仍为请求模型生成唯一路由", () => {
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providerInstances: { codex: { driver: "codex", enabled: true, config: {} } },
+      localAccountPool: {
+        accounts: {
+          limited: {
+            id: "limited",
+            provider: "codex",
+            displayName: "Limited",
+            credentialRef: "limited-secret",
+            enabled: true,
+            models: ["gpt-5.4"],
+          },
+          wildcard: {
+            id: "wildcard",
+            provider: "codex",
+            displayName: "Wildcard",
+            credentialRef: "wildcard-secret",
+            enabled: true,
+            models: [],
+          },
+        },
+        strategy: "round-robin",
+        providerInstances: { codex: ["limited", "wildcard"] },
+      },
+    } as unknown as ServerSettings;
+
+    expect(gatewayAdapterRoutes(settings, "codex", "gpt-6").map((route) => route.id)).toEqual([
+      "local:codex:codex:gpt-5.4",
+      "local:codex:codex:gpt-6",
+    ]);
+    expect(gatewayAdapterRoutes(settings, "codex", "gpt-5.4").map((route) => route.id)).toEqual([
+      "local:codex:codex:gpt-5.4",
+    ]);
   });
   it("不为 OpenCode 发布无法使用 Codex OAuth 的 Chat Completions 路由", () => {
     const settings = {

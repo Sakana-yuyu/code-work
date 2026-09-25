@@ -419,7 +419,10 @@ it.layer(TestLayer, { excludeTestServices: true })("shared canonical tools", (it
           ? {}
           : { approvalRequestId: execApproval.approvalRequestId }),
       });
-      expect(executed).toMatchObject({ status: "succeeded", result: { status: "running" } });
+      expect(executed).toMatchObject({
+        status: "succeeded",
+        result: { status: "exited", history: "terminal output", exitCode: 0 },
+      });
       expect(executedCommands).toEqual([
         { threadId: "run-1", terminalId: "term-command", command: "node" },
       ]);

@@ -35,6 +35,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 import { ProviderAdapterProcessError, ProviderAdapterValidationError } from "../Errors.ts";
 import type { ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { makeClaudeAdapter, type ClaudeAdapterLiveOptions } from "./ClaudeAdapter.ts";
@@ -1034,6 +1035,17 @@ describe("ClaudeAdapterLive", () => {
           "item.completed",
           "turn.completed",
         ],
+      );
+      const projectedTools = runtimeEvents
+        .flatMap((event) => runtimeEventToActivities(event))
+        .filter((activity) => activity.kind.startsWith("tool."));
+      assert.deepEqual(
+        projectedTools.map((activity) => activity.kind),
+        ["tool.started", "tool.completed"],
+      );
+      assert.deepEqual(
+        projectedTools.map((activity) => (activity.payload as Record<string, unknown>).toolCallId),
+        ["tool-1", "tool-1"],
       );
 
       const turnStarted = runtimeEvents[3];

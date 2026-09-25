@@ -1789,4 +1789,47 @@ describe("ByokAgentLoop 只读工具轮内并发", () => {
       expect(toolOrder).toEqual(["read-1", "exec-1", "read-2"]);
     }),
   );
+
+  it.effect("同一条终端命令换新终端标识重放时，执行三次后结束回合", () =>
+    Effect.gen(function* () {
+      const command = {
+        cwd: "C:/workspace",
+        command: "powershell.exe",
+        args: ["-NoProfile", "-Command", "Write-Output 'same'"],
+      };
+      let executions = 0;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            executions += 1;
+            return { ...makeResult(input), result: { history: "same", status: "exited" } };
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) =>
+          Stream.fromIterable([
+            {
+              type: "tool_call" as const,
+              toolCallId: `exec-${input.turn}`,
+              canonicalToolName: "terminal.exec",
+              arguments: { ...command, terminalId: `t${input.turn}` },
+            },
+            { type: "model_completed" as const },
+          ]),
+      };
+
+      const result = yield* runByokAgentLoop({ ...baseInput }, model, broker);
+
+      expect(executions).toBe(3);
+      expect(result.rounds).toBe(4);
+      const blocked = result.messages.find(
+        (message) => message.role === "tool" && message.toolCallId === "exec-4",
+      );
+      expect(blocked?.role === "tool" ? decodeUnknownJson(blocked.content) : null).toMatchObject({
+        status: "failed",
+        errorCode: "repeated_terminal_command",
+      });
+    }),
+  );
 });

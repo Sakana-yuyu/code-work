@@ -1176,6 +1176,11 @@ export const en: Record<string, string> = {
   "byokBalanceMobile.unlimited": "Unlimited",
   "byokBalanceMobile.plan": "Plan",
   "byokBalanceMobile.remaining": "Remaining",
+  "byokBalanceMobile.keyLimitRemaining":
+    "This API key's remaining spend limit (not account balance)",
+  "byokBalanceMobile.keyLimitTotal": "This API key's spend limit",
+  "byokBalanceMobile.keyNoLimit":
+    "This API key has no spend limit; account balance requires a management key.",
   "byokBalanceMobile.used": "Used",
   "byokBalanceMobile.total": "Total",
   "byokBalanceMobile.resets": "Resets",
@@ -3782,6 +3787,9 @@ export const zhCN: Record<string, string> = {
   "byokBalanceMobile.unlimited": "额度不限",
   "byokBalanceMobile.plan": "套餐",
   "byokBalanceMobile.remaining": "剩余",
+  "byokBalanceMobile.keyLimitRemaining": "当前 API Key 剩余支出限额（非账户余额）",
+  "byokBalanceMobile.keyLimitTotal": "当前 API Key 支出限额",
+  "byokBalanceMobile.keyNoLimit": "当前 API Key 未设置支出上限；账户余额需管理密钥查询。",
   "byokBalanceMobile.used": "已用",
   "byokBalanceMobile.total": "总量",
   "byokBalanceMobile.resets": "重置时间",

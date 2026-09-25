@@ -1,6 +1,7 @@
 import { MessageId, type TurnId } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { setCurrentLanguage } from "~/i18n/runtime";
+import type { TimelineEntry } from "../../session-logic";
 
 setCurrentLanguage("en");
 import {
@@ -145,6 +146,146 @@ describe("deriveMessagesTimelineRowsWithCachedHistory", () => {
     const afterSteer = deriveMessagesTimelineRowsWithCachedHistory(steeredInput, streamed.history);
     expect(afterSteer.reusedHistory).toBe(false);
     expect(afterSteer.rows).toEqual(deriveMessagesTimelineRows(steeredInput));
+  });
+});
+
+describe("active activity history", () => {
+  it("folds noisy BYOK process rows while keeping failures, assistant text and the running tool visible", () => {
+    const turnId = "turn-byok" as TurnId;
+    const timelineEntries: TimelineEntry[] = Array.from({ length: 5 }, (_, index) => [
+      {
+        kind: "reasoning-summary" as const,
+        id: `reasoning-${index}`,
+        createdAt: `2026-01-01T00:00:${String(index * 2 + 1).padStart(2, "0")}Z`,
+        summaries: [
+          {
+            id: `summary-${index}`,
+            turnId,
+            createdAt: `2026-01-01T00:00:${String(index * 2 + 1).padStart(2, "0")}Z`,
+            text: "Reasoning summary",
+          },
+        ],
+      },
+      {
+        kind: "work" as const,
+        id: `work-${index}`,
+        createdAt: `2026-01-01T00:00:${String(index * 2 + 2).padStart(2, "0")}Z`,
+        entry: {
+          id: `tool-${index}`,
+          turnId,
+          createdAt: `2026-01-01T00:00:${String(index * 2 + 2).padStart(2, "0")}Z`,
+          label: "Workspace.search_contents",
+          tone: index === 2 ? ("error" as const) : ("tool" as const),
+          toolLifecycleStatus: index === 2 ? ("failed" as const) : ("completed" as const),
+        },
+      },
+    ]).flat();
+    timelineEntries.push(
+      {
+        kind: "message",
+        id: "assistant-progress",
+        createdAt: "2026-01-01T00:00:11Z",
+        message: {
+          id: "assistant-progress" as never,
+          role: "assistant",
+          text: "已确认问题，正在验证修复。",
+          turnId,
+          createdAt: "2026-01-01T00:00:11Z",
+          updatedAt: "2026-01-01T00:00:11Z",
+          streaming: false,
+        },
+      },
+      {
+        kind: "work",
+        id: "current-tool",
+        createdAt: "2026-01-01T00:00:12Z",
+        entry: {
+          id: "current-tool",
+          turnId,
+          createdAt: "2026-01-01T00:00:12Z",
+          label: "Running tests",
+          tone: "tool",
+          toolLifecycleStatus: "inProgress",
+        },
+      },
+    );
+    const input = {
+      timelineEntries,
+      latestTurn: {
+        turnId,
+        state: "running" as const,
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    };
+
+    const collapsed = deriveMessagesTimelineRows(input);
+    expect(collapsed.map((row) => row.kind)).toEqual([
+      "working",
+      "activity-fold",
+      "work",
+      "message",
+      "work-live",
+    ]);
+    expect(collapsed.find((row) => row.kind === "activity-fold")).toMatchObject({
+      count: 9,
+      expanded: false,
+    });
+    const expanded = deriveMessagesTimelineRows({
+      ...input,
+      expandedWorkGroupIds: new Set([`activity:${turnId}`]),
+    });
+    expect(expanded.find((row) => row.kind === "activity-fold")).toMatchObject({
+      expanded: true,
+    });
+    expect(expanded.filter((row) => row.kind === "reasoning-summary")).toHaveLength(5);
+    expect(expanded.filter((row) => row.kind === "work-toggle")).toHaveLength(4);
+    expect(expanded.at(-1)?.kind).toBe("work-live");
+
+    const inspectingTool = deriveMessagesTimelineRows({
+      ...input,
+      expandedWorkGroupIds: new Set([`activity:${turnId}`, "work-group:work-0"]),
+    });
+    expect(inspectingTool.some((row) => row.kind === "activity-fold")).toBe(true);
+    expect(inspectingTool.some((row) => row.kind === "work" && row.id === "tool-0")).toBe(true);
+
+    const concurrent = deriveMessagesTimelineRows({
+      ...input,
+      timelineEntries: [
+        ...timelineEntries,
+        {
+          kind: "reasoning-summary",
+          id: "reasoning-after-current",
+          createdAt: "2026-01-01T00:00:13Z",
+          summaries: [
+            {
+              id: "summary-after-current",
+              turnId,
+              createdAt: "2026-01-01T00:00:13Z",
+              text: "Checking both tools",
+            },
+          ],
+        },
+        {
+          kind: "work",
+          id: "second-running-tool",
+          createdAt: "2026-01-01T00:00:14Z",
+          entry: {
+            id: "second-running-tool",
+            turnId,
+            createdAt: "2026-01-01T00:00:14Z",
+            label: "Running another test",
+            tone: "tool",
+            toolLifecycleStatus: "inProgress",
+          },
+        },
+      ],
+    });
+    expect(concurrent.filter((row) => row.kind === "work-live")).toHaveLength(2);
   });
 });
 

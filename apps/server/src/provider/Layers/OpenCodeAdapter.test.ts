@@ -38,6 +38,7 @@ import {
   makeOpenCodeAdapter,
   mergeOpenCodeAssistantText,
 } from "./OpenCodeAdapter.ts";
+import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 
 // Test-local service tag so the rest of the file can keep using `yield* OpenCodeAdapter`.
 class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, OpenCodeAdapterShape>()(
@@ -1147,6 +1148,98 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       if (completed?.type === "item.completed") {
         NodeAssert.equal(completed.payload.detail, "A BBonus");
       }
+    }),
+  );
+
+  it.effect("将 OpenCode 正文与工具失败生命周期投影到共用时间线", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-opencode-tool-timeline");
+      const sessionID = "http://127.0.0.1:9999/session";
+      const tool = {
+        id: "part-tool-1",
+        sessionID,
+        messageID: "msg-tool-1",
+        type: "tool",
+        callID: "call-tool-1",
+        tool: "bash",
+      };
+      runtimeMock.state.subscribedEvents = [
+        {
+          type: "message.updated",
+          properties: { sessionID, info: { id: "msg-tool-1", role: "assistant" } },
+        },
+        {
+          type: "message.part.updated",
+          properties: {
+            sessionID,
+            part: {
+              id: "part-text-1",
+              sessionID,
+              messageID: "msg-tool-1",
+              type: "text",
+              text: "先运行检查",
+              time: { start: 1 },
+            },
+          },
+        },
+        ...[
+          { status: "pending", input: { command: "check" }, raw: "" },
+          { status: "running", input: { command: "check" }, title: "检查", time: { start: 2 } },
+          {
+            status: "error",
+            input: { command: "check" },
+            error: "检查失败",
+            time: { start: 2, end: 3 },
+          },
+        ].map((state) => ({
+          type: "message.part.updated",
+          properties: { sessionID, part: { ...tool, state } },
+        })),
+      ];
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            (event.type === "content.delta" || event.type.startsWith("item.")),
+        ),
+        Stream.take(4),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      NodeAssert.deepEqual(
+        events.map((event) => event.type),
+        ["content.delta", "item.started", "item.updated", "item.completed"],
+      );
+      const delta = events[0];
+      NodeAssert.equal(delta?.type, "content.delta");
+      if (delta?.type === "content.delta") NodeAssert.equal(delta.payload.delta, "先运行检查");
+
+      const activities = events.flatMap((event) => runtimeEventToActivities(event));
+      NodeAssert.deepEqual(
+        activities.map((activity) => activity.kind),
+        ["tool.started", "tool.updated", "tool.completed"],
+      );
+      NodeAssert.deepEqual(
+        activities.map((activity) => ({
+          toolCallId: (activity.payload as Record<string, unknown>).toolCallId,
+          status: (activity.payload as Record<string, unknown>).status,
+        })),
+        [
+          { toolCallId: "call-tool-1", status: "inProgress" },
+          { toolCallId: "call-tool-1", status: "inProgress" },
+          { toolCallId: "call-tool-1", status: "failed" },
+        ],
+      );
+      NodeAssert.equal((activities[2]?.payload as Record<string, unknown>).detail, "检查失败");
     }),
   );
 

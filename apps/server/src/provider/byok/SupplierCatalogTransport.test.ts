@@ -44,4 +44,23 @@ describe("SupplierCatalogTransport", () => {
       },
     ]);
   });
+
+  it("公开目录将 Step Plan 与两个地区的开放平台 API 分开", () => {
+    const entries = publicSupplierCatalog().filter((entry) => entry.id.startsWith("stepfun"));
+    expect(entries.map((entry) => entry.id).sort()).toEqual([
+      "stepfun",
+      "stepfun_api",
+      "stepfun_api_en",
+      "stepfun_en",
+    ]);
+    expect(entries.find((entry) => entry.id === "stepfun")?.defaultBaseURL).toBe(
+      "https://api.stepfun.com/step_plan",
+    );
+    expect(entries.find((entry) => entry.id === "stepfun_api")?.defaultBaseURL).toBe(
+      "https://api.stepfun.com/v1",
+    );
+    expect(entries.find((entry) => entry.id === "stepfun_api_en")?.defaultBaseURL).toBe(
+      "https://api.stepfun.ai/v1",
+    );
+  });
 });

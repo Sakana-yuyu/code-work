@@ -8,6 +8,7 @@ import type {
   ServerSettingsError,
 } from "@codework/contracts";
 import { resolveProviderInstanceEnabled } from "@codework/contracts";
+import * as NodeCrypto from "node:crypto";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -19,8 +20,13 @@ import {
   balanceCacheGet,
   balanceCacheSet,
   parseDeepSeekBalance,
+  parseMoonshotBalance,
+  parseNovitaAccount,
+  parseStepFunAccount,
   parseNewAPIQuota,
   parseOpenAIBilling,
+  parseOpenRouterCredits,
+  parseOpenRouterKeyLimit,
   parseZhipuBalance,
   resolveBalanceProfile,
   shouldCacheBalanceResult,
@@ -115,16 +121,19 @@ const adapterFromSettings = (
 };
 
 const fingerprintFor = (adapter: ByokModelAdapter): string =>
-  JSON.stringify([
-    adapter.protocol,
-    adapter.baseURL,
-    adapter.supplierID ?? "",
-    adapter.balanceProfile ?? "",
-    adapter.balanceUserID ?? "",
-    // Token length only: rotates the cache when the stored secret changes
-    // without embedding the secret itself in the fingerprint.
-    adapter.balanceAccessToken?.length ?? 0,
-  ]);
+  NodeCrypto.createHash("sha256")
+    .update(
+      JSON.stringify([
+        adapter.protocol,
+        adapter.baseURL,
+        adapter.supplierID ?? "",
+        adapter.balanceProfile ?? "",
+        adapter.balanceUserID ?? "",
+        adapter.apiKey,
+        adapter.balanceAccessToken ?? "",
+      ]),
+    )
+    .digest("hex");
 
 const billingOrigin = (baseURL: string): string | null => {
   try {
@@ -209,11 +218,112 @@ const usesOfficialDeepSeekEndpoint = (baseURL: string): boolean => {
   }
 };
 
+const usesOfficialNovitaEndpoint = (baseURL: string): boolean => {
+  try {
+    const url = new URL(baseURL);
+    return url.protocol === "https:" && url.hostname.toLowerCase() === "api.novita.ai";
+  } catch {
+    return false;
+  }
+};
+
+const moonshotRegion = (baseURL: string): "CNY" | "USD" | null => {
+  try {
+    const url = new URL(baseURL);
+    if (url.protocol !== "https:") return null;
+    if (url.hostname.toLowerCase() === "api.moonshot.cn") return "CNY";
+    if (url.hostname.toLowerCase() === "api.moonshot.ai") return "USD";
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const stepfunRegion = (baseURL: string): "CNY" | "USD" | null => {
+  try {
+    const url = new URL(baseURL);
+    if (url.protocol !== "https:" || !/^\/v1(?:\/|$)/u.test(url.pathname)) return null;
+    if (url.hostname.toLowerCase() === "api.stepfun.com") return "CNY";
+    if (url.hostname.toLowerCase() === "api.stepfun.ai") return "USD";
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const usesOfficialSiliconFlowEndpoint = (baseURL: string): boolean => {
+  try {
+    const url = new URL(baseURL);
+    return (
+      url.protocol === "https:" &&
+      (url.hostname.toLowerCase() === "api.siliconflow.cn" ||
+        url.hostname.toLowerCase() === "api.siliconflow.com")
+    );
+  } catch {
+    return false;
+  }
+};
+
+const usesOfficialOpenRouterEndpoint = (baseURL: string): boolean => {
+  try {
+    const url = new URL(baseURL);
+    return url.protocol === "https:" && url.hostname.toLowerCase() === "openrouter.ai";
+  } catch {
+    return false;
+  }
+};
+
+const openRouterAttempts = (adapter: ByokModelAdapter): readonly BalanceAttempt[] => {
+  const managementKey = adapter.balanceAccessToken?.trim();
+  return [
+    {
+      endpoint: managementKey
+        ? "https://openrouter.ai/api/v1/credits"
+        : "https://openrouter.ai/api/v1/key",
+      headers: {
+        authorization: `Bearer ${managementKey || adapter.apiKey}`,
+        accept: "application/json",
+      },
+      parse: managementKey ? parseOpenRouterCredits : parseOpenRouterKeyLimit,
+    },
+  ];
+};
+
 const deepSeekAttempts = (adapter: ByokModelAdapter): readonly BalanceAttempt[] => [
   {
     endpoint: "https://api.deepseek.com/user/balance",
     headers: { authorization: `Bearer ${adapter.apiKey}`, accept: "application/json" },
     parse: (payload) => parseDeepSeekBalance(payload),
+  },
+];
+
+const novitaAttempts = (adapter: ByokModelAdapter): readonly BalanceAttempt[] => [
+  {
+    endpoint: "https://api.novita.ai/v3/user",
+    headers: { authorization: `Bearer ${adapter.apiKey}`, accept: "application/json" },
+    parse: (payload) => parseNovitaAccount(payload),
+  },
+];
+
+const moonshotAttempts = (
+  adapter: ByokModelAdapter,
+  currency: "CNY" | "USD",
+): readonly BalanceAttempt[] => [
+  {
+    endpoint: `https://api.moonshot.${currency === "CNY" ? "cn" : "ai"}/v1/users/me/balance`,
+    headers: { authorization: `Bearer ${adapter.apiKey}`, accept: "application/json" },
+    parse: (payload) => parseMoonshotBalance(payload, currency),
+  },
+];
+
+const stepfunAttempts = (
+  adapter: ByokModelAdapter,
+  currency: "CNY" | "USD",
+): readonly BalanceAttempt[] => [
+  {
+    endpoint: `https://api.stepfun.${currency === "CNY" ? "com" : "ai"}/v1/accounts`,
+    headers: { authorization: `Bearer ${adapter.apiKey}`, accept: "application/json" },
+    parse: (payload) => parseStepFunAccount(payload, currency),
   },
 ];
 
@@ -329,7 +439,6 @@ export const make = Effect.gen(function* () {
       const settings = yield* serverSettings.getSettings;
       const adapter = adapterFromSettings(settings, input);
       if (!adapter) return failure(input, "settings", "unsupported_profile");
-      if (adapter.apiKey.trim() === "") return failure(input, "settings", "missing_credentials");
       const template = supplierTemplate(adapter.supplierID);
       const profile = resolveBalanceProfile({
         requestedProfile: adapter.balanceProfile,
@@ -348,15 +457,11 @@ export const make = Effect.gen(function* () {
           return { ...cached.result, cached: true };
         }
       }
-      // A stored "none" used to be stamped onto adapters whose supplier has
-      // since gained a verified balance implementation (e.g. DeepSeek), so a
-      // known-official host or supplier overrides the legacy opt-out; the
-      // query is user-initiated anyway. Everything else stays hard-opted-out.
+      // “不查询”是用户显式选择，即使后来接入官方接口也不能自动取消。
       const supportedProfile =
         profile === "general" || profile === "newapi" || profile === "auto"
           ? profile
-          : profile === "none" &&
-              (usesOfficialDeepSeekEndpoint(adapter.baseURL) || template.usage.status === "fixed")
+          : profile === "official" && usesOfficialOpenRouterEndpoint(adapter.baseURL)
             ? ("auto" as const)
             : null;
       // 智谱计费域有专属接口族：模板声明为 token_plan（或用户落在该域的
@@ -371,18 +476,45 @@ export const make = Effect.gen(function* () {
       if (adapter.protocol === "gemini" && supportedProfile === "auto") {
         return failure(input, "manual", "unsupported_profile");
       }
+      // SiliconFlow 已停用 /user/info，官方尚未公告替代的账号接口；自动探测会产生误报。
+      if (supportedProfile === "auto" && usesOfficialSiliconFlowEndpoint(adapter.baseURL)) {
+        return failure(input, "manual", "unsupported_profile");
+      }
+      // 已知官方供应商若没有接入余额接口，自动模式不应把推理 Key 盲发给通用中转计费路径。
+      // 用户显式选择通用计费或 NewAPI 时，仍允许自行配置这些路径。
+      if (
+        supportedProfile === "auto" &&
+        template.id !== "custom" &&
+        template.usage.status === "none" &&
+        billingOrigin(adapter.baseURL) === billingOrigin(template.baseURL)
+      ) {
+        return failure(input, "manual", "unsupported_profile");
+      }
+      if (adapter.apiKey.trim() === "") return failure(input, "settings", "missing_credentials");
       const candidateProfiles: readonly ("general" | "newapi")[] =
         supportedProfile === "general" || supportedProfile === "newapi"
           ? [supportedProfile]
-          : ["general", "newapi"];
+          : template.id === "openrouter" && !usesOfficialOpenRouterEndpoint(adapter.baseURL)
+            ? ["general"]
+            : ["general", "newapi"];
+      const moonshotCurrency = moonshotRegion(adapter.baseURL);
+      const stepfunCurrency = stepfunRegion(adapter.baseURL);
       const attempts =
         zhipuOrigin !== null
           ? zhipuAttempts(adapter)
           : usesOfficialDeepSeekEndpoint(adapter.baseURL)
             ? deepSeekAttempts(adapter)
-            : candidateProfiles.flatMap((candidateProfile) =>
-                attemptsFor(adapter, candidateProfile),
-              );
+            : usesOfficialNovitaEndpoint(adapter.baseURL)
+              ? novitaAttempts(adapter)
+              : moonshotCurrency !== null
+                ? moonshotAttempts(adapter, moonshotCurrency)
+                : stepfunCurrency !== null
+                  ? stepfunAttempts(adapter, stepfunCurrency)
+                  : supportedProfile === "auto" && usesOfficialOpenRouterEndpoint(adapter.baseURL)
+                    ? openRouterAttempts(adapter)
+                    : candidateProfiles.flatMap((candidateProfile) =>
+                        attemptsFor(adapter, candidateProfile),
+                      );
       let lastError: ByokBalanceResult | undefined;
       for (const attempt of attempts) {
         const response = yield* Effect.result(

@@ -73,7 +73,7 @@ export interface ThreadFeedActivity {
     | "wrench"
     | "zap";
   readonly toolLike: boolean;
-  readonly status: "success" | "failure" | "neutral" | null;
+  readonly status: "success" | "failure" | "inProgress" | "neutral" | null;
 }
 
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
@@ -92,6 +92,7 @@ interface WorkLogEntry {
   tone: "thinking" | "tool" | "info" | "error";
   toolTitle?: string;
   itemType?: ToolLifecycleItemType;
+  toolCallId?: string;
   requestKind?: PendingApproval["requestKind"];
   toolLifecycleStatus?: WorkLogToolLifecycleStatus;
   toolData?: unknown;
@@ -343,7 +344,6 @@ function deriveWorkLogEntries(
   const ordered = Arr.sort(activities, activityOrder);
   const entries: DerivedWorkLogEntry[] = [];
   for (const activity of ordered) {
-    if (activity.kind === "tool.started") continue;
     if (activity.kind === "task.started") continue;
     // Terminal bypassed updates pass: Codex children's only terminal signal.
     if (activity.kind === "task.updated" && !isTerminalBypassUpdate(activity)) continue;
@@ -469,9 +469,16 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (requestKind) {
     entry.requestKind = requestKind;
   }
+  const toolCallId =
+    asTrimmedString(payload?.toolCallId) ?? asTrimmedString(asRecord(payload?.data)?.toolCallId);
+  if (toolCallId) {
+    entry.toolCallId = toolCallId;
+  }
   let toolLifecycleStatus = extractWorkLogToolLifecycleStatus(payload);
   if (!toolLifecycleStatus && activity.kind === "tool.completed") {
     toolLifecycleStatus = "completed";
+  } else if (!toolLifecycleStatus && activity.kind === "tool.started") {
+    toolLifecycleStatus = "inProgress";
   }
   if (toolLifecycleStatus) {
     entry.toolLifecycleStatus = toolLifecycleStatus;
@@ -490,6 +497,7 @@ function collapseDerivedWorkLogEntries(
   // Subagent rows collapse by identity, not adjacency (quiet-timeline
   // guarantee; mirrors web's session-logic).
   const taskRowIndex = new Map<string, number>();
+  const toolRowIndex = new Map<string, number>();
   for (const entry of entries) {
     const isTaskRow =
       entry.taskId !== undefined &&
@@ -506,12 +514,29 @@ function collapseDerivedWorkLogEntries(
       collapsed.push(entry);
       continue;
     }
+    const toolKey = entry.toolCallId
+      ? `tool:${entry.turnId ?? "no-turn"}:${entry.toolCallId}`
+      : undefined;
+    const matchingIndex = toolKey ? toolRowIndex.get(toolKey) : undefined;
+    if (
+      matchingIndex !== undefined &&
+      shouldCollapseToolLifecycleEntries(collapsed[matchingIndex]!, entry)
+    ) {
+      collapsed[matchingIndex] = mergeDerivedWorkLogEntries(collapsed[matchingIndex]!, entry);
+      continue;
+    }
     const previous = collapsed.at(-1);
     if (previous && shouldCollapseToolLifecycleEntries(previous, entry)) {
       collapsed[collapsed.length - 1] = mergeDerivedWorkLogEntries(previous, entry);
+      if (toolKey) {
+        toolRowIndex.set(toolKey, collapsed.length - 1);
+      }
       continue;
     }
     collapsed.push(entry);
+    if (toolKey) {
+      toolRowIndex.set(toolKey, collapsed.length - 1);
+    }
   }
   return collapsed;
 }
@@ -520,10 +545,18 @@ function shouldCollapseToolLifecycleEntries(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry,
 ): boolean {
-  if (previous.activityKind !== "tool.updated" && previous.activityKind !== "tool.completed") {
+  if (
+    previous.activityKind !== "tool.started" &&
+    previous.activityKind !== "tool.updated" &&
+    previous.activityKind !== "tool.completed"
+  ) {
     return false;
   }
-  if (next.activityKind !== "tool.updated" && next.activityKind !== "tool.completed") {
+  if (
+    next.activityKind !== "tool.started" &&
+    next.activityKind !== "tool.updated" &&
+    next.activityKind !== "tool.completed"
+  ) {
     return false;
   }
   if (previous.activityKind === "tool.completed") {
@@ -541,6 +574,7 @@ function mergeDerivedWorkLogEntries(
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
   const toolTitle = next.toolTitle ?? previous.toolTitle;
+  const toolCallId = next.toolCallId ?? previous.toolCallId;
   const itemType = next.itemType ?? previous.itemType;
   const requestKind = next.requestKind ?? previous.requestKind;
   const collapseKey = next.collapseKey ?? previous.collapseKey;
@@ -555,6 +589,7 @@ function mergeDerivedWorkLogEntries(
     ...(rawCommand ? { rawCommand } : {}),
     ...(changedFiles.length > 0 ? { changedFiles } : {}),
     ...(toolTitle ? { toolTitle } : {}),
+    ...(toolCallId ? { toolCallId } : {}),
     ...(itemType ? { itemType } : {}),
     ...(requestKind ? { requestKind } : {}),
     ...(collapseKey ? { collapseKey } : {}),
@@ -576,8 +611,15 @@ function mergeChangedFiles(
 }
 
 function deriveToolLifecycleCollapseKey(entry: DerivedWorkLogEntry): string | undefined {
-  if (entry.activityKind !== "tool.updated" && entry.activityKind !== "tool.completed") {
+  if (
+    entry.activityKind !== "tool.started" &&
+    entry.activityKind !== "tool.updated" &&
+    entry.activityKind !== "tool.completed"
+  ) {
     return undefined;
+  }
+  if (entry.toolCallId) {
+    return `tool:${entry.turnId ?? "no-turn"}:${entry.toolCallId}`;
   }
   const normalizedLabel = normalizeCompactToolLabel(entry.toolTitle ?? entry.label);
   const detail = entry.detail?.trim() ?? "";
@@ -589,7 +631,7 @@ function deriveToolLifecycleCollapseKey(entry: DerivedWorkLogEntry): string | un
 }
 
 function normalizeCompactToolLabel(value: string): string {
-  return value.replace(/\s+(?:complete|completed)\s*$/i, "").trim();
+  return value.replace(/\s+(?:started|complete|completed)\s*$/i, "").trim();
 }
 
 function workLogEntryIsToolLike(entry: WorkLogEntry): boolean {
@@ -659,6 +701,9 @@ function workEntryStatus(entry: WorkLogEntry): ThreadFeedActivity["status"] {
   }
   if (workEntryIndicatesToolFailure(entry)) {
     return "failure";
+  }
+  if (entry.toolLifecycleStatus === "inProgress") {
+    return "inProgress";
   }
   if (workEntryIndicatesToolSuccess(entry)) {
     return "success";

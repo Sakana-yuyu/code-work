@@ -1212,6 +1212,11 @@ export const ja: Record<string, string> = {
   "byokBalanceMobile.unlimited": "無制限",
   "byokBalanceMobile.plan": "プラン",
   "byokBalanceMobile.remaining": "残り",
+  "byokBalanceMobile.keyLimitRemaining":
+    "この API キーの残り利用上限（アカウント残高ではありません）",
+  "byokBalanceMobile.keyLimitTotal": "この API キーの利用上限",
+  "byokBalanceMobile.keyNoLimit":
+    "この API キーに利用上限はありません。アカウント残高には管理キーが必要です。",
   "byokBalanceMobile.used": "使用済み",
   "byokBalanceMobile.total": "合計",
   "byokBalanceMobile.resets": "リセット",

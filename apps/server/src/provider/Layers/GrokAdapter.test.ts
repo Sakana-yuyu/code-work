@@ -27,6 +27,7 @@ import {
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 
 import { ServerConfig } from "../../config.ts";
+import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 import {
   grokPromptSettlementBelongsToContext,
   isGrokEnterPlanModeToolCall,
@@ -909,6 +910,20 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       );
       yield* Fiber.join(sendTurnFiber);
       assert.equal(completed.payload.state, "failed");
+
+      const projectedTools = runtimeEvents
+        .flatMap((event) => runtimeEventToActivities(event))
+        .filter((activity) => activity.kind.startsWith("tool."));
+      assert.isAtLeast(projectedTools.length, 1);
+      assert.include(
+        projectedTools.map((activity) => activity.kind),
+        "tool.updated",
+      );
+      assert.isTrue(
+        projectedTools.some(
+          (activity) => (activity.payload as Record<string, unknown>).status === "inProgress",
+        ),
+      );
 
       yield* Fiber.interrupt(runtimeEventsFiber);
       yield* adapter.stopSession(threadId);

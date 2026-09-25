@@ -204,4 +204,110 @@ describe("UsagePlanView", () => {
     expect(markup).toContain("+1");
     expect(markup.match(/byokFeatures.balanceQuery/g)).toHaveLength(1);
   });
+
+  it("将 OpenRouter 单 Key 限额与账户余额分开标注", () => {
+    const entry = {
+      instanceId: "openrouter-main",
+      instanceLabel: "OpenRouter",
+      adapterId: "key",
+      adapterLabel: "OpenRouter Key",
+      environmentId: "env-test" as ByokBalanceQueryTarget["environmentId"],
+      baseURL: "https://openrouter.ai/api/v1",
+      health: "ok" as const,
+      balance: {
+        instanceId: "openrouter-main",
+        adapterId: "key",
+        supported: true,
+        source: "openrouter_key_limit",
+        currency: "USD",
+        unlimited: false,
+        total: 100,
+        remaining: 0,
+        windows: [],
+        message: "",
+        transient: false,
+      },
+    };
+    const markup = renderPlan({ byok: byokPlans([entry]) });
+    expect(markup).toContain("byokBalance.keyLimitRemaining");
+    expect(markup).toContain("0.00 USD");
+    expect(markup).not.toContain("byokBalance.remaining");
+
+    const noLimitMarkup = renderPlan({
+      byok: byokPlans([
+        { ...entry, balance: { ...entry.balance, total: undefined, remaining: undefined } },
+      ]),
+    });
+    expect(noLimitMarkup).toContain("byokBalance.keyNoLimit");
+  });
+
+  it("零余额仍可重新查询，未接入接口只显示明确状态", () => {
+    const entry = {
+      instanceId: "moonshot-main",
+      instanceLabel: "Moonshot",
+      adapterId: "kimi",
+      adapterLabel: "Kimi API",
+      environmentId: "env-test" as ByokBalanceQueryTarget["environmentId"],
+      baseURL: "https://api.moonshot.cn/v1",
+      health: "empty" as const,
+      balance: {
+        instanceId: "moonshot-main",
+        adapterId: "kimi",
+        supported: true,
+        source: "moonshot",
+        currency: "CNY",
+        unlimited: false,
+        remaining: 0,
+        windows: [],
+        message: "查询成功",
+        transient: false,
+      },
+    };
+    const emptyMarkup = renderPlan({
+      byok: byokPlans([entry]),
+      onQueryBalance: vi.fn(async () => undefined),
+    });
+    expect(emptyMarkup).toContain("byokBalance.health.empty");
+    expect(emptyMarkup).toContain("0.00 CNY");
+    expect(emptyMarkup).toContain("data-plan-balance-query");
+
+    const unsupportedMarkup = renderPlan({
+      byok: byokPlans([
+        {
+          ...entry,
+          health: "unsupported",
+          balance: {
+            ...entry.balance,
+            supported: false,
+            remaining: undefined,
+            message: "This BYOK adapter does not support balance queries.",
+          },
+        },
+      ]),
+    });
+    expect(unsupportedMarkup).toContain("byokBalance.health.unsupported");
+    expect(unsupportedMarkup).not.toContain("This BYOK adapter does not support");
+
+    const errorMarkup = renderPlan({
+      byok: byokPlans([
+        {
+          ...entry,
+          health: "error",
+          balance: {
+            ...entry.balance,
+            supported: false,
+            remaining: undefined,
+            message: "The balance endpoint returned an HTTP error.",
+            error: {
+              code: "upstream_http",
+              message: "The balance endpoint returned an HTTP error.",
+            },
+          },
+        },
+      ]),
+    });
+    expect(errorMarkup).toContain("byokBalance.health.error");
+    expect(errorMarkup).toContain("The balance endpoint returned an HTTP error.");
+    expect(errorMarkup).not.toContain("0.00 CNY");
+  });
 });

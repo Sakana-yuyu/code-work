@@ -172,8 +172,30 @@ export type ByokAgentLoopResult = {
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
+/** 终端命令的重复判定只看程序、参数和工作目录，新的 terminalId 不算新命令。 */
+const terminalExecFingerprint = (call: ByokAgentToolCall): string | undefined => {
+  if (call.canonicalToolName !== "terminal.exec") return undefined;
+  const args = call.arguments;
+  if (args === null || typeof args !== "object" || Array.isArray(args)) return undefined;
+  const record = args as {
+    readonly command?: unknown;
+    readonly args?: unknown;
+    readonly cwd?: unknown;
+  };
+  return JSON.stringify({
+    command: record.command ?? null,
+    args: record.args ?? null,
+    cwd: record.cwd ?? null,
+  });
+};
+
 const DEFAULT_MAX_CONTEXT_MESSAGES = 17;
 const DEFAULT_MAX_TOOL_RESULT_CHARS = 12_000;
+/**
+ * 同一条终端命令（忽略 terminalId）在一个回合里最多真正执行这么多次。
+ * 模型换新终端重放同一条 PowerShell 时，第 4 次不再启动进程，直接结束回合。
+ */
+const MAX_IDENTICAL_TERMINAL_EXECUTIONS = 3;
 /** 字符预算触发裁剪后把历史压回到预算的这一比例，留出增长空间以摊薄裁剪频率。 */
 const COMPACTION_RETAIN_RATIO = 0.5;
 /**
@@ -386,6 +408,13 @@ const toolResultContent = (
       status: result.status,
       errorCode: result.errorCode ?? "tool_failed",
     };
+    if (result.errorCode === "repeated_terminal_command") {
+      return encodeUnknownJson({
+        ...error,
+        detail:
+          "这条命令在本回合已经执行过，输出就在前面的终端结果里。不要换终端标识再跑同一条命令；改用 workspace.read_file 或换一条不同的命令。",
+      });
+    }
     if (result.errorCode === "tool_arguments_invalid") {
       const tool = input.tools.find((tool) => tool.canonicalToolName === result.canonicalToolName);
       if (tool !== undefined) {
@@ -448,6 +477,8 @@ export const runByokAgentLoop = (
     let cumulativeReasoningUtf8Bytes = 0;
     let contextOverflowRecoveryUsed = false;
     let outputTruncationRecoveryUsed = false;
+    const terminalExecCounts = new Map<string, number>();
+    let stopForRepeatedCommand = false;
 
     while (true) {
       rounds += 1;
@@ -678,6 +709,33 @@ export const runByokAgentLoop = (
         const invokeToolCall = (toolCall: ByokAgentToolCall) =>
           Effect.gen(function* () {
             const activityItemId = activityItemIds.get(toolCall.toolCallId) ?? toolCall.toolCallId;
+            const fingerprint = terminalExecFingerprint(toolCall);
+            if (fingerprint !== undefined) {
+              const seen = terminalExecCounts.get(fingerprint) ?? 0;
+              if (seen >= MAX_IDENTICAL_TERMINAL_EXECUTIONS) {
+                stopForRepeatedCommand = true;
+                const now = yield* Clock.currentTimeMillis;
+                const blocked = {
+                  invocationId: `repeated:${toolCall.toolCallId}`,
+                  taskId: input.taskId,
+                  runId: input.runId,
+                  toolCallId: toolCall.toolCallId,
+                  canonicalToolName: toolCall.canonicalToolName,
+                  status: "failed" as const,
+                  errorCode: "repeated_terminal_command",
+                  startedAtUnixMs: now,
+                  finishedAtUnixMs: now,
+                };
+                if (input.onToolStarted !== undefined) {
+                  yield* input.onToolStarted(toolCall, activityItemId);
+                }
+                if (input.onToolCompleted !== undefined) {
+                  yield* input.onToolCompleted(toolCall, blocked, activityItemId);
+                }
+                return [toolCall, blocked] as const;
+              }
+              terminalExecCounts.set(fingerprint, seen + 1);
+            }
             if (input.onToolStarted !== undefined) {
               yield* input.onToolStarted(toolCall, activityItemId);
             }
@@ -713,6 +771,9 @@ export const runByokAgentLoop = (
               content: toolResultContent(result, maxToolResultChars, input),
             });
           }
+        }
+        if (stopForRepeatedCommand) {
+          return { text, messages, rounds };
         }
       }
 

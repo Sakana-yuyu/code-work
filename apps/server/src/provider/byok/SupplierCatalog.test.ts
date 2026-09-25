@@ -37,7 +37,7 @@ describe("SupplierCatalog", () => {
   });
 
   it("includes core suppliers and the complete source catalog", () => {
-    expect(SUPPLIER_TEMPLATES).toHaveLength(73);
+    expect(SUPPLIER_TEMPLATES).toHaveLength(75);
     expect(SUPPLIER_TEMPLATES.slice(0, 3).map(({ id }) => id)).toEqual([
       "custom",
       "openai",
@@ -89,6 +89,21 @@ describe("SupplierCatalog", () => {
       status: "fixed",
       provider: "openrouter",
     });
+    expect(supplierUsageStatus("siliconflow").status).toBe("none");
+    expect(supplierUsageStatus("siliconflow_en").status).toBe("none");
+    expect(supplierUsageStatus("kimi").status).toBe("fixed");
+    expect(supplierUsageStatus("novita")).toMatchObject({ status: "fixed", provider: "novita" });
+    expect(supplierTemplate("stepfun_api")).toMatchObject({
+      baseURL: "https://api.stepfun.com/v1",
+      usage: { status: "fixed", provider: "stepfun" },
+    });
+    expect(supplierTemplate("stepfun_api_en")).toMatchObject({
+      baseURL: "https://api.stepfun.ai/v1",
+      usage: { status: "fixed", provider: "stepfun" },
+    });
+    for (const id of ["kimi_coding", "minimax", "stepfun", "volcengine_agent"]) {
+      expect(supplierUsageStatus(id).status).toBe("none");
+    }
   });
 
   it("derives usage requests from adapter overrides", () => {

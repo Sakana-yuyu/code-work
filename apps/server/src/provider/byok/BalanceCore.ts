@@ -275,6 +275,121 @@ export function parseDeepSeekBalance(payload: unknown): NormalizedBalanceResult 
   };
 }
 
+export function parseMoonshotBalance(
+  payload: unknown,
+  currency: "CNY" | "USD",
+): NormalizedBalanceResult | undefined {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  const root = payload as Readonly<Record<string, unknown>>;
+  if (root["status"] === false || (typeof root["code"] === "number" && root["code"] !== 0))
+    return undefined;
+  const remaining = parseNumericField(root["data"], ["available_balance"])?.value;
+  if (remaining === undefined) return undefined;
+  return {
+    supported: true,
+    source: "moonshot",
+    currency,
+    unlimited: false,
+    remaining,
+    windows: [],
+    message: "查询成功",
+    transient: false,
+  };
+}
+
+export function parseStepFunAccount(
+  payload: unknown,
+  currency: "CNY" | "USD",
+): NormalizedBalanceResult | undefined {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  const root = payload as Readonly<Record<string, unknown>>;
+  if (root["object"] !== "account") return undefined;
+  const remaining = parseNumericField(root, ["balance"])?.value;
+  if (remaining === undefined) return undefined;
+  return {
+    supported: true,
+    source: "stepfun_account",
+    currency,
+    unlimited: false,
+    remaining,
+    windows: [],
+    message: "账户余额查询成功",
+    transient: false,
+  };
+}
+
+export function parseNovitaAccount(payload: unknown): NormalizedBalanceResult | undefined {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  const raw = (payload as Readonly<Record<string, unknown>>)["credit_balance"];
+  if (typeof raw !== "string" && typeof raw !== "number") return undefined;
+  const credits = String(raw).trim();
+  if (!/^\d+$/u.test(credits)) return undefined;
+  const units = Number(credits);
+  if (!Number.isSafeInteger(units)) return undefined;
+  return {
+    supported: true,
+    source: "novita_account",
+    currency: "USD",
+    unlimited: false,
+    remaining: units / 10_000,
+    windows: [],
+    message: "账户余额查询成功",
+    transient: false,
+  };
+}
+
+export function parseOpenRouterCredits(payload: unknown): NormalizedBalanceResult | undefined {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  const data = (payload as Readonly<Record<string, unknown>>).data;
+  const total = parseNumericField(data, ["total_credits"])?.value;
+  const used = parseNumericField(data, ["total_usage"])?.value;
+  if (total === undefined || used === undefined || total < 0 || used < 0) return undefined;
+  return {
+    supported: true,
+    source: "openrouter_credits",
+    currency: "USD",
+    unlimited: false,
+    total,
+    used,
+    remaining: total - used,
+    windows: [],
+    message: "账户余额查询成功",
+    transient: false,
+  };
+}
+
+export function parseOpenRouterKeyLimit(payload: unknown): NormalizedBalanceResult | undefined {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  const data = (payload as Readonly<Record<string, unknown>>).data;
+  if (data === null || typeof data !== "object" || Array.isArray(data)) return undefined;
+  const record = data as Readonly<Record<string, unknown>>;
+  if (record.limit === null && record.limit_remaining === null) {
+    return {
+      supported: true,
+      source: "openrouter_key_limit",
+      currency: "USD",
+      unlimited: false,
+      windows: [],
+      message: "当前 API Key 未设置支出上限；账户余额需管理密钥查询",
+      transient: false,
+    };
+  }
+  const total = parseNumericField(data, ["limit"])?.value;
+  const remaining = parseNumericField(data, ["limit_remaining"])?.value;
+  if (total === undefined || remaining === undefined || total < 0) return undefined;
+  return {
+    supported: true,
+    source: "openrouter_key_limit",
+    currency: "USD",
+    unlimited: false,
+    total,
+    remaining,
+    windows: [],
+    message: "当前 API Key 支出限额；非账户余额",
+    transient: false,
+  };
+}
+
 export function parseOpenAIBilling(
   subscription: unknown,
   usage?: unknown,

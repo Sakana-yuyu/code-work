@@ -53,25 +53,34 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function textDelta(value: unknown): string | undefined {
   const record = asRecord(value);
-  if (!record) return undefined;
-  if (typeof record.text_delta === "string") return record.text_delta;
-  if (typeof record.textDelta === "string") return record.textDelta;
-  for (const key of ["delta", "content", "message", "text", "response"] as const) {
-    const nested = record[key];
-    if (typeof nested === "string") return nested;
-    const found = textDelta(nested);
-    if (found) return found;
-  }
-  return undefined;
+  if (record?.event !== "step_update") return undefined;
+  const step = asRecord(record.step_update);
+  return step?.step_type === "agent_response" && typeof step.text_delta === "string"
+    ? step.text_delta
+    : undefined;
 }
 
 function conversationId(value: unknown): string | undefined {
   const record = asRecord(value);
   if (!record) return undefined;
-  for (const key of ["conversation_id", "conversationId", "id"] as const) {
-    if (typeof record[key] === "string" && record[key].trim()) return record[key].trim();
+  const body = asRecord(record[record.event === "result" ? "result" : "step_update"]);
+  const id = record.conversation_id ?? body?.conversation_id;
+  return typeof id === "string" && id.trim() ? id.trim() : undefined;
+}
+
+function parseAntigravityLine(
+  line: string,
+): { readonly raw: unknown; readonly text?: string } | undefined {
+  const trimmed = line.trim();
+  if (!trimmed) return undefined;
+  try {
+    const raw: unknown = JSON.parse(trimmed);
+    const text = textDelta(raw);
+    return text === undefined ? { raw } : { raw, text };
+  } catch {
+    // agy 可能在 NDJSON 之间输出人类可读的诊断行。
+    return undefined;
   }
-  return undefined;
 }
 
 export function parseAntigravityStreamJson(
@@ -79,15 +88,8 @@ export function parseAntigravityStreamJson(
 ): ReadonlyArray<{ readonly raw: unknown; readonly text?: string }> {
   const events: Array<{ readonly raw: unknown; readonly text?: string }> = [];
   for (const line of stdout.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const raw: unknown = JSON.parse(trimmed);
-      const text = textDelta(raw);
-      events.push(text === undefined ? { raw } : { raw, text });
-    } catch {
-      // agy may print a human-readable diagnostic alongside NDJSON.
-    }
+    const event = parseAntigravityLine(line);
+    if (event) events.push(event);
   }
   return events;
 }
@@ -241,19 +243,82 @@ export function makeAntigravityAdapter(
           ),
         );
       context.activeChild = child;
-      const [stdout, stderr, exitCode] = yield* Effect.all(
-        [collectStreamAsString(child.stdout), collectStreamAsString(child.stderr), child.exitCode],
+      const outputParts: string[] = [];
+      let resultStatus: string | undefined;
+      let resultError: string | undefined;
+      let resultResponse: string | undefined;
+      const consumeStdout = child.stdout.pipe(
+        Stream.decodeText(),
+        Stream.splitLines,
+        Stream.runForEach((line) => {
+          const event = parseAntigravityLine(line);
+          if (!event) return Effect.void;
+          const nextConversationId = conversationId(event.raw);
+          if (nextConversationId) context.conversationId = nextConversationId;
+          const raw = asRecord(event.raw);
+          const result = raw?.event === "result" ? asRecord(raw.result) : undefined;
+          if (result) {
+            resultStatus = typeof result.status === "string" ? result.status : undefined;
+            resultError = typeof result.error === "string" ? result.error : undefined;
+            resultResponse = typeof result.response === "string" ? result.response : undefined;
+          }
+          const step = raw?.event === "step_update" ? asRecord(raw.step_update) : undefined;
+          if (
+            step?.step_type === "tool" &&
+            Number.isInteger(step.step_index) &&
+            Number(step.step_index) >= 0 &&
+            (step.state === "ACTIVE" || step.state === "DONE")
+          ) {
+            const toolInfo = asRecord(step.tool_info);
+            const toolError = asRecord(toolInfo?.error);
+            const toolName =
+              typeof step.tool_name === "string"
+                ? step.tool_name
+                : typeof toolInfo?.name === "string"
+                  ? toolInfo.name
+                  : "Antigravity tool";
+            const detail =
+              typeof toolError?.message === "string"
+                ? toolError.message
+                : typeof toolInfo?.output === "string"
+                  ? toolInfo.output
+                  : undefined;
+            return emit({
+              type: step.state === "DONE" ? "item.completed" : "item.updated",
+              provider: PROVIDER,
+              providerInstanceId: instanceId,
+              threadId: input.threadId,
+              turnId,
+              itemId: RuntimeItemId.make(`${turnId}:tool:${step.step_index}`),
+              payload: {
+                itemType: "dynamic_tool_call",
+                status: step.state === "DONE" ? (toolError ? "failed" : "completed") : "inProgress",
+                title: toolName,
+                ...(detail ? { detail } : {}),
+              },
+            });
+          }
+          if (!event.text) return Effect.void;
+          outputParts.push(event.text);
+          return emit({
+            type: "content.delta",
+            provider: PROVIDER,
+            providerInstanceId: instanceId,
+            threadId: input.threadId,
+            turnId,
+            itemId,
+            payload: { streamKind: "assistant_text", delta: event.text },
+            raw: { source: "antigravity.stream-json", payload: event.raw },
+          });
+        }),
+      );
+      const [, stderr, exitCode] = yield* Effect.all(
+        [consumeStdout, collectStreamAsString(child.stderr), child.exitCode],
         { concurrency: "unbounded" },
       ).pipe(Effect.ensuring(Effect.sync(() => (context.activeChild = undefined))));
-      const parsed = parseAntigravityStreamJson(stdout);
-      const lastConversation = [...parsed]
-        .reverse()
-        .map((event) => conversationId(event.raw))
-        .find(Boolean);
-      if (lastConversation) context.conversationId = lastConversation;
-      const output = parsed.map((event) => event.text ?? "").join("");
-      for (const event of parsed) {
-        if (!event.text) continue;
+      // 标准流的 result.response 是完整答案；仅在没有正文增量时用它补齐输出。
+      if (outputParts.length === 0 && resultResponse) {
+        outputParts.push(resultResponse);
         yield* emit({
           type: "content.delta",
           provider: PROVIDER,
@@ -261,12 +326,19 @@ export function makeAntigravityAdapter(
           threadId: input.threadId,
           turnId,
           itemId,
-          payload: { streamKind: "assistant_text", delta: event.text },
-          raw: { source: "antigravity.stream-json", payload: event.raw },
+          payload: { streamKind: "assistant_text", delta: resultResponse },
         });
       }
-      const succeeded = Number(exitCode) === 0;
-      const cancelled = context.interrupted;
+      const output = outputParts.join("");
+      const succeeded = Number(exitCode) === 0 && resultStatus === "SUCCESS";
+      const cancelled =
+        context.interrupted || resultStatus === "CANCELED" || resultStatus === "INTERRUPTED";
+      const errorMessage =
+        resultError ||
+        stderr.trim() ||
+        (resultStatus
+          ? `agy returned ${resultStatus}.`
+          : "agy stream ended without a result event.");
       context.turns.push({ id: turnId, items: [{ prompt, output, stderr }] });
       context.session = { ...context.session, updatedAt: yield* now() };
       yield* emit({
@@ -291,9 +363,7 @@ export function makeAntigravityAdapter(
         payload: {
           state: cancelled ? "cancelled" : succeeded ? "completed" : "failed",
           stopReason: cancelled ? "cancelled" : succeeded ? null : "process_exit",
-          ...(!succeeded && !cancelled
-            ? { errorMessage: stderr.trim() || `agy exited with code ${exitCode}.` }
-            : {}),
+          ...(!succeeded && !cancelled ? { errorMessage } : {}),
         },
         raw: { source: "antigravity.stream-json", payload: { exitCode: Number(exitCode) } },
       });
@@ -301,7 +371,7 @@ export function makeAntigravityAdapter(
         return yield* new ProviderAdapterRequestError({
           provider: PROVIDER,
           method: "agy -p",
-          detail: stderr.trim() || `agy exited with code ${exitCode}.`,
+          detail: errorMessage,
         });
       }
       return {

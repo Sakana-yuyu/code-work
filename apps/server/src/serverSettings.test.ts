@@ -1295,6 +1295,9 @@ it.layer(NodeServices.layer)("server settings", (it) => {
                   apiKey: "sk-deepseek-secret",
                   modelId: "deepseek-chat",
                   contextWindowTokens: 128000,
+                  supplierID: "deepseek",
+                  modelCatalogURLs: ["https://api.deepseek.com/v1/models"],
+                  modelCatalogStatus: "openai_models",
                 },
               ],
             },
@@ -1320,6 +1323,8 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       )?.adapters[0];
       assert.equal(clientAdapter?.apiKey, "");
       assert.equal(clientAdapter?.apiKeyRedacted, true);
+      assert.equal(clientAdapter?.supplierID, "deepseek");
+      assert.deepEqual(clientAdapter?.modelCatalogURLs, ["https://api.deepseek.com/v1/models"]);
 
       const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
       assert.notInclude(raw, "sk-deepseek-secret");
@@ -1328,7 +1333,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.equal(persistedAdapter.apiKey, "");
       assert.equal(persistedAdapter.apiKeyRedacted, true);
 
-      yield* serverSettings.updateSettings({
+      const resaved = yield* serverSettings.updateSettings({
         providerInstances: {
           [instanceId]: {
             driver: ProviderDriverKind.make("byok"),
@@ -1339,6 +1344,13 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           },
         },
       });
+      const resavedAdapter = (
+        resaved.providerInstances[instanceId]?.config as
+          | { adapters: Array<Record<string, unknown>> }
+          | undefined
+      )?.adapters[0];
+      assert.equal(resavedAdapter?.supplierID, "deepseek");
+      assert.deepEqual(resavedAdapter?.modelCatalogURLs, ["https://api.deepseek.com/v1/models"]);
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 

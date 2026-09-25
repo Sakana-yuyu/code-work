@@ -8,6 +8,7 @@ import {
   draftModelSelectionPatch,
   filterDiscoveredModels,
   filterSupplierTemplates,
+  formStateFromAdapter,
   groupByokModelAdapters,
   isValidCustomHeadersJson,
   manualModelCapabilitiesPatch,
@@ -59,6 +60,41 @@ describe("filterSupplierTemplates", () => {
 });
 
 describe("readByokModelAdapters", () => {
+  it("保存后重读供应商和目录信息，编辑时保留供应商选择与路由字段", () => {
+    const adapter = readByokModelAdapters({
+      adapters: [
+        {
+          id: "openrouter-model",
+          displayName: "OpenRouter Model",
+          supplierID: "openrouter",
+          protocol: "openai",
+          baseURL: "https://openrouter.ai/api/v1",
+          apiKey: "",
+          apiKeyRedacted: true,
+          modelId: "openai/gpt-4.1",
+          contextWindowTokens: 128_000,
+          modelCatalogURLs: ["https://openrouter.ai/api/v1/models"],
+          modelCatalogStatus: "openai_models",
+          appendModelCatalogCandidates: false,
+        },
+      ],
+    })[0]!;
+
+    expect(adapter).toMatchObject({
+      supplierID: "openrouter",
+      baseURL: "https://openrouter.ai/api/v1",
+      modelId: "openai/gpt-4.1",
+      modelCatalogURLs: ["https://openrouter.ai/api/v1/models"],
+      modelCatalogStatus: "openai_models",
+      appendModelCatalogCandidates: false,
+    });
+    expect(formStateFromAdapter(adapter)).toMatchObject({
+      supplier: "openrouter",
+      baseURL: adapter.baseURL,
+      modelId: adapter.modelId,
+    });
+  });
+
   it("preserves the redacted API-key marker returned by settings", () => {
     expect(
       readByokModelAdapters({
@@ -538,8 +574,8 @@ describe("applyRelayEdit", () => {
       expect(entry.apiKeyRedacted).toBeUndefined();
       expect(entry.apiKeySourceAdapterId).toBeUndefined();
     }
-    // balanceProfile 与预填（首成员原值 auto）一致 → 未改动 → 各成员保留原值。
-    expect(next[1]?.balanceProfile).toBe("newapi");
+    // 目标地址和协议已变，旧供应商的余额档案不能沿用。
+    expect(next[1]?.balanceProfile).toBeUndefined();
   });
 
   it("applies a changed balance profile to every member", () => {
@@ -563,6 +599,36 @@ describe("applyRelayEdit", () => {
 
     expect(next[0]).toMatchObject({ apiKeyRedacted: true, apiKeySourceAdapterId: "model-a" });
     expect(next[1]).toMatchObject({ apiKey: "sk-plain" });
+  });
+
+  it("更换通道地址时不沿用密钥、目录和余额令牌", () => {
+    const original = adapter("model-switch", {
+      apiKeyRedacted: true,
+      balanceAccessTokenRedacted: true,
+      customHeadersRedacted: true,
+      modelCatalogURLs: ["https://old.example/v1/models"],
+      balanceProfile: "newapi",
+      balanceUserID: "42",
+    });
+    const next = applyRelayEdit([original], [original], {
+      ...relayEditFormFromAdapters([original]),
+      baseURL: "https://new.example/v1",
+    })[0]!;
+
+    expect(next.baseURL).toBe("https://new.example/v1");
+    expect(next.apiKey).toBe("");
+    expect(next.balanceAccessToken).toBe("");
+    expect(next.customHeaders).toBe("");
+    for (const key of [
+      "apiKeyRedacted",
+      "balanceAccessTokenRedacted",
+      "customHeadersRedacted",
+      "modelCatalogURLs",
+      "balanceProfile",
+      "balanceUserID",
+    ]) {
+      expect(next).not.toHaveProperty(key);
+    }
   });
 });
 

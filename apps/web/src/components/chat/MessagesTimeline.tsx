@@ -1026,7 +1026,10 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
             : "pb-0"
           : isExpandedToolGroupHeader
             ? "pb-0"
-            : row.kind === "turn-fold" || row.kind === "narration-fold" || row.kind === "working"
+            : row.kind === "turn-fold" ||
+                row.kind === "narration-fold" ||
+                row.kind === "activity-fold" ||
+                row.kind === "working"
               ? "pb-1.5"
               : (row.kind === "message" &&
                     row.message.role === "assistant" &&
@@ -1055,6 +1058,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "work-toggle" ? <WorkGroupToggleTimelineRow row={row} /> : null}
       {row.kind === "turn-fold" ? <TurnFoldTimelineRow row={row} /> : null}
       {row.kind === "narration-fold" ? <NarrationFoldTimelineRow row={row} /> : null}
+      {row.kind === "activity-fold" ? <ActivityFoldTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
         <AssistantTimelineRow row={row} />
@@ -1410,6 +1414,32 @@ function NarrationFoldTimelineRow({
         <Icon className="size-3.5" />
       </button>
     </div>
+  );
+}
+
+function ActivityFoldTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "activity-fold" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const Icon = row.expanded ? ChevronDownIcon : ChevronRightIcon;
+
+  return (
+    <button
+      type="button"
+      aria-expanded={row.expanded}
+      data-scroll-anchor-ignore
+      onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
+      className="flex min-h-6 cursor-pointer items-center gap-1.5 rounded-md px-1 text-sm leading-relaxed text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+    >
+      <Icon className="size-3.5 shrink-0" />
+      <span>
+        {row.expanded
+          ? t("timeline.hideActivityHistory")
+          : t("timeline.activityHistory", { count: row.count })}
+      </span>
+    </button>
   );
 }
 

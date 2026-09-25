@@ -289,7 +289,7 @@ function ByokBalanceRow(props: {
             props.querying ? t("byokBalanceMobile.querying") : t("byokBalanceMobile.query")
           }
           accessibilityRole="button"
-          disabled={props.querying || props.adapter.health === "empty"}
+          disabled={props.querying}
           onPress={props.onQuery}
           className="rounded-full bg-subtle px-3 py-1.5"
         >
@@ -306,7 +306,7 @@ function ByokBalanceRow(props: {
           {t("byokBalanceMobile.plan")}: {balance.planName}
         </Text>
       )}
-      {props.adapter.health === "error" ? (
+      {props.adapter.health === "unsupported" ? null : props.adapter.health === "error" ? (
         <Text className="text-xs text-danger-foreground">{t("byokBalanceMobile.queryError")}</Text>
       ) : balance.windows.length > 0 ? (
         <View className="gap-1">
@@ -350,16 +350,23 @@ function ByokBalanceWindowRow(props: { readonly window: ByokBalanceWindow }) {
 
 function balanceSummary(balance: ByokBalanceResult) {
   const parts: string[] = [];
+  const isKeyLimit = balance.source === "openrouter_key_limit";
   if (balance.remaining !== undefined) {
     parts.push(
-      `${t("byokBalanceMobile.remaining")}: ${balance.remaining.toFixed(2)} ${balance.currency}`,
+      `${t(isKeyLimit ? "byokBalanceMobile.keyLimitRemaining" : "byokBalanceMobile.remaining")}: ${balance.remaining.toFixed(2)} ${balance.currency}`,
     );
   }
   if (balance.used !== undefined)
     parts.push(`${t("byokBalanceMobile.used")}: ${balance.used.toFixed(2)}`);
   if (balance.total !== undefined)
-    parts.push(`${t("byokBalanceMobile.total")}: ${balance.total.toFixed(2)}`);
-  return parts.length > 0 ? parts.join(" · ") : balance.message;
+    parts.push(
+      `${t(isKeyLimit ? "byokBalanceMobile.keyLimitTotal" : "byokBalanceMobile.total")}: ${balance.total.toFixed(2)}`,
+    );
+  return parts.length > 0
+    ? parts.join(" · ")
+    : isKeyLimit
+      ? t("byokBalanceMobile.keyNoLimit")
+      : balance.message;
 }
 
 function SegmentedControl<Value extends number | string>(props: {

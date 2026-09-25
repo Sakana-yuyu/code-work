@@ -101,6 +101,11 @@ const makeGateway = (
               "codex-limit-3": { api_key: "limit-key-3" },
               "codex-limit-4": { api_key: "limit-key-4" },
               "codex-limit-5": { api_key: "limit-key-5" },
+              "codex-rate-a": { api_key: "codex-rate-key-a" },
+              "codex-rate-b": { api_key: "codex-rate-key-b" },
+              "codex-three-a": { api_key: "codex-three-key-a" },
+              "codex-three-b": { api_key: "codex-three-key-b" },
+              "codex-three-c": { api_key: "codex-three-key-c" },
               "codex-external": { api_key: "codex-external-key" },
               "codex-oauth": { access_token: "codex-oauth-token", account_id: "acct-1" },
               "claude-oauth": { access_token: "claude-oauth-token" },
@@ -296,6 +301,162 @@ describe("本地账号网关 runtime smoke", () => {
     expect(gateway.captured).toHaveLength(4);
     expect(new Set(gateway.captured.map((request) => request.headers.authorization)).size).toBe(4);
     await gateway.dispose();
+  });
+
+  it("混合受限账号与通配 OAuth 时将新模型路由到通配账号", async () => {
+    const settings = localSettings("codex", "codex", "codex", ["codex-a", "codex-oauth"], {
+      "codex-a": {
+        id: "codex-a",
+        provider: "codex",
+        authKind: "api-key",
+        displayName: "Limited",
+        credentialRef: "codex-a",
+        enabled: true,
+        models: ["gpt-5.4"],
+      },
+      "codex-oauth": {
+        id: "codex-oauth",
+        provider: "codex",
+        authKind: "oauth",
+        displayName: "Wildcard",
+        credentialRef: "codex-oauth",
+        enabled: true,
+        models: [],
+      },
+    });
+    const gateway = makeGateway(
+      settings,
+      [
+        new Response('{"id":"response-1"}', {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ],
+      undefined,
+      cliProxyGatewayRouteLayer,
+    );
+    const response = await gateway.handler(
+      new Request("http://gateway.test/v1/responses", {
+        method: "POST",
+        headers: { authorization: `Bearer ${gateway.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: "gpt-6", input: "hi" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(gateway.captured).toHaveLength(1);
+    expect(gateway.captured[0]).toMatchObject({
+      url: "https://chatgpt.com/backend-api/codex/responses",
+      body: { model: "gpt-6" },
+    });
+    expect(gateway.captured[0]?.headers.authorization).toBe("Bearer codex-oauth-token");
+    await gateway.dispose();
+  });
+
+  it("首账号 429 时换用健康账号且只返回第二次的流", async () => {
+    const settings = localSettings("codex", "codex", "codex", ["codex-rate-a", "codex-rate-b"], {
+      "codex-rate-a": {
+        id: "codex-rate-a",
+        provider: "codex",
+        authKind: "api-key",
+        displayName: "Rate A",
+        credentialRef: "codex-rate-a",
+        enabled: true,
+        models: ["gpt-5.4"],
+      },
+      "codex-rate-b": {
+        id: "codex-rate-b",
+        provider: "codex",
+        authKind: "api-key",
+        displayName: "Rate B",
+        credentialRef: "codex-rate-b",
+        enabled: true,
+        models: ["gpt-5.4"],
+      },
+    });
+    const gateway = makeGateway(settings, [
+      new Response("rate-limited-first-account", { status: 429 }),
+      new Response("data: second-account\n\ndata: [DONE]\n\n", {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    ]);
+    const response = await gateway.handler(
+      new Request("http://gateway.test/byok-gw/openai/source/codex/v1/responses", {
+        method: "POST",
+        headers: { authorization: `Bearer ${gateway.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: "local:codex:codex:gpt-5.4", input: "hi", stream: true }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("data: second-account\n\ndata: [DONE]\n\n");
+    expect(gateway.captured.map((entry) => entry.headers.authorization)).toEqual([
+      "Bearer codex-rate-key-a",
+      "Bearer codex-rate-key-b",
+    ]);
+    await gateway.dispose();
+  });
+
+  it("三个账号中前两个失败时继续选第三个，禁用账号跳过且失败流不外泄", async () => {
+    const accounts = Object.fromEntries(
+      ["a", "disabled", "b", "c"].map((suffix) => {
+        const id = `codex-three-${suffix}`;
+        return [
+          id,
+          {
+            id,
+            provider: "codex",
+            authKind: "api-key",
+            displayName: suffix,
+            credentialRef: id,
+            enabled: suffix !== "disabled",
+            models: ["gpt-5.4"],
+          },
+        ];
+      }),
+    );
+    const settings = localSettings(
+      "codex",
+      "codex",
+      "codex",
+      ["codex-three-a", "codex-three-disabled", "codex-three-b", "codex-three-c"],
+      accounts,
+    );
+    const gateway = makeGateway(settings, [
+      "transport-error",
+      new Response("second-upstream-error", { status: 503 }),
+      new Response("data: third-account\n\ndata: [DONE]\n\n", {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    ]);
+    const route = gatewayAdapterRoutes(settings, "codex")[0];
+    if (route === undefined) throw new Error("本地 Codex 路由未发布");
+    try {
+      const response = await gateway.handler(
+        new Request("http://gateway.test/byok-gw/openai/source/codex/v1/responses", {
+          method: "POST",
+          headers: { authorization: `Bearer ${gateway.token}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: route.id, input: "hi", stream: true }),
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("data: third-account\n\ndata: [DONE]\n\n");
+      expect(gateway.captured.map((entry) => entry.headers.authorization)).toEqual([
+        "Bearer codex-three-key-a",
+        "Bearer codex-three-key-b",
+        "Bearer codex-three-key-c",
+      ]);
+      const now = Effect.runSync(Clock.currentTimeMillis);
+      expect(localPoolUsageStore.cooldownUntilUnixMs("codex-three-a")).toBeGreaterThan(now);
+      expect(localPoolUsageStore.cooldownUntilUnixMs("codex-three-b")).toBeGreaterThan(now);
+    } finally {
+      localPoolUsageStore.setCooldown("codex-three-a", null);
+      localPoolUsageStore.setCooldown("codex-three-b", null);
+      await gateway.dispose();
+    }
   });
 
   it("为 Claude OAuth 注入 Bearer 和 OAuth beta，而不是透传网关令牌", async () => {

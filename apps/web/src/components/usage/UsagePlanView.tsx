@@ -249,7 +249,7 @@ export function UsagePlanView({
                               {t("byokBalance.plan")}: {lead.balance.planName}
                             </span>
                           ) : null}
-                          {onQueryBalance !== undefined && lead.health !== "empty" ? (
+                          {onQueryBalance !== undefined ? (
                             <Button
                               className="ms-auto"
                               disabled={isQuerying}
@@ -275,7 +275,7 @@ export function UsagePlanView({
                           ) : null}
                         </div>
 
-                        {lead.health === "error" ? (
+                        {lead.health === "unsupported" ? null : lead.health === "error" ? (
                           <span className="text-xs text-destructive">
                             {lead.balance.error?.message ?? t("byokBalance.health.error")}
                           </span>
@@ -365,20 +365,25 @@ function BalanceTotalsLine({
   readonly balance: ByokBalanceResult;
 }) {
   const parts: string[] = [];
+  const isKeyLimit = balance.source === "openrouter_key_limit";
   if (balance.remaining !== undefined) {
     parts.push(
-      `${t("byokBalance.remaining")}: ${balance.remaining.toFixed(2)} ${balance.currency}`,
+      `${t(isKeyLimit ? "byokBalance.keyLimitRemaining" : "byokBalance.remaining")}: ${balance.remaining.toFixed(2)} ${balance.currency}`,
     );
   }
   if (balance.used !== undefined) {
     parts.push(`${t("byokBalance.used")}: ${balance.used.toFixed(2)}`);
   }
   if (balance.total !== undefined) {
-    parts.push(`${t("byokBalance.total")}: ${balance.total.toFixed(2)}`);
+    parts.push(
+      `${t(isKeyLimit ? "byokBalance.keyLimitTotal" : "byokBalance.total")}: ${balance.total.toFixed(2)}`,
+    );
   }
   return (
     <span className="text-xs text-muted-foreground">
-      {parts.length > 0 ? parts.join(" · ") : `${adapterLabel}: ${balance.message}`}
+      {parts.length > 0
+        ? parts.join(" · ")
+        : `${adapterLabel}: ${isKeyLimit ? t("byokBalance.keyNoLimit") : balance.message}`}
     </span>
   );
 }

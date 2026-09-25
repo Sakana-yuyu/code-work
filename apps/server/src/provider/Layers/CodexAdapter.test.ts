@@ -36,6 +36,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as CodexErrors from "effect-codex-app-server/errors";
 
 import { ServerConfig } from "../../config.ts";
+import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderAdapterValidationError } from "../Errors.ts";
 import type { CodexAdapterShape } from "../Services/CodexAdapter.ts";
@@ -937,6 +938,10 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
           return;
         }
         NodeAssert.equal(firstEvent.value.payload.status, item.status);
+        const [activity] = runtimeEventToActivities(firstEvent.value);
+        NodeAssert.equal(activity?.kind, "tool.completed");
+        NodeAssert.equal((activity?.payload as Record<string, unknown>).status, item.status);
+        NodeAssert.equal((activity?.payload as Record<string, unknown>).toolCallId, item.id);
       }
     }),
   );

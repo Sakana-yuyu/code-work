@@ -30,6 +30,7 @@ import {
 } from "@codework/contracts";
 
 import { ServerConfig } from "../../config.ts";
+import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 import { makeOmpAdapter } from "../Layers/OmpAdapter.ts";
 import type { ProviderAdapterError } from "../Errors.ts";
 import type {
@@ -286,6 +287,18 @@ describe("makeOmpAdapter", () => {
         const text = assistantText(recorder.events);
         expect(text).toContain("HOST_TOOL_DONE:");
         expect(text).toContain('"hello from broker"');
+        const toolActivities = recorder.events
+          .flatMap((event) => runtimeEventToActivities(event))
+          .filter((activity) => activity.kind.startsWith("tool."));
+        expect(toolActivities.map((activity) => activity.kind)).toEqual([
+          "tool.started",
+          "tool.completed",
+        ]);
+        expect(
+          toolActivities.map(
+            (activity) => (activity.payload as Record<string, unknown>).toolCallId,
+          ),
+        ).toEqual(["tool-read-1", "tool-read-1"]);
 
         // set_host_tools 注册了 6 个 canonical 工具。
         const log = yield* Effect.promise(() => readOmpLog(logPath));
