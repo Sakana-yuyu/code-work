@@ -1,13 +1,21 @@
 // @effect-diagnostics nodeBuiltinImport:off - 运行时 smoke 使用 Effect HTTP 客户端替身。
 import { describe, expect, it } from "vite-plus/test";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { HttpBody, HttpClient, HttpClientResponse, HttpRouter } from "effect/unstable/http";
+import {
+  HttpBody,
+  HttpClient,
+  HttpClientError,
+  HttpClientResponse,
+  HttpRouter,
+} from "effect/unstable/http";
 
 import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@codework/contracts";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { layerTest } from "../../serverSettings.ts";
+import { localPoolUsageStore } from "../LocalPoolUsage.ts";
 import {
   byokGatewayRouteLayer,
   cliProxyGatewayRouteLayer,
@@ -60,14 +68,14 @@ const makeSecretStore = (credentials: Record<string, unknown>) => {
 
 const makeGateway = (
   settings: ServerSettings,
-  responses: readonly Response[],
+  responses: readonly (Response | "transport-error")[],
   externalKey?: string,
   routeLayer = byokGatewayRouteLayer,
 ) => {
   const captured: CapturedRequest[] = [];
   let responseIndex = 0;
   const httpClient = HttpClient.make((request) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
       captured.push({
         url: request.url,
         headers: { ...(request.headers as Record<string, string>) },
@@ -75,6 +83,14 @@ const makeGateway = (
       });
       const response = responses[Math.min(responseIndex++, responses.length - 1)];
       if (response === undefined) throw new Error("测试未提供上游响应");
+      if (response === "transport-error") {
+        return yield* new HttpClientError.HttpClientError({
+          reason: new HttpClientError.TransportError({
+            request,
+            description: "测试上游连接失败",
+          }),
+        });
+      }
       return HttpClientResponse.fromWeb(request, response);
     }),
   );
