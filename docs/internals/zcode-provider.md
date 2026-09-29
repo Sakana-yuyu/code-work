@@ -54,14 +54,16 @@ OAuth：前端展示授权链接并每 2s 轮询 `status`，`ready` 后凭据已
 `CliProxy.importLocalLogin` 读取该目录凭据、导入号池并删除目录——与 CLI 登录的
 导入路径完全一致。macOS 钥匙串里的 Claude 登录态不落文件，无法导入（改用导入文件）。
 
-zcode 账号池条目存的是解密后的 Coding Plan API Key（不含 OAuth token），上游按
-`zcode_family` 选 ZCode 平台网关 `https://zcode.z.ai/api/v1/ultra-zai|ultra/anthropic`
-（Anthropic 协议，Bearer Key，与 CLI 改写后的实际发送地址一致）；adapter 以
-`local:<实例>:zcode:<模型>` 的 anthropic 路由发布，可绑给 zcodeAgent 与 claudeAgent
-实例；跨机器导入的 credentials.json 解密失败会明确报错，需重新登录。
+zcode 账号池条目存的是归一化凭据快照：Coding Plan API Key（`api_key`）与登录态 JWT（`zcode_jwt`）至少其一。仅有 Key 的账号走 ZCode 平台网关 `https://zcode.z.ai/api/v1/ultra-zai|ultra/anthropic`（Anthropic 协议，Bearer Key，与 CLI 改写后的实际发送地址一致）；完成过官方登录的账号（含只有 JWT、没有 Coding Plan Key 的"体验套餐"账号）额外发布 `local:<实例>:zcode-start:<模型>` 通道，指向体验套餐推理网关 `https://zcode.z.ai/api/v1/zcode-plan/anthropic`、Bearer JWT，模型固定为 GLM-5.3-Flash/GLM-5.2/GLM-5-Turbo。体验套餐通道选号只认 JWT：Key-only 账号被轮到时直接换下一个、不冷却不记失败，池内没有任何 JWT 时返回明确错误。转发时**不伪造 ZCode 身份**：剥掉客户端带来的 `x-stainless-*`/`x-app`，`user-agent` 仅在本来就是 `ZCode/*` 时透传。adapter 以 anthropic 路由发布（zcode 与 claude 同协议——网关路由此前错标 openai，已修正），可绑给 zcodeAgent 与 claudeAgent 实例；跨机器导入的 credentials.json 解密失败会明确报错，需重新登录。上游没有 JWT 刷新接口（桌面端同样抛"暂未提供"），过期即报错提示重新登录；`ensureLocalAccountCredential` 把 `zcode_jwt` 视为有效令牌，JWT-only 账号不会进刷新流程。
+
+### 用量、模型目录与领取活动（serverCliProxy）
+
+- **用量**：`localAccountUsage` 按账号并发 4 查询官方接口并归一化成窗口/指标/套餐视图。Codex `wham/usage`+`subscriptions`+id_token plan_type 兜底；Claude `oauth/usage`+`oauth/profile`（Team/Max/Pro/Free、Fable 周窗 iguana_necktie）；Grok OAuth `cli-chat-proxy.grok.com/v1/billing`（周+月）；ZCode 合并 Coding Plan 订阅/quota、体验套餐余额（`zcode-plan/billing/balance`，Bearer JWT）、`client/configs` 的活动文案（150% 配额）与可领取预览（`billing/preview`）、MCP 额度与近一年活动统计。结果同时带 `captchaConfig`（阿里云验证码 sceneId/prefix/region）。
+- **模型拉取**：`fetchLocalAccountModels` 永不失败——codex OAuth 走 `backend-api/codex/models`，claude/xai API-Key 走各自 `/v1/models`，zcode 合并官方目录与体验套餐 capabilities，其余落 `LOCAL_POOL_DEFAULT_MODELS` 静态目录并标注 `source:"catalog"`；`setLocalAccountModels` 写回后自动刷新 BYOK 实例通道目录，空数组=不限模型。
+- **领取活动**：`claimLocalAccountOffer` 需要客户端先渲染阿里云验证码 2.0 拿 `captchaVerifyParam`，服务端 POST `billing/claim`（Bearer JWT + `X-Aliyun-Captcha-Verify-Param`(+Region) + `X-ZCode-App-Version` + `X-Platform`，与桌面端 claimManualPlan 同款）代领；结果透传上游 code/message（成功时省略），客户端以上游文案优先展示。web/desktop 在 `ClaimOfferDialog` 内嵌 SDK；脚本或域名校验失败回退"去官方客户端领取"。
 
 ## 测试
 
-`apps/server/src/provider/zcode/`：配置生成（`zcodeByokConfig.test.ts`）与真实子进程适配器测试（`ZCodeAdapter.test.ts`，替身脚本 `apps/server/scripts/zcode-mock-agent.mjs`，`MOCK_ZCODE_MODE` 切换场景）。
+`apps/server/src/provider/zcode/`：配置生成（`zcodeByokConfig.test.ts`）、Start Plan 归一化/领取（`zcodeStartPlan.test.ts`）、凭据（`zcodeCredentials.test.ts`）、真实子进程适配器测试（`ZCodeAdapter.test.ts`，替身脚本 `apps/server/scripts/zcode-mock-agent.mjs`，`MOCK_ZCODE_MODE` 切换场景）。号池侧：`localAccountUsage.test.ts`、`localAccountModels.test.ts`、`LocalAccountPool.test.ts`、`byok/modelGateway*.test.ts`（Start Plan 通道路由与转发头断言）。
 
-已知留白：适配器按 ZCode 源码里的 stream-json 事件形状编写并对替身验证，尚未对真实 `zcode` 二进制做端到端验证；MCP 宿主工具（`code-work` MCP）尚未注入 ZCode。
+已知留白：适配器按 ZCode 源码里的 stream-json 事件形状编写并对替身验证，尚未对真实 `zcode` 二进制做端到端验证；MCP 宿主工具（`code-work` MCP）尚未注入 ZCode；体验套餐领取的验证码流程尚未用真实账号走过完整链路（端点与请求形状按桌面端 3.14.4 逆向对齐）。

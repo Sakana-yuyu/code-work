@@ -79,7 +79,11 @@ import {
   setLocalAccountPoolStrategy,
 } from "../LocalAccountPool.ts";
 import { matchLocalGatewayKey, readLocalGatewayKeys } from "../LocalGatewayKey.ts";
-import { ZCODE_PLAN_GATEWAY_ANTHROPIC_BASE } from "../zcode/zcodeCredentials.ts";
+import {
+  ZCODE_PLAN_GATEWAY_ANTHROPIC_BASE,
+  ZCODE_START_PLAN_ANTHROPIC_BASE,
+  ZCODE_START_PLAN_MODELS,
+} from "../zcode/zcodeCredentials.ts";
 import { localPoolUsageStore } from "../LocalPoolUsage.ts";
 import { parseByokCustomHeaders, parseRetryAfterMs } from "../Layers/byokChatClient.ts";
 import { byokModelCapabilities } from "../Layers/ByokProvider.ts";
@@ -116,6 +120,8 @@ export interface GatewayAdapterRoute {
   readonly supplierID?: string;
   readonly localProvider?: LocalAccountProvider;
   readonly localAccountIds?: readonly string[];
+  /** 同一账号池内的细分通道；zcode-start 走体验套餐网关、JWT 鉴权。 */
+  readonly localChannel?: "zcode-start";
 }
 
 /**
@@ -241,7 +247,8 @@ export const gatewayAdapterRoutes = (
       for (const modelId of models) {
         routes.push({
           id: `local:${instanceId}:${provider}:${modelId}`,
-          protocol: provider === "claude" ? "anthropic" : "openai",
+          // zcode 上游是 Anthropic 形状的体验套餐/超栈网关，与 claude 同协议。
+          protocol: provider === "claude" || provider === "zcode" ? "anthropic" : "openai",
           baseURL: `local://${provider}`,
           apiKey: "",
           displayName: modelId,
@@ -251,6 +258,25 @@ export const gatewayAdapterRoutes = (
           localProvider: provider,
           localAccountIds: accountIds,
         });
+      }
+      // zcode 账号额外发布体验套餐通道：官方三模型、zcode-plan 网关、JWT 鉴权，
+      // 与 Coding Plan Key 的 ultra 通道并存；池里没有 JWT 时由转发层报错兜底。
+      if (provider === "zcode") {
+        for (const modelId of ZCODE_START_PLAN_MODELS) {
+          routes.push({
+            id: `local:${instanceId}:zcode-start:${modelId}`,
+            protocol: "anthropic",
+            baseURL: `local://zcode-start`,
+            apiKey: "",
+            displayName: modelId,
+            modelId,
+            groupName: `Code Work · ZCode 体验套餐`,
+            supplierID: "codework-local-account",
+            localProvider: "zcode",
+            localChannel: "zcode-start",
+            localAccountIds: accountIds,
+          });
+        }
       }
     }
   }
@@ -1324,7 +1350,8 @@ const gatewayHandler = (
             settings,
             localProvider,
             adapter.localAccountIds?.filter((id) => !triedLocalIds.has(id)),
-            adapter.modelId,
+            // 体验套餐通道的可用性由 JWT 决定，不受账号声明模型限制。
+            adapter.localChannel === "zcode-start" ? undefined : adapter.modelId,
           );
     let localAccount = nextLocalAccount();
     // 账号池按失败账号去重后换号；中转通道无号可换，改为对上游 5xx 与
@@ -1354,21 +1381,40 @@ const gatewayHandler = (
           secretStore,
           httpClient,
         ).pipe(Effect.orElseSucceed(() => undefined));
+        // 体验套餐通道只认 zcodejwttoken：没有 JWT 的账号跳过，绝不拿
+        // Coding Plan Key 冒充体验套餐身份去打 zcode-plan 网关。
+        const startPlanJwt =
+          adapter.localChannel === "zcode-start" &&
+          typeof localCredential?.zcode_jwt === "string" &&
+          localCredential.zcode_jwt.trim().length > 0
+            ? localCredential.zcode_jwt.trim()
+            : undefined;
         const token =
-          localCredential === undefined
-            ? undefined
-            : credentialToken(
-                localCredential,
-                account.authKind ?? credentialAuthKind(localCredential),
-              );
+          adapter.localChannel === "zcode-start"
+            ? startPlanJwt
+            : localCredential === undefined
+              ? undefined
+              : credentialToken(
+                  localCredential,
+                  account.authKind ?? credentialAuthKind(localCredential),
+                );
         if (token === undefined) {
-          markLocalAccountFailure(localAccountId, 401);
-          localPoolUsageStore.recordRequest(localAccountId, adapter.localProvider ?? "", false);
+          // 缺体验套餐登录态不算账号故障：换下一个账号，不冷却也不记失败。
+          if (adapter.localChannel !== "zcode-start") {
+            markLocalAccountFailure(localAccountId, 401);
+            localPoolUsageStore.recordRequest(localAccountId, adapter.localProvider ?? "", false);
+          }
           localAccount = attempt + 1 < maxAttempts ? nextLocalAccount() : undefined;
           if (localAccount !== undefined) continue;
           return errorResponse(
             protocol,
-            anthropicError(502, "authentication_error", "本地账号凭据无有效访问令牌。"),
+            anthropicError(
+              502,
+              "authentication_error",
+              adapter.localChannel === "zcode-start"
+                ? "本地账号池没有可用的 ZCode 体验套餐登录态，请先导入 zcode login 凭据。"
+                : "本地账号凭据无有效访问令牌。",
+            ),
           );
         }
         localToken = token;
@@ -1398,9 +1444,11 @@ const gatewayHandler = (
               ? joinAnthropicTarget("https://api.anthropic.com", suffixPath)
               : adapter.localProvider === "zcode"
                 ? joinAnthropicTarget(
-                    ZCODE_PLAN_GATEWAY_ANTHROPIC_BASE[
-                      localCredential?.zcode_family === "bigmodel" ? "bigmodel" : "zai"
-                    ],
+                    adapter.localChannel === "zcode-start"
+                      ? ZCODE_START_PLAN_ANTHROPIC_BASE
+                      : ZCODE_PLAN_GATEWAY_ANTHROPIC_BASE[
+                          localCredential?.zcode_family === "bigmodel" ? "bigmodel" : "zai"
+                        ],
                     suffixPath,
                   )
                 : protocol === "anthropic"
@@ -1444,7 +1492,17 @@ const gatewayHandler = (
           forwardHeaders["x-grok-client-version"] ??= "0.2.120";
         }
       } else if (adapter.localProvider === "zcode") {
-        // Coding Plan 与 ZCode CLI 一致：Bearer API Key 走平台网关。
+        // D3：不伪造 ZCode 身份。别家 SDK 的指纹头（x-stainless-*/x-app）剥掉；
+        // user-agent 仅在客户端本来就是 ZCode/* 时透传，否则删除，上游看到的是网关。
+        for (const [name, value] of Object.entries(forwardHeaders)) {
+          const lower = name.toLowerCase();
+          if (lower.startsWith("x-stainless-") || lower === "x-app") {
+            delete forwardHeaders[name];
+          } else if (lower === "user-agent" && !value.startsWith("ZCode/")) {
+            delete forwardHeaders[name];
+          }
+        }
+        // Coding Plan 与 ZCode CLI 一致：Bearer 令牌走平台网关（Key 或体验套餐 JWT）。
         forwardHeaders["authorization"] = `Bearer ${localToken}`;
       } else if (protocol === "anthropic") {
         forwardHeaders["x-api-key"] = adapter.apiKey;

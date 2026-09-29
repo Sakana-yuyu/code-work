@@ -45,6 +45,16 @@ export const ZCODE_PLAN_GATEWAY_ANTHROPIC_BASE: Record<ZCodeFamily, string> = {
   bigmodel: "https://zcode.z.ai/api/v1/ultra/anthropic",
 };
 
+/** 体验套餐（Start Plan）推理网关：zcodejwttoken 鉴权，与 Coding Plan Key 的 ultra 网关并存。 */
+export const ZCODE_START_PLAN_ANTHROPIC_BASE = "https://zcode.z.ai/api/v1/zcode-plan/anthropic";
+
+/** Start Plan 官方开放的三模型；GLM-5.3 随余额 capabilities 出现在 Coding Plan 通道。 */
+export const ZCODE_START_PLAN_MODELS: ReadonlyArray<string> = [
+  "GLM-5.3-Flash",
+  "GLM-5.2",
+  "GLM-5-Turbo",
+];
+
 export class ZCodeCredentialError extends Schema.TaggedErrorClass<ZCodeCredentialError>()(
   "ZCodeCredentialError",
   { detail: Schema.String },
@@ -223,24 +233,25 @@ export const zcodeAccountEmail = (record: ZCodeCredentialRecord): string | undef
 };
 
 /**
- * 把凭据文件归一化为号池凭据：只保留真正发请求用的 API Key 与路由元数据。
+ * 把凭据文件归一化为号池凭据：只保留真正发请求用的凭据与路由元数据。
  * OAuth access/refresh token 不进入号池（Coding Plan Key 长效，失效应重新登录）。
+ * 只有体验套餐（zcodejwttoken）没有 Coding Plan Key 的凭据也放行——
+ * Start Plan 通道与余额查询用 JWT，Coding Plan Key 系端点对其跳过。
  */
 export const normalizeZCodePoolCredential = (
   record: ZCodeCredentialRecord,
 ): Record<string, unknown> | undefined => {
   const apiKey = zcodePlanApiKey(record);
-  if (apiKey === undefined) return undefined;
+  const jwt = record["zcodejwttoken"]?.trim();
+  if (apiKey === undefined && (jwt === undefined || jwt === "")) return undefined;
   const family = zcodeFamilyOf(record) ?? "zai";
   const label = zcodeAccountLabel(record);
   const email = zcodeAccountEmail(record);
-  // 顺带保留 zcodejwttoken：MCP 额度接口（/api/v1/mcp/usage）用它做 Bearer。
-  const jwt = record["zcodejwttoken"];
   return {
-    api_key: apiKey,
+    ...(apiKey === undefined ? {} : { api_key: apiKey }),
     auth_kind: "api-key",
     zcode_family: family,
-    ...(typeof jwt === "string" && jwt.trim() !== "" ? { zcode_jwt: jwt.trim() } : {}),
+    ...(jwt === undefined || jwt === "" ? {} : { zcode_jwt: jwt }),
     ...(label === undefined ? {} : { account_label: label }),
     ...(email === undefined ? {} : { account_email: email }),
   };

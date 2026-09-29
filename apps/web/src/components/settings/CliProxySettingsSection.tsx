@@ -4,6 +4,7 @@ import {
   CalendarDaysIcon,
   CheckIcon,
   ChevronDownIcon,
+  DownloadIcon,
   EyeIcon,
   FileJsonIcon,
   FolderOpenIcon,
@@ -27,6 +28,9 @@ import {
   AuthTerminalOperateScope,
   LOCAL_POOL_DEFAULT_MODELS,
   ProviderInstanceId,
+  type CliProxyAccountClaimResult,
+  type CliProxyAccountOffer,
+  type CliProxyCaptchaConfig,
   type CliProxyRequest,
   type CliProxyResult,
   type EnvironmentId,
@@ -45,9 +49,18 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
 import { Input } from "../ui/input";
 import { cn } from "~/lib/utils";
 import { t } from "~/i18n";
+import { ClaimOfferDialog } from "./ClaimOfferDialog";
 import { CliProxyLoginCard } from "./CliProxyLoginCard";
 
 type LocalProvider = "codex" | "claude" | "xai" | "cursor" | "zcode";
@@ -226,6 +239,20 @@ export function CliProxySettingsSection({
   const [feedback, setFeedback] = useState<{ error: boolean; text: string } | null>(null);
   const [deleteName, setDeleteName] = useState<string | null>(null);
   const [deleteLocalId, setDeleteLocalId] = useState<string | null>(null);
+  // 拉取模型确认弹窗：fetched 是服务端拉到的目录，selected 是勾选中待写入的集合。
+  const [modelsDialog, setModelsDialog] = useState<{
+    accountId: string;
+    provider: LocalAccountProvider;
+    source: "provider" | "catalog";
+    fetched: ReadonlyArray<string>;
+    selected: Set<string>;
+  } | null>(null);
+  // 领取活动弹窗：target 记录账号与可领取项，result 是服务端领取回执。
+  const [claimTarget, setClaimTarget] = useState<{
+    accountId: string;
+    offer: CliProxyAccountOffer;
+  } | null>(null);
+  const [claimResult, setClaimResult] = useState<CliProxyAccountClaimResult | null>(null);
   const [importName, setImportName] = useState("");
   const [importContent, setImportContent] = useState("");
   const [instanceId, setInstanceId] = useState("cpa");
@@ -279,6 +306,25 @@ export function CliProxySettingsSection({
         if (input.action === "deleteAccount") setDeleteName(null);
         if (input.action === "deleteLocalAccount") setDeleteLocalId(null);
         if (input.action === "setLocalAccountsEnabled") setSelectedIds(new Set());
+        if (input.action === "claimLocalAccountOffer" && result.value.accountClaim !== undefined) {
+          setClaimResult(result.value.accountClaim);
+        }
+        if (
+          input.action === "fetchLocalAccountModels" &&
+          result.value.accountModels !== undefined
+        ) {
+          const fetched = result.value.accountModels;
+          const declared =
+            result.value.localAccounts?.find((account) => account.id === fetched.accountId)
+              ?.models ?? [];
+          setModelsDialog({
+            accountId: fetched.accountId,
+            provider: fetched.provider as LocalAccountProvider,
+            source: fetched.source,
+            fetched: fetched.models,
+            selected: new Set(fetched.models.filter((model) => declared.includes(model))),
+          });
+        }
         if (result.value.connectedInstanceId) setInstanceId(result.value.connectedInstanceId);
         setFeedback({ error: false, text: t("cliProxy.done") });
       } catch (error) {
@@ -923,10 +969,22 @@ export function CliProxySettingsSection({
                               <FileJsonIcon className="size-3.5 text-muted-foreground" />
                               {t("cliProxy.availableModels")}
                             </span>
-                            <span className="text-muted-foreground">
+                            <span className="flex items-center gap-1.5 text-muted-foreground">
                               {declared
                                 ? t("cliProxy.modelsDeclared", { count: shown.length })
                                 : t("cliProxy.modelsDefault", { count: shown.length })}
+                              <Button
+                                size="micro"
+                                variant="ghost"
+                                disabled={disabled}
+                                aria-label={t("cliProxy.fetchModels")}
+                                onClick={() =>
+                                  void run({ action: "fetchLocalAccountModels", id: account.id })
+                                }
+                              >
+                                <DownloadIcon className="size-3" />
+                                {t("cliProxy.fetchModels")}
+                              </Button>
                             </span>
                           </div>
                           {shown.length > 0 ? (
@@ -1051,6 +1109,80 @@ export function CliProxySettingsSection({
                               ) : null}
                               {subscription.detail !== undefined ? (
                                 <p className="text-muted-foreground">{subscription.detail}</p>
+                              ) : null}
+                              {subscription.campaign !== undefined ? (
+                                <p className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                  {subscription.campaign.badge !== undefined ? (
+                                    <Badge className="bg-success/15 text-success">
+                                      {subscription.campaign.badge}
+                                    </Badge>
+                                  ) : null}
+                                  {subscription.campaign.title !== undefined ? (
+                                    <span className="text-foreground/90">
+                                      {subscription.campaign.title}
+                                    </span>
+                                  ) : null}
+                                  {subscription.campaign.info !== undefined ? (
+                                    <span>{subscription.campaign.info}</span>
+                                  ) : null}
+                                </p>
+                              ) : null}
+                              {(subscription.offers ?? []).length > 0 ? (
+                                <div className="space-y-1.5 pt-1">
+                                  <p className="text-xs font-medium text-foreground/90">
+                                    {t("cliProxy.offersTitle")}
+                                  </p>
+                                  {(subscription.offers ?? []).map((offer) => (
+                                    <div
+                                      key={offer.planId}
+                                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 bg-background/70 px-2 py-1.5 text-xs"
+                                    >
+                                      <span className="min-w-0 flex-1">
+                                        <span className="font-medium">{offer.name}</span>
+                                        {offer.description !== undefined ? (
+                                          <span className="text-muted-foreground">
+                                            {" "}
+                                            · {offer.description}
+                                          </span>
+                                        ) : null}
+                                        <span className="block text-muted-foreground">
+                                          {offer.entitlements
+                                            .map((entitlement) =>
+                                              [
+                                                entitlement.model,
+                                                `${entitlement.amount}${
+                                                  entitlement.unit === undefined
+                                                    ? ""
+                                                    : ` ${entitlement.unit}`
+                                                }`,
+                                                entitlement.period === "daily"
+                                                  ? t("cliProxy.offerPeriodDaily")
+                                                  : entitlement.period === "one_time"
+                                                    ? t("cliProxy.offerPeriodOneTime")
+                                                    : entitlement.period,
+                                              ]
+                                                .filter(Boolean)
+                                                .join(" · "),
+                                            )
+                                            .join("；")}
+                                        </span>
+                                      </span>
+                                      <Button
+                                        size="micro"
+                                        variant="outline"
+                                        disabled={disabled}
+                                        onClick={() =>
+                                          setClaimTarget({
+                                            accountId: String(account.id),
+                                            offer,
+                                          })
+                                        }
+                                      >
+                                        {t("cliProxy.offerClaim")}
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
                               ) : null}
                             </div>
                           )}
@@ -1523,6 +1655,127 @@ export function CliProxySettingsSection({
           </div>
         </div>
       </details>
+
+      <ClaimOfferDialog
+        offer={claimTarget?.offer ?? null}
+        captchaConfig={status?.captchaConfig}
+        pending={busy}
+        result={claimResult}
+        onClose={() => {
+          const claimed = claimResult?.success === true;
+          setClaimTarget(null);
+          setClaimResult(null);
+          // 领取成功后可领取列表会变化，重查一次用量/活动。
+          if (claimed) void run({ action: "localAccountUsage" });
+        }}
+        onClaim={(captchaVerifyParam, captchaRegion) => {
+          if (claimTarget === null) return;
+          void run({
+            action: "claimLocalAccountOffer",
+            id: claimTarget.accountId,
+            planId: claimTarget.offer.planId,
+            captchaVerifyParam,
+            ...(captchaRegion === undefined ? {} : { captchaRegion }),
+          });
+        }}
+      />
+
+      <Dialog
+        open={modelsDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) setModelsDialog(null);
+        }}
+      >
+        <DialogPopup className="w-full max-w-2xl p-0">
+          <DialogHeader>
+            <DialogTitle>
+              {modelsDialog === null
+                ? null
+                : t("cliProxy.modelsDialogTitle", { name: providerName(modelsDialog.provider) })}
+            </DialogTitle>
+            <DialogDescription>
+              {modelsDialog === null
+                ? null
+                : modelsDialog.source === "provider"
+                  ? t("cliProxy.modelsDialogSource")
+                  : t("cliProxy.modelsDialogCatalog")}
+            </DialogDescription>
+          </DialogHeader>
+          {modelsDialog === null ? null : (
+            <>
+              <div className="px-6 pb-4">
+                {modelsDialog.fetched.length > 0 ? (
+                  <div className="max-h-[min(50vh,24rem)] space-y-1 overflow-y-auto pr-1">
+                    {modelsDialog.fetched.map((model) => {
+                      const selected = modelsDialog.selected.has(model);
+                      const checkboxId = `local-account-model-${modelsDialog.accountId}-${model}`;
+                      return (
+                        <label
+                          key={model}
+                          htmlFor={checkboxId}
+                          className={cn(
+                            "flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm transition-colors",
+                            selected
+                              ? "border-primary/50 bg-primary/8"
+                              : "border-border/70 hover:bg-muted/60",
+                          )}
+                        >
+                          <Checkbox
+                            id={checkboxId}
+                            checked={selected}
+                            onCheckedChange={(checked) => {
+                              setModelsDialog((current) => {
+                                if (current === null) return current;
+                                const next = new Set(current.selected);
+                                if (checked) next.add(model);
+                                else next.delete(model);
+                                return { ...current, selected: next };
+                              });
+                            }}
+                          />
+                          <span className="min-w-0 break-all">{model}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">{t("cliProxy.noModelsHint")}</p>
+                )}
+                {modelsDialog.selected.size === 0 ? (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {t("cliProxy.modelsUnlimitedHint")}
+                  </p>
+                ) : null}
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost-muted"
+                  onClick={() => setModelsDialog(null)}
+                >
+                  {t("cancel")}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={disabled}
+                  onClick={() => {
+                    const selected = [...modelsDialog.selected];
+                    const accountId = modelsDialog.accountId;
+                    setModelsDialog(null);
+                    void run({ action: "setLocalAccountModels", id: accountId, models: selected });
+                  }}
+                >
+                  {modelsDialog.selected.size === 0
+                    ? t("cliProxy.modelsSaveUnlimited")
+                    : t("cliProxy.modelsSave", { count: modelsDialog.selected.size })}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogPopup>
+      </Dialog>
 
       {feedback ? (
         <p

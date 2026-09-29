@@ -294,6 +294,41 @@ describe("gatewayAdapterRoutes", () => {
       pickGatewayAdapter(gatewayAdapterRoutes(settings, "codex"), "openai", "gpt-5.4"),
     ).toBeUndefined();
   });
+
+  it("zcode 账号池发布体验套餐通道，与 Key 通道并存且按 anthropic 协议路由", () => {
+    const settings = {
+      ...settingsWithInstances({
+        cpa: { driver: "byok", enabled: true, config: {} },
+      }),
+      localAccountPool: {
+        accounts: {
+          z1: {
+            id: "z1",
+            provider: "zcode",
+            displayName: "Z",
+            credentialRef: "s",
+            enabled: true,
+            models: [],
+          },
+        },
+        strategy: "round-robin",
+        providerInstances: { cpa: ["z1"] },
+      },
+    } as ServerSettings;
+    const routes = gatewayAdapterRoutes(settings, "cpa");
+    const start = routes.filter((route) => route.localChannel === "zcode-start");
+    expect(start.map((route) => route.id)).toEqual([
+      "local:cpa:zcode-start:GLM-5.3-Flash",
+      "local:cpa:zcode-start:GLM-5.2",
+      "local:cpa:zcode-start:GLM-5-Turbo",
+    ]);
+    expect(start[0]?.protocol).toBe("anthropic");
+    expect(start[0]?.localProvider).toBe("zcode");
+    expect(start.every((route) => route.supplierID === "codework-local-account")).toBe(true);
+    expect(
+      pickGatewayAdapter(routes, "anthropic", "local:cpa:zcode-start:GLM-5.2")?.localChannel,
+    ).toBe("zcode-start");
+  });
   it("旧版 providers.codex 只有默认实例时也能发布本地账号路由", () => {
     const settings = {
       ...DEFAULT_SERVER_SETTINGS,

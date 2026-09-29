@@ -27,6 +27,7 @@ import {
   decryptZCodeCredentialRecord,
   normalizeZCodePoolCredential,
   ZCodeCredentialError,
+  ZCODE_START_PLAN_MODELS,
 } from "./zcode/zcodeCredentials.ts";
 
 const decodeProvider = (value: string): LocalAccountProvider | undefined =>
@@ -60,13 +61,15 @@ export const parseLocalCredential = (
   const record = value as Record<string, unknown>;
   // ZCode 凭据是加密键值文件：先解密，再抽出 Coding Plan API Key 归一化。
   if (provider === "zcode") {
-    // 池内已存的是上次归一化结果（api_key 快照），二次读取必须直通，
+    // 池内已存的是上次归一化结果（api_key/zcode_jwt 快照），二次读取必须直通，
     // 否则会再次尝试解密一个明文对象并报"没有 Coding Plan API Key"。
-    if (
-      typeof record.api_key === "string" &&
-      record.api_key.trim().length > 0 &&
-      !Object.keys(record).some((key) => key.includes(":") || key === "zcodejwttoken")
-    ) {
+    const hasEncryptedKeys = Object.keys(record).some(
+      (key) => key.includes(":") || key === "zcodejwttoken",
+    );
+    const hasPlainToken =
+      (typeof record.api_key === "string" && record.api_key.trim().length > 0) ||
+      (typeof record.zcode_jwt === "string" && record.zcode_jwt.trim().length > 0);
+    if (!hasEncryptedKeys && hasPlainToken) {
       return record;
     }
     let normalized: Record<string, unknown> | undefined;
@@ -82,7 +85,7 @@ export const parseLocalCredential = (
     }
     if (normalized === undefined) {
       throw new LocalAccountError({
-        detail: "ZCode 凭据里没有 Coding Plan API Key，请先用 zcode login 完成登录。",
+        detail: "ZCode 凭据里没有 Coding Plan API Key 或登录态，请先用 zcode login 完成登录。",
       });
     }
     if (Array.isArray(record.models)) normalized.models = record.models;
@@ -298,9 +301,16 @@ export const ensureLocalAccountCredential = (
     const credential = yield* readLocalAccountCredential(account, secretStore);
     const expiry = credentialExpiry(credential);
     const refreshToken = credential.refresh_token;
+    // zcode 的体验套餐登录态（zcodejwttoken）也算有效令牌：JWT-only 账号没有
+    // access_token/api_key，不能被当成"令牌过期"赶去走刷新流程。
+    const hasUsableToken =
+      (account.provider === "zcode" &&
+        typeof credential.zcode_jwt === "string" &&
+        credential.zcode_jwt.trim().length > 0) ||
+      Boolean(credentialToken(credential, account.authKind ?? credentialAuthKind(credential)));
     if (
       !needsRefresh.has(key) &&
-      credentialToken(credential, account.authKind ?? credentialAuthKind(credential)) &&
+      hasUsableToken &&
       (expiry === undefined || expiry > Date.now() + 60_000)
     )
       return credential;
@@ -677,6 +687,33 @@ export const setLocalAccountWeight = (
       Effect.asVoid,
     );
 
+/** 写回账号模型目录；空数组 = 不限模型，同时刷新 BYOK 实例的通道目录。 */
+export const setLocalAccountModels = (
+  settings: ServerSettingsService["Service"],
+  id: LocalAccountId,
+  models: readonly string[],
+): Effect.Effect<void, LocalAccountError> =>
+  settings
+    .updateSettings((current) => {
+      const account = current.localAccountPool.accounts[id];
+      if (account === undefined) return {};
+      const localAccountPool = {
+        ...current.localAccountPool,
+        accounts: {
+          ...current.localAccountPool.accounts,
+          [id]: { ...account, models: [...models] },
+        },
+      };
+      return {
+        localAccountPool,
+        ...refreshLocalPoolInstanceAdapters({ ...current, localAccountPool }),
+      };
+    })
+    .pipe(
+      Effect.mapError(() => new LocalAccountError({ detail: "更新本地账号模型失败。" })),
+      Effect.asVoid,
+    );
+
 /** 从本地账号池生成 CPA 兼容的模型线路；凭据只在服务端网关内解析。 */
 export const localGatewayAdapters = (
   settings: ServerSettings,
@@ -687,7 +724,7 @@ export const localGatewayAdapters = (
   const accounts = Object.values(settings.localAccountPool.accounts).filter(
     (account) => account.enabled && account.provider !== "cursor",
   );
-  return accounts.flatMap((account) =>
+  const channelAdapters = accounts.flatMap((account) =>
     // 未声明模型的账号按平台默认目录出通道；路由语义仍是"不限模型"，
     // 目录只决定 BYOK 实例里能看到/选到哪些模型。
     (account.models.length > 0
@@ -711,6 +748,23 @@ export const localGatewayAdapters = (
       });
     }),
   );
+  // 池里有 zcode 账号就补一条体验套餐通道组（官方三模型、JWT 鉴权）；
+  // 池级去重——通道按实例聚合，不按账号重复展开。
+  const startPlanAdapters = accounts.some((account) => account.provider === "zcode")
+    ? ZCODE_START_PLAN_MODELS.map((modelId) =>
+        decodeByokAdapter({
+          id: `local:${instanceId}:zcode-start:${modelId}`,
+          displayName: modelId,
+          groupName: "CLIProxyAPI · zcode-start",
+          protocol: "anthropic",
+          baseURL: origin,
+          apiKey: token,
+          modelId,
+          supplierID: "codework-local-account",
+        }),
+      )
+    : [];
+  return [...channelAdapters, ...startPlanAdapters];
 };
 
 const isPoolAdapterRecord = (value: unknown): value is Record<string, unknown> =>

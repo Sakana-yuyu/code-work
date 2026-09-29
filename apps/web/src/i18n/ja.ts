@@ -241,6 +241,27 @@ export const ja: Record<string, string> = {
   "cliProxy.availableModels": "利用可能なモデル",
   "cliProxy.modelsDeclared": "{{count}} 件宣言済み",
   "cliProxy.modelsDefault": "{{count}} 件デフォルト",
+  "cliProxy.fetchModels": "モデルを取得",
+  "cliProxy.modelsDialogTitle": "モデルを確認 · {{name}}",
+  "cliProxy.modelsDialogSource":
+    "プロバイダーから取得しました。チェックしたモデルがアカウントに書き込まれ、転送が有効になります。",
+  "cliProxy.modelsDialogCatalog":
+    "このプラットフォームにはカタログ API がないため、内蔵のデフォルトカタログを表示しています。",
+  "cliProxy.modelsSave": "{{count}} 件のモデルを保存",
+  "cliProxy.modelsSaveUnlimited": "空のリストを保存（モデル無制限）",
+  "cliProxy.modelsUnlimitedHint":
+    "何も選択しない場合はモデル制限が解除され、ルーティングは任意のモデルを受け付けます。",
+  "cliProxy.offersTitle": "受け取り可能なキャンペーン",
+  "cliProxy.offerClaim": "受け取る",
+  "cliProxy.offerPeriodDaily": "毎日",
+  "cliProxy.offerPeriodOneTime": "一回限り",
+  "cliProxy.claimDialogTitle": "トライアルプランを受け取る",
+  "cliProxy.claimPending": "検証中…",
+  "cliProxy.claimSuccess": "{{plan}} を受け取りました",
+  "cliProxy.claimFailed": "受け取りに失敗しました",
+  "cliProxy.claimCaptchaFallback":
+    "ここではキャプチャを読み込めません。公式 ZCode クライアントで受け取ってください。",
+  "cliProxy.claimDone": "完了",
   "cliProxy.defaultModelsHint":
     "明示的な宣言なし。プラットフォームのデフォルト目録を表示；ルーティングは他のモデルも受け付けます。",
   "cliProxy.noModelsHint":

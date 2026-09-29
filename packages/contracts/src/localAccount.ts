@@ -71,18 +71,30 @@ export const ZCODE_OFFICIAL_MODELS: ReadonlyArray<string> = [
  * 账号没声明 `models` 时按平台发布的默认目录：空数组的语义是"不限模型"
  * （路由放行任意请求），但 BYOK 网关按 models 展开通道，空目录会让账号
  * 一条线路都产不出——这里给每个平台一份官方目录兜底展示与转发。
+ * 目录对齐 CLIProxyAPI 内置 registry（models.json / codex_client_models.json）。
  */
 export const LOCAL_POOL_DEFAULT_MODELS: Record<LocalAccountProvider, ReadonlyArray<string>> = {
-  codex: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.4", "gpt-5.3-codex", "gpt-5.3-codex-spark"],
+  codex: [
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gpt-5.5",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.3-codex-spark",
+  ],
   claude: [
     "claude-opus-5",
     "claude-sonnet-5",
+    "claude-fable-5",
+    "claude-fable-5-1",
     "claude-haiku-4-5",
     "claude-opus-4-8",
+    "claude-opus-4-7",
     "claude-opus-4-6",
     "claude-sonnet-4-6",
   ],
-  xai: ["grok-build"],
+  xai: ["grok-build-0.1", "grok-4.6", "grok-4.5"],
   cursor: [],
   zcode: ZCODE_OFFICIAL_MODELS,
 };

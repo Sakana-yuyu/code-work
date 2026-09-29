@@ -85,6 +85,32 @@ export const CliProxyUsageWindow = Schema.Struct({
 });
 export type CliProxyUsageWindow = typeof CliProxyUsageWindow.Type;
 
+/** 可领取体验套餐的单条权益（模型、额度、周期），形状取自 ZCode billing/preview。 */
+export const CliProxyAccountOfferEntitlement = Schema.Struct({
+  model: Schema.optional(Schema.String),
+  amount: Schema.String,
+  unit: Schema.optional(Schema.String),
+  period: Schema.optional(Schema.String),
+});
+export type CliProxyAccountOfferEntitlement = typeof CliProxyAccountOfferEntitlement.Type;
+
+/** 号池账号当前可领取的套餐活动（ZCode manual claim preview 归一化）。 */
+export const CliProxyAccountOffer = Schema.Struct({
+  planId: Schema.String,
+  name: Schema.String,
+  description: Schema.optional(Schema.String),
+  entitlements: Schema.Array(CliProxyAccountOfferEntitlement),
+});
+export type CliProxyAccountOffer = typeof CliProxyAccountOffer.Type;
+
+/** 平台侧限时活动文案（如「150% 配额」），取自 ZCode client/configs。 */
+export const CliProxyAccountCampaign = Schema.Struct({
+  badge: Schema.optional(Schema.String),
+  title: Schema.optional(Schema.String),
+  info: Schema.optional(Schema.String),
+});
+export type CliProxyAccountCampaign = typeof CliProxyAccountCampaign.Type;
+
 /**
  * 号池账号从各平台官方接口拉到的订阅/额度快照。字段尽力而为——
  * 平台不支持或请求失败时 `error` 带可读文案，其余字段可全部缺省。
@@ -101,8 +127,43 @@ export const CliProxyAccountSubscription = Schema.Struct({
   ),
   detail: Schema.optional(Schema.String),
   error: Schema.optional(Schema.String),
+  /** 当前可领取的套餐活动；平台没在跑活动时省略。 */
+  offers: Schema.optional(Schema.Array(CliProxyAccountOffer)),
+  /** 平台限时活动文案（150% 配额之类）。 */
+  campaign: Schema.optional(CliProxyAccountCampaign),
 });
 export type CliProxyAccountSubscription = typeof CliProxyAccountSubscription.Type;
+
+/**
+ * 单个账号拉取到的模型目录。`source=provider` 表示来自平台官方接口，
+ * `catalog` 表示平台无拉取接口、落到了内置静态目录。
+ */
+export const CliProxyAccountModels = Schema.Struct({
+  accountId: LocalAccountId,
+  provider: Schema.String,
+  source: Schema.Literals(["provider", "catalog"]),
+  models: Schema.Array(Schema.String),
+});
+export type CliProxyAccountModels = typeof CliProxyAccountModels.Type;
+
+/** 领取体验套餐活动的结果；失败时带上游原始 code 与可读文案。 */
+export const CliProxyAccountClaimResult = Schema.Struct({
+  success: Schema.Boolean,
+  code: Schema.optional(Schema.Number),
+  message: Schema.optional(Schema.String),
+  planName: Schema.optional(Schema.String),
+  endsAt: Schema.optional(Schema.String),
+});
+export type CliProxyAccountClaimResult = typeof CliProxyAccountClaimResult.Type;
+
+/** 阿里云验证码 2.0 渲染配置（ZCode client/configs.captcha 原样透出）。 */
+export const CliProxyCaptchaConfig = Schema.Struct({
+  enabled: Schema.Boolean,
+  prefix: Schema.String,
+  sceneId: Schema.String,
+  region: Schema.optional(Schema.String),
+});
+export type CliProxyCaptchaConfig = typeof CliProxyCaptchaConfig.Type;
 
 export const CliProxyRequest = Schema.Union([
   Schema.Struct({ action: Schema.Literal("status") }),
@@ -142,6 +203,24 @@ export const CliProxyRequest = Schema.Union([
   }),
   Schema.Struct({ action: Schema.Literal("scanNativeAccounts") }),
   Schema.Struct({ action: Schema.Literal("localAccountUsage") }),
+  Schema.Struct({
+    action: Schema.Literal("fetchLocalAccountModels"),
+    id: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("setLocalAccountModels"),
+    id: TrimmedNonEmptyString,
+    /** 空数组 = 恢复"不限模型"（路由放行任意请求，展示按平台默认目录）。 */
+    models: Schema.Array(TrimmedNonEmptyString).check(Schema.isMaxLength(200)),
+  }),
+  Schema.Struct({
+    action: Schema.Literal("claimLocalAccountOffer"),
+    id: TrimmedNonEmptyString,
+    planId: TrimmedNonEmptyString.check(Schema.isMaxLength(96)),
+    /** 阿里云验证码 2.0 通过后回传的校验参数；上游必填。 */
+    captchaVerifyParam: Schema.String.check(Schema.isMaxLength(8192)),
+    captchaRegion: Schema.optional(Schema.String.check(Schema.isMaxLength(32))),
+  }),
   Schema.Struct({
     action: Schema.Literal("importNativeAccount"),
     provider: LocalAccountProvider,
@@ -206,6 +285,12 @@ export const CliProxyResult = Schema.Struct({
   nativeLogins: Schema.optional(Schema.Array(CliProxyNativeLogin)),
   /** 账号级用量/订阅快照，只在 action=localAccountUsage 的结果里填充。 */
   accountSubscriptions: Schema.optional(Schema.Array(CliProxyAccountSubscription)),
+  /** 拉取到的账号模型目录，只在 action=fetchLocalAccountModels 的结果里填充。 */
+  accountModels: Schema.optional(CliProxyAccountModels),
+  /** 领取活动结果，只在 action=claimLocalAccountOffer 的结果里填充。 */
+  accountClaim: Schema.optional(CliProxyAccountClaimResult),
+  /** 阿里云验证码配置；只在 action=localAccountUsage 的结果里随平台配置透出。 */
+  captchaConfig: Schema.optional(CliProxyCaptchaConfig),
 });
 export type CliProxyResult = typeof CliProxyResult.Type;
 

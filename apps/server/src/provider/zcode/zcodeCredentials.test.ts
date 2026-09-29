@@ -82,6 +82,27 @@ describe("ZCode 凭据", () => {
     expect(normalizeZCodePoolCredential({ "oauth:zai:access_token": "x" })).toBeUndefined();
   });
 
+  it("只有体验套餐（zcodejwttoken）没有 Coding Plan Key 的凭据也放行", () => {
+    const API_KEY_ENTRY =
+      "account-provider:coding-plan:account:zai-individual-coding-plan:account:u-1:api-key";
+    const full = decryptZCodeCredentialRecord(credentialRecord(), TEST_ENV);
+    const record: Record<string, string> = Object.fromEntries(
+      Object.entries(full).filter(([key]) => key !== API_KEY_ENTRY),
+    );
+    const normalized = normalizeZCodePoolCredential(record);
+    expect(normalized).not.toBeNull();
+    expect(normalized!.api_key).toBeUndefined();
+    expect(normalized!.zcode_jwt).toBe("jwt-token");
+    expect(normalized!.zcode_family).toBe("zai");
+    // parseLocalCredential 直通池内归一化结果（JWT-only）。
+    expect(
+      parseLocalCredential(
+        JSON.stringify({ zcode_jwt: "jwt-token", zcode_family: "zai" }),
+        "zcode",
+      ),
+    ).toMatchObject({ zcode_jwt: "jwt-token" });
+  });
+
   it("parseLocalCredential 走解密路径并产出 api-key 凭据", () => {
     // 未加密条目按明文放行（与 ZCode cipher 行为一致），可直接构造明文 fixture。
     const plain = Object.fromEntries(

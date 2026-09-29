@@ -8,6 +8,8 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   resolveProviderInstanceEnabled,
+  type CliProxyAccountClaimResult,
+  type CliProxyAccountModels,
   type CliProxyAccountSubscription,
   type CliProxyRequest,
   type CliProxyResult,
@@ -40,6 +42,7 @@ import {
   localGatewayAdapters,
   readLocalAccountCredential,
   removeLocalAccount,
+  setLocalAccountModels,
   setLocalAccountsEnabled,
   setLocalAccountEnabled,
   setLocalAccountPoolStrategy,
@@ -49,6 +52,7 @@ import {
   fetchLocalAccountSubscription,
   type AccountSubscriptionView,
 } from "./localAccountUsage.ts";
+import { fetchLocalAccountModels } from "./localAccountModels.ts";
 import {
   localPoolUsageStore,
   parseLocalPoolUsageState,
@@ -81,6 +85,11 @@ import {
   type ZCodeLoginReadyResult,
 } from "./zcode/zcodeLoginFlow.ts";
 import type { ZCodeFamily } from "./zcode/zcodeCredentials.ts";
+import {
+  fetchZCodeClaimOffer,
+  fetchZCodeClientConfigs,
+  type ZCodeClaimOutcome,
+} from "./zcode/zcodeStartPlan.ts";
 import {
   anthropicGatewayBase,
   ensureGatewayToken,
@@ -474,6 +483,9 @@ export const makeCliProxyService = (
           }>
         | undefined;
       let accountSubscriptions: ReadonlyArray<CliProxyAccountSubscription> | undefined;
+      let accountModels: CliProxyAccountModels | undefined;
+      let accountClaim: CliProxyAccountClaimResult | undefined;
+      let captchaConfig: CliProxyResult["captchaConfig"];
       switch (request.action) {
         case "configure":
           yield* setLocalAccountPoolStrategy(settings, request.config.strategy).pipe(
@@ -658,11 +670,111 @@ export const makeCliProxyService = (
                   ...(view.metrics === undefined ? {} : { metrics: view.metrics }),
                   ...(view.detail === undefined ? {} : { detail: view.detail }),
                   ...(view.error === undefined ? {} : { error: view.error }),
+                  ...(view.offers === undefined || view.offers.length === 0
+                    ? {}
+                    : { offers: view.offers }),
+                  ...(view.campaign === undefined ? {} : { campaign: view.campaign }),
                 })),
               ),
             ),
-            { concurrency: "unbounded" },
+            { concurrency: 4 },
           ).pipe(Effect.provideService(HttpClient.HttpClient, hostDeps.httpClient));
+          captchaConfig = yield* fetchZCodeClientConfigs().pipe(
+            Effect.map((configs) => configs.captcha),
+            Effect.provideService(HttpClient.HttpClient, hostDeps.httpClient),
+          );
+          break;
+        }
+        case "fetchLocalAccountModels": {
+          if (hostDeps === undefined) break;
+          const current = yield* settings.getSettings.pipe(Effect.mapError(safeError));
+          const account = current.localAccountPool.accounts[request.id as LocalAccountId];
+          if (account === undefined)
+            return yield* new CliProxyError({
+              code: "invalid_config",
+              detail: "账号不存在或已被删除。",
+            });
+          accountModels = yield* readLocalAccountCredential(account, secretStore).pipe(
+            Effect.flatMap((credential) =>
+              fetchLocalAccountModels({
+                account,
+                credential,
+                authKind: account.authKind ?? credentialAuthKind(credential),
+              }),
+            ),
+            Effect.map((result) => ({
+              accountId: account.id,
+              provider: account.provider,
+              source: result.source,
+              models: [...result.models],
+            })),
+            Effect.mapError(
+              (error) => new CliProxyError({ code: "invalid_config", detail: error.detail }),
+            ),
+            Effect.provideService(HttpClient.HttpClient, hostDeps.httpClient),
+          );
+          break;
+        }
+        case "setLocalAccountModels":
+          yield* setLocalAccountModels(settings, request.id as LocalAccountId, request.models).pipe(
+            Effect.mapError(safeError),
+          );
+          break;
+        case "claimLocalAccountOffer": {
+          if (hostDeps === undefined) break;
+          const current = yield* settings.getSettings.pipe(Effect.mapError(safeError));
+          const account = current.localAccountPool.accounts[request.id as LocalAccountId];
+          if (account === undefined)
+            return yield* new CliProxyError({
+              code: "invalid_config",
+              detail: "账号不存在或已被删除。",
+            });
+          if (account.provider !== "zcode")
+            return yield* new CliProxyError({
+              code: "invalid_config",
+              detail: "只有 ZCode 账号支持领取体验套餐活动。",
+            });
+          const outcome: ZCodeClaimOutcome = yield* readLocalAccountCredential(
+            account,
+            secretStore,
+          ).pipe(
+            Effect.flatMap(
+              (
+                credential,
+              ): Effect.Effect<
+                ZCodeClaimOutcome,
+                CliProxyError | string,
+                HttpClient.HttpClient
+              > => {
+                const jwt =
+                  typeof credential.zcode_jwt === "string" ? credential.zcode_jwt.trim() : "";
+                return jwt === ""
+                  ? Effect.fail(
+                      new CliProxyError({
+                        code: "invalid_config",
+                        detail: "该账号没有 ZCode 登录态，无法领取体验套餐。",
+                      }),
+                    )
+                  : fetchZCodeClaimOffer({
+                      jwt,
+                      planId: request.planId,
+                      captchaVerifyParam: request.captchaVerifyParam,
+                      ...(request.captchaRegion === undefined
+                        ? {}
+                        : { captchaRegion: request.captchaRegion }),
+                    });
+              },
+            ),
+            Effect.mapError(safeError),
+            Effect.provideService(HttpClient.HttpClient, hostDeps.httpClient),
+          );
+          accountClaim = {
+            success: outcome.success,
+            ...(outcome.code === undefined ? {} : { code: outcome.code }),
+            ...(outcome.message === undefined ? {} : { message: outcome.message }),
+            ...(outcome.planName === undefined ? {} : { planName: outcome.planName }),
+            ...(outcome.endsAt === undefined ? {} : { endsAt: outcome.endsAt }),
+          };
           break;
         }
         case "deleteAccount": {
@@ -837,7 +949,10 @@ export const makeCliProxyService = (
           const accountIds = Object.values(current.localAccountPool.accounts)
             .filter(
               (account) =>
-                account.enabled && account.provider !== "cursor" && account.models.length > 0,
+                account.enabled &&
+                account.provider !== "cursor" &&
+                // zcode 的体验套餐通道不依赖声明模型，JWT-only 账号也要能进实例。
+                (account.models.length > 0 || account.provider === "zcode"),
             )
             .map((account) => account.id);
           const nextSource = {
@@ -920,6 +1035,9 @@ export const makeCliProxyService = (
         ...(connectedInstanceId === undefined ? {} : { connectedInstanceId }),
         ...(nativeLogins === undefined ? {} : { nativeLogins }),
         ...(accountSubscriptions === undefined ? {} : { accountSubscriptions }),
+        ...(accountModels === undefined ? {} : { accountModels }),
+        ...(accountClaim === undefined ? {} : { accountClaim }),
+        ...(captchaConfig === undefined ? {} : { captchaConfig }),
         // 已删除账号的历史计数继续留在存储里，但状态里只展示仍存在的账号。
         // 冷却只在仍有效时透出，过期时间戳对客户端是噪音。
         accountUsage: localPoolUsageStore

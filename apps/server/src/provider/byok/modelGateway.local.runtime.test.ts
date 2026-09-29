@@ -126,6 +126,13 @@ const makeGateway = (
               "codex-oauth": { access_token: "codex-oauth-token", account_id: "acct-1" },
               "claude-oauth": { access_token: "claude-oauth-token" },
               "xai-api": { api_key: "xai-key" },
+              "z-jwt": { zcode_jwt: "start-plan-jwt", zcode_family: "zai" },
+              "z-key": { api_key: "zcode-plan-key", zcode_family: "zai" },
+              "z-both": {
+                api_key: "zcode-plan-key-both",
+                zcode_jwt: "both-account-jwt",
+                zcode_family: "bigmodel",
+              },
               ...(externalKey === undefined
                 ? {}
                 : {
@@ -151,7 +158,7 @@ const makeGateway = (
 const localSettings = (
   instanceId: string,
   driver: "byok" | "codex" | "claudeAgent" | "grok",
-  provider: "codex" | "claude" | "xai",
+  provider: "codex" | "claude" | "xai" | "zcode",
   accountIds: readonly string[],
   accounts: Record<string, unknown>,
 ): ServerSettings =>
@@ -222,6 +229,156 @@ describe("本地账号网关 runtime smoke", () => {
       new Set(["Bearer codex-key-a", "Bearer codex-key-b"]),
     );
     expect(gateway.captured[1]?.body).toMatchObject({ model: "gpt-5.4", stream: true });
+    await gateway.dispose();
+  });
+
+  it("体验套餐通道用 JWT 打 zcode-plan 网关，并剥掉非 ZCode 身份头", async () => {
+    const settings = localSettings("cpa-z", "byok", "zcode", ["z-jwt"], {
+      "z-jwt": {
+        id: "z-jwt",
+        provider: "zcode",
+        displayName: "Z",
+        credentialRef: "z-jwt",
+        enabled: true,
+        models: [],
+      },
+    });
+    const gateway = makeGateway(settings, [
+      new Response('data: {"type":"content_block_delta"}\n\ndata: [DONE]\n\n', {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    ]);
+    const route = gatewayAdapterRoutes(settings, "cpa-z").find(
+      (candidate) => candidate.localChannel === "zcode-start",
+    );
+    if (route === undefined) throw new Error("体验套餐路由未发布");
+    const response = await gateway.handler(
+      new Request("http://gateway.test/byok-gw/anthropic/v1/messages", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${gateway.token}`,
+          "content-type": "application/json",
+          "user-agent": "claude-cli/2.1.0 (external, cli)",
+          "x-stainless-lang": "js",
+          "x-app": "cli",
+        },
+        body: JSON.stringify({
+          model: route.id,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      }),
+    );
+
+    expect(response.status, await response.text()).toBe(200);
+    expect(gateway.captured[0]?.url).toBe(
+      "https://zcode.z.ai/api/v1/zcode-plan/anthropic/v1/messages",
+    );
+    expect(gateway.captured[0]?.headers.authorization).toBe("Bearer start-plan-jwt");
+    // D3：不伪造 ZCode 身份——别家客户端的 SDK 指纹头与 user-agent 一律剥离。
+    expect(gateway.captured[0]?.headers["user-agent"]).toBeUndefined();
+    expect(gateway.captured[0]?.headers["x-stainless-lang"]).toBeUndefined();
+    expect(gateway.captured[0]?.headers["x-app"]).toBeUndefined();
+    expect(gateway.captured[0]?.body).toMatchObject({ model: "GLM-5.3-Flash" });
+    await gateway.dispose();
+  });
+
+  it("体验套餐通道跳过没有 JWT 的 Key 账号且不打入冷却", async () => {
+    const settings = localSettings("cpa-z2", "byok", "zcode", ["z-key", "z-both"], {
+      "z-key": {
+        id: "z-key",
+        provider: "zcode",
+        displayName: "KeyOnly",
+        credentialRef: "z-key",
+        enabled: true,
+        models: [],
+      },
+      "z-both": {
+        id: "z-both",
+        provider: "zcode",
+        displayName: "Both",
+        credentialRef: "z-both",
+        enabled: true,
+        models: [],
+      },
+    });
+    const gateway = makeGateway(settings, [
+      new Response('data: {"type":"content_block_delta"}\n\ndata: [DONE]\n\n', {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    ]);
+    const route = gatewayAdapterRoutes(settings, "cpa-z2").find(
+      (candidate) => candidate.localChannel === "zcode-start",
+    );
+    if (route === undefined) throw new Error("体验套餐路由未发布");
+    const response = await gateway.handler(
+      new Request("http://gateway.test/byok-gw/anthropic/v1/messages", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${gateway.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: route.id,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(gateway.captured).toHaveLength(1);
+    expect(gateway.captured[0]?.headers.authorization).toBe("Bearer both-account-jwt");
+    expect(localPoolUsageStore.cooldownUntilUnixMs("z-key")).toBeUndefined();
+    await gateway.dispose();
+  });
+
+  it("ZCode Key 通道保持 ultra 网关与 api_key 鉴权", async () => {
+    const settings = localSettings("cpa-z3", "byok", "zcode", ["z-key"], {
+      "z-key": {
+        id: "z-key",
+        provider: "zcode",
+        displayName: "KeyOnly",
+        credentialRef: "z-key",
+        enabled: true,
+        models: ["GLM-5.3"],
+      },
+    });
+    const gateway = makeGateway(settings, [
+      new Response('data: {"type":"content_block_delta"}\n\ndata: [DONE]\n\n', {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    ]);
+    const route = gatewayAdapterRoutes(settings, "cpa-z3").find(
+      (candidate) => candidate.localChannel === undefined,
+    );
+    if (route === undefined) throw new Error("ZCode Key 路由未发布");
+    const response = await gateway.handler(
+      new Request("http://gateway.test/byok-gw/anthropic/v1/messages", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${gateway.token}`,
+          "content-type": "application/json",
+          "user-agent": "ZCode/3.14.4 zcode-client",
+        },
+        body: JSON.stringify({
+          model: route.id,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      }),
+    );
+
+    expect(response.status, await response.text()).toBe(200);
+    expect(gateway.captured[0]?.url).toBe(
+      "https://zcode.z.ai/api/v1/ultra-zai/anthropic/v1/messages",
+    );
+    expect(gateway.captured[0]?.headers.authorization).toBe("Bearer zcode-plan-key");
+    // D3：本来就是 ZCode 的 user-agent 透传。
+    expect(gateway.captured[0]?.headers["user-agent"]).toBe("ZCode/3.14.4 zcode-client");
     await gateway.dispose();
   });
 

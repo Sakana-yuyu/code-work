@@ -202,6 +202,21 @@ describe("内置 CLIProxyAPI 核心", () => {
             );
             expect(adapters).toMatchObject([
               { id: "local:embedded-cpa:zcode:GLM-5.3", protocol: "anthropic", modelId: "GLM-5.3" },
+              {
+                id: "local:embedded-cpa:zcode-start:GLM-5.3-Flash",
+                protocol: "anthropic",
+                modelId: "GLM-5.3-Flash",
+              },
+              {
+                id: "local:embedded-cpa:zcode-start:GLM-5.2",
+                protocol: "anthropic",
+                modelId: "GLM-5.2",
+              },
+              {
+                id: "local:embedded-cpa:zcode-start:GLM-5-Turbo",
+                protocol: "anthropic",
+                modelId: "GLM-5-Turbo",
+              },
             ]);
           }),
       ),
