@@ -2375,6 +2375,12 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
   const serverStageDir = path.join(input.stageRoot, "server");
   yield* fs.makeDirectory(path.join(serverStageDir, "apps/server"), { recursive: true });
   yield* fs.copy(input.serverDistDir, path.join(serverStageDir, "apps/server/dist"));
+  // Vendored runtimes（如 ZCode 内嵌 bundle）必须随 server 打包；
+  // 运行时按 import.meta 相对路径解析并释放到 stateDir 再 spawn。
+  const vendorDir = path.join(input.repoRoot, "apps/server/vendor");
+  if (yield* fs.exists(vendorDir)) {
+    yield* fs.copy(vendorDir, path.join(serverStageDir, "apps/server/vendor"));
+  }
 
   const sidecarDependencies = {
     ...input.runtimeExternalDependencies,

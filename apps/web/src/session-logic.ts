@@ -977,6 +977,8 @@ export function deriveWorkLogEntries(
     if (activity.kind === "task.updated") continue;
     if (activity.kind === "tool.progress") continue;
     if (activity.kind === "context-window.updated") continue;
+    // 思考摘要增量由 deriveReasoningSummaryEntries 聚合成可折叠行；逐条进工作日志会刷屏。
+    if (activity.kind === "reasoning.summary.delta") continue;
     // 订阅额度是「最新态」活动，由输入框额度芯片与用量页呈现，不是工作日志行。
     if (activity.kind === "account.rate-limits.updated") continue;
     if (activity.summary === "Checkpoint captured") continue;

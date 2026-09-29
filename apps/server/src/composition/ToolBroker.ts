@@ -26,6 +26,7 @@ import {
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -514,19 +515,59 @@ const make = Effect.gen(function* () {
   ) =>
     Effect.gen(function* () {
       if (terminalCommandVisible(started)) return started;
-      const settled = yield* Deferred.make<TerminalSessionSnapshot>();
-      const unsubscribe = yield* terminalManager.attachStream({ threadId, terminalId }, (event) => {
-        if (event.type !== "snapshot" || !terminalCommandVisible(event.snapshot)) {
-          return Effect.void;
-        }
-        return Deferred.succeed(settled, event.snapshot).pipe(Effect.ignore);
-      });
-      const outcome = yield* Deferred.await(settled).pipe(
-        Effect.timeoutOption(TERMINAL_EXEC_OUTPUT_TIMEOUT),
-        Effect.ensuring(Effect.sync(unsubscribe)),
+      let snapshot = started;
+      const settled = yield* Deferred.make<void, Error>();
+      yield* Effect.acquireRelease(
+        terminalManager.attachStream({ threadId, terminalId }, (event) =>
+          Effect.gen(function* () {
+            if (event.type === "error" || event.type === "closed") {
+              yield* Deferred.fail(
+                settled,
+                new Error(
+                  event.type === "error"
+                    ? event.message
+                    : "Terminal closed before command output was available.",
+                ),
+              );
+              return;
+            }
+            if (event.type === "snapshot" || event.type === "restarted") {
+              snapshot = event.snapshot;
+            } else {
+              snapshot = {
+                ...snapshot,
+                updatedAt: DateTime.formatIso(yield* DateTime.now),
+                ...(event.sequence === undefined ? {} : { sequence: event.sequence }),
+              };
+              switch (event.type) {
+                case "output":
+                  snapshot = { ...snapshot, history: snapshot.history + event.data };
+                  break;
+                case "exited":
+                  snapshot = {
+                    ...snapshot,
+                    status: "exited",
+                    pid: null,
+                    exitCode: event.exitCode,
+                    exitSignal: event.exitSignal,
+                  };
+                  break;
+                case "cleared":
+                  snapshot = { ...snapshot, history: "" };
+                  break;
+                case "activity":
+                  snapshot = { ...snapshot, label: event.label };
+                  break;
+              }
+            }
+            if (terminalCommandVisible(snapshot)) yield* Deferred.succeed(settled, undefined);
+          }),
+        ),
+        (unsubscribe) => Effect.sync(unsubscribe),
       );
-      return Option.isSome(outcome) ? outcome.value : started;
-    });
+      yield* Deferred.await(settled).pipe(Effect.timeoutOption(TERMINAL_EXEC_OUTPUT_TIMEOUT));
+      return snapshot;
+    }).pipe(Effect.scoped);
 
   if (Option.isSome(terminalManager)) {
     handlers.set("terminal.open", {

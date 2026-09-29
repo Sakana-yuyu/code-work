@@ -709,6 +709,16 @@ export const OmpAgentIcon: Icon = ({ className, ...props }) => (
   </svg>
 );
 
+export const ZCodeIcon: Icon = ({ className, ...props }) => (
+  <svg {...props} viewBox="0 0 800 800" className={cn("fill-none", className)}>
+    <rect width="800" height="800" rx="160" fill="#000" />
+    <path
+      fill="#fff"
+      d="M165.29 165.29H634.72V282.65L318.4 517.36H634.72V634.72H165.29V517.36L481.6 282.65H165.29Z"
+    />
+  </svg>
+);
+
 export const AcpAgentIcon: Icon = ({ className, ...props }) => (
   <svg {...props} viewBox="0 0 800 800" className={cn("fill-none", className)}>
     <rect width="800" height="800" rx="160" fill="#000" />

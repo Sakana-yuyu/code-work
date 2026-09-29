@@ -12,6 +12,7 @@ import * as Stream from "effect/Stream";
 
 import {
   CompositionAgentServiceError,
+  makeCompositionAgentService,
   type CompositionAgentServiceInput,
   type CompositionAgentServiceShape,
 } from "./CompositionAgentService.ts";
@@ -500,6 +501,81 @@ describe("CompositionByokAgentDriver", () => {
         "runtime.error",
         "turn.completed",
       ]);
+    }),
+  );
+
+  effectIt.effect("重复命令保护经真实 Agent 服务发布失败终态", () =>
+    Effect.gen(function* () {
+      let executions = 0;
+      const service = makeCompositionAgentService({
+        broker: {
+          invoke: (input) =>
+            Effect.sync(() => {
+              executions += 1;
+              return {
+                invocationId: `invocation-${input.toolCallId}`,
+                taskId: input.taskId,
+                runId: input.runId,
+                toolCallId: input.toolCallId,
+                canonicalToolName: input.canonicalToolName,
+                status: "succeeded" as const,
+                result: { history: "same", status: "exited" },
+              };
+            }),
+          cancel: () => Effect.void,
+        },
+        resolveModelDriver: () =>
+          Effect.succeed({
+            complete: ({ turn }) =>
+              Stream.fromIterable([
+                {
+                  type: "tool_call" as const,
+                  toolCallId: `exec-${turn}`,
+                  canonicalToolName: "terminal.exec",
+                  arguments: {
+                    cwd: "C:/workspace",
+                    command: "node",
+                    args: ["--version"],
+                    terminalId: `t${turn}`,
+                  },
+                },
+                { type: "model_completed" as const },
+              ]),
+          }),
+      });
+      const driver = makeCompositionByokAgentDriver({
+        agentId: "provider:byok",
+        runtimeId: "provider:byok",
+        providerInstanceId: "byok",
+        agentService: service,
+        checkpointStore: makeCheckpointLedger().store,
+        listTools: () =>
+          Effect.succeed([
+            {
+              canonicalToolName: "terminal.exec",
+              description: "执行命令",
+              parameters: { type: "object" },
+            },
+          ]),
+      });
+      const eventsFiber = yield* collectUntilTerminal(driver).pipe(Effect.forkChild);
+      yield* start(driver);
+      const events = yield* Fiber.join(eventsFiber);
+      expect(executions).toBe(3);
+      expect(events.map((event) => event.type)).toEqual([
+        "turn.started",
+        "runtime.error",
+        "turn.completed",
+      ]);
+      expect(events[1]).toMatchObject({
+        payload: { detail: { failureCode: "repeated_terminal_command" } },
+      });
+      expect(events.at(-1)).toMatchObject({
+        payload: {
+          state: "failed",
+          errorMessage: expect.stringContaining("repeated_terminal_command"),
+        },
+      });
     }),
   );
 

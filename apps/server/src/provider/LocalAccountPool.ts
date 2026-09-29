@@ -5,6 +5,7 @@
 import * as NodeCrypto from "node:crypto";
 import {
   ByokModelAdapter,
+  LOCAL_POOL_DEFAULT_MODELS,
   LocalAccountProvider,
   type LocalAccount,
   type LocalAccountAuthKind,
@@ -22,9 +23,18 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import type { ServerSettingsService } from "../serverSettings.ts";
 import { localPoolUsageStore } from "./LocalPoolUsage.ts";
+import {
+  decryptZCodeCredentialRecord,
+  normalizeZCodePoolCredential,
+  ZCodeCredentialError,
+} from "./zcode/zcodeCredentials.ts";
 
 const decodeProvider = (value: string): LocalAccountProvider | undefined =>
-  value === "codex" || value === "claude" || value === "xai" || value === "cursor"
+  value === "codex" ||
+  value === "claude" ||
+  value === "xai" ||
+  value === "cursor" ||
+  value === "zcode"
     ? value
     : undefined;
 
@@ -48,6 +58,37 @@ export const parseLocalCredential = (
     throw new LocalAccountError({ detail: "账号凭据必须是 JSON 对象。" });
   }
   const record = value as Record<string, unknown>;
+  // ZCode 凭据是加密键值文件：先解密，再抽出 Coding Plan API Key 归一化。
+  if (provider === "zcode") {
+    // 池内已存的是上次归一化结果（api_key 快照），二次读取必须直通，
+    // 否则会再次尝试解密一个明文对象并报"没有 Coding Plan API Key"。
+    if (
+      typeof record.api_key === "string" &&
+      record.api_key.trim().length > 0 &&
+      !Object.keys(record).some((key) => key.includes(":") || key === "zcodejwttoken")
+    ) {
+      return record;
+    }
+    let normalized: Record<string, unknown> | undefined;
+    try {
+      normalized = normalizeZCodePoolCredential(decryptZCodeCredentialRecord(record));
+    } catch (error) {
+      throw new LocalAccountError({
+        detail:
+          error instanceof ZCodeCredentialError
+            ? error.message
+            : "ZCode 凭据解密失败：请在同一台机器上用官方 CLI 重新登录。",
+      });
+    }
+    if (normalized === undefined) {
+      throw new LocalAccountError({
+        detail: "ZCode 凭据里没有 Coding Plan API Key，请先用 zcode login 完成登录。",
+      });
+    }
+    if (Array.isArray(record.models)) normalized.models = record.models;
+    else if (typeof record.model === "string") normalized.model = record.model;
+    return normalized;
+  }
   // Codex/Claude 使用嵌套 token envelope；Grok 官方 auth.json 使用登录 URL 作为键。
   const grokEnvelope =
     provider === undefined || provider === "xai"
@@ -406,11 +447,15 @@ export const importLocalAccount = (
       .set(credentialRef, Buffer.from(JSON.stringify(persistedCredential), "utf8"))
       .pipe(Effect.mapError(() => new LocalAccountError({ detail: "保存本地账号凭据失败。" })));
     const localAccountId = id as LocalAccountId;
+    const importedLabel =
+      typeof credential.account_label === "string" && credential.account_label.trim().length > 0
+        ? credential.account_label.trim()
+        : undefined;
     const account: LocalAccount = {
       id: localAccountId,
       provider,
       authKind: credentialAuthKind(credential),
-      displayName: input.displayName.trim() || id,
+      displayName: input.displayName.trim() || importedLabel || id,
       credentialRef,
       enabled: true,
       models,
@@ -643,8 +688,16 @@ export const localGatewayAdapters = (
     (account) => account.enabled && account.provider !== "cursor",
   );
   return accounts.flatMap((account) =>
-    account.models.flatMap((modelId) => {
-      const protocol = account.provider === "claude" ? "anthropic" : "openai";
+    // 未声明模型的账号按平台默认目录出通道；路由语义仍是"不限模型"，
+    // 目录只决定 BYOK 实例里能看到/选到哪些模型。
+    (account.models.length > 0
+      ? account.models
+      : LOCAL_POOL_DEFAULT_MODELS[account.provider]
+    ).flatMap((modelId) => {
+      const protocol =
+        account.provider === "claude" || account.provider === "zcode"
+          ? ("anthropic" as const)
+          : ("openai" as const);
       const id = `local:${instanceId}:${account.provider}:${modelId}`;
       return decodeByokAdapter({
         id,

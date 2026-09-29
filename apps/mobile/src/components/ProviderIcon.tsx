@@ -84,6 +84,18 @@ export function ProviderIcon(props: ProviderIconProps) {
     );
   }
 
+  if (props.provider === "zcodeAgent") {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 800 800" fill="none">
+        <Rect width={800} height={800} rx={160} fill="#000" />
+        <Path
+          fill="#fff"
+          d="M165.29 165.29H634.72V282.65L318.4 517.36H634.72V634.72H165.29V517.36L481.6 282.65H165.29Z"
+        />
+      </Svg>
+    );
+  }
+
   if (props.provider === "acpAgent") {
     return (
       <Svg width={size} height={size} viewBox="0 0 800 800" fill="none">

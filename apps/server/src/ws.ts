@@ -2295,6 +2295,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.serverCliProxy, cliProxy.handle(input), {
             "rpc.aggregate": "server",
           }),
+        [WS_METHODS.serverZcodeLogin]: (input) =>
+          observeRpcEffect(WS_METHODS.serverZcodeLogin, cliProxy.zcodeLogin(input), {
+            "rpc.aggregate": "server",
+          }),
         [WS_METHODS.serverGetConfig]: (_input) =>
           observeRpcEffect(WS_METHODS.serverGetConfig, loadServerConfig, {
             "rpc.aggregate": "server",

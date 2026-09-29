@@ -1348,6 +1348,7 @@ export const ja: Record<string, string> = {
   "providersMobile.autoCompactWindow": "自動コンパクトのしきい値",
   "providersMobile.autoCompactWindowPlaceholder": "例: 300000",
   "providersMobile.routeThroughByok": "BYOK ゲートウェイ経由でルーティング",
+  "providersMobile.zcodeOfficial": "公式 Z.AI アカウントでログイン",
   "providersMobile.command": "コマンドライン",
   "providersMobile.commandPlaceholder": "例: npx -y cline@3.0.46 --acp",
   "providersMobile.authMethod": "認証方式",

@@ -19,6 +19,7 @@ export type TextGenerationProvider =
   | "opencode"
   | "piAgent"
   | "ompAgent"
+  | "zcodeAgent"
   | "acpAgent";
 
 export interface CommitMessageGenerationInput {

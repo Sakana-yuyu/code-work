@@ -99,6 +99,8 @@ export interface PifamilyModelRoute {
   readonly displayName: string;
   readonly modelId: string;
   readonly contextWindowTokens: number;
+  /** 本地账号池（号池）路由的官方来源；中转通道为空。 */
+  readonly localProvider?: string;
 }
 
 /** 从任意 BYOK 实例配置里提取 adapterId → contextWindowTokens 的尽力查找表。 */
@@ -136,6 +138,7 @@ export function pifamilyModelRoutes(
     readonly protocol: "openai" | "anthropic" | "gemini";
     readonly displayName: string;
     readonly modelId: string;
+    readonly localProvider?: string;
   }>,
   settings: ServerSettings,
 ): ReadonlyArray<PifamilyModelRoute> {
@@ -145,6 +148,7 @@ export function pifamilyModelRoutes(
     readonly protocol: "openai" | "anthropic";
     readonly displayName: string;
     readonly modelId: string;
+    readonly localProvider?: string;
   }> = routes.flatMap((route) =>
     route.protocol === "gemini" ? [] : [route as (typeof gatewayRoutable)[number]],
   );
@@ -154,6 +158,7 @@ export function pifamilyModelRoutes(
     displayName: route.displayName.trim().length > 0 ? route.displayName : route.modelId,
     modelId: route.modelId,
     contextWindowTokens: contextWindows.get(route.id) ?? DEFAULT_CONTEXT_WINDOW_TOKENS,
+    ...(route.localProvider === undefined ? {} : { localProvider: route.localProvider }),
   }));
 }
 

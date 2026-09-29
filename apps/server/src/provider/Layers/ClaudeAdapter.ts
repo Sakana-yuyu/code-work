@@ -4302,7 +4302,26 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         "full-access": "bypassPermissions",
       };
       const permissionMode = runtimeModeToPermission[input.runtimeMode];
+      // 用户级 ~/.claude/settings.json 的 env 优先于进程环境（CC Switch 等工具会写入
+      // ANTHROPIC_BASE_URL 与模型映射），会让 CLI 绕过 BYOK 网关、把通道 ID 发给别家上游。
+      // 命令行 settings 层高于用户/项目/本地层，路由实例在此重申网关端点并清空模型映射。
+      const routedEnv: Record<string, string> | undefined =
+        claudeSettings.routeThroughByok === true
+          ? Object.fromEntries(
+              [
+                "ANTHROPIC_BASE_URL",
+                "ANTHROPIC_AUTH_TOKEN",
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_MODEL",
+                "ANTHROPIC_SMALL_FAST_MODEL",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+              ].map((name) => [name, claudeEnvironment[name] ?? ""]),
+            )
+          : undefined;
       const settings = {
+        ...(routedEnv ? { env: routedEnv } : {}),
         ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
         ...(fastMode ? { fastMode: true } : {}),
         ...(ultracode ? { ultracode: true } : {}),

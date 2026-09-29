@@ -27,7 +27,7 @@ orchestration layer does not know which one is behind a thread.
 | `acpAgent`    | [`Drivers/GenericAcpDriver.ts`][genericacp]   |
 | `byok`        | [`Drivers/ByokDriver.ts`][byok]               |
 
-Pi and OhMyPi share a BYOK-only architecture — see [pi-family-providers.md](./pi-family-providers.md); the user-configured ACP entry is covered in [generic-acp-provider.md](./generic-acp-provider.md).
+Pi and OhMyPi share a BYOK-only architecture — see [pi-family-providers.md](./pi-family-providers.md); ZCode follows the same BYOK-only shape with a per-turn stream-json transport — see [zcode-provider.md](./zcode-provider.md); the user-configured ACP entry is covered in [generic-acp-provider.md](./generic-acp-provider.md).
 
 Each driver declares its `driverKind`, a `configSchema`, and a `create` function that builds an
 adapter in a child scope. Adapter implementations live beside them in

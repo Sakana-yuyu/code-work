@@ -18,12 +18,14 @@ type Adapter = {
   readonly protocol: "openai" | "anthropic";
   readonly baseURL: string;
   readonly apiKey: string;
+  readonly customHeaders?: string;
   readonly modelId: string;
   readonly contextWindowTokens: number;
   readonly supplierID?: string;
   readonly modelCatalogURL?: string;
   readonly modelCatalogURLs?: readonly string[];
   readonly modelCatalogStatus?: "openai_models" | "gemini_models" | "custom_url" | "manual_only";
+  readonly appendModelCatalogCandidates?: boolean;
 };
 
 const makeSettings = (instanceId: string, adapters: ReadonlyArray<Adapter>) =>
@@ -435,6 +437,60 @@ describe("ByokModelDiscoveryService", () => {
     expect(isolated.status).toBe("failed");
     expect(isolated.models).toEqual([]);
   });
+
+  for (const field of ["apiKey", "customHeaders"] as const) {
+    for (const shouldFail of [false, true]) {
+      it(`更换 ${field} 后隔离模型目录缓存，刷新${shouldFail ? "失败" : "成功"}`, async () => {
+        const instanceId = `credential-cache-${field}-${shouldFail}`;
+        const input = { instanceId, adapterId: "credential-cache" };
+        const credentials = (account: "first" | "second") =>
+          field === "apiKey"
+            ? { apiKey: `sk-cache-${account}` }
+            : { customHeaders: JSON.stringify({ "x-account": account }) };
+        const settingsFor = (account: "first" | "second") =>
+          makeSettings(instanceId, [
+            adapter({
+              id: input.adapterId,
+              appendModelCatalogCandidates: false,
+              ...credentials(account),
+            }),
+          ]);
+        const accounts: string[] = [];
+        const fetch = asFetch(async (url, init) => {
+          const request = new Request(String(url), init);
+          const account =
+            field === "apiKey"
+              ? request.headers.get("authorization") === "Bearer sk-cache-first"
+                ? "first"
+                : "second"
+              : request.headers.get("x-account")!;
+          accounts.push(account);
+          return shouldFail && account === "second"
+            ? new Response("upstream failure", { status: 503 })
+            : new Response(JSON.stringify({ data: [{ id: `${account}-model` }] }), { status: 200 });
+        });
+        const first = await runDiscover(settingsFor("first"), fetch, input);
+        expect(first).toMatchObject({ status: "ready", models: [{ id: "first-model" }] });
+        const second = await runDiscover(settingsFor("second"), fetch, {
+          ...input,
+          forceRefresh: shouldFail,
+        });
+        expect(accounts).toEqual(["first", "second"]);
+        expect(second).toMatchObject(
+          shouldFail
+            ? { status: "failed", stale: false, models: [], error: { code: "upstream_http" } }
+            : { status: "ready", stale: false, models: [{ id: "second-model" }] },
+        );
+        if (!shouldFail) {
+          const cached = await runDiscover(settingsFor("second"), fetch, input);
+          expect(cached).toMatchObject({ status: "cached", models: [{ id: "second-model" }] });
+          expect(accounts).toHaveLength(2);
+        }
+        expect(JSON.stringify(second)).not.toContain("sk-cache-");
+        expect(JSON.stringify(second)).not.toContain("x-account");
+      });
+    }
+  }
 
   it("probes a relay once for manual context matching and never returns its API key", async () => {
     let requestCount = 0;

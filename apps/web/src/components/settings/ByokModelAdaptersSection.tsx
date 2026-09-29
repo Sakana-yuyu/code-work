@@ -1119,18 +1119,6 @@ export function ByokModelAdaptersSection({
       contextWindowTokens,
       ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
       ...(form.supplier !== "custom" ? { supplierID: form.supplier } : {}),
-      ...(retainsStoredCredentials && existingAdapter?.modelCatalogURL
-        ? { modelCatalogURL: existingAdapter.modelCatalogURL }
-        : {}),
-      ...(retainsStoredCredentials && existingAdapter?.modelCatalogURLs
-        ? { modelCatalogURLs: existingAdapter.modelCatalogURLs }
-        : {}),
-      ...(retainsStoredCredentials && existingAdapter?.modelCatalogStatus
-        ? { modelCatalogStatus: existingAdapter.modelCatalogStatus }
-        : {}),
-      ...(retainsStoredCredentials && existingAdapter?.appendModelCatalogCandidates !== undefined
-        ? { appendModelCatalogCandidates: existingAdapter.appendModelCatalogCandidates }
-        : {}),
       ...(supplierTemplates.find((entry) => entry.id === form.supplier)?.modelCatalogURLs
         ? {
             modelCatalogURLs: supplierTemplates.find((entry) => entry.id === form.supplier)
@@ -1150,6 +1138,18 @@ export function ByokModelAdaptersSection({
               (entry) => entry.id === form.supplier,
             )?.appendModelCatalogCandidates,
           }
+        : {}),
+      ...(retainsStoredCredentials && existingAdapter?.modelCatalogURL
+        ? { modelCatalogURL: existingAdapter.modelCatalogURL }
+        : {}),
+      ...(retainsStoredCredentials && existingAdapter?.modelCatalogURLs
+        ? { modelCatalogURLs: existingAdapter.modelCatalogURLs }
+        : {}),
+      ...(retainsStoredCredentials && existingAdapter?.modelCatalogStatus
+        ? { modelCatalogStatus: existingAdapter.modelCatalogStatus }
+        : {}),
+      ...(retainsStoredCredentials && existingAdapter?.appendModelCatalogCandidates !== undefined
+        ? { appendModelCatalogCandidates: existingAdapter.appendModelCatalogCandidates }
         : {}),
     };
     const nextAdapters =

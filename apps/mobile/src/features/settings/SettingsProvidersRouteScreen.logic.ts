@@ -54,6 +54,7 @@ export const MOBILE_PROVIDER_DRIVERS = [
   "opencode",
   "piAgent",
   "ompAgent",
+  "zcodeAgent",
   "acpAgent",
 ] as const;
 
@@ -134,6 +135,10 @@ const PROVIDER_FIELDS: Readonly<Record<MobileProviderDriver, ReadonlyArray<Mobil
         "providersMobile.approvalMode",
         "providersMobile.approvalModePlaceholder",
       ),
+    ],
+    zcodeAgent: [
+      FIELD("binaryPath", "providersMobile.binaryPath", "providersMobile.binaryPathPlaceholder"),
+      FIELD("launchArgs", "providersMobile.launchArgs", "providersMobile.launchArgsPlaceholder"),
     ],
     acpAgent: [
       FIELD("command", "providersMobile.command", "providersMobile.commandPlaceholder"),

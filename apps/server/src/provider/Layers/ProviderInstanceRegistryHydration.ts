@@ -106,7 +106,8 @@ export const deriveProviderInstanceConfigMap = (
 
   for (const [instanceId, entry] of Object.entries(merged)) {
     // pi/omp 只有 BYOK 一种形态；acpAgent 在用户开启网关注入时也纳入指纹。
-    const alwaysRouted = entry.driver === "piAgent" || entry.driver === "ompAgent";
+    const alwaysRouted =
+      entry.driver === "piAgent" || entry.driver === "ompAgent" || entry.driver === "zcodeAgent";
     const optionallyRouted =
       entry.driver === "codex" ||
       entry.driver === "claudeAgent" ||
@@ -125,7 +126,7 @@ export const deriveProviderInstanceConfigMap = (
       typeof config.byokSourceInstanceId === "string" &&
       config.byokSourceInstanceId.length > 0
         ? config.byokSourceInstanceId
-        : alwaysRouted
+        : alwaysRouted && entry.driver !== "zcodeAgent"
           ? "byok"
           : undefined;
     const source = sourceId === undefined ? undefined : merged[sourceId];

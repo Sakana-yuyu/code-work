@@ -11,6 +11,7 @@ import {
   OpenCodeSettings,
   PiAgentSettings,
   ProviderDriverKind,
+  ZCodeAgentSettings,
 } from "@codework/contracts";
 import type * as Schema from "effect/Schema";
 import {
@@ -24,6 +25,7 @@ import {
   OpenAI,
   OpenCodeIcon,
   PiAgentIcon,
+  ZCodeIcon,
 } from "../Icons";
 import { t } from "~/i18n/runtime";
 
@@ -135,6 +137,14 @@ export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = 
     // BYOK-only driver, same as piAgent above.
     badgeLabel: "BYOK",
     settingsSchema: OmpAgentSettings,
+  },
+  {
+    value: ProviderDriverKind.make("zcodeAgent"),
+    label: "ZCode",
+    icon: ZCodeIcon,
+    // BYOK-only driver, same as piAgent above.
+    badgeLabel: "BYOK",
+    settingsSchema: ZCodeAgentSettings,
   },
   {
     value: ProviderDriverKind.make("acpAgent"),

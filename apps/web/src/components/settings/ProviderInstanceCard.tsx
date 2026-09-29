@@ -607,6 +607,7 @@ export function ProviderInstanceCard({
     "kimi",
     "antigravity",
     "opencode",
+    "zcodeAgent",
   ].includes(instance.driver);
 
   const customModels = readConfigStringArray(instance.config, "customModels");

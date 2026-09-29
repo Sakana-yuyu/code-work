@@ -349,6 +349,8 @@ function deriveWorkLogEntries(
     if (activity.kind === "task.updated" && !isTerminalBypassUpdate(activity)) continue;
     if (activity.kind === "tool.progress") continue;
     if (activity.kind === "context-window.updated") continue;
+    // 思考摘要是逐段流式增量，移动端不展示；逐条进工作日志会刷屏。
+    if (activity.kind === "reasoning.summary.delta") continue;
     // 订阅额度是「最新态」活动，由输入框额度芯片与用量页呈现，不是工作日志行。
     if (activity.kind === "account.rate-limits.updated") continue;
     if (activity.summary === "Checkpoint captured") continue;
@@ -557,6 +559,9 @@ function shouldCollapseToolLifecycleEntries(
     next.activityKind !== "tool.updated" &&
     next.activityKind !== "tool.completed"
   ) {
+    return false;
+  }
+  if (previous.turnId !== next.turnId) {
     return false;
   }
   if (previous.activityKind === "tool.completed") {
@@ -1460,11 +1465,16 @@ function appendPresentedFeedEntry(
 
   const groupId = entry.id;
   const expanded = expandedWorkGroupIds.has(groupId);
-  const hiddenActivities = activities.slice(0, -MAX_VISIBLE_WORK_LOG_ENTRIES);
-  const hiddenCount = hiddenActivities.length;
-  const visibleActivities = expanded ? activities : activities.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES);
-
-  for (const activity of visibleActivities) {
+  const hiddenActivities: ThreadFeedActivity[] = [];
+  for (const [index, activity] of activities.entries()) {
+    if (
+      index < activities.length - MAX_VISIBLE_WORK_LOG_ENTRIES &&
+      activity.status !== "inProgress" &&
+      activity.status !== "failure"
+    ) {
+      hiddenActivities.push(activity);
+      if (!expanded) continue;
+    }
     result.push({
       type: "activity-group",
       id: activity.id,
@@ -1473,13 +1483,14 @@ function appendPresentedFeedEntry(
       activities: [activity],
     });
   }
+  if (hiddenActivities.length === 0) return;
   result.push({
     type: "work-toggle",
     id: `work-toggle:${groupId}`,
     createdAt: entry.createdAt,
     turnId: entry.turnId,
     groupId,
-    hiddenCount,
+    hiddenCount: hiddenActivities.length,
     expanded,
     onlyToolActivities: activities.every((activity) => activity.toolLike),
     breakdown: workLogToggleBreakdown(hiddenActivities) ?? undefined,

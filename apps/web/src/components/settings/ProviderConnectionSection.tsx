@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Cause } from "effect";
 import { useAtomValue } from "@effect/atom-react";
 import {
   EnvironmentId,
@@ -26,7 +27,14 @@ const EMPTY_SHARED_INSTANCES: ReadonlyArray<{ instanceId: ProviderInstanceId; la
 type ConnectionMode = "native" | "api" | "gateway";
 const supportsApiConnection = (driver: string): boolean =>
   driver === "codex" || driver === "claudeAgent" || driver === "kimi";
+/** ZCode 不写 routeThroughByok；网关是它的一种形态，另一种是用 zcode login 登录官方账号。 */
+const isGatewayOnly = (driver: string): boolean => driver === "zcodeAgent";
+
+/** ZCode 实例当前的账号形态；缺省按 BYOK 网关处理（与新增实例一致）。 */
+const zcodeAuthMode = (instance: ProviderInstanceConfig): "byok" | "official" =>
+  (instance.config as { authMode?: unknown } | null)?.authMode === "official" ? "official" : "byok";
 const supportsGatewayConnection = (driver: string): boolean =>
+  isGatewayOnly(driver) ||
   driver === "codex" ||
   driver === "claudeAgent" ||
   driver === "grok" ||
@@ -46,6 +54,8 @@ const apiNames = (driver: string, bearer = false) =>
 
 export function providerConnectionMode(instance: ProviderInstanceConfig): ConnectionMode {
   const config = instance.config as Record<string, unknown> | null;
+  if (isGatewayOnly(instance.driver))
+    return zcodeAuthMode(instance) === "official" ? "native" : "gateway";
   if (supportsGatewayConnection(instance.driver) && config?.routeThroughByok === true)
     return "gateway";
   const key = apiNames(instance.driver).key;
@@ -115,7 +125,9 @@ export function withProviderConnection(
   }
   const config: Record<string, unknown> = {
     ...(instance.config as Record<string, unknown>),
-    routeThroughByok: mode === "gateway" && supportsGatewayConnection(instance.driver),
+    ...(isGatewayOnly(instance.driver)
+      ? { authMode: mode === "native" ? "official" : "byok" }
+      : { routeThroughByok: mode === "gateway" && supportsGatewayConnection(instance.driver) }),
   };
   if (sourceInstanceId) config.byokSourceInstanceId = sourceInstanceId;
   else delete config.byokSourceInstanceId;
@@ -171,22 +183,34 @@ export function ProviderConnectionSection({
           : "https://api.anthropic.com"),
   );
   const [key, setKey] = useState("");
+  // ZCode 官方登录的账号域：zai（国际）或 bigmodel（国内）。
+  const [zcodeRegion, setZcodeRegion] = useState<"zai" | "bigmodel">("zai");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ error: boolean; text: string } | null>(null);
   const [session, setSession] = useState<TerminalSessionSnapshot | null>(null);
+  const [zcodeAuth, setZcodeAuth] = useState<{
+    sessionId: string;
+    authorizeUrl: string;
+  } | null>(null);
   const sessionId = useRef<string | null>(null);
   const startLogin = useAtomCommand(serverEnvironment.startProviderLogin, { reportFailure: false });
+  const zcodeLoginCommand = useAtomCommand(serverEnvironment.zcodeLogin, {
+    reportFailure: false,
+  });
   const closeTerminal = useAtomCommand(terminalEnvironment.close);
   const refresh = useAtomCommand(serverEnvironment.refreshProviders);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const threadId = ThreadId.make(`provider-login:${instanceId}`);
   const canDirect = supportsApiConnection(instance.driver);
   const canGateway = supportsGatewayConnection(instance.driver);
+  const gatewayOnly = isGatewayOnly(instance.driver);
   const canLogin =
-    canDirect ||
-    instance.driver === "grok" ||
-    instance.driver === "kimi" ||
-    instance.driver === "antigravity";
+    (!gatewayOnly || instance.driver === "zcodeAgent") &&
+    (canDirect ||
+      instance.driver === "grok" ||
+      instance.driver === "kimi" ||
+      instance.driver === "antigravity" ||
+      instance.driver === "zcodeAgent");
   const storedKey = instance.environment?.some(
     (entry) => entry.name === names.key && (entry.value || entry.valueRedacted),
   );
@@ -236,7 +260,33 @@ export function ProviderConnectionSection({
   };
 
   const login = async (deviceCode: boolean) => {
-    if (sessionId.current) return;
+    if (sessionId.current || zcodeAuth !== null) return;
+    // ZCode 官方登录走服务端原生 OAuth（无需 zcode CLI）：取授权链接，后台轮询。
+    if (instance.driver === "zcodeAgent") {
+      if (!(await save())) return;
+      setBusy(true);
+      const result = await zcodeLoginCommand({
+        environmentId,
+        input: { action: "start", family: zcodeRegion, instanceId },
+      });
+      setBusy(false);
+      if (result._tag === "Success" && result.value.action === "start") {
+        setZcodeAuth({
+          sessionId: result.value.sessionId,
+          authorizeUrl: result.value.authorizeUrl,
+        });
+      } else {
+        const squashed = result._tag === "Failure" ? Cause.squash(result.cause) : null;
+        const detail =
+          squashed instanceof Error && squashed.cause instanceof Error
+            ? squashed.cause.message
+            : squashed instanceof Error
+              ? squashed.message
+              : t("providerConnection.loginFailed");
+        setFeedback({ error: true, text: detail });
+      }
+      return;
+    }
     const terminalId = randomUUID();
     sessionId.current = terminalId;
     if (!(await save())) {
@@ -247,7 +297,12 @@ export function ProviderConnectionSection({
     setBusy(true);
     const result = await startLogin({
       environmentId,
-      input: { instanceId, terminalId, deviceCode },
+      input: {
+        instanceId,
+        terminalId,
+        deviceCode,
+        ...(instance.driver === "zcodeAgent" ? { loginProvider: zcodeRegion } : {}),
+      },
     });
     setBusy(false);
     if (sessionId.current !== terminalId) {
@@ -261,6 +316,39 @@ export function ProviderConnectionSection({
       setFeedback({ error: true, text: t("providerConnection.loginFailed") });
     }
   };
+
+  // ZCode 登录会话轮询：ready 后刷新卡片（凭据已写入实例数据根）。
+  useEffect(() => {
+    if (zcodeAuth === null) return;
+    const sessionId = zcodeAuth.sessionId;
+    let disposed = false;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const result = await zcodeLoginCommand({
+          environmentId,
+          input: { action: "status", sessionId },
+        });
+        if (disposed || result._tag !== "Success" || result.value.action !== "status") return;
+        const status = result.value;
+        if (status.status === "ready") {
+          setZcodeAuth(null);
+          setFeedback({ error: false, text: t("providerConnection.saved") });
+          void refresh({ environmentId, input: {} });
+        } else if (status.status !== "waiting") {
+          setZcodeAuth(null);
+          setFeedback({
+            error: true,
+            text: status.message ?? t("providerConnection.loginFailed"),
+          });
+        }
+      })();
+    }, 2000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zcodeAuth, zcodeLoginCommand, environmentId]);
 
   return (
     <section
@@ -276,34 +364,42 @@ export function ProviderConnectionSection({
           </p>
         </div>
       </div>
-      <div
-        className="grid gap-1 rounded-lg bg-muted/60 p-1 @sm/connection:grid-cols-3"
-        role="group"
-        aria-label={t("providerConnection.method")}
-      >
-        {(
-          [
-            "native",
-            ...(canDirect ? ["api"] : []),
-            ...(canGateway ? ["gateway"] : []),
-          ] as ConnectionMode[]
-        ).map((value) => (
-          <Button
-            key={value}
-            size="sm"
-            variant={mode === value ? "outline" : "ghost"}
-            aria-pressed={mode === value}
-            disabled={busy || session !== null}
-            onClick={() => {
-              setMode(value);
-              setFeedback(null);
-            }}
-          >
-            {value === "native" ? <LogInIcon /> : value === "api" ? <KeyRoundIcon /> : <LinkIcon />}
-            {t(`providerConnection.${value}`)}
-          </Button>
-        ))}
-      </div>
+      {(!gatewayOnly || instance.driver === "zcodeAgent") && (
+        <div
+          className="grid gap-1 rounded-lg bg-muted/60 p-1 @sm/connection:grid-cols-3"
+          role="group"
+          aria-label={t("providerConnection.method")}
+        >
+          {(
+            [
+              "native",
+              ...(canDirect ? ["api"] : []),
+              ...(canGateway ? ["gateway"] : []),
+            ] as ConnectionMode[]
+          ).map((value) => (
+            <Button
+              key={value}
+              size="sm"
+              variant={mode === value ? "outline" : "ghost"}
+              aria-pressed={mode === value}
+              disabled={busy || session !== null}
+              onClick={() => {
+                setMode(value);
+                setFeedback(null);
+              }}
+            >
+              {value === "native" ? (
+                <LogInIcon />
+              ) : value === "api" ? (
+                <KeyRoundIcon />
+              ) : (
+                <LinkIcon />
+              )}
+              {t(`providerConnection.${value}`)}
+            </Button>
+          ))}
+        </div>
+      )}
       <AnimatedHeight>
         <div className="space-y-3">
           {mode === "api" ? (
@@ -417,6 +513,18 @@ export function ProviderConnectionSection({
         <Button size="sm" disabled={busy || session !== null} onClick={() => void save()}>
           {t(busy ? "saving" : "save")}
         </Button>
+        {mode === "native" && instance.driver === "zcodeAgent" && (
+          <select
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            value={zcodeRegion}
+            disabled={busy || session !== null}
+            onChange={(event) => setZcodeRegion(event.target.value as "zai" | "bigmodel")}
+            aria-label={t("providerConnection.login")}
+          >
+            <option value="zai">{t("providerConnection.zcodeRegionZai")}</option>
+            <option value="bigmodel">{t("providerConnection.zcodeRegionBigmodel")}</option>
+          </select>
+        )}
         {mode === "native" && canLogin && (
           <Button
             size="sm"
@@ -428,16 +536,18 @@ export function ProviderConnectionSection({
             {t("providerConnection.login")}
           </Button>
         )}
-        {mode === "native" && (instance.driver === "codex" || instance.driver === "grok") && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy || session !== null}
-            onClick={() => void login(true)}
-          >
-            {t("providerConnection.deviceLogin")}
-          </Button>
-        )}
+        {mode === "native" &&
+          // ZCode 不需要 CLI 设备码入口——它的登录本身就是内置 OAuth 授权链接。
+          (instance.driver === "codex" || instance.driver === "grok") && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || session !== null}
+              onClick={() => void login(true)}
+            >
+              {t("providerConnection.deviceLogin")}
+            </Button>
+          )}
         {mode === "gateway" && onManageChannels && (
           <Button size="sm" variant="outline" onClick={() => onManageChannels(sourceInstanceId)}>
             {t("providerConnection.manageChannels")}
@@ -461,9 +571,19 @@ export function ProviderConnectionSection({
         </p>
       )}
       <Dialog
-        open={session !== null}
+        open={session !== null || zcodeAuth !== null}
         onOpenChange={(open) => {
-          if (open || !session) return;
+          if (open) return;
+          if (zcodeAuth !== null) {
+            const sessionId = zcodeAuth.sessionId;
+            setZcodeAuth(null);
+            void zcodeLoginCommand({
+              environmentId,
+              input: { action: "cancel", sessionId },
+            });
+            return;
+          }
+          if (!session) return;
           sessionId.current = null;
           void closeTerminal({
             environmentId,
@@ -476,8 +596,62 @@ export function ProviderConnectionSection({
         <DialogPopup className="w-full max-w-3xl">
           <DialogHeader>
             <DialogTitle>{t("providerConnection.login")}</DialogTitle>
-            <DialogDescription>{t("providerConnection.loginHint")}</DialogDescription>
+            <DialogDescription>
+              {zcodeAuth !== null
+                ? t("cliProxy.zcodeLoginHint")
+                : t("providerConnection.loginHint")}
+            </DialogDescription>
           </DialogHeader>
+          {zcodeAuth !== null && (
+            <div className="space-y-4 px-1 pb-1">
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t("cliProxy.zcodeLoginUrlHint")}
+              </p>
+              <div className="rounded-lg border border-border/70 bg-muted/40 px-3 py-2">
+                <code className="block break-all text-xs text-foreground">
+                  {zcodeAuth.authorizeUrl}
+                </code>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    window.open(zcodeAuth.authorizeUrl, "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  {t("cliProxy.zcodeOpenLink")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    void navigator.clipboard
+                      .writeText(zcodeAuth.authorizeUrl)
+                      .catch(() => undefined);
+                  }}
+                >
+                  {t("cliProxy.zcodeCopyLink")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    const sessionId = zcodeAuth.sessionId;
+                    setZcodeAuth(null);
+                    void zcodeLoginCommand({
+                      environmentId,
+                      input: { action: "cancel", sessionId },
+                    });
+                  }}
+                >
+                  {t("cliProxy.zcodeCancel")}
+                </Button>
+              </div>
+              <p role="status" className="text-xs text-muted-foreground">
+                {t("cliProxy.zcodeWaiting")}
+              </p>
+            </div>
+          )}
           {session && (
             <div className="h-80 min-w-0 overflow-hidden px-3 pb-3">
               <TerminalViewport

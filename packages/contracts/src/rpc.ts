@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { CliProxyError, CliProxyRequest, CliProxyResult } from "./cliProxy.ts";
+import { ZCodeLoginRequest, ZCodeLoginResult } from "./zcodeLogin.ts";
 import { AcpRegistryCatalogResult } from "./acpRegistry.ts";
 import { ThreadReferenceRequest, ThreadReferenceResult } from "./threadReferences.ts";
 import {
@@ -501,6 +502,7 @@ export const WS_METHODS = {
   serverInstallProvider: "server.installProvider",
   serverStartProviderLogin: "server.startProviderLogin",
   serverCliProxy: "server.cliProxy",
+  serverZcodeLogin: "server.zcodeLogin",
   serverUpdateServer: "server.updateServer",
   serverUpdateServerWithProgress: "server.updateServerWithProgress",
   serverUpsertKeybinding: "server.upsertKeybinding",
@@ -690,6 +692,10 @@ export const WsServerStartProviderLoginRpc = Rpc.make(WS_METHODS.serverStartProv
     instanceId: ProviderInstanceId,
     terminalId: Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9-]{1,80}$/)),
     deviceCode: Schema.Boolean,
+    /** 号池登录：在一次性目录里登录，凭据由 CliProxy importLocalLogin 导入。 */
+    poolLogin: Schema.optional(Schema.Boolean),
+    /** 供应商登录入口的账号域（如 zcodeAgent 的 zai/bigmodel）；缺省用各家默认。 */
+    loginProvider: Schema.optional(Schema.String.check(Schema.isMaxLength(32))),
   }),
   success: TerminalSessionSnapshot,
   error: Schema.Union([TerminalError, ServerSettingsError, EnvironmentAuthorizationError]),
@@ -698,6 +704,12 @@ export const WsServerStartProviderLoginRpc = Rpc.make(WS_METHODS.serverStartProv
 export const WsServerCliProxyRpc = Rpc.make(WS_METHODS.serverCliProxy, {
   payload: CliProxyRequest,
   success: CliProxyResult,
+  error: Schema.Union([CliProxyError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerZcodeLoginRpc = Rpc.make(WS_METHODS.serverZcodeLogin, {
+  payload: ZCodeLoginRequest,
+  success: ZCodeLoginResult,
   error: Schema.Union([CliProxyError, EnvironmentAuthorizationError]),
 });
 
@@ -2131,6 +2143,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerInstallProviderRpc,
   WsServerStartProviderLoginRpc,
   WsServerCliProxyRpc,
+  WsServerZcodeLoginRpc,
   WsServerUpdateServerRpc,
   WsServerUpdateServerWithProgressRpc,
   WsServerUpsertKeybindingRpc,

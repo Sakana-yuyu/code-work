@@ -108,6 +108,30 @@ export const en: Record<string, string> = {
   "cliProxy.embeddedRunning": "Built-in gateway running",
   "cliProxy.embeddedConnected": "Built-in account pool connected",
   "cliProxy.embeddedStarted": "Built-in gateway started",
+  "cliProxy.addAccountTitle": "Add pool account",
+  "cliProxy.addAccountDescription":
+    "Sign in with the official CLI in a terminal, or import a credential file. The account joins the pool automatically.",
+  "cliProxy.modeLogin": "Sign in",
+  "cliProxy.modeImport": "Import credential",
+  "cliProxy.loginModelsPlaceholder": "e.g. gpt-5, gpt-5-codex",
+  "cliProxy.loginModelsHint":
+    "Models this account may serve, comma separated. Leave empty to let the request decide; ZCode, Pi and other model pickers only list declared models.",
+  "cliProxy.poolLoginHint":
+    "Finish the official sign-in in the terminal. The credential is imported into the pool when the terminal exits or this dialog closes.",
+  "cliProxy.zcodeLoginHint":
+    "ZCode sign-in opens an authorization page in your browser — no CLI install needed.",
+  "cliProxy.nativeLoginsTitle": "Detected sign-ins on this machine",
+  "cliProxy.nativeImport": "Import",
+  "cliProxy.nativeImported": "Imported",
+  "cliProxy.pasteCredentialHint":
+    "Paste credential JSON or drop a file — provider, account and models are auto-detected",
+  "cliProxy.importDetected": "Detected: {{provider}}{{label}}",
+  "cliProxy.zcodeLoginUrlHint":
+    "Open the authorization link below in a browser and finish signing in. This dialog detects completion automatically.",
+  "cliProxy.zcodeOpenLink": "Open link",
+  "cliProxy.zcodeCopyLink": "Copy link",
+  "cliProxy.zcodeCancel": "Cancel",
+  "cliProxy.zcodeWaiting": "Waiting for authorization…",
   "cliProxy.officialLoginTitle": "Official sign-in and CLI compatibility",
   "cliProxy.officialLoginHint":
     "Start official OAuth or device sign-in from Providers, then import the generated credentials into the local account pool.",
@@ -153,9 +177,16 @@ export const en: Record<string, string> = {
   "cliProxy.authMethodLabel": "Auth method",
   "cliProxy.availableModels": "Available models",
   "cliProxy.modelsDeclared": "{{count}} declared",
+  "cliProxy.modelsDefault": "{{count}} defaults",
+  "cliProxy.defaultModelsHint":
+    "No explicit declaration — the platform's default catalog is shown; routing still accepts other models.",
   "cliProxy.noModelsHint":
     "No models declared; routing falls back to the server's default capabilities.",
   "cliProxy.usageTitle": "Usage & subscription",
+  "cliProxy.usageNotLoaded": "Usage has not been fetched yet.",
+  "cliProxy.usageRefresh": "Refresh usage",
+  "cliProxy.usageExpires": "expires {{date}}",
+  "cliProxy.usageNoData": "No quota data available.",
   "cliProxy.usageHint":
     "Per-account quota, plan, and subscription expiry data is not wired up yet.",
   "cliProxy.accountActions": "Account actions",
@@ -399,6 +430,8 @@ export const en: Record<string, string> = {
     "Use the CLI's own account and configuration. Saving this mode removes this instance's explicit API-key overrides; it does not log out your CLI account.",
   "providerConnection.gatewayHint":
     "Reuse URL, key and models from enabled custom model channels. Codex uses OpenAI Responses-compatible channels; Claude uses Anthropic Messages-compatible channels plus bridged OpenAI-compatible channels. Other CLIs use their supported protocol. OAuth accounts are not shared between vendors.",
+  "providerConnection.zcodeRegionZai": "Z.AI (international)",
+  "providerConnection.zcodeRegionBigmodel": "BigModel (China)",
   "providerConnection.login": "Sign in with CLI",
   "providerConnection.deviceLogin": "Codex device-code sign-in",
   "providerConnection.loginFailed":
@@ -6355,6 +6388,25 @@ export const zhCN: Record<string, string> = {
   "cliProxy.embeddedRunning": "内置网关运行中",
   "cliProxy.embeddedConnected": "内置账号池已连接",
   "cliProxy.embeddedStarted": "内置网关已启动",
+  "cliProxy.addAccountTitle": "添加号池账号",
+  "cliProxy.addAccountDescription": "在终端里用官方 CLI 登录，或导入凭据文件；账号会自动加入号池。",
+  "cliProxy.modeLogin": "登录授权",
+  "cliProxy.modeImport": "导入凭据",
+  "cliProxy.loginModelsPlaceholder": "例如 gpt-5, gpt-5-codex",
+  "cliProxy.loginModelsHint":
+    "该账号可提供的模型，逗号分隔。留空则由请求决定；ZCode、Pi 等模型列表只展示已声明的模型。",
+  "cliProxy.poolLoginHint": "在终端里完成官方登录。终端退出或关闭本对话框时，凭据会自动导入号池。",
+  "cliProxy.zcodeLoginHint": "ZCode 登录会打开官方授权页，无需安装 CLI。",
+  "cliProxy.zcodeLoginUrlHint": "在浏览器中打开下面的授权链接并完成登录，本对话框会自动检测完成。",
+  "cliProxy.zcodeOpenLink": "打开链接",
+  "cliProxy.zcodeCopyLink": "复制链接",
+  "cliProxy.zcodeCancel": "取消登录",
+  "cliProxy.zcodeWaiting": "等待授权完成…",
+  "cliProxy.nativeLoginsTitle": "本机已登录",
+  "cliProxy.nativeImport": "导入",
+  "cliProxy.nativeImported": "已导入",
+  "cliProxy.pasteCredentialHint": "粘贴凭据 JSON 或拖入文件——平台、账号、模型自动识别",
+  "cliProxy.importDetected": "已识别：{{provider}}{{label}}",
   "cliProxy.officialLoginTitle": "官方登录与 CLI 兼容范围",
   "cliProxy.officialLoginHint":
     "官方 OAuth/设备登录仍由“供应商”页面启动；完成登录后，再把生成的凭据导入本地账号池。",
@@ -6397,8 +6449,14 @@ export const zhCN: Record<string, string> = {
   "cliProxy.authMethodLabel": "认证方式",
   "cliProxy.availableModels": "可用模型",
   "cliProxy.modelsDeclared": "{{count}} 个已声明",
+  "cliProxy.modelsDefault": "{{count}} 个默认",
+  "cliProxy.defaultModelsHint": "未显式声明模型，展示平台默认目录；路由仍接受目录外的模型。",
   "cliProxy.noModelsHint": "未声明模型，路由会使用服务端默认能力。",
   "cliProxy.usageTitle": "用量与订阅",
+  "cliProxy.usageNotLoaded": "尚未拉取用量数据。",
+  "cliProxy.usageRefresh": "刷新用量",
+  "cliProxy.usageExpires": "到期 {{date}}",
+  "cliProxy.usageNoData": "该平台未返回额度数据。",
   "cliProxy.usageHint": "暂未接入账号级额度、套餐和订阅到期数据。",
   "cliProxy.accountActions": "账号操作",
   "cliProxy.showingAccounts": "显示 {{shown}} 个账号，共 {{total}} 个",
@@ -6628,6 +6686,8 @@ export const zhCN: Record<string, string> = {
     "使用 CLI 自身的账号和配置。保存此方式会移除此实例显式设置的 API 密钥覆盖，不会注销 CLI 账号。",
   "providerConnection.gatewayHint":
     "复用已启用的自定义模型渠道中的 URL、密钥和模型。Codex 使用兼容 OpenAI Responses 的渠道，Claude 使用兼容 Anthropic Messages 的渠道，兼容 OpenAI 的渠道会自动桥接给 Claude；其他 CLI 按支持的协议连接。不同供应商的 OAuth 账号不互通。",
+  "providerConnection.zcodeRegionZai": "Z.AI（国际）",
+  "providerConnection.zcodeRegionBigmodel": "BigModel（国内）",
   "providerConnection.login": "通过 CLI 登录",
   "providerConnection.deviceLogin": "Codex 设备码登录",
   "providerConnection.loginFailed":

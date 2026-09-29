@@ -54,6 +54,8 @@ function providerDisplayLabel(provider: {
       return "Pi";
     case "ompAgent":
       return "OhMyPi";
+    case "zcodeAgent":
+      return "ZCode";
     case "acpAgent":
       return "ACP Agent";
     default:

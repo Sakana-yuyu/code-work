@@ -1021,6 +1021,27 @@ describe("deriveReasoningSummaryEntries", () => {
 });
 
 describe("deriveWorkLogEntries", () => {
+  it("思考摘要增量只进思考摘要行，不逐条进工作日志", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "reasoning-1",
+        kind: "reasoning.summary.delta",
+        summary: "Reasoning summary",
+        tone: "info",
+        payload: { summaryIndex: 0, delta: "先" },
+      }),
+      makeActivity({
+        id: "reasoning-2",
+        kind: "reasoning.summary.delta",
+        summary: "Reasoning summary",
+        tone: "info",
+        payload: { summaryIndex: 0, delta: "检查。" },
+      }),
+    ]);
+
+    expect(entries).toEqual([]);
+  });
+
   it("把已完成 Goal 的摘要保留为时间线提示", () => {
     const [entry] = deriveWorkLogEntries([
       makeActivity({

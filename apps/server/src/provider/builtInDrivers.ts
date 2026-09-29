@@ -29,6 +29,7 @@ import { CursorDriver, type CursorDriverEnv } from "./Drivers/CursorDriver.ts";
 import { GrokDriver, type GrokDriverEnv } from "./Drivers/GrokDriver.ts";
 import { KimiDriver, type KimiDriverEnv } from "./Drivers/KimiDriver.ts";
 import { AntigravityDriver, type AntigravityDriverEnv } from "./Drivers/AntigravityDriver.ts";
+import { ZCodeDriver, type ZCodeDriverEnv } from "./Drivers/ZCodeDriver.ts";
 import { OpenCodeDriver, type OpenCodeDriverEnv } from "./Drivers/OpenCodeDriver.ts";
 import type { AnyProviderDriver } from "./ProviderDriver.ts";
 
@@ -47,7 +48,8 @@ export type BuiltInDriversEnv =
   | KimiDriverEnv
   | AntigravityDriverEnv
   | OpenCodeDriverEnv
-  | PifamilyDriverEnv;
+  | PifamilyDriverEnv
+  | ZCodeDriverEnv;
 
 /**
  * Ordered list of built-in drivers. Order matters only for tie-breaking in
@@ -64,6 +66,7 @@ export const BUILT_IN_DRIVERS: ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv
   OpenCodeDriver,
   PiDriver,
   OmpDriver,
+  ZCodeDriver,
   GenericAcpDriver,
   ByokDriver,
 ];

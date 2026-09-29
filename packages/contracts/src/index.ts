@@ -56,4 +56,5 @@ export * from "./usage.ts";
 export * from "./rpc.ts";
 export * from "./threadReferences.ts";
 export * from "./cliProxy.ts";
+export * from "./zcodeLogin.ts";
 export * from "./ide.ts";

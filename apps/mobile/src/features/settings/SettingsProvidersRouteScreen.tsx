@@ -523,8 +523,29 @@ function ProviderCard(props: {
       {props.row.driver === "opencode" && readProviderConfigString(config, "serverUrl") ? (
         <Text className="text-xs text-foreground-muted">{t("cliProxy.openCodeHint")}</Text>
       ) : null}
-      {providerSupportsSharedRoute(props.row.driver) &&
-      readProviderConfigBoolean(config, "routeThroughByok") ? (
+      {props.row.driver === "zcodeAgent" ? (
+        <Field label={t("providersMobile.zcodeOfficial")}>
+          <View className="flex-row items-center justify-between rounded-2xl bg-input px-3.5 py-3">
+            <Text className="text-sm text-foreground-muted">
+              {t("providersMobile.zcodeOfficial")}
+            </Text>
+            <Switch
+              value={readProviderConfigString(config, "authMode") === "official"}
+              disabled={props.disabled}
+              onValueChange={(value) => {
+                const next = readProviderConfigRecord(config);
+                if (value) next.authMode = "official";
+                else delete next.authMode;
+                props.onChange({ ...instance, config: next });
+              }}
+            />
+          </View>
+        </Field>
+      ) : null}
+      {(providerSupportsSharedRoute(props.row.driver) &&
+        readProviderConfigBoolean(config, "routeThroughByok")) ||
+      (props.row.driver === "zcodeAgent" &&
+        readProviderConfigString(config, "authMode") !== "official") ? (
         <Field label={t("cliProxy.sharedRoute")}>
           <ChoiceGroup
             values={[
@@ -672,6 +693,8 @@ function providerLabel(driver: string): string {
       return t("piAgent");
     case "ompAgent":
       return t("ompAgent");
+    case "zcodeAgent":
+      return "ZCode";
     case "acpAgent":
       return t("acpAgent");
     default:

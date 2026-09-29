@@ -101,6 +101,8 @@ export const ja: Record<string, string> = {
   "providerConnection.keySaved": "キーを保存しました · 空欄のままなら変更されません",
   "providerConnection.kimiHint":
     "Kimi の OpenAI 互換 Coding API エンドポイントを使用します。保存するとキーは安全に保管されますが、上流のクォータやモデルアクセスは検証されません。",
+  "providerConnection.zcodeRegionZai": "Z.AI（国際）",
+  "providerConnection.zcodeRegionBigmodel": "BigModel（中国）",
   "providerConnection.login": "CLI でサインイン",
   "providerConnection.loginFailed":
     "CLI サインインを開始できませんでした。CLI のインストールと設定されたバイナリパスを確認して再試行してください。",
@@ -171,6 +173,30 @@ export const ja: Record<string, string> = {
   "cliProxy.embeddedRunning": "組み込みゲートウェイ稼働中",
   "cliProxy.embeddedConnected": "組み込みアカウントプール接続済み",
   "cliProxy.embeddedStarted": "組み込みゲートウェイを起動しました",
+  "cliProxy.addAccountTitle": "プールにアカウントを追加",
+  "cliProxy.addAccountDescription":
+    "ターミナルで公式 CLI にサインインするか、認証ファイルをインポートします。アカウントは自動でプールに追加されます。",
+  "cliProxy.modeLogin": "サインイン",
+  "cliProxy.modeImport": "認証をインポート",
+  "cliProxy.loginModelsPlaceholder": "例: gpt-5, gpt-5-codex",
+  "cliProxy.loginModelsHint":
+    "このアカウントが提供するモデル（カンマ区切り）。空の場合はリクエストで決まります。ZCode や Pi などのモデル一覧には宣言済みのモデルのみ表示されます。",
+  "cliProxy.poolLoginHint":
+    "ターミナルで公式サインインを完了してください。ターミナル終了またはこのダイアログを閉じると認証がプールにインポートされます。",
+  "cliProxy.zcodeLoginHint":
+    "ZCode のサインインはブラウザで認証ページを開きます。CLI のインストールは不要です。",
+  "cliProxy.zcodeLoginUrlHint":
+    "下の認証リンクをブラウザで開き、サインインを完了してください。このダイアログが完了を自動検出します。",
+  "cliProxy.zcodeOpenLink": "リンクを開く",
+  "cliProxy.zcodeCopyLink": "リンクをコピー",
+  "cliProxy.zcodeCancel": "キャンセル",
+  "cliProxy.zcodeWaiting": "認証を待っています…",
+  "cliProxy.nativeLoginsTitle": "この端末で検出したサインイン",
+  "cliProxy.nativeImport": "インポート",
+  "cliProxy.nativeImported": "インポート済み",
+  "cliProxy.pasteCredentialHint":
+    "認証 JSON を貼るかファイルをドロップ——プロバイダー・アカウント・モデルは自動判定",
+  "cliProxy.importDetected": "検出：{{provider}}{{label}}",
   "cliProxy.officialLoginTitle": "公式サインインと CLI 対応範囲",
   "cliProxy.officialLoginHint":
     "公式 OAuth / デバイスサインインは「プロバイダー」ページから開始し、生成された認証情報をローカルプールへ取り込んでください。",
@@ -214,9 +240,16 @@ export const ja: Record<string, string> = {
   "cliProxy.authMethodLabel": "認証方式",
   "cliProxy.availableModels": "利用可能なモデル",
   "cliProxy.modelsDeclared": "{{count}} 件宣言済み",
+  "cliProxy.modelsDefault": "{{count}} 件デフォルト",
+  "cliProxy.defaultModelsHint":
+    "明示的な宣言なし。プラットフォームのデフォルト目録を表示；ルーティングは他のモデルも受け付けます。",
   "cliProxy.noModelsHint":
     "モデルが宣言されていないため、ルーティングはサーバーの既定能力を使用します。",
   "cliProxy.usageTitle": "使用量とサブスクリプション",
+  "cliProxy.usageNotLoaded": "使用量はまだ取得していません。",
+  "cliProxy.usageRefresh": "使用量を更新",
+  "cliProxy.usageExpires": "期限 {{date}}",
+  "cliProxy.usageNoData": "このプラットフォームからクォータデータが返されませんでした。",
   "cliProxy.usageHint": "アカウント単位の残高・プラン・契約期限データは未接続です。",
   "cliProxy.accountActions": "アカウント操作",
   "cliProxy.showingAccounts": "{{total}} 件中 {{shown}} 件のアカウントを表示",

@@ -1372,6 +1372,10 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:cli-proxy",
       tag: WS_METHODS.serverCliProxy,
     }),
+    zcodeLogin: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:zcode-login",
+      tag: WS_METHODS.serverZcodeLogin,
+    }),
     updateServer,
     upsertKeybinding: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:upsert-keybinding",

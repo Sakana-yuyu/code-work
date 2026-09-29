@@ -41,6 +41,98 @@ const sse = (...payloads: ReadonlyArray<unknown>): string =>
   [...payloads.map((payload) => `data: ${encodeJson(payload)}\n`), "data: [DONE]\n"].join("\n");
 
 describe("ByokAdapter", () => {
+  it.effect("重复命令保护保留失败工具事件并报告回合失败", () => {
+    let requests = 0;
+    let executions = 0;
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        requests += 1;
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(
+            sse({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: `exec-${requests}`,
+                        function: {
+                          name: "terminal_exec",
+                          arguments: encodeJson({
+                            cwd: workspaceRoot,
+                            command: "node",
+                            args: ["--version"],
+                            terminalId: `t${requests}`,
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: "tool_calls",
+                },
+              ],
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+        );
+      }),
+    );
+    const toolBroker = ToolBroker.ToolBroker.of({
+      invoke: (input) =>
+        Effect.sync(() => {
+          executions += 1;
+          return {
+            invocationId: `invocation-${input.toolCallId}`,
+            taskId: input.taskId,
+            runId: input.runId,
+            toolCallId: input.toolCallId,
+            canonicalToolName: input.canonicalToolName,
+            status: "succeeded" as const,
+            result: { history: "same", status: "exited" },
+          };
+        }),
+      cancel: () => Effect.void,
+    });
+    return Effect.gen(function* () {
+      const adapter = yield* makeByokAdapter(settings, { instanceId, toolBroker });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* adapter.startSession({
+        threadId,
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      yield* adapter.sendTurn({ threadId, input: "执行命令" });
+      const events = yield* Fiber.join(eventsFiber);
+      expect(requests).toBe(4);
+      expect(executions).toBe(3);
+      expect(events.findLast((event) => event.type === "item.completed")).toMatchObject({
+        payload: { status: "failed" },
+      });
+      expect(events.find((event) => event.type === "runtime.error")).toMatchObject({
+        payload: { message: expect.stringContaining("repeated_terminal_command") },
+      });
+      expect(events.at(-1)).toMatchObject({
+        type: "turn.completed",
+        payload: {
+          state: "failed",
+          errorMessage: expect.stringContaining("repeated_terminal_command"),
+        },
+      });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-test-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
   for (const [runtimeMode, interactionMode] of [
     ["full-access", "default"],
     ["approval-required", "default"],

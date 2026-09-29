@@ -408,13 +408,6 @@ const toolResultContent = (
       status: result.status,
       errorCode: result.errorCode ?? "tool_failed",
     };
-    if (result.errorCode === "repeated_terminal_command") {
-      return encodeUnknownJson({
-        ...error,
-        detail:
-          "这条命令在本回合已经执行过，输出就在前面的终端结果里。不要换终端标识再跑同一条命令；改用 workspace.read_file 或换一条不同的命令。",
-      });
-    }
     if (result.errorCode === "tool_arguments_invalid") {
       const tool = input.tools.find((tool) => tool.canonicalToolName === result.canonicalToolName);
       if (tool !== undefined) {
@@ -478,7 +471,6 @@ export const runByokAgentLoop = (
     let contextOverflowRecoveryUsed = false;
     let outputTruncationRecoveryUsed = false;
     const terminalExecCounts = new Map<string, number>();
-    let stopForRepeatedCommand = false;
 
     while (true) {
       rounds += 1;
@@ -713,7 +705,6 @@ export const runByokAgentLoop = (
             if (fingerprint !== undefined) {
               const seen = terminalExecCounts.get(fingerprint) ?? 0;
               if (seen >= MAX_IDENTICAL_TERMINAL_EXECUTIONS) {
-                stopForRepeatedCommand = true;
                 const now = yield* Clock.currentTimeMillis;
                 const blocked = {
                   invocationId: `repeated:${toolCall.toolCallId}`,
@@ -732,7 +723,11 @@ export const runByokAgentLoop = (
                 if (input.onToolCompleted !== undefined) {
                   yield* input.onToolCompleted(toolCall, blocked, activityItemId);
                 }
-                return [toolCall, blocked] as const;
+                return yield* new ByokAgentModelError({
+                  code: "repeated_terminal_command",
+                  detail: `同一条终端命令在本回合已执行 ${MAX_IDENTICAL_TERMINAL_EXECUTIONS} 次，为避免重复操作已停止。请检查已有输出后再继续。`,
+                  retryable: false,
+                });
               }
               terminalExecCounts.set(fingerprint, seen + 1);
             }
@@ -771,9 +766,6 @@ export const runByokAgentLoop = (
               content: toolResultContent(result, maxToolResultChars, input),
             });
           }
-        }
-        if (stopForRepeatedCommand) {
-          return { text, messages, rounds };
         }
       }
 

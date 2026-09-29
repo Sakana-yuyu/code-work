@@ -25,11 +25,13 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AuthTerminalOperateScope,
+  LOCAL_POOL_DEFAULT_MODELS,
   ProviderInstanceId,
   type CliProxyRequest,
   type CliProxyResult,
   type EnvironmentId,
   type LocalAccountPoolStrategy,
+  type LocalAccountProvider,
   type LocalAccountSummary,
 } from "@codework/contracts";
 
@@ -46,8 +48,9 @@ import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { cn } from "~/lib/utils";
 import { t } from "~/i18n";
+import { CliProxyLoginCard } from "./CliProxyLoginCard";
 
-type LocalProvider = "codex" | "claude" | "xai" | "cursor";
+type LocalProvider = "codex" | "claude" | "xai" | "cursor" | "zcode";
 type ViewMode = "grid" | "list";
 
 export const localAccountIdFromFileName = (name: string): string => {
@@ -59,16 +62,120 @@ export const localAccountIdFromFileName = (name: string): string => {
   return /^[A-Za-z]/u.test(normalized) ? normalized : `account-${normalized || "import"}`;
 };
 
-const localProviderInstanceId = (provider: LocalProvider): ProviderInstanceId =>
-  ProviderInstanceId.make(
-    provider === "claude" ? "claudeAgent" : provider === "xai" ? "grok" : provider,
-  );
+/**
+ * 粘贴/拖入凭据内容后自动识别（cockpit 式）：平台 + 账号名 + 可选模型，
+ * 与服务端 parseLocalCredential 的识别面一致——Codex/Claude OAuth 文件、
+ * Grok auth.json、ZCode 加密凭据、以及 cpa/cockpit 风格的 `{type/provider}` 导出。
+ */
+export const detectLocalCredential = (
+  content: string,
+): {
+  provider?: LocalProvider;
+  label?: string;
+  models?: string[];
+} => {
+  try {
+    const value = JSON.parse(content) as Record<string, unknown>;
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+    const record = value as Record<string, unknown>;
+    const declared = String(record.provider ?? record.type ?? "").toLowerCase();
+    const keys = Object.keys(record);
+    const hasZcodeShape =
+      keys.some(
+        (key) =>
+          key.startsWith("oauth:") ||
+          key.startsWith("account-provider:") ||
+          key === "zcodejwttoken",
+      ) ||
+      Object.values(record).some(
+        (entry) => typeof entry === "string" && entry.startsWith("enc:v1:"),
+      );
+    const hasXaiEnvelope = keys.some(
+      (key) => key === "https://accounts.x.ai/sign-in" || key.startsWith("https://auth.x.ai::"),
+    );
+    const provider: LocalProvider =
+      hasZcodeShape ||
+      declared.includes("zcode") ||
+      declared.includes("z.ai") ||
+      declared.includes("bigmodel")
+        ? "zcode"
+        : declared.includes("claude") ||
+            declared.includes("anthropic") ||
+            record.claudeAiOauth !== undefined ||
+            record.ANTHROPIC_API_KEY !== undefined
+          ? "claude"
+          : declared.includes("grok") ||
+              declared.includes("xai") ||
+              hasXaiEnvelope ||
+              record.XAI_API_KEY !== undefined
+            ? "xai"
+            : declared.includes("cursor") || record.CURSOR_API_KEY !== undefined
+              ? "cursor"
+              : "codex";
+
+    const nested =
+      (record.claudeAiOauth as Record<string, unknown> | undefined) ??
+      (record.tokens as Record<string, unknown> | undefined) ??
+      Object.values(record).find(
+        (entry): entry is Record<string, unknown> =>
+          entry !== null && typeof entry === "object" && !Array.isArray(entry),
+      );
+    const labelKeys = ["email", "name", "username", "emailAddress", "account_label", "accountName"];
+    const label =
+      [record, nested ?? {}]
+        .flatMap((scope) => labelKeys.map((key) => scope[key]))
+        .find((entry): entry is string => typeof entry === "string" && entry.trim().length > 0) ??
+      (() => {
+        // Codex 的 tokens.id_token 是 JWT：payload 里带 email/name。
+        const tokens = record.tokens as Record<string, unknown> | undefined;
+        const idToken =
+          typeof tokens?.id_token === "string"
+            ? tokens.id_token
+            : typeof record.id_token === "string"
+              ? record.id_token
+              : undefined;
+        const segment = idToken?.split(".")[1];
+        if (segment === undefined) return undefined;
+        try {
+          const payload = JSON.parse(
+            atob(segment.replace(/-/gu, "+").replace(/_/gu, "/")),
+          ) as Record<string, unknown>;
+          const candidate = [payload.email, payload.name, payload.preferred_username].find(
+            (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+          );
+          return candidate?.trim();
+        } catch {
+          return undefined;
+        }
+      })();
+    const models = Array.isArray(record.models)
+      ? record.models.filter((model): model is string => typeof model === "string")
+      : undefined;
+    return {
+      provider,
+      ...(label === undefined ? {} : { label }),
+      ...(models === undefined ? {} : { models }),
+    };
+  } catch {
+    return {};
+  }
+};
+
+/** 凭据内容派生的稳定账号 ID（满足服务端 [A-Za-z][A-Za-z0-9_-] 约束）。 */
+const autoAccountId = (provider: LocalProvider, content: string): string => {
+  let hash = 5381;
+  for (let index = 0; index < content.length; index += 1) {
+    hash = ((hash << 5) + hash + content.charCodeAt(index)) | 0;
+  }
+  return `${provider}-${(hash >>> 0).toString(36)}`;
+};
 
 const providerNames: Record<LocalProvider, string> = {
   codex: "Codex",
   claude: "Claude",
   xai: "Grok",
   cursor: "Cursor",
+  zcode: "ZCode",
 };
 
 function providerName(provider: LocalAccountSummary["provider"]): string {
@@ -188,12 +295,18 @@ export function CliProxySettingsSection({
   );
 
   useEffect(() => {
-    void run({ action: "status" });
+    void (async () => {
+      await run({ action: "status" });
+      await run({ action: "localAccountUsage" });
+    })();
   }, [run]);
 
   const disabled = busy || readOnly;
   const unavailable = disabled || !status?.running;
   const accounts = status?.localAccounts ?? [];
+  const subscriptionsById = new Map(
+    (status?.accountSubscriptions ?? []).map((entry) => [String(entry.id), entry]),
+  );
   const filteredAccounts = accounts
     .filter((account) => accountMatches(account, query))
     .filter((account) => providerFilter === "all" || account.provider === providerFilter)
@@ -233,6 +346,22 @@ export function CliProxySettingsSection({
       instanceId: ProviderInstanceId.make(status?.connectedInstanceId ?? "cpa"),
       displayName: displayName.trim() || t("cliProxy.poolDefaultName"),
     });
+  /** 粘贴/选文件后自动识别：平台、账号名、模型、ID 全部自动填充，可再手动改。 */
+  const applyLocalContent = (content: string) => {
+    setLocalContent(content);
+    const detected = detectLocalCredential(content);
+    if (detected.provider !== undefined) {
+      setLocalProvider(detected.provider);
+      setLocalId((current) => current || autoAccountId(detected.provider!, content));
+    }
+    if (detected.label !== undefined) {
+      setLocalDisplayName((current) => current || detected.label!);
+    }
+    if (detected.models !== undefined) {
+      setLocalModels((current) => (current.trim() ? current : detected.models!.join(", ")));
+    }
+  };
+
   const importLocal = () => {
     let content = localApiKey.trim()
       ? JSON.stringify({
@@ -243,6 +372,8 @@ export function CliProxySettingsSection({
             .filter(Boolean),
         })
       : localContent;
+    const detected = detectLocalCredential(content);
+    const provider = localProvider || detected.provider || "codex";
     try {
       const value = JSON.parse(content) as Record<string, unknown>;
       const models = localModels
@@ -254,11 +385,12 @@ export function CliProxySettingsSection({
     } catch {
       // 服务端会返回格式错误；这里不把用户输入写入日志。
     }
+    const id = localId.trim() || autoAccountId(provider, content);
     void run({
       action: "importLocalAccount",
-      id: localId.trim(),
-      provider: localProvider,
-      displayName: localDisplayName.trim(),
+      id,
+      provider,
+      displayName: localDisplayName.trim() || detected.label || id,
       content,
     });
   };
@@ -270,34 +402,10 @@ export function CliProxySettingsSection({
 
   const readLocalFile = async (file: File) => {
     const content = await file.text();
-    setLocalContent(content);
+    applyLocalContent(content);
     setLocalId((current) => current || localAccountIdFromFileName(file.name));
     const stem = file.name.replace(/\.(json|JSON)$/u, "").trim();
     setLocalDisplayName((current) => current || stem);
-    try {
-      const value = JSON.parse(content) as Record<string, unknown>;
-      const provider = String(value.provider ?? value.type ?? "").toLowerCase();
-      if (provider.includes("claude") || provider.includes("anthropic") || value.claudeAiOauth) {
-        setLocalProvider("claude");
-      } else if (
-        provider.includes("grok") ||
-        provider.includes("xai") ||
-        Object.keys(value).some((key) => key.includes("x.ai"))
-      ) {
-        setLocalProvider("xai");
-      } else if (provider.includes("cursor")) {
-        setLocalProvider("cursor");
-      } else {
-        setLocalProvider("codex");
-      }
-      if (Array.isArray(value.models)) {
-        setLocalModels(
-          value.models.filter((model): model is string => typeof model === "string").join(", "),
-        );
-      }
-    } catch {
-      // 服务端会返回格式错误；不把凭据内容写入日志。
-    }
   };
 
   return (
@@ -324,7 +432,12 @@ export function CliProxySettingsSection({
               disabled ||
               accounts.every(
                 (account) =>
-                  !account.enabled || account.provider === "cursor" || account.models.length === 0,
+                  !account.enabled ||
+                  account.provider === "cursor" ||
+                  // 未声明模型的账号用平台默认目录出通道，不算"无可发布线路"。
+                  (account.models.length === 0 &&
+                    (LOCAL_POOL_DEFAULT_MODELS[account.provider as LocalAccountProvider] ?? [])
+                      .length === 0),
               ) ||
               status?.connectedInstanceId !== undefined
             }
@@ -369,50 +482,29 @@ export function CliProxySettingsSection({
 
       {readOnly ? <p className="text-xs text-muted-foreground">{t("cliProxy.noAccess")}</p> : null}
 
-      <div className="rounded-xl border border-border/60 bg-background/60 p-3 sm:p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">{t("cliProxy.officialLoginTitle")}</h2>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              {t("cliProxy.officialLoginHint")}
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onConnected(localProviderInstanceId("codex"))}
-          >
-            {t("cliProxy.openOfficialLogin")}
-          </Button>
-        </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          {(
-            [
-              ["Codex", t("cliProxy.supportCodex"), true],
-              ["Claude", t("cliProxy.supportClaude"), true],
-              ["Grok / xAI", t("cliProxy.supportGrok"), true],
-              ["Kimi", t("cliProxy.supportKimi"), true],
-              ["Antigravity", t("cliProxy.supportAntigravity"), true],
-            ] as const
-          ).map(([name, detail, supported]) => (
-            <div
-              key={name}
-              className="rounded-lg border border-border/60 bg-background/70 px-2.5 py-2"
-            >
-              <div className="flex items-center gap-1.5 text-xs font-medium">
-                <span
-                  className={cn(
-                    "size-1.5 rounded-full",
-                    supported ? "bg-success" : "bg-muted-foreground/50",
-                  )}
-                />
-                {name}
-              </div>
-              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{detail}</p>
-            </div>
-          ))}
-        </div>
-      </div>
+      <CliProxyLoginCard
+        environmentId={environmentId}
+        disabled={disabled}
+        importOpen={showImport}
+        onToggleImport={() => setShowImport((open) => !open)}
+        onLoginFinished={(input) =>
+          run(
+            "nativePath" in input
+              ? {
+                  action: "importNativeAccount",
+                  provider: input.provider,
+                  path: input.nativePath,
+                  models: input.models,
+                }
+              : {
+                  action: "importLocalLogin",
+                  provider: input.provider,
+                  terminalId: input.terminalId,
+                  models: input.models,
+                },
+          )
+        }
+      />
 
       <div className="rounded-xl border border-border/60 bg-card p-3 shadow-sm sm:p-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -569,25 +661,6 @@ export function CliProxySettingsSection({
                 <XIcon />
               </Button>
             </div>
-            <div className="mb-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-xs font-semibold">{t("cliProxy.oauthSection")}</h3>
-                  <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-                    {t("cliProxy.oauthSectionHint")}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={disabled}
-                  onClick={() => onConnected(localProviderInstanceId(localProvider))}
-                >
-                  <KeyRoundIcon />
-                  {t("cliProxy.openProviderLogin", { provider: providerName(localProvider) })}
-                </Button>
-              </div>
-            </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <label className="grid gap-1 text-xs font-medium">
                 <span>{t("localAccountPool.provider")}</span>
@@ -601,6 +674,7 @@ export function CliProxySettingsSection({
                   <option value="claude">Claude</option>
                   <option value="xai">Grok</option>
                   <option value="cursor">Cursor</option>
+                  <option value="zcode">ZCode</option>
                 </select>
               </label>
               <label className="grid gap-1 text-xs font-medium">
@@ -632,7 +706,18 @@ export function CliProxySettingsSection({
                 />
               </label>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div
+              className="mt-2 flex flex-wrap items-center gap-2"
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const file = event.dataTransfer.files?.[0];
+                if (file !== undefined) void readLocalFile(file);
+              }}
+            >
               <label
                 htmlFor="local-account-file"
                 className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium"
@@ -646,8 +731,8 @@ export function CliProxySettingsSection({
                 autoComplete="new-password"
                 value={localContent}
                 disabled={disabled}
-                onChange={(event) => setLocalContent(event.target.value)}
-                placeholder='{"access_token":"…"}'
+                onChange={(event) => applyLocalContent(event.target.value)}
+                placeholder={t("cliProxy.pasteCredentialHint")}
                 className="min-w-[14rem] flex-1"
               />
               <Input
@@ -662,18 +747,25 @@ export function CliProxySettingsSection({
               />
               <Button
                 size="sm"
-                disabled={
-                  disabled ||
-                  !localId.trim() ||
-                  !localDisplayName.trim() ||
-                  (!localContent.trim() && !localApiKey.trim())
-                }
+                disabled={disabled || (!localContent.trim() && !localApiKey.trim())}
                 onClick={importLocal}
               >
                 <UploadIcon />
                 {t("localAccountPool.import")}
               </Button>
             </div>
+            {localContent.trim() !== "" &&
+              (() => {
+                const detected = detectLocalCredential(localContent);
+                return detected.provider !== undefined ? (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {t("cliProxy.importDetected", {
+                      provider: providerNames[detected.provider],
+                      label: detected.label === undefined ? "" : ` · ${detected.label}`,
+                    })}
+                  </p>
+                ) : null;
+              })()}
           </div>
         ) : null}
       </div>
@@ -818,39 +910,153 @@ export function CliProxySettingsSection({
                     <span className="font-medium">{authName(account.authKind)}</span>
                   </div>
                   <div className="rounded-xl bg-muted/35 p-3">
-                    <div className="flex items-center justify-between gap-2 text-xs">
-                      <span className="flex items-center gap-1.5 font-medium">
-                        <FileJsonIcon className="size-3.5 text-muted-foreground" />
-                        {t("cliProxy.availableModels")}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {t("cliProxy.modelsDeclared", { count: account.models.length })}
-                      </span>
-                    </div>
-                    {account.models.length > 0 ? (
-                      <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                        {account.models.map((model) => (
-                          <div
-                            key={model}
-                            className="flex min-w-0 items-center gap-1.5 rounded-md border border-border/60 bg-background/70 px-2 py-1 text-xs"
-                          >
-                            <span className="size-1.5 shrink-0 rounded-full bg-success" />
-                            <span className="truncate">{model}</span>
+                    {(() => {
+                      // 空 models 的语义是"不限模型"；展示与网关通道用平台默认目录兜底。
+                      const defaults =
+                        LOCAL_POOL_DEFAULT_MODELS[account.provider as LocalAccountProvider] ?? [];
+                      const declared = account.models.length > 0;
+                      const shown = declared ? account.models : defaults;
+                      return (
+                        <>
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="flex items-center gap-1.5 font-medium">
+                              <FileJsonIcon className="size-3.5 text-muted-foreground" />
+                              {t("cliProxy.availableModels")}
+                            </span>
+                            <span className="text-muted-foreground">
+                              {declared
+                                ? t("cliProxy.modelsDeclared", { count: shown.length })
+                                : t("cliProxy.modelsDefault", { count: shown.length })}
+                            </span>
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {t("cliProxy.noModelsHint")}
-                      </p>
-                    )}
+                          {shown.length > 0 ? (
+                            <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                              {shown.map((model) => (
+                                <div
+                                  key={model}
+                                  className="flex min-w-0 items-center gap-1.5 rounded-md border border-border/60 bg-background/70 px-2 py-1 text-xs"
+                                >
+                                  <span
+                                    className={`size-1.5 shrink-0 rounded-full ${declared ? "bg-success" : "bg-muted-foreground/60"}`}
+                                  />
+                                  <span className="truncate">{model}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {t("cliProxy.noModelsHint")}
+                            </p>
+                          )}
+                          {!declared && shown.length > 0 ? (
+                            <p className="mt-1.5 text-xs text-muted-foreground">
+                              {t("cliProxy.defaultModelsHint")}
+                            </p>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </div>
                   <div className="flex items-start gap-2 rounded-xl border border-dashed border-border/80 px-3 py-2.5 text-xs">
                     <CalendarDaysIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <p className="font-medium">{t("cliProxy.usageTitle")}</p>
-                      <p className="mt-0.5 text-muted-foreground">{t("cliProxy.usageHint")}</p>
-                    </div>
+                    {(() => {
+                      const subscription = subscriptionsById.get(String(account.id));
+                      return (
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium">
+                              {t("cliProxy.usageTitle")}
+                              {subscription?.plan !== undefined ? ` · ${subscription.plan}` : ""}
+                            </p>
+                            {subscription !== undefined ? (
+                              <Button
+                                size="micro"
+                                variant="ghost"
+                                disabled={busy}
+                                aria-label={t("cliProxy.usageRefresh")}
+                                onClick={() => void run({ action: "localAccountUsage" })}
+                              >
+                                <RefreshCwIcon className="size-3" />
+                              </Button>
+                            ) : null}
+                          </div>
+                          {subscription === undefined ? (
+                            <p className="mt-0.5 text-muted-foreground">
+                              {t("cliProxy.usageNotLoaded")}
+                            </p>
+                          ) : subscription.error !== undefined ? (
+                            <p className="mt-0.5 text-muted-foreground">{subscription.error}</p>
+                          ) : (
+                            <div className="mt-1.5 space-y-1">
+                              {subscription.status !== undefined ||
+                              subscription.expiresAt !== undefined ? (
+                                <p className="text-muted-foreground">
+                                  {[
+                                    subscription.status,
+                                    subscription.expiresAt === undefined
+                                      ? undefined
+                                      : t("cliProxy.usageExpires", {
+                                          date: subscription.expiresAt.slice(0, 10),
+                                        }),
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </p>
+                              ) : null}
+                              {subscription.windows.map((quotaWindow) => (
+                                <div key={quotaWindow.label} className="flex items-center gap-2">
+                                  <span className="w-16 shrink-0 text-muted-foreground">
+                                    {quotaWindow.label}
+                                  </span>
+                                  {quotaWindow.percent !== undefined ? (
+                                    <div className="h-1 min-w-8 flex-1 overflow-hidden rounded-full bg-muted">
+                                      <div
+                                        className="h-full rounded-full bg-primary"
+                                        style={{
+                                          width: `${Math.min(100, Math.max(0, quotaWindow.percent))}%`,
+                                        }}
+                                      />
+                                    </div>
+                                  ) : null}
+                                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                                    {[
+                                      quotaWindow.percent === undefined
+                                        ? undefined
+                                        : `${Math.round(quotaWindow.percent)}%`,
+                                      quotaWindow.remaining,
+                                      quotaWindow.resetsAt === undefined
+                                        ? undefined
+                                        : quotaWindow.resetsAt.slice(5, 10),
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </span>
+                                </div>
+                              ))}
+                              {(subscription.metrics ?? []).map((metric) => (
+                                <div key={metric.label} className="flex items-center gap-2">
+                                  <span className="w-20 shrink-0 text-muted-foreground">
+                                    {metric.label}
+                                  </span>
+                                  <span className="tabular-nums text-foreground/90">
+                                    {metric.value}
+                                  </span>
+                                </div>
+                              ))}
+                              {subscription.windows.length === 0 &&
+                              (subscription.metrics ?? []).length === 0 &&
+                              subscription.detail === undefined &&
+                              subscription.status === undefined ? (
+                                <p className="text-muted-foreground">{t("cliProxy.usageNoData")}</p>
+                              ) : null}
+                              {subscription.detail !== undefined ? (
+                                <p className="text-muted-foreground">{subscription.detail}</p>
+                              ) : null}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 

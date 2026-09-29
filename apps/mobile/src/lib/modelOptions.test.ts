@@ -65,6 +65,7 @@ describe("mobile model options", () => {
     const drivers = [
       ["piAgent", "Pi"],
       ["ompAgent", "OhMyPi"],
+      ["zcodeAgent", "ZCode"],
       ["acpAgent", "ACP Agent"],
       ["cursor", "Cursor"],
       ["grok", "Grok"],

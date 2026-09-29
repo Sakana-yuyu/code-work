@@ -26,6 +26,7 @@ describe("供应商原生登录", () => {
         deviceCode: true,
       }).pipe(
         Effect.provideService(HostProcessPlatform, "linux"),
+        Effect.provideService(SpawnExecutableResolution, (command) => command),
         Effect.provideService(ServerSettingsService, {
           getSettings: Effect.succeed({
             ...DEFAULT_SERVER_SETTINGS,
@@ -118,6 +119,22 @@ describe("供应商原生登录", () => {
     expect(providerLoginCommand("antigravity", false)).toEqual({
       binary: "agy",
       args: [],
+    });
+    expect(providerLoginCommand("zcodeAgent", false)).toEqual({
+      binary: "zcode",
+      args: ["login", "zai"],
+    });
+    expect(providerLoginCommand("zcodeAgent", true)).toEqual({
+      binary: "zcode",
+      args: ["login", "zai", "--no-browser"],
+    });
+    expect(providerLoginCommand("zcodeAgent", false, "bigmodel")).toEqual({
+      binary: "zcode",
+      args: ["login", "bigmodel"],
+    });
+    expect(providerLoginCommand("zcodeAgent", true, "bigmodel")).toEqual({
+      binary: "zcode",
+      args: ["login", "bigmodel", "--no-browser"],
     });
     expect(providerLoginCommand("cursor", false)).toBeNull();
     expect(providerLoginCommand("unknown", false)).toBeNull();

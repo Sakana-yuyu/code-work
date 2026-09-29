@@ -3,13 +3,18 @@ import {
   EnvironmentId,
   type ByokDelegationSnapshot,
   type CompositionTaskCancelResult,
+  type TerminalAttachStreamEvent,
 } from "@codework/contracts";
 import { it, describe, expect } from "@effect/vitest";
+import { vi } from "vite-plus/test";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import * as PreviewAutomationBroker from "../mcp/PreviewAutomationBroker.ts";
 
 import * as ServerConfig from "../config.ts";
@@ -392,6 +397,92 @@ it.layer(TestLayer, { excludeTestServices: true })("shared canonical tools", (it
       expect(closedTerminals).toEqual(["run-1:term-agent"]);
     }),
   );
+
+  for (const outcome of ["output", "exited", "error", "closed", "timeout", "cancelled"] as const) {
+    it.effect(`terminal.exec 等待增量 ${outcome} 并释放订阅`, () =>
+      Effect.gen(function* () {
+        const broker = yield* ToolBroker.ToolBroker;
+        const manager = yield* TerminalManager.TerminalManager;
+        const attached =
+          yield* Deferred.make<(event: TerminalAttachStreamEvent) => Effect.Effect<void>>();
+        const unsubscribe = vi.fn();
+        yield* Effect.acquireRelease(
+          Effect.sync(() =>
+            vi.spyOn(manager, "attachStream").mockImplementation((input, listener) =>
+              Effect.gen(function* () {
+                yield* listener({
+                  type: "snapshot",
+                  snapshot: {
+                    threadId: input.threadId,
+                    terminalId: input.terminalId,
+                    cwd: "C:/trusted/workspace",
+                    worktreePath: null,
+                    status: "running",
+                    pid: 456,
+                    history: "",
+                    exitCode: null,
+                    exitSignal: null,
+                    label: "latest command",
+                    updatedAt: "2026-09-26T00:00:00.000Z",
+                    sequence: 2,
+                  },
+                });
+                yield* Deferred.succeed(attached, listener);
+                return unsubscribe;
+              }),
+            ),
+          ),
+          (spy) => Effect.sync(() => spy.mockRestore()),
+        );
+        const fiber = yield* Effect.forkChild(
+          broker.invoke({
+            ...baseInput("C:/trusted/workspace"),
+            canonicalToolName: "terminal.exec",
+            arguments: { terminalId: "term-stream", cwd: "C:/trusted/workspace", command: "node" },
+            idempotencyKey: `terminal-stream-${outcome}`,
+            capabilityGrantIds: ["t3.terminal.exec"],
+            runtimeMode: "full-access",
+          }),
+        );
+        const listener = yield* Deferred.await(attached);
+        if (outcome === "cancelled") {
+          yield* Fiber.interrupt(fiber);
+        } else {
+          const eventBase = { threadId: "run-1", terminalId: "term-stream", sequence: 3 };
+          if (outcome === "output") {
+            yield* listener({ ...eventBase, type: "output", data: "incremental output" });
+          } else if (outcome === "exited") {
+            yield* listener({ ...eventBase, type: "exited", exitCode: 7, exitSignal: null });
+          } else if (outcome === "error") {
+            yield* listener({ ...eventBase, type: "error", message: "terminal stream failed" });
+          } else if (outcome === "closed") {
+            yield* listener({ ...eventBase, type: "closed" });
+          }
+          yield* TestClock.adjust("8 seconds");
+          const result = yield* Fiber.join(fiber);
+          if (outcome === "error" || outcome === "closed") {
+            expect(result).toMatchObject({ status: "failed", errorCode: "tool_execution_failed" });
+          } else {
+            expect(result).toMatchObject({
+              status: "succeeded",
+              result: {
+                status: outcome === "exited" ? "exited" : "running",
+                history: outcome === "output" ? "incremental output" : "",
+                exitCode: outcome === "exited" ? 7 : null,
+                pid: outcome === "exited" ? null : 456,
+                label: "latest command",
+                sequence: outcome === "timeout" ? 2 : 3,
+              },
+            });
+          }
+          expect(result.finishedAtUnixMs! - result.startedAtUnixMs!).toBe(
+            outcome === "timeout" ? 8_000 : 0,
+          );
+        }
+        expect(unsubscribe).toHaveBeenCalledTimes(1);
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+  }
 
   it.effect("按 Run 作用域执行并终止命令进程", () =>
     Effect.gen(function* () {

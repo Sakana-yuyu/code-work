@@ -79,6 +79,7 @@ import {
   setLocalAccountPoolStrategy,
 } from "../LocalAccountPool.ts";
 import { matchLocalGatewayKey, readLocalGatewayKeys } from "../LocalGatewayKey.ts";
+import { ZCODE_PLAN_GATEWAY_ANTHROPIC_BASE } from "../zcode/zcodeCredentials.ts";
 import { localPoolUsageStore } from "../LocalPoolUsage.ts";
 import { parseByokCustomHeaders, parseRetryAfterMs } from "../Layers/byokChatClient.ts";
 import { byokModelCapabilities } from "../Layers/ByokProvider.ts";
@@ -579,7 +580,7 @@ const allowedGatewayPath = (
   if (normalized === "/v1/models") return true;
   if (protocol === "anthropic")
     return (
-      provider === "claude" &&
+      (provider === "claude" || provider === "zcode") &&
       (normalized === "/v1/messages" || normalized === "/v1/messages/count_tokens")
     );
   return normalized === "/v1/chat/completions" || normalized === "/v1/responses";
@@ -1395,9 +1396,16 @@ const gatewayHandler = (
               )
             : adapter.localProvider === "claude"
               ? joinAnthropicTarget("https://api.anthropic.com", suffixPath)
-              : protocol === "anthropic"
-                ? joinAnthropicTarget(adapter.baseURL, suffixPath)
-                : joinOpenAITarget(adapter.baseURL, suffixPath);
+              : adapter.localProvider === "zcode"
+                ? joinAnthropicTarget(
+                    ZCODE_PLAN_GATEWAY_ANTHROPIC_BASE[
+                      localCredential?.zcode_family === "bigmodel" ? "bigmodel" : "zai"
+                    ],
+                    suffixPath,
+                  )
+                : protocol === "anthropic"
+                  ? joinAnthropicTarget(adapter.baseURL, suffixPath)
+                  : joinOpenAITarget(adapter.baseURL, suffixPath);
 
       const forwardHeaders: Record<string, string> = {};
       for (const [name, value] of Object.entries(request.headers)) {
@@ -1435,6 +1443,9 @@ const gatewayHandler = (
           forwardHeaders["x-grok-client-identifier"] = "grok-shell";
           forwardHeaders["x-grok-client-version"] ??= "0.2.120";
         }
+      } else if (adapter.localProvider === "zcode") {
+        // Coding Plan 与 ZCode CLI 一致：Bearer API Key 走平台网关。
+        forwardHeaders["authorization"] = `Bearer ${localToken}`;
       } else if (protocol === "anthropic") {
         forwardHeaders["x-api-key"] = adapter.apiKey;
       } else {

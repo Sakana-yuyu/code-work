@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
+  LocalAccountId,
   LocalAccountPoolStrategy,
   LocalAccountProvider,
   LocalAccountSummary,
@@ -60,7 +61,48 @@ export const CliProxyAccountUsage = Schema.Struct({
   /** 账号冷却截止（unix ms），仅在冷却仍有效时出现。 */
   cooldownUntilUnixMs: Schema.optional(NonNegativeInt),
 });
+
+/**
+ * 本机/受管实例已登录的原生 CLI 凭据落点——号池"从本机导入"的扫描结果。
+ * 客户端只拿到路径与展示名；凭据内容不回传，导入由服务端重新读盘完成。
+ */
+export const CliProxyNativeLogin = Schema.Struct({
+  provider: LocalAccountProvider,
+  path: Schema.String,
+  label: Schema.optional(Schema.String),
+  /** 该落点的凭据已在号池里（按 native-<provider>-<path哈希> 推导的账号 ID 判断）。 */
+  imported: Schema.Boolean,
+});
+export type CliProxyNativeLogin = typeof CliProxyNativeLogin.Type;
 export type CliProxyAccountUsage = typeof CliProxyAccountUsage.Type;
+
+/** 单个用量窗口：label 已由服务端翻译成可读名称，percent 是已用百分比 0–100。 */
+export const CliProxyUsageWindow = Schema.Struct({
+  label: Schema.String,
+  percent: Schema.optional(Schema.Number),
+  remaining: Schema.optional(Schema.String),
+  resetsAt: Schema.optional(Schema.String),
+});
+export type CliProxyUsageWindow = typeof CliProxyUsageWindow.Type;
+
+/**
+ * 号池账号从各平台官方接口拉到的订阅/额度快照。字段尽力而为——
+ * 平台不支持或请求失败时 `error` 带可读文案，其余字段可全部缺省。
+ */
+export const CliProxyAccountSubscription = Schema.Struct({
+  id: LocalAccountId,
+  plan: Schema.optional(Schema.String),
+  status: Schema.optional(Schema.String),
+  expiresAt: Schema.optional(Schema.String),
+  windows: Schema.Array(CliProxyUsageWindow),
+  /** 键值指标（活动统计、余额等不是窗口额度的数据点）。 */
+  metrics: Schema.optional(
+    Schema.Array(Schema.Struct({ label: Schema.String, value: Schema.String })),
+  ),
+  detail: Schema.optional(Schema.String),
+  error: Schema.optional(Schema.String),
+});
+export type CliProxyAccountSubscription = typeof CliProxyAccountSubscription.Type;
 
 export const CliProxyRequest = Schema.Union([
   Schema.Struct({ action: Schema.Literal("status") }),
@@ -90,6 +132,23 @@ export const CliProxyRequest = Schema.Union([
     provider: LocalAccountProvider,
     displayName: TrimmedNonEmptyString,
     content: Schema.String.check(Schema.isMaxLength(1048576)),
+  }),
+  Schema.Struct({
+    action: Schema.Literal("importLocalLogin"),
+    provider: LocalAccountProvider,
+    terminalId: Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9-]{1,80}$/)),
+    displayName: Schema.optional(Schema.String.check(Schema.isMaxLength(96))),
+    models: Schema.optional(Schema.Array(TrimmedNonEmptyString).check(Schema.isMaxLength(50))),
+  }),
+  Schema.Struct({ action: Schema.Literal("scanNativeAccounts") }),
+  Schema.Struct({ action: Schema.Literal("localAccountUsage") }),
+  Schema.Struct({
+    action: Schema.Literal("importNativeAccount"),
+    provider: LocalAccountProvider,
+    /** 只接受 scanNativeAccounts 返回的落点；服务端重算候选集后校验。 */
+    path: TrimmedNonEmptyString.check(Schema.isMaxLength(2000)),
+    displayName: Schema.optional(Schema.String.check(Schema.isMaxLength(96))),
+    models: Schema.optional(Schema.Array(TrimmedNonEmptyString).check(Schema.isMaxLength(50))),
   }),
   Schema.Struct({ action: Schema.Literal("deleteLocalAccount"), id: TrimmedNonEmptyString }),
   Schema.Struct({
@@ -144,6 +203,9 @@ export const CliProxyResult = Schema.Struct({
   externalGateway: Schema.optional(CliProxyExternalGateway),
   connectedInstanceId: Schema.optional(ProviderInstanceId),
   accountUsage: Schema.optional(Schema.Array(CliProxyAccountUsage)),
+  nativeLogins: Schema.optional(Schema.Array(CliProxyNativeLogin)),
+  /** 账号级用量/订阅快照，只在 action=localAccountUsage 的结果里填充。 */
+  accountSubscriptions: Schema.optional(Schema.Array(CliProxyAccountSubscription)),
 });
 export type CliProxyResult = typeof CliProxyResult.Type;
 

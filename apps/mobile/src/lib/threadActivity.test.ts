@@ -576,6 +576,118 @@ describe("buildThreadFeed", () => {
     );
   });
 
+  it.each(["tool.started", "tool.completed"] as const)(
+    "无调用 ID 的工具不会跨回合合并：%s",
+    (nextKind) => {
+      const thread = makeThread({
+        id: ThreadId.make("thread-turn-boundary"),
+        projectId: ProjectId.make("project-1"),
+        title: "工具回合边界",
+        activities: ["tool.started", nextKind].map((kind, index) =>
+          makeActivity({
+            id: EventId.make(`tool-${index}`),
+            kind,
+            tone: "tool",
+            summary: "Search",
+            createdAt: `2026-04-01T00:00:0${index}.000Z`,
+            turnId: TurnId.make(`turn-${index}`),
+            payload: { title: "Search", itemType: "mcp_tool_call" },
+          }),
+        ),
+      });
+
+      const activities = buildThreadFeed(thread).flatMap((entry) =>
+        entry.type === "activity-group" ? entry.activities : [],
+      );
+      expect(activities).toMatchObject([
+        { id: "tool-0", turnId: "turn-0", status: "inProgress" },
+        {
+          id: "tool-1",
+          turnId: "turn-1",
+          status: nextKind === "tool.started" ? "inProgress" : "success",
+        },
+      ]);
+    },
+  );
+
+  it.each([false, true])("折叠保留运行及失败工具，存在旧成功记录：%s", (hasOlderSuccess) => {
+    const turnId = TurnId.make("turn-visible-tools");
+    const activities = (
+      [
+        ["older", "tool.completed", "completed"],
+        ["running", "tool.started", "inProgress"],
+        ["failed", "tool.completed", "failed"],
+        ["latest", "tool.completed", "completed"],
+      ] as const
+    ).flatMap(([id, kind, status], index) =>
+      id === "older" && !hasOlderSuccess
+        ? []
+        : [
+            makeActivity({
+              id: EventId.make(id),
+              kind,
+              tone: "tool",
+              summary: id,
+              createdAt: `2026-04-01T00:00:0${index}.000Z`,
+              turnId,
+              payload: {
+                toolCallId: id,
+                title: id,
+                itemType: "mcp_tool_call",
+                status,
+                ...(id === "failed" ? { detail: "Search unavailable" } : {}),
+              },
+            }),
+          ],
+    );
+    const thread = makeThread({
+      id: ThreadId.make("thread-visible-tools"),
+      projectId: ProjectId.make("project-1"),
+      title: "工具可见性",
+      latestTurn: {
+        turnId,
+        state: "running",
+        requestedAt: "2026-04-01T00:00:00.000Z",
+        startedAt: "2026-04-01T00:00:00.000Z",
+        completedAt: null,
+        assistantMessageId: null,
+      },
+      activities,
+    });
+    const feed = buildThreadFeed(thread);
+    const groupId = feed[0]!.id;
+    const collapsed = deriveThreadFeedPresentation(feed, thread.latestTurn, new Set());
+    const visible = collapsed.flatMap((entry) =>
+      entry.type === "activity-group" ? entry.activities : [],
+    );
+    expect(visible).toMatchObject([
+      { id: "running", status: "inProgress" },
+      { id: "failed", status: "failure", detail: "Search unavailable" },
+      { id: "latest", status: "success" },
+    ]);
+    expect(visible[1]?.getFullDetail()).toContain("Search unavailable");
+    expect(collapsed.filter((entry) => entry.type === "work-toggle")).toEqual(
+      hasOlderSuccess
+        ? [expect.objectContaining({ groupId, hiddenCount: 1, expanded: false })]
+        : [],
+    );
+
+    const expanded = deriveThreadFeedPresentation(
+      feed,
+      thread.latestTurn,
+      new Set(),
+      new Set([groupId]),
+    );
+    expect(
+      expanded.flatMap((entry) =>
+        entry.type === "activity-group" ? entry.activities.map((activity) => activity.id) : [],
+      ),
+    ).toEqual(activities.map((activity) => activity.id));
+    expect(
+      deriveThreadFeedPresentation(feed, thread.latestTurn, new Set()).map((entry) => entry.id),
+    ).toEqual(collapsed.map((entry) => entry.id));
+  });
+
   it("keeps a running tool visible until its completion replaces the row", () => {
     const turnId = TurnId.make("turn-live-tool");
     const startedTool = makeActivity({

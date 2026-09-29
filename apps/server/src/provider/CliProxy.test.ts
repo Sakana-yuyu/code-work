@@ -18,6 +18,7 @@ import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { layerTest, ServerSettingsService } from "../serverSettings.ts";
 import { CliProxyRuntime } from "./CliProxyRuntime.ts";
 import { makeCliProxyService, resolveLocalPoolProvider } from "./CliProxy.ts";
+import { localGatewayAdapters } from "./LocalAccountPool.ts";
 import { localPoolUsageStore } from "./LocalPoolUsage.ts";
 import { gatewayAdapterRoutes, pickGatewayAdapter } from "./byok/modelGateway.ts";
 
@@ -93,6 +94,118 @@ describe("内置 CLIProxyAPI 核心", () => {
     expect(resolveLocalPoolProvider("byok", "claude")).toBe("claude");
     expect(resolveLocalPoolProvider("cursor", "cursor")).toBe("cursor");
     expect(resolveLocalPoolProvider("codex", "xai")).toBeUndefined();
+  });
+
+  it("登录添加账号：导入一次性目录里的凭据、写入声明模型并清理目录", async () => {
+    const cleaned: string[] = [];
+    const loginStore = {
+      readCredential: (provider: string, terminalId: string) =>
+        Effect.succeed(
+          provider === "codex" && terminalId === "term-1"
+            ? JSON.stringify({ tokens: { access_token: "login-secret", refresh_token: "r" } })
+            : undefined,
+        ),
+      cleanup: (terminalId: string) => Effect.sync(() => void cleaned.push(terminalId)),
+    };
+    await Effect.runPromise(
+      runWithServices(
+        { localAccountPool: { accounts: {}, strategy: "round-robin", providerInstances: {} } },
+        (settings, secrets) =>
+          Effect.gen(function* () {
+            const service = yield* makeCliProxyService(
+              new CliProxyRuntime("http://127.0.0.1:3000"),
+              settings,
+              secrets,
+              "http://127.0.0.1:3000",
+              loginStore,
+            );
+            const result = yield* service.handle({
+              action: "importLocalLogin",
+              provider: "codex",
+              terminalId: "term-1",
+              displayName: "登录账号",
+              models: ["gpt-5"],
+            });
+            expect(JSON.stringify(result)).not.toContain("login-secret");
+            expect(result.localAccounts).toMatchObject([
+              { id: "codex-term1", provider: "codex", displayName: "登录账号", models: ["gpt-5"] },
+            ]);
+            expect(cleaned).toEqual(["term-1"]);
+
+            const missing = yield* Effect.exit(
+              service.handle({ action: "importLocalLogin", provider: "codex", terminalId: "none" }),
+            );
+            expect(missing._tag).toBe("Failure");
+            const unsupported = yield* Effect.exit(
+              service.handle({
+                action: "importLocalLogin",
+                provider: "cursor",
+                terminalId: "term-1",
+              }),
+            );
+            expect(unsupported._tag).toBe("Failure");
+          }),
+      ),
+    );
+  });
+
+  it("登录添加 ZCode 账号：解密凭据文件、抽取 Coding Plan Key 与账号名", async () => {
+    // ZCode 凭据是键值文件；未加密条目按明文放行，加密路径由 zcodeCredentials 测试覆盖。
+    const zcodeCredentials = JSON.stringify({
+      "oauth:active_provider": "zai",
+      "oauth:zai:user_info": JSON.stringify({ user_id: "u-1", name: "Dev", email: "dev@z.ai" }),
+      "account-provider:coding-plan:account:zai-individual-coding-plan:account:u-1:api-key":
+        "plan-api-key",
+    });
+    const loginStore = {
+      readCredential: (provider: string, terminalId: string) =>
+        Effect.succeed(
+          provider === "zcode" && terminalId === "term-z" ? zcodeCredentials : undefined,
+        ),
+      cleanup: () => Effect.void,
+    };
+    await Effect.runPromise(
+      runWithServices(
+        { localAccountPool: { accounts: {}, strategy: "round-robin", providerInstances: {} } },
+        (settings, secrets) =>
+          Effect.gen(function* () {
+            const service = yield* makeCliProxyService(
+              new CliProxyRuntime("http://127.0.0.1:3000"),
+              settings,
+              secrets,
+              "http://127.0.0.1:3000",
+              loginStore,
+            );
+            const result = yield* service.handle({
+              action: "importLocalLogin",
+              provider: "zcode",
+              terminalId: "term-z",
+              models: ["GLM-5.3"],
+            });
+            expect(result.localAccounts).toMatchObject([
+              { provider: "zcode", displayName: "Dev", authKind: "api-key" },
+            ]);
+            const storedAccount = Object.values(
+              (yield* settings.getSettings).localAccountPool.accounts,
+            ).find((account) => account.provider === "zcode");
+            const stored = yield* secrets.get(storedAccount!.credentialRef);
+            const parsed = JSON.parse(
+              Buffer.from(Option.isSome(stored) ? stored.value : new Uint8Array()).toString("utf8"),
+            ) as Record<string, unknown>;
+            expect(parsed.api_key).toBe("plan-api-key");
+            expect(parsed.zcode_family).toBe("zai");
+            const adapters = localGatewayAdapters(
+              yield* settings.getSettings,
+              "http://127.0.0.1:3000",
+              "token",
+              "embedded-cpa",
+            );
+            expect(adapters).toMatchObject([
+              { id: "local:embedded-cpa:zcode:GLM-5.3", protocol: "anthropic", modelId: "GLM-5.3" },
+            ]);
+          }),
+      ),
+    );
   });
 
   it("导入凭据只返回脱敏摘要，并将本地账号绑定到内置 BYOK 实例", async () =>

@@ -52,6 +52,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverInstallProvider]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverStartProviderLogin]: AuthTerminalOperateScope,
   [WS_METHODS.serverCliProxy]: AuthTerminalOperateScope,
+  [WS_METHODS.serverZcodeLogin]: AuthTerminalOperateScope,
   [WS_METHODS.serverUpdateServer]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverUpdateServerWithProgress]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverUpsertKeybinding]: AuthOrchestrationOperateScope,

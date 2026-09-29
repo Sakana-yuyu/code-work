@@ -77,6 +77,7 @@ const PRIMARY_PROVIDER_DRIVERS: ReadonlySet<string> = new Set([
   "codex",
   "piAgent",
   "ompAgent",
+  "zcodeAgent",
   "acpAgent",
 ]);
 /**

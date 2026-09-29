@@ -9,6 +9,7 @@
 import type {
   PiAgentSettings,
   OmpAgentSettings,
+  ZCodeAgentSettings,
   ServerProvider,
   ServerProviderModel,
 } from "@codework/contracts";
@@ -28,11 +29,14 @@ import {
 } from "../providerSnapshot.ts";
 import type { PifamilyModelRoute } from "../pifamily/byokProviderConfig.ts";
 
-export type PifamilyDriverKind = "piAgent" | "ompAgent";
+export type PifamilyDriverKind = "piAgent" | "ompAgent" | "zcodeAgent";
+
+type PifamilySnapshotSettings = PiAgentSettings | OmpAgentSettings | ZCodeAgentSettings;
 
 const PRESENTATIONS: Record<PifamilyDriverKind, { displayName: string; badgeLabel: string }> = {
   piAgent: { displayName: "Pi", badgeLabel: "BYOK" },
   ompAgent: { displayName: "OhMyPi", badgeLabel: "BYOK" },
+  zcodeAgent: { displayName: "ZCode", badgeLabel: "BYOK" },
 };
 
 export function pifamilyProviderModels(
@@ -49,7 +53,7 @@ export function pifamilyProviderModels(
 
 export function buildInitialPifamilyProviderSnapshot(input: {
   readonly driverKind: PifamilyDriverKind;
-  readonly settings: PiAgentSettings | OmpAgentSettings;
+  readonly settings: PifamilySnapshotSettings;
   readonly routes: ReadonlyArray<PifamilyModelRoute>;
 }): Effect.Effect<ServerProviderDraft> {
   return Effect.map(DateTime.now, (now) =>
@@ -74,34 +78,52 @@ export function buildInitialPifamilyProviderSnapshot(input: {
 export const checkPifamilyProviderStatus = Effect.fn("checkPifamilyProviderStatus")(
   function* (input: {
     readonly driverKind: PifamilyDriverKind;
-    readonly settings: PiAgentSettings | OmpAgentSettings;
+    readonly settings: PifamilySnapshotSettings;
     readonly routes: ReadonlyArray<PifamilyModelRoute>;
     readonly environment?: NodeJS.ProcessEnv;
+    /** 探针命令前置参数（ZCode 内嵌运行时的 bundle 路径）。 */
+    readonly spawnArgsPrefix?: ReadonlyArray<string>;
+    /** 探针用错误/文案里的命令标识（替代裸 binaryPath）。 */
+    readonly displayBinaryPath?: string;
+    /** 运行时常驻内置（如 vendored ZCode bundle）：跳过 spawn 探针直接视为已安装。 */
+    readonly assumeInstalled?: boolean;
   }): Effect.fn.Return<ServerProviderDraft, never, ChildProcessSpawner.ChildProcessSpawner> {
     const checkedAt = DateTime.formatIso(yield* DateTime.now);
     const models = pifamilyProviderModels(input.routes);
     const label = PRESENTATIONS[input.driverKind].displayName;
 
     // 探测不受开关影响：禁用只决定状态文案，安装与否必须如实上报。
-    const probe = yield* Effect.gen(function* () {
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const resolved = yield* resolveSpawnCommand(
-        input.settings.binaryPath,
-        ["--version"],
-        input.environment === undefined ? {} : { env: input.environment },
-      );
-      const child = yield* spawner.spawn(
-        ChildProcess.make(resolved.command, resolved.args, {
-          ...(input.environment ? { env: input.environment } : { extendEnv: true }),
-          shell: resolved.shell,
-        }),
-      );
-      const [stdout, stderr, code] = yield* Effect.all(
-        [collectStreamAsString(child.stdout), collectStreamAsString(child.stderr), child.exitCode],
-        { concurrency: "unbounded" },
-      );
-      return { stdout, stderr, code: Number(code) };
-    }).pipe(Effect.scoped, Effect.result);
+    // 内嵌运行时（vendored bundle 随包分发）不存在"CLI 未安装"状态，直接跳过探针。
+    const probe =
+      input.assumeInstalled === true
+        ? Result.succeed({ stdout: "", stderr: "", code: 0 })
+        : yield* Effect.gen(function* () {
+            const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+            const resolved = yield* resolveSpawnCommand(
+              input.settings.binaryPath,
+              [...(input.spawnArgsPrefix ?? []), "--version"],
+              input.environment === undefined ? {} : { env: input.environment },
+            );
+            const child = yield* spawner.spawn(
+              ChildProcess.make(resolved.command, resolved.args, {
+                // 附加变量必须 extendEnv 合到父进程环境：ZCode 的 managed env 只有
+                // ZCODE_DATA_BASE_DIR 等少数键，整体替换会丢 SYSTEMROOT/PATH，
+                // 让 node/Electron 侧车在启动前就返回非零（"版本命令返回失败"）。
+                ...(input.environment === undefined ? {} : { env: input.environment }),
+                extendEnv: true,
+                shell: resolved.shell,
+              }),
+            );
+            const [stdout, stderr, code] = yield* Effect.all(
+              [
+                collectStreamAsString(child.stdout),
+                collectStreamAsString(child.stderr),
+                child.exitCode,
+              ],
+              { concurrency: "unbounded" },
+            );
+            return { stdout, stderr, code: Number(code) };
+          }).pipe(Effect.scoped, Effect.result);
 
     if (!input.settings.enabled) {
       return buildServerProvider({
@@ -131,7 +153,7 @@ export const checkPifamilyProviderStatus = Effect.fn("checkPifamilyProviderStatu
           status: "error",
           auth: { status: "unknown" },
           message: isCommandMissingCause(probe.failure)
-            ? `${label} CLI ${input.settings.binaryPath} 未找到。`
+            ? `${label} CLI ${input.displayBinaryPath ?? input.settings.binaryPath} 未找到。`
             : `${label} CLI 版本检查失败。`,
         },
       });
@@ -151,11 +173,16 @@ export const checkPifamilyProviderStatus = Effect.fn("checkPifamilyProviderStatu
         auth: noRoutes
           ? { status: "unknown" }
           : { status: "authenticated", type: "byok", label: "BYOK Gateway" },
-        message: noRoutes
-          ? `${label} CLI 已安装，但 BYOK 网关没有可用的 OpenAI/Anthropic 模型通道。`
-          : probe.success.code === 0
-            ? `${label} CLI 已安装；模型由 BYOK 网关提供。`
-            : `${label} CLI 版本命令返回失败。`,
+        message:
+          input.assumeInstalled === true
+            ? noRoutes
+              ? `${label} 运行时已内置；BYOK 网关没有可用的 OpenAI/Anthropic 模型通道。`
+              : `${label} 运行时已内置；模型由 BYOK 网关提供。`
+            : noRoutes
+              ? `${label} CLI 已安装，但 BYOK 网关没有可用的 OpenAI/Anthropic 模型通道。`
+              : probe.success.code === 0
+                ? `${label} CLI 已安装；模型由 BYOK 网关提供。`
+                : `${label} CLI 版本命令返回失败。`,
       },
     });
   },

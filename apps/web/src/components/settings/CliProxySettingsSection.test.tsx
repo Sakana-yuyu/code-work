@@ -26,6 +26,7 @@ vi.mock("../../environments/primary", () => ({
 }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => mock.command }));
 
+import { CliProxyLoginCard } from "./CliProxyLoginCard";
 import { CliProxySettingsSection, localAccountIdFromFileName } from "./CliProxySettingsSection";
 
 const environmentId = EnvironmentId.make("remote-cpa");
@@ -83,16 +84,33 @@ it("没有终端管理权限时禁用并阻止 RPC", async () => {
   expect(mock.command).not.toHaveBeenCalled();
 });
 
-it("官方登录入口会触发供应商登录页回调", () => {
-  const connected: unknown[] = [];
-  const found = visitElements(
-    render(false, (instanceId) => connected.push(instanceId)),
-    (element) =>
-      element.props.children === "打开官方登录" && typeof element.props.onClick === "function",
-  );
-  expect(found).not.toBeNull();
-  (found!.props.onClick as () => void)();
-  expect(connected.map(String)).toEqual(["codex"]);
+it("登录添加账号卡片结束登录后把终端凭据导入号池", async () => {
+  const card = visitElements(render(), (element) => element.type === CliProxyLoginCard);
+  expect(card).not.toBeNull();
+  expect(card!.props.disabled).toBe(false);
+  (
+    card!.props.onLoginFinished as (input: {
+      provider: string;
+      terminalId: string;
+      models: string[];
+    }) => void
+  )({ provider: "codex", terminalId: "term-1", models: ["gpt-5"] });
+  await flush();
+  expect(mock.command).toHaveBeenLastCalledWith({
+    environmentId,
+    input: {
+      action: "importLocalLogin",
+      provider: "codex",
+      terminalId: "term-1",
+      models: ["gpt-5"],
+    },
+  });
+});
+
+it("没有终端管理权限时登录添加账号卡片被禁用", () => {
+  mock.scopes = [];
+  const card = visitElements(render(), (element) => element.type === CliProxyLoginCard);
+  expect(card!.props.disabled).toBe(true);
 });
 
 it("搜索图标位于输入框背景层之上，不会留下空白占位", () => {

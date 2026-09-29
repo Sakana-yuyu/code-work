@@ -1790,7 +1790,7 @@ describe("ByokAgentLoop 只读工具轮内并发", () => {
     }),
   );
 
-  it.effect("同一条终端命令换新终端标识重放时，执行三次后结束回合", () =>
+  it.effect("重复命令保护在三次执行后报告失败，并阻止后续工具", () =>
     Effect.gen(function* () {
       const command = {
         cwd: "C:/workspace",
@@ -1798,6 +1798,7 @@ describe("ByokAgentLoop 只读工具轮内并发", () => {
         args: ["-NoProfile", "-Command", "Write-Output 'same'"],
       };
       let executions = 0;
+      const completed: ToolBroker.ToolBrokerResult[] = [];
       const broker = ToolBroker.ToolBroker.of({
         invoke: (input) =>
           Effect.sync(() => {
@@ -1815,18 +1816,42 @@ describe("ByokAgentLoop 只读工具轮内并发", () => {
               canonicalToolName: "terminal.exec",
               arguments: { ...command, terminalId: `t${input.turn}` },
             },
+            ...(input.turn === 4
+              ? [
+                  {
+                    type: "tool_call" as const,
+                    toolCallId: "write-after-blocked",
+                    canonicalToolName: "workspace.write_file",
+                    arguments: { cwd: "C:/workspace", relativePath: "blocked.txt", contents: "" },
+                  },
+                ]
+              : []),
             { type: "model_completed" as const },
           ]),
       };
 
-      const result = yield* runByokAgentLoop({ ...baseInput }, model, broker);
+      const result = yield* Effect.result(
+        runByokAgentLoop(
+          {
+            ...baseInput,
+            onToolCompleted: (_, result) =>
+              Effect.sync(() => {
+                completed.push(result);
+              }),
+          },
+          model,
+          broker,
+        ),
+      );
 
       expect(executions).toBe(3);
-      expect(result.rounds).toBe(4);
-      const blocked = result.messages.find(
-        (message) => message.role === "tool" && message.toolCallId === "exec-4",
-      );
-      expect(blocked?.role === "tool" ? decodeUnknownJson(blocked.content) : null).toMatchObject({
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { code: "repeated_terminal_command", retryable: false },
+      });
+      expect(completed).toHaveLength(4);
+      expect(completed.at(-1)).toMatchObject({
+        toolCallId: "exec-4",
         status: "failed",
         errorCode: "repeated_terminal_command",
       });

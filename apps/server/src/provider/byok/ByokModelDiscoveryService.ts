@@ -18,6 +18,7 @@ import type {
   ByokModelAdapter,
   ServerSettings as ServerSettingsContract,
 } from "@codework/contracts";
+import * as NodeCrypto from "node:crypto";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -166,15 +167,21 @@ const emptyContextWindowMatch = (adapterId: string): ByokContextWindowMatchResul
 });
 
 const fingerprintFor = (adapter: ByokModelAdapter): string =>
-  JSON.stringify([
-    adapter.protocol,
-    adapter.baseURL,
-    adapter.supplierID ?? "",
-    adapter.modelCatalogURL ?? "",
-    adapter.modelCatalogURLs ?? [],
-    adapter.modelCatalogStatus ?? "",
-    adapter.appendModelCatalogCandidates ?? true,
-  ]);
+  NodeCrypto.createHash("sha256")
+    .update(
+      JSON.stringify([
+        adapter.protocol,
+        adapter.baseURL,
+        adapter.supplierID ?? "",
+        adapter.modelCatalogURL ?? "",
+        adapter.modelCatalogURLs ?? [],
+        adapter.modelCatalogStatus ?? "",
+        adapter.appendModelCatalogCandidates ?? true,
+        adapter.apiKey,
+        adapter.customHeaders ?? "",
+      ]),
+    )
+    .digest("hex");
 
 const targetFromAdapter = (adapter: ByokModelAdapter): ModelDiscoveryTarget => ({
   protocol: adapter.protocol,

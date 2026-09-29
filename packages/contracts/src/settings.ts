@@ -697,6 +697,52 @@ export const OmpAgentSettings = makeProviderSettingsSchema(
 export type OmpAgentSettings = typeof OmpAgentSettings.Type;
 
 /**
+ * ZCode CLI（智谱 zai-org/ZCode 的 `zcode --prompt --output-format stream-json`
+ * 无头入口，每轮一个进程，用 `--resume` 续接会话）。
+ *
+ * 两种账号形态：`official` 用 `zcode login` 的官方 Z.AI/BigModel Coding Plan
+ * 账号（凭据落在实例自己的受管数据根）；`byok`（默认）与 Pi 一样在受管数据
+ * 目录里只写一份指向本地 BYOK 网关的个人 Provider 配置，号池（本地 CLI
+ * 账号）路由随网关一并发布。
+ */
+export const ZCodeAgentSettings = makeProviderSettingsSchema(
+  {
+    enabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    authMode: Schema.Literals(["byok", "official"]).pipe(
+      Schema.withDecodingDefault(Effect.succeed("byok" as const)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    binaryPath: makeBinaryPathSetting("zcode").pipe(
+      Schema.annotateKey({
+        title: "Binary path",
+        description:
+          "Custom ZCode CLI binary path. Empty uses the bundled ZCode runtime; no install needed.",
+        providerSettingsForm: { placeholder: "zcode", clearWhenEmpty: "omit" },
+      }),
+    ),
+    launchArgs: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Launch arguments",
+        description: "Additional CLI arguments passed to zcode on every turn.",
+      }),
+    ),
+    byokSourceInstanceId: Schema.optional(ProviderInstanceId).pipe(
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    customModels: Schema.Array(Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+  },
+  { order: ["binaryPath", "launchArgs"] },
+);
+export type ZCodeAgentSettings = typeof ZCodeAgentSettings.Type;
+
+/**
  * 通用 ACP Agent：任意 Agent Client Protocol CLI 入口（JSON-RPC over stdio）。
  *
  * 模型路由由 agent 自身解释；开启 BYOK 网关注入后，标准 OpenAI/Anthropic
@@ -1214,6 +1260,7 @@ export const ServerSettings = Schema.Struct({
     kimi: KimiSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     antigravity: AntigravitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    zcodeAgent: ZCodeAgentSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     byok: ByokSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // New driver-agnostic instance map. Keyed by `ProviderInstanceId`; values

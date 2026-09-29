@@ -1,5 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off - 号池登录只需要预建一次性目录。
 import { ProviderInstanceId, type ProviderInstanceConfig } from "@codework/contracts";
-import { resolveSpawnCommand } from "@codework/shared/shell";
+import { HostProcessEnvironment, HostProcessPlatform } from "@codework/shared/hostProcess";
+import { resolveSpawnCommand, SpawnExecutableResolution } from "@codework/shared/shell";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { ServerSettingsError } from "@codework/contracts";
@@ -9,6 +11,14 @@ import { TerminalManager } from "../terminal/Manager.ts";
 import { mergeProviderInstanceEnvironment } from "./ProviderInstanceEnvironment.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import { resolveGrokHome } from "./grokHome.ts";
+import { resolveZCodeDataDir } from "./zcode/zcodeByokConfig.ts";
+import * as NodeFsPromises from "node:fs/promises";
+import {
+  LOCAL_POOL_LOGIN_HOME_ENV,
+  isLocalPoolLoginProvider,
+  localPoolLoginHome,
+  type LocalPoolLoginProvider,
+} from "./localPoolLogin.ts";
 
 const LoginConfig = Schema.Struct({
   binaryPath: Schema.optional(Schema.String),
@@ -17,7 +27,11 @@ const LoginConfig = Schema.Struct({
 });
 const decodeLoginConfig = Schema.decodeUnknownEffect(LoginConfig);
 
-export function providerLoginCommand(driver: string, deviceCode: boolean) {
+export function providerLoginCommand(
+  driver: string,
+  deviceCode: boolean,
+  loginProvider?: string | undefined,
+) {
   switch (driver) {
     case "codex":
       return { binary: "codex", args: deviceCode ? ["login", "--device-auth"] : ["login"] };
@@ -29,6 +43,17 @@ export function providerLoginCommand(driver: string, deviceCode: boolean) {
       return { binary: "kimi", args: ["login"] };
     case "antigravity":
       return { binary: "agy", args: [] };
+    case "zcodeAgent":
+      // zcode login 支持 zai（国际）与 bigmodel（国内）两个域；--no-browser
+      // 只打印授权 URL（远程/无浏览器场景）。
+      return {
+        binary: "zcode",
+        args: [
+          "login",
+          loginProvider === "bigmodel" ? "bigmodel" : "zai",
+          ...(deviceCode ? ["--no-browser" as const] : []),
+        ],
+      };
     default:
       return null;
   }
@@ -38,6 +63,8 @@ export const startProviderLogin = Effect.fn("startProviderLogin")(function* (inp
   readonly instanceId: ProviderInstanceId;
   readonly terminalId: string;
   readonly deviceCode: boolean;
+  readonly poolLogin?: boolean | undefined;
+  readonly loginProvider?: string | undefined;
 }) {
   const settings = yield* (yield* ServerSettingsService).getSettings;
   const terminal = yield* TerminalManager;
@@ -45,8 +72,9 @@ export const startProviderLogin = Effect.fn("startProviderLogin")(function* (inp
   const legacy = settings.providers as Record<string, unknown>;
   const instance: ProviderInstanceConfig | undefined = settings.providerInstances[input.instanceId];
   const driver = instance?.driver ?? String(input.instanceId);
-  const command = providerLoginCommand(driver, input.deviceCode);
-  if (!command || (!instance && legacy[driver] === undefined)) {
+  const command = providerLoginCommand(driver, input.deviceCode, input.loginProvider);
+  // 号池登录只用一次性目录，不要求该驱动存在实例或 legacy 配置（例如刚添加的 zcodeAgent）。
+  if (!command || (!instance && input.poolLogin !== true && legacy[driver] === undefined)) {
     return yield* new ServerSettingsError({
       settingsPath: "providers",
       operation: "normalize",
@@ -95,7 +123,7 @@ export const startProviderLogin = Effect.fn("startProviderLogin")(function* (inp
     environment[driver === "codex" ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR"] =
       expandHomePath(loginHome);
   }
-  if (driver === "grok") {
+  if (driver === "grok" && input.poolLogin !== true) {
     environment.GROK_HOME = resolveGrokHome({
       stateDir: server.stateDir,
       instanceId: input.instanceId,
@@ -103,11 +131,68 @@ export const startProviderLogin = Effect.fn("startProviderLogin")(function* (inp
       explicitHome: environment.GROK_HOME,
     });
   }
-  const resolved = yield* resolveSpawnCommand(
-    config.binaryPath?.trim() || command.binary,
-    command.args,
-    { env: environment, extendEnv: true },
-  );
+  if (driver === "zcodeAgent" && input.poolLogin !== true) {
+    // 官方登录落在实例自己的受管数据根；与其他实例/用户自己的 ~/.zcode 隔离。
+    environment.ZCODE_DATA_BASE_DIR = resolveZCodeDataDir({
+      stateDir: server.stateDir,
+      instanceId: input.instanceId,
+    });
+  }
+  if (input.poolLogin === true) {
+    // 号池登录写进一次性目录，登完由 CliProxy 导入凭据；不碰实例自己的登录态。
+    const poolProvider: LocalPoolLoginProvider | undefined =
+      driver === "codex"
+        ? "codex"
+        : driver === "claudeAgent"
+          ? "claude"
+          : driver === "grok"
+            ? "xai"
+            : driver === "zcodeAgent"
+              ? "zcode"
+              : undefined;
+    if (poolProvider === undefined || !isLocalPoolLoginProvider(poolProvider)) {
+      return yield* new ServerSettingsError({
+        settingsPath: "providers",
+        operation: "normalize",
+        providerInstanceId: input.instanceId,
+        cause: new Error("此供应商不支持号池登录。"),
+      });
+    }
+    const home = localPoolLoginHome(server.stateDir, input.terminalId);
+    yield* Effect.tryPromise(() => NodeFsPromises.mkdir(home, { recursive: true })).pipe(
+      Effect.mapError(
+        () =>
+          new ServerSettingsError({
+            settingsPath: "providers",
+            operation: "normalize",
+            providerInstanceId: input.instanceId,
+            cause: new Error("无法创建号池登录目录。"),
+          }),
+      ),
+    );
+    environment[LOCAL_POOL_LOGIN_HOME_ENV[poolProvider]] = home;
+  }
+  const loginBinary = config.binaryPath?.trim() || command.binary;
+  // 预检可执行文件：CLI 没装时 PTY 会在终端里静默死掉，不如直接报错。
+  const platform = yield* HostProcessPlatform;
+  const hostEnvironment = yield* HostProcessEnvironment;
+  const resolveExecutable = yield* SpawnExecutableResolution;
+  const resolvedLoginBinary = resolveExecutable(loginBinary, platform, {
+    ...hostEnvironment,
+    ...environment,
+  });
+  if (resolvedLoginBinary === undefined) {
+    return yield* new ServerSettingsError({
+      settingsPath: "providers",
+      operation: "normalize",
+      providerInstanceId: input.instanceId,
+      cause: new Error(`找不到 ${loginBinary} 命令，请确认 CLI 已安装且在 PATH 中。`),
+    });
+  }
+  const resolved = yield* resolveSpawnCommand(loginBinary, command.args, {
+    env: environment,
+    extendEnv: true,
+  });
   const env = Object.fromEntries(
     Object.entries(environment).filter(
       (entry): entry is [string, string] => entry[1] !== undefined,

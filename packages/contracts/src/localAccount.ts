@@ -12,7 +12,7 @@ export type LocalAccountId = typeof LocalAccountId.Type;
 export const LocalAccountWeight = NonNegativeInt.check(Schema.isLessThanOrEqualTo(99));
 export type LocalAccountWeight = typeof LocalAccountWeight.Type;
 
-export const LocalAccountProvider = Schema.Literals(["codex", "claude", "xai", "cursor"]);
+export const LocalAccountProvider = Schema.Literals(["codex", "claude", "xai", "cursor", "zcode"]);
 export type LocalAccountProvider = typeof LocalAccountProvider.Type;
 
 /** 官方凭据的实际认证方式；订阅 OAuth 与通用 API Key 的端点和请求头不同。 */
@@ -55,6 +55,37 @@ export const LocalAccountPoolStrategy = Schema.Literals([
   "weighted-round-robin",
 ]);
 export type LocalAccountPoolStrategy = typeof LocalAccountPoolStrategy.Type;
+
+/**
+ * ZCode Individual Coding Plan 开放的官方模型（builtinProviderModelRules 中
+ * enabled 的集合）。服务端 zcodeCredentials 与号池默认目录共用这一份。
+ */
+export const ZCODE_OFFICIAL_MODELS: ReadonlyArray<string> = [
+  "GLM-5.3",
+  "GLM-5.3-Flash",
+  "GLM-5.2",
+  "GLM-5-Turbo",
+];
+
+/**
+ * 账号没声明 `models` 时按平台发布的默认目录：空数组的语义是"不限模型"
+ * （路由放行任意请求），但 BYOK 网关按 models 展开通道，空目录会让账号
+ * 一条线路都产不出——这里给每个平台一份官方目录兜底展示与转发。
+ */
+export const LOCAL_POOL_DEFAULT_MODELS: Record<LocalAccountProvider, ReadonlyArray<string>> = {
+  codex: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.4", "gpt-5.3-codex", "gpt-5.3-codex-spark"],
+  claude: [
+    "claude-opus-5",
+    "claude-sonnet-5",
+    "claude-haiku-4-5",
+    "claude-opus-4-8",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+  ],
+  xai: ["grok-build"],
+  cursor: [],
+  zcode: ZCODE_OFFICIAL_MODELS,
+};
 
 export const LocalAccountPoolSettings = Schema.Struct({
   accounts: Schema.Record(LocalAccountId, LocalAccount).pipe(
