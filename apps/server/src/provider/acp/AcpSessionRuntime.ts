@@ -1259,6 +1259,12 @@ const handleSessionUpdate = ({
         continue;
       }
       if (event._tag === "ContentDelta") {
+        if (event.streamKind === "reasoning_text") {
+          // 思考单独传递，正文不能跨过思考段合并。
+          yield* closeActiveAssistantSegment({ queue, assistantSegmentRef });
+          yield* Queue.offer(queue, event);
+          continue;
+        }
         if (event.text.trim().length === 0) {
           const assistantSegmentState = yield* Ref.get(assistantSegmentRef);
           if (!assistantSegmentState.activeItemId) {

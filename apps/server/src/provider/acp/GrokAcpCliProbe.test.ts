@@ -113,7 +113,7 @@ describe.runIf(process.env.CODEWORK_GROK_ACP_PROBE === "1")("Grok ACP CLI probe"
           if (event._tag === "EventStreamBarrier") {
             return Deferred.succeed(event.acknowledge, undefined);
           }
-          if (event._tag === "ContentDelta") {
+          if (event._tag === "ContentDelta" && event.streamKind === "assistant_text") {
             chunks.push(event.text);
           }
           return Effect.void;

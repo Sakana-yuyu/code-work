@@ -9,6 +9,7 @@ import type {
   SelectProviderOptionDescriptor,
   ServerProviderSlashCommand,
   ServerProviderModel,
+  ThreadTokenUsageSnapshot,
   ToolLifecycleItemType,
 } from "@codework/contracts";
 import { ACP_CONFIG_OPTION_PREFIX, ACP_MODE_OPTION_ID } from "@codework/contracts";
@@ -177,7 +178,13 @@ export type AcpParsedSessionEvent =
       readonly rawPayload: unknown;
     }
   | {
+      readonly _tag: "UsageUpdated";
+      readonly usage: ThreadTokenUsageSnapshot;
+      readonly rawPayload: unknown;
+    }
+  | {
       readonly _tag: "ContentDelta";
+      readonly streamKind: "assistant_text" | "reasoning_text";
       readonly itemId?: string;
       readonly text: string;
       readonly rawPayload: unknown;
@@ -1036,10 +1043,24 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
       }
       break;
     }
+    case "usage_update": {
+      events.push({
+        _tag: "UsageUpdated",
+        usage: {
+          usedTokens: upd.used,
+          ...(upd.size > 0 ? { maxTokens: upd.size } : {}),
+        },
+        rawPayload: params,
+      });
+      break;
+    }
+    case "agent_thought_chunk":
     case "agent_message_chunk": {
       if (upd.content.type === "text" && upd.content.text.length > 0) {
         events.push({
           _tag: "ContentDelta",
+          streamKind:
+            upd.sessionUpdate === "agent_thought_chunk" ? "reasoning_text" : "assistant_text",
           text: upd.content.text,
           rawPayload: params,
         });

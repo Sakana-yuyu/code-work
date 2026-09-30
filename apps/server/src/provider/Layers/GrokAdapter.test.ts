@@ -276,6 +276,114 @@ it("requires a settlement to match the live Grok turn", () => {
 });
 
 it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
+  it.effect("Grok 空闲会话也发布上下文清零，不伪造活动回合", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-idle-usage");
+      const wrapperPath = yield* makeMockGrokWrapper({ CODEWORK_ACP_EMIT_IDLE_USAGE: "1" });
+      const adapter = yield* makeTestAdapter(wrapperPath);
+      const events = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "thread.token-usage.updated"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-mock-alt" },
+      });
+      const update = Array.from(yield* Fiber.join(events)).find(
+        (event) => event.type === "thread.token-usage.updated",
+      );
+      assert.isDefined(update);
+      assert.equal(update?.threadId, threadId);
+      assert.isUndefined(update?.turnId);
+      assert.deepEqual(update?.payload.usage, { usedTokens: 0, maxTokens: 64_000 });
+      assert.deepInclude(update && runtimeEventToActivities(update)[0], {
+        kind: "context-window.updated",
+        payload: { usedTokens: 0, maxTokens: 64_000 },
+      });
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("Grok 共用 ACP 用量链路保留零值和所属回合，忽略重放及子会话", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-usage-update");
+      const wrapperPath = yield* makeMockGrokWrapper({ CODEWORK_ACP_EMIT_USAGE: "1" });
+      const adapter = yield* makeTestAdapter(wrapperPath);
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-mock-alt" },
+      });
+      const turn = yield* adapter.sendTurn({ threadId, input: "用量测试", attachments: [] });
+      const updates = Array.from(yield* Fiber.join(eventsFiber)).filter(
+        (event) => event.type === "thread.token-usage.updated",
+      );
+      assert.deepEqual(
+        updates.map((event) => event.payload.usage),
+        [
+          { usedTokens: 320, maxTokens: 64_000 },
+          { usedTokens: 0, maxTokens: 64_000 },
+        ],
+      );
+      assert.isTrue(
+        updates.every((event) => event.threadId === threadId && event.turnId === turn.turnId),
+      );
+      assert.deepEqual(
+        updates
+          .flatMap((event) => runtimeEventToActivities(event))
+          .map((activity) => activity.payload),
+        [
+          { usedTokens: 320, maxTokens: 64_000 },
+          { usedTokens: 0, maxTokens: 64_000 },
+        ],
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("Grok 共用 ACP 链路保留思考类型与正文分段", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-thought-stream");
+      const wrapperPath = yield* makeMockGrokWrapper({ CODEWORK_ACP_EMIT_THOUGHTS: "1" });
+      const adapter = yield* makeTestAdapter(wrapperPath);
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-mock-alt" },
+      });
+      yield* adapter.sendTurn({ threadId, input: "协议测试", attachments: [] });
+      const deltas = Array.from(yield* Fiber.join(eventsFiber)).filter(
+        (event) => event.type === "content.delta",
+      );
+      assert.deepEqual(
+        deltas.map((event) => event.payload.streamKind),
+        ["assistant_text", "reasoning_text", "assistant_text"],
+      );
+      assert.isDefined(deltas[0]?.itemId);
+      assert.isDefined(deltas[2]?.itemId);
+      assert.notEqual(deltas[0]?.itemId, deltas[2]?.itemId);
+      assert.deepEqual(runtimeEventToActivities(deltas[1]!), []);
+      yield* adapter.stopSession(threadId);
+    }),
+  );
   for (const interaction of ["approval", "user-input"] as const) {
     it.effect(`process exit during ${interaction} settles the turn and rejects late response`, () =>
       Effect.gen(function* () {

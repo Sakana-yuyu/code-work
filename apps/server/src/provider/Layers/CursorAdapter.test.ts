@@ -235,6 +235,93 @@ const cursorAdapterTestLayer = it.layer(
 );
 
 cursorAdapterTestLayer("CursorAdapterLive", (it) => {
+  it.effect("ACP 用量归零更新投影，忽略其它会话与重放用量", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("acp-usage-update");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_USAGE: "1" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+      const turn = yield* adapter.sendTurn({ threadId, input: "用量测试" });
+      const updates = Array.from(yield* Fiber.join(eventsFiber)).filter(
+        (event) => event.type === "thread.token-usage.updated",
+      );
+      assert.deepEqual(
+        updates.map((event) => event.payload.usage),
+        [
+          { usedTokens: 320, maxTokens: 64_000 },
+          { usedTokens: 0, maxTokens: 64_000 },
+        ],
+      );
+      assert.isTrue(
+        updates.every((event) => event.threadId === threadId && event.turnId === turn.turnId),
+      );
+      assert.deepEqual(
+        updates
+          .flatMap((event) => runtimeEventToActivities(event))
+          .map((activity) => activity.payload),
+        [
+          { usedTokens: 320, maxTokens: 64_000 },
+          { usedTokens: 0, maxTokens: 64_000 },
+        ],
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("ACP 思考独立传递，前后正文使用不同消息 ID", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("acp-thought-segmentation");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_THOUGHTS: "1" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+      yield* adapter.sendTurn({ threadId, input: "协议测试" });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const deltas = events.filter((event) => event.type === "content.delta");
+      assert.deepEqual(
+        deltas.map((event) => event.payload.streamKind),
+        ["assistant_text", "reasoning_text", "assistant_text"],
+      );
+      assert.deepEqual(
+        deltas.map((event) => event.payload.delta),
+        ["before thought", "测试思考", "after thought"],
+      );
+      assert.isDefined(deltas[0]?.itemId);
+      assert.isDefined(deltas[2]?.itemId);
+      assert.notEqual(deltas[0]?.itemId, deltas[2]?.itemId);
+      assert.deepEqual(runtimeEventToActivities(deltas[1]!), []);
+      yield* adapter.stopSession(threadId);
+    }),
+  );
   for (const closeBehavior of ["success", "fail", "unsupported"]) {
     it.effect(`停止会话遵守关闭广告并报告 ${closeBehavior} 结果`, () =>
       Effect.gen(function* () {

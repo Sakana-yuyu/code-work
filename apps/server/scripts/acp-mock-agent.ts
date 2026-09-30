@@ -37,6 +37,8 @@ const emitActiveToolThenHang = process.env.CODEWORK_ACP_EMIT_ACTIVE_TOOL_THEN_HA
 const emitForeignSessionUpdates = process.env.CODEWORK_ACP_EMIT_FOREIGN_SESSION_UPDATES === "1";
 const hangPromptForever = process.env.CODEWORK_ACP_HANG_PROMPT_FOREVER === "1";
 const hangFirstPromptForever = process.env.CODEWORK_ACP_HANG_FIRST_PROMPT_FOREVER === "1";
+const emitThoughts = process.env.CODEWORK_ACP_EMIT_THOUGHTS === "1";
+const emitUsage = process.env.CODEWORK_ACP_EMIT_USAGE === "1";
 const emitLateUpdateAfterCancel = process.env.CODEWORK_ACP_EMIT_LATE_UPDATE_AFTER_CANCEL === "1";
 const omitXAiPromptCompleteStopReason =
   process.env.CODEWORK_ACP_OMIT_XAI_PROMPT_COMPLETE_STOP_REASON === "1";
@@ -594,6 +596,12 @@ const program = Effect.gen(function* () {
         );
       }
       currentModelId = request.modelId;
+      if (process.env.CODEWORK_ACP_EMIT_IDLE_USAGE === "1") {
+        yield* agent.client.sessionUpdate({
+          sessionId: request.sessionId,
+          update: { sessionUpdate: "usage_update", used: 0, size: 64_000 },
+        });
+      }
       return {};
     }),
   );
@@ -808,6 +816,41 @@ const program = Effect.gen(function* () {
         return { stopReason: "end_turn" };
       }
 
+      if (emitUsage) {
+        for (const used of [320, 0]) {
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: { sessionUpdate: "usage_update", used, size: 64_000 },
+          });
+        }
+        yield* agent.client.sessionUpdate({
+          sessionId: "mock-child-session-1",
+          update: { sessionUpdate: "usage_update", used: 999, size: 64_000 },
+        });
+        yield* agent.client.sessionUpdate({
+          _meta: { isReplay: true },
+          sessionId: requestedSessionId,
+          update: { sessionUpdate: "usage_update", used: 888, size: 64_000 },
+        });
+        return { stopReason: "end_turn" };
+      }
+
+      if (emitThoughts) {
+        for (const update of [
+          {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "before thought" },
+          },
+          { sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "测试思考" } },
+          {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "after thought" },
+          },
+        ] as const) {
+          yield* agent.client.sessionUpdate({ sessionId: requestedSessionId, update });
+        }
+        return { stopReason: "end_turn" };
+      }
       if (emitPlanThenHang) {
         yield* agent.client.sessionUpdate({
           sessionId: requestedSessionId,

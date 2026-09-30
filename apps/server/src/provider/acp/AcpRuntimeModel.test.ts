@@ -18,6 +18,37 @@ import {
 } from "./AcpRuntimeModel.ts";
 
 describe("AcpRuntimeModel", () => {
+  it.each([
+    { used: 0, size: 0, expected: { usedTokens: 0 } },
+    { used: 320, size: 64_000, expected: { usedTokens: 320, maxTokens: 64_000 } },
+    { used: 64_000, size: 64_000, expected: { usedTokens: 64_000, maxTokens: 64_000 } },
+  ])("用量 $used/$size 保留上下文语义，未知窗口不伪造上限", ({ used, size, expected }) => {
+    const notification = {
+      sessionId: "session-1",
+      update: { sessionUpdate: "usage_update", used, size, cost: { amount: 7, currency: "USD" } },
+    } satisfies EffectAcpSchema.SessionNotification;
+    expect(parseSessionUpdateEvent(notification).events).toEqual([
+      { _tag: "UsageUpdated", usage: expected, rawPayload: notification },
+    ]);
+  });
+
+  it("保留 ACP 思考文本的原始流类型，不混入正文或伪装成摘要", () => {
+    const notification = {
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "text", text: "协议测试思考片段" },
+      },
+    } satisfies EffectAcpSchema.SessionNotification;
+    expect(parseSessionUpdateEvent(notification).events).toEqual([
+      {
+        _tag: "ContentDelta",
+        streamKind: "reasoning_text",
+        text: "协议测试思考片段",
+        rawPayload: notification,
+      },
+    ]);
+  });
   it("MCP 文本结果优先于带命令预览和重复正文的 ACP 展示内容", () => {
     const output = "No bash shell found. Set shellPath in settings.json";
     const [event] = parseSessionUpdateEvent({
@@ -632,6 +663,7 @@ describe("AcpRuntimeModel", () => {
     expect(contentResult.events).toEqual([
       {
         _tag: "ContentDelta",
+        streamKind: "assistant_text",
         text: "hello from acp",
         rawPayload: {
           sessionId: "session-1",

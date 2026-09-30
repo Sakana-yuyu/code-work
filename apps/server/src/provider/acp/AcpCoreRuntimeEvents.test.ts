@@ -17,6 +17,7 @@ import {
   makeAcpModelsUpdatedEvent,
   makeAcpModesUpdatedEvent,
   makeAcpContentDeltaEvent,
+  makeAcpUsageUpdatedEvent,
   makeAcpPlanUpdatedEvent,
   makeAcpRequestOpenedEvent,
   makeAcpRequestResolvedEvent,
@@ -24,6 +25,47 @@ import {
 } from "./AcpCoreRuntimeEvents.ts";
 
 describe("AcpCoreRuntimeEvents", () => {
+  it("上下文用量清零时仍投影新快照，防止客户端保留旧值", () => {
+    const rawPayload = {
+      update: {
+        sessionUpdate: "usage_update",
+        used: 0,
+        size: 64_000,
+        cost: { amount: 7, currency: "USD" },
+      },
+    };
+    const event = makeAcpUsageUpdatedEvent({
+      stamp: { eventId: EventId.make("usage-zero"), createdAt: "2026-09-30T00:00:00.000Z" },
+      provider: ProviderDriverKind.make("acpAgent"),
+      threadId: ThreadId.make("thread-1"),
+      turnId: undefined,
+      usage: { usedTokens: 0, maxTokens: 64_000 },
+      rawPayload,
+    });
+    expect(event.raw?.payload).toEqual(rawPayload);
+    expect(runtimeEventToActivities(event)).toMatchObject([
+      { kind: "context-window.updated", payload: { usedTokens: 0, maxTokens: 64_000 } },
+    ]);
+    expect(runtimeEventToActivities(event)[0]?.payload).not.toHaveProperty("cost");
+    expect(runtimeEventToActivities(event)[0]?.payload).not.toHaveProperty("totalProcessedTokens");
+  });
+
+  it("ACP 思考沿用 reasoning_text 合同，不能作为正文或摘要活动持久化", () => {
+    const event = makeAcpContentDeltaEvent({
+      stamp: { eventId: "thought-1" as never, createdAt: "2026-09-29T00:00:00.000Z" },
+      provider: ProviderDriverKind.make("acpAgent"),
+      threadId: "thread-1" as never,
+      turnId: TurnId.make("turn-1"),
+      streamKind: "reasoning_text",
+      text: "协议测试思考片段",
+      rawPayload: {},
+    });
+    expect(event).toMatchObject({
+      type: "content.delta",
+      payload: { streamKind: "reasoning_text", delta: "协议测试思考片段" },
+    });
+    expect(runtimeEventToActivities(event)).toEqual([]);
+  });
   it("动态元数据统一进入会话活动，保留原始选择和撤回值", () => {
     const base = {
       stamp: { eventId: EventId.make("metadata"), createdAt: "2026-09-30T00:00:00.000Z" },
@@ -342,6 +384,7 @@ describe("AcpCoreRuntimeEvents", () => {
         threadId: "thread-1" as never,
         turnId,
         itemId: "assistant:session-1:segment:0",
+        streamKind: "assistant_text",
         text: "hello",
         rawPayload: { sessionId: "session-1" },
       }),

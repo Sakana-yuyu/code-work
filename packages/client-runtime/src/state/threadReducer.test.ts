@@ -976,7 +976,7 @@ describe("applyThreadDetailEvent", () => {
       }
     });
 
-    it("replaces earlier resolvable context-window updates for the same turn", () => {
+    it.each([3_000, 0])("同一回合上下文更新为 %i 时替换旧快照", (usedTokens) => {
       const contextWindowActivity = (id: string, sequence: number, usedTokens: unknown) => ({
         id: EventId.make(id),
         tone: "info" as const,
@@ -1008,7 +1008,7 @@ describe("applyThreadDetailEvent", () => {
           type: "thread.activity-appended",
           payload: {
             threadId: ThreadId.make("thread-1"),
-            activity: contextWindowActivity("activity-cw-3", 5, 3_000),
+            activity: contextWindowActivity("activity-cw-3", 5, usedTokens),
           },
         },
       );
@@ -1019,6 +1019,7 @@ describe("applyThreadDetailEvent", () => {
         // Same-turn resolvable rows collapse to the newest; the other turn's
         // row and the malformed row are untouched.
         expect(ids).toEqual(["activity-other-turn", "activity-cw-malformed", "activity-cw-3"]);
+        expect(result.thread.activities.at(-1)?.payload).toEqual({ usedTokens });
       }
     });
 

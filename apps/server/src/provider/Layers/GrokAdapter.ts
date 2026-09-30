@@ -61,6 +61,7 @@ import {
   makeAcpModelsUpdatedEvent,
   makeAcpModesUpdatedEvent,
   makeAcpConfigOptionsUpdatedEvent,
+  makeAcpUsageUpdatedEvent,
   makeAcpPlanUpdatedEvent,
   makeAcpRequestOpenedEvent,
   makeAcpRequestResolvedEvent,
@@ -1327,6 +1328,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                   return;
                 }
                 if (
+                  event._tag === "UsageUpdated" ||
                   event._tag === "PlanUpdated" ||
                   event._tag === "ToolCallUpdated" ||
                   event._tag === "ContentDelta"
@@ -1380,6 +1382,20 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                       provider: PROVIDER,
                       threadId: ctx.threadId,
                       commands: event.commands,
+                      rawPayload: event.rawPayload,
+                    }),
+                  );
+                  return;
+                }
+
+                if (event._tag === "UsageUpdated") {
+                  yield* offerRuntimeEvent(
+                    makeAcpUsageUpdatedEvent({
+                      stamp: yield* makeEventStamp(),
+                      provider: PROVIDER,
+                      threadId: ctx.threadId,
+                      turnId: resolveNotificationTurnId(ctx),
+                      usage: event.usage,
                       rawPayload: event.rawPayload,
                     }),
                   );
@@ -1482,6 +1498,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                         threadId: ctx.threadId,
                         turnId: notificationTurnId,
                         ...(event.itemId ? { itemId: event.itemId } : {}),
+                        streamKind: event.streamKind,
                         text: event.text,
                         rawPayload: event.rawPayload,
                       }),
