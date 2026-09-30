@@ -2755,4 +2755,46 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       // hang until the suite timeout instead of failing here.
     }).pipe(TestClock.withLive),
   );
+
+  it.effect("ACP 资源独立成段且排除重放和其它会话", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("acp-resource-stream");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_RESOURCES: "1" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+      yield* adapter.sendTurn({ threadId, input: "资源测试" });
+      const deltas = Array.from(yield* Fiber.join(eventsFiber)).filter(
+        (event) => event.type === "content.delta",
+      );
+      assert.equal(deltas.length, 4);
+      assert.isDefined(deltas[0]?.itemId);
+      assert.equal(new Set(deltas.map((event) => event.itemId)).size, 4);
+      const text = deltas.map((event) => event.payload.delta).join("");
+      assert.include(text, "[资源报告](<https://example.com/report?q=1#section>)");
+      assert.include(text, "报告说明");
+      assert.include(text, "mcp://example/report");
+      assert.include(
+        text,
+        "````text\n报告正文\n```\n![不是图片](https://example.com/test.png)\n```\n````",
+      );
+      assert.match(text, /^资源开始[\s\S]*资源结束$/);
+      assert.notInclude(text, "不应出现");
+      yield* adapter.stopSession(threadId);
+    }),
+  );
 });

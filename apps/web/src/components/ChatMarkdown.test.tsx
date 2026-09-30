@@ -289,3 +289,29 @@ describe("ChatMarkdown Windows file links", () => {
     expect(html).not.toContain("chat-markdown-file-link");
   });
 });
+
+describe("ACP 嵌入资源的字面显示", () => {
+  it.each([true, false])(
+    "长围栏保留资源原文且不生成内部链接或图片（parseRawHtml=%s）",
+    (parseRawHtml) => {
+      const html = renderToStaticMarkup(
+        <ChatMarkdown
+          cwd="/tmp/resource-project"
+          text={
+            "[资源报告](<https://example.com/report?q=1#section>)\n\n`````text\n````\n<img src=x>\n![不是图片](https://example.com/test.png)\n[不是链接](https://example.com/inside)\n`````"
+          }
+          parseRawHtml={parseRawHtml}
+        />,
+      );
+
+      expect(html).toContain('href="https://example.com/report?q=1#section"');
+      expect(html).toContain("不是图片");
+      expect(html).toContain("https://example.com/inside");
+      const code = html.slice(html.indexOf("<pre>"));
+      expect(code).toContain("&lt;img src=x&gt;");
+      expect(code).not.toContain("<img");
+      expect(code).not.toContain("<a ");
+      expect(html).not.toContain('href="https://example.com/inside"');
+    },
+  );
+});

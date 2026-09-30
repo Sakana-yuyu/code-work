@@ -1271,6 +1271,9 @@ const handleSessionUpdate = ({
             continue;
           }
         }
+        if (event.standalone) {
+          yield* closeActiveAssistantSegment({ queue, assistantSegmentRef });
+        }
         const itemId = yield* ensureActiveAssistantSegment({
           queue,
           assistantSegmentRef,
@@ -1281,6 +1284,9 @@ const handleSessionUpdate = ({
           ...event,
           itemId,
         });
+        if (event.standalone) {
+          yield* closeActiveAssistantSegment({ queue, assistantSegmentRef });
+        }
         continue;
       }
       yield* Queue.offer(queue, event);

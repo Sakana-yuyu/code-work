@@ -63,6 +63,8 @@ import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts"
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { parseSessionUpdateEvent } from "../../provider/acp/AcpRuntimeModel.ts";
+import { makeAcpContentDeltaEvent } from "../../provider/acp/AcpCoreRuntimeEvents.ts";
 
 function makeTestServerSettingsLayer(overrides: Partial<ServerSettings> = {}) {
   return ServerSettingsService.layerTest(overrides);
@@ -5476,6 +5478,57 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(thread.session?.status).toBe("error");
     expect(thread.session?.lastError).toBe("runtime still processed");
+  });
+
+  it.each([false, true])("ACP 资源经真实解析保留到消息投影（streaming=%s）", async (streaming) => {
+    const harness = await createHarness({
+      serverSettings: { enableLegacyTokenStreaming: streaming },
+    });
+    const [parsed] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "resource",
+          resource: {
+            uri: "mcp://example/report",
+            text: "实际资源\n```\n[字面链接](https://example.com)",
+          },
+        },
+      },
+    }).events;
+    if (parsed?._tag !== "ContentDelta") throw new Error("缺少资源正文事件");
+    const common = {
+      provider: ProviderDriverKind.make("cursor"),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("resource-turn"),
+    };
+    harness.emit(
+      makeAcpContentDeltaEvent({
+        ...common,
+        stamp: { eventId: asEventId("resource-delta"), createdAt: "2026-01-01T00:00:00.000Z" },
+        itemId: "resource-item",
+        streamKind: parsed.streamKind,
+        text: parsed.text,
+        rawPayload: parsed.rawPayload,
+      }),
+    );
+    harness.emit({
+      ...common,
+      type: "item.completed",
+      eventId: asEventId("resource-complete"),
+      itemId: asItemId("resource-item"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      payload: { itemType: "assistant_message", status: "completed" },
+    });
+    await harness.drain();
+    const snapshot = await harness.readModel();
+    const messages = snapshot.threads.find((thread) => thread.id === common.threadId)?.messages;
+    expect(messages).toHaveLength(1);
+    expect(messages?.[0]).toMatchObject({ role: "assistant", text: parsed.text, streaming: false });
+    expect(messages?.[0]?.text).toContain(
+      "````text\n实际资源\n```\n[字面链接](https://example.com)\n````",
+    );
   });
 });
 

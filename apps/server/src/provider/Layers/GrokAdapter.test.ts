@@ -2449,4 +2449,38 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       // hang until the suite timeout instead of failing here.
     }).pipe(TestClock.withLive),
   );
+
+  it.effect("Grok 共用 ACP 资源链路保留内容顺序且隔离重放", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-resource-stream");
+      const wrapperPath = yield* makeMockGrokWrapper({ CODEWORK_ACP_EMIT_RESOURCES: "1" });
+      const adapter = yield* makeTestAdapter(wrapperPath);
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-mock-alt" },
+      });
+      yield* adapter.sendTurn({ threadId, input: "资源测试", attachments: [] });
+      const deltas = Array.from(yield* Fiber.join(eventsFiber)).filter(
+        (event) => event.type === "content.delta",
+      );
+      assert.equal(deltas.length, 4);
+      assert.isDefined(deltas[0]?.itemId);
+      assert.equal(new Set(deltas.map((event) => event.itemId)).size, 4);
+      const text = deltas.map((event) => event.payload.delta).join("");
+      assert.include(text, "[资源报告](<https://example.com/report?q=1#section>)");
+      assert.include(text, "报告说明");
+      assert.include(text, "````text\n报告正文");
+      assert.match(text, /^资源开始[\s\S]*资源结束$/);
+      assert.notInclude(text, "不应出现");
+      yield* adapter.stopSession(threadId);
+    }),
+  );
 });

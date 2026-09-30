@@ -186,6 +186,8 @@ export type AcpParsedSessionEvent =
       readonly _tag: "ContentDelta";
       readonly streamKind: "assistant_text" | "reasoning_text";
       readonly itemId?: string;
+      /** 结构化资源独立成段，避免被相邻正文的 Markdown 语法吞入。 */
+      readonly standalone?: true;
       readonly text: string;
       readonly rawPayload: unknown;
     };
@@ -966,6 +968,29 @@ function boundToolCallRawPayload(
   };
 }
 
+// 围栏必须长于资源中的反引号，资源原文不能变成图片、链接或其它 Markdown 操作。
+function resourceTextBlock(text: string): string {
+  let fenceLength = 3;
+  for (const match of text.matchAll(/`+/g)) {
+    fenceLength = Math.max(fenceLength, match[0].length + 1);
+  }
+  const fence = "`".repeat(fenceLength);
+  return `${fence}text\n${text}\n${fence}`;
+}
+
+function resourceReference(uri: string, name: string): string {
+  const label = name.replace(/[\\`*_[\]<>!#]/g, "\\$&").replace(/[\r\n]+/g, " ");
+  const url = URL.canParse(uri) ? new URL(uri) : undefined;
+  if (url && ["https:", "http:", "file:"].includes(url.protocol)) {
+    const destination = url.href.replace(
+      /[()<>\\\s]/g,
+      (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
+    return `[${label}](<${destination}>)`;
+  }
+  return `${label}（资源 URI 不支持直接打开）\n\n${resourceTextBlock(uri)}`;
+}
+
 export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotification): {
   readonly modeId?: string;
   readonly events: ReadonlyArray<AcpParsedSessionEvent>;
@@ -1056,12 +1081,22 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
     }
     case "agent_thought_chunk":
     case "agent_message_chunk": {
-      if (upd.content.type === "text" && upd.content.text.length > 0) {
+      const content = upd.content;
+      let text: string | undefined;
+      if (content.type === "text") {
+        text = content.text;
+      } else if (content.type === "resource_link") {
+        text = `\n\n${resourceReference(content.uri, content.title ?? content.name)}${content.description ? `\n\n${resourceTextBlock(content.description)}` : ""}\n\n`;
+      } else if (content.type === "resource" && "text" in content.resource) {
+        text = `\n\n${resourceReference(content.resource.uri, content.resource.uri)}\n\n${resourceTextBlock(content.resource.text)}\n\n`;
+      }
+      if (text !== undefined && text.length > 0) {
         events.push({
           _tag: "ContentDelta",
           streamKind:
             upd.sessionUpdate === "agent_thought_chunk" ? "reasoning_text" : "assistant_text",
-          text: upd.content.text,
+          text,
+          ...(content.type !== "text" ? { standalone: true as const } : {}),
           rawPayload: params,
         });
       }

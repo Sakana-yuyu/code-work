@@ -1179,4 +1179,71 @@ describe("AcpRuntimeModel", () => {
       ).toEqual({ emit: true, skippedSinceEmit: 0 });
     });
   });
+
+  it("资源链接保留名称、目标和说明，嵌入文本保留字面内容", () => {
+    for (const sessionUpdate of ["agent_message_chunk", "agent_thought_chunk"] as const) {
+      const content = {
+        type: "resource_link",
+        name: "report",
+        title: "审查 [报告]",
+        uri: "https://example.com/a(b)?q=1#part",
+        description: "实际说明",
+      } as const;
+      const [event] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: { sessionUpdate, content },
+      }).events;
+      expect(event).toMatchObject({
+        _tag: "ContentDelta",
+        streamKind: sessionUpdate === "agent_message_chunk" ? "assistant_text" : "reasoning_text",
+        text: "\n\n[审查 \\[报告\\]](<https://example.com/a%28b%29?q=1#part>)\n\n```text\n实际说明\n```\n\n",
+        rawPayload: { update: { content } },
+      });
+    }
+    const text = "```\n<img src=x>\n[外部](https://example.com)\n````";
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "resource",
+          resource: { uri: "file:///workspace/report.txt", mimeType: "text/plain", text },
+        },
+      },
+    }).events;
+    expect(event).toMatchObject({
+      text: `\n\n[file:///workspace/report.txt](<file:///workspace/report.txt>)\n\n\`\`\`\`\`text\n${text}\n\`\`\`\`\`\n\n`,
+    });
+  });
+
+  it.each(["javascript:alert(1)", "data:text/html,test", "mcp://server/resource", "invalid uri"])(
+    "不将不支持的资源 URI %s 变成可执行链接",
+    (uri) => {
+      const [event] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "resource_link", name: "![危险](x)", uri },
+        },
+      }).events;
+      expect(event).toMatchObject({ _tag: "ContentDelta" });
+      if (event?._tag !== "ContentDelta") throw new Error("缺少资源事件");
+      expect(event.text).toContain("不支持直接打开");
+      expect(event.text).toContain(`\n${uri}\n`);
+      expect(event.text).not.toContain(`](<${uri}`);
+    },
+  );
+
+  it.each(["", " x\n".repeat(25_000)])("嵌入资源不丢失空值或长文本", (text) => {
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "resource", resource: { uri: "mcp://server/text", text } },
+      },
+    }).events;
+    expect(event).toMatchObject({ _tag: "ContentDelta" });
+    if (event?._tag !== "ContentDelta") throw new Error("缺少资源事件");
+    expect(event.text).toContain(`\`\`\`text\n${text}\n\`\`\``);
+  });
 });

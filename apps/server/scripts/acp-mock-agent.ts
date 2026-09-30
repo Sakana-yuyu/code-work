@@ -16,6 +16,7 @@ const exitLogPath = process.env.CODEWORK_ACP_EXIT_LOG_PATH;
 const closeBehavior = process.env.CODEWORK_ACP_CLOSE_BEHAVIOR;
 const childPidLogPath = process.env.CODEWORK_ACP_CHILD_PID_LOG_PATH;
 const emitToolCalls = process.env.CODEWORK_ACP_EMIT_TOOL_CALLS === "1";
+const emitResources = process.env.CODEWORK_ACP_EMIT_RESOURCES === "1";
 const emitConfigUpdates = process.env.CODEWORK_ACP_EMIT_CONFIG_UPDATES === "1";
 const startupConfig = process.env.CODEWORK_ACP_STARTUP_CONFIG;
 const emitCommands = process.env.CODEWORK_ACP_EMIT_COMMANDS === "1";
@@ -832,6 +833,49 @@ const program = Effect.gen(function* () {
           sessionId: requestedSessionId,
           update: { sessionUpdate: "usage_update", used: 888, size: 64_000 },
         });
+        return { stopReason: "end_turn" };
+      }
+
+      if (emitResources) {
+        for (const notification of [
+          { sessionId: "mock-child-session-1" },
+          { sessionId: requestedSessionId, _meta: { isReplay: true } },
+        ]) {
+          yield* agent.client.sessionUpdate({
+            ...notification,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: {
+                type: "resource_link",
+                uri: "https://example.com/ignored",
+                name: "不应出现",
+              },
+            },
+          });
+        }
+        for (const content of [
+          { type: "text", text: "资源开始\n```text\n未闭合代码围栏" },
+          {
+            type: "resource_link",
+            name: "资源报告",
+            uri: "https://example.com/report?q=1#section",
+            description: "报告说明",
+          },
+          {
+            type: "resource",
+            resource: {
+              uri: "mcp://example/report",
+              mimeType: "text/plain",
+              text: "报告正文\n```\n![不是图片](https://example.com/test.png)\n```",
+            },
+          },
+          { type: "text", text: "资源结束" },
+        ] as const) {
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: { sessionUpdate: "agent_message_chunk", content },
+          });
+        }
         return { stopReason: "end_turn" };
       }
 
