@@ -378,7 +378,22 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       case "Request":
         return handleRequestEncoded(message);
       case "Exit":
-        return handleExitEncoded(message);
+        // Effect 将标准 JSON-RPC error 解为 Die；ACP 错误须进入声明的失败通道。
+        return handleExitEncoded(
+          message.exit._tag === "Failure"
+            ? {
+                ...message,
+                exit: {
+                  ...message.exit,
+                  cause: message.exit.cause.map((entry) =>
+                    entry._tag === "Die" && isProtocolError(entry.defect)
+                      ? { _tag: "Fail" as const, error: entry.defect }
+                      : entry,
+                  ),
+                },
+              }
+            : message,
+        );
       case "Chunk":
         return Ref.get(extPending).pipe(
           Effect.flatMap((pending) => {

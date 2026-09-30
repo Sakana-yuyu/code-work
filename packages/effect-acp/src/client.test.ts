@@ -32,6 +32,14 @@ const ExtResponse = jsonRpcResponse(Schema.Struct({ ok: Schema.Boolean }));
 const PromptRequest = jsonRpcRequest("session/prompt", AcpSchema.PromptRequest);
 const PromptResponse = jsonRpcResponse(AcpSchema.PromptResponse);
 const decodePromptRequestLine = Schema.decodeEffect(Schema.fromJsonString(PromptRequest));
+const decodeRequestId = Schema.decodeEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      id: Schema.Union([Schema.Number, Schema.String]),
+    }),
+  ),
+);
+const encodeUnknownJsonString = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const XAiPromptCompleteNotification = jsonRpcNotification(
   "_x.ai/session/prompt_complete",
   Schema.Struct({
@@ -413,6 +421,53 @@ it.layer(NodeServices.layer)("effect-acp client", (it) => {
 
         assert.equal(yield* Ref.get(successfulHandlers), 1);
       }).pipe(Effect.provide(context), Effect.ensuring(Scope.close(scope, Exit.void)));
+    }),
+  );
+
+  it.effect("标准 JSON-RPC 错误在核心与扩展请求中保留为可捕获的 ACP 错误", () =>
+    Effect.gen(function* () {
+      const { stdio, input, output } = yield* makeInMemoryStdio();
+      const acp = yield* AcpClient.make(stdio);
+      for (const method of ["authenticate", "x/test"]) {
+        const request =
+          method === "authenticate"
+            ? acp.agent.authenticate({ methodId: "login" })
+            : acp.raw.request(method, {});
+        const response = yield* request.pipe(Effect.result, Effect.forkScoped);
+        const outbound = yield* Queue.take(output);
+        const { id } = yield* decodeRequestId(outbound);
+        yield* Queue.offer(
+          input,
+          new TextEncoder().encode(
+            `${encodeUnknownJsonString({
+              jsonrpc: "2.0",
+              id,
+              error: { code: -32602, message: "Invalid params", data: { field: "methodId" } },
+            })}\n`,
+          ),
+        );
+        const result = yield* Fiber.join(response);
+        assert.equal(result._tag, "Failure");
+        if (result._tag !== "Failure") return assert.fail("请求应失败");
+        assert.instanceOf(result.failure, AcpError.AcpRequestError);
+        assert.deepInclude(result.failure, {
+          code: -32602,
+          errorMessage: "Invalid params",
+          data: { field: "methodId" },
+          method,
+        });
+        const retried = yield* request.pipe(Effect.forkScoped);
+        const nextRequest = yield* decodeRequestId(yield* Queue.take(output));
+        assert.notEqual(nextRequest.id, id);
+        const success = method === "authenticate" ? {} : { ok: true };
+        yield* Queue.offer(
+          input,
+          new TextEncoder().encode(
+            `${encodeUnknownJsonString({ jsonrpc: "2.0", id: nextRequest.id, result: success })}\n`,
+          ),
+        );
+        assert.deepEqual(yield* Fiber.join(retried), success);
+      }
     }),
   );
 

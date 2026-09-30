@@ -383,6 +383,49 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
     }),
   );
 
+  it.effect("标准错误归一化不吞掉显式缺陷或畸形错误", () =>
+    Effect.gen(function* () {
+      const { stdio, input } = yield* makeInMemoryStdio();
+      const transport = yield* AcpProtocol.makeAcpPatchedProtocol({
+        stdio,
+        serverRequestMethods: new Set(),
+      });
+      const received = yield* Queue.unbounded<unknown>();
+      yield* transport.clientProtocol
+        .run(0, (message) => Queue.offer(received, message).pipe(Effect.asVoid))
+        .pipe(Effect.forkScoped);
+      for (const error of [
+        { _tag: "Defect", code: -32603, message: "defect", data: { reason: "broken" } },
+        { code: "invalid", message: "broken" },
+      ]) {
+        yield* Queue.offer(
+          input,
+          encoder.encode(
+            `${encodeUnknownJsonString({
+              jsonrpc: "2.0",
+              id: 42,
+              error,
+            })}\n`,
+          ),
+        );
+        const message = yield* Queue.take(received);
+        assert.deepEqual(
+          message,
+          error._tag === "Defect"
+            ? { _tag: "Defect", defect: error.data }
+            : {
+                _tag: "Exit",
+                requestId: 42,
+                exit: {
+                  _tag: "Failure",
+                  cause: [{ _tag: "Die", defect: error }],
+                },
+              },
+        );
+      }
+    }),
+  );
+
   it.effect("preserves numeric ids for inbound extension requests", () =>
     Effect.gen(function* () {
       const { stdio, input, output } = yield* makeInMemoryStdio();
