@@ -10,6 +10,8 @@ import {
   parseAcpRegistryCatalog,
   withAcpRegistryDiagnostics,
 } from "./AcpRegistryCatalog.ts";
+import bundledRegistry from "./registry-snapshot.json" with { type: "json" };
+import { withManualAcpCatalog } from "./manual-agent-catalog.ts";
 
 const runCatalog = (fetchImplementation: typeof globalThis.fetch) =>
   getAcpRegistryCatalog.pipe(
@@ -27,6 +29,18 @@ const asFetch = (
 ): typeof globalThis.fetch => implementation as unknown as typeof globalThis.fetch;
 
 describe("ACP registry catalog", () => {
+  it("为已核对的官方 CLI 提供原生认证方法而非通用 login", () => {
+    const entries = parseAcpRegistryCatalog(bundledRegistry, "win32", "x64");
+    for (const [id, authMethodId] of [
+      ["qwen-code", "openai"],
+      ["gemini", "oauth-personal"],
+      ["github-copilot-cli", "copilot-login"],
+    ]) {
+      expect(entries.find((entry) => entry.id === id)).toMatchObject({ authMethodId });
+    }
+    expect(entries.find((entry) => entry.id === "cline")).toMatchObject({ authMethodId: "" });
+  });
+
   it("builds a pinned npx command from safe registry fields", () => {
     const entries = parseAcpRegistryCatalog(
       {
@@ -206,16 +220,216 @@ describe("ACP registry catalog", () => {
         "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json",
       );
       expect(result.error).toBeNull();
+      expect(result.source).toBe("registry");
+      expect(result.snapshotDate).toBeUndefined();
       expect(result.entries[0]?.command).toBe("cmd.exe /d /s /c npx -y cline@3.0.64");
     }),
   );
 
-  it.effect("keeps manual configuration available when the registry is unavailable", () =>
+  it.effect("官方目录失败时显式返回同平台离线快照，恢复后优先在线目录", () =>
     Effect.gen(function* () {
-      const result = yield* runCatalog(
-        asFetch(async () => new Response("offline", { status: 503 })),
-      );
-      expect(result).toEqual({ entries: [], error: "unavailable" });
+      for (const response of [
+        () => new Response("offline", { status: 503 }),
+        () => new Response("invalid JSON", { status: 200 }),
+        () => new Response("{}", { status: 200 }),
+        () => new Response("{}", { status: 200, headers: { "content-length": "3000000" } }),
+        () => new Response(" ".repeat(2 * 1024 * 1024 + 1)),
+      ]) {
+        const result = yield* runCatalog(asFetch(async () => response()));
+        expect(result).toEqual({
+          entries: withManualAcpCatalog(
+            parseAcpRegistryCatalog(bundledRegistry, "win32", "x64"),
+            "win32",
+            "x64",
+          ),
+          error: "unavailable",
+          source: "bundled",
+          snapshotDate: bundledRegistry.retrievedAt,
+        });
+      }
+      const recovered = yield* runCatalog(asFetch(async () => new Response('{"agents":[]}')));
+      expect(recovered).toEqual({
+        entries: withManualAcpCatalog([], "win32", "x64"),
+        error: null,
+        source: "registry",
+      });
+      expect(recovered.entries.some((entry) => entry.id === "cline")).toBe(false);
     }),
   );
+
+  it("离线数据保留去重 ID、固定版本与平台限制，连同公开环境参数生成命令", () => {
+    const entries = parseAcpRegistryCatalog(bundledRegistry, "win32", "x64");
+    expect(entries).toHaveLength(41);
+    expect(new Set(entries.map((entry) => entry.id)).size).toBe(entries.length);
+    expect(entries.find((entry) => entry.id === "factory-droid")?.supportsMcpServers).toBe(false);
+    expect(entries.find((entry) => entry.id === "cline")?.supportsMcpServers).toBeUndefined();
+    expect(entries.find((entry) => entry.id === "cline")).toMatchObject({
+      version: "3.0.65",
+      availability: "installable",
+      iconUrl: "https://cdn.agentclientprotocol.com/registry/v1/latest/cline.svg",
+    });
+    expect(entries.every((entry) => typeof entry.iconUrl === "string")).toBe(true);
+    expect(entries.find((entry) => entry.id === "auggie")).toMatchObject({
+      command: "cmd.exe /d /s /c npx -y @augmentcode/auggie@0.36.0 --acp",
+      environment: [{ name: "AUGMENT_DISABLE_AUTO_UPDATE", value: "1", sensitive: false }],
+    });
+    expect(entries.find((entry) => entry.id === "amp-acp")).toMatchObject({
+      command: null,
+      availability: "manual",
+      binaryDistribution: {
+        platform: "windows-x86_64",
+        archiveUrl:
+          "https://github.com/tao12345666333/amp-acp/releases/download/v0.9.0/amp-acp-windows-x86_64.zip",
+        sha256: "3b2c3d14d703fcf9572da9733e4941703a7744bd37ec4aaa75421d6002c0157b",
+        cmd: "amp-acp.exe",
+        args: [],
+      },
+    });
+    expect(entries.find((entry) => entry.id === "cline")?.binaryDistribution).toBeUndefined();
+    const ampArm = parseAcpRegistryCatalog(bundledRegistry, "win32", "arm64").find(
+      (entry) => entry.id === "amp-acp",
+    );
+    expect(ampArm?.availability).toBe("unsupported-platform");
+    expect(ampArm?.binaryDistribution).toBeUndefined();
+  });
+
+  it("五个手工入口有官方来源和平台限制，现有同 ID 优先且不复制专用驱动", () => {
+    const manual = withManualAcpCatalog([], "win32", "x64");
+    expect(manual.map((entry) => [entry.id, entry.command])).toEqual([
+      ["codewhale", "codewhale serve --acp"],
+      ["gjc", "gjc acp"],
+      ["hermes", "hermes acp"],
+      ["kiro", "kiro-cli acp"],
+      ["traecli", "traecli acp serve"],
+    ]);
+    for (const entry of manual) {
+      expect(entry.availability).toBe("manual");
+      expect(entry.version).toBeNull();
+      expect(entry.setup?.installationUrl).toMatch(/^https:\/\//);
+      expect(entry.setup?.documentationUrl).toMatch(/^https:\/\//);
+      expect(entry.setup?.verifiedAt).toBe("2026-09-30");
+    }
+    expect(manual.find((entry) => entry.id === "gjc")?.environment).toEqual([
+      { name: "GJC_ACP_PERMISSION_MODE", value: "prompt", sensitive: false },
+    ]);
+    expect(manual.find((entry) => entry.id === "hermes")?.authMethodId).toBe("");
+    expect(manual.find((entry) => entry.id === "gjc")?.authMethodId).toBe("agent");
+    const current = { ...manual[0]!, command: "npx -y codewhale@1.0.0", version: "1.0.0" };
+    const merged = withManualAcpCatalog([current], "win32", "x64");
+    expect(merged).toHaveLength(5);
+    expect(merged.find((entry) => entry.id === "codewhale")).toBe(current);
+    expect(
+      withManualAcpCatalog([], "win32", "arm64").find((entry) => entry.id === "gjc"),
+    ).toMatchObject({ command: null, availability: "unsupported-platform" });
+    expect(
+      withManualAcpCatalog([], "win32", "arm64").find((entry) => entry.id === "kiro"),
+    ).toMatchObject({ command: null, availability: "unsupported-platform" });
+    expect(
+      withManualAcpCatalog([], "linux", "arm64").every((entry) => entry.command !== null),
+    ).toBe(true);
+    expect(withManualAcpCatalog([], "aix", "ppc64").every((entry) => entry.command === null)).toBe(
+      true,
+    );
+    const full = withManualAcpCatalog(
+      parseAcpRegistryCatalog(bundledRegistry, "win32", "x64"),
+      "win32",
+      "x64",
+    );
+    expect(full).toHaveLength(46);
+    expect(new Set(full.map((entry) => entry.id)).size).toBe(46);
+    expect(full.filter((entry) => entry.id === "cursor")).toHaveLength(1);
+    expect(full.filter((entry) => entry.id === "kimi")).toHaveLength(1);
+    expect(full.some((entry) => entry.id === "grok")).toBe(false);
+  });
+
+  it("uvx 的两种固定版本语法均转为 --from，保留参数与公开环境", () => {
+    for (const platform of ["win32", "linux", "darwin"] as const) {
+      const entries = parseAcpRegistryCatalog(bundledRegistry, platform, "x64");
+      expect(entries.find((entry) => entry.id === "fast-agent")).toMatchObject({
+        command: "uvx --from fast-agent-acp==0.10.1 fast-agent-acp -x",
+        environment: [{ name: "FAST_AGENT_MODEL", value: "codexplan", sensitive: false }],
+      });
+      expect(entries.find((entry) => entry.id === "minion-code")).toMatchObject({
+        command: "uvx --from minion-code==0.1.44 minion-code acp",
+      });
+    }
+  });
+
+  it("拒绝未知环境、畸形环境、命令注入和不固定的 uvx 包，不把参数拼进 shell", () => {
+    for (const distribution of [
+      { npx: { package: "agent@1.0.0", env: { NODE_OPTIONS: "--require bad" } } },
+      { npx: { package: "agent@1.0.0", env: { TOKEN: "secret" } } },
+      { npx: { package: "agent@1.0.0", env: { AUGMENT_DISABLE_AUTO_UPDATE: "$(bad)" } } },
+      { npx: { package: "agent@1.0.0", env: [] } },
+      { uvx: { package: "agent@latest" } },
+      { uvx: { package: "agent==0.9.0" } },
+      { uvx: { package: "agent==1.0.0;bad" } },
+      { uvx: { package: "agent==1.0.0", args: ["&bad"] } },
+      { uvx: { package: "--help==1.0.0" } },
+    ]) {
+      const [entry] = parseAcpRegistryCatalog(
+        {
+          agents: [
+            {
+              id: "unsafe",
+              name: "Unsafe",
+              version: "1.0.0",
+              distribution,
+            },
+          ],
+        },
+        "win32",
+        "x64",
+      );
+      expect(entry).toMatchObject({ command: null, availability: "manual" });
+      expect(entry?.environment).toBeUndefined();
+    }
+  });
+
+  it("同命令缺少或覆盖了必要环境参数时不显示已配置，额外凭据不影响匹配", () => {
+    const entry = parseAcpRegistryCatalog(bundledRegistry, "linux", "x64").find(
+      (entry) => entry.id === "auggie",
+    )!;
+    const instance = { driver: "acpAgent", config: { command: entry.command } };
+    const provider = {
+      instanceId: ProviderInstanceId.make("auggie"),
+      enabled: true,
+      installed: true,
+      status: "ready" as const,
+      availability: "available" as const,
+    };
+    expect(
+      withAcpRegistryDiagnostics([entry], { auggie: instance }, [provider])[0]?.configuredStatus,
+    ).toBe("not-configured");
+    expect(
+      withAcpRegistryDiagnostics(
+        [entry],
+        {
+          auggie: {
+            ...instance,
+            environment: [
+              ...entry.environment!,
+              { name: "API_KEY", value: "", sensitive: true, valueRedacted: true },
+            ],
+          },
+        },
+        [provider],
+      )[0]?.configuredStatus,
+    ).toBe("ready");
+    expect(
+      withAcpRegistryDiagnostics(
+        [entry],
+        {
+          auggie: {
+            ...instance,
+            environment: [
+              ...entry.environment!,
+              { name: "AUGMENT_DISABLE_AUTO_UPDATE", value: "0", sensitive: false },
+            ],
+          },
+        },
+        [provider],
+      )[0]?.configuredStatus,
+    ).toBe("not-configured");
+  });
 });

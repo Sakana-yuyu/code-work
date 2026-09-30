@@ -131,6 +131,7 @@ import {
   getAcpRegistryCatalog,
   withAcpRegistryDiagnostics,
 } from "./provider/acp/AcpRegistryCatalog.ts";
+import { installAcpRegistryCatalogBinary } from "./provider/acp/AcpRegistryBinaryInstall.ts";
 import { resolveClaudeHomePath } from "./provider/Drivers/ClaudeHome.ts";
 import { resolveCodexHomeLayout } from "./provider/Drivers/CodexHomeLayout.ts";
 import { readExternalSession, scanExternalSessions } from "./provider/externalSessions.ts";
@@ -2476,7 +2477,7 @@ const makeWsRpcLayer = (
             WS_METHODS.serverGetAcpRegistryCatalog,
             Effect.gen(function* () {
               const catalog = yield* getAcpRegistryCatalog;
-              if (catalog.error !== null) return catalog;
+              if (catalog.entries.length === 0) return catalog;
               const settings = yield* serverSettings.getSettings.pipe(
                 Effect.orElseSucceed(() => null),
               );
@@ -2491,6 +2492,12 @@ const makeWsRpcLayer = (
                 ),
               };
             }),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverInstallAcpRegistryBinary]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverInstallAcpRegistryBinary,
+            installAcpRegistryCatalogBinary(input.entryId),
             { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverScanExternalSessions]: (input) =>

@@ -98,6 +98,7 @@ export function createByokEnvironmentAtoms<R, E>(
   const draftDiscoveryScheduler = createAtomCommandScheduler();
   const balanceScheduler = createAtomCommandScheduler();
   const benchmarkScheduler = createAtomCommandScheduler();
+  const acpInstallScheduler = createAtomCommandScheduler();
   return {
     supplierCatalog: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:byok:supplier-catalog",
@@ -110,6 +111,15 @@ export function createByokEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverGetAcpRegistryCatalog,
       staleTimeMs: 300_000,
       idleTtlMs: 300_000,
+    }),
+    installAcpRegistryBinary: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:acp:install-registry-binary",
+      tag: WS_METHODS.serverInstallAcpRegistryBinary,
+      scheduler: acpInstallScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.entryId]),
+      },
     }),
     discoverModels: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:byok:discover-models",

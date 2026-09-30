@@ -65,6 +65,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverRefreshMcpServer]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverGetByokSupplierCatalog]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetAcpRegistryCatalog]: AuthOrchestrationReadScope,
+  [WS_METHODS.serverInstallAcpRegistryBinary]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverScanExternalSessions]: AuthOrchestrationReadScope,
   [WS_METHODS.serverImportExternalSession]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverGetThreadReference]: AuthOrchestrationReadScope,

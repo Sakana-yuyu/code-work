@@ -3,7 +3,12 @@ import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { CliProxyError, CliProxyRequest, CliProxyResult } from "./cliProxy.ts";
 import { ZCodeLoginRequest, ZCodeLoginResult } from "./zcodeLogin.ts";
-import { AcpRegistryCatalogResult } from "./acpRegistry.ts";
+import {
+  AcpRegistryBinaryInstallError,
+  AcpRegistryBinaryInstallInput,
+  AcpRegistryBinaryInstallResult,
+  AcpRegistryCatalogResult,
+} from "./acpRegistry.ts";
 import { ThreadReferenceRequest, ThreadReferenceResult } from "./threadReferences.ts";
 import {
   ExternalSessionImportRequest,
@@ -515,6 +520,7 @@ export const WS_METHODS = {
   serverRefreshMcpServer: "server.refreshMcpServer",
   serverGetByokSupplierCatalog: "server.getByokSupplierCatalog",
   serverGetAcpRegistryCatalog: "server.getAcpRegistryCatalog",
+  serverInstallAcpRegistryBinary: "server.installAcpRegistryBinary",
   serverScanExternalSessions: "server.scanExternalSessions",
   serverImportExternalSession: "server.importExternalSession",
   serverGetThreadReference: "server.getThreadReference",
@@ -784,6 +790,15 @@ export const WsServerGetAcpRegistryCatalogRpc = Rpc.make(WS_METHODS.serverGetAcp
   success: AcpRegistryCatalogResult,
   error: EnvironmentAuthorizationError,
 });
+
+export const WsServerInstallAcpRegistryBinaryRpc = Rpc.make(
+  WS_METHODS.serverInstallAcpRegistryBinary,
+  {
+    payload: AcpRegistryBinaryInstallInput,
+    success: AcpRegistryBinaryInstallResult,
+    error: Schema.Union([AcpRegistryBinaryInstallError, EnvironmentAuthorizationError]),
+  },
+);
 
 export const WsServerScanExternalSessionsRpc = Rpc.make(WS_METHODS.serverScanExternalSessions, {
   payload: ExternalSessionScanRequest,
@@ -2156,6 +2171,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRefreshMcpServerRpc,
   WsServerGetByokSupplierCatalogRpc,
   WsServerGetAcpRegistryCatalogRpc,
+  WsServerInstallAcpRegistryBinaryRpc,
   WsServerScanExternalSessionsRpc,
   WsServerImportExternalSessionRpc,
   WsServerGetThreadReferenceRpc,
