@@ -32,6 +32,7 @@ import type { DraftComposerImageAttachment } from "../lib/composerImages";
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { copyTextWithHaptic } from "../lib/copyTextWithHaptic";
 import { buildThreadFeed } from "../lib/threadActivity";
+import { buildModelOptions } from "../lib/modelOptions";
 import { appAtomRegistry } from "../state/atom-registry";
 import {
   appendComposerDraftAttachments,
@@ -249,6 +250,18 @@ export function useThreadComposerState() {
     // the tap frame instead of after file I/O. If the write fails the message
     // is rolled out of the queue and the content is merged back into the
     // draft, preserving anything typed since.
+    const requestedSelection = draft.modelSelection ?? thread.modelSelection;
+    // 与菜单使用同一会话目录，防止已撤回模式留在持久化发送队列中。
+    const resolvedSelection =
+      buildModelOptions(
+        selectedEnvironmentRuntime?.serverConfig,
+        requestedSelection,
+        selectedThreadDetail?.activities ?? [],
+      ).find(
+        (option) =>
+          option.selection.instanceId === requestedSelection.instanceId &&
+          option.selection.model === requestedSelection.model,
+      )?.selection ?? requestedSelection;
     const enqueuePromise = enqueueThreadOutboxMessage({
       environmentId: selectedThreadShell.environmentId,
       threadId: selectedThreadShell.id,
@@ -256,7 +269,7 @@ export function useThreadComposerState() {
       commandId: CommandId.make(metadata.commandId),
       text,
       attachments,
-      modelSelection: draft.modelSelection ?? thread.modelSelection,
+      modelSelection: resolvedSelection,
       runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
       interactionMode: draft.interactionMode ?? thread.interactionMode,
       createdAt: metadata.createdAt,
@@ -275,7 +288,7 @@ export function useThreadComposerState() {
     });
     return messageId;
   }, [
-    selectedEnvironmentRuntime?.serverConfig?.providers,
+    selectedEnvironmentRuntime?.serverConfig,
     selectedThreadDetail,
     selectedThreadShell,
     uploadThreadFeedback,

@@ -22,6 +22,344 @@ const mockAgentCommand = "node";
 const mockAgentArgs = [mockAgentPath];
 
 describe("AcpSessionRuntime", () => {
+  for (const resume of [false, true]) {
+    it.effect(`旧式模型${resume ? "恢复" : "新建"}走 set_model，空配置不撤回独立目录`, () => {
+      const requests: Array<AcpSessionRuntime.AcpSessionRequestLogEvent> = [];
+      return Effect.gen(function* () {
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        yield* runtime.start();
+        const models = yield* runtime.getAvailableModels;
+        yield* runtime.setConfigOption("unrelated", "value");
+        expect(yield* runtime.getAvailableModels).toEqual(models);
+        yield* runtime.setModel("grok-mock-alt");
+        expect((yield* runtime.getAvailableModels)?.find((model) => model.isDefault)?.slug).toBe(
+          "grok-mock-alt",
+        );
+        expect(
+          requests.filter(
+            (event) => event.method === "session/set_model" && event.status === "succeeded",
+          ),
+        ).toHaveLength(1);
+        const failed = yield* runtime.setModel("unknown-model").pipe(Effect.result);
+        expect(failed._tag).toBe("Failure");
+        expect((yield* runtime.getAvailableModels)?.find((model) => model.isDefault)?.slug).toBe(
+          "grok-mock-alt",
+        );
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: { CODEWORK_ACP_LEGACY_MODELS: "1" },
+            },
+            cwd: process.cwd(),
+            authMethodId: "test",
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+            ...(resume ? { resumeSessionId: "mock-session-1" } : {}),
+            requestLogger: (event) =>
+              Effect.sync(() => {
+                requests.push(event);
+              }),
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+      );
+    });
+  }
+  for (const failure of ["rpc", "malformed"]) {
+    it.effect(`旧式模式 ${failure} 失败后同连接仍可成功切换模型`, () => {
+      const requests: Array<AcpSessionRuntime.AcpSessionRequestLogEvent> = [];
+      return Effect.gen(function* () {
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        yield* runtime.start();
+        const modeFailure = yield* runtime.setMode("code").pipe(Effect.result);
+        expect(modeFailure._tag).toBe("Failure");
+        if (modeFailure._tag === "Failure" && failure === "rpc") {
+          expect(modeFailure.failure).toMatchObject({ _tag: "AcpRequestError" });
+        }
+        expect((yield* runtime.getModeState)?.currentModeId).toBe("ask");
+        yield* runtime.setModel("composer-2");
+        expect((yield* runtime.getAvailableModels)?.find((model) => model.isDefault)?.slug).toBe(
+          "composer-2",
+        );
+        expect(
+          requests
+            .filter(
+              (event) => event.status === "started" && event.method.startsWith("session/set_"),
+            )
+            .map((event) => event.method),
+        ).toEqual(["session/set_mode", "session/set_config_option"]);
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: { CODEWORK_ACP_MODE_FAILURE: failure },
+            },
+            cwd: process.cwd(),
+            authMethodId: "test",
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+            requestLogger: (event) =>
+              Effect.sync(() => {
+                requests.push(event);
+              }),
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+      );
+    });
+  }
+  for (const protocol of ["legacy", "config"]) {
+    it.effect(`任意 URI 模式通过 ${protocol} 原生接口往返并拒绝未广告值`, () => {
+      const requests: Array<AcpSessionRuntime.AcpSessionRequestLogEvent> = [];
+      const modeId = "https://agentclientprotocol.com/protocol/session-modes#review";
+      return Effect.gen(function* () {
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        yield* runtime.start();
+        yield* runtime.setMode(modeId);
+        expect((yield* runtime.getModeState)?.currentModeId).toBe(modeId);
+        yield* runtime.setMode(modeId);
+        expect((yield* runtime.setMode("removed").pipe(Effect.result))._tag).toBe("Failure");
+        const writes = requests.filter(
+          (event) => event.status === "started" && event.method.startsWith("session/set_"),
+        );
+        expect(writes.map((event) => ({ method: event.method, payload: event.payload }))).toEqual([
+          {
+            method: protocol === "config" ? "session/set_config_option" : "session/set_mode",
+            payload:
+              protocol === "config"
+                ? { sessionId: "mock-session-1", configId: "operation", value: modeId }
+                : { sessionId: "mock-session-1", modeId },
+          },
+        ]);
+        const updated = yield* runtime.getEvents().pipe(
+          Stream.filter((event) => event._tag === "ModesUpdated"),
+          Stream.take(1),
+          Stream.runCollect,
+        );
+        expect(Array.from(updated)[0]?.mode?.currentValue).toBe(modeId);
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: {
+                CODEWORK_ACP_URI_MODES: "1",
+                ...(protocol === "config" ? { CODEWORK_ACP_STARTUP_CONFIG: "missing" } : {}),
+              },
+            },
+            cwd: process.cwd(),
+            authMethodId: "test",
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+            requestLogger: (event) =>
+              Effect.sync(() => {
+                requests.push(event);
+              }),
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+      );
+    });
+  }
+  for (const resume of [false, true]) {
+    for (const response of ["missing", "null", "empty", "explicit", "withdraw", "retry"]) {
+      it.effect(`启动配置 ${resume ? "恢复" : "新建"}/${response} 保留正确快照`, () => {
+        const requests: Array<AcpSessionRuntime.AcpSessionRequestLogEvent> = [];
+        return Effect.gen(function* () {
+          const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+          if (response === "retry")
+            expect((yield* runtime.start().pipe(Effect.result))._tag).toBe("Failure");
+          const started = yield* runtime.start();
+          expect(yield* runtime.getAvailableCommands).toEqual(
+            response === "retry" ? [] : [{ name: "startup" }],
+          );
+          const config = yield* runtime.getConfigOptions;
+          expect(config).toEqual(started.sessionSetupResult.configOptions ?? []);
+          if (response === "missing" || response === "null") {
+            expect(config.map((option) => option.id)).toEqual(["engine", "operation", "fast"]);
+            expect(started.modelConfigId).toBe("engine");
+            expect((yield* runtime.getAvailableModels)?.map((model) => model.slug)).toEqual([
+              "dynamic-default",
+              "dynamic-next",
+            ]);
+            expect((yield* runtime.getModeState)?.currentModeId).toBe("plan");
+            yield* runtime.setModel("dynamic-next");
+            expect(
+              requests
+                .filter(
+                  (request) =>
+                    request.method === "session/set_config_option" && request.status === "started",
+                )
+                .map((request) => request.payload),
+            ).toEqual([{ sessionId: "mock-session-1", configId: "engine", value: "dynamic-next" }]);
+          } else if (response === "explicit") {
+            expect(started.modelConfigId).toBe("model");
+            expect(config.some((option) => option.id === "engine")).toBe(false);
+          } else {
+            expect(config).toEqual([]);
+            expect(started.modelConfigId).toBeUndefined();
+            expect(yield* runtime.getAvailableModels).toEqual(response === "retry" ? null : []);
+            expect(yield* runtime.getModeState).toBeUndefined();
+          }
+        }).pipe(
+          Effect.provide(
+            AcpSessionRuntime.layer({
+              spawn: {
+                command: mockAgentCommand,
+                args: mockAgentArgs,
+                env: { CODEWORK_ACP_STARTUP_CONFIG: response },
+              },
+              cwd: process.cwd(),
+              authMethodId: "test",
+              clientInfo: { name: "codework-test", version: "0.0.0" },
+              ...(resume ? { resumeSessionId: "mock-session-1" } : {}),
+              requestLogger: (request) =>
+                Effect.sync(() => {
+                  requests.push(request);
+                }),
+            }),
+          ),
+          Effect.scoped,
+          Effect.provide(NodeServices.layer),
+        );
+      });
+    }
+  }
+  it.effect("恢复只有配置与命令通知且响应挂起时，空闲恢复保留最新元数据", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      const started = yield* runtime.start();
+      expect(started.sessionSetupResult._meta).toMatchObject({
+        codeworkSessionLoadReady: "replay_idle",
+      });
+      expect(started.modelConfigId).toBe("engine");
+      expect((yield* runtime.getAvailableModels)?.map((model) => model.slug)).toEqual([
+        "dynamic-default",
+        "dynamic-next",
+      ]);
+      expect(yield* runtime.getAvailableCommands).toEqual([{ name: "startup" }]);
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_STARTUP_CONFIG: "idle" },
+          },
+          cwd: process.cwd(),
+          authMethodId: "test",
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          resumeSessionId: "mock-session-1",
+          sessionLoadReplayIdleGap: "50 millis",
+          sessionLoadTimeout: "1 second",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+      TestClock.withLive,
+    ),
+  );
+
+  it.effect("动态配置替换快照并驱动模型和模式写入，隔离重放及子会话", () => {
+    const requestEvents: Array<AcpSessionRuntime.AcpSessionRequestLogEvent> = [];
+    return Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      yield* runtime.start();
+      const promptAndDrain = Effect.gen(function* () {
+        yield* runtime.prompt({ prompt: [{ type: "text", text: "更新配置" }] });
+        yield* runtime.getEvents().pipe(
+          Stream.takeUntil((event) => event._tag === "AssistantItemCompleted"),
+          Stream.runDrain,
+        );
+      });
+      yield* promptAndDrain;
+      expect((yield* runtime.getConfigOptions).map((option) => option.id)).toEqual([
+        "engine",
+        "operation",
+        "fast",
+      ]);
+      expect(yield* runtime.getModeState).toMatchObject({
+        currentModeId: "plan",
+        availableModes: [{ id: "plan" }, { id: "code" }],
+      });
+      yield* runtime.setModel("dynamic-default");
+      yield* runtime.setMode("plan");
+      expect(requestEvents.filter((event) => event.method === "session/set_config_option")).toEqual(
+        [],
+      );
+      const invalidModel = yield* runtime.setModel("composer-2").pipe(Effect.result);
+      expect(invalidModel._tag).toBe("Failure");
+      const invalidMode = yield* runtime.setMode("ask").pipe(Effect.result);
+      expect(invalidMode._tag).toBe("Failure");
+      const invalidBoolean = yield* runtime.setConfigOption("fast", "true").pipe(Effect.result);
+      expect(invalidBoolean._tag).toBe("Failure");
+      expect(requestEvents.filter((event) => event.method === "session/set_config_option")).toEqual(
+        [],
+      );
+      yield* runtime.setModel("dynamic-next");
+      yield* runtime.setMode("code");
+      yield* runtime.setConfigOption("fast", true);
+      expect(
+        requestEvents
+          .filter(
+            (event) => event.method === "session/set_config_option" && event.status === "started",
+          )
+          .map((event) => event.payload),
+      ).toEqual([
+        { sessionId: "mock-session-1", configId: "engine", value: "dynamic-next" },
+        { sessionId: "mock-session-1", configId: "operation", value: "code" },
+        { sessionId: "mock-session-1", configId: "fast", type: "boolean", value: true },
+      ]);
+      expect((yield* runtime.getConfigOptions).map((option) => option.currentValue)).toEqual([
+        "dynamic-next",
+        "code",
+        true,
+      ]);
+      yield* runtime.request("session/mode/set", { sessionId: "mock-session-1", modeId: "plan" });
+      yield* runtime.getEvents().pipe(
+        Stream.takeUntil((event) => event._tag === "ModeChanged"),
+        Stream.runDrain,
+      );
+      expect(
+        (yield* runtime.getConfigOptions).find((option) => option.id === "operation")?.currentValue,
+      ).toBe("plan");
+      yield* runtime.setMode("code");
+      expect(
+        requestEvents.filter(
+          (event) => event.method === "session/set_config_option" && event.status === "started",
+        ),
+      ).toHaveLength(4);
+      yield* promptAndDrain;
+      expect(yield* runtime.getConfigOptions).toEqual([]);
+      expect(yield* runtime.getModeState).toBeUndefined();
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_CONFIG_UPDATES: "1" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+          requestLogger: (event) =>
+            Effect.sync(() => {
+              requestEvents.push(event);
+            }),
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
   it.effect("merges custom initialize client capabilities into the ACP handshake", () => {
     const requestEvents: Array<AcpSessionRuntime.AcpSessionRequestLogEvent> = [];
     return Effect.gen(function* () {

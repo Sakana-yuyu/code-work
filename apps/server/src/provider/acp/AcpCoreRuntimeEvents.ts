@@ -6,6 +6,7 @@ import {
   type ProviderApprovalDecision,
   type ProviderDriverKind,
   type ProviderRuntimeEvent,
+  type ServerProviderSlashCommand,
   type RuntimeRequestId,
   type ThreadId,
   type ToolLifecycleItemType,
@@ -210,6 +211,76 @@ export function makeAcpAssistantItemEvent(input: {
       itemType: "assistant_message",
       status: input.lifecycle === "item.completed" ? "completed" : "inProgress",
     },
+  };
+}
+
+export function makeAcpCommandsUpdatedEvent(input: {
+  readonly stamp: AcpEventStamp;
+  readonly provider: ProviderDriverKind;
+  readonly threadId: ThreadId;
+  readonly commands: ReadonlyArray<ServerProviderSlashCommand>;
+  readonly rawPayload: unknown;
+}): ProviderRuntimeEvent {
+  return {
+    type: "session.configured",
+    ...input.stamp,
+    provider: input.provider,
+    threadId: input.threadId,
+    payload: { config: {}, slashCommands: input.commands },
+    raw: { source: "acp.jsonrpc", method: "session/update", payload: input.rawPayload },
+  };
+}
+
+export function makeAcpModelsUpdatedEvent(input: {
+  readonly stamp: AcpEventStamp;
+  readonly provider: ProviderDriverKind;
+  readonly threadId: ThreadId;
+  readonly models: ReadonlyArray<import("@codework/contracts").ServerProviderModel>;
+  readonly rawPayload: unknown;
+}): ProviderRuntimeEvent {
+  return {
+    type: "session.configured",
+    ...input.stamp,
+    provider: input.provider,
+    threadId: input.threadId,
+    payload: { config: {}, models: input.models },
+    raw: { source: "acp.jsonrpc", method: "session/update", payload: input.rawPayload },
+  };
+}
+
+export function makeAcpConfigOptionsUpdatedEvent(input: {
+  readonly stamp: AcpEventStamp;
+  readonly provider: ProviderDriverKind;
+  readonly threadId: ThreadId;
+  readonly configOptions: ReadonlyArray<
+    import("@codework/contracts").SelectProviderOptionDescriptor
+  >;
+  readonly rawPayload: unknown;
+}): ProviderRuntimeEvent {
+  return {
+    type: "session.configured",
+    ...input.stamp,
+    provider: input.provider,
+    threadId: input.threadId,
+    payload: { config: {}, configOptions: input.configOptions },
+    raw: { source: "acp.jsonrpc", method: "session/update", payload: input.rawPayload },
+  };
+}
+
+export function makeAcpModesUpdatedEvent(input: {
+  readonly stamp: AcpEventStamp;
+  readonly provider: ProviderDriverKind;
+  readonly threadId: ThreadId;
+  readonly mode: import("@codework/contracts").SelectProviderOptionDescriptor | null;
+  readonly rawPayload: unknown;
+}): ProviderRuntimeEvent {
+  return {
+    type: "session.configured",
+    ...input.stamp,
+    provider: input.provider,
+    threadId: input.threadId,
+    payload: { config: {}, mode: input.mode },
+    raw: { source: "acp.jsonrpc", method: "session/update", payload: input.rawPayload },
   };
 }
 

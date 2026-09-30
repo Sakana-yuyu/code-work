@@ -5,7 +5,13 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import type * as EffectAcpSchema from "effect-acp/schema";
 import { deriveToolActivityPresentation } from "@codework/shared/toolActivity";
-import type { ToolLifecycleItemType } from "@codework/contracts";
+import type {
+  SelectProviderOptionDescriptor,
+  ServerProviderSlashCommand,
+  ServerProviderModel,
+  ToolLifecycleItemType,
+} from "@codework/contracts";
+import { ACP_CONFIG_OPTION_PREFIX, ACP_MODE_OPTION_ID } from "@codework/contracts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -56,6 +62,53 @@ export interface AcpSessionModeState {
   readonly availableModes: ReadonlyArray<AcpSessionMode>;
 }
 
+/** 原始模式 ID 直接往返；模式名称仅用于显示，不能推断权限或协议参数。 */
+export function toAcpModeOption(
+  state: AcpSessionModeState | undefined,
+): SelectProviderOptionDescriptor | null {
+  if (!state || state.availableModes.length === 0) return null;
+  return {
+    id: ACP_MODE_OPTION_ID,
+    label: "Agent 模式",
+    type: "select",
+    currentValue: state.currentModeId,
+    options: state.availableModes.map((mode) => ({
+      id: mode.id,
+      label: mode.name,
+      ...(mode.description ? { description: mode.description } : {}),
+    })),
+  };
+}
+
+/** 角色与权限复用选项菜单；前缀编码保留上游合法的空字符串默认角色。 */
+export function toAcpConfigOptions(
+  options: ReadonlyArray<EffectAcpSchema.SessionConfigOption>,
+): ReadonlyArray<SelectProviderOptionDescriptor> {
+  return options.flatMap((option) => {
+    if (
+      option.type !== "select" ||
+      (option.category !== "_agent" && option.category !== "permissions")
+    )
+      return [];
+    return [
+      {
+        id: `${ACP_CONFIG_OPTION_PREFIX}${encodeURIComponent(option.id)}`,
+        label: option.name.trim() || option.id,
+        type: "select" as const,
+        ...(option.description?.trim() ? { description: option.description.trim() } : {}),
+        currentValue: `value:${encodeURIComponent(option.currentValue)}`,
+        options: option.options
+          .flatMap((choice) => ("group" in choice ? choice.options : [choice]))
+          .map((choice) => ({
+            id: `value:${encodeURIComponent(choice.value)}`,
+            label: choice.name.trim() || choice.value || "默认",
+            ...(choice.description?.trim() ? { description: choice.description.trim() } : {}),
+          })),
+      },
+    ];
+  });
+}
+
 export interface AcpToolCallState {
   readonly toolCallId: string;
   readonly kind?: string;
@@ -81,6 +134,26 @@ export interface AcpPermissionRequest {
 }
 
 export type AcpParsedSessionEvent =
+  | {
+      readonly _tag: "ConfigOptionsUpdated";
+      readonly configOptions: ReadonlyArray<SelectProviderOptionDescriptor>;
+      readonly rawPayload: unknown;
+    }
+  | {
+      readonly _tag: "ModesUpdated";
+      readonly mode: SelectProviderOptionDescriptor | null;
+      readonly rawPayload: unknown;
+    }
+  | {
+      readonly _tag: "ModelsUpdated";
+      readonly models: ReadonlyArray<ServerProviderModel>;
+      readonly rawPayload: unknown;
+    }
+  | {
+      readonly _tag: "CommandsUpdated";
+      readonly commands: ReadonlyArray<ServerProviderSlashCommand>;
+      readonly rawPayload: unknown;
+    }
   | {
       readonly _tag: "ModeChanged";
       readonly modeId: string;
@@ -120,15 +193,17 @@ type AcpToolCallUpdate = Extract<
   { readonly sessionUpdate: "tool_call" | "tool_call_update" }
 >;
 
-export function extractModelConfigId(sessionResponse: AcpSessionSetupResponse): string | undefined {
+export function extractModelConfigId(
+  sessionResponse: AcpSessionSetupResponse | EffectAcpSchema.ConfigOptionUpdate,
+): string | undefined {
   const configOptions = sessionResponse.configOptions;
   if (!configOptions) return undefined;
-  for (const opt of configOptions) {
-    if (opt.category === "model" && opt.id.trim().length > 0) {
-      return opt.id.trim();
-    }
-  }
-  return undefined;
+  const candidates = configOptions.filter(
+    (option) =>
+      option.category === "model" && option.type === "select" && option.id.trim().length > 0,
+  );
+  // Cline 同时把 provider 标为 model 类别，明确的 model 键优先于同类配置。
+  return (candidates.find((option) => option.id.trim() === "model") ?? candidates[0])?.id.trim();
 }
 
 export function findSessionConfigOption(
@@ -157,9 +232,26 @@ export function collectSessionConfigOptionValues(
 }
 
 export function parseSessionModeState(
-  sessionResponse: AcpSessionSetupResponse,
+  sessionResponse: AcpSessionSetupResponse | EffectAcpSchema.ConfigOptionUpdate,
 ): AcpSessionModeState | undefined {
-  const modes = sessionResponse.modes;
+  const modeOption = sessionResponse.configOptions?.find(
+    (option) => option.category === "mode" && option.type === "select",
+  );
+  const modes =
+    modeOption?.type === "select"
+      ? {
+          currentModeId: modeOption.currentValue,
+          availableModes: modeOption.options.flatMap((entry) =>
+            ("value" in entry ? [entry] : entry.options).map((option) => ({
+              id: option.value,
+              name: option.name,
+              description: option.description,
+            })),
+          ),
+        }
+      : "modes" in sessionResponse
+        ? sessionResponse.modes
+        : undefined;
   if (!modes) return undefined;
   const currentModeId = modes.currentModeId.trim();
   if (!currentModeId) {
@@ -754,6 +846,45 @@ export function sessionUpdateIsReplay(params: EffectAcpSchema.SessionNotificatio
   return isRecord(meta) && meta.isReplay === true;
 }
 
+/** 会话广告优先于静态目录；null 表示未提供模型信息，空数组表示明确撤回。 */
+export function parseSessionModels(setup: {
+  readonly configOptions?: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null;
+  readonly models?: EffectAcpSchema.SessionModelState | null;
+}): ReadonlyArray<ServerProviderModel> | null {
+  const modelConfigId = extractModelConfigId(setup);
+  const config = modelConfigId
+    ? findSessionConfigOption(setup.configOptions, modelConfigId)
+    : undefined;
+  const choices =
+    config?.type === "select"
+      ? config.options
+          .flatMap((option) => ("group" in option ? option.options : [option]))
+          .map((option) => ({
+            slug: option.value,
+            name: option.name,
+            isDefault: option.value === config.currentValue,
+          }))
+      : setup.models?.availableModels.map((model) => ({
+          slug: model.modelId,
+          name: model.name,
+          isDefault: model.modelId === setup.models?.currentModelId,
+        }));
+  if (!choices) return setup.configOptions?.length === 0 ? [] : null;
+  const models = new Map<string, ServerProviderModel>();
+  for (const choice of choices) {
+    const slug = choice.slug.trim();
+    if (!slug || models.has(slug)) continue;
+    models.set(slug, {
+      ...choice,
+      slug,
+      name: choice.name.trim() || slug,
+      isCustom: false,
+      capabilities: null,
+    });
+  }
+  return [...models.values()];
+}
+
 export interface SessionLoadGate {
   readonly active: boolean;
   readonly lastActivityAtMillis: number | undefined;
@@ -837,6 +968,24 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
   let modeId: string | undefined;
 
   switch (upd.sessionUpdate) {
+    case "available_commands_update": {
+      const commands = new Map<string, ServerProviderSlashCommand>();
+      for (const command of upd.availableCommands) {
+        const name = command.name.trim().replace(/^\/+/, "");
+        if (!name || /\s/u.test(name) || commands.has(name)) continue;
+        commands.set(name, {
+          name,
+          ...(command.description.trim() ? { description: command.description.trim() } : {}),
+          ...(command.input?.hint.trim() ? { input: { hint: command.input.hint.trim() } } : {}),
+        });
+      }
+      events.push({
+        _tag: "CommandsUpdated",
+        commands: [...commands.values()],
+        rawPayload: params,
+      });
+      break;
+    }
     case "current_mode_update": {
       modeId = upd.currentModeId.trim();
       if (modeId) {

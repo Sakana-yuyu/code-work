@@ -14,6 +14,7 @@ import type {
 } from "@codework/contracts";
 import {
   isProviderSendTurnSupportedImageMimeType,
+  ACP_MODE_OPTION_ID,
   ProviderDriverKind,
   ProviderInstanceId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
@@ -296,6 +297,7 @@ import {
 import {
   formatProviderSkillDisplayName,
   getProviderSlashCommandsForSlashMenu,
+  resolveSessionSlashCommands,
   getProviderSkillsForSlashMenu,
 } from "@codework/client-runtime/providerSkills";
 import { searchProviderSkills } from "../../providerSkillSearch";
@@ -1295,10 +1297,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
-  // Plan mode is a legacy feature behind Settings → Beta. With the flag off,
-  // ChatView forces the effective mode to "default", so hiding the toggle
-  // can't trap anyone in plan mode.
-  const planModeUiEnabled = true;
+  // ACP 使用上游完整模式目录，避免旧两态开关与显式模式冲突。
+  const planModeUiEnabled = !selectedModelOptionsForDispatch?.some(
+    (option) => option.id === ACP_MODE_OPTION_ID,
+  );
   const composerProviderControls = useMemo(
     () => ({
       showInteractionModeToggle:
@@ -1565,7 +1567,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         settings.showSkillsInSlashMenu,
       );
       const providerSlashCommandItems = getProviderSlashCommandsForSlashMenu(
-        selectedProviderStatus?.slashCommands ?? [],
+        resolveSessionSlashCommands(
+          activeThread?.activities ?? [],
+          selectedInstanceId,
+          selectedProviderStatus?.slashCommands ?? [],
+        ),
         slashMenuSkills,
       ).map((command) => ({
         id: `provider-slash-command:${selectedProvider}:${command.name}`,
@@ -1618,6 +1624,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProvider,
     selectedProviderStatus,
     settings.showSkillsInSlashMenu,
+    activeThread?.activities,
+    selectedInstanceId,
     workspaceEntries.entries,
   ]);
 

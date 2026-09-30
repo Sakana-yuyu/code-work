@@ -275,6 +275,55 @@ it("requires a settlement to match the live Grok turn", () => {
 });
 
 it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
+  it.effect("Grok 模式沿共用选项往返并投影当前原始 ID", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-uri-mode");
+      const wrapperPath = yield* makeMockGrokWrapper({ CODEWORK_ACP_URI_MODES: "1" });
+      const adapter = yield* makeTestAdapter(wrapperPath);
+      const uri = "https://agentclientprotocol.com/protocol/session-modes#review";
+      const selection = (value: string | boolean) => ({
+        instanceId: ProviderInstanceId.make("grok"),
+        model: "grok-mock-alt",
+        options: [{ id: "acpMode", value }],
+      });
+      const startup = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "thread.started"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "approval-required",
+        modelSelection: selection(uri),
+      });
+      const initial = Array.from(yield* Fiber.join(startup)).find(
+        (event) => event.type === "session.started",
+      );
+      assert.equal(initial?.payload.mode?.currentValue, uri);
+      const events = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.sendTurn({ threadId, input: "模式验证", modelSelection: selection("ask") });
+      const activities = Array.from(yield* Fiber.join(events)).flatMap((event) =>
+        runtimeEventToActivities(event),
+      );
+      assert.deepInclude(
+        activities.findLast((activity) => activity.kind === "session.mode.updated")?.payload,
+        { providerInstanceId: "grok", mode: { ...initial?.payload.mode, currentValue: "ask" } },
+      );
+      assert.equal(
+        (yield* adapter
+          .sendTurn({ threadId, input: "不能发送", modelSelection: selection(true) })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
   it.effect("starts a session and maps mock ACP prompt flow to runtime events", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("grok-mock-thread");
@@ -336,6 +385,50 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
         assert.equal(delta.payload.delta, "hello from mock");
       }
 
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("Grok 发现会话命令并处理替换和空列表撤回", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-command-menu");
+      const wrapperPath = yield* makeMockGrokWrapper({ CODEWORK_ACP_EMIT_COMMANDS: "1" });
+      const adapter = yield* makeTestAdapter(wrapperPath);
+      const startup = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "thread.started"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-mock-alt" },
+      });
+      const initial = Array.from(yield* Fiber.join(startup)).find(
+        (event) => event.type === "session.started",
+      );
+      assert.deepEqual(
+        initial?.payload.slashCommands?.map((command) => command.name),
+        ["review"],
+      );
+      for (const expected of [["inspect"], []]) {
+        const completed = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "turn.completed"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* adapter.sendTurn({ threadId, input: "/review src/main.ts", attachments: [] });
+        const updates = Array.from(yield* Fiber.join(completed)).filter(
+          (event) => event.type === "session.configured",
+        );
+        assert.equal(updates.length, 1);
+        assert.deepEqual(
+          updates[0]?.payload.slashCommands?.map((command) => command.name),
+          expected,
+        );
+      }
       yield* adapter.stopSession(threadId);
     }),
   );

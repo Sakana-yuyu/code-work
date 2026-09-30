@@ -1023,6 +1023,7 @@ function ThreadRouteContent(
         />
         <ThreadDetailScreen
           selectedThread={selectedThreadWithDraftSettings ?? selectedThread}
+          activities={selectedThreadDetail?.activities}
           contentPresentation={contentPresentation}
           screenTone={connectionTone(routeConnectionState)}
           connectionError={routeConnectionError}

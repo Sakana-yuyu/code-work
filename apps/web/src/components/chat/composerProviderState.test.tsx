@@ -62,6 +62,29 @@ const ULTRATHINK_FRAME_CLASSES = {
 } as const;
 
 describe("getComposerProviderState", () => {
+  it("ACP 模式保留 URI，失效选择按当前目录恢复，提交不映射为 plan/default", () => {
+    const uri = "https://agentclientprotocol.com/protocol/session-modes#review";
+    const models = modelWith([
+      selectDescriptor("acpMode", [
+        { id: uri, label: "审查", isDefault: true },
+        { id: "ask", label: "询问" },
+      ]),
+    ]);
+    for (const [requested, expected] of [
+      ["ask", "ask"],
+      ["removed", uri],
+      [uri, uri],
+    ]) {
+      const state = getComposerProviderState({
+        provider: ProviderDriverKind.make("acpAgent"),
+        model: MODEL,
+        models,
+        modelOptions: selections(["acpMode", requested!]),
+        planModeEnabled: false,
+      });
+      expect(state.modelOptionsForDispatch).toEqual(selections(["acpMode", expected!]));
+    }
+  });
   it("derives a stable prompt injection state for ordinary prompt edits", () => {
     expect(getComposerPromptInjectionState("Investigate this failure")).toBe("none");
     expect(getComposerPromptInjectionState("Ultrathink:\nInvestigate this failure")).toBe(

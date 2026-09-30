@@ -1,4 +1,33 @@
-import type { ServerProviderSkill, ServerProviderSlashCommand } from "@codework/contracts";
+import {
+  ServerProviderSlashCommand,
+  type OrchestrationThreadActivity,
+  type ServerProviderSkill,
+} from "@codework/contracts";
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
+
+const decodeCommands = Schema.decodeUnknownOption(
+  Schema.Struct({
+    providerInstanceId: Schema.String,
+    commands: Schema.Array(ServerProviderSlashCommand),
+  }),
+);
+
+/** 优先使用当前实例的会话命令；空快照撤回旧命令，旧服务端沿用全局目录。 */
+export function resolveSessionSlashCommands(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  instanceId: string,
+  fallback: ReadonlyArray<ServerProviderSlashCommand>,
+): ReadonlyArray<ServerProviderSlashCommand> {
+  for (let index = activities.length - 1; index >= 0; index--) {
+    const activity = activities[index];
+    if (activity?.kind !== "session.commands.updated") continue;
+    const snapshot = decodeCommands(activity.payload);
+    if (Option.isSome(snapshot) && snapshot.value.providerInstanceId === instanceId)
+      return snapshot.value.commands;
+  }
+  return fallback;
+}
 
 export type ProviderSkillSourceKind = "app" | "repo" | "project" | "personal" | "system" | "other";
 

@@ -5,7 +5,37 @@ import {
   getProviderSlashCommandsForSlashMenu,
   getProviderSkillsForSlashMenu,
   resolveProviderSkillSourceKind,
+  resolveSessionSlashCommands,
 } from "./providerSkills.ts";
+import { EventId, type OrchestrationThreadActivity } from "@codework/contracts";
+
+it("会话命令按实例隔离，空快照撤回，坏数据回退到最近合法快照", () => {
+  const row = (payload: unknown): OrchestrationThreadActivity => ({
+    id: EventId.make("commands"),
+    kind: "session.commands.updated",
+    tone: "info",
+    summary: "命令",
+    createdAt: "2026-09-30T00:00:00.000Z",
+    turnId: null,
+    payload,
+  });
+  const fallback = [{ name: "fallback" }];
+  const activities = [
+    row({ providerInstanceId: "a", commands: [{ name: "review" }] }),
+    row({ providerInstanceId: "b", commands: [{ name: "inspect" }] }),
+    row(null),
+  ];
+  expect(resolveSessionSlashCommands(activities, "a", fallback)).toEqual([{ name: "review" }]);
+  expect(resolveSessionSlashCommands(activities, "b", fallback)).toEqual([{ name: "inspect" }]);
+  expect(resolveSessionSlashCommands(activities, "c", fallback)).toEqual(fallback);
+  expect(
+    resolveSessionSlashCommands(
+      [...activities, row({ providerInstanceId: "a", commands: [] })],
+      "a",
+      fallback,
+    ),
+  ).toEqual([]);
+});
 
 describe("formatProviderSkillDisplayName", () => {
   it("prefers the provider display name", () => {

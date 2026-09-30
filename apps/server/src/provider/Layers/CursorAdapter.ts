@@ -49,14 +49,26 @@ import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import {
   ProviderAdapterProcessError,
   ProviderAdapterRequestError,
+  ProviderAdapterSessionClosedError,
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
-import { acpPermissionOutcome, mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
+
+const isProviderAdapterSessionClosedError = Schema.is(ProviderAdapterSessionClosedError);
+import {
+  acpPermissionOutcome,
+  applyAcpModeSelection,
+  applyAcpConfigSelections,
+  mapAcpToAdapterError,
+} from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import {
   makeAcpAssistantItemEvent,
   makeAcpContentDeltaEvent,
+  makeAcpCommandsUpdatedEvent,
+  makeAcpModelsUpdatedEvent,
+  makeAcpModesUpdatedEvent,
+  makeAcpConfigOptionsUpdatedEvent,
   makeAcpPlanUpdatedEvent,
   makeAcpRequestOpenedEvent,
   makeAcpRequestResolvedEvent,
@@ -66,6 +78,8 @@ import {
   type AcpSessionMode,
   type AcpSessionModeState,
   parsePermissionRequest,
+  toAcpModeOption,
+  toAcpConfigOptions,
 } from "../acp/AcpRuntimeModel.ts";
 import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
 import { applyCursorAcpModelSelection, makeCursorAcpRuntime } from "../acp/CursorAcpSupport.ts";
@@ -317,7 +331,12 @@ function applyRequestedSessionConfiguration<E>(input: {
   }) => E;
 }): Effect.Effect<void, E> {
   return Effect.gen(function* () {
-    if (input.supportsModelSelection && input.modelSelection) {
+    if (
+      input.supportsModelSelection &&
+      input.modelSelection &&
+      (input.modelSelection.model !== "default" ||
+        (yield* input.runtime.getAvailableModels)?.some((model) => model.slug === "default"))
+    ) {
       yield* applyCursorAcpModelSelection({
         runtime: input.runtime,
         model: input.modelSelection.model,
@@ -330,22 +349,29 @@ function applyRequestedSessionConfiguration<E>(input: {
       });
     }
 
-    const requestedModeId = resolveRequestedModeId({
-      interactionMode: input.interactionMode,
-      runtimeMode: input.runtimeMode,
-      modeState: yield* input.runtime.getModeState,
-    });
-    if (!requestedModeId) {
-      return;
-    }
-
-    yield* input.runtime.setMode(requestedModeId).pipe(
-      Effect.mapError((cause) =>
-        input.mapError({
-          cause,
-          method: "session/set_mode",
-        }),
-      ),
+    const explicitMode = yield* applyAcpModeSelection(
+      input.runtime,
+      input.modelSelection?.options,
+    ).pipe(Effect.mapError((cause) => input.mapError({ cause, method: "session/set_mode" })));
+    const requestedModeId = explicitMode
+      ? undefined
+      : resolveRequestedModeId({
+          interactionMode: input.interactionMode,
+          runtimeMode: input.runtimeMode,
+          modeState: yield* input.runtime.getModeState,
+        });
+    if (requestedModeId)
+      yield* input.runtime.setMode(requestedModeId).pipe(
+        Effect.mapError((cause) =>
+          input.mapError({
+            cause,
+            method: "session/set_mode",
+          }),
+        ),
+      );
+    // 模式可能改变权限；显式角色/权限选择在模式之后写回。
+    yield* applyAcpConfigSelections(input.runtime, input.modelSelection?.options).pipe(
+      Effect.mapError((cause) => input.mapError({ cause, method: "session/set_config_option" })),
     );
   });
 }
@@ -1382,6 +1408,52 @@ export function makeCursorAdapter(
                     yield* Deferred.succeed(event.acknowledge, undefined);
                     return;
                   case "ModeChanged":
+                  case "ModesUpdated":
+                    yield* offerRuntimeEvent(
+                      makeAcpModesUpdatedEvent({
+                        stamp: yield* makeEventStamp(),
+                        provider: PROVIDER,
+                        threadId: ctx.threadId,
+                        mode:
+                          event._tag === "ModesUpdated"
+                            ? event.mode
+                            : toAcpModeOption(yield* acp.getModeState),
+                        rawPayload: event,
+                      }),
+                    );
+                    return;
+                  case "ModelsUpdated":
+                    yield* offerRuntimeEvent(
+                      makeAcpModelsUpdatedEvent({
+                        stamp: yield* makeEventStamp(),
+                        provider: PROVIDER,
+                        threadId: ctx.threadId,
+                        models: event.models,
+                        rawPayload: event.rawPayload,
+                      }),
+                    );
+                    return;
+                  case "ConfigOptionsUpdated":
+                    yield* offerRuntimeEvent(
+                      makeAcpConfigOptionsUpdatedEvent({
+                        stamp: yield* makeEventStamp(),
+                        provider: PROVIDER,
+                        threadId: ctx.threadId,
+                        configOptions: event.configOptions,
+                        rawPayload: event.rawPayload,
+                      }),
+                    );
+                    return;
+                  case "CommandsUpdated":
+                    yield* offerRuntimeEvent(
+                      makeAcpCommandsUpdatedEvent({
+                        stamp: yield* makeEventStamp(),
+                        provider: PROVIDER,
+                        threadId: ctx.threadId,
+                        commands: event.commands,
+                        rawPayload: event.rawPayload,
+                      }),
+                    );
                     return;
                   case "AssistantItemStarted":
                     yield* offerRuntimeEvent(
@@ -1487,7 +1559,13 @@ export function makeCursorAdapter(
             ...(yield* makeEventStamp()),
             provider: PROVIDER,
             threadId: input.threadId,
-            payload: { resume: started.initializeResult },
+            payload: {
+              resume: started.initializeResult,
+              slashCommands: yield* acp.getAvailableCommands,
+              models: yield* acp.getAvailableModels,
+              mode: toAcpModeOption(yield* acp.getModeState),
+              configOptions: toAcpConfigOptions(yield* acp.getConfigOptions),
+            },
           });
           yield* offerRuntimeEvent({
             type: "session.state.changed",
@@ -1614,9 +1692,42 @@ export function makeCursorAdapter(
               Effect.mapError((error) =>
                 mapAcpToAdapterError(PROVIDER, input.threadId, "session/prompt", error),
               ),
+              Effect.tapError((error) =>
+                Effect.gen(function* () {
+                  // Mid-turn process death or transport failure can leave
+                  // requestPermission / elicitation fibers parked on Deferreds.
+                  // Settle them and surface a turn terminal so reconnect/late
+                  // approval cannot hang the thread.
+                  yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
+                  yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
+                  if (ctx.promptsInFlight === 1) {
+                    yield* offerRuntimeEvent({
+                      type: "turn.completed",
+                      ...(yield* makeEventStamp()),
+                      provider: PROVIDER,
+                      threadId: input.threadId,
+                      turnId,
+                      payload: {
+                        state: "failed",
+                        errorMessage: error.message,
+                      },
+                    });
+                  }
+                  if (isProviderAdapterSessionClosedError(error) && !ctx.stopped) {
+                    yield* stopSessionInternal(ctx);
+                  }
+                }),
+              ),
             );
 
           const turnRecord = ctx.turns.find((turn) => turn.id === turnId);
+          // 模式/工具等队列事件必须先落地，再发布回合结束，复用 Grok 同一屏障。
+          if (!ctx.stopped && ctx.notificationFiber) {
+            yield* Effect.raceFirst(
+              ctx.acp.drainEvents,
+              Fiber.await(ctx.notificationFiber).pipe(Effect.asVoid),
+            );
+          }
           if (turnRecord) {
             turnRecord.items.push({ prompt: promptParts, result });
           } else {

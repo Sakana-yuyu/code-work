@@ -15,6 +15,9 @@ const requestLogPath = process.env.CODEWORK_ACP_REQUEST_LOG_PATH;
 const exitLogPath = process.env.CODEWORK_ACP_EXIT_LOG_PATH;
 const childPidLogPath = process.env.CODEWORK_ACP_CHILD_PID_LOG_PATH;
 const emitToolCalls = process.env.CODEWORK_ACP_EMIT_TOOL_CALLS === "1";
+const emitConfigUpdates = process.env.CODEWORK_ACP_EMIT_CONFIG_UPDATES === "1";
+const startupConfig = process.env.CODEWORK_ACP_STARTUP_CONFIG;
+const emitCommands = process.env.CODEWORK_ACP_EMIT_COMMANDS === "1";
 const emitInterleavedAssistantToolCalls =
   process.env.CODEWORK_ACP_EMIT_INTERLEAVED_ASSISTANT_TOOL_CALLS === "1";
 const emitGenericToolPlaceholders = process.env.CODEWORK_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS === "1";
@@ -84,9 +87,12 @@ const permissionRequestCount = Math.max(
   Number(process.env.CODEWORK_ACP_PERMISSION_REQUEST_COUNT ?? "1") || 1,
 );
 const sessionId = "mock-session-1";
+const uriModes = process.env.CODEWORK_ACP_URI_MODES === "1";
+const reviewMode = "https://agentclientprotocol.com/protocol/session-modes#review";
 
 let currentModeId = "ask";
 let currentModelId = "default";
+let dynamicConfigActive = false;
 let parameterizedModelPicker = false;
 let currentReasoning = "medium";
 let currentContext = "272k";
@@ -140,7 +146,71 @@ process.once("exit", (code) => {
   logExit(`exit:${code}`);
 });
 
+let selectedPersona = "";
+let allowAll = "off";
+
 function configOptions(): ReadonlyArray<AcpSchema.SessionConfigOption> {
+  if (process.env.CODEWORK_ACP_LEGACY_MODELS === "1") return [];
+  if (process.env.CODEWORK_ACP_COPILOT_CONFIG === "1") {
+    return [
+      {
+        id: "agent",
+        name: "Agent",
+        category: "_agent",
+        type: "select",
+        currentValue: selectedPersona,
+        options: [
+          { value: "", name: "Copilot" },
+          { value: "reviewer", name: "审查角色" },
+        ],
+      },
+      {
+        id: "allow_all",
+        name: "Allow All",
+        category: "permissions",
+        type: "select",
+        currentValue: allowAll,
+        options: [
+          { value: "on", name: "On" },
+          { value: "off", name: "Off" },
+        ],
+      },
+    ];
+  }
+  if (dynamicConfigActive) {
+    return [
+      {
+        id: "engine",
+        name: "模型",
+        category: "model",
+        type: "select",
+        currentValue: currentModelId,
+        options: [
+          {
+            group: "dynamic",
+            name: "动态模型",
+            options: [
+              { value: "dynamic-default", name: "默认模型" },
+              { value: "dynamic-next", name: "新增模型" },
+            ],
+          },
+        ],
+      },
+      {
+        id: "operation",
+        name: "模式",
+        category: "mode",
+        type: "select",
+        currentValue: currentModeId,
+        options: [
+          { value: "plan", name: "计划" },
+          { value: "code", name: "实施" },
+          ...(uriModes ? [{ value: reviewMode, name: "审查" }] : []),
+        ],
+      },
+      { id: "fast", name: "快速", type: "boolean", currentValue: currentFast },
+    ];
+  }
   if (parameterizedModelPicker) {
     const baseOptions: Array<AcpSchema.SessionConfigOption> = [
       {
@@ -301,6 +371,7 @@ function availableModels(): ReadonlyArray<{
 }
 
 const availableModes: ReadonlyArray<AcpSchema.SessionMode> = [
+  ...(uriModes ? [{ id: reviewMode, name: "审查", description: "检查当前变更" }] : []),
   {
     id: "ask",
     name: "Ask",
@@ -355,19 +426,87 @@ const program = Effect.gen(function* () {
         request.clientCapabilities?._meta?.parameterizedModelPicker === true;
       return {
         protocolVersion: 1,
-        agentCapabilities: { loadSession: true },
+        agentCapabilities: {
+          loadSession: true,
+        },
       };
     }),
   );
 
   yield* agent.handleAuthenticate(() => Effect.succeed({}));
 
+  let startupAttempts = 0;
+  const startupMetadata = (requestedSessionId: string) =>
+    Effect.gen(function* () {
+      const original = {
+        ...(process.env.CODEWORK_ACP_COPILOT_CONFIG === "1" ? {} : { modes: modeState() }),
+        ...(process.env.CODEWORK_ACP_COPILOT_CONFIG === "1" ? {} : { models: modelState() }),
+        configOptions: configOptions(),
+      };
+      if (!startupConfig) return original;
+      startupAttempts++;
+      if (startupConfig === "retry" && startupAttempts > 1) return {};
+      yield* agent.client.sessionUpdate({
+        sessionId: requestedSessionId,
+        update: {
+          sessionUpdate: "config_option_update",
+          configOptions: original.configOptions,
+        },
+      });
+      yield* agent.client.sessionUpdate({
+        sessionId: requestedSessionId,
+        update: {
+          sessionUpdate: "available_commands_update",
+          availableCommands: [{ name: "startup", description: "" }],
+        },
+      });
+      dynamicConfigActive = true;
+      currentModelId = "dynamic-default";
+      currentModeId = "plan";
+      yield* agent.client.sessionUpdate({
+        sessionId: requestedSessionId,
+        update: {
+          sessionUpdate: "config_option_update",
+          configOptions: startupConfig === "withdraw" ? [] : configOptions(),
+        },
+      });
+      for (const metadata of [
+        { sessionId: "foreign-session" },
+        { sessionId: requestedSessionId, _meta: { isReplay: true } },
+      ])
+        yield* agent.client.sessionUpdate({
+          ...metadata,
+          update: {
+            sessionUpdate: "config_option_update",
+            configOptions: original.configOptions,
+          },
+        });
+      if (startupConfig === "retry")
+        return yield* AcpError.AcpRequestError.internalError("首次启动失败");
+      if (startupConfig === "idle") return yield* Effect.never;
+      if (startupConfig === "empty") return { configOptions: [] };
+      if (startupConfig === "explicit") return original;
+      if (startupConfig === "null") return { configOptions: null };
+      return {};
+    });
+
   yield* agent.handleCreateSession(() =>
-    Effect.succeed({
-      sessionId,
-      modes: modeState(),
-      models: modelState(),
-      configOptions: configOptions(),
+    Effect.gen(function* () {
+      if (emitCommands) {
+        yield* agent.client.sessionUpdate({
+          sessionId,
+          update: {
+            sessionUpdate: "available_commands_update",
+            availableCommands: [
+              { name: "review", description: "审查变更", input: { hint: "文件路径" } },
+            ],
+          },
+        });
+      }
+      return {
+        sessionId,
+        ...(yield* startupMetadata(sessionId)),
+      };
     }),
   );
 
@@ -399,6 +538,7 @@ const program = Effect.gen(function* () {
       if (failLoadSession) {
         return yield* AcpError.AcpRequestError.internalError("Mock load session failure");
       }
+      if (startupConfig) return yield* startupMetadata(requestedSessionId);
       if (hangLoadSessionAfterReplay || delayLoadSessionAfterReplay) {
         emitLoadReplayNotifications(requestedSessionId);
         yield* agent.client.sessionUpdate({
@@ -410,8 +550,8 @@ const program = Effect.gen(function* () {
         });
         yield* Effect.sleep(loadSessionDelayMs);
         return {
-          modes: modeState(),
-          models: modelState(),
+          ...(process.env.CODEWORK_ACP_COPILOT_CONFIG === "1" ? {} : { modes: modeState() }),
+          ...(process.env.CODEWORK_ACP_COPILOT_CONFIG === "1" ? {} : { models: modelState() }),
           configOptions: configOptions(),
         };
       }
@@ -426,8 +566,8 @@ const program = Effect.gen(function* () {
         },
       });
       return {
-        modes: modeState(),
-        models: modelState(),
+        ...(process.env.CODEWORK_ACP_COPILOT_CONFIG === "1" ? {} : { modes: modeState() }),
+        ...(process.env.CODEWORK_ACP_COPILOT_CONFIG === "1" ? {} : { models: modelState() }),
         configOptions: configOptions(),
       };
     }),
@@ -465,12 +605,23 @@ const program = Effect.gen(function* () {
           },
         );
       }
-      if (request.configId === "mode" && typeof request.value === "string") {
+      if (
+        (request.configId === "mode" ||
+          (dynamicConfigActive && request.configId === "operation")) &&
+        typeof request.value === "string"
+      ) {
         currentModeId = request.value;
       }
-      if (request.configId === "model" && typeof request.value === "string") {
+      if (
+        (request.configId === "model" || (dynamicConfigActive && request.configId === "engine")) &&
+        typeof request.value === "string"
+      ) {
         currentModelId = request.value;
       }
+      if (request.configId === "agent" && typeof request.value === "string")
+        selectedPersona = request.value;
+      if (request.configId === "allow_all" && typeof request.value === "string")
+        allowAll = request.value;
       if (request.configId === "reasoning" && typeof request.value === "string") {
         currentReasoning = request.value;
       }
@@ -594,6 +745,58 @@ const program = Effect.gen(function* () {
           },
         });
         return yield* Effect.never;
+      }
+      if (emitCommands) {
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "available_commands_update",
+            availableCommands:
+              promptCount === 1 ? [{ name: "inspect", description: "检查文件" }] : [],
+          },
+        });
+        for (const notification of [
+          { sessionId: "mock-child-session-1" },
+          { sessionId: requestedSessionId, _meta: { isReplay: true } },
+        ])
+          yield* agent.client.sessionUpdate({
+            ...notification,
+            update: {
+              sessionUpdate: "available_commands_update",
+              availableCommands: [{ name: "foreign", description: "其它会话" }],
+            },
+          });
+        return { stopReason: "end_turn" };
+      }
+
+      if (emitConfigUpdates) {
+        dynamicConfigActive = true;
+        currentModelId = "dynamic-default";
+        currentModeId = "plan";
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "config_option_update",
+            configOptions: promptCount === 1 ? configOptions() : [],
+          },
+        });
+        for (const notification of [
+          { sessionId: "mock-child-session-1" },
+          { sessionId: requestedSessionId, _meta: { isReplay: true } },
+        ]) {
+          yield* agent.client.sessionUpdate({
+            ...notification,
+            update: { sessionUpdate: "config_option_update", configOptions: [] },
+          });
+        }
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "配置已更新" },
+          },
+        });
+        return { stopReason: "end_turn" };
       }
 
       if (emitPlanThenHang) {
@@ -1149,9 +1352,13 @@ const program = Effect.gen(function* () {
       });
     }
 
-    if (method !== "session/mode/set") {
+    if (method !== "session/mode/set" && method !== "session/set_mode") {
       return Effect.fail(AcpError.AcpRequestError.methodNotFound(method));
     }
+    if (process.env.CODEWORK_ACP_MODE_FAILURE === "rpc") {
+      return Effect.fail(AcpError.AcpRequestError.methodNotFound(method));
+    }
+    if (process.env.CODEWORK_ACP_MODE_FAILURE === "malformed") return Effect.succeed(null);
 
     const nextModeId =
       typeof params === "object" &&

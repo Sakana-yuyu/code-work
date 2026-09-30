@@ -3,10 +3,12 @@ import type {
   MessageId,
   ModelSelection,
   OrchestrationThreadShell,
+  OrchestrationThreadActivity,
   ProviderInteractionMode,
   RuntimeMode,
   ServerConfig as CodeworkServerConfig,
 } from "@codework/contracts";
+import { ACP_MODE_OPTION_ID } from "@codework/contracts";
 import {
   detectComposerTrigger,
   replaceTextRange,
@@ -73,6 +75,7 @@ import { resolveProviderOptionDescriptors } from "../../lib/providerOptions";
 import { useComposerPathSearch } from "../../state/use-composer-path-search";
 import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
 import { matchesSlashSkillQuery } from "./composerSlashSkillSearch";
+import { resolveSessionSlashCommands } from "@codework/client-runtime/providerSkills";
 import {
   type ExistingThreadSettingsRouteSession,
   useExistingThreadSettingsRoutePresentation,
@@ -113,6 +116,7 @@ export interface ThreadComposerProps {
    */
   readonly threadSyncPhase?: "loading" | "syncing" | null;
   readonly selectedThread: OrchestrationThreadShell;
+  readonly activities?: ReadonlyArray<OrchestrationThreadActivity>;
   readonly serverConfig: CodeworkServerConfig | null;
   readonly queueCount: number;
   readonly environmentId: EnvironmentId;
@@ -360,6 +364,20 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       ? t("interface.queue")
       : t("interface.send");
   const currentModelSelection = props.selectedThread.modelSelection;
+  const modelOptions = useMemo(
+    () => buildModelOptions(props.serverConfig, currentModelSelection, props.activities),
+    [props.serverConfig, currentModelSelection, props.activities],
+  );
+  const currentModelOption =
+    modelOptions.find(
+      (option) =>
+        option.selection.instanceId === currentModelSelection.instanceId &&
+        option.selection.model === currentModelSelection.model,
+    ) ?? null;
+  const hasAcpModes =
+    currentModelOption?.capabilities?.optionDescriptors?.some(
+      (option) => option.id === ACP_MODE_OPTION_ID,
+    ) ?? false;
   const currentRuntimeMode = props.selectedThread.runtimeMode;
   const connectionStatus = composerConnectionStatus({
     connectionError: props.connectionError,
@@ -442,10 +460,18 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           description: t("switchToDefaultMode"),
         },
       ];
-      const builtIn = allBuiltIn.filter((item) => item.command.includes(q));
+      const builtIn = allBuiltIn.filter(
+        (item) =>
+          item.command.includes(q) &&
+          (!hasAcpModes || (item.command !== "plan" && item.command !== "default")),
+      );
 
       const providerCommands: ComposerCommandItem[] = [];
-      for (const cmd of selectedProviderStatus?.slashCommands ?? []) {
+      for (const cmd of resolveSessionSlashCommands(
+        props.activities ?? [],
+        props.selectedThread.modelSelection.instanceId,
+        selectedProviderStatus?.slashCommands ?? [],
+      )) {
         if (!cmd.name.toLowerCase().includes(q)) continue;
         providerCommands.push({
           id: `pcmd:${cmd.name}`,
@@ -567,7 +593,14 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     }
 
     return [];
-  }, [composerTrigger, pathSearch.entries, selectedProviderStatus]);
+  }, [
+    composerTrigger,
+    pathSearch.entries,
+    selectedProviderStatus,
+    hasAcpModes,
+    props.activities,
+    props.selectedThread.modelSelection.instanceId,
+  ]);
 
   // ── Handle command selection ──────────────────────────────
   const { onChangeDraftMessage, onUpdateInteractionMode, draftMessage, onSendMessage } = props;
@@ -644,10 +677,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   );
 
   // ── Model menu ───────────────────────────────────────────
-  const modelOptions = useMemo(
-    () => buildModelOptions(props.serverConfig, currentModelSelection),
-    [props.serverConfig, currentModelSelection],
-  );
   const providerGroups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
   // 已开始的对话锁定在当前 Agent 分组（各 Agent 上下文互不相通）；
   // 运行中同样锁定，空闲的新对话才能自由选择。
@@ -673,12 +702,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     ],
   );
   const agentLocked = threadStarted && threadProviderGroups.length < providerGroups.length;
-  const currentModelOption =
-    modelOptions.find(
-      (option) =>
-        option.selection.instanceId === currentModelSelection.instanceId &&
-        option.selection.model === currentModelSelection.model,
-    ) ?? null;
   const providerOptionDescriptors = useMemo(
     () =>
       resolveProviderOptionDescriptors({

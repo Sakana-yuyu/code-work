@@ -15,6 +15,8 @@ import {
 } from "./baseSchemas.ts";
 import { ProviderInstanceId, ProviderDriverKind } from "./providerInstance.ts";
 import { ProviderApprovalOption } from "./orchestration.ts";
+import { ServerProviderSlashCommand, ServerProviderModel } from "./server.ts";
+import { SelectProviderOptionDescriptor } from "./model.ts";
 
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
 const UnknownRecordSchema = Schema.Record(Schema.String, Schema.Unknown);
@@ -296,12 +298,20 @@ const ProviderRuntimeEventBase = Schema.Struct({
 export type ProviderRuntimeEventBase = typeof ProviderRuntimeEventBase.Type;
 
 const SessionStartedPayload = Schema.Struct({
+  configOptions: Schema.optional(Schema.Array(SelectProviderOptionDescriptor)),
+  mode: Schema.optional(Schema.NullOr(SelectProviderOptionDescriptor)),
+  models: Schema.optional(Schema.NullOr(Schema.Array(ServerProviderModel))),
+  slashCommands: Schema.optional(Schema.Array(ServerProviderSlashCommand)),
   message: Schema.optional(TrimmedNonEmptyStringSchema),
   resume: Schema.optional(Schema.Unknown),
 });
 export type SessionStartedPayload = typeof SessionStartedPayload.Type;
 
 const SessionConfiguredPayload = Schema.Struct({
+  configOptions: Schema.optional(Schema.Array(SelectProviderOptionDescriptor)),
+  mode: Schema.optional(Schema.NullOr(SelectProviderOptionDescriptor)),
+  models: Schema.optional(Schema.NullOr(Schema.Array(ServerProviderModel))),
+  slashCommands: Schema.optional(Schema.Array(ServerProviderSlashCommand)),
   config: UnknownRecordSchema,
 });
 export type SessionConfiguredPayload = typeof SessionConfiguredPayload.Type;

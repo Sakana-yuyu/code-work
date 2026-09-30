@@ -1,6 +1,7 @@
 import {
   EventId,
   ProviderDriverKind,
+  ProviderInstanceId,
   RuntimeTaskId,
   ThreadId,
   TurnId,
@@ -18,6 +19,42 @@ const base = {
 };
 
 describe("runtimeEventToActivities reasoning summaries", () => {
+  it("模型和命令在同一启动事件中投影为不同 ID，空目录和 null 原样保留", () => {
+    const activities = runtimeEventToActivities({
+      ...base,
+      eventId: EventId.make("start"),
+      type: "session.started",
+      providerInstanceId: ProviderInstanceId.make("acp-a"),
+      payload: { slashCommands: [], models: [] },
+    });
+    expect(activities.map((activity) => activity.id)).toEqual(["start", "start:models"]);
+    expect(activities[1]?.payload).toEqual({ providerInstanceId: "acp-a", models: [] });
+    expect(
+      runtimeEventToActivities({
+        ...base,
+        eventId: EventId.make("reset"),
+        type: "session.started",
+        payload: { models: null },
+      })[0]?.payload,
+    ).toEqual({ providerInstanceId: "codex", models: null });
+  });
+  it("会话启动命令快照按实例投影，空数组撤回而缺省保持旧协议兼容", () => {
+    const event = {
+      ...base,
+      type: "session.started",
+      eventId: EventId.make("commands-start"),
+      providerInstanceId: ProviderInstanceId.make("custom-acp"),
+      payload: { slashCommands: [] },
+    } as const;
+    expect(runtimeEventToActivities(event)).toMatchObject([
+      {
+        kind: "session.commands.updated",
+        turnId: null,
+        payload: { providerInstanceId: "custom-acp", commands: [] },
+      },
+    ]);
+    expect(runtimeEventToActivities({ ...event, payload: {} })).toEqual([]);
+  });
   it("persists provider reasoning summaries but ignores raw reasoning text", () => {
     const summary = runtimeEventToActivities({
       ...base,

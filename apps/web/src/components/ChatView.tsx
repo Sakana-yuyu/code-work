@@ -1,3 +1,4 @@
+import { applySessionModelCatalogs } from "@codework/client-runtime/providerModels";
 import {
   type ApprovalRequestId,
   type CanvasReference,
@@ -2435,7 +2436,14 @@ function ChatViewContent(props: ChatViewProps) {
     versionMismatchSelfUpdate,
     versionMismatchServerLabel,
   ]);
-  const providerStatuses = serverConfig?.providers ?? EMPTY_PROVIDERS;
+  const providerStatuses = useMemo(
+    () =>
+      applySessionModelCatalogs(
+        serverConfig?.providers ?? EMPTY_PROVIDERS,
+        activeThread?.activities ?? EMPTY_ACTIVITIES,
+      ),
+    [serverConfig?.providers, activeThread?.activities],
+  );
   const timelineProviders = useMemo(
     () =>
       new Map(

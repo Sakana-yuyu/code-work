@@ -233,6 +233,288 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
     }),
   );
 
+  for (const commandProtocol of ["标准"] as ReadonlyArray<string>) {
+    it.effect(`${commandProtocol} ACP 命令在握手期间发现，后续替换及撤回，并原样发送参数`, () =>
+      Effect.gen(function* () {
+        const adapter = yield* CursorAdapter;
+        const settings = yield* ServerSettingsService;
+        const threadId = ThreadId.make("acp-command-menu");
+        const tempDir = yield* Effect.promise(() =>
+          NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "acp-commands-")),
+        );
+        const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
+        const wrapperPath = yield* Effect.promise(() =>
+          makeMockAgentWrapper({
+            ...(commandProtocol === "Kiro"
+              ? { CODEWORK_ACP_EMIT_KIRO_COMMANDS: "1" }
+              : { CODEWORK_ACP_EMIT_COMMANDS: "1" }),
+            CODEWORK_ACP_REQUEST_LOG_PATH: requestLogPath,
+          }),
+        );
+        yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+        const startup = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "thread.started"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* adapter.startSession({
+          threadId,
+          provider: ProviderDriverKind.make("cursor"),
+          cwd: process.cwd(),
+          runtimeMode: "full-access",
+          modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+        });
+        const initial = Array.from(yield* Fiber.join(startup)).find(
+          (event) => event.type === "session.started",
+        );
+        assert.deepEqual(
+          initial?.payload.slashCommands,
+          commandProtocol === "Kiro"
+            ? [
+                { name: "agent", description: "选择代理", input: { hint: "swap <name>" } },
+                { name: "review", description: "审查变更" },
+              ]
+            : [{ name: "review", description: "审查变更", input: { hint: "文件路径" } }],
+        );
+        for (const [input, commands] of [
+          ["/review src/main.ts", [{ name: "inspect", description: "检查文件" }]],
+          ["/inspect src/main.ts", []],
+        ] as const) {
+          const completed = yield* adapter.streamEvents.pipe(
+            Stream.takeUntil((event) => event.type === "turn.completed"),
+            Stream.runCollect,
+            Effect.forkChild,
+          );
+          yield* adapter.sendTurn({ threadId, input });
+          const events = Array.from(yield* Fiber.join(completed));
+          const updates = events.filter((event) => event.type === "session.configured");
+          assert.equal(updates.length, 1);
+          assert.deepEqual(updates[0]?.payload.slashCommands, commands);
+          assert.deepEqual(
+            updates
+              .flatMap((event) => runtimeEventToActivities(event))
+              .map((activity) => activity.payload),
+            [{ providerInstanceId: "cursor", commands }],
+          );
+        }
+        const requests = yield* Effect.promise(() => readJsonLines(requestLogPath));
+        assert.deepEqual(
+          requests
+            .filter((entry) => entry.method === "session/prompt")
+            .map((entry) => (entry.params as Record<string, unknown>).prompt),
+          commandProtocol === "Kiro"
+            ? [[{ type: "text", text: "/review src/main.ts" }]]
+            : [
+                [{ type: "text", text: "/review src/main.ts" }],
+                [{ type: "text", text: "/inspect src/main.ts" }],
+              ],
+        );
+        if (commandProtocol === "Kiro") {
+          assert.deepEqual(
+            requests
+              .filter((entry) => entry.method === "_kiro.dev/commands/execute")
+              .map((entry) => entry.params),
+            [
+              {
+                sessionId: "mock-session-1",
+                command: { command: "inspect", args: { value: "src/main.ts" } },
+              },
+            ],
+          );
+        }
+        yield* adapter.stopSession(threadId);
+      }),
+    );
+  }
+
+  it.effect("ACP URI 模式在启动和下一回合优先于两态推断，坏值不提交 prompt", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("acp-uri-mode");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_URI_MODES: "1" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const uri = "https://agentclientprotocol.com/protocol/session-modes#review";
+      const selection = (value: string | boolean) => ({
+        instanceId: ProviderInstanceId.make("cursor"),
+        model: "default",
+        options: [{ id: "acpMode", value }],
+      });
+      const startup = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "thread.started"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: selection(uri),
+      });
+      const initial = Array.from(yield* Fiber.join(startup)).find(
+        (event) => event.type === "session.started",
+      );
+      assert.equal(initial?.payload.mode?.currentValue, uri);
+      const events = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.sendTurn({
+        threadId,
+        input: "模式验证",
+        interactionMode: "plan",
+        modelSelection: selection("ask"),
+      });
+      const activities = Array.from(yield* Fiber.join(events)).flatMap((event) =>
+        runtimeEventToActivities(event),
+      );
+      assert.deepInclude(
+        activities.findLast((activity) => activity.kind === "session.mode.updated")?.payload,
+        { providerInstanceId: "cursor", mode: { ...initial?.payload.mode, currentValue: "ask" } },
+      );
+      for (const value of [true, "removed"]) {
+        assert.equal(
+          (yield* adapter
+            .sendTurn({ threadId, input: "不能发送", modelSelection: selection(value) })
+            .pipe(Effect.result))._tag,
+          "Failure",
+        );
+      }
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("ACP 下一回合可选择通知新增的模型和模式", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("acp-dynamic-config");
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "acp-config-")),
+      );
+      const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({
+          CODEWORK_ACP_EMIT_CONFIG_UPDATES: "1",
+          CODEWORK_ACP_REQUEST_LOG_PATH: requestLogPath,
+        }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+      for (const model of ["default", "dynamic-next"]) {
+        const completed = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "turn.completed"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* adapter.sendTurn({
+          threadId,
+          input: "配置测试",
+          interactionMode: "default",
+          modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model },
+        });
+        const events = Array.from(yield* Fiber.join(completed));
+        assert.isFalse(events.some((event) => event.type === "runtime.error"));
+        const catalogs = events
+          .flatMap((event) => runtimeEventToActivities(event))
+          .filter((activity) => activity.kind === "session.models.updated");
+        assert.deepEqual(catalogs.at(-1)?.payload, {
+          providerInstanceId: "cursor",
+          models:
+            model === "default"
+              ? [
+                  {
+                    slug: "dynamic-default",
+                    name: "默认模型",
+                    isDefault: true,
+                    isCustom: false,
+                    capabilities: null,
+                  },
+                  {
+                    slug: "dynamic-next",
+                    name: "新增模型",
+                    isDefault: false,
+                    isCustom: false,
+                    capabilities: null,
+                  },
+                ]
+              : [],
+        });
+      }
+      const requests = yield* Effect.promise(() => readJsonLines(requestLogPath));
+      assert.isTrue(
+        requests.some(
+          (entry) =>
+            entry.method === "session/set_config_option" &&
+            (entry.params as Record<string, unknown>)?.configId === "engine" &&
+            (entry.params as Record<string, unknown>)?.value === "dynamic-next",
+        ),
+      );
+      assert.isTrue(
+        requests.some(
+          (entry) =>
+            entry.method === "session/set_config_option" &&
+            (entry.params as Record<string, unknown>)?.configId === "operation" &&
+            (entry.params as Record<string, unknown>)?.value === "code",
+        ),
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("握手前配置进入会话启动事件，命令快照同时保留", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("acp-startup-config");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_STARTUP_CONFIG: "missing" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const started = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "session.started"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "dynamic-default" },
+      });
+      const [event] = Array.from(yield* Fiber.join(started));
+      assert.isDefined(event);
+      const activities = runtimeEventToActivities(event!);
+      assert.deepEqual(
+        activities.map((activity) => activity.kind),
+        [
+          "session.config-options.updated",
+          "session.mode.updated",
+          "session.commands.updated",
+          "session.models.updated",
+        ],
+      );
+      assert.deepEqual(event?.payload.slashCommands, [{ name: "startup" }]);
+      assert.deepEqual(
+        event?.payload.models?.map((model) => model.slug),
+        ["dynamic-default", "dynamic-next"],
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("starts a session and maps mock ACP prompt flow to runtime events", () =>
     Effect.gen(function* () {
       const adapter = yield* CursorAdapter;
@@ -242,7 +524,8 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const wrapperPath = yield* Effect.promise(() => makeMockAgentWrapper());
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
 
-      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 9).pipe(
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -269,6 +552,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
 
       const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
       const types = runtimeEvents.map((e) => e.type);
+      assert.isBelow(types.indexOf("item.completed"), types.indexOf("turn.completed"));
 
       for (const t of [
         "session.started",

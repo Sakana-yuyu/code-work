@@ -7,6 +7,9 @@ import { ProviderDriverKind } from "./providerInstance.ts";
 export const ProviderOptionDescriptorType = Schema.Literals(["select", "boolean"]);
 export type ProviderOptionDescriptorType = typeof ProviderOptionDescriptorType.Type;
 
+export const ACP_MODE_OPTION_ID = "acpMode";
+export const ACP_CONFIG_OPTION_PREFIX = "acpConfig:";
+
 export const ProviderOptionChoice = Schema.Struct({
   id: TrimmedNonEmptyString,
   label: TrimmedNonEmptyString,

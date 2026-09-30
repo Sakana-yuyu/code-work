@@ -47,17 +47,29 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
-import { mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
+import {
+  applyAcpModeSelection,
+  applyAcpConfigSelections,
+  mapAcpToAdapterError,
+} from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import {
   makeAcpAssistantItemEvent,
   makeAcpContentDeltaEvent,
+  makeAcpCommandsUpdatedEvent,
+  makeAcpModelsUpdatedEvent,
+  makeAcpModesUpdatedEvent,
+  makeAcpConfigOptionsUpdatedEvent,
   makeAcpPlanUpdatedEvent,
   makeAcpRequestOpenedEvent,
   makeAcpRequestResolvedEvent,
   makeAcpToolCallEvent,
 } from "../acp/AcpCoreRuntimeEvents.ts";
-import { parsePermissionRequest } from "../acp/AcpRuntimeModel.ts";
+import {
+  parsePermissionRequest,
+  toAcpModeOption,
+  toAcpConfigOptions,
+} from "../acp/AcpRuntimeModel.ts";
 import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
 import {
   applyGrokAcpModelSelection,
@@ -1235,6 +1247,16 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             grokModelSelection,
             "reasoningEffort",
           );
+          yield* applyAcpModeSelection(acp, grokModelSelection?.options).pipe(
+            Effect.mapError((cause) =>
+              mapAcpToAdapterError(PROVIDER, input.threadId, "session/set_mode", cause),
+            ),
+          );
+          yield* applyAcpConfigSelections(acp, grokModelSelection?.options).pipe(
+            Effect.mapError((cause) =>
+              mapAcpToAdapterError(PROVIDER, input.threadId, "session/set_config_option", cause),
+            ),
+          );
           const boundModelId = yield* applyGrokAcpModelSelection({
             runtime: acp,
             currentModelId: currentStartModelId,
@@ -1308,7 +1330,55 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                   yield* logNative(ctx.threadId, "session/update", event.rawPayload);
                 }
 
-                if (event._tag === "ModeChanged") {
+                if (event._tag === "ModeChanged" || event._tag === "ModesUpdated") {
+                  yield* offerRuntimeEvent(
+                    makeAcpModesUpdatedEvent({
+                      stamp: yield* makeEventStamp(),
+                      provider: PROVIDER,
+                      threadId: ctx.threadId,
+                      mode:
+                        event._tag === "ModesUpdated"
+                          ? event.mode
+                          : toAcpModeOption(yield* acp.getModeState),
+                      rawPayload: event,
+                    }),
+                  );
+                  return;
+                }
+                if (event._tag === "ConfigOptionsUpdated") {
+                  yield* offerRuntimeEvent(
+                    makeAcpConfigOptionsUpdatedEvent({
+                      stamp: yield* makeEventStamp(),
+                      provider: PROVIDER,
+                      threadId: ctx.threadId,
+                      configOptions: event.configOptions,
+                      rawPayload: event.rawPayload,
+                    }),
+                  );
+                  return;
+                }
+                if (event._tag === "ModelsUpdated") {
+                  yield* offerRuntimeEvent(
+                    makeAcpModelsUpdatedEvent({
+                      stamp: yield* makeEventStamp(),
+                      provider: PROVIDER,
+                      threadId: ctx.threadId,
+                      models: event.models,
+                      rawPayload: event.rawPayload,
+                    }),
+                  );
+                  return;
+                }
+                if (event._tag === "CommandsUpdated") {
+                  yield* offerRuntimeEvent(
+                    makeAcpCommandsUpdatedEvent({
+                      stamp: yield* makeEventStamp(),
+                      provider: PROVIDER,
+                      threadId: ctx.threadId,
+                      commands: event.commands,
+                      rawPayload: event.rawPayload,
+                    }),
+                  );
                   return;
                 }
 
@@ -1439,7 +1509,13 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             ...(yield* makeEventStamp()),
             provider: PROVIDER,
             threadId: input.threadId,
-            payload: { resume: started.initializeResult },
+            payload: {
+              resume: started.initializeResult,
+              slashCommands: yield* acp.getAvailableCommands,
+              models: yield* acp.getAvailableModels,
+              mode: toAcpModeOption(yield* acp.getModeState),
+              configOptions: toAcpConfigOptions(yield* acp.getConfigOptions),
+            },
           });
           yield* offerRuntimeEvent({
             type: "session.state.changed",
@@ -1550,6 +1626,21 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 });
               }
 
+              yield* applyAcpModeSelection(ctx.acp, input.modelSelection?.options).pipe(
+                Effect.mapError((cause) =>
+                  mapAcpToAdapterError(PROVIDER, input.threadId, "session/set_mode", cause),
+                ),
+              );
+              yield* applyAcpConfigSelections(ctx.acp, input.modelSelection?.options).pipe(
+                Effect.mapError((cause) =>
+                  mapAcpToAdapterError(
+                    PROVIDER,
+                    input.threadId,
+                    "session/set_config_option",
+                    cause,
+                  ),
+                ),
+              );
               const currentModelId = yield* applyGrokAcpModelSelection({
                 runtime: ctx.acp,
                 currentModelId: ctx.currentModelId,

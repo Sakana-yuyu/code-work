@@ -10,6 +10,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -17,9 +18,10 @@ import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import * as EffectAcpClient from "effect-acp/client";
 import * as EffectAcpErrors from "effect-acp/errors";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import * as EffectAcpSchema from "effect-acp/schema";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
 import { resolveSpawnCommand } from "@codework/shared/shell";
+import { stableStringify } from "@codework/shared/relaySigning";
 
 import {
   collectSessionConfigOptionValues,
@@ -29,6 +31,9 @@ import {
   mergeToolCallState,
   toolCallProgressLength,
   parseSessionModeState,
+  toAcpModeOption,
+  toAcpConfigOptions,
+  parseSessionModels,
   parseSessionUpdateEvent,
   sessionUpdateIsReplay,
   waitForSessionLoadReplayIdle,
@@ -56,6 +61,7 @@ export interface AcpSessionEventStreamBarrier {
 export type AcpSessionRuntimeEvent = AcpParsedSessionEvent | AcpSessionEventStreamBarrier;
 
 const defaultSessionLoadTimeout = Duration.seconds(90);
+const decodeSetModeResponse = Schema.decodeUnknownEffect(EffectAcpSchema.SetSessionModeResponse);
 const defaultSessionLoadReplayIdleGap = Duration.seconds(2);
 
 export interface AcpSpawnInput {
@@ -193,8 +199,13 @@ export class AcpSessionRuntime extends Context.Service<
     readonly drainEvents: Effect.Effect<void>;
     /** Latest mode state observed from session setup and `session/update` notifications. */
     readonly getModeState: Effect.Effect<AcpSessionModeState | undefined>;
-    /** Latest configuration options observed from session setup and configuration writes. */
+    /** 会话建立、主动写入和配置通知共同维护的最新配置。 */
     readonly getConfigOptions: Effect.Effect<ReadonlyArray<EffectAcpSchema.SessionConfigOption>>;
+    /** 当前会话广告的命令；空列表表示未提供或已撤回。 */
+    readonly getAvailableCommands: Effect.Effect<
+      ReadonlyArray<import("@codework/contracts").ServerProviderSlashCommand>
+    >;
+    readonly getAvailableModels: Effect.Effect<ReturnType<typeof parseSessionModels>>;
     /**
      * Sends a prompt turn to the active session.
      * @see https://agentclientprotocol.com/protocol/schema#session/prompt
@@ -300,6 +311,71 @@ export const make = (
     );
     const assistantSegmentRef = yield* Ref.make<AcpAssistantSegmentState>({ nextSegmentIndex: 0 });
     const configOptionsRef = yield* Ref.make(sessionConfigOptionsFromSetup(undefined));
+    const modelsRef = yield* Ref.make<ReturnType<typeof parseSessionModels>>(null);
+    const commandsRef = yield* Ref.make<
+      ReadonlyArray<import("@codework/contracts").ServerProviderSlashCommand>
+    >([]);
+    const pendingMetadata = new Map<
+      string,
+      {
+        commands?: {
+          notification: EffectAcpSchema.SessionNotification;
+        };
+        configOptions?: ReadonlyArray<EffectAcpSchema.SessionConfigOption>;
+      }
+    >();
+    const updateConfigOptions = (response: {
+      readonly configOptions?: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null;
+    }) =>
+      Effect.gen(function* () {
+        const previous = yield* Ref.get(configOptionsRef);
+        const configOptions = sessionConfigOptionsFromSetup(response);
+        yield* Ref.set(configOptionsRef, configOptions);
+        const descriptors = toAcpConfigOptions(configOptions);
+        if (stableStringify(toAcpConfigOptions(previous)) !== stableStringify(descriptors)) {
+          yield* Queue.offer(eventQueue, {
+            _tag: "ConfigOptionsUpdated",
+            configOptions: descriptors,
+            rawPayload: response,
+          });
+        }
+        const previousModels = yield* Ref.get(modelsRef);
+        const models =
+          parseSessionModels({
+            configOptions: configOptions.length > 0 ? configOptions : null,
+          }) ?? (previous.some((option) => option.category === "model") ? [] : previousModels);
+        yield* Ref.set(modelsRef, models);
+        if (
+          models !== null &&
+          (previousModels === null ||
+            previousModels.length !== models.length ||
+            models.some((model, index) => {
+              const previousModel = previousModels[index];
+              return (
+                model.slug !== previousModel?.slug ||
+                model.name !== previousModel.name ||
+                model.isDefault !== previousModel.isDefault
+              );
+            }))
+        )
+          yield* Queue.offer(eventQueue, { _tag: "ModelsUpdated", models, rawPayload: response });
+        const modeState = parseSessionModeState(response);
+        // 完整快照移除模式时清理派生状态；未使用配置模式的旧协议仍保留 modes。
+        if (
+          modeState ||
+          previous.some((option) => option.category === "mode" && option.type === "select")
+        ) {
+          const previousMode = yield* Ref.get(modeStateRef);
+          yield* Ref.set(modeStateRef, modeState);
+          if (stableStringify(previousMode ?? null) !== stableStringify(modeState ?? null)) {
+            yield* Queue.offer(eventQueue, {
+              _tag: "ModesUpdated",
+              mode: toAcpModeOption(modeState),
+              rawPayload: response,
+            });
+          }
+        }
+      });
     const startStateRef = yield* Ref.make<AcpStartState>({ _tag: "NotStarted" });
     const promptSerializationSemaphore = yield* Semaphore.make(1);
     const activePromptFiberRef = yield* Ref.make<
@@ -395,10 +471,11 @@ export const make = (
 
     const acp = yield* Effect.service(EffectAcpClient.AcpClient).pipe(Effect.provide(acpContext));
 
-    yield* acp.handleSessionUpdate((notification) =>
+    const acceptSessionUpdate = (notification: EffectAcpSchema.SessionNotification) =>
       Effect.gen(function* () {
         const gate = yield* Ref.get(sessionLoadGateRef);
         if (Option.isSome(gate) && gate.value.active) {
+          if (notification.sessionId !== options.resumeSessionId) return;
           const lastActivityAtMillis = yield* Clock.currentTimeMillis;
           yield* Ref.set(
             sessionLoadGateRef,
@@ -407,19 +484,58 @@ export const make = (
               lastActivityAtMillis,
             }),
           );
-          return;
         }
         if (sessionUpdateIsReplay(notification)) {
           return;
         }
         const startState = yield* Ref.get(startStateRef);
+        if (startState._tag === "Starting") {
+          const pending = pendingMetadata.get(notification.sessionId);
+          if (notification.update.sessionUpdate === "available_commands_update") {
+            pendingMetadata.set(notification.sessionId, {
+              ...pending,
+              commands: { notification },
+            });
+          } else if (notification.update.sessionUpdate === "config_option_update") {
+            pendingMetadata.set(notification.sessionId, {
+              ...pending,
+              configOptions: notification.update.configOptions,
+            });
+          }
+          return;
+        }
         // One runtime projects one root ACP session. Child-session updates need
         // explicit lineage routing and must never be flattened into this stream.
         if (
+          (Option.isSome(gate) && gate.value.active) ||
           startState._tag !== "Started" ||
           notification.sessionId !== startState.result.sessionId
         ) {
           return;
+        }
+        if (notification.update.sessionUpdate === "config_option_update") {
+          yield* updateConfigOptions(notification.update);
+          return;
+        }
+        if (notification.update.sessionUpdate === "available_commands_update") {
+          for (const event of parseSessionUpdateEvent(notification).events) {
+            if (event._tag !== "CommandsUpdated") continue;
+            yield* Ref.set(commandsRef, event.commands);
+            yield* Queue.offer(eventQueue, event);
+          }
+          return;
+        }
+        if (notification.update.sessionUpdate === "current_mode_update") {
+          const currentValue = notification.update.currentModeId.trim();
+          if (currentValue) {
+            yield* Ref.update(configOptionsRef, (configOptions) =>
+              configOptions.map((option) =>
+                option.category === "mode" && option.type === "select"
+                  ? { ...option, currentValue }
+                  : option,
+              ),
+            );
+          }
         }
         yield* handleSessionUpdate({
           queue: eventQueue,
@@ -429,8 +545,8 @@ export const make = (
           assistantItemRuntimeId,
           params: notification,
         });
-      }),
-    );
+      });
+    yield* acp.handleSessionUpdate(acceptSessionUpdate);
     const initializeClientCapabilities = {
       fs: {
         readTextFile: false,
@@ -505,14 +621,6 @@ export const make = (
         });
       });
 
-    const updateConfigOptions = (
-      response:
-        | EffectAcpSchema.SetSessionConfigOptionResponse
-        | EffectAcpSchema.LoadSessionResponse
-        | EffectAcpSchema.NewSessionResponse
-        | EffectAcpSchema.ResumeSessionResponse,
-    ): Effect.Effect<void> => Ref.set(configOptionsRef, sessionConfigOptionsFromSetup(response));
-
     const updateCurrentModeId = (modeId: string): Effect.Effect<void> =>
       Ref.update(modeStateRef, (current) =>
         current ? { ...current, currentModeId: modeId } : current,
@@ -556,7 +664,46 @@ export const make = (
         ),
       );
 
+    const setSessionModel = (
+      modelId: string,
+      meta?: EffectAcpSchema.SetSessionModelRequest["_meta"],
+    ) =>
+      Effect.gen(function* () {
+        const started = yield* getStartedState;
+        const requestPayload = {
+          sessionId: started.sessionId,
+          modelId,
+          ...(meta !== undefined ? { _meta: meta } : {}),
+        } satisfies EffectAcpSchema.SetSessionModelRequest;
+        const response = yield* runLoggedRequest(
+          "session/set_model",
+          requestPayload,
+          acp.agent.setSessionModel(requestPayload),
+        );
+        const previous = yield* Ref.get(modelsRef);
+        if (previous && !previous.some((model) => model.slug === modelId && model.isDefault)) {
+          const models = previous.map((model) => ({ ...model, isDefault: model.slug === modelId }));
+          // 旧式接口可以接受目录外自定义模型；成功响应后保留请求 ID，不推测展示名或能力。
+          if (!models.some((model) => model.slug === modelId))
+            models.push({
+              slug: modelId,
+              name: modelId,
+              isDefault: true,
+              isCustom: true,
+              capabilities: null,
+            });
+          yield* Ref.set(modelsRef, models);
+          yield* Queue.offer(eventQueue, { _tag: "ModelsUpdated", models, rawPayload: response });
+        }
+        return response;
+      });
+
     const startOnce = Effect.gen(function* () {
+      pendingMetadata.clear();
+      yield* Ref.set(configOptionsRef, []);
+      yield* Ref.set(modelsRef, null);
+      yield* Ref.set(modeStateRef, undefined);
+      yield* Ref.set(commandsRef, []);
       const initializePayload = {
         protocolVersion: 1,
         clientCapabilities: initializeClientCapabilities,
@@ -674,8 +821,27 @@ export const make = (
         sessionSetupResult = created;
       }
 
+      // 响应携带明确快照时优先采用；未提供配置时保留握手期间的最后一次有效广告。
+      const initialMetadata = pendingMetadata.get(sessionId);
+      if (
+        sessionSetupResult.configOptions == null &&
+        initialMetadata?.configOptions !== undefined
+      ) {
+        sessionSetupResult = {
+          ...sessionSetupResult,
+          configOptions: initialMetadata.configOptions,
+        };
+      }
       yield* Ref.set(modeStateRef, parseSessionModeState(sessionSetupResult));
       yield* Ref.set(configOptionsRef, sessionConfigOptionsFromSetup(sessionSetupResult));
+      yield* Ref.set(modelsRef, parseSessionModels(sessionSetupResult));
+      const initialCommands = initialMetadata?.commands;
+      if (initialCommands) {
+        for (const event of parseSessionUpdateEvent(initialCommands.notification).events) {
+          if (event._tag === "CommandsUpdated") yield* Ref.set(commandsRef, event.commands);
+        }
+      }
+      pendingMetadata.clear();
 
       const nextState = {
         sessionId,
@@ -746,6 +912,8 @@ export const make = (
       }),
       getModeState: Ref.get(modeStateRef),
       getConfigOptions: Ref.get(configOptionsRef),
+      getAvailableCommands: Ref.get(commandsRef),
+      getAvailableModels: Ref.get(modelsRef),
       prompt: (payload) =>
         promptSerializationSemaphore.withPermit(
           Effect.gen(function* () {
@@ -802,38 +970,64 @@ export const make = (
         ),
       ),
       setMode: (modeId) =>
-        Ref.get(modeStateRef).pipe(
-          Effect.flatMap((modeState) => {
-            if (modeState?.currentModeId === modeId) {
-              return Effect.succeed({} satisfies EffectAcpSchema.SetSessionModeResponse);
-            }
-            return setConfigOption("mode", modeId).pipe(
-              Effect.tap(() => updateCurrentModeId(modeId)),
-              Effect.as({} satisfies EffectAcpSchema.SetSessionModeResponse),
+        Effect.gen(function* () {
+          const modeState = yield* Ref.get(modeStateRef);
+          if (!modeState?.availableModes.some((mode) => mode.id === modeId)) {
+            return yield* new EffectAcpErrors.AcpRequestError({
+              code: -32602,
+              errorMessage: "所选 ACP 模式已失效或未由当前会话提供，请重新选择。",
+            });
+          }
+          if (modeState.currentModeId === modeId) return {};
+          const configOptions = yield* Ref.get(configOptionsRef);
+          const modeConfig = configOptions.find(
+            (option) => option.category === "mode" && option.type === "select",
+          );
+          if (modeConfig) {
+            yield* setConfigOption(modeConfig.id, modeId);
+          } else {
+            const started = yield* getStartedState;
+            const payload = { sessionId: started.sessionId, modeId };
+            yield* runLoggedRequest(
+              "session/set_mode",
+              payload,
+              acp.raw.request("session/set_mode", payload).pipe(
+                Effect.flatMap((result) =>
+                  decodeSetModeResponse(result).pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new EffectAcpErrors.AcpTransportError({
+                          detail: "ACP 模式响应格式无效",
+                          cause,
+                        }),
+                    ),
+                  ),
+                ),
+              ),
             );
-          }),
-        ),
+            yield* updateCurrentModeId(modeId);
+            yield* Queue.offer(eventQueue, {
+              _tag: "ModesUpdated",
+              mode: toAcpModeOption(yield* Ref.get(modeStateRef)),
+              rawPayload: payload,
+            });
+          }
+          return {} satisfies EffectAcpSchema.SetSessionModeResponse;
+        }),
       setConfigOption,
       setModel: (model) =>
-        getStartedState.pipe(
-          Effect.flatMap((started) => setConfigOption(started.modelConfigId ?? "model", model)),
-          Effect.asVoid,
-        ),
-      setSessionModel: (modelId, meta) =>
-        getStartedState.pipe(
-          Effect.flatMap((started) => {
-            const requestPayload = {
-              sessionId: started.sessionId,
-              modelId,
-              ...(meta !== undefined ? { _meta: meta } : {}),
-            } satisfies EffectAcpSchema.SetSessionModelRequest;
-            return runLoggedRequest(
-              "session/set_model",
-              requestPayload,
-              acp.agent.setSessionModel(requestPayload),
-            );
-          }),
-        ),
+        Effect.gen(function* () {
+          const configOptions = yield* Ref.get(configOptionsRef);
+          const modelConfigId = extractModelConfigId({ configOptions });
+          const started = yield* getStartedState;
+          // 模型配置与旧式模型广告是两个接口，不能把成功保存任意配置当作模型切换。
+          if (!modelConfigId && started.sessionSetupResult.models != null) {
+            yield* setSessionModel(model);
+          } else {
+            yield* setConfigOption(modelConfigId ?? "model", model);
+          }
+        }),
+      setSessionModel,
       request: (method, payload) =>
         runLoggedRequest(method, payload, acp.raw.request(method, payload)),
       notify: acp.raw.notify,

@@ -63,6 +63,10 @@
       "types": "./src/platform/index.ts",
       "default": "./src/platform/index.ts"
     },
+    "./providerModels": {
+      "types": "./src/providerModels.ts",
+      "default": "./src/providerModels.ts"
+    },
     "./providerSkills": {
       "types": "./src/providerSkills.ts",
       "default": "./src/providerSkills.ts"

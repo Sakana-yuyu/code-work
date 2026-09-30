@@ -28,6 +28,7 @@ import {
   CursorSettings,
   ProviderDriverKind,
   type ServerProvider,
+  type ServerProviderModel,
 } from "@codework/contracts";
 
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
@@ -71,6 +72,16 @@ import {
 import { splitPifamilyLaunchArgs } from "../Layers/PiAdapter.ts";
 
 const DRIVER_KIND = ProviderDriverKind.make("acpAgent");
+// 这是“不覆盖 CLI 模型”的选择，不是上游广告的具体模型。
+const CLI_DEFAULT_MODELS: ReadonlyArray<ServerProviderModel> = [
+  {
+    slug: "default",
+    name: "CLI 默认模型",
+    isCustom: false,
+    isDefault: true,
+    capabilities: null,
+  },
+];
 const MAINTENANCE = makeStaticProviderMaintenanceResolver(
   makeManualOnlyProviderMaintenanceCapabilities({ provider: DRIVER_KIND, packageName: null }),
 );
@@ -245,9 +256,13 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
       // 探测：命令可执行且不抛 ENOENT 即视为 installed；模型目录来自 customModels。
       const checkProvider = Effect.gen(function* () {
         const checkedAt = DateTime.formatIso(yield* DateTime.now);
-        const models = providerModelsFromSettings([], effectiveConfig.customModels, {
-          optionDescriptors: [],
-        });
+        const models = providerModelsFromSettings(
+          CLI_DEFAULT_MODELS,
+          effectiveConfig.customModels,
+          {
+            optionDescriptors: [],
+          },
+        );
         const probe = yield* Effect.gen(function* () {
           const child = yield* spawner.spawn(
             ChildProcess.make(acpCommand, [...acpArgs, "--version"], {
@@ -315,9 +330,13 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
                   presentation: PRESENTATION,
                   enabled: effectiveConfig.enabled,
                   checkedAt,
-                  models: providerModelsFromSettings([], effectiveConfig.customModels, {
-                    optionDescriptors: [],
-                  }),
+                  models: providerModelsFromSettings(
+                    CLI_DEFAULT_MODELS,
+                    effectiveConfig.customModels,
+                    {
+                      optionDescriptors: [],
+                    },
+                  ),
                   probe: {
                     installed: commandParts.length > 0,
                     version: null,

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { ProviderInstanceId, type ServerConfig } from "@codework/contracts";
+import {
+  ProviderInstanceId,
+  EventId,
+  type ServerConfig,
+  type OrchestrationThreadActivity,
+} from "@codework/contracts";
 
 import {
   buildModelOptions,
@@ -11,6 +16,87 @@ import {
 } from "./modelOptions";
 
 describe("mobile model options", () => {
+  it("会话模式进入手机选项并保留 URI 默认值，撤回后清除历史选项", () => {
+    const uri = "https://agentclientprotocol.com/protocol/session-modes#review";
+    const config = {
+      providers: [
+        {
+          instanceId: "acpAgent",
+          driver: "acpAgent",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          models: [{ slug: "default", name: "默认", capabilities: null }],
+        },
+      ],
+    } as unknown as ServerConfig;
+    const selection = {
+      instanceId: ProviderInstanceId.make("acpAgent"),
+      model: "default",
+      options: [{ id: "acpMode", value: "removed" }],
+    };
+    const mode = {
+      id: "acpMode",
+      label: "Agent 模式",
+      type: "select",
+      currentValue: uri,
+      options: [{ id: uri, label: "审查" }],
+    };
+    const activity: OrchestrationThreadActivity = {
+      id: EventId.make("mode"),
+      kind: "session.mode.updated",
+      tone: "info",
+      summary: "模式",
+      createdAt: "2026-09-30T00:00:00.000Z",
+      turnId: null,
+      payload: { providerInstanceId: "acpAgent", mode },
+    };
+    const [option] = buildModelOptions(config, selection, [activity]);
+    expect(option?.capabilities?.optionDescriptors).toEqual([mode]);
+    expect(option?.selection.options).toEqual([{ id: "acpMode", value: uri }]);
+    const [withdrawn] = buildModelOptions(config, selection, [
+      activity,
+      { ...activity, payload: { providerInstanceId: "acpAgent", mode: null } },
+    ]);
+    expect(withdrawn?.capabilities?.optionDescriptors).toEqual([]);
+    expect(withdrawn?.selection.options).toBeUndefined();
+  });
+  it("线程模型通知替换菜单，撤回后不补回历史选择，重连 null 恢复全局目录", () => {
+    const config = {
+      providers: [
+        {
+          instanceId: "acpAgent",
+          driver: "acpAgent",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          models: [{ slug: "old", name: "旧模型", capabilities: null }],
+        },
+      ],
+    } as unknown as ServerConfig;
+    const selection = { instanceId: ProviderInstanceId.make("acpAgent"), model: "old" };
+    const activity = (models: unknown): OrchestrationThreadActivity => ({
+      id: EventId.make("models"),
+      kind: "session.models.updated",
+      tone: "info",
+      summary: "模型",
+      createdAt: "2026-09-30T00:00:00.000Z",
+      turnId: null,
+      payload: { providerInstanceId: "acpAgent", models },
+    });
+    const history = [
+      activity([{ slug: "new", name: "新模型", isCustom: false, capabilities: null }]),
+    ];
+    expect(
+      buildModelOptions(config, selection, history).map((model) => model.selection.model),
+    ).toEqual(["new"]);
+    expect(buildModelOptions(config, selection, [...history, activity([])])).toEqual([]);
+    expect(
+      buildModelOptions(config, selection, [...history, activity(null)]).map(
+        (model) => model.selection.model,
+      ),
+    ).toEqual(["old"]);
+  });
   it("共享 BYOK 渠道不把历史原生模型补回列表或默认选择", () => {
     const config = {
       providers: [

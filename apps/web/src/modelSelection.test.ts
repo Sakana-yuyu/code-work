@@ -1,8 +1,14 @@
-import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@codework/contracts";
+import {
+  EventId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProvider,
+} from "@codework/contracts";
 import { DEFAULT_UNIFIED_SETTINGS, type UnifiedSettings } from "@codework/contracts/settings";
 import { describe, expect, it } from "vite-plus/test";
 import { createModelSelection } from "@codework/shared/model";
 import { deriveProviderInstanceEntries } from "./providerInstances";
+import { applySessionModelCatalogs } from "@codework/client-runtime/providerModels";
 import {
   getAppModelOptionsForInstance,
   resolveAppModelSelectionForInstance,
@@ -58,6 +64,62 @@ function settingsWithProviderInstances(): UnifiedSettings {
 }
 
 describe("instance-scoped model selection", () => {
+  it("会话模型进入实例菜单且空快照撤回广告，保留显式自定义模型", () => {
+    const initial = provider({ instanceId: "claude_openrouter", models: ["old"] });
+    const settings = settingsWithProviderInstances();
+    const options = (models: unknown) => {
+      const [entry] = deriveProviderInstanceEntries(
+        applySessionModelCatalogs(
+          [initial],
+          [
+            {
+              id: EventId.make("models"),
+              kind: "session.models.updated",
+              tone: "info",
+              summary: "模型",
+              createdAt: "2026-09-30T00:00:00.000Z",
+              turnId: null,
+              payload: { providerInstanceId: initial.instanceId, models },
+            },
+          ],
+        ),
+      );
+      return getAppModelOptionsForInstance(settings, entry!).map((model) => model.slug);
+    };
+    expect(options([{ slug: "new", name: "新模型", isCustom: false, capabilities: null }])).toEqual(
+      ["new", "openai/gpt-5.5"],
+    );
+    expect(options([])).toEqual(["openai/gpt-5.5"]);
+    expect(options(null)).toEqual(["old", "openai/gpt-5.5"]);
+  });
+  it("模型选择校验与菜单共用会话快照，不把新增模型归一化回静态默认值", () => {
+    const initial = provider({ instanceId: "codex", models: ["old"] });
+    const providers = applySessionModelCatalogs(
+      [initial],
+      [
+        {
+          id: EventId.make("models"),
+          kind: "session.models.updated",
+          tone: "info",
+          summary: "模型",
+          createdAt: "2026-09-30T00:00:00.000Z",
+          turnId: null,
+          payload: {
+            providerInstanceId: initial.instanceId,
+            models: [{ slug: "new", name: "新模型", isCustom: false, capabilities: null }],
+          },
+        },
+      ],
+    );
+    expect(
+      resolveAppModelSelectionForInstance(
+        initial.instanceId,
+        DEFAULT_UNIFIED_SETTINGS,
+        providers,
+        "new",
+      ),
+    ).toBe("new");
+  });
   it("共享 BYOK 渠道不追加原生自定义模型，关闭路由后恢复", () => {
     const instanceId = ProviderInstanceId.make("codex");
     const entry = deriveProviderInstanceEntries([

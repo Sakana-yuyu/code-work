@@ -827,6 +827,79 @@ export function runtimeEventToActivities(
         },
       ];
     }
+    case "session.started":
+    case "session.configured": {
+      return [
+        ...(event.payload.configOptions === undefined
+          ? []
+          : [
+              {
+                id: EventId.make(`${event.eventId}:config-options`),
+                createdAt: event.createdAt,
+                tone: "info" as const,
+                kind: "session.config-options.updated",
+                summary: "会话角色与权限已更新",
+                payload: {
+                  providerInstanceId: event.providerInstanceId ?? event.provider,
+                  configOptions: event.payload.configOptions,
+                },
+                turnId: null,
+                ...maybeSequence,
+              },
+            ]),
+        ...(event.payload.mode === undefined
+          ? []
+          : [
+              {
+                id: EventId.make(`${event.eventId}:mode`),
+                createdAt: event.createdAt,
+                tone: "info" as const,
+                kind: "session.mode.updated",
+                summary: "会话模式已更新",
+                payload: {
+                  providerInstanceId: event.providerInstanceId ?? event.provider,
+                  mode: event.payload.mode,
+                },
+                turnId: null,
+                ...maybeSequence,
+              },
+            ]),
+        ...(event.payload.slashCommands === undefined
+          ? []
+          : [
+              {
+                id: event.eventId,
+                createdAt: event.createdAt,
+                tone: "info" as const,
+                kind: "session.commands.updated",
+                summary: "会话命令已更新",
+                payload: {
+                  providerInstanceId: event.providerInstanceId ?? event.provider,
+                  commands: event.payload.slashCommands,
+                },
+                turnId: null,
+                ...maybeSequence,
+              },
+            ]),
+        ...(event.payload.models === undefined
+          ? []
+          : [
+              {
+                id: EventId.make(`${event.eventId}:models`),
+                createdAt: event.createdAt,
+                tone: "info" as const,
+                kind: "session.models.updated",
+                summary: "会话模型已更新",
+                payload: {
+                  providerInstanceId: event.providerInstanceId ?? event.provider,
+                  models: event.payload.models,
+                },
+                turnId: null,
+                ...maybeSequence,
+              },
+            ]),
+      ];
+    }
 
     case "thread.token-usage.updated": {
       const payload = buildContextWindowActivityPayload(event);

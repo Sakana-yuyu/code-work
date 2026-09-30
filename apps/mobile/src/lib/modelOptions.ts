@@ -1,8 +1,10 @@
 import type {
   ModelCapabilities,
   ModelSelection,
+  OrchestrationThreadActivity,
   ServerConfig as CodeworkServerConfig,
 } from "@codework/contracts";
+import { applySessionModelCatalogs } from "@codework/client-runtime/providerModels";
 import {
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionDescriptors,
@@ -134,10 +136,22 @@ export function resolveDefaultableModelSelection(
 export function buildModelOptions(
   config: CodeworkServerConfig | null | undefined,
   fallbackModelSelection: ModelSelection | null,
+  activities: ReadonlyArray<OrchestrationThreadActivity> = [],
 ): ReadonlyArray<ModelOption> {
   const options = new Map<string, ModelOption>();
+  const providers = applySessionModelCatalogs(config?.providers ?? [], activities);
+  const selectedProvider = providers.find(
+    (provider) => provider.instanceId === fallbackModelSelection?.instanceId,
+  );
+  const originalProvider = config?.providers.find(
+    (provider) => provider.instanceId === fallbackModelSelection?.instanceId,
+  );
+  const selectionRemoved =
+    selectedProvider !== originalProvider &&
+    selectedProvider !== undefined &&
+    !selectedProvider.models.some((model) => model.slug === fallbackModelSelection?.model);
 
-  for (const provider of config?.providers ?? []) {
+  for (const provider of providers) {
     if (!provider.enabled || !provider.installed || provider.auth.status === "unauthenticated") {
       continue;
     }
@@ -166,7 +180,11 @@ export function buildModelOptions(
     }
   }
 
-  if (fallbackModelSelection && resolveSelectableModelSelection(config, fallbackModelSelection)) {
+  if (
+    !selectionRemoved &&
+    fallbackModelSelection &&
+    resolveSelectableModelSelection(config, fallbackModelSelection)
+  ) {
     const key = `${fallbackModelSelection.instanceId}:${fallbackModelSelection.model}`;
     const existing = options.get(key);
     if (existing) {

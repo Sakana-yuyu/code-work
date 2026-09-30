@@ -1,4 +1,10 @@
-import { ProviderDriverKind, RuntimeRequestId, TurnId } from "@codework/contracts";
+import {
+  EventId,
+  ProviderDriverKind,
+  RuntimeRequestId,
+  ThreadId,
+  TurnId,
+} from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { projectActivityPayload } from "../../orchestration/ActivityPayloadProjection.ts";
 import { parseSessionUpdateEvent } from "./AcpRuntimeModel.ts";
@@ -6,6 +12,10 @@ import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRun
 
 import {
   makeAcpAssistantItemEvent,
+  makeAcpCommandsUpdatedEvent,
+  makeAcpConfigOptionsUpdatedEvent,
+  makeAcpModelsUpdatedEvent,
+  makeAcpModesUpdatedEvent,
   makeAcpContentDeltaEvent,
   makeAcpPlanUpdatedEvent,
   makeAcpRequestOpenedEvent,
@@ -14,6 +24,42 @@ import {
 } from "./AcpCoreRuntimeEvents.ts";
 
 describe("AcpCoreRuntimeEvents", () => {
+  it("动态元数据统一进入会话活动，保留原始选择和撤回值", () => {
+    const base = {
+      stamp: { eventId: EventId.make("metadata"), createdAt: "2026-09-30T00:00:00.000Z" },
+      provider: ProviderDriverKind.make("acpAgent"),
+      threadId: ThreadId.make("thread-1"),
+      rawPayload: { sessionId: "root" },
+    };
+    const mode = {
+      id: "acpMode",
+      label: "Agent 模式",
+      type: "select" as const,
+      currentValue: "https://example.com/modes#review",
+      options: [{ id: "https://example.com/modes#review", label: "审查" }],
+    };
+    const events = [
+      makeAcpCommandsUpdatedEvent({ ...base, commands: [] }),
+      makeAcpModelsUpdatedEvent({ ...base, models: [] }),
+      makeAcpModesUpdatedEvent({ ...base, mode }),
+      makeAcpConfigOptionsUpdatedEvent({ ...base, configOptions: [] }),
+      makeAcpModesUpdatedEvent({ ...base, mode: null }),
+    ];
+    expect(events.every((event) => event.type === "session.configured")).toBe(true);
+    expect(events.flatMap((event) => runtimeEventToActivities(event))).toMatchObject([
+      {
+        kind: "session.commands.updated",
+        payload: { providerInstanceId: "acpAgent", commands: [] },
+      },
+      { kind: "session.models.updated", payload: { providerInstanceId: "acpAgent", models: [] } },
+      { kind: "session.mode.updated", payload: { providerInstanceId: "acpAgent", mode } },
+      {
+        kind: "session.config-options.updated",
+        payload: { providerInstanceId: "acpAgent", configOptions: [] },
+      },
+      { kind: "session.mode.updated", payload: { providerInstanceId: "acpAgent", mode: null } },
+    ]);
+  });
   it.each(["content", "mcp", "batch"] as const)(
     "%s 长输出的末尾通过终态和公开历史投影，截断标记计入上限",
     (shape) => {

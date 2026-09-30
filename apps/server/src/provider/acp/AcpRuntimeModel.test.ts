@@ -8,6 +8,8 @@ import {
   mergeToolCallState,
   parsePermissionRequest,
   parseSessionModeState,
+  parseSessionModels,
+  toAcpConfigOptions,
   parseSessionUpdateEvent,
   sessionUpdateIsReplay,
   syntheticLoadSessionResponseFromInitialize,
@@ -140,6 +142,30 @@ describe("AcpRuntimeModel", () => {
       }
     }
   });
+  it("Cline 的 provider 和 model 同属模型类别时只选择实际模型配置", () => {
+    const configOptions: EffectAcpSchema.SessionConfigOption[] = [
+      {
+        id: "provider",
+        name: "Provider",
+        type: "select",
+        category: "model",
+        currentValue: "cline",
+        options: [{ value: "cline", name: "Cline" }],
+      },
+      {
+        id: "model",
+        name: "Model",
+        type: "select",
+        category: "model",
+        currentValue: "m1",
+        options: [{ value: "m1", name: "模型一" }],
+      },
+    ];
+    expect(extractModelConfigId({ sessionId: "s", configOptions })).toBe("model");
+    expect(parseSessionModels({ configOptions })?.map((model) => model.slug)).toEqual(["m1"]);
+    configOptions[1] = { ...configOptions[1]!, type: "select", currentValue: "", options: [] };
+    expect(parseSessionModels({ configOptions })).toEqual([]);
+  });
   it("Qwen 内容终态缺省标题时保留初始工具名称", () => {
     const previous: AcpToolCallState = {
       toolCallId: "qwen-read",
@@ -165,6 +191,107 @@ describe("AcpRuntimeModel", () => {
     });
   });
 
+  it("角色配置编码保留空值、空格和分组，不把权限配置误报为模型撤回", () => {
+    const configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> = [
+      {
+        id: "agent",
+        name: "Agent",
+        category: "_agent",
+        type: "select",
+        currentValue: "",
+        options: [
+          {
+            group: "local",
+            name: "本地角色",
+            options: [
+              { value: "", name: "Copilot" },
+              { value: " review/% ", name: "审查" },
+            ],
+          },
+        ],
+      },
+    ];
+    expect(toAcpConfigOptions(configOptions)).toEqual([
+      {
+        id: "acpConfig:agent",
+        label: "Agent",
+        type: "select",
+        currentValue: "value:",
+        options: [
+          { id: "value:", label: "Copilot" },
+          { id: "value:%20review%2F%25%20", label: "审查" },
+        ],
+      },
+    ]);
+    expect(parseSessionModels({ configOptions })).toBeNull();
+    expect(toAcpConfigOptions([])).toEqual([]);
+  });
+  it("模型目录优先使用分组配置，空快照撤回且未广告保持 null", () => {
+    expect(parseSessionModels({})).toBeNull();
+    expect(parseSessionModels({ configOptions: [] })).toEqual([]);
+    expect(
+      parseSessionModels({
+        models: {
+          currentModelId: "legacy",
+          availableModels: [{ modelId: "legacy", name: "旧模型" }],
+        },
+      }),
+    ).toEqual([
+      { slug: "legacy", name: "旧模型", isDefault: true, isCustom: false, capabilities: null },
+    ]);
+    expect(
+      parseSessionModels({
+        configOptions: [
+          {
+            id: "engine",
+            name: "模型",
+            category: "model",
+            type: "select",
+            currentValue: "new",
+            options: [
+              {
+                group: "g",
+                name: "分组",
+                options: [
+                  { value: "new", name: "新模型" },
+                  { value: "new", name: "重复" },
+                  { value: " ", name: "无效" },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([
+      { slug: "new", name: "新模型", isDefault: true, isCustom: false, capabilities: null },
+    ]);
+  });
+  it("命令通知保留参数提示、规范名称、去重，并支持空列表撤回", () => {
+    const result = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "available_commands_update",
+        availableCommands: [
+          { name: " /review ", description: " 审查 ", input: { hint: " 路径 " } },
+          { name: "review", description: "重复" },
+          { name: "bad command", description: "无效" },
+        ],
+      },
+    });
+    expect(result.events).toMatchObject([
+      {
+        _tag: "CommandsUpdated",
+        commands: [{ name: "review", description: "审查", input: { hint: "路径" } }],
+      },
+    ]);
+    expect(
+      parseSessionUpdateEvent({
+        sessionId: "s",
+        update: { sessionUpdate: "available_commands_update", availableCommands: [] },
+      }).events,
+    ).toMatchObject([{ commands: [] }]);
+  });
+
   it("parses session mode state from typed ACP session setup responses", () => {
     const modeState = parseSessionModeState({
       sessionId: "session-1",
@@ -185,6 +312,38 @@ describe("AcpRuntimeModel", () => {
         { id: "code", name: "Code" },
       ],
     });
+  });
+
+  it("优先使用配置中的分组模式并过滤空值，兼容旧 modes", () => {
+    const modes = { currentModeId: "legacy", availableModes: [{ id: "legacy", name: "旧模式" }] };
+    expect(
+      parseSessionModeState({
+        modes,
+        configOptions: [
+          {
+            id: "operation",
+            name: "模式",
+            category: "mode",
+            type: "select",
+            currentValue: " plan ",
+            options: [
+              {
+                group: "main",
+                name: "主要",
+                options: [
+                  { value: "plan", name: "计划", description: "先规划" },
+                  { value: "", name: "空值" },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toEqual({
+      currentModeId: "plan",
+      availableModes: [{ id: "plan", name: "计划", description: "先规划" }],
+    });
+    expect(parseSessionModeState({ modes, configOptions: [] })).toEqual(modes);
   });
 
   it("extracts the model config id from typed ACP config options", () => {
