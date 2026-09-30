@@ -1072,6 +1072,59 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   );
 });
 
+function MessageAttachmentImages({
+  images,
+}: {
+  images: NonNullable<TimelineMessage["attachments"]>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const [failedUrls, setFailedUrls] = useState<Record<string, string>>({});
+  const imageAttachments = images.filter((attachment) => attachment.type === "image");
+  if (imageAttachments.length === 0) return null;
+  return (
+    <div className="mb-2 flex max-w-[420px] flex-col gap-2">
+      {imageAttachments.length > 0 ? (
+        <div className="grid grid-cols-2 gap-2">
+          {imageAttachments.map((image) => (
+            <div
+              key={image.id}
+              className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+            >
+              {image.previewUrl && failedUrls[image.id] !== image.previewUrl ? (
+                <button
+                  type="button"
+                  className="h-full w-full cursor-zoom-in"
+                  aria-label={t("preview", { name: image.name })}
+                  onClick={() => {
+                    const preview = buildExpandedImagePreview(imageAttachments, image.id);
+                    if (!preview) return;
+                    ctx.onImageExpand(preview);
+                  }}
+                >
+                  <img
+                    src={image.previewUrl}
+                    alt={image.name}
+                    onError={() =>
+                      setFailedUrls((current) => ({ ...current, [image.id]: image.previewUrl! }))
+                    }
+                    className="block h-auto max-h-[220px] w-full object-cover"
+                  />
+                </button>
+              ) : (
+                <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-[11px]">
+                  {image.previewUrl && failedUrls[image.id] === image.previewUrl
+                    ? t("imageUnavailable", { alt: image.name })
+                    : image.name}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const activity = use(TimelineRowActivityCtx);
@@ -1102,39 +1155,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
   const messageContent = (
     <>
-      {regularImages.length > 0 && (
-        <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-          {regularImages.map((image: NonNullable<TimelineMessage["attachments"]>[number]) => (
-            <div
-              key={image.id}
-              className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-            >
-              {image.previewUrl ? (
-                <button
-                  type="button"
-                  className="h-full w-full cursor-zoom-in"
-                  aria-label={t("preview", { name: image.name })}
-                  onClick={() => {
-                    const preview = buildExpandedImagePreview(regularImages, image.id);
-                    if (!preview) return;
-                    ctx.onImageExpand(preview);
-                  }}
-                >
-                  <img
-                    src={image.previewUrl}
-                    alt={image.name}
-                    className="block h-auto max-h-[220px] w-full object-cover"
-                  />
-                </button>
-              ) : (
-                <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-[11px]">
-                  {image.name}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      <MessageAttachmentImages images={regularImages} />
       {previewAnnotations.map((annotation, index) => (
         <UserMessagePreviewAnnotationCard
           key={annotation.id}
@@ -1445,7 +1466,9 @@ function ActivityFoldTimelineRow({
 
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
-  const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+  const images = row.message.attachments ?? [];
+  const messageText =
+    row.message.text || (row.message.streaming || images.length > 0 ? "" : "(empty response)");
   const providerInstanceId = row.message.providerInstanceId;
   const provider = providerInstanceId ? ctx.providers.get(providerInstanceId) : undefined;
   const providerName = providerInstanceId ? (provider?.displayName ?? providerInstanceId) : null;
@@ -1475,6 +1498,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           lineBreaks={shouldPreserveAssistantLineBreaks(messageText)}
           skills={ctx.skills}
         />
+        <MessageAttachmentImages images={images} />
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
           routeThreadKey={ctx.routeThreadKey}

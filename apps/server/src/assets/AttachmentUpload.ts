@@ -140,7 +140,7 @@ export type StoreAttachmentUploadResult =
   | { readonly ok: false; readonly status: number; readonly detail: string };
 
 export const storeAttachmentUpload = Effect.fn("AttachmentUpload.store")(function* (
-  claims: AttachmentUploadClaims,
+  claims: Pick<AttachmentUploadClaims, "attachmentId" | "name" | "mimeType" | "sizeBytes">,
   bytes: Uint8Array,
 ) {
   if (bytes.byteLength !== claims.sizeBytes) {

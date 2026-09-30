@@ -62,6 +62,8 @@ import {
 import { CompositionAgentDriverRegistryService } from "../../composition/CompositionAgentDriverRegistry.ts";
 import { compositionProviderAgentId } from "../../composition/CompositionProviderAgentDriverRegistry.ts";
 
+import { storeProviderImageAttachment } from "../../assets/ProviderImageAttachment.ts";
+
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const providerTaskKey = (threadId: ThreadId, taskId: string) => `${threadId}:${taskId}`;
 
@@ -2489,7 +2491,12 @@ const make = Effect.gen(function* () {
       const proposedPlanDelta =
         event.type === "turn.proposed.delta" ? event.payload.delta : undefined;
 
-      if (assistantDelta && assistantDelta.length > 0) {
+      const assistantImage =
+        event.type === "content.delta" && event.payload.streamKind === "assistant_text"
+          ? event.payload.image
+          : undefined;
+
+      if ((assistantDelta && assistantDelta.length > 0) || assistantImage) {
         const turnId = toTurnId(event.turnId);
         const assistantMessageId = yield* getOrCreateAssistantMessageId({
           threadId: thread.id,
@@ -2504,8 +2511,45 @@ const make = Effect.gen(function* () {
           serverSettingsService.getSettings,
           (settings) => (settings.enableLegacyTokenStreaming ? "streaming" : "buffered"),
         );
-        if (assistantDeliveryMode === "buffered") {
-          const spillChunk = yield* appendBufferedAssistantText(assistantMessageId, assistantDelta);
+        const mediaEventKey = `${event.providerInstanceId ?? event.provider}:${event.turnId ?? ""}:${event.eventId}`;
+        const mediaResult = assistantImage
+          ? yield* storeProviderImageAttachment(thread.id, mediaEventKey, assistantImage)
+          : undefined;
+        if (mediaResult) {
+          const mediaKind = "image";
+          if (mediaResult.attachment) {
+            yield* orchestrationEngine.dispatch({
+              type: "thread.message.assistant.delta",
+              commandId: yield* providerCommandId(event, `assistant-${mediaKind}`),
+              threadId: thread.id,
+              messageId: assistantMessageId,
+              delta: assistantDelta ?? "",
+              attachments: [mediaResult.attachment],
+              ...(turnId ? { turnId } : {}),
+              createdAt: now,
+            });
+          } else {
+            yield* orchestrationEngine.dispatch({
+              type: "thread.activity.append",
+              commandId: yield* providerCommandId(event, `assistant-${mediaKind}-error`),
+              threadId: thread.id,
+              activity: {
+                id: EventId.make(`${event.eventId}:${mediaKind}-error`),
+                kind: "provider.image.failed",
+                tone: "error",
+                summary: mediaResult.error,
+                payload: { message: mediaResult.error },
+                turnId: turnId ?? null,
+                createdAt: now,
+              },
+              createdAt: now,
+            });
+          }
+        } else if (assistantDeliveryMode === "buffered") {
+          const spillChunk = yield* appendBufferedAssistantText(
+            assistantMessageId,
+            assistantDelta ?? "",
+          );
           if (spillChunk.length > 0) {
             yield* orchestrationEngine.dispatch({
               type: "thread.message.assistant.delta",
@@ -2523,7 +2567,7 @@ const make = Effect.gen(function* () {
             commandId: yield* providerCommandId(event, "assistant-delta"),
             threadId: thread.id,
             messageId: assistantMessageId,
-            delta: assistantDelta,
+            delta: assistantDelta ?? "",
             ...(turnId ? { turnId } : {}),
             createdAt: now,
           });

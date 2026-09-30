@@ -836,6 +836,37 @@ const program = Effect.gen(function* () {
         return { stopReason: "end_turn" };
       }
 
+      if (process.env.CODEWORK_ACP_EMIT_IMAGES === "1") {
+        const image = {
+          type: "image",
+          mimeType: "image/png",
+          data: "iVBORw0KGgoAAAANSUhEUgAAAHgAAABICAIAAACyfKYoAAAAnElEQVR4nO3QMQ0AIAwAsAlBAidyEIKsSZgsTlSQPU2qoDF2tZh5WtxcLUK0aNGiRYsWLVq0aNGiRYsWLVq0aNGiRYsWLVq0aNGiRYsWLVq0aNGiRYsWLVq0aNGiRYsWLVq0aNGiRYsWLVq0aNGiRYsWLVq0aNGiRYsWLVq0aNGiRYsWLVq0aNGiRYsWLVq0aNGiRYsWLVq0aNG/PK9glOBKTMjXAAAAAElFTkSuQmCC",
+        } as const;
+        for (const notification of [
+          { sessionId: "mock-child-session-1" },
+          { sessionId: requestedSessionId, _meta: { isReplay: true } },
+        ])
+          yield* agent.client.sessionUpdate({
+            ...notification,
+            update: { sessionUpdate: "agent_message_chunk", content: image },
+          });
+        for (const content of [
+          { type: "text", text: "图片前文" },
+          image,
+          { type: "image", mimeType: "image/png", data: "invalid" },
+          { type: "text", text: "图片后文" },
+          ...(process.env.CODEWORK_ACP_IMAGE_DECODE_ERROR === "1"
+            ? [{ type: "image" as const, mimeType: "image/png", data: "iVBORw0KGgo=" }]
+            : []),
+          image,
+        ] as const)
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: { sessionUpdate: "agent_message_chunk", content },
+          });
+        return { stopReason: "end_turn" };
+      }
+
       if (emitResources) {
         for (const notification of [
           { sessionId: "mock-child-session-1" },

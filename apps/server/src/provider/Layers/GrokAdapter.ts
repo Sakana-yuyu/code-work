@@ -447,7 +447,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
     ) {
       if (
         ctx.livenessTurnId !== turnId ||
-        (event._tag === "ContentDelta" && event.text.length === 0)
+        (event._tag === "ContentDelta" && event.text.length === 0 && !event.image)
       ) {
         return;
       }
@@ -1500,6 +1500,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                         ...(event.itemId ? { itemId: event.itemId } : {}),
                         streamKind: event.streamKind,
                         text: event.text,
+                        ...(event.image ? { image: event.image } : {}),
                         rawPayload: event.rawPayload,
                       }),
                     );

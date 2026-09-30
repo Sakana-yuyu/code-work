@@ -296,7 +296,21 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     Effect.succeed(event).pipe(
       Effect.tap((canonicalEvent) =>
         canonicalEventLogger
-          ? canonicalEventLogger.write(canonicalEvent, canonicalEvent.threadId)
+          ? canonicalEventLogger.write(
+              canonicalEvent.type === "content.delta" && canonicalEvent.payload.image
+                ? {
+                    ...canonicalEvent,
+                    payload: {
+                      ...canonicalEvent.payload,
+                      image: {
+                        mimeType: canonicalEvent.payload.image.mimeType,
+                        data: "[省略图片正文]",
+                      },
+                    },
+                  }
+                : canonicalEvent,
+              canonicalEvent.threadId,
+            )
           : Effect.void,
       ),
       Effect.flatMap((canonicalEvent) => PubSub.publish(runtimeEventPubSub, canonicalEvent)),

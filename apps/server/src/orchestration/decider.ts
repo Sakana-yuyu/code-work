@@ -1349,6 +1349,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             ? { providerInstanceId: thread.session.providerInstanceId }
             : {}),
           text: command.delta,
+          ...(command.attachments !== undefined ? { attachments: command.attachments } : {}),
           turnId: command.turnId ?? null,
           streaming: true,
           createdAt: command.createdAt,

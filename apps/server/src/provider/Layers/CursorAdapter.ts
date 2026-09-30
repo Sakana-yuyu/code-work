@@ -1583,6 +1583,7 @@ export function makeCursorAdapter(
                         ...(event.itemId ? { itemId: event.itemId } : {}),
                         streamKind: event.streamKind,
                         text: event.text,
+                        ...(event.image ? { image: event.image } : {}),
                         rawPayload: event.rawPayload,
                       }),
                     );

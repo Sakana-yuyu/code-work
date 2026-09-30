@@ -189,6 +189,7 @@ export type AcpParsedSessionEvent =
       /** 结构化资源独立成段，避免被相邻正文的 Markdown 语法吞入。 */
       readonly standalone?: true;
       readonly text: string;
+      readonly image?: { readonly mimeType: string; readonly data: string };
       readonly rawPayload: unknown;
     };
 
@@ -1082,6 +1083,25 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
     case "agent_thought_chunk":
     case "agent_message_chunk": {
       const content = upd.content;
+      if (content.type === "image") {
+        events.push({
+          _tag: "ContentDelta",
+          streamKind:
+            upd.sessionUpdate === "agent_thought_chunk" ? "reasoning_text" : "assistant_text",
+          text: "",
+          image: { mimeType: content.mimeType, data: content.data },
+          standalone: true,
+          // 原始日志仅保留元数据；图片正文只沿专用载荷传到资产存储。
+          rawPayload: {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: upd.sessionUpdate,
+              content: { type: "image", mimeType: content.mimeType, data: "[省略图片正文]" },
+            },
+          },
+        });
+        break;
+      }
       let text: string | undefined;
       if (content.type === "text") {
         text = content.text;

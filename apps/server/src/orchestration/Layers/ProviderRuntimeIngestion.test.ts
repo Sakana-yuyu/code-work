@@ -232,7 +232,8 @@ describe("ProviderRuntimeIngestion", () => {
     | OrchestrationEngineService
     | ProviderRuntimeIngestionService
     | ProjectionSnapshotQuery
-    | ThreadGoalStore,
+    | ThreadGoalStore
+    | ServerConfig,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -300,10 +301,13 @@ describe("ProviderRuntimeIngestion", () => {
           ...options?.serverSettings,
         }),
       ),
-      Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+      Layer.provideMerge(
+        ServerConfig.layerTest(process.cwd(), makeTempDir("codework-ingestion-home-")),
+      ),
       Layer.provideMerge(NodeServices.layer),
     );
     runtime = ManagedRuntime.make(layer);
+    const config = await runtime.runPromise(Effect.service(ServerConfig));
     const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
     const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
     const ingestion = await runtime.runPromise(Effect.service(ProviderRuntimeIngestionService));
@@ -367,6 +371,7 @@ describe("ProviderRuntimeIngestion", () => {
     });
 
     return {
+      config,
       engine,
       dispatch,
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
@@ -5528,6 +5533,69 @@ describe("ProviderRuntimeIngestion", () => {
     expect(messages?.[0]).toMatchObject({ role: "assistant", text: parsed.text, streaming: false });
     expect(messages?.[0]?.text).toContain(
       "````text\n实际资源\n```\n[字面链接](https://example.com)\n````",
+    );
+  });
+
+  it.each([false, true])("ACP 图片投影、重复事件与可见错误（streaming=%s）", async (streaming) => {
+    const harness = await createHarness({
+      serverSettings: { enableLegacyTokenStreaming: streaming },
+    });
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1XcAAAAASUVORK5CYII=";
+    const common = {
+      provider: ProviderDriverKind.make("cursor"),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("image-turn"),
+    };
+    for (const [index, data] of [png, png, "invalid", png].entries()) {
+      const thought = index === 3;
+      const [parsed] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: {
+          sessionUpdate: thought ? "agent_thought_chunk" : "agent_message_chunk",
+          content: { type: "image", mimeType: "image/png", data },
+        },
+      }).events;
+      if (parsed?._tag !== "ContentDelta") throw new Error("缺少图片事件");
+      const key = index < 2 ? "image" : `image-${index}`;
+      harness.emit(
+        makeAcpContentDeltaEvent({
+          ...common,
+          stamp: { eventId: asEventId(key), createdAt: "2026-01-01T00:00:00.000Z" },
+          itemId: key,
+          streamKind: parsed.streamKind,
+          text: parsed.text,
+          ...(parsed.image ? { image: parsed.image } : {}),
+          rawPayload: parsed.rawPayload,
+        }),
+      );
+    }
+    harness.emit({
+      ...common,
+      type: "item.completed",
+      eventId: asEventId("image-complete"),
+      itemId: asItemId("image"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      payload: { itemType: "assistant_message", status: "completed" },
+    });
+    await harness.drain();
+    const thread = (await harness.readModel()).threads.find(
+      (entry) => entry.id === common.threadId,
+    );
+    expect(thread?.messages).toHaveLength(1);
+    expect(thread?.messages[0]).toMatchObject({
+      text: "",
+      streaming: false,
+      attachments: [{ mimeType: "image/png", sizeBytes: Buffer.from(png, "base64").length }],
+    });
+    expect(
+      thread?.activities.filter((entry) => entry.kind === "provider.image.failed"),
+    ).toMatchObject([{ tone: "error", summary: "图片 base64 数据无效。" }]);
+    expect(JSON.stringify(thread)).not.toContain(png);
+    const files = NodeFS.readdirSync(harness.config.attachmentsDir);
+    expect(files).toHaveLength(1);
+    expect(NodeFS.readFileSync(NodePath.join(harness.config.attachmentsDir, files[0]!))).toEqual(
+      Buffer.from(png, "base64"),
     );
   });
 });

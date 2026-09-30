@@ -833,13 +833,14 @@ export function deriveContentlessTurnHiddenEntryIds(input: {
     if (group.hasStreamingMessage) {
       continue;
     }
-    const hasAssistantText = group.entries.some(
+    const hasAssistantContent = group.entries.some(
       (entry) =>
         entry.kind === "message" &&
         entry.message.role === "assistant" &&
-        (entry.message.text?.trim().length ?? 0) > 0,
+        ((entry.message.text?.trim().length ?? 0) > 0 ||
+          (entry.message.attachments?.length ?? 0) > 0),
     );
-    if (hasAssistantText) {
+    if (hasAssistantContent) {
       continue;
     }
     for (const entry of group.entries) {
@@ -864,6 +865,7 @@ export function deriveContentlessTurnHiddenEntryIds(input: {
         entry.kind === "message" &&
         entry.message.role === "assistant" &&
         (entry.message.text?.trim().length ?? 0) === 0 &&
+        (entry.message.attachments?.length ?? 0) === 0 &&
         !entry.message.streaming
       ) {
         hiddenEntryIds.add(entry.id);
@@ -951,7 +953,8 @@ export function deriveMessagesTimelineRows(
       entryBelongsToActiveTurn(entry, index) &&
       entry.kind === "message" &&
       entry.message.role === "assistant" &&
-      (entry.message.text?.trim().length ?? 0) > 0,
+      ((entry.message.text?.trim().length ?? 0) > 0 ||
+        (entry.message.attachments?.length ?? 0) > 0),
   );
   const firstNarrationEntry = activeNarrationEntries[0];
   const narrationFold =
@@ -981,7 +984,11 @@ export function deriveMessagesTimelineRows(
     : [];
   const activeTurnHasVisibleContent = activeEntries.some((entry) => {
     if (entry.kind === "message") {
-      return entry.message.role === "assistant" && (entry.message.text?.trim().length ?? 0) > 0;
+      return (
+        entry.message.role === "assistant" &&
+        ((entry.message.text?.trim().length ?? 0) > 0 ||
+          (entry.message.attachments?.length ?? 0) > 0)
+      );
     }
     if (entry.kind === "work") {
       return (

@@ -1573,4 +1573,35 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("lucide-x");
     expect(markup).toContain('aria-label="Tool call failed"');
   });
+
+  it("历史纯图片助手回复可见并提供预览，不显示空回复", () => {
+    const entry = buildAssistantTimelineEntry("");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            ...entry,
+            message: {
+              ...entry.message,
+              turnId: TurnId.make("old-image-turn"),
+              attachments: [
+                {
+                  type: "image",
+                  id: "attachment-1",
+                  name: "agent-image.png",
+                  mimeType: "image/png",
+                  sizeBytes: 68,
+                  previewUrl: "https://example.com/signed-image",
+                },
+              ],
+            },
+          },
+        ]}
+      />,
+    );
+    expect(markup).toContain('src="https://example.com/signed-image"');
+    expect(markup).toContain('aria-label="Preview agent-image.png"');
+    expect(markup).not.toContain("(empty response)");
+  });
 });

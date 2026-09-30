@@ -2483,4 +2483,43 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       yield* adapter.stopSession(threadId);
     }),
   );
+
+  it.effect("Grok 图片独立成段且过滤重放和其它会话", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-resource-stream");
+      const wrapperPath = yield* makeMockGrokWrapper({ CODEWORK_ACP_EMIT_IMAGES: "1" });
+      const adapter = yield* makeTestAdapter(wrapperPath);
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-mock-alt" },
+      });
+      yield* adapter.sendTurn({ threadId, input: "资源测试", attachments: [] });
+      const deltas = Array.from(yield* Fiber.join(eventsFiber)).filter(
+        (event) => event.type === "content.delta",
+      );
+      assert.equal(deltas.length, 5);
+      assert.equal(new Set(deltas.map((event) => event.itemId)).size, 5);
+      assert.deepEqual(
+        deltas.map((event) => event.payload.delta),
+        ["图片前文", "", "", "图片后文", ""],
+      );
+      assert.equal(deltas.filter((event) => event.payload.image).length, 3);
+      assert.equal(deltas[1]?.payload.image?.mimeType, "image/png");
+      assert.deepInclude(deltas[1]!.raw!.payload, {
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "image", mimeType: "image/png", data: "[省略图片正文]" },
+        },
+      });
+      yield* adapter.stopSession(threadId);
+    }),
+  );
 });

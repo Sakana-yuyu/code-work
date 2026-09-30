@@ -1246,4 +1246,23 @@ describe("AcpRuntimeModel", () => {
     if (event?._tag !== "ContentDelta") throw new Error("缺少资源事件");
     expect(event.text).toContain(`\`\`\`text\n${text}\n\`\`\``);
   });
+
+  it("图片独立传递且原始日志不包含图片正文", () => {
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "image", mimeType: "image/png", data: "aW1hZ2UtYnl0ZXM=" },
+      },
+    }).events;
+    expect(event).toMatchObject({
+      _tag: "ContentDelta",
+      standalone: true,
+      text: "",
+      streamKind: "assistant_text",
+      image: { mimeType: "image/png", data: "aW1hZ2UtYnl0ZXM=" },
+    });
+    if (event?._tag !== "ContentDelta") throw new Error("缺少图片事件");
+    expect(JSON.stringify(event.rawPayload)).not.toContain("aW1hZ2UtYnl0ZXM=");
+  });
 });

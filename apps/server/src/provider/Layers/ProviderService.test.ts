@@ -717,12 +717,34 @@ it.effect("ProviderServiceLive writes canonical events to the emitting thread se
           state: "completed",
         },
       });
+      codex.emit({
+        eventId: asEventId("evt-image-log"),
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-canonical-thread-segment"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        type: "content.delta",
+        payload: {
+          streamKind: "assistant_text",
+          delta: "",
+          image: { mimeType: "image/png", data: "private-image-bytes" },
+        },
+      });
       yield* advanceTestClock(20);
     }).pipe(Effect.provide(providerLayer));
 
-    assert.equal(canonicalEvents.length, 1);
+    assert.equal(canonicalEvents.length, 2);
+    assert.deepInclude(canonicalEvents[1], {
+      payload: {
+        streamKind: "assistant_text",
+        delta: "",
+        image: { mimeType: "image/png", data: "[省略图片正文]" },
+      },
+    });
     assert.equal(canonicalEvents[0]?.threadId, "thread-canonical-thread-segment");
-    assert.deepEqual(canonicalThreadIds, ["thread-canonical-thread-segment"]);
+    assert.deepEqual(canonicalThreadIds, [
+      "thread-canonical-thread-segment",
+      "thread-canonical-thread-segment",
+    ]);
   }).pipe(Effect.provide(NodeServices.layer)),
 );
 

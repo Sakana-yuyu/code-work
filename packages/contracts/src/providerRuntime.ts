@@ -473,6 +473,8 @@ export type ItemLifecyclePayload = typeof ItemLifecyclePayload.Type;
 const ContentDeltaPayload = Schema.Struct({
   streamKind: RuntimeContentStreamKind,
   delta: Schema.String,
+  /** 上游内联图片仅在服务端消费，持久化消息只保留附件引用。 */
+  image: Schema.optional(Schema.Struct({ mimeType: Schema.String, data: Schema.String })),
   contentIndex: Schema.optional(Schema.Int),
   summaryIndex: Schema.optional(Schema.Int),
   /** 本地 Runtime checkpoint 已持久化的 UTF-8 累计字节偏移。 */

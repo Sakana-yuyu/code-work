@@ -203,6 +203,14 @@ function MessageAttachmentImage(props: {
     attachmentId: props.attachmentId,
   });
 
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  if (uri !== null && failedUri === uri) {
+    return (
+      <View className={`${props.className} items-center justify-center`}>
+        <Text className="text-xs text-foreground-muted">{t("imageUnavailable")}</Text>
+      </View>
+    );
+  }
   if (uri === null) {
     return (
       <View className={`${props.className} items-center justify-center`}>
@@ -213,7 +221,12 @@ function MessageAttachmentImage(props: {
 
   return (
     <TouchableOpacity activeOpacity={0.7} onPress={() => props.onPressImage(uri)}>
-      <Image source={{ uri }} className={props.className} resizeMode="cover" />
+      <Image
+        source={{ uri }}
+        className={props.className}
+        resizeMode="cover"
+        onError={() => setFailedUri(uri)}
+      />
     </TouchableOpacity>
   );
 }
