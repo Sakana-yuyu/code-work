@@ -159,9 +159,9 @@ export function AcpRegistryCatalogPicker({
                 ? entry
                 : { ...entry, command, availability: "installable" as const };
             return (
-              <div className="flex items-start gap-2 p-2" key={entry.id}>
+              <div className="flex flex-wrap items-start gap-2 p-2" key={entry.id}>
                 <AcpAgentIcon src={iconSrc} name={entry.name} />
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 basis-48">
                   <div className="truncate text-xs font-medium">
                     {entry.name} {entry.version}
                   </div>

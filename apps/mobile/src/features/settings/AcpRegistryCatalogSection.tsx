@@ -206,9 +206,9 @@ function CatalogRow(props: {
       ? t(CONFIGURED_STATUS_KEYS[entry.configuredStatus])
       : null;
   return (
-    <View className="flex-row items-start gap-2 border-b border-border-subtle p-2.5 last:border-b-0">
+    <View className="flex-row flex-wrap items-start gap-2 border-b border-border-subtle p-2.5 last:border-b-0">
       <AgentIcon entry={entry} />
-      <View className="min-w-0 flex-1 gap-0.5">
+      <View className="min-w-0 flex-1 basis-48 gap-0.5">
         <Text className="text-sm font-codework-medium text-foreground" numberOfLines={1}>
           {entry.version ? `${entry.name} ${entry.version}` : entry.name}
         </Text>
