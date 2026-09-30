@@ -173,19 +173,59 @@ export type ProviderUserInputAnswers = typeof ProviderUserInputAnswers.Type;
 export const PROVIDER_SEND_TURN_MAX_INPUT_CHARS = 120_000;
 export const PROVIDER_SEND_TURN_MAX_ATTACHMENTS = 8;
 export const PROVIDER_SEND_TURN_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+/** Agent 内联音频/二进制资源与图片共用 10 MiB 上限，避免会话资产无限膨胀。 */
+export const PROVIDER_AGENT_MEDIA_MAX_BYTES = PROVIDER_SEND_TURN_MAX_IMAGE_BYTES;
 export const PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES = [
   "image/gif",
   "image/jpeg",
   "image/png",
   "image/webp",
 ] as const;
+export const PROVIDER_AGENT_SUPPORTED_AUDIO_MIME_TYPES = [
+  "audio/aac",
+  "audio/flac",
+  "audio/mp4",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav",
+  "audio/wave",
+  "audio/webm",
+  "audio/x-wav",
+] as const;
 const PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPE_SET = new Set<string>(
   PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES,
 );
+const PROVIDER_AGENT_SUPPORTED_AUDIO_MIME_TYPE_SET = new Set<string>(
+  PROVIDER_AGENT_SUPPORTED_AUDIO_MIME_TYPES,
+);
+const PROVIDER_AGENT_REJECTED_BLOB_MIME_TYPE_SET = new Set<string>([
+  "application/javascript",
+  "application/x-javascript",
+  "application/x-msdownload",
+  "application/x-msdos-program",
+  "application/x-executable",
+  "application/x-sharedlib",
+  "image/svg+xml",
+  "text/html",
+  "text/javascript",
+]);
 
 /** Whether a pasted or picked image mime type can be sent on a provider turn. */
 export function isProviderSendTurnSupportedImageMimeType(mimeType: string): boolean {
   return PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPE_SET.has(mimeType.toLowerCase());
+}
+
+/** ACP 助手输出的音频 MIME 是否可持久化为附件。 */
+export function isProviderAgentSupportedAudioMimeType(mimeType: string): boolean {
+  return PROVIDER_AGENT_SUPPORTED_AUDIO_MIME_TYPE_SET.has(mimeType.toLowerCase());
+}
+
+/** ACP 嵌入 blob 资源 MIME；拒绝可执行与可脚本化类型，不冒充完整病毒扫描。 */
+export function isProviderAgentSupportedBlobMimeType(mimeType: string): boolean {
+  const normalized = mimeType.trim().toLowerCase();
+  if (normalized.length > 100) return false;
+  if (!/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(normalized)) return false;
+  return !PROVIDER_AGENT_REJECTED_BLOB_MIME_TYPE_SET.has(normalized);
 }
 const PROVIDER_SEND_TURN_MAX_IMAGE_DATA_URL_CHARS = 14_000_000;
 const CHAT_ATTACHMENT_ID_MAX_CHARS = 128;
@@ -208,6 +248,24 @@ export const ChatImageAttachment = Schema.Struct({
 });
 export type ChatImageAttachment = typeof ChatImageAttachment.Type;
 
+export const ChatAudioAttachment = Schema.Struct({
+  type: Schema.Literal("audio"),
+  id: ChatAttachmentId,
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  mimeType: TrimmedNonEmptyString.check(Schema.isMaxLength(100), Schema.isPattern(/^audio\//i)),
+  sizeBytes: NonNegativeInt.check(Schema.isLessThanOrEqualTo(PROVIDER_AGENT_MEDIA_MAX_BYTES)),
+});
+export type ChatAudioAttachment = typeof ChatAudioAttachment.Type;
+
+export const ChatFileAttachment = Schema.Struct({
+  type: Schema.Literal("file"),
+  id: ChatAttachmentId,
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  mimeType: TrimmedNonEmptyString.check(Schema.isMaxLength(100)),
+  sizeBytes: NonNegativeInt.check(Schema.isLessThanOrEqualTo(PROVIDER_AGENT_MEDIA_MAX_BYTES)),
+});
+export type ChatFileAttachment = typeof ChatFileAttachment.Type;
+
 const UploadChatImageAttachment = Schema.Struct({
   type: Schema.Literal("image"),
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
@@ -219,7 +277,11 @@ const UploadChatImageAttachment = Schema.Struct({
 });
 export type UploadChatImageAttachment = typeof UploadChatImageAttachment.Type;
 
-export const ChatAttachment = Schema.Union([ChatImageAttachment]);
+export const ChatAttachment = Schema.Union([
+  ChatImageAttachment,
+  ChatAudioAttachment,
+  ChatFileAttachment,
+]);
 export type ChatAttachment = typeof ChatAttachment.Type;
 const UploadChatAttachment = Schema.Union([UploadChatImageAttachment]);
 export type UploadChatAttachment = typeof UploadChatAttachment.Type;

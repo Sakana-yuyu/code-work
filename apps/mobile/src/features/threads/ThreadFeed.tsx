@@ -118,7 +118,8 @@ import {
   WORK_GROUP_TOGGLE_HEIGHT,
 } from "./thread-work-log";
 import { useMarkdownCodeHighlight } from "./markdownCodeHighlightState";
-import { useAssetUrl, useAssetUrlState } from "../../state/assets";
+import { useAssetUrlState } from "../../state/assets";
+import { MessageAttachmentMedia } from "./MessageAttachmentMedia";
 import { resolveWorkspaceRelativeFilePath } from "../files/filePath";
 import { MARKDOWN_IMAGE_MAX_WIDTH, resolveMarkdownImageDisplaySize } from "./markdownImageSize";
 import { t } from "../../i18n";
@@ -190,45 +191,6 @@ export interface ThreadFeedProps {
     readonly loading: boolean;
     readonly onLoadEarlier: () => void;
   } | null;
-}
-
-function MessageAttachmentImage(props: {
-  readonly environmentId: EnvironmentId;
-  readonly attachmentId: string;
-  readonly className: string;
-  readonly onPressImage: (uri: string, headers?: Record<string, string>) => void;
-}) {
-  const uri = useAssetUrl(props.environmentId, {
-    _tag: "attachment",
-    attachmentId: props.attachmentId,
-  });
-
-  const [failedUri, setFailedUri] = useState<string | null>(null);
-  if (uri !== null && failedUri === uri) {
-    return (
-      <View className={`${props.className} items-center justify-center`}>
-        <Text className="text-xs text-foreground-muted">{t("imageUnavailable")}</Text>
-      </View>
-    );
-  }
-  if (uri === null) {
-    return (
-      <View className={`${props.className} items-center justify-center`}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
-
-  return (
-    <TouchableOpacity activeOpacity={0.7} onPress={() => props.onPressImage(uri)}>
-      <Image
-        source={{ uri }}
-        className={props.className}
-        resizeMode="cover"
-        onError={() => setFailedUri(uri)}
-      />
-    </TouchableOpacity>
-  );
 }
 
 function ThreadMarkdownImageView(props: {
@@ -1251,10 +1213,10 @@ function renderFeedEntry(
             ) : null}
             {attachments.map((attachment) => {
               return (
-                <MessageAttachmentImage
+                <MessageAttachmentMedia
                   key={attachment.id}
                   environmentId={props.environmentId}
-                  attachmentId={attachment.id}
+                  attachment={attachment}
                   className="aspect-[1.3] w-full rounded-[14px] bg-white/15"
                   onPressImage={props.onPressImage}
                 />
@@ -1311,10 +1273,10 @@ function renderFeedEntry(
         ) : null}
         {attachments.map((attachment) => {
           return (
-            <MessageAttachmentImage
+            <MessageAttachmentMedia
               key={attachment.id}
               environmentId={props.environmentId}
-              attachmentId={attachment.id}
+              attachment={attachment}
               className="mt-1.5 aspect-[1.3] w-full rounded-[18px] bg-neutral-200 dark:bg-neutral-800"
               onPressImage={props.onPressImage}
             />

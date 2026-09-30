@@ -2522,4 +2522,60 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       yield* adapter.stopSession(threadId);
     }),
   );
+
+  it.effect("Grok 音频与 blob 保留流类型、独立段和会话隔离", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-resource-stream");
+      const wrapperPath = yield* makeMockGrokWrapper({ CODEWORK_ACP_EMIT_BINARY: "1" });
+      const adapter = yield* makeTestAdapter(wrapperPath);
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-mock-alt" },
+      });
+      yield* adapter.sendTurn({ threadId, input: "资源测试", attachments: [] });
+      const deltas = Array.from(yield* Fiber.join(eventsFiber)).filter(
+        (event) => event.type === "content.delta",
+      );
+      assert.equal(deltas.length, 7);
+      assert.equal(new Set(deltas.map((event) => event.itemId)).size, 7);
+      assert.equal(deltas[0]?.payload.streamKind, "reasoning_text");
+      const assistant = deltas.filter((event) => event.payload.streamKind === "assistant_text");
+      assert.deepEqual(
+        assistant.map((event) => event.payload.delta),
+        ["媒体前文", "", "", "", "", "媒体后文"],
+      );
+      assert.equal(assistant.filter((event) => event.payload.audio).length, 2);
+      assert.equal(assistant.filter((event) => event.payload.blob).length, 2);
+      assert.equal(assistant[1]?.payload.audio?.mimeType, "audio/wav");
+      assert.equal(assistant[2]?.payload.blob?.uri, "file:///workspace/report.bin");
+      assert.deepInclude(assistant[1]!.raw!.payload, {
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "audio", mimeType: "audio/wav", data: "[省略音频正文]" },
+        },
+      });
+      assert.deepInclude(assistant[2]!.raw!.payload, {
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "resource",
+            resource: {
+              uri: "file:///workspace/report.bin",
+              mimeType: "application/octet-stream",
+              blob: "[省略二进制正文]",
+            },
+          },
+        },
+      });
+      yield* adapter.stopSession(threadId);
+    }),
+  );
 });

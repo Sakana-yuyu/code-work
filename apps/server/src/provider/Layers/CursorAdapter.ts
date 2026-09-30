@@ -1584,6 +1584,8 @@ export function makeCursorAdapter(
                         streamKind: event.streamKind,
                         text: event.text,
                         ...(event.image ? { image: event.image } : {}),
+                        ...(event.audio ? { audio: event.audio } : {}),
+                        ...(event.blob ? { blob: event.blob } : {}),
                         rawPayload: event.rawPayload,
                       }),
                     );

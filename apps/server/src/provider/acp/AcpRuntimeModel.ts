@@ -190,6 +190,13 @@ export type AcpParsedSessionEvent =
       readonly standalone?: true;
       readonly text: string;
       readonly image?: { readonly mimeType: string; readonly data: string };
+      readonly audio?: { readonly mimeType: string; readonly data: string };
+      readonly blob?: {
+        readonly mimeType: string;
+        readonly data: string;
+        readonly uri?: string;
+        readonly name?: string;
+      };
       readonly rawPayload: unknown;
     };
 
@@ -1097,6 +1104,54 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
             update: {
               sessionUpdate: upd.sessionUpdate,
               content: { type: "image", mimeType: content.mimeType, data: "[省略图片正文]" },
+            },
+          },
+        });
+        break;
+      }
+      if (content.type === "audio") {
+        events.push({
+          _tag: "ContentDelta",
+          streamKind:
+            upd.sessionUpdate === "agent_thought_chunk" ? "reasoning_text" : "assistant_text",
+          text: "",
+          audio: { mimeType: content.mimeType, data: content.data },
+          standalone: true,
+          rawPayload: {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: upd.sessionUpdate,
+              content: { type: "audio", mimeType: content.mimeType, data: "[省略音频正文]" },
+            },
+          },
+        });
+        break;
+      }
+      if (content.type === "resource" && "blob" in content.resource) {
+        const mimeType = content.resource.mimeType?.trim() || "application/octet-stream";
+        events.push({
+          _tag: "ContentDelta",
+          streamKind:
+            upd.sessionUpdate === "agent_thought_chunk" ? "reasoning_text" : "assistant_text",
+          text: "",
+          blob: {
+            mimeType,
+            data: content.resource.blob,
+            uri: content.resource.uri,
+          },
+          standalone: true,
+          rawPayload: {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: upd.sessionUpdate,
+              content: {
+                type: "resource",
+                resource: {
+                  uri: content.resource.uri,
+                  mimeType,
+                  blob: "[省略二进制正文]",
+                },
+              },
             },
           },
         });

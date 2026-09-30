@@ -63,6 +63,10 @@ import { CompositionAgentDriverRegistryService } from "../../composition/Composi
 import { compositionProviderAgentId } from "../../composition/CompositionProviderAgentDriverRegistry.ts";
 
 import { storeProviderImageAttachment } from "../../assets/ProviderImageAttachment.ts";
+import {
+  storeProviderAudioAttachment,
+  storeProviderBlobAttachment,
+} from "../../assets/ProviderBinaryAttachment.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const providerTaskKey = (threadId: ThreadId, taskId: string) => `${threadId}:${taskId}`;
@@ -2496,7 +2500,21 @@ const make = Effect.gen(function* () {
           ? event.payload.image
           : undefined;
 
-      if ((assistantDelta && assistantDelta.length > 0) || assistantImage) {
+      const assistantAudio =
+        event.type === "content.delta" && event.payload.streamKind === "assistant_text"
+          ? event.payload.audio
+          : undefined;
+      const assistantBlob =
+        event.type === "content.delta" && event.payload.streamKind === "assistant_text"
+          ? event.payload.blob
+          : undefined;
+
+      if (
+        (assistantDelta && assistantDelta.length > 0) ||
+        assistantImage ||
+        assistantAudio ||
+        assistantBlob
+      ) {
         const turnId = toTurnId(event.turnId);
         const assistantMessageId = yield* getOrCreateAssistantMessageId({
           threadId: thread.id,
@@ -2514,9 +2532,13 @@ const make = Effect.gen(function* () {
         const mediaEventKey = `${event.providerInstanceId ?? event.provider}:${event.turnId ?? ""}:${event.eventId}`;
         const mediaResult = assistantImage
           ? yield* storeProviderImageAttachment(thread.id, mediaEventKey, assistantImage)
-          : undefined;
+          : assistantAudio
+            ? yield* storeProviderAudioAttachment(thread.id, mediaEventKey, assistantAudio)
+            : assistantBlob
+              ? yield* storeProviderBlobAttachment(thread.id, mediaEventKey, assistantBlob)
+              : undefined;
         if (mediaResult) {
-          const mediaKind = "image";
+          const mediaKind = assistantImage ? "image" : assistantAudio ? "audio" : "file";
           if (mediaResult.attachment) {
             yield* orchestrationEngine.dispatch({
               type: "thread.message.assistant.delta",
@@ -2535,7 +2557,7 @@ const make = Effect.gen(function* () {
               threadId: thread.id,
               activity: {
                 id: EventId.make(`${event.eventId}:${mediaKind}-error`),
-                kind: "provider.image.failed",
+                kind: `provider.${mediaKind}.failed`,
                 tone: "error",
                 summary: mediaResult.error,
                 payload: { message: mediaResult.error },

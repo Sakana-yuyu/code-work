@@ -836,6 +836,77 @@ const program = Effect.gen(function* () {
         return { stopReason: "end_turn" };
       }
 
+      if (process.env.CODEWORK_ACP_EMIT_BINARY === "1") {
+        // 使用可解码的两秒 PCM WAV，浏览器验收检查原生播放位置。
+        const wav = Buffer.alloc(44 + 32_000);
+        wav.write("RIFF", 0);
+        wav.writeUInt32LE(wav.length - 8, 4);
+        wav.write("WAVEfmt ", 8);
+        wav.writeUInt32LE(16, 16);
+        wav.writeUInt16LE(1, 20);
+        wav.writeUInt16LE(1, 22);
+        wav.writeUInt32LE(8_000, 24);
+        wav.writeUInt32LE(16_000, 28);
+        wav.writeUInt16LE(2, 32);
+        wav.writeUInt16LE(16, 34);
+        wav.write("data", 36);
+        wav.writeUInt32LE(32_000, 40);
+        const audio = {
+          type: "audio" as const,
+          mimeType: "audio/wav",
+          data: wav.toString("base64"),
+        };
+        const blob = {
+          type: "resource" as const,
+          resource: {
+            uri: "file:///workspace/report.bin",
+            mimeType: "application/octet-stream",
+            blob: Buffer.from("媒体附件下载校验\n").toString("base64"),
+          },
+        };
+        for (const notification of [
+          { sessionId: "mock-child-session-1" },
+          { sessionId: requestedSessionId, _meta: { isReplay: true } },
+        ])
+          yield* agent.client.sessionUpdate({
+            ...notification,
+            update: { sessionUpdate: "agent_message_chunk", content: audio },
+          });
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: { sessionUpdate: "agent_thought_chunk", content: audio },
+        });
+        for (const content of [
+          { type: "text" as const, text: "媒体前文" },
+          audio,
+          blob,
+          { type: "audio" as const, mimeType: "audio/wav", data: "invalid" },
+          {
+            type: "resource" as const,
+            resource: {
+              uri: "file:///workspace/x.svg",
+              mimeType: "image/svg+xml",
+              blob: Buffer.from("<svg></svg>").toString("base64"),
+            },
+          },
+          ...(process.env.CODEWORK_ACP_BINARY_DECODE_ERROR === "1"
+            ? [
+                {
+                  type: "audio" as const,
+                  mimeType: "audio/wav",
+                  data: Buffer.from("invalid-WAV-header").toString("base64"),
+                },
+              ]
+            : []),
+          { type: "text" as const, text: "媒体后文" },
+        ])
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: { sessionUpdate: "agent_message_chunk", content },
+          });
+        return { stopReason: "end_turn" };
+      }
+
       if (process.env.CODEWORK_ACP_EMIT_IMAGES === "1") {
         const image = {
           type: "image",

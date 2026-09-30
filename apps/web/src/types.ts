@@ -1,4 +1,6 @@
 import type {
+  ChatAudioAttachment as ContractChatAudioAttachment,
+  ChatFileAttachment as ContractChatFileAttachment,
   ChatImageAttachment as ContractChatImageAttachment,
   OrchestrationCheckpointFile,
   OrchestrationCheckpointSummary,
@@ -35,7 +37,15 @@ export interface ChatImageAttachment extends ContractChatImageAttachment {
   readonly previewUrl?: string;
 }
 
-export type ChatAttachment = ChatImageAttachment;
+export interface ChatAudioAttachment extends ContractChatAudioAttachment {
+  readonly previewUrl?: string;
+}
+
+export interface ChatFileAttachment extends ContractChatFileAttachment {
+  readonly previewUrl?: string;
+}
+
+export type ChatAttachment = ChatImageAttachment | ChatAudioAttachment | ChatFileAttachment;
 
 /** 仅用于本地时间线展示，不会写入服务端消息协议。 */
 export type ChatMessagePresentation =

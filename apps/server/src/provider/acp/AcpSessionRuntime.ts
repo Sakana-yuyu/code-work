@@ -1265,7 +1265,7 @@ const handleSessionUpdate = ({
           yield* Queue.offer(queue, event);
           continue;
         }
-        if (event.text.trim().length === 0 && !event.image) {
+        if (event.text.trim().length === 0 && !event.image && !event.audio && !event.blob) {
           const assistantSegmentState = yield* Ref.get(assistantSegmentRef);
           if (!assistantSegmentState.activeItemId) {
             continue;

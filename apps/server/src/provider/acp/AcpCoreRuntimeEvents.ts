@@ -316,6 +316,13 @@ export function makeAcpContentDeltaEvent(input: {
   readonly streamKind: "assistant_text" | "reasoning_text";
   readonly text: string;
   readonly image?: { readonly mimeType: string; readonly data: string };
+  readonly audio?: { readonly mimeType: string; readonly data: string };
+  readonly blob?: {
+    readonly mimeType: string;
+    readonly data: string;
+    readonly uri?: string;
+    readonly name?: string;
+  };
   readonly rawPayload: unknown;
 }): ProviderRuntimeEvent {
   return {
@@ -329,6 +336,8 @@ export function makeAcpContentDeltaEvent(input: {
       streamKind: input.streamKind,
       delta: input.text,
       ...(input.image ? { image: input.image } : {}),
+      ...(input.audio ? { audio: input.audio } : {}),
+      ...(input.blob ? { blob: input.blob } : {}),
     },
     raw: {
       source: "acp.jsonrpc",

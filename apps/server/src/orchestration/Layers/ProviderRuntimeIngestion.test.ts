@@ -5598,6 +5598,167 @@ describe("ProviderRuntimeIngestion", () => {
       Buffer.from(png, "base64"),
     );
   });
+
+  it.each([false, true])("ACP 音频投影、重复事件与可见错误（streaming=%s）", async (streaming) => {
+    const harness = await createHarness({
+      serverSettings: { enableLegacyTokenStreaming: streaming },
+    });
+    const wav = Buffer.from("RIFF....WAVEfmt ").toString("base64");
+    const common = {
+      provider: ProviderDriverKind.make("cursor"),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("audio-turn"),
+    };
+    for (const [index, data] of [wav, wav, "invalid", wav].entries()) {
+      const thought = index === 3;
+      const [parsed] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: {
+          sessionUpdate: thought ? "agent_thought_chunk" : "agent_message_chunk",
+          content: { type: "audio", mimeType: "audio/wav", data },
+        },
+      }).events;
+      if (parsed?._tag !== "ContentDelta") throw new Error("缺少音频事件");
+      const key = index < 2 ? "audio" : `audio-${index}`;
+      harness.emit(
+        makeAcpContentDeltaEvent({
+          ...common,
+          stamp: { eventId: asEventId(key), createdAt: "2026-01-01T00:00:00.000Z" },
+          itemId: key,
+          streamKind: parsed.streamKind,
+          text: parsed.text,
+          ...(parsed.audio ? { audio: parsed.audio } : {}),
+          rawPayload: parsed.rawPayload,
+        }),
+      );
+    }
+    harness.emit({
+      ...common,
+      type: "item.completed",
+      eventId: asEventId("audio-complete"),
+      itemId: asItemId("audio"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      payload: { itemType: "assistant_message", status: "completed" },
+    });
+    await harness.drain();
+    const thread = (await harness.readModel()).threads.find(
+      (entry) => entry.id === common.threadId,
+    );
+    expect(thread?.messages).toHaveLength(1);
+    expect(thread?.messages[0]).toMatchObject({
+      text: "",
+      streaming: false,
+      attachments: [
+        {
+          type: "audio",
+          mimeType: "audio/wav",
+          sizeBytes: Buffer.from(wav, "base64").length,
+        },
+      ],
+    });
+    expect(
+      thread?.activities.filter((entry) => entry.kind === "provider.audio.failed"),
+    ).toMatchObject([{ tone: "error", summary: "媒体 base64 数据无效。" }]);
+    expect(JSON.stringify(thread)).not.toContain(wav);
+    const files = NodeFS.readdirSync(harness.config.attachmentsDir);
+    expect(files).toHaveLength(1);
+    expect(NodeFS.readFileSync(NodePath.join(harness.config.attachmentsDir, files[0]!))).toEqual(
+      Buffer.from(wav, "base64"),
+    );
+  });
+
+  it.each([false, true])("ACP 嵌入 blob 投影并拒绝危险 MIME（streaming=%s）", async (streaming) => {
+    const harness = await createHarness({
+      serverSettings: { enableLegacyTokenStreaming: streaming },
+    });
+    const blob = Buffer.from("blob-bytes").toString("base64");
+    const common = {
+      provider: ProviderDriverKind.make("cursor"),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("blob-turn"),
+    };
+    for (const [index, content] of [
+      {
+        type: "resource" as const,
+        resource: {
+          uri: "file:///workspace/report.bin",
+          mimeType: "application/octet-stream",
+          blob,
+        },
+      },
+      {
+        type: "resource" as const,
+        resource: {
+          uri: "file:///workspace/report.bin",
+          mimeType: "application/octet-stream",
+          blob,
+        },
+      },
+      {
+        type: "resource" as const,
+        resource: {
+          uri: "file:///workspace/x.svg",
+          mimeType: "image/svg+xml",
+          blob: Buffer.from("<svg></svg>").toString("base64"),
+        },
+      },
+    ].entries()) {
+      const [parsed] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content,
+        },
+      }).events;
+      if (parsed?._tag !== "ContentDelta") throw new Error("缺少 blob 事件");
+      const key = index < 2 ? "blob" : `blob-${index}`;
+      harness.emit(
+        makeAcpContentDeltaEvent({
+          ...common,
+          stamp: { eventId: asEventId(key), createdAt: "2026-01-01T00:00:00.000Z" },
+          itemId: key,
+          streamKind: parsed.streamKind,
+          text: parsed.text,
+          ...(parsed.blob ? { blob: parsed.blob } : {}),
+          rawPayload: parsed.rawPayload,
+        }),
+      );
+    }
+    harness.emit({
+      ...common,
+      type: "item.completed",
+      eventId: asEventId("blob-complete"),
+      itemId: asItemId("blob"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      payload: { itemType: "assistant_message", status: "completed" },
+    });
+    await harness.drain();
+    const thread = (await harness.readModel()).threads.find(
+      (entry) => entry.id === common.threadId,
+    );
+    expect(thread?.messages).toHaveLength(1);
+    expect(thread?.messages[0]).toMatchObject({
+      text: "",
+      streaming: false,
+      attachments: [
+        {
+          type: "file",
+          name: "report.bin",
+          mimeType: "application/octet-stream",
+          sizeBytes: Buffer.from(blob, "base64").length,
+        },
+      ],
+    });
+    expect(
+      thread?.activities.filter((entry) => entry.kind === "provider.file.failed"),
+    ).toHaveLength(1);
+    expect(JSON.stringify(thread)).not.toContain(blob);
+    const files = NodeFS.readdirSync(harness.config.attachmentsDir);
+    expect(files).toHaveLength(1);
+    expect(NodeFS.readFileSync(NodePath.join(harness.config.attachmentsDir, files[0]!))).toEqual(
+      Buffer.from(blob, "base64"),
+    );
+  });
 });
 
 describe("runtimeEventToActivities account rate limits", () => {

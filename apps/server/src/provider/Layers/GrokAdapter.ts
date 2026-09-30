@@ -447,7 +447,11 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
     ) {
       if (
         ctx.livenessTurnId !== turnId ||
-        (event._tag === "ContentDelta" && event.text.length === 0 && !event.image)
+        (event._tag === "ContentDelta" &&
+          event.text.length === 0 &&
+          !event.image &&
+          !event.audio &&
+          !event.blob)
       ) {
         return;
       }
@@ -1501,6 +1505,8 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                         streamKind: event.streamKind,
                         text: event.text,
                         ...(event.image ? { image: event.image } : {}),
+                        ...(event.audio ? { audio: event.audio } : {}),
+                        ...(event.blob ? { blob: event.blob } : {}),
                         rawPayload: event.rawPayload,
                       }),
                     );

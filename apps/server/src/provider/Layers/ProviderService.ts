@@ -297,15 +297,38 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       Effect.tap((canonicalEvent) =>
         canonicalEventLogger
           ? canonicalEventLogger.write(
-              canonicalEvent.type === "content.delta" && canonicalEvent.payload.image
+              canonicalEvent.type === "content.delta" &&
+                (canonicalEvent.payload.image ||
+                  canonicalEvent.payload.audio ||
+                  canonicalEvent.payload.blob)
                 ? {
                     ...canonicalEvent,
                     payload: {
                       ...canonicalEvent.payload,
-                      image: {
-                        mimeType: canonicalEvent.payload.image.mimeType,
-                        data: "[省略图片正文]",
-                      },
+                      ...(canonicalEvent.payload.image
+                        ? {
+                            image: {
+                              mimeType: canonicalEvent.payload.image.mimeType,
+                              data: "[省略图片正文]",
+                            },
+                          }
+                        : {}),
+                      ...(canonicalEvent.payload.audio
+                        ? {
+                            audio: {
+                              mimeType: canonicalEvent.payload.audio.mimeType,
+                              data: "[省略音频正文]",
+                            },
+                          }
+                        : {}),
+                      ...(canonicalEvent.payload.blob
+                        ? {
+                            blob: {
+                              ...canonicalEvent.payload.blob,
+                              data: "[省略二进制正文]",
+                            },
+                          }
+                        : {}),
                     },
                   }
                 : canonicalEvent,

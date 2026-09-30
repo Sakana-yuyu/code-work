@@ -727,6 +727,12 @@ it.effect("ProviderServiceLive writes canonical events to the emitting thread se
           streamKind: "assistant_text",
           delta: "",
           image: { mimeType: "image/png", data: "private-image-bytes" },
+          audio: { mimeType: "audio/wav", data: "private-audio-bytes" },
+          blob: {
+            mimeType: "application/octet-stream",
+            data: "private-blob-bytes",
+            name: "report.bin",
+          },
         },
       });
       yield* advanceTestClock(20);
@@ -738,6 +744,12 @@ it.effect("ProviderServiceLive writes canonical events to the emitting thread se
         streamKind: "assistant_text",
         delta: "",
         image: { mimeType: "image/png", data: "[省略图片正文]" },
+        audio: { mimeType: "audio/wav", data: "[省略音频正文]" },
+        blob: {
+          mimeType: "application/octet-stream",
+          data: "[省略二进制正文]",
+          name: "report.bin",
+        },
       },
     });
     assert.equal(canonicalEvents[0]?.threadId, "thread-canonical-thread-segment");

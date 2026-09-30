@@ -1080,7 +1080,15 @@ function MessageAttachmentImages({
   const ctx = use(TimelineRowCtx);
   const [failedUrls, setFailedUrls] = useState<Record<string, string>>({});
   const imageAttachments = images.filter((attachment) => attachment.type === "image");
-  if (imageAttachments.length === 0) return null;
+  const audioAttachments = images.filter((attachment) => attachment.type === "audio");
+  const fileAttachments = images.filter((attachment) => attachment.type === "file");
+  if (
+    imageAttachments.length === 0 &&
+    audioAttachments.length === 0 &&
+    fileAttachments.length === 0
+  ) {
+    return null;
+  }
   return (
     <div className="mb-2 flex max-w-[420px] flex-col gap-2">
       {imageAttachments.length > 0 ? (
@@ -1121,6 +1129,52 @@ function MessageAttachmentImages({
           ))}
         </div>
       ) : null}
+      {audioAttachments.map((audio) => (
+        <div
+          key={audio.id}
+          className="rounded-lg border border-border/80 bg-background/70 px-3 py-2"
+        >
+          <div className="mb-1 truncate text-[11px] text-secondary-label">{audio.name}</div>
+          {audio.previewUrl && failedUrls[audio.id] !== audio.previewUrl ? (
+            <audio
+              aria-label={audio.name}
+              controls
+              preload="metadata"
+              src={audio.previewUrl}
+              className="w-full"
+              onError={() =>
+                setFailedUrls((current) => ({ ...current, [audio.id]: audio.previewUrl! }))
+              }
+            >
+              <track kind="captions" />
+            </audio>
+          ) : (
+            <div className="text-[11px] text-secondary-label">
+              {audio.previewUrl ? t("audioUnavailable", { alt: audio.name }) : audio.name}
+            </div>
+          )}
+        </div>
+      ))}
+      {fileAttachments.map((file) => (
+        <div
+          key={file.id}
+          className="flex items-center justify-between gap-2 rounded-lg border border-border/80 bg-background/70 px-3 py-2 text-[11px]"
+        >
+          <span className="min-w-0 truncate text-secondary-label">{file.name}</span>
+          {file.previewUrl ? (
+            <a
+              href={file.previewUrl}
+              download={file.name}
+              aria-label={`${t("downloadAttachment")} ${file.name}`}
+              className="shrink-0 text-link hover:underline"
+            >
+              {t("downloadAttachment")}
+            </a>
+          ) : (
+            <span className="shrink-0 text-secondary-label">{t("fileUnavailable")}</span>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

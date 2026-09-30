@@ -73,7 +73,9 @@ export function parseThreadSegmentFromAttachmentId(attachmentId: string): string
 
 export function attachmentRelativePath(attachment: ChatAttachment): string {
   switch (attachment.type) {
-    case "image": {
+    case "image":
+    case "audio":
+    case "file": {
       const extension = inferImageExtension({
         mimeType: attachment.mimeType,
         fileName: attachment.name,

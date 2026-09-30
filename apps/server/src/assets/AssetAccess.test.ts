@@ -16,6 +16,10 @@ import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as CodeworkProjectFileLoader from "../project/CodeworkProjectFileLoader.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { ASSET_ROUTE_PREFIX, issueAssetUrl, resolveAsset } from "./AssetAccess.ts";
+import {
+  storeProviderAudioAttachment,
+  storeProviderBlobAttachment,
+} from "./ProviderBinaryAttachment.ts";
 
 const configLayer = ServerConfig.ServerConfig.layerTest(process.cwd(), {
   prefix: "codework-asset-access-test-",
@@ -31,6 +35,38 @@ const testLayer = Layer.mergeAll(
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
 describe("AssetAccess", () => {
+  it.effect("音频和 blob 签名只授权自身附件，篡改和过期被拒绝", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const bytes = new Uint8Array([82, 73, 70, 70, 1, 2, 3]);
+      const audio = yield* storeProviderAudioAttachment(ThreadId.make("media-thread"), "audio", {
+        mimeType: "audio/wav",
+        data: "UklGRgECAw==",
+      });
+      const blob = yield* storeProviderBlobAttachment(ThreadId.make("media-thread"), "blob", {
+        mimeType: "application/octet-stream",
+        data: "UklGRgECAw==",
+        uri: "file:///workspace/report.bin",
+      });
+      for (const result of [audio, blob]) {
+        if (!result.attachment) throw new Error("媒体未保存");
+        const issued = yield* issueAssetUrl({
+          resource: { _tag: "attachment", attachmentId: result.attachment.id },
+        });
+        const suffix = issued.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+        const token = suffix.slice(0, suffix.indexOf("/"));
+        const resolved = yield* resolveAsset(token, "../../other.bin");
+        expect(resolved?.kind).toBe("file");
+        if (!resolved || resolved.kind !== "file") throw new Error("签名附件未解析");
+        expect(resolved.path).toContain(result.attachment.id);
+        expect([...(yield* fileSystem.readFile(resolved.path))]).toEqual([...bytes]);
+        expect(yield* resolveAsset(`${token}tampered`, "report.bin")).toBeNull();
+        yield* TestClock.setTime(issued.expiresAt + 1);
+        expect(yield* resolveAsset(token, "report.bin")).toBeNull();
+      }
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect("issues workspace URLs that resolve the entry file and sibling assets", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

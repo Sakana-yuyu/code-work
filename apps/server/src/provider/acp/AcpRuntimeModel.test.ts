@@ -1265,4 +1265,53 @@ describe("AcpRuntimeModel", () => {
     if (event?._tag !== "ContentDelta") throw new Error("缺少图片事件");
     expect(JSON.stringify(event.rawPayload)).not.toContain("aW1hZ2UtYnl0ZXM=");
   });
+
+  it("音频独立传递且原始日志不包含音频正文", () => {
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "audio", mimeType: "audio/wav", data: "YXVkaW8tYnl0ZXM=" },
+      },
+    }).events;
+    expect(event).toMatchObject({
+      _tag: "ContentDelta",
+      standalone: true,
+      text: "",
+      streamKind: "assistant_text",
+      audio: { mimeType: "audio/wav", data: "YXVkaW8tYnl0ZXM=" },
+    });
+    if (event?._tag !== "ContentDelta") throw new Error("缺少音频事件");
+    expect(JSON.stringify(event.rawPayload)).not.toContain("YXVkaW8tYnl0ZXM=");
+  });
+
+  it("嵌入 blob 独立传递且原始日志不包含二进制正文", () => {
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "resource",
+          resource: {
+            uri: "file:///workspace/note.bin",
+            mimeType: "application/octet-stream",
+            blob: "YmxvYi1ieXRlcw==",
+          },
+        },
+      },
+    }).events;
+    expect(event).toMatchObject({
+      _tag: "ContentDelta",
+      standalone: true,
+      text: "",
+      streamKind: "assistant_text",
+      blob: {
+        mimeType: "application/octet-stream",
+        data: "YmxvYi1ieXRlcw==",
+        uri: "file:///workspace/note.bin",
+      },
+    });
+    if (event?._tag !== "ContentDelta") throw new Error("缺少 blob 事件");
+    expect(JSON.stringify(event.rawPayload)).not.toContain("YmxvYi1ieXRlcw==");
+  });
 });

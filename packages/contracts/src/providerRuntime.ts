@@ -475,6 +475,17 @@ const ContentDeltaPayload = Schema.Struct({
   delta: Schema.String,
   /** 上游内联图片仅在服务端消费，持久化消息只保留附件引用。 */
   image: Schema.optional(Schema.Struct({ mimeType: Schema.String, data: Schema.String })),
+  /** ACP audio ContentBlock；服务端落盘后只保留附件引用。 */
+  audio: Schema.optional(Schema.Struct({ mimeType: Schema.String, data: Schema.String })),
+  /** ACP 嵌入 blob 资源；uri/name 仅用于展示文件名，不触发下载。 */
+  blob: Schema.optional(
+    Schema.Struct({
+      mimeType: Schema.String,
+      data: Schema.String,
+      uri: Schema.optional(Schema.String),
+      name: Schema.optional(Schema.String),
+    }),
+  ),
   contentIndex: Schema.optional(Schema.Int),
   summaryIndex: Schema.optional(Schema.Int),
   /** 本地 Runtime checkpoint 已持久化的 UTF-8 累计字节偏移。 */
