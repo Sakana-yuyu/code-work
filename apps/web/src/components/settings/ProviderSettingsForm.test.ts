@@ -10,6 +10,32 @@ import {
 } from "./ProviderSettingsForm";
 
 describe("ProviderSettingsForm helpers", () => {
+  it("ACP 认证留空应显式保存，不回退到 login", () => {
+    const definition = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("acpAgent")]!;
+    const field = deriveProviderSettingsFields(definition).find(
+      (entry) => entry.key === "authMethodId",
+    )!;
+    expect(readProviderConfigString({}, field.key, field.defaultStringValue)).toBe("login");
+    expect(
+      readProviderConfigString({ authMethodId: "" }, field.key, field.defaultStringValue),
+    ).toBe("");
+    expect(nextProviderConfigWithFieldValue({ authMethodId: "login" }, field, "")).toEqual({
+      authMethodId: "",
+    });
+  });
+  it("ACP MCP 从合同派生开启默认值，并保留明确关闭值", () => {
+    const definition = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("acpAgent")]!;
+    const field = deriveProviderSettingsFields(definition).find(
+      (entry) => entry.key === "supportsMcpServers",
+    )!;
+    expect(field.defaultBooleanValue).toBe(true);
+    expect(readProviderConfigBoolean({}, field.key, field.defaultBooleanValue)).toBe(true);
+    const disabled = nextProviderConfigWithFieldValue({ command: "agent --acp" }, field, false);
+    expect(disabled).toEqual({ command: "agent --acp", supportsMcpServers: false });
+    expect(nextProviderConfigWithFieldValue(disabled, field, true)).toEqual({
+      command: "agent --acp",
+    });
+  });
   it("连接区域接管网关开关时只隐藏重复字段，添加供应商表单仍可配置", () => {
     for (const driver of ["codex", "claudeAgent", "grok", "opencode"]) {
       const definition = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make(driver)]!;

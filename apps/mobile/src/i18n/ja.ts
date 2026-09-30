@@ -4,6 +4,45 @@
  * messages.ts.
  */
 export const ja: Record<string, string> = {
+  "providersMobile.injectMcpServers": "Code Work MCP ツールを追加（次のセッションから）",
+  "providersMobile.acpCatalogTitle": "ACP レジストリ",
+  "providersMobile.acpCatalogDescription":
+    "レジストリから Agent を選ぶと、コマンド・認証方式・設定を入力します。Agent は選択した環境のサーバーで実行されます。",
+  "providersMobile.acpCatalogSearch": "Agent を検索",
+  "providersMobile.acpCatalogLoading": "レジストリを読み込み中…",
+  "providersMobile.acpCatalogUnavailable":
+    "レジストリを利用できません。追加後にコマンドを手動で入力できます。",
+  "providersMobile.acpCatalogOffline":
+    "オフラインスナップショット（{{date}}）。バージョンが古い可能性があります。",
+  "providersMobile.acpCatalogEmpty": "一致する Agent はありません。",
+  "providersMobile.acpCatalogMore":
+    "ほかに {{countValue}} 件一致します。検索を絞り込んでください。",
+  "providersMobile.acpCatalogUse": "使用",
+  "providersMobile.acpCatalogSelected": "選択済み",
+  "providersMobile.acpCatalogUseAgent": "{{name}} を使用",
+  "providersMobile.acpCatalogManual": "手動インストール",
+  "providersMobile.acpCatalogUnsupported": "このプラットフォームでは利用不可",
+  "providersMobile.acpCatalogManualPreset":
+    "手動プリセット（{{date}} に確認）。先に CLI をインストールしてください。",
+  "providersMobile.acpCatalogInstallation": "インストール",
+  "providersMobile.acpCatalogDocumentation": "ACP ドキュメント",
+  "providersMobile.acpCatalogDownload": "ダウンロード",
+  "providersMobile.acpCatalogDownloadAgent": "{{name}}をダウンロードしてインストール",
+  "providersMobile.acpCatalogDownloading": "ダウンロード中…",
+  "providersMobile.acpCatalogDownloadFailed": "ダウンロード失敗：{{detail}}",
+  "providersMobile.acpCatalogArchive": "公式アーカイブ",
+  "providersMobile.acpCatalogDownloadDetail":
+    "公式バイナリ・SHA-256 {{hash}}…・選択した環境でダウンロードします",
+  "providersMobile.acpCatalogEnvironment": "次の環境変数がインスタンスに保存されます:",
+  "providersMobile.acpCatalogMcpDisabled":
+    "この Agent では Code Work MCP ツールが既定で無効です。追加後に有効化できます。",
+  "providersMobile.acpCatalogInstallHint":
+    "npx / uvx の項目にはサーバー側の Node.js または uv が必要です。追加後はインスタンスカードでコマンドを編集できます。",
+  "providersMobile.acpCatalogStatusChecking": "設定済み · 確認中",
+  "providersMobile.acpCatalogStatusReady": "設定済み · 準備完了",
+  "providersMobile.acpCatalogStatusMissing": "設定済み · 見つかりません",
+  "providersMobile.acpCatalogStatusError": "設定済み · 確認失敗",
+  "providersMobile.acpCatalogStatusDisabled": "設定済み · 無効",
   effortLabelLanguage: "強度ラベルの言語",
   effortLabelLanguageDescription:
     "推論強度のラベル表示を英語または中国語から選択します。この端末のみに適用され、モデルの動作は変わりません。",

@@ -8,13 +8,14 @@ import {
   ProviderDriverKind,
   type EnvironmentId,
   type ProviderInstanceConfig,
+  type AcpRegistryCatalogEntry,
 } from "@codework/contracts";
 
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { Button } from "../ui/button";
-import { Gemini, GithubCopilotIcon, type Icon } from "../Icons";
+import { Gemini, GithubCopilotIcon } from "../Icons";
 import {
   Dialog,
   DialogDescription,
@@ -74,29 +75,6 @@ const INSTANCE_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
 const DEFAULT_DRIVER_OPTION = DRIVER_OPTIONS[0]!;
 const EMPTY_CONFIG_DRAFT: Record<string, unknown> = {};
-interface ComingSoonDriverOption {
-  readonly value: ProviderDriverKind;
-  readonly label: string;
-  readonly icon: Icon;
-}
-
-const COMING_SOON_DRIVER_OPTIONS: readonly ComingSoonDriverOption[] = [
-  {
-    value: ProviderDriverKind.make("githubCopilot"),
-    get label() {
-      return t("githubCopilot");
-    },
-    icon: GithubCopilotIcon,
-  },
-  {
-    value: ProviderDriverKind.make("gemini"),
-    get label() {
-      return t("gemini");
-    },
-    icon: Gemini,
-  },
-];
-
 /**
  * Validate an instance id against the same slug rules the server applies in
  * `ProviderInstanceId` (see `packages/contracts/src/providerInstance.ts`).
@@ -138,6 +116,8 @@ export function AddProviderInstanceDialog({
   const updateSettings = useUpdateEnvironmentSettings(environmentId, reportSettingsUpdateFailure);
 
   const [wizardStep, setWizardStep] = useState(0);
+  const [catalogSelection, setCatalogSelection] = useState<AcpRegistryCatalogEntry | null>(null);
+  const [catalogQuery, setCatalogQuery] = useState("");
   const [driver, setDriver] = useState<ProviderDriverKind>(initialDriver);
   const [label, setLabel] = useState("");
   const [accentColor, setAccentColor] = useState<string>("");
@@ -159,6 +139,7 @@ export function AddProviderInstanceDialog({
       setAccentColor("");
       setInstanceIdOverride(null);
       setHasAttemptedSubmit(false);
+      setCatalogQuery("");
     }
   }, [open, initialDriver]);
 
@@ -179,6 +160,10 @@ export function AddProviderInstanceDialog({
   const wizardStepSummaries = [driverOption.label, previewLabel, null] as const;
 
   const configDraft = configByDriver[driver] ?? EMPTY_CONFIG_DRAFT;
+  const selectedCatalogEntry =
+    driver === "acpAgent" && catalogSelection?.command === configDraft.command
+      ? catalogSelection
+      : null;
   const setConfigDraft = (config: Record<string, unknown> | undefined) => {
     setConfigByDriver((existing) => {
       const next = { ...existing };
@@ -221,6 +206,9 @@ export function AddProviderInstanceDialog({
       ...(label.trim().length > 0 ? { displayName: label.trim() } : {}),
       ...(normalizedAccentColor ? { accentColor: normalizedAccentColor } : {}),
       ...(hasConfig ? { config } : {}),
+      ...(selectedCatalogEntry?.environment
+        ? { environment: selectedCatalogEntry.environment }
+        : {}),
     };
     // `ProviderInstanceId.make` revalidates the slug; we've already checked
     // it via `validateInstanceId`, but going through the brand constructor
@@ -287,7 +275,10 @@ export function AddProviderInstanceDialog({
                 </div>
                 <RadioGroup
                   value={driver}
-                  onValueChange={(value) => setDriver(ProviderDriverKind.make(value))}
+                  onValueChange={(value) => {
+                    setDriver(ProviderDriverKind.make(value));
+                    setCatalogQuery("");
+                  }}
                   aria-labelledby="add-instance-driver-label"
                   className="grid grid-cols-1 gap-2 sm:grid-cols-2"
                 >
@@ -317,31 +308,40 @@ export function AddProviderInstanceDialog({
                       </RadioPrimitive.Root>
                     );
                   })}
-                  {COMING_SOON_DRIVER_OPTIONS.map((option) => {
-                    const IconComponent = option.icon;
-                    return (
-                      <RadioPrimitive.Root
-                        key={option.value}
-                        value={option.value}
-                        disabled
-                        className={cn(
-                          "relative flex cursor-not-allowed items-center gap-3 rounded-lg bg-card/60 px-3 py-3 text-left opacity-55 outline-none ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5",
-                        )}
-                      >
-                        <IconComponent
-                          className="size-4 shrink-0 text-muted-foreground"
-                          aria-hidden
-                        />
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                          {option.label}
-                        </span>
-                        <Badge variant="warning" size="sm">
-                          {t("comingSoon")}
-                        </Badge>
-                      </RadioPrimitive.Root>
-                    );
-                  })}
                 </RadioGroup>
+                {[
+                  {
+                    id: "github-copilot-cli",
+                    label: t("githubCopilot"),
+                    icon: GithubCopilotIcon,
+                    auth: "copilot-login",
+                  },
+                  { id: "gemini", label: t("gemini"), icon: Gemini, auth: "oauth-personal" },
+                ].map((entry) => (
+                  <Button
+                    key={entry.id}
+                    variant="outline"
+                    className="justify-start gap-3"
+                    onClick={() => {
+                      setDriver(ProviderDriverKind.make("acpAgent"));
+                      setLabel(entry.label);
+                      setInstanceIdOverride(null);
+                      setCatalogSelection(null);
+                      setConfigByDriver((existing) => ({
+                        ...existing,
+                        acpAgent: { authMethodId: entry.auth },
+                      }));
+                      setCatalogQuery(entry.id);
+                      setWizardStep(2);
+                    }}
+                  >
+                    <entry.icon className="size-4 shrink-0" aria-hidden />
+                    {entry.label}
+                    <Badge variant="warning" size="sm">
+                      ACP
+                    </Badge>
+                  </Button>
+                ))}
               </div>
 
               <div
@@ -448,9 +448,23 @@ export function AddProviderInstanceDialog({
                 >
                   {driver === "acpAgent" && wizardStep === 2 ? (
                     <AcpRegistryCatalogPicker
+                      key={`${environmentId}:${catalogQuery}`}
+                      initialQuery={catalogQuery}
                       environmentId={environmentId}
                       selectedCommand={String(configDraft.command ?? "")}
-                      onSelect={(command) => setConfigDraft({ ...configDraft, command })}
+                      selectedEntryId={selectedCatalogEntry?.id}
+                      onSelect={(entry) => {
+                        setConfigByDriver((existing) => ({
+                          ...existing,
+                          acpAgent: {
+                            ...existing.acpAgent,
+                            command: entry.command,
+                            authMethodId: entry.authMethodId ?? "login",
+                            supportsMcpServers: entry.supportsMcpServers ?? true,
+                          },
+                        }));
+                        setCatalogSelection(entry);
+                      }}
                     />
                   ) : null}
                   <ProviderSettingsForm
@@ -458,8 +472,30 @@ export function AddProviderInstanceDialog({
                     value={configDraft}
                     idPrefix={`add-provider-${driver}`}
                     variant="dialog"
-                    onChange={setConfigDraft}
+                    onChange={(config) => {
+                      if (driver === "acpAgent" && config?.command !== configDraft.command) {
+                        setCatalogSelection(null);
+                      }
+                      setConfigDraft(config);
+                    }}
                   />
+                  {selectedCatalogEntry?.setup ? (
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      {selectedCatalogEntry.description}
+                    </p>
+                  ) : null}
+                  {selectedCatalogEntry?.environment?.length ? (
+                    <div className="grid gap-1 rounded-md border border-border/60 p-3">
+                      <p className="text-xs text-muted-foreground">
+                        {t("acpRegistryEnvironmentHint")}
+                      </p>
+                      {selectedCatalogEntry.environment.map((variable) => (
+                        <code key={variable.name} className="break-all text-xs">
+                          {variable.name}={variable.sensitive ? "••••" : variable.value}
+                        </code>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div

@@ -757,25 +757,27 @@ export const AcpAgentSettings = makeProviderSettingsSchema(
     command: TrimmedString.pipe(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
-        title: "Command line",
-        description: "Full launch command of the ACP agent, e.g. npx -y cline@3.0.46 --acp.",
+        title: "providers.settings.acpCommand",
+        description: "providers.settings.acpCommandDescription",
         providerSettingsForm: { placeholder: "npx -y cline@3.0.46 --acp" },
       }),
     ),
     authMethodId: TrimmedString.pipe(
       Schema.withDecodingDefault(Effect.succeed("login")),
       Schema.annotateKey({
-        title: "Auth method",
-        description: "ACP authenticate method id the agent expects during session setup.",
-        providerSettingsForm: { placeholder: "login", clearWhenEmpty: "omit" },
+        title: "providers.settings.acpAuthMethod",
+        description: "providers.settings.acpAuthMethodDescription",
+        providerSettingsForm: {
+          placeholder: "providers.settings.acpAuthMethodPlaceholder",
+          clearWhenEmpty: "persist",
+        },
       }),
     ),
     routeThroughByok: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({
         title: "Route through BYOK gateway",
-        description:
-          "Point the agent's OpenAI/Anthropic endpoints at the local BYOK gateway by injecting standard env vars. Only agents that read those vars are affected.",
+        description: "providers.settings.acpByokDescription",
         providerSettingsForm: { control: "switch" },
       }),
     ),
@@ -786,12 +788,20 @@ export const AcpAgentSettings = makeProviderSettingsSchema(
       Schema.withDecodingDefault(Effect.succeed(true)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
+    supportsMcpServers: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.annotateKey({
+        title: "providers.settings.injectMcp",
+        description: "providers.settings.injectMcpDescription",
+        providerSettingsForm: { control: "switch" },
+      }),
+    ),
     customModels: Schema.Array(Schema.String).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
-  { order: ["command", "authMethodId", "routeThroughByok"] },
+  { order: ["command", "authMethodId", "routeThroughByok", "supportsMcpServers"] },
 );
 export type AcpAgentSettings = typeof AcpAgentSettings.Type;
 

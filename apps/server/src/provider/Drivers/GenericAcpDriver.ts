@@ -225,6 +225,7 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
         acpAuthMethodId: effectiveConfig.authMethodId,
         acpClientName: "code-work-acp",
         supportsModelSelection: effectiveConfig.supportsModelSelection,
+        supportsMcpServers: effectiveConfig.supportsMcpServers,
         environment: injectedEnv,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
         instanceId,

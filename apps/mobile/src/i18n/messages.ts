@@ -1,4 +1,42 @@
 export const en: Record<string, string> = {
+  "providersMobile.injectMcpServers": "Inject Code Work MCP tools (next session)",
+  "providersMobile.acpCatalogTitle": "ACP registry",
+  "providersMobile.acpCatalogDescription":
+    "Pick a registry agent to fill its command, auth method and settings. Agents run on the selected environment's server.",
+  "providersMobile.acpCatalogSearch": "Search agents",
+  "providersMobile.acpCatalogLoading": "Loading registry…",
+  "providersMobile.acpCatalogUnavailable":
+    "Registry unavailable. You can still add the agent and enter its command manually.",
+  "providersMobile.acpCatalogOffline": "Offline snapshot from {{date}}; versions may be outdated.",
+  "providersMobile.acpCatalogEmpty": "No matching agents.",
+  "providersMobile.acpCatalogMore": "{{countValue}} more matches. Refine the search to see them.",
+  "providersMobile.acpCatalogUse": "Use",
+  "providersMobile.acpCatalogSelected": "Selected",
+  "providersMobile.acpCatalogUseAgent": "Use {{name}}",
+  "providersMobile.acpCatalogManual": "Manual install",
+  "providersMobile.acpCatalogUnsupported": "Not available on this platform",
+  "providersMobile.acpCatalogManualPreset":
+    "Manual preset, verified {{date}}. Install the CLI first.",
+  "providersMobile.acpCatalogInstallation": "Installation",
+  "providersMobile.acpCatalogDocumentation": "ACP docs",
+  "providersMobile.acpCatalogDownload": "Download",
+  "providersMobile.acpCatalogDownloadAgent": "Download and install {{name}}",
+  "providersMobile.acpCatalogDownloading": "Downloading…",
+  "providersMobile.acpCatalogDownloadFailed": "Download failed: {{detail}}",
+  "providersMobile.acpCatalogArchive": "Official archive",
+  "providersMobile.acpCatalogDownloadDetail":
+    "Official binary · SHA-256 {{hash}}… · downloads on the selected environment",
+  "providersMobile.acpCatalogEnvironment":
+    "These environment variables are saved with the instance:",
+  "providersMobile.acpCatalogMcpDisabled":
+    "Code Work MCP tools start disabled for this agent; you can turn them on after adding.",
+  "providersMobile.acpCatalogInstallHint":
+    "npx and uvx entries need Node.js or uv on the server. Edit the command on the instance card after adding.",
+  "providersMobile.acpCatalogStatusChecking": "Configured · checking",
+  "providersMobile.acpCatalogStatusReady": "Configured · ready",
+  "providersMobile.acpCatalogStatusMissing": "Configured · not found",
+  "providersMobile.acpCatalogStatusError": "Configured · check failed",
+  "providersMobile.acpCatalogStatusDisabled": "Configured · disabled",
   "localAccountPool.title": "Local official account pool",
   "localAccountPool.description":
     "Import an official CLI credential into this server. Credentials stay in the server secret store and enabled accounts rotate per request.",
@@ -2656,6 +2694,41 @@ export const en: Record<string, string> = {
 };
 
 export const zhCN: Record<string, string> = {
+  "providersMobile.injectMcpServers": "注入 Code Work MCP 工具（下次会话生效）",
+  "providersMobile.acpCatalogTitle": "ACP 目录",
+  "providersMobile.acpCatalogDescription":
+    "从目录选择 Agent，自动填入命令、认证方式与设置。Agent 在所选环境的服务端运行。",
+  "providersMobile.acpCatalogSearch": "搜索 Agent",
+  "providersMobile.acpCatalogLoading": "正在加载目录…",
+  "providersMobile.acpCatalogUnavailable": "目录不可用，仍可添加实例后手动填写命令。",
+  "providersMobile.acpCatalogOffline": "离线快照（{{date}}），版本可能已过期。",
+  "providersMobile.acpCatalogEmpty": "没有匹配的 Agent。",
+  "providersMobile.acpCatalogMore": "另有 {{countValue}} 项匹配，请细化搜索。",
+  "providersMobile.acpCatalogUse": "使用",
+  "providersMobile.acpCatalogSelected": "已选择",
+  "providersMobile.acpCatalogUseAgent": "使用 {{name}}",
+  "providersMobile.acpCatalogManual": "需手动安装",
+  "providersMobile.acpCatalogUnsupported": "当前平台不可用",
+  "providersMobile.acpCatalogManualPreset": "手工预设，核对于 {{date}}，请先安装 CLI。",
+  "providersMobile.acpCatalogInstallation": "安装说明",
+  "providersMobile.acpCatalogDocumentation": "ACP 文档",
+  "providersMobile.acpCatalogDownload": "下载安装",
+  "providersMobile.acpCatalogDownloadAgent": "下载并安装 {{name}}",
+  "providersMobile.acpCatalogDownloading": "下载中…",
+  "providersMobile.acpCatalogDownloadFailed": "下载失败：{{detail}}",
+  "providersMobile.acpCatalogArchive": "官方归档",
+  "providersMobile.acpCatalogDownloadDetail":
+    "官方二进制 · SHA-256 {{hash}}… · 在所选环境下载并校验",
+  "providersMobile.acpCatalogEnvironment": "以下环境变量会随实例保存：",
+  "providersMobile.acpCatalogMcpDisabled":
+    "该 Agent 默认不注入 Code Work MCP 工具，添加后可在实例中开启。",
+  "providersMobile.acpCatalogInstallHint":
+    "npx、uvx 条目需要服务端已安装 Node.js 或 uv。添加后可在实例卡片中修改命令。",
+  "providersMobile.acpCatalogStatusChecking": "已配置 · 检查中",
+  "providersMobile.acpCatalogStatusReady": "已配置 · 就绪",
+  "providersMobile.acpCatalogStatusMissing": "已配置 · 未找到",
+  "providersMobile.acpCatalogStatusError": "已配置 · 检查失败",
+  "providersMobile.acpCatalogStatusDisabled": "已配置 · 已停用",
   "localAccountPool.title": "本地官方账号池",
   "localAccountPool.description":
     "将官方 CLI 凭据导入服务器，凭据保存在服务端密钥存储中，启用账号按请求轮换。",

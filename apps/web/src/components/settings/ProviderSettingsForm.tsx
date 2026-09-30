@@ -25,6 +25,7 @@ export interface ProviderSettingsFieldModel {
   readonly placeholder?: string | undefined;
   readonly clearWhenEmpty: "omit" | "persist";
   readonly defaultBooleanValue?: boolean | undefined;
+  readonly defaultStringValue?: string | undefined;
 }
 
 function titleizeFieldKey(key: string): string {
@@ -62,12 +63,12 @@ function readProviderSettingsFormSchemaAnnotation(
   return Schema.resolveAnnotations(definition.settingsSchema)?.providerSettingsFormSchema ?? {};
 }
 
-function readFieldBooleanDefault(
+function readFieldDefault(
   fieldSchema: ProviderClientDefinition["settingsSchema"]["fields"][string],
-): boolean | undefined {
+): unknown {
   const decodeDefault = Schema.decodeUnknownOption(fieldSchema as Schema.Decoder<unknown>);
   const decoded = decodeDefault(undefined);
-  return Option.isSome(decoded) && typeof decoded.value === "boolean" ? decoded.value : undefined;
+  return Option.isSome(decoded) ? decoded.value : undefined;
 }
 
 export function deriveProviderSettingsFields(
@@ -95,6 +96,7 @@ export function deriveProviderSettingsFields(
 
       const annotatedTitle = readFieldAnnotationString(fieldSchema, "title");
       const annotatedDescription = readFieldAnnotationString(fieldSchema, "description");
+      const defaultValue = readFieldDefault(fieldSchema);
       return [
         {
           key,
@@ -105,18 +107,21 @@ export function deriveProviderSettingsFields(
             ? { placeholder: formAnnotation.placeholder }
             : {}),
           clearWhenEmpty: formAnnotation.clearWhenEmpty ?? "omit",
-          ...(formAnnotation.control === "switch"
-            ? { defaultBooleanValue: readFieldBooleanDefault(fieldSchema) }
+          ...(formAnnotation.control === "switch" && typeof defaultValue === "boolean"
+            ? { defaultBooleanValue: defaultValue }
+            : {}),
+          ...(formAnnotation.clearWhenEmpty === "persist" && typeof defaultValue === "string"
+            ? { defaultStringValue: defaultValue }
             : {}),
         } satisfies ProviderSettingsFieldModel,
       ];
     });
 }
 
-export function readProviderConfigString(config: unknown, key: string): string {
-  if (config === null || typeof config !== "object") return "";
+export function readProviderConfigString(config: unknown, key: string, defaultValue = ""): string {
+  if (config === null || typeof config !== "object") return defaultValue;
   const value = (config as Record<string, unknown>)[key];
-  return typeof value === "string" ? value : "";
+  return typeof value === "string" ? value : defaultValue;
 }
 
 export function readProviderConfigBoolean(
@@ -228,7 +233,7 @@ function ProviderSettingsFieldRow({
           <Textarea
             id={inputId}
             className={cn(variant === "card" && "mt-1.5")}
-            value={readProviderConfigString(value, field.key)}
+            value={readProviderConfigString(value, field.key, field.defaultStringValue)}
             onChange={(event) =>
               onChange(nextProviderConfigWithFieldValue(value, field, event.target.value))
             }
@@ -252,7 +257,7 @@ function ProviderSettingsFieldRow({
             className="mt-1.5"
             type={type}
             autoComplete={field.control === "password" ? "off" : undefined}
-            value={readProviderConfigString(value, field.key)}
+            value={readProviderConfigString(value, field.key, field.defaultStringValue)}
             onCommit={(next) => onChange(nextProviderConfigWithFieldValue(value, field, next))}
             placeholder={field.placeholder ? t(field.placeholder) : undefined}
             spellCheck={false}
@@ -263,7 +268,7 @@ function ProviderSettingsFieldRow({
             className="bg-background"
             type={type}
             autoComplete={field.control === "password" ? "off" : undefined}
-            value={readProviderConfigString(value, field.key)}
+            value={readProviderConfigString(value, field.key, field.defaultStringValue)}
             onChange={(event) =>
               onChange(nextProviderConfigWithFieldValue(value, field, event.target.value))
             }

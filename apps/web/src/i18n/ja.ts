@@ -4,6 +4,18 @@
  * messages.ts.
  */
 export const ja: Record<string, string> = {
+  "providers.settings.acpCommand": "起動コマンド",
+  "providers.settings.acpCommandDescription":
+    "ACP Agent の起動コマンド全体です。レジストリから選ぶと自動入力されます。",
+  "providers.settings.acpAuthMethod": "認証方式",
+  "providers.settings.acpAuthMethodDescription":
+    "Agent の ACP 認証方式です。空欄にすると既存の CLI ログインまたは環境の認証情報でセッションを開始します。",
+  "providers.settings.acpAuthMethodPlaceholder": "既存の認証情報を使う場合は空欄",
+  "providers.settings.acpByokDescription":
+    "OpenAI/Anthropic の接続先変数を渡し、この環境のローカルゲートウェイからモデルを提供します。対応する Agent にのみ適用されます。",
+  "providers.settings.injectMcp": "Code Work MCP ツールを追加",
+  "providers.settings.injectMcpDescription":
+    "セッション開始時に MCP サーバーが拒否される場合は無効にしてください。Code Work MCP ツールは使用できなくなりますが、エージェント自身のツールは引き続き使用できます。新規または再開するセッションに適用されます。",
   "ide.activityBar": "IDE アクティビティバー",
   "ide.explorer": "エクスプローラー",
   "ide.projectsAndChats": "プロジェクトとチャット",
@@ -1138,8 +1150,20 @@ export const ja: Record<string, string> = {
   acpRegistrySearch: "ACPエージェントを検索",
   acpRegistryLoading: "ACPレジストリを読み込み中…",
   acpRegistryUnavailable: "ACPレジストリを利用できません。コマンドは手動で入力できます。",
+  acpRegistryOfflineSnapshot:
+    "オンライン一覧を利用できません。{{date}} の内蔵スナップショットを表示しています。バージョンが古い可能性があります。コマンドは手動で入力できます。",
   acpRegistryEmpty: "一致するエージェントがありません。",
   acpRegistryManual: "手動設定が必要",
+  acpRegistryManualPreset: "CLIの事前インストールが必要・ローカル版を使用・文書確認日 {{date}}",
+  acpRegistryInstallation: "インストール手順",
+  acpRegistryDocumentation: "ACP公式文書",
+  acpRegistryDownloadInstall: "ダウンロードしてインストール",
+  acpRegistryDownloadInstallAgent: "{{name}}をダウンロードしてインストール",
+  acpRegistryDownloading: "ダウンロード中…",
+  acpRegistryDownloadFailed: "ダウンロード失敗：{{detail}}",
+  acpRegistryArchive: "公式アーカイブ",
+  acpRegistryDownloadDetail:
+    "公式バイナリ・SHA-256 {{hash}}…・選択した環境でダウンロードと検証を行い、コマンドを入力します",
   acpRegistryUnsupported: "このプラットフォームでは利用不可",
   acpRegistryUseAgent: "{{name}}を使用",
   acpRegistryUse: "使用",
@@ -1151,7 +1175,9 @@ export const ja: Record<string, string> = {
   acpRegistryFailed: "設定済み・起動失敗",
   acpRegistryDisabled: "設定済み・無効",
   acpRegistryInstallHint:
-    "npxエージェントを選ぶとバージョン固定のコマンドが入力されます。確認または起動時にパッケージがダウンロードされる場合があります。",
+    "選択すると起動コマンドが入力されます。手動項目はCLIの事前インストールが必要です。npx/uvxにはNode.jsまたはuvが必要で、確認・起動時に固定版をダウンロードする場合があります。",
+  acpRegistryEnvironmentHint:
+    "以下の公開環境設定がインスタンスと一緒に保存されます。追加後にインスタンス設定で編集できます。",
   externalSessionsTitle: "CLIセッションをインポート",
   externalSessionsDescription:
     "プロジェクトの環境にあるCodexまたはClaude Codeの履歴を取り込みます。元のファイルは変更しません。",

@@ -3,6 +3,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   resolveProviderInstanceEnabled,
+  type AcpRegistryCatalogEntry,
   type ProviderInstanceConfig,
   type ServerSettings,
 } from "@codework/contracts";
@@ -25,8 +26,12 @@ export interface MobileProviderField {
     | "providersMobile.routeThroughByok"
     | "providersMobile.command"
     | "providersMobile.authMethod"
+    | "providersMobile.injectMcpServers"
     | "providersMobile.approvalMode";
   readonly kind: MobileProviderFieldKind;
+  readonly defaultBooleanValue?: boolean;
+  readonly defaultStringValue?: string;
+  readonly clearWhenEmpty?: "omit" | "persist";
   readonly placeholderKey:
     | "providersMobile.binaryPathPlaceholder"
     | "providersMobile.homePathPlaceholder"
@@ -142,8 +147,20 @@ const PROVIDER_FIELDS: Readonly<Record<MobileProviderDriver, ReadonlyArray<Mobil
     ],
     acpAgent: [
       FIELD("command", "providersMobile.command", "providersMobile.commandPlaceholder"),
-      FIELD("authMethodId", "providersMobile.authMethod", "providersMobile.authMethodPlaceholder"),
+      {
+        ...FIELD(
+          "authMethodId",
+          "providersMobile.authMethod",
+          "providersMobile.authMethodPlaceholder",
+        ),
+        clearWhenEmpty: "persist",
+        defaultStringValue: "login",
+      },
       FIELD("routeThroughByok", "providersMobile.routeThroughByok", null, "switch"),
+      {
+        ...FIELD("supportsMcpServers", "providersMobile.injectMcpServers", null, "switch"),
+        defaultBooleanValue: true,
+      },
     ],
   };
 
@@ -188,13 +205,18 @@ export function readProviderConfigRecord(config: unknown): Record<string, unknow
     : {};
 }
 
-export function readProviderConfigString(config: unknown, key: string): string {
+export function readProviderConfigString(config: unknown, key: string, defaultValue = ""): string {
   const value = readProviderConfigRecord(config)[key];
-  return typeof value === "string" ? value : "";
+  return typeof value === "string" ? value : defaultValue;
 }
 
-export function readProviderConfigBoolean(config: unknown, key: string): boolean {
-  return readProviderConfigRecord(config)[key] === true;
+export function readProviderConfigBoolean(
+  config: unknown,
+  key: string,
+  defaultValue = false,
+): boolean {
+  const value = readProviderConfigRecord(config)[key];
+  return typeof value === "boolean" ? value : defaultValue;
 }
 
 export function updateProviderConfig(
@@ -204,9 +226,9 @@ export function updateProviderConfig(
 ): Record<string, unknown> | undefined {
   const next = readProviderConfigRecord(config);
   if (typeof value === "boolean") {
-    if (!value) delete next[field.key];
-    else next[field.key] = true;
-  } else if (value.trim().length === 0) {
+    if (value === (field.defaultBooleanValue ?? false)) delete next[field.key];
+    else next[field.key] = value;
+  } else if (value.trim().length === 0 && field.clearWhenEmpty !== "persist") {
     delete next[field.key];
   } else {
     next[field.key] = value;
@@ -283,6 +305,56 @@ export function makeMobileProviderInstance(
     enabled: true,
     ...(displayName.trim().length > 0 ? { displayName: displayName.trim() } : {}),
   };
+}
+
+/** 移动端一次显示的目录行数上限，其余条目通过搜索访问。 */
+export const MOBILE_ACP_CATALOG_VISIBLE_LIMIT = 12;
+
+export function filterAcpCatalogEntries(
+  entries: ReadonlyArray<AcpRegistryCatalogEntry>,
+  query: string,
+): ReadonlyArray<AcpRegistryCatalogEntry> {
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) return entries;
+  return entries.filter((entry) =>
+    `${entry.name} ${entry.description} ${entry.id}`.toLowerCase().includes(needle),
+  );
+}
+
+/**
+ * 与网页保存相同的目录命令、认证方式和公开环境参数；仅显式关闭时存储 MCP 覆盖。
+ */
+export function makeMobileAcpCatalogInstance(
+  entry: AcpRegistryCatalogEntry,
+  displayName: string,
+): ProviderInstanceConfig | undefined {
+  if (entry.command === null) return undefined;
+  const config: Record<string, unknown> = {
+    command: entry.command,
+    authMethodId: entry.authMethodId ?? "login",
+  };
+  if (entry.supportsMcpServers === false) config.supportsMcpServers = false;
+  return {
+    driver: ProviderDriverKind.make("acpAgent"),
+    enabled: true,
+    displayName: displayName.trim() || entry.name,
+    config,
+    ...(entry.environment && entry.environment.length > 0
+      ? { environment: entry.environment }
+      : {}),
+  };
+}
+
+export function suggestAcpCatalogInstanceId(
+  entryId: string,
+  existingIds: ReadonlySet<string>,
+): string {
+  const slug = entryId.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  const base = `acp-${slug || "agent"}`;
+  if (!existingIds.has(base)) return base;
+  let suffix = 2;
+  while (existingIds.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
 }
 
 export function materializeProviderInstances(

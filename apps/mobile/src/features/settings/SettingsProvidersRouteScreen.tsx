@@ -5,6 +5,7 @@ import {
   ProviderDriverKind,
 } from "@codework/contracts";
 import type {
+  AcpRegistryCatalogEntry,
   AuthSessionState,
   EnvironmentId,
   ProviderInstanceConfig,
@@ -29,6 +30,7 @@ import { t } from "../../i18n";
 import { useEnvironments } from "../../state/environments";
 import { serverEnvironment } from "../../state/server";
 import { environmentSession } from "../../state/session";
+import { AcpRegistryCatalogSection } from "./AcpRegistryCatalogSection";
 import { CliProxySettingsSection } from "./CliProxySettingsSection";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsEnvironmentPicker } from "./components/SettingsEnvironmentPicker";
@@ -36,6 +38,7 @@ import { SettingsSection } from "./components/SettingsSection";
 import {
   MOBILE_PROVIDER_DRIVERS,
   buildMobileProviderRows,
+  makeMobileAcpCatalogInstance,
   makeMobileProviderInstance,
   materializeProviderInstances,
   providerEnabled,
@@ -45,6 +48,7 @@ import {
   readProviderConfigString,
   updateProviderConfig,
   readProviderConfigRecord,
+  suggestAcpCatalogInstanceId,
   type MobileProviderDriver,
   type MobileProviderField,
   type MobileProviderRow,
@@ -113,6 +117,7 @@ export function SettingsProvidersRouteScreen() {
   const [newDriver, setNewDriver] = useState<MobileProviderDriver>(MOBILE_PROVIDER_DRIVERS[0]);
   const [newInstanceId, setNewInstanceId] = useState("");
   const [newInstanceName, setNewInstanceName] = useState("");
+  const [newCatalogEntry, setNewCatalogEntry] = useState<AcpRegistryCatalogEntry | null>(null);
 
   useEffect(() => {
     if (
@@ -123,6 +128,7 @@ export function SettingsProvidersRouteScreen() {
     }
     setSelectedEnvironmentId(environments[0]?.environmentId ?? null);
     setDrafts({});
+    setNewCatalogEntry(null);
   }, [environments, selectedEnvironmentId]);
 
   const rows = useMemo(
@@ -192,17 +198,47 @@ export function SettingsProvidersRouteScreen() {
       setError(t("providersMobile.instanceExists"));
       return;
     }
+    const catalogInstance =
+      newDriver === "acpAgent" && newCatalogEntry !== null
+        ? makeMobileAcpCatalogInstance(newCatalogEntry, newInstanceName)
+        : undefined;
     setPendingAction("add");
     const saved = await saveProviderInstances({
       ...materializeProviderInstances(settings),
-      [id as ProviderInstanceId]: makeMobileProviderInstance(newDriver, newInstanceName),
+      [id as ProviderInstanceId]:
+        catalogInstance ?? makeMobileProviderInstance(newDriver, newInstanceName),
     });
     if (saved) {
       setNewInstanceId("");
       setNewInstanceName("");
+      setNewCatalogEntry(null);
     }
     setPendingAction(null);
-  }, [environmentId, newInstanceId, newInstanceName, newDriver, saveProviderInstances, settings]);
+  }, [
+    environmentId,
+    newCatalogEntry,
+    newInstanceId,
+    newInstanceName,
+    newDriver,
+    saveProviderInstances,
+    settings,
+  ]);
+
+  const selectCatalogEntry = useCallback(
+    (entry: AcpRegistryCatalogEntry | null) => {
+      setNewCatalogEntry(entry);
+      if (entry === null || settings === null) return;
+      setNewInstanceId((current) =>
+        current.trim().length > 0
+          ? current
+          : suggestAcpCatalogInstanceId(
+              entry.id,
+              new Set(Object.keys(materializeProviderInstances(settings))),
+            ),
+      );
+    },
+    [settings],
+  );
 
   const deleteRow = useCallback(
     (row: MobileProviderRow) => {
@@ -303,6 +339,7 @@ export function SettingsProvidersRouteScreen() {
           onSelect={(next) => {
             setSelectedEnvironmentId(next);
             setDrafts({});
+            setNewCatalogEntry(null);
             setError(null);
             setNotice(null);
           }}
@@ -324,11 +361,17 @@ export function SettingsProvidersRouteScreen() {
               onManageRoutes={manageRoutes}
             />
             <AddProviderSection
+              environmentId={environmentId}
               driver={newDriver}
               instanceId={newInstanceId}
               instanceName={newInstanceName}
+              catalogEntry={newCatalogEntry}
               disabled={pendingAction !== null || !canOperate}
-              onDriverChange={setNewDriver}
+              onDriverChange={(driver) => {
+                setNewDriver(driver);
+                if (driver !== "acpAgent") setNewCatalogEntry(null);
+              }}
+              onCatalogSelect={selectCatalogEntry}
               onInstanceIdChange={setNewInstanceId}
               onInstanceNameChange={setNewInstanceName}
               onAdd={() => void addInstance()}
@@ -372,11 +415,14 @@ export function SettingsProvidersRouteScreen() {
 }
 
 function AddProviderSection(props: {
+  readonly environmentId: EnvironmentId;
   readonly driver: MobileProviderDriver;
   readonly instanceId: string;
   readonly instanceName: string;
+  readonly catalogEntry: AcpRegistryCatalogEntry | null;
   readonly disabled: boolean;
   readonly onDriverChange: (driver: MobileProviderDriver) => void;
+  readonly onCatalogSelect: (entry: AcpRegistryCatalogEntry | null) => void;
   readonly onInstanceIdChange: (value: string) => void;
   readonly onInstanceNameChange: (value: string) => void;
   readonly onAdd: () => void;
@@ -394,6 +440,15 @@ function AddProviderSection(props: {
           disabled={props.disabled}
           onSelect={props.onDriverChange}
         />
+        {props.driver === "acpAgent" ? (
+          <AcpRegistryCatalogSection
+            key={props.environmentId}
+            environmentId={props.environmentId}
+            selectedEntry={props.catalogEntry}
+            disabled={props.disabled}
+            onSelect={props.onCatalogSelect}
+          />
+        ) : null}
         <Field label={t("providersMobile.instanceId")}>
           <TextInput
             value={props.instanceId}
@@ -498,14 +553,14 @@ function ProviderCard(props: {
               <View className="flex-row items-center justify-between rounded-2xl bg-input px-3.5 py-3">
                 <Text className="text-sm text-foreground-muted">{t(field.labelKey)}</Text>
                 <Switch
-                  value={readProviderConfigBoolean(config, field.key)}
+                  value={readProviderConfigBoolean(config, field.key, field.defaultBooleanValue)}
                   disabled={props.disabled}
                   onValueChange={(value) => changeField(field, value)}
                 />
               </View>
             ) : (
               <TextInput
-                value={readProviderConfigString(config, field.key)}
+                value={readProviderConfigString(config, field.key, field.defaultStringValue)}
                 onChangeText={(value) => changeField(field, value)}
                 placeholder={field.placeholderKey === null ? undefined : t(field.placeholderKey)}
                 secureTextEntry={field.kind === "password"}

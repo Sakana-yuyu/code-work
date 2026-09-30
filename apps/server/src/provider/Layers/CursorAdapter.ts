@@ -107,6 +107,8 @@ export interface CursorAdapterLiveOptions {
   readonly acpAuthMethodId?: string;
   readonly acpClientName?: string;
   readonly supportsModelSelection?: boolean;
+  /** 不兼容动态 MCP 注入的 ACP 实例显式关闭；标准文件/终端工具不受影响。 */
+  readonly supportsMcpServers?: boolean;
   readonly environment?: NodeJS.ProcessEnv;
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
@@ -776,7 +778,9 @@ export function makeCursorAdapter(
             cwd,
             ...(options?.acpCommand ? { acpCommand: options.acpCommand } : {}),
             ...(options?.acpArgs ? { acpArgs: options.acpArgs } : {}),
-            ...(options?.acpAuthMethodId ? { authMethodId: options.acpAuthMethodId } : {}),
+            ...(options?.acpAuthMethodId !== undefined
+              ? { authMethodId: options.acpAuthMethodId }
+              : {}),
             ...(options?.acpClientName ? { clientName: options.acpClientName } : {}),
             ...(resumeSessionId ? { resumeSessionId } : {}),
             clientInfo: { name: "code-work", version: "0.0.0" },
@@ -788,7 +792,7 @@ export function makeCursorAdapter(
                     terminal: true,
                   },
                 }),
-            ...(mcpSession
+            ...(mcpSession && options?.supportsMcpServers !== false
               ? {
                   mcpServers: [
                     {

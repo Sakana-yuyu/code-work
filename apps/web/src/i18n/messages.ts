@@ -6,6 +6,18 @@
  * pluralizable messages use `key_plural` selected via a `count` param.
  */
 export const en: Record<string, string> = {
+  "providers.settings.acpCommand": "Launch command",
+  "providers.settings.acpCommandDescription":
+    "Full command for starting the ACP agent. Selecting a registry entry fills it automatically.",
+  "providers.settings.acpAuthMethod": "Authentication method",
+  "providers.settings.acpAuthMethodDescription":
+    "The agent's ACP authentication method. Leave empty to start a session using existing CLI sign-in or environment credentials.",
+  "providers.settings.acpAuthMethodPlaceholder": "Leave empty to use existing credentials",
+  "providers.settings.acpByokDescription":
+    "Provide models through this environment's local gateway by injecting OpenAI/Anthropic endpoint variables. This applies to agents that support these variables.",
+  "providers.settings.injectMcp": "Inject Code Work MCP tools",
+  "providers.settings.injectMcpDescription":
+    "Disable if the agent rejects MCP servers during session setup. Code Work MCP tools will be unavailable; the agent's own tools remain available. Applies to new or resumed sessions.",
   "ide.activityBar": "IDE activity bar",
   "ide.explorer": "Explorer",
   "ide.projectsAndChats": "Projects and conversations",
@@ -1080,8 +1092,20 @@ export const en: Record<string, string> = {
   acpRegistryLoading: "Loading the ACP registry…",
   acpRegistryUnavailable:
     "The ACP registry is unavailable. You can still enter a command manually.",
+  acpRegistryOfflineSnapshot:
+    "The online registry is unavailable. Showing the bundled snapshot from {{date}}; versions may be outdated. You can still enter a command manually.",
   acpRegistryEmpty: "No matching agents.",
   acpRegistryManual: "Manual setup",
+  acpRegistryManualPreset: "Install CLI first · local version · docs checked {{date}}",
+  acpRegistryInstallation: "Installation guide",
+  acpRegistryDocumentation: "ACP documentation",
+  acpRegistryDownloadInstall: "Download & install",
+  acpRegistryDownloadInstallAgent: "Download and install {{name}}",
+  acpRegistryDownloading: "Downloading…",
+  acpRegistryDownloadFailed: "Download failed: {{detail}}",
+  acpRegistryArchive: "Official archive",
+  acpRegistryDownloadDetail:
+    "Official binary · SHA-256 {{hash}}… · the selected environment downloads, verifies, and fills the command",
   acpRegistryUnsupported: "Unavailable on this platform",
   acpRegistryUseAgent: "Use {{name}}",
   acpRegistryUse: "Use",
@@ -1093,7 +1117,9 @@ export const en: Record<string, string> = {
   acpRegistryFailed: "Configured · startup failed",
   acpRegistryDisabled: "Configured · disabled",
   acpRegistryInstallHint:
-    "Selecting an npx agent fills its pinned command. The package may download when Code Work checks or starts it.",
+    "Selecting an agent fills its launch command. Manual entries require the CLI to be installed first. npx/uvx entries require Node.js or uv and may download the pinned package during checks or startup.",
+  acpRegistryEnvironmentHint:
+    "These public environment defaults will be saved with the instance. You can edit them in instance settings after adding it.",
   externalSessionsTitle: "Import CLI sessions",
   externalSessionsDescription:
     "Choose a project to import Codex or Claude Code history from its server environment. Original files remain unchanged.",
@@ -6316,6 +6342,18 @@ export const en: Record<string, string> = {
 };
 
 export const zhCN: Record<string, string> = {
+  "providers.settings.acpCommand": "启动命令",
+  "providers.settings.acpCommandDescription":
+    "ACP 智能体的完整启动命令。选择目录条目后会自动填入。",
+  "providers.settings.acpAuthMethod": "认证方式",
+  "providers.settings.acpAuthMethodDescription":
+    "ACP 认证方法名。留空时直接建立会话，使用 CLI 已有登录或环境凭据。",
+  "providers.settings.acpAuthMethodPlaceholder": "留空使用已有凭据",
+  "providers.settings.acpByokDescription":
+    "通过注入 OpenAI/Anthropic 端点环境变量，使用当前环境的本地网关提供模型；仅对支持这些变量的智能体生效。",
+  "providers.settings.injectMcp": "注入 Code Work MCP 工具",
+  "providers.settings.injectMcpDescription":
+    "若 Agent 在建立会话时拒绝 MCP 服务器，可关闭此项。关闭后无法使用 Code Work MCP 工具，Agent 自带工具仍可用；新建或恢复会话时生效。",
   "ide.activityBar": "IDE 活动栏",
   "ide.explorer": "资源管理器",
   "ide.projectsAndChats": "项目与对话",
@@ -10989,8 +11027,19 @@ export const zhCN: Record<string, string> = {
   acpRegistrySearch: "搜索 ACP 智能体",
   acpRegistryLoading: "正在加载 ACP 注册表…",
   acpRegistryUnavailable: "ACP 注册表暂时不可用，仍可手工填写命令。",
+  acpRegistryOfflineSnapshot:
+    "在线目录暂时不可用，现显示 {{date}} 的内置快照，版本可能已过期。仍可手工填写命令。",
   acpRegistryEmpty: "没有匹配的智能体。",
   acpRegistryManual: "需手工配置",
+  acpRegistryManualPreset: "需先安装 CLI · 使用本机版本 · 文档核对于 {{date}}",
+  acpRegistryInstallation: "安装说明",
+  acpRegistryDocumentation: "ACP 官方文档",
+  acpRegistryDownloadInstall: "下载并安装",
+  acpRegistryDownloadInstallAgent: "下载并安装 {{name}}",
+  acpRegistryDownloading: "下载中…",
+  acpRegistryDownloadFailed: "下载失败：{{detail}}",
+  acpRegistryArchive: "官方归档",
+  acpRegistryDownloadDetail: "官方二进制 · SHA-256 {{hash}}… · 由所选环境下载、校验后填入命令",
   acpRegistryUnsupported: "当前平台不可用",
   acpRegistryUseAgent: "使用 {{name}}",
   acpRegistryUse: "使用",
@@ -11002,7 +11051,8 @@ export const zhCN: Record<string, string> = {
   acpRegistryFailed: "已配置 · 启动失败",
   acpRegistryDisabled: "已配置 · 已停用",
   acpRegistryInstallHint:
-    "选择 npx 智能体会填入固定版本的命令；Code Work 探测或启动时可能下载该软件包。",
+    "选择智能体会填入启动命令。手工安装条目需先安装 CLI；npx/uvx 条目需 Node.js 或 uv，探测或启动时可能下载固定版本软件包。",
+  acpRegistryEnvironmentHint: "以下公开环境参数将随实例保存，添加后可在实例设置中修改。",
   externalSessionsTitle: "导入 CLI 会话",
   externalSessionsDescription:
     "选择项目，从该项目所在环境导入 Codex 或 Claude Code 历史。原始文件保持不变。",
