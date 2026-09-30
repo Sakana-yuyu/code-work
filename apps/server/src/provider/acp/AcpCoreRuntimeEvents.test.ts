@@ -1,5 +1,7 @@
 import { ProviderDriverKind, RuntimeRequestId, TurnId } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
+import { projectActivityPayload } from "../../orchestration/ActivityPayloadProjection.ts";
+import { parseSessionUpdateEvent } from "./AcpRuntimeModel.ts";
 import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 
 import {
@@ -12,6 +14,110 @@ import {
 } from "./AcpCoreRuntimeEvents.ts";
 
 describe("AcpCoreRuntimeEvents", () => {
+  it.each(["content", "mcp", "batch"] as const)(
+    "%s 长输出的末尾通过终态和公开历史投影，截断标记计入上限",
+    (shape) => {
+      const text = `${"x".repeat(20_000)}FINAL_OUTPUT`;
+      const [event] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "long-output",
+          kind: "execute",
+          status: "completed",
+          ...(shape === "content"
+            ? { content: [{ type: "content" as const, content: { type: "text" as const, text } }] }
+            : {
+                rawOutput:
+                  shape === "mcp"
+                    ? { content: [{ type: "text", text }] }
+                    : [{ query: "long command", result: text, success: true }],
+              }),
+        },
+      }).events;
+      if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
+      const [activity] = runtimeEventToActivities(
+        makeAcpToolCallEvent({
+          stamp: { eventId: "long-output" as never, createdAt: "2026-09-30T00:00:00.000Z" },
+          provider: ProviderDriverKind.make("acpAgent"),
+          threadId: "t" as never,
+          turnId: TurnId.make("turn"),
+          toolCall: event.toolCall,
+          rawPayload: event.rawPayload,
+        }),
+      );
+      if (!activity) throw new Error("缺少工具活动");
+      const payload = projectActivityPayload(activity).payload as { detail: string };
+      expect(payload.detail).toHaveLength(8_000);
+      expect(payload.detail).toContain("[Earlier output truncated]");
+      expect(payload.detail).toMatch(/FINAL_OUTPUT$/);
+      expect(payload.detail).toEqual(event.toolCall.detail);
+    },
+  );
+  it.each(["acpAgent", "grok"])("%s 批量工具的输出和失败进入同一活动投影", (driver) => {
+    const raw = {
+      sessionId: "s",
+      update: {
+        sessionUpdate: "tool_call",
+        toolCallId: "batch",
+        title: "run_commands",
+        kind: "execute",
+        status: "completed",
+        rawInput: { commands: ["exit 7"] },
+        rawOutput: [{ query: "exit 7", result: "Exit code: 7", success: false }],
+      },
+    } as const;
+    const [event] = parseSessionUpdateEvent(raw).events;
+    if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
+    expect(
+      runtimeEventToActivities(
+        makeAcpToolCallEvent({
+          stamp: { eventId: "batch" as never, createdAt: "2026-09-30T00:00:00.000Z" },
+          provider: ProviderDriverKind.make(driver),
+          threadId: "t" as never,
+          turnId: TurnId.make("turn"),
+          toolCall: event.toolCall,
+          rawPayload: raw,
+        }),
+      ),
+    ).toMatchObject([
+      {
+        kind: "tool.completed",
+        payload: {
+          toolCallId: "batch",
+          status: "failed",
+          detail: "exit 7\nExit code: 7",
+          data: { command: "exit 7" },
+        },
+      },
+    ]);
+  });
+  it.each(["cursor", "grok"])("%s 的 ACP 工具失败保留同一调用 ID 与详情", (driver) => {
+    const event = makeAcpToolCallEvent({
+      stamp: { eventId: `failed-${driver}` as never, createdAt: "2026-03-27T00:00:00.000Z" },
+      provider: ProviderDriverKind.make(driver),
+      threadId: "thread-1" as never,
+      turnId: TurnId.make("turn-1"),
+      toolCall: {
+        toolCallId: "tool-failed-1",
+        kind: "execute",
+        status: "failed",
+        title: "Terminal",
+        detail: "命令执行失败",
+        data: { command: "check" },
+      },
+      rawPayload: { sessionId: "session-1" },
+    });
+
+    expect(event).toMatchObject({ type: "item.completed", payload: { status: "failed" } });
+    expect(runtimeEventToActivities(event)).toMatchObject([
+      {
+        kind: "tool.completed",
+        payload: { toolCallId: "tool-failed-1", status: "failed", detail: "命令执行失败" },
+      },
+    ]);
+  });
+
   it.each(["cursor", "grok"])("%s 的 ACP 工具失败保留同一调用 ID 与详情", (driver) => {
     const event = makeAcpToolCallEvent({
       stamp: { eventId: `failed-${driver}` as never, createdAt: "2026-03-27T00:00:00.000Z" },

@@ -81,6 +81,7 @@ const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
 type WorkLogToolLifecycleStatus = "inProgress" | "completed" | "failed" | "declined" | "stopped";
 
 interface WorkLogEntry {
+  activityKind: OrchestrationThreadActivity["kind"];
   id: string;
   createdAt: string;
   turnId: TurnId | null;
@@ -100,7 +101,6 @@ interface WorkLogEntry {
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
-  activityKind: OrchestrationThreadActivity["kind"];
   collapseKey?: string;
   /** Grouping key for subagent lifecycle rows (one row per agent). */
   taskId?: string;
@@ -640,6 +640,8 @@ function normalizeCompactToolLabel(value: string): string {
 }
 
 function workLogEntryIsToolLike(entry: WorkLogEntry): boolean {
+  // 审批只描述授权过程，不能当作一次文件读取或命令执行。
+  if (entry.activityKind.startsWith("approval.")) return false;
   if (entry.tone === "tool" || entry.tone === "thinking" || entry.tone === "error") {
     return true;
   }
@@ -731,6 +733,11 @@ function workEntryIcon(entry: DerivedWorkLogEntry): ThreadFeedActivity["icon"] {
   if (entry.itemType === "file_change" || (entry.changedFiles?.length ?? 0) > 0) return "edit";
   if (entry.itemType === "web_search") return "globe";
   if (entry.itemType === "image_view") return "eye";
+  if (
+    entry.itemType === "dynamic_tool_call" &&
+    /^read file$/i.test(normalizeCompactToolLabel(entry.toolTitle ?? entry.label))
+  )
+    return "eye";
   if (entry.itemType === "mcp_tool_call") return "wrench";
   if (entry.itemType === "dynamic_tool_call" || entry.itemType === "collab_agent_tool_call") {
     return "hammer";
@@ -786,8 +793,9 @@ function memoizeValue<T>(build: () => T): () => T {
 }
 
 function workEntryPreview(
-  workEntry: Pick<WorkLogEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<WorkLogEntry, "detail" | "command" | "changedFiles" | "activityKind">,
 ): string | null {
+  if (workEntry.activityKind.startsWith("approval.")) return null;
   if (workEntry.command) return workEntry.command;
   if (workEntry.detail) return workEntry.detail;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
@@ -993,7 +1001,10 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
     itemInput?.command,
     itemResult?.command,
     data?.command,
-    itemType === "command_execution" && detail ? stripTrailingExitCode(detail).output : null,
+    // 明确的执行工具把 detail 用作输出，只有旧的无类型元数据才沿用命令回退。
+    itemType === "command_execution" && data?.kind !== "execute" && detail
+      ? stripTrailingExitCode(detail).output
+      : null,
   ];
 
   for (const candidate of candidates) {

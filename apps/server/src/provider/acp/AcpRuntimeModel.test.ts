@@ -16,6 +16,155 @@ import {
 } from "./AcpRuntimeModel.ts";
 
 describe("AcpRuntimeModel", () => {
+  it("MCP 文本结果优先于带命令预览和重复正文的 ACP 展示内容", () => {
+    const output = "No bash shell found. Set shellPath in settings.json";
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "gajae-session",
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "gajae-tool",
+        title: "Failed: bash: echo PROBE",
+        status: "failed",
+        rawOutput: {
+          content: [{ type: "text", text: output }],
+          details: { failureKind: "execution" },
+        },
+        content: ["$ echo PROBE", output, output].map((text) => ({
+          type: "content" as const,
+          content: { type: "text" as const, text },
+        })),
+      },
+    }).events;
+    if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
+    expect(event.toolCall).toMatchObject({ status: "failed", detail: output });
+  });
+
+  it("MCP rawOutput 文本数组沿用输出上限，并保留非文本块与其它结果字段", () => {
+    const image = { type: "image", data: "image-fixture", mimeType: "image/png" };
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "gajae-session",
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "gajae-tool",
+        status: "completed",
+        rawOutput: {
+          content: [{ type: "text", text: "x".repeat(20000) + "FINAL_OUTPUT" }, image],
+          details: { exitCode: 0 },
+        },
+      },
+    }).events;
+    if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
+    const output = event.toolCall.data.rawOutput as {
+      content: Array<{ text?: string }>;
+      details: unknown;
+    };
+    expect(output.content[0]?.text?.length).toBeLessThan(8100);
+    expect(output.content[0]?.text?.endsWith("FINAL_OUTPUT")).toBe(true);
+    expect(output.content[1]).toEqual(image);
+    expect(output.details).toEqual({ exitCode: 0 });
+    expect(event.toolCall.detail).toEqual(output.content[0]?.text);
+    // detail、data.rawOutput 与原始通知各保留一份有上限的正文。
+    expect(JSON.stringify(event).length).toBeLessThan(25000);
+  });
+
+  it.each(["read", "execute", "edit", "search"] as const)(
+    "%s 终态携带 kind 时仍保留文本结果，而不是退回路径或命令",
+    (kind) => {
+      const [event] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "hermes-tool",
+          kind,
+          status: "completed",
+          content: [{ type: "content", content: { type: "text", text: "实际工具输出" } }],
+        },
+      }).events;
+      if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
+      expect(
+        mergeToolCallState(
+          { toolCallId: "hermes-tool", kind, title: "原工具", detail: "旧路径", data: {} },
+          event.toolCall,
+        ),
+      ).toMatchObject({ title: "原工具", detail: "实际工具输出", status: "completed" });
+    },
+  );
+  it("批量命令保留分行，结构化结果补详情并标记部分失败", () => {
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "tool_call",
+        toolCallId: "batch",
+        title: "run_commands",
+        kind: "execute",
+        status: "completed",
+        rawInput: { commands: ["echo OK", "exit 7"] },
+        rawOutput: [
+          { query: "echo OK", result: "OK", success: true },
+          { query: "exit 7", result: "Exit code: 7", success: false },
+        ],
+      },
+    }).events;
+    if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
+    expect(event.toolCall).toMatchObject({
+      command: "echo OK\nexit 7",
+      status: "failed",
+      detail: "echo OK\nOK\n\nexit 7\nExit code: 7",
+    });
+  });
+
+  it("批量结果限制长输出，未知数组不猜测语义", () => {
+    for (const rawOutput of [
+      [{ query: "source.txt", result: "前缀" + "x".repeat(12_000) + "末尾", success: true }],
+      [{ query: "source.txt", result: "未声明成功状态" }],
+    ]) {
+      const [event] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "batch",
+          status: "completed",
+          rawOutput,
+        },
+      }).events;
+      if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
+      expect(event.toolCall.status).toBe("completed");
+      if ("success" in rawOutput[0]!) {
+        expect(event.toolCall.detail?.length).toBeLessThan(8_100);
+        expect(event.toolCall.detail).toContain("[Earlier output truncated]");
+        expect(event.toolCall.detail).toMatch(/末尾$/);
+        expect(JSON.stringify(event.toolCall.data)).not.toContain("前缀");
+      } else {
+        expect(event.toolCall.detail).toBeUndefined();
+        expect(event.toolCall.data.rawOutput).toEqual(rawOutput);
+      }
+    }
+  });
+  it("Qwen 内容终态缺省标题时保留初始工具名称", () => {
+    const previous: AcpToolCallState = {
+      toolCallId: "qwen-read",
+      kind: "read",
+      title: "ReadFile source.txt",
+      status: "inProgress",
+      data: {},
+    };
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "qwen-read",
+        status: "completed",
+        content: [{ type: "content", content: { type: "text", text: "QWEN_SOURCE_72319" } }],
+      },
+    }).events;
+    if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
+    expect(mergeToolCallState(previous, event.toolCall)).toMatchObject({
+      title: previous.title,
+      status: "completed",
+      detail: "QWEN_SOURCE_72319",
+    });
+  });
+
   it("parses session mode state from typed ACP session setup responses", () => {
     const modeState = parseSessionModeState({
       sessionId: "session-1",
@@ -187,7 +336,7 @@ describe("AcpRuntimeModel", () => {
           title: "Ran command",
           status: "pending",
           command: "bun run typecheck",
-          detail: "bun run typecheck",
+          detail: "Running checks",
           data: {
             toolCallId: "tool-1",
             kind: "execute",
@@ -252,7 +401,7 @@ describe("AcpRuntimeModel", () => {
         toolCallId: "tool-1",
         status: "completed",
         title: "Ran command",
-        detail: "bun run typecheck",
+        detail: "Running checks",
         command: "bun run typecheck",
       });
     }
@@ -407,8 +556,8 @@ describe("AcpRuntimeModel", () => {
 
     expect(event.toolCall.detail).toBeDefined();
     const detail = event.toolCall.detail!;
-    // 8000 chars of tail plus the truncation marker, regardless of input size.
-    expect(detail.length).toBe(8_028);
+    // 截断标记和尾部正文共同遵守终态详情的 8000 字上限。
+    expect(detail.length).toBe(8_000);
     expect(detail.startsWith("[Earlier output truncated]")).toBe(true);
     expect(detail.endsWith(hugeText.slice(-100))).toBe(true);
 

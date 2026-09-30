@@ -949,7 +949,10 @@ export function runtimeEventToActivities(
             itemType: event.payload.itemType,
             ...(event.itemId !== undefined ? { toolCallId: event.itemId } : {}),
             ...(event.payload.status ? { status: event.payload.status } : {}),
-            ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
+            // 终态详情供展开检查；中间流式活动仍保留短摘要，避免累计输出平方增长。
+            ...(event.payload.detail
+              ? { detail: truncateDetail(event.payload.detail, 8_000) }
+              : {}),
             ...(event.payload.data !== undefined ? { data: event.payload.data } : {}),
             ...(event.payload.agentId ? { agentId: event.payload.agentId } : {}),
             ...(event.payload.parentToolUseId

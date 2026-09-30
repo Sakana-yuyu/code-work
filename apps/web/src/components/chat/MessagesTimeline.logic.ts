@@ -355,6 +355,7 @@ type ToolGroupAction = "read" | "edit" | "command" | "code-search" | "search" | 
 type ToolGroupSummaryKind = ToolGroupAction | "dynamic-tool" | "agent-tool" | "tone-tool" | "mixed";
 
 export function workLogEntryIsLocalCodeSearch(entry: WorkLogEntry): boolean {
+  if (entry.toolKind === "search") return true;
   return (
     entry.itemType === "web_search" &&
     /\bgrep\b/i.test(normalizeCompactToolLabel(entry.toolTitle ?? entry.label))
@@ -365,7 +366,8 @@ export function toolGroupAction(entry: WorkLogEntry): ToolGroupAction {
   if (
     entry.requestKind === "file-read" ||
     entry.itemType === "image_view" ||
-    (entry.itemType === "dynamic_tool_call" && entry.toolTitle === "Read File")
+    (entry.itemType === "dynamic_tool_call" &&
+      /^read file$/i.test(normalizeCompactToolLabel(entry.toolTitle ?? entry.label)))
   ) {
     return "read";
   }
@@ -424,6 +426,7 @@ export function summarizeToolGroup(entries: ReadonlyArray<WorkLogEntry>): string
   const summaryEntries = omitSupersededLifecycleMarkers(entries, (entry) => entry);
   const groupedEntries = new Map<ToolGroupAction, WorkLogEntry[]>();
   for (const entry of summaryEntries) {
+    if (!workLogEntryIsToolLike(entry)) continue;
     const action = toolGroupAction(entry);
     const group = groupedEntries.get(action);
     if (group) group.push(entry);

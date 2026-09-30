@@ -239,6 +239,72 @@ function makeThread(
 }
 
 describe("buildThreadFeed", () => {
+  it("ACP 未上报命令时展开内容不重复输出，文件失败原因保留到末尾", () => {
+    const outputs = [
+      {
+        itemType: "command_execution",
+        kind: "execute",
+        detail: "terminal result\n- **exit_code:** 7",
+      },
+      { itemType: "command_execution", kind: "execute", detail: "/bin/sh -c 'literal output'" },
+      {
+        itemType: "file_change",
+        kind: "edit",
+        detail: `${"文件内容未完整读取。".repeat(40)}目标文件未修改。`,
+      },
+    ];
+    const thread = makeThread({
+      id: ThreadId.make("hermes-detail"),
+      projectId: ProjectId.make("project-1"),
+      title: "完整工具详情",
+      activities: outputs.map(({ itemType, kind, detail }, index) =>
+        makeActivity({
+          id: EventId.make(`hermes-detail-${index}`),
+          createdAt: `2026-09-30T00:00:0${index}.000Z`,
+          kind: "tool.completed",
+          summary: itemType === "file_change" ? "Changed files" : "Ran command",
+          tone: "tool",
+          payload: { itemType, status: "failed", detail, data: { kind } },
+        }),
+      ),
+    });
+    const activities = buildThreadFeed(thread).flatMap((entry) =>
+      entry.type === "activity-group" ? entry.activities : [],
+    );
+    expect(activities).toHaveLength(3);
+    expect(activities.map((entry) => entry.detail)).toEqual(outputs.map((entry) => entry.detail));
+    expect(activities.map((entry) => entry.getFullDetail())).toEqual(
+      outputs.map((entry) => entry.detail),
+    );
+    expect(activities.every((entry) => entry.status === "failure")).toBe(true);
+  });
+  it("Cline 批量输出进入展开详情并保留失败标记", () => {
+    const thread = makeThread({
+      id: ThreadId.make("cline-batch-thread"),
+      projectId: ProjectId.make("project-1"),
+      title: "批量工具输出",
+      activities: [
+        makeActivity({
+          id: EventId.make("cline-batch"),
+          createdAt: "2026-09-30T00:00:00.000Z",
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Ran command",
+          payload: {
+            itemType: "command_execution",
+            status: "failed",
+            detail: "echo OK\nOK\n\nexit 7\nExit code: 7",
+            data: { command: "echo OK\nexit 7" },
+          },
+        }),
+      ],
+    });
+    const activities = buildThreadFeed(thread).flatMap((entry) =>
+      entry.type === "activity-group" ? entry.activities : [],
+    );
+    expect(activities).toMatchObject([{ status: "failure", detail: "echo OK\nexit 7" }]);
+    expect(activities[0]?.getFullDetail()).toContain("Exit code: 7");
+  });
   // 订阅额度是「最新态」活动：输入框额度芯片直接消费完整活动列表，
   // 工作日志里只会出现一行没有内容的伪工具行，所以不进工作日志。
   it("excludes account rate limit updates from the work log", () => {
@@ -781,6 +847,88 @@ describe("buildThreadFeed", () => {
       type: "activity-group",
       activities: [{ id: "tool-done", status: "success" }],
     });
+  });
+
+  it("审批保持可见但不计为工具，读取与失败命令各合并一次", () => {
+    const turnId = TurnId.make("approval-tools");
+    const events = [
+      {
+        kind: "tool.updated",
+        summary: "Read file",
+        payload: { toolCallId: "read", itemType: "dynamic_tool_call", status: "inProgress" },
+      },
+      {
+        kind: "approval.requested",
+        summary: "File-read approval requested",
+        payload: { requestKind: "file-read", detail: "/tmp/source.txt" },
+      },
+      {
+        kind: "approval.resolved",
+        summary: "Approval resolved",
+        payload: { requestKind: "file-read", decision: "accept" },
+      },
+      {
+        kind: "tool.completed",
+        summary: "Read file",
+        payload: {
+          toolCallId: "read",
+          itemType: "dynamic_tool_call",
+          status: "completed",
+          detail: "SOURCE_CONTENT",
+        },
+      },
+      {
+        kind: "tool.updated",
+        summary: "Ran command",
+        payload: { toolCallId: "command", itemType: "command_execution", status: "inProgress" },
+      },
+      {
+        kind: "approval.requested",
+        summary: "Command approval requested",
+        payload: { requestKind: "command", detail: "exit 7" },
+      },
+      {
+        kind: "approval.resolved",
+        summary: "Approval resolved",
+        payload: { requestKind: "command", decision: "accept" },
+      },
+      {
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          toolCallId: "command",
+          itemType: "command_execution",
+          status: "failed",
+          detail: "Command exited with code 7",
+        },
+      },
+    ];
+    const thread = makeThread({
+      id: ThreadId.make("approval-tools"),
+      projectId: ProjectId.make("project-1"),
+      title: "审批与工具",
+      activities: events.map((event, index) =>
+        makeActivity({
+          ...event,
+          id: EventId.make(`event-${index}`),
+          turnId,
+          tone: event.kind.startsWith("approval.") ? "approval" : "tool",
+          createdAt: new Date(Date.UTC(2026, 8, 30, 0, 0, index)).toISOString(),
+        }),
+      ),
+    });
+    const rows = buildThreadFeed(thread).flatMap((entry) =>
+      entry.type === "activity-group" ? entry.activities : [],
+    );
+    expect(rows).toHaveLength(6);
+    expect(rows.filter((row) => row.toolLike)).toMatchObject([
+      { icon: "eye", status: "success" },
+      { icon: "command", status: "failure" },
+    ]);
+    const approvals = rows.filter((row) => !row.toolLike);
+    expect(approvals).toHaveLength(4);
+    expect(approvals[0]?.getFullDetail()).toContain("/tmp/source.txt");
+    expect(rows.at(-1)?.getFullDetail()).toContain("Command exited with code 7");
   });
 
   it("folds interleaved tool starts and completions by call ID", () => {

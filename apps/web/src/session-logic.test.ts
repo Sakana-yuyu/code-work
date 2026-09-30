@@ -1800,7 +1800,7 @@ describe("deriveWorkLogEntries", () => {
     });
   });
 
-  it("does not use command stdout as the detail when Cursor omits the command input", () => {
+  it("Cursor 未上报命令时仍保留 stdout 详情，不将其伪造为命令", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
         id: "cursor-command-complete",
@@ -1831,7 +1831,7 @@ describe("deriveWorkLogEntries", () => {
       itemType: "command_execution",
       toolTitle: "Ran command",
     });
-    expect(entry?.detail).toBeUndefined();
+    expect(entry?.detail).toBe("total 960\napps\npackages");
     expect(entry?.command).toBeUndefined();
   });
 

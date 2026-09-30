@@ -9,6 +9,7 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import { runtimeEventToActivities } from "./ProviderRuntimeIngestion.ts";
+import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
 
 const base = {
   provider: ProviderDriverKind.make("codex"),
@@ -119,6 +120,21 @@ describe("runtimeEventToActivities task progress", () => {
   });
 });
 describe("runtimeEventToActivities tool streaming persistence", () => {
+  it("终态完整详情通过实时和历史共用投影，长输出仍有上限", () => {
+    for (const detail of [`${"文件保护说明。".repeat(60)}文件未修改。`, "x".repeat(9_000)]) {
+      const [activity] = runtimeEventToActivities({
+        ...base,
+        type: "item.completed",
+        eventId: EventId.make("hermes-full-detail"),
+        payload: { itemType: "file_change", status: "failed", detail, data: { kind: "edit" } },
+      });
+      expect(activity?.payload).toMatchObject({
+        detail: detail.length > 8_000 ? `${detail.slice(0, 7_997)}...` : detail,
+        status: "failed",
+      });
+      expect(projectActivityPayload(activity!).payload).toEqual(activity?.payload);
+    }
+  });
   const accumulatedStdout = [
     "first line of output",
     ...Array.from({ length: 500 }, (_, index) => `Capturing frame ${index}/9028`),

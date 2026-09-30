@@ -252,6 +252,17 @@ function extractToolCallCommand(rawInput: unknown, title: string | undefined): s
     if (directCommand) {
       return directCommand;
     }
+    if (
+      Array.isArray(rawInput.commands) &&
+      rawInput.commands.every((entry) => typeof entry === "string")
+    ) {
+      return (
+        rawInput.commands
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+          .join("\n") || undefined
+      );
+    }
     const executable = typeof rawInput.executable === "string" ? rawInput.executable.trim() : "";
     const args = normalizeCommandValue(rawInput.args);
     if (executable && args) {
@@ -278,17 +289,46 @@ function boundToolCallOutputText(text: string): string {
   if (text.length <= TOOL_CALL_CONTENT_MAX_CHARS) {
     return text;
   }
-  const tail = text.slice(text.length - TOOL_CALL_CONTENT_MAX_CHARS);
+  // 标记计入终态详情上限，后续持久化限长才不会再次截掉输出末尾。
+  const tail = text.slice(
+    -(TOOL_CALL_CONTENT_MAX_CHARS - TOOL_CALL_CONTENT_TRUNCATION_MARKER.length),
+  );
   return `${TOOL_CALL_CONTENT_TRUNCATION_MARKER}${tail}`;
 }
 
 const RAW_OUTPUT_TEXT_FIELDS = ["content", "stdout", "stderr", "output"] as const;
+
+function isMcpTextContent(value: unknown): value is { type: "text"; text: string } {
+  return isRecord(value) && value.type === "text" && typeof value.text === "string";
+}
+
+// Cline 的批量读文件/命令结果使用同一结构；只识别完整形状，未知数组原样保留。
+function isQueryToolResults(
+  value: unknown,
+): value is Array<{ query: string; result: string; success: boolean }> {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (entry) =>
+        isRecord(entry) &&
+        typeof entry.query === "string" &&
+        typeof entry.result === "string" &&
+        typeof entry.success === "boolean",
+    )
+  );
+}
 
 // `rawOutput` is provider-defined and, for terminal-shaped tools, mirrors the same
 // cumulative text-growth problem as `content` (see the comment above). Bound its known
 // text-bearing fields the same way so a chatty provider cannot smuggle unbounded output
 // through this field instead.
 function boundToolCallRawOutput(rawOutput: unknown): unknown {
+  if (isQueryToolResults(rawOutput)) {
+    return rawOutput.some((entry) => entry.result.length > TOOL_CALL_CONTENT_MAX_CHARS)
+      ? rawOutput.map((entry) => ({ ...entry, result: boundToolCallOutputText(entry.result) }))
+      : rawOutput;
+  }
   if (!isRecord(rawOutput)) {
     return rawOutput;
   }
@@ -300,6 +340,15 @@ function boundToolCallRawOutput(rawOutput: unknown): unknown {
       bounded[field] = boundToolCallOutputText(value);
       changed = true;
     }
+  }
+  // 部分 Agent 的真实结果使用 MCP 文本数组；保留图片等块，仅限制已知正文。
+  if (Array.isArray(rawOutput.content)) {
+    bounded.content = rawOutput.content.map((entry: unknown) => {
+      if (!isMcpTextContent(entry) || entry.text.length <= TOOL_CALL_CONTENT_MAX_CHARS)
+        return entry;
+      changed = true;
+      return { ...entry, text: boundToolCallOutputText(entry.text) };
+    });
   }
   return changed ? bounded : rawOutput;
 }
@@ -363,7 +412,7 @@ function extractTextContentFromToolCallContent(
     return { text: joined, content: boundToolCallContentEntries(content) };
   }
   const bounded = boundToolCallOutputText(joined);
-  const tail = joined.slice(joined.length - TOOL_CALL_CONTENT_MAX_CHARS);
+  const tail = bounded.slice(TOOL_CALL_CONTENT_TRUNCATION_MARKER.length);
   return {
     text: bounded,
     content: distributeRetainedTailAcrossContent(content, tail),
@@ -493,6 +542,20 @@ function makeToolCallState(
   if (input.locations !== undefined) {
     data.locations = input.locations;
   }
+  const queryResults = isQueryToolResults(data.rawOutput) ? data.rawOutput : undefined;
+  const queryOutput = queryResults
+    ? boundToolCallOutputText(
+        queryResults.map((entry) => `${entry.query}\n${entry.result}`).join("\n\n"),
+      )
+    : undefined;
+  const rawOutputContent = isRecord(data.rawOutput) ? data.rawOutput.content : undefined;
+  const mcpOutput = Array.isArray(rawOutputContent)
+    ? rawOutputContent
+        .filter(isMcpTextContent)
+        .map((entry) => entry.text.trim())
+        .filter(Boolean)
+        .join("\n")
+    : undefined;
   const fallbackDetail = command ?? normalizedTitle ?? textContent;
   const hasPresentationSeed =
     title !== undefined ||
@@ -509,14 +572,25 @@ function makeToolCallState(
         fallbackSummary: title ?? "Tool",
       })
     : undefined;
-  const status = normalizeToolCallStatus(input.status, options?.fallbackStatus);
+  const protocolStatus = normalizeToolCallStatus(input.status, options?.fallbackStatus);
+  // 上游 completed 仅表示批量调用结束，明确失败的子结果不能显示为成功。
+  const status =
+    protocolStatus === "completed" && queryResults?.some((entry) => !entry.success)
+      ? "failed"
+      : protocolStatus;
+  const detail =
+    queryOutput ??
+    (mcpOutput ? boundToolCallOutputText(mcpOutput) : undefined) ??
+    textContent ??
+    presentation?.detail;
   return {
     toolCallId,
     ...(kind ? { kind } : {}),
-    ...(presentation?.summary ? { title: presentation.summary } : {}),
+    // 增量未携带标题时不制造默认标题，交给合并层保留原工具名称。
+    ...(title && presentation?.summary ? { title: presentation.summary } : {}),
     ...(status ? { status } : {}),
     ...(command ? { command } : {}),
-    ...(presentation?.detail ? { detail: presentation.detail } : {}),
+    ...(detail ? { detail } : {}),
     data,
   };
 }
@@ -665,8 +739,8 @@ export function parsePermissionRequest(
   const kind = normalizeToolKind(params.toolCall.kind) ?? "unknown";
   const detail =
     toolCall?.command ??
-    toolCall?.title ??
     toolCall?.detail ??
+    toolCall?.title ??
     (typeof params.sessionId === "string" ? `Session ${params.sessionId}` : undefined);
   return {
     kind,

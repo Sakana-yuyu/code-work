@@ -120,7 +120,16 @@ function collectPaths(value: unknown, paths: string[], seen: Set<string>, depth:
       return;
     }
   }
-  for (const nestedKey of ["locations", "item", "input", "result", "rawInput", "data", "changes"]) {
+  for (const nestedKey of [
+    "locations",
+    "item",
+    "input",
+    "result",
+    "rawInput",
+    "data",
+    "changes",
+    "files",
+  ]) {
     if (!(nestedKey in record)) {
       continue;
     }

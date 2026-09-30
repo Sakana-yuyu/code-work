@@ -115,6 +115,8 @@ export interface WorkLogEntry {
   tone: "thinking" | "tool" | "info" | "error";
   toolTitle?: string;
   toolData?: unknown;
+  /** ACP 的 data.kind：search 查本地代码，fetch 获取外部内容。 */
+  toolKind?: string;
   /** Agent 生成的可持久化代码分析 Canvas 引用。 */
   canvas?: CanvasReference;
   /**
@@ -246,6 +248,8 @@ export type TimelineEntry =
     };
 
 export function workLogEntryIsToolLike(entry: WorkLogEntry): boolean {
+  // 审批只描述授权过程，不能当作一次文件读取或命令执行。
+  if (entry.sourceActivityKind?.startsWith("approval.")) return false;
   if (entry.tone === "tool" || entry.tone === "thinking" || entry.tone === "error") {
     return true;
   }
@@ -1099,6 +1103,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (title) {
     entry.toolTitle = title;
   }
+  const toolKind = asTrimmedString(asRecord(payload?.data)?.kind)?.toLowerCase();
+  if (toolKind) {
+    entry.toolKind = toolKind;
+  }
   if (itemType === "mcp_tool_call") {
     const data = asRecord(payload?.data);
     if (data?.item !== undefined) {
@@ -1594,7 +1602,10 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
     itemInput?.command,
     itemResult?.command,
     data?.command,
-    itemType === "command_execution" && detail ? stripTrailingExitCode(detail).output : null,
+    // 明确的执行工具把 detail 用作输出，只有旧的无类型元数据才沿用命令回退。
+    itemType === "command_execution" && data?.kind !== "execute" && detail
+      ? stripTrailingExitCode(detail).output
+      : null,
   ];
 
   for (const candidate of candidates) {
@@ -1788,10 +1799,6 @@ function extractToolDetail(
   }
 
   if (commandTool) {
-    if (!command) {
-      return null;
-    }
-
     const output = extractToolOutput(payload);
     const normalizedOutput = normalizePreviewForComparison(output);
     if (
