@@ -7867,7 +7867,7 @@ function ChatViewContent(props: ChatViewProps) {
           data-chat-header
           electron={isElectron}
           reserveNativeControls={reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar}
-          className="relative bg-background"
+          className="relative h-auto bg-background"
         >
           {!rightPanelOpen || isIdeLayout ? panelLayoutControls : null}
           <ChatHeader

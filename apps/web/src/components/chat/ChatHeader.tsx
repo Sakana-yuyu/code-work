@@ -331,19 +331,27 @@ export const ChatHeader = memo(function ChatHeader({
   );
   return (
     <div
-      className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3"
+      className="@container/header-actions flex min-w-0 flex-1 flex-wrap items-center gap-x-2 sm:gap-x-3"
       onContextMenu={handleHeaderContextMenu}
     >
-      {workspaceLayout === "ide" ? (
-        <img src="/favicon-32x32.png" alt="Code Work" className="size-5 shrink-0" />
-      ) : null}
-      <WorkspaceBreadcrumb ariaLabel={t("threadBreadcrumb")} className="flex-1">
+      <WorkspaceBreadcrumb
+        ariaLabel={t("threadBreadcrumb")}
+        className={cn(
+          "flex-1 @max-[48rem]/header-actions:flex @max-[48rem]/header-actions:min-h-[var(--workspace-topbar-height)] @max-[48rem]/header-actions:basis-full @max-[48rem]/header-actions:items-center [&>ol]:w-full",
+          !rightPanelOpen && "@max-[48rem]/header-actions:pr-20",
+        )}
+      >
+        {workspaceLayout === "ide" ? (
+          <WorkspaceBreadcrumbItem>
+            <img src="/favicon-32x32.png" alt="Code Work" className="size-5 shrink-0" />
+          </WorkspaceBreadcrumbItem>
+        ) : null}
         {/* The project always leads the header: knowing which project a
             thread lives in is priority zero, and the thread title alone
             doesn't answer it. */}
         {activeProjectName ? (
           <>
-            <WorkspaceBreadcrumbItem>
+            <WorkspaceBreadcrumbItem className="max-w-[45%] shrink">
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -427,8 +435,8 @@ export const ChatHeader = memo(function ChatHeader({
       <div
         data-chat-header-actions
         className={cn(
-          "flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3",
-          rightPanelOpen ? "pr-0" : "pr-16",
+          "flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3 @max-[48rem]/header-actions:min-w-0 @max-[48rem]/header-actions:basis-full @max-[48rem]/header-actions:flex-wrap @max-[48rem]/header-actions:justify-start @max-[48rem]/header-actions:gap-1.5 @max-[48rem]/header-actions:pb-2",
+          !rightPanelOpen && "@[48rem]/header-actions:pr-20",
         )}
       >
         <div
