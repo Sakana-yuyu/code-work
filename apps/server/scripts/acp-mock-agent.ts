@@ -13,6 +13,7 @@ import type * as AcpSchema from "effect-acp/schema";
 
 const requestLogPath = process.env.CODEWORK_ACP_REQUEST_LOG_PATH;
 const exitLogPath = process.env.CODEWORK_ACP_EXIT_LOG_PATH;
+const closeBehavior = process.env.CODEWORK_ACP_CLOSE_BEHAVIOR;
 const childPidLogPath = process.env.CODEWORK_ACP_CHILD_PID_LOG_PATH;
 const emitToolCalls = process.env.CODEWORK_ACP_EMIT_TOOL_CALLS === "1";
 const emitConfigUpdates = process.env.CODEWORK_ACP_EMIT_CONFIG_UPDATES === "1";
@@ -428,12 +429,20 @@ const program = Effect.gen(function* () {
         protocolVersion: 1,
         agentCapabilities: {
           loadSession: true,
+          ...(closeBehavior ? { sessionCapabilities: { close: {} } } : {}),
         },
       };
     }),
   );
 
   yield* agent.handleAuthenticate(() => Effect.succeed({}));
+  yield* agent.handleCloseSession(() =>
+    closeBehavior === "hang"
+      ? Effect.never
+      : closeBehavior === "fail"
+        ? AcpError.AcpRequestError.internalError("测试会话关闭失败")
+        : Effect.succeed({}),
+  );
 
   let startupAttempts = 0;
   const startupMetadata = (requestedSessionId: string) =>
@@ -999,6 +1008,79 @@ const program = Effect.gen(function* () {
         return { stopReason: "end_turn" };
       }
 
+      if (process.env.CODEWORK_ACP_PERMISSION_LIFECYCLE === "1") {
+        if (request.prompt.some((block) => block.type === "text" && block.text === "second")) {
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: {
+              sessionUpdate: "tool_call_update",
+              toolCallId: "reused",
+              status: "completed",
+            },
+          });
+          return { stopReason: "end_turn" };
+        }
+        for (const id of [
+          "approval-only",
+          "real-before",
+          "real-after",
+          "real-output",
+          "mismatch",
+          "foreign",
+          "reused",
+        ]) {
+          const start = {
+            sessionUpdate: "tool_call" as const,
+            toolCallId: id,
+            title: `执行 ${id}`,
+            kind: "edit" as const,
+            status: "in_progress" as const,
+          };
+          if (id === "real-before")
+            yield* agent.client.sessionUpdate({ sessionId: requestedSessionId, update: start });
+          const permission = yield* agent.client.requestPermission({
+            sessionId: id === "foreign" ? "other-session" : requestedSessionId,
+            toolCall: { toolCallId: id, title: `审批 ${id}`, kind: "edit", status: "pending" },
+            options: [
+              { optionId: "allow-native", name: "允许", kind: "allow_once" },
+              { optionId: "deny-native", name: "拒绝", kind: "reject_once" },
+            ],
+          });
+          if (id === "reused") continue;
+          if (id === "real-after")
+            yield* agent.client.sessionUpdate({ sessionId: requestedSessionId, update: start });
+          const allowed =
+            permission.outcome.outcome === "selected" &&
+            permission.outcome.optionId === "allow-native";
+          const status = (id === "mismatch" ? !allowed : allowed)
+            ? ("completed" as const)
+            : ("failed" as const);
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: {
+              sessionUpdate: "tool_call_update",
+              toolCallId: id,
+              status,
+              ...(id === "real-output"
+                ? {
+                    content: [
+                      {
+                        type: "content" as const,
+                        content: { type: "text" as const, text: "实际执行结果" },
+                      },
+                    ],
+                  }
+                : {}),
+            },
+          });
+        }
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: { sessionUpdate: "tool_call_update", toolCallId: "unknown", status: "completed" },
+        });
+        return { stopReason: "end_turn" };
+      }
+
       if (emitToolCalls) {
         const toolCallId = "tool-call-1";
 
@@ -1069,6 +1151,7 @@ const program = Effect.gen(function* () {
             },
             options: permissionOptions,
           });
+          logClientToolResult({ method: "session/request_permission", result: permission });
           cancelled =
             cancelled ||
             cancelledSessions.delete(requestedSessionId) ||

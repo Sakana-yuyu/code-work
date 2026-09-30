@@ -56,7 +56,7 @@ import {
 
 const isProviderAdapterSessionClosedError = Schema.is(ProviderAdapterSessionClosedError);
 import {
-  acpPermissionOutcome,
+  selectAcpPermissionOptionId,
   applyAcpModeSelection,
   applyAcpConfigSelections,
   mapAcpToAdapterError,
@@ -685,6 +685,7 @@ export function makeCursorAdapter(
           yield* Fiber.interrupt(ctx.notificationFiber);
         }
         yield* cleanupThreadToolBrokerContexts(ctx.threadId);
+        const closeResult = yield* ctx.acp.close.pipe(Effect.exit);
         yield* Effect.ignore(Scope.close(ctx.scope, Exit.void));
         sessions.delete(ctx.threadId);
         yield* offerRuntimeEvent({
@@ -692,7 +693,14 @@ export function makeCursorAdapter(
           ...(yield* makeEventStamp()),
           provider: PROVIDER,
           threadId: ctx.threadId,
-          payload: { exitKind: "graceful" },
+          payload:
+            closeResult._tag === "Failure"
+              ? {
+                  exitKind: "error",
+                  reason: "ACP 会话关闭未确认，已释放本地连接。",
+                  recoverable: true,
+                }
+              : { exitKind: "graceful" },
         });
       });
 
@@ -1200,31 +1208,41 @@ export function makeCursorAdapter(
                   const runtimeRequestId = RuntimeRequestId.make(requestId);
                   const answers = yield* Deferred.make<ProviderUserInputAnswers>();
                   pendingUserInputs.set(requestId, { answers });
-                  yield* offerRuntimeEvent({
-                    type: "user-input.requested",
-                    ...(yield* makeEventStamp()),
-                    provider: PROVIDER,
-                    threadId: input.threadId,
-                    turnId: ctx?.activeTurnId,
-                    requestId: runtimeRequestId,
-                    payload: { questions: extractAskQuestions(params) },
-                    raw: {
-                      source: "acp.cursor.extension",
-                      method: "cursor/ask_question",
-                      payload: params,
-                    },
-                  });
-                  const resolved = yield* Deferred.await(answers);
-                  pendingUserInputs.delete(requestId);
-                  yield* offerRuntimeEvent({
-                    type: "user-input.resolved",
-                    ...(yield* makeEventStamp()),
-                    provider: PROVIDER,
-                    threadId: input.threadId,
-                    turnId: ctx?.activeTurnId,
-                    requestId: runtimeRequestId,
-                    payload: { answers: resolved },
-                  });
+                  const resolveInput = (resolved: ProviderUserInputAnswers) =>
+                    Effect.gen(function* () {
+                      if (!pendingUserInputs.delete(requestId)) return;
+                      yield* offerRuntimeEvent({
+                        type: "user-input.resolved",
+                        ...(yield* makeEventStamp()),
+                        provider: PROVIDER,
+                        threadId: input.threadId,
+                        turnId: ctx?.activeTurnId,
+                        requestId: runtimeRequestId,
+                        payload: { answers: resolved },
+                      });
+                    });
+                  const resolved = yield* Effect.uninterruptibleMask((restore) =>
+                    Effect.gen(function* () {
+                      yield* offerRuntimeEvent({
+                        type: "user-input.requested",
+                        ...(yield* makeEventStamp()),
+                        provider: PROVIDER,
+                        threadId: input.threadId,
+                        turnId: ctx?.activeTurnId,
+                        requestId: runtimeRequestId,
+                        payload: { questions: extractAskQuestions(params) },
+                        raw: {
+                          source: "acp.cursor.extension",
+                          method: "cursor/ask_question",
+                          payload: params,
+                        },
+                      });
+                      return yield* restore(Deferred.await(answers));
+                    }).pipe(
+                      Effect.tap(resolveInput),
+                      Effect.onInterrupt(() => resolveInput({})),
+                    ),
+                  );
                   return { answers: resolved };
                 }),
               ),
@@ -1307,45 +1325,62 @@ export function makeCursorAdapter(
                     decision,
                     kind: permissionRequest.kind,
                   });
-                  yield* offerRuntimeEvent(
-                    makeAcpRequestOpenedEvent({
-                      stamp: yield* makeEventStamp(),
-                      provider: PROVIDER,
-                      threadId: input.threadId,
-                      turnId: ctx?.activeTurnId,
-                      requestId: runtimeRequestId,
-                      permissionRequest,
-                      detail:
-                        permissionRequest.detail ??
-                        encodeJsonStringForDiagnostics(params)?.slice(0, 2000) ??
-                        "[unserializable params]",
-                      args: params,
-                      source: "acp.jsonrpc",
-                      method: "session/request_permission",
-                      rawPayload: params,
-                    }),
+                  const resolveApproval = (resolved: ProviderApprovalDecision) =>
+                    Effect.gen(function* () {
+                      if (!pendingApprovals.delete(requestId)) return;
+                      yield* offerRuntimeEvent(
+                        makeAcpRequestResolvedEvent({
+                          stamp: yield* makeEventStamp(),
+                          provider: PROVIDER,
+                          threadId: input.threadId,
+                          turnId: ctx?.activeTurnId,
+                          requestId: runtimeRequestId,
+                          permissionRequest,
+                          decision:
+                            resolved !== "cancel" && selectAcpPermissionOptionId(params, resolved)
+                              ? resolved
+                              : "cancel",
+                        }),
+                      );
+                    });
+                  // 等待可中断，结算不可中断；断线也必须发布且仅发布一次取消终态。
+                  const resolved = yield* Effect.uninterruptibleMask((restore) =>
+                    Effect.gen(function* () {
+                      yield* offerRuntimeEvent(
+                        makeAcpRequestOpenedEvent({
+                          stamp: yield* makeEventStamp(),
+                          provider: PROVIDER,
+                          threadId: input.threadId,
+                          turnId: ctx?.activeTurnId,
+                          requestId: runtimeRequestId,
+                          permissionRequest,
+                          detail:
+                            permissionRequest.detail ??
+                            encodeJsonStringForDiagnostics(params)?.slice(0, 2000) ??
+                            "[unserializable params]",
+                          args: params,
+                          source: "acp.jsonrpc",
+                          method: "session/request_permission",
+                          rawPayload: params,
+                        }),
+                      );
+                      return yield* restore(Deferred.await(decision));
+                    }).pipe(
+                      Effect.tap(resolveApproval),
+                      Effect.onInterrupt(() => resolveApproval("cancel")),
+                    ),
                   );
-                  const resolved = yield* Deferred.await(decision);
-                  pendingApprovals.delete(requestId);
-                  yield* offerRuntimeEvent(
-                    makeAcpRequestResolvedEvent({
-                      stamp: yield* makeEventStamp(),
-                      provider: PROVIDER,
-                      threadId: input.threadId,
-                      turnId: ctx?.activeTurnId,
-                      requestId: runtimeRequestId,
-                      permissionRequest,
-                      decision: resolved,
-                    }),
-                  );
+                  const selectedOptionId =
+                    resolved === "cancel"
+                      ? undefined
+                      : selectAcpPermissionOptionId(params, resolved);
                   return {
-                    outcome:
-                      resolved === "cancel"
-                        ? ({ outcome: "cancelled" } as const)
-                        : {
-                            outcome: "selected" as const,
-                            optionId: acpPermissionOutcome(resolved),
-                          },
+                    outcome: !selectedOptionId
+                      ? ({ outcome: "cancelled" } as const)
+                      : {
+                          outcome: "selected" as const,
+                          optionId: selectedOptionId,
+                        },
                   };
                 }),
               ),
@@ -1694,10 +1729,9 @@ export function makeCursorAdapter(
               ),
               Effect.tapError((error) =>
                 Effect.gen(function* () {
-                  // Mid-turn process death or transport failure can leave
-                  // requestPermission / elicitation fibers parked on Deferreds.
-                  // Settle them and surface a turn terminal so reconnect/late
-                  // approval cannot hang the thread.
+                  // 进程或传输失败必须结算审批和输入，并发布回合终态。
+                  const hadPendingInteraction =
+                    ctx.pendingApprovals.size > 0 || ctx.pendingUserInputs.size > 0;
                   yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
                   yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
                   if (ctx.promptsInFlight === 1) {
@@ -1713,8 +1747,35 @@ export function makeCursorAdapter(
                       },
                     });
                   }
-                  if (isProviderAdapterSessionClosedError(error) && !ctx.stopped) {
-                    yield* stopSessionInternal(ctx);
+                  // 关闭和传输错误均可能表示进程结束；有未结算交互时释放会话。
+                  if (
+                    !ctx.stopped &&
+                    (isProviderAdapterSessionClosedError(error) || hadPendingInteraction)
+                  ) {
+                    // 已断开的会话不再请求远端关闭，先结束本地归属和连接。
+                    ctx.stopped = true;
+                    if (ctx.notificationFiber) {
+                      yield* Fiber.interrupt(ctx.notificationFiber);
+                    }
+                    yield* cleanupThreadToolBrokerContexts(ctx.threadId);
+                    sessions.delete(ctx.threadId);
+                    yield* Effect.ignore(
+                      Scope.close(ctx.scope, Exit.void).pipe(
+                        Effect.timeoutOption("2 seconds"),
+                        Effect.asVoid,
+                      ),
+                    );
+                    yield* offerRuntimeEvent({
+                      type: "session.exited",
+                      ...(yield* makeEventStamp()),
+                      provider: PROVIDER,
+                      threadId: ctx.threadId,
+                      payload: {
+                        exitKind: "error",
+                        reason: error.message,
+                        recoverable: true,
+                      },
+                    });
                   }
                 }),
               ),

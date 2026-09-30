@@ -19,6 +19,28 @@ const base = {
 };
 
 describe("runtimeEventToActivities reasoning summaries", () => {
+  it("异常会话退出保留关闭失败说明，普通退出保持安静", () => {
+    const event = {
+      ...base,
+      type: "session.exited",
+      eventId: EventId.make("close-failed"),
+      payload: {
+        exitKind: "error",
+        reason: "ACP 会话关闭未确认，已释放本地连接。",
+        recoverable: true,
+      },
+    } as const;
+    expect(runtimeEventToActivities(event)).toMatchObject([
+      {
+        tone: "error",
+        kind: "session.exited",
+        summary: event.payload.reason,
+        payload: { exitKind: "error", recoverable: true },
+      },
+    ]);
+    expect(runtimeEventToActivities({ ...event, payload: { exitKind: "graceful" } })).toEqual([]);
+    expect(runtimeEventToActivities({ ...event, payload: {} })).toEqual([]);
+  });
   it("模型和命令在同一启动事件中投影为不同 ID，空目录和 null 原样保留", () => {
     const activities = runtimeEventToActivities({
       ...base,

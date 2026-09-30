@@ -401,6 +401,21 @@ export function runtimeEventToActivities(
       : {};
   })();
   switch (event.type) {
+    case "session.exited":
+      return event.payload.exitKind === "error"
+        ? [
+            {
+              id: event.eventId,
+              createdAt: event.createdAt,
+              tone: "error",
+              kind: "session.exited",
+              summary: event.payload.reason ?? "Agent 会话异常退出。",
+              payload: event.payload,
+              turnId: toTurnId(event.turnId) ?? null,
+              ...maybeSequence,
+            },
+          ]
+        : [];
     case "request.opened": {
       if (event.payload.requestType === "tool_user_input") {
         return [];

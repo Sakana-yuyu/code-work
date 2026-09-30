@@ -3,6 +3,7 @@ import * as NodePath from "node:path";
 import * as NodeOS from "node:os";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeURL from "node:url";
+import * as NodeProcess from "node:process";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -66,14 +67,42 @@ async function makeMockAgentWrapper(
   const isWindows = process.platform === "win32";
   const wrapperPath = NodePath.join(dir, isWindows ? "fake-agent.cmd" : "fake-agent.sh");
   const script = isWindows
-    ? `@echo off
-${Object.entries(extraEnv ?? {})
-  .map(([key, value]) => `set "${key}=${value.replaceAll('"', '""')}"`)
-  .join("\n")}
-${options?.initialDelaySeconds ? `powershell.exe -NoLogo -NoProfile -Command "Start-Sleep -Milliseconds ${Math.ceil(options.initialDelaySeconds * 1000)}"` : ""}
-"${process.execPath}" "${mockAgentPath}" %*
-exit /b %ERRORLEVEL%
-`
+    ? await (async () => {
+        // 环境通过 JSON 传入 Node 启动器，保留 Windows 路径并透传子进程退出码。
+        const envPath = NodePath.join(dir, "mock-env.json");
+        const bootstrapPath = NodePath.join(dir, "fake-agent-bootstrap.cjs");
+        await NodeFSP.writeFile(envPath, JSON.stringify(extraEnv ?? {}), "utf8");
+        await NodeFSP.writeFile(
+          bootstrapPath,
+          [
+            'const { readFileSync } = require("node:fs");',
+            'const { spawn } = require("node:child_process");',
+            "const [envPath, agentPath, delayMs, ...args] = process.argv.slice(2);",
+            'const extraEnv = JSON.parse(readFileSync(envPath, "utf8"));',
+            "const delay = Number(delayMs);",
+            "const start = () => {",
+            "  const child = spawn(process.execPath, [agentPath, ...args], {",
+            "    env: { ...process.env, ...extraEnv },",
+            '    stdio: "inherit",',
+            "  });",
+            '  child.once("exit", (code) => process.exit(code ?? 1));',
+            "};",
+            "if (Number.isFinite(delay) && delay > 0) setTimeout(start, delay);",
+            "else start();",
+            "",
+          ].join("\n"),
+          "utf8",
+        );
+        const delayMs = options?.initialDelaySeconds
+          ? String(Math.ceil(options.initialDelaySeconds * 1000))
+          : "0";
+        return [
+          "@echo off",
+          `"${process.execPath}" "${bootstrapPath}" "${envPath}" "${mockAgentPath}" ${delayMs} %*`,
+          "exit /b %ERRORLEVEL%",
+          "",
+        ].join("\n");
+      })()
     : `#!/bin/sh
 ${Object.entries(extraEnv ?? {})
   .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
@@ -206,6 +235,53 @@ const cursorAdapterTestLayer = it.layer(
 );
 
 cursorAdapterTestLayer("CursorAdapterLive", (it) => {
+  for (const closeBehavior of ["success", "fail", "unsupported"]) {
+    it.effect(`停止会话遵守关闭广告并报告 ${closeBehavior} 结果`, () =>
+      Effect.gen(function* () {
+        const adapter = yield* CursorAdapter;
+        const settings = yield* ServerSettingsService;
+        const threadId = ThreadId.make(`cursor-close-${closeBehavior}`);
+        const logDir = yield* Effect.promise(() =>
+          NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "acp-close-")),
+        );
+        const logPath = NodePath.join(logDir, "requests.jsonl");
+        const wrapperPath = yield* Effect.promise(() =>
+          makeMockAgentWrapper({
+            CODEWORK_ACP_REQUEST_LOG_PATH: logPath,
+            ...(closeBehavior === "unsupported"
+              ? {}
+              : { CODEWORK_ACP_CLOSE_BEHAVIOR: closeBehavior }),
+          }),
+        );
+        yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+        const exited = yield* Deferred.make<ProviderRuntimeEvent>();
+        yield* adapter.streamEvents.pipe(
+          Stream.runForEach((event) =>
+            event.type === "session.exited" && event.threadId === threadId
+              ? Deferred.succeed(exited, event).pipe(Effect.asVoid)
+              : Effect.void,
+          ),
+          Effect.forkScoped,
+        );
+        yield* adapter.startSession({
+          threadId,
+          provider: ProviderDriverKind.make("cursor"),
+          cwd: process.cwd(),
+          runtimeMode: "full-access",
+        });
+        yield* adapter.stopSession(threadId);
+        const event = yield* Deferred.await(exited);
+        assert.equal(event.type, "session.exited");
+        if (event.type === "session.exited")
+          assert.equal(event.payload.exitKind, closeBehavior === "fail" ? "error" : "graceful");
+        const requests = yield* Effect.promise(() => readJsonLines(logPath));
+        assert.equal(
+          requests.filter((request) => request.method === "session/close").length,
+          closeBehavior === "unsupported" ? 0 : 1,
+        );
+      }),
+    );
+  }
   it.effect("拒绝不支持的会话回退并保留本地历史", () =>
     Effect.gen(function* () {
       const adapter = yield* CursorAdapter;
@@ -1489,12 +1565,20 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         const adapter = yield* CursorAdapter;
         const serverSettings = yield* ServerSettingsService;
         const threadId = ThreadId.make("cursor-tool-call-probe");
+        const approvalLogDir = yield* Effect.promise(() =>
+          NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-approval-")),
+        );
+        const approvalLog = NodePath.join(approvalLogDir, "permissions.ndjson");
         const runtimeEvents: Array<ProviderRuntimeEvent> = [];
         const settledEventTypes = new Set<string>();
         const settledEventsReady = yield* Deferred.make<void>();
 
         const wrapperPath = yield* Effect.promise(() =>
-          makeMockAgentWrapper({ CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }),
+          makeMockAgentWrapper({
+            CODEWORK_ACP_EMIT_TOOL_CALLS: "1",
+            CODEWORK_ACP_ALLOW_ONCE_OPTION_ID: "cline_allow_once_original",
+            CODEWORK_ACP_CLIENT_TOOL_RESULT_LOG_PATH: approvalLog,
+          }),
         );
         yield* serverSettings.updateSettings({
           providers: { cursor: { binaryPath: wrapperPath } },
@@ -1541,6 +1625,11 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
             attachments: [],
           });
           yield* Deferred.await(settledEventsReady);
+
+          assert.include(
+            yield* Effect.promise(() => NodeFSP.readFile(approvalLog, "utf8")),
+            '"optionId":"cline_allow_once_original"',
+          );
 
           const threadEvents = runtimeEvents.filter(
             (event) => String(event.threadId) === String(threadId),
@@ -2026,6 +2115,150 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
 
       assert.equal(yield* adapter.hasSession(threadId), false);
     }),
+  );
+
+  it.effect(
+    "agent crash mid-approval settles pending request, fails the turn, and rejects late approval",
+    () =>
+      Effect.gen(function* () {
+        const adapter = yield* CursorAdapter;
+        const serverSettings = yield* ServerSettingsService;
+        const threadId = ThreadId.make("cursor-crash-mid-approval");
+        const approvalOpened = yield* Deferred.make<string>();
+        const approvalResolved = yield* Deferred.make<ProviderRuntimeEvent>();
+        const turnCompleted = yield* Deferred.make<ProviderRuntimeEvent>();
+        const sessionExited = yield* Deferred.make<ProviderRuntimeEvent>();
+
+        const childLogDir = yield* Effect.promise(() =>
+          NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-crash-agent-")),
+        );
+        const childPidLogPath = NodePath.join(childLogDir, "agent.pid");
+        // 只终止本次夹具启动时记录的 Agent；收到审批事件后触发，不靠定时猜测。
+        const wrapperPath = yield* Effect.promise(() =>
+          makeMockAgentWrapper({
+            CODEWORK_ACP_EMIT_TOOL_CALLS: "1",
+            CODEWORK_ACP_CHILD_PID_LOG_PATH: childPidLogPath,
+          }),
+        );
+        yield* serverSettings.updateSettings({
+          providers: { cursor: { binaryPath: wrapperPath } },
+        });
+
+        const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) => {
+          if (String(event.threadId) !== String(threadId)) {
+            return Effect.void;
+          }
+          if (event.type === "request.opened" && event.requestId) {
+            return Deferred.succeed(approvalOpened, String(event.requestId)).pipe(Effect.ignore);
+          }
+          if (event.type === "request.resolved") {
+            return Deferred.succeed(approvalResolved, event).pipe(Effect.ignore);
+          }
+          if (event.type === "turn.completed") {
+            return Deferred.succeed(turnCompleted, event).pipe(Effect.ignore);
+          }
+          if (event.type === "session.exited") {
+            return Deferred.succeed(sessionExited, event).pipe(Effect.ignore);
+          }
+          return Effect.void;
+        }).pipe(Effect.forkChild);
+
+        yield* adapter.startSession({
+          threadId,
+          provider: ProviderDriverKind.make("cursor"),
+          cwd: process.cwd(),
+          runtimeMode: "approval-required",
+          modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+        });
+
+        const sendTurnFiber = yield* adapter
+          .sendTurn({
+            threadId,
+            input: "crash while waiting for approval",
+            attachments: [],
+          })
+          .pipe(Effect.forkChild);
+
+        const requestId = yield* Deferred.await(approvalOpened);
+        const childPid = Number(
+          yield* Effect.promise(() => NodeFSP.readFile(childPidLogPath, "utf8")),
+        );
+        assert.isTrue(Number.isSafeInteger(childPid) && childPid > 0);
+        yield* Effect.sync(() => NodeProcess.kill(childPid));
+        const completed = yield* Deferred.await(turnCompleted);
+        const exited = yield* Deferred.await(sessionExited);
+        const sendExit = yield* Fiber.await(sendTurnFiber);
+        const resolved = yield* Deferred.await(approvalResolved);
+        yield* Fiber.interrupt(runtimeEventsFiber);
+
+        assert.equal(completed.type, "turn.completed");
+        if (completed.type === "turn.completed") {
+          assert.equal(completed.payload.state, "failed");
+          assert.isTrue(Boolean(completed.payload.errorMessage));
+        }
+        assert.equal(exited.type, "session.exited");
+        assert.equal(resolved.type, "request.resolved");
+        if (resolved.type === "request.resolved") assert.equal(resolved.payload.decision, "cancel");
+        assert.equal(sendExit._tag, "Failure");
+        assert.equal(yield* adapter.hasSession(threadId), false);
+
+        const lateApproval = yield* adapter
+          .respondToRequest(threadId, ApprovalRequestId.make(requestId), "accept")
+          .pipe(Effect.result);
+        assert.equal(lateApproval._tag, "Failure");
+      }).pipe(TestClock.withLive),
+    { timeout: 30_000 },
+  );
+
+  it.effect("late approval after stop fails once pending approval was settled by disconnect", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const serverSettings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-late-approval-after-stop");
+      const approvalOpened = yield* Deferred.make<string>();
+
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }),
+      );
+      yield* serverSettings.updateSettings({
+        providers: { cursor: { binaryPath: wrapperPath } },
+      });
+
+      yield* Stream.runForEach(adapter.streamEvents, (event) => {
+        if (String(event.threadId) !== String(threadId)) {
+          return Effect.void;
+        }
+        if (event.type === "request.opened" && event.requestId) {
+          return Deferred.succeed(approvalOpened, String(event.requestId)).pipe(Effect.ignore);
+        }
+        return Effect.void;
+      }).pipe(Effect.forkChild);
+
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "approval-required",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+
+      const sendTurnFiber = yield* adapter
+        .sendTurn({
+          threadId,
+          input: "approve after disconnect",
+          attachments: [],
+        })
+        .pipe(Effect.forkChild);
+
+      const requestId = yield* Deferred.await(approvalOpened);
+      yield* adapter.stopSession(threadId);
+      yield* Fiber.await(sendTurnFiber);
+      assert.equal(yield* adapter.hasSession(threadId), false);
+      const lateApproval = yield* adapter
+        .respondToRequest(threadId, ApprovalRequestId.make(requestId), "accept")
+        .pipe(Effect.result);
+      assert.equal(lateApproval._tag, "Failure");
+    }).pipe(TestClock.withLive),
   );
 
   it.effect("stopping a session settles pending user-input waits", () =>

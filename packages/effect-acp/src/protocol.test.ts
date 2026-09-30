@@ -701,12 +701,14 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
     }),
   );
 
-  it.effect("fails pending extension requests with the propagated exit code", () =>
+  it.effect("fails pending requests when process exit is observed before stdin EOF", () =>
     Effect.gen(function* () {
-      const { stdio, input, output } = yield* makeInMemoryStdio();
+      const { stdio, output } = yield* makeInMemoryStdio();
+      const processExit = yield* Deferred.make<AcpError.AcpError>();
       const transport = yield* AcpProtocol.makeAcpPatchedProtocol({
         stdio,
-        terminationError: Effect.succeed(new AcpError.AcpProcessExitedError({ code: 0 })),
+        // 模拟 Windows 包装进程先退出、输入流仍未结束的情况。
+        terminationError: Deferred.await(processExit),
         serverRequestMethods: new Set(),
       });
 
@@ -714,6 +716,35 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
         .request("x/test", { hello: "world" })
         .pipe(Effect.forkScoped);
       yield* Queue.take(output);
+      yield* Deferred.succeed(processExit, new AcpError.AcpProcessExitedError({ code: 7 }));
+
+      const error = yield* Fiber.join(response).pipe(
+        Effect.match({
+          onFailure: (error) => error,
+          onSuccess: () => assert.fail("Expected request to fail after process exit"),
+        }),
+      );
+      assert.instanceOf(error, AcpError.AcpProcessExitedError);
+      assert.equal(error.code, 7);
+    }),
+  );
+
+  it.effect("fails pending extension requests with the propagated exit code", () =>
+    Effect.gen(function* () {
+      const { stdio, input, output } = yield* makeInMemoryStdio();
+      const processExit = yield* Deferred.make<AcpError.AcpError>();
+      const transport = yield* AcpProtocol.makeAcpPatchedProtocol({
+        stdio,
+        // 请求发出后才触发退出，避免夹具在构造阶段提前关闭输出队列。
+        terminationError: Deferred.await(processExit),
+        serverRequestMethods: new Set(),
+      });
+
+      const response = yield* transport
+        .request("x/test", { hello: "world" })
+        .pipe(Effect.forkScoped);
+      yield* Queue.take(output);
+      yield* Deferred.succeed(processExit, new AcpError.AcpProcessExitedError({ code: 0 }));
       yield* Queue.end(input);
 
       const error = yield* Fiber.join(response).pipe(
@@ -724,6 +755,14 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       );
       assert.instanceOf(error, AcpError.AcpProcessExitedError);
       assert.equal(error.code, 0);
+      const lateError = yield* transport.request("x/late", {}).pipe(
+        Effect.match({
+          onFailure: (error) => error,
+          onSuccess: () => assert.fail("断开的连接不能接受新请求"),
+        }),
+      );
+      assert.instanceOf(lateError, AcpError.AcpProcessExitedError);
+      assert.equal(lateError.code, 0);
     }),
   );
 });

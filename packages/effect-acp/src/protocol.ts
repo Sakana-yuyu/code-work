@@ -88,6 +88,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
   const outgoing = yield* Queue.unbounded<string | Uint8Array, Cause.Done<void>>();
   const nextRequestId = yield* Ref.make(1);
   const terminationHandled = yield* Ref.make(false);
+  const terminationError = yield* Deferred.make<AcpError.AcpError>();
   const extPending = yield* Ref.make(new Map<string, AcpPendingRequest>());
 
   const logProtocol = (event: AcpProtocolLogEvent) => {
@@ -106,6 +107,10 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
   const offerOutgoing = Effect.fn("offerOutgoing")(function* (
     message: RpcMessage.FromClientEncoded | RpcMessage.FromServerEncoded,
   ) {
+    // 断开后的调用立即失败，不能再次入队并无限等待已关闭的输出流。
+    if (yield* Ref.get(terminationHandled)) {
+      return yield* Deferred.await(terminationError).pipe(Effect.flatMap(Effect.fail));
+    }
     yield* logProtocol({
       direction: "outgoing",
       stage: "decoded",
@@ -206,10 +211,10 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       return [
         Effect.gen(function* () {
           yield* Queue.offer(disconnects, 0);
-          const error = yield* classify();
-          if (!error) {
-            return;
-          }
+          // 进程已退出时结束输出队列，防止权限处理恢复后仍等待写入。
+          yield* Queue.end(outgoing);
+          const error = (yield* classify()) ?? new AcpError.AcpInputStreamEndedError({});
+          yield* Deferred.succeed(terminationError, error);
           yield* failAllExtPending(error);
           yield* emitClientProtocolError(error);
           if (options.onTermination) {
@@ -489,6 +494,14 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
     }),
     Effect.forkScoped,
   );
+
+  // Windows 包装层可能先报告进程退出、后关闭输入流；退出状态须独立结束待定请求。
+  if (options.terminationError) {
+    yield* options.terminationError.pipe(
+      Effect.flatMap((error) => handleTermination(() => Effect.succeed(error))),
+      Effect.forkScoped,
+    );
+  }
 
   yield* Stream.fromQueue(outgoing).pipe(Stream.run(options.stdio.stdout()), Effect.forkScoped);
 

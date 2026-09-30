@@ -8,9 +8,10 @@ import {
 } from "@codework/contracts";
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
+import * as EffectAcpErrors from "effect-acp/errors";
+import type * as EffectAcpSchema from "effect-acp/schema";
 import type { AcpSessionRuntime } from "./AcpSessionRuntime.ts";
 import { toAcpConfigOptions } from "./AcpRuntimeModel.ts";
-import * as EffectAcpErrors from "effect-acp/errors";
 
 import {
   ProviderAdapterRequestError,
@@ -18,6 +19,8 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 const isAcpProcessExitedError = Schema.is(EffectAcpErrors.AcpProcessExitedError);
+const isAcpInputStreamEndedError = Schema.is(EffectAcpErrors.AcpInputStreamEndedError);
+const isAcpTransportError = Schema.is(EffectAcpErrors.AcpTransportError);
 const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
 
 /** 显式模式优先于兼容的 default/plan 推断，错误不能静默降级为另一模式。 */
@@ -67,7 +70,11 @@ export function mapAcpToAdapterError(
   method: string,
   error: EffectAcpErrors.AcpError,
 ): ProviderAdapterError {
-  if (isAcpProcessExitedError(error)) {
+  if (
+    isAcpProcessExitedError(error) ||
+    isAcpInputStreamEndedError(error) ||
+    isAcpTransportError(error)
+  ) {
     return new ProviderAdapterSessionClosedError({
       provider,
       threadId,
@@ -90,14 +97,22 @@ export function mapAcpToAdapterError(
   });
 }
 
-export function acpPermissionOutcome(decision: ProviderApprovalDecision): string {
-  switch (decision) {
-    case "acceptForSession":
-      return "allow-always";
-    case "accept":
-      return "allow-once";
-    case "decline":
-    default:
-      return "reject-once";
+export function selectAcpPermissionOptionId(
+  request: EffectAcpSchema.RequestPermissionRequest,
+  decision: Exclude<ProviderApprovalDecision, "cancel">,
+): string | undefined {
+  const kind =
+    decision === "acceptForSession"
+      ? "allow_always"
+      : decision === "accept"
+        ? "allow_once"
+        : "reject_once";
+  const preferred = request.options.find((option) => option.kind === kind);
+  if (preferred?.optionId.trim()) return preferred.optionId;
+  // 未广告会话授权时只批准本次，绝不制造 ID 或扩大权限。
+  if (decision === "acceptForSession") {
+    const once = request.options.find((option) => option.kind === "allow_once");
+    if (once?.optionId.trim()) return once.optionId;
   }
+  return undefined;
 }

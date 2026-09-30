@@ -34,6 +34,7 @@ import {
   toAcpModeOption,
   toAcpConfigOptions,
   parseSessionModels,
+  parsePermissionRequest,
   parseSessionUpdateEvent,
   sessionUpdateIsReplay,
   waitForSessionLoadReplayIdle,
@@ -47,6 +48,7 @@ interface AcpToolCallTrackedState {
   readonly state: AcpToolCallState;
   readonly lastEmittedDetailLength: number | undefined;
   readonly skippedSinceEmit: number;
+  readonly permissionStatus?: "pending" | "completed" | "failed";
 }
 
 function formatConfigOptionValue(value: string | boolean): string {
@@ -218,6 +220,8 @@ export class AcpSessionRuntime extends Context.Service<
      * @see https://agentclientprotocol.com/protocol/schema#session/cancel
      */
     readonly cancel: Effect.Effect<void, EffectAcpErrors.AcpError>;
+    /** 在释放进程之前关闭已建立且广告了关闭能力的会话；不会为关闭而启动新会话。 */
+    readonly close: Effect.Effect<void, EffectAcpErrors.AcpError>;
     /**
      * Selects the active mode through the negotiated `mode` configuration option.
      * This is a no-op when the requested mode is already active.
@@ -885,7 +889,46 @@ export const make = (
     });
 
     return {
-      handleRequestPermission: acp.handleRequestPermission,
+      handleRequestPermission: (handler) =>
+        acp.handleRequestPermission((request) =>
+          Effect.gen(function* () {
+            const started = yield* Ref.get(startStateRef);
+            const rootSession =
+              started._tag === "Started" && request.sessionId === started.result.sessionId;
+            const toolCall = parsePermissionRequest(request).toolCall;
+            if (rootSession && toolCall) {
+              yield* Ref.update(toolCallsRef, (current) => {
+                if (current.has(toolCall.toolCallId)) return current;
+                return new Map(current).set(toolCall.toolCallId, {
+                  state: toolCall,
+                  lastEmittedDetailLength: undefined,
+                  skippedSinceEmit: 0,
+                  permissionStatus: "pending",
+                });
+              });
+            }
+            const response = yield* handler(request);
+            if (rootSession && toolCall) {
+              const outcome = response.outcome;
+              const choice =
+                outcome.outcome === "selected"
+                  ? request.options.find((option) => option.optionId === outcome.optionId)
+                  : undefined;
+              const permissionStatus =
+                outcome.outcome === "cancelled" || choice?.kind.startsWith("reject")
+                  ? ("failed" as const)
+                  : choice?.kind.startsWith("allow")
+                    ? ("completed" as const)
+                    : ("pending" as const);
+              yield* Ref.update(toolCallsRef, (current) => {
+                const tracked = current.get(toolCall.toolCallId);
+                if (tracked?.permissionStatus !== "pending") return current;
+                return new Map(current).set(toolCall.toolCallId, { ...tracked, permissionStatus });
+              });
+            }
+            return response;
+          }),
+        ),
       handleElicitation: acp.handleElicitation,
       handleReadTextFile: acp.handleReadTextFile,
       handleWriteTextFile: acp.handleWriteTextFile,
@@ -918,6 +961,14 @@ export const make = (
         promptSerializationSemaphore.withPermit(
           Effect.gen(function* () {
             const started = yield* getStartedState;
+            // 审批身份只用于当前回合，未发送终态的权限请求不占用后续回合的工具 ID。
+            yield* Ref.update(
+              toolCallsRef,
+              (current) =>
+                new Map(
+                  [...current].filter(([, tracked]) => tracked.permissionStatus === undefined),
+                ),
+            );
             yield* closeActiveAssistantSegment({
               queue: eventQueue,
               assistantSegmentRef,
@@ -947,10 +998,45 @@ export const make = (
                   yield* Ref.set(activePromptFiberRef, Option.none());
                 }),
               ),
-              Effect.tap(() =>
-                closeActiveAssistantSegment({
-                  queue: eventQueue,
-                  assistantSegmentRef,
+              Effect.tap((result) =>
+                Effect.gen(function* () {
+                  if (result.stopReason === "cancelled") {
+                    // 客户端中断时上游可能不发工具终态；把已展示的进行中工具结束为 failed。
+                    const openTools = yield* Ref.get(toolCallsRef);
+                    const toFail = [...openTools.values()].filter(
+                      (tracked) =>
+                        (tracked.state.status === "pending" ||
+                          tracked.state.status === "inProgress") &&
+                        (tracked.permissionStatus === undefined ||
+                          tracked.lastEmittedDetailLength !== undefined),
+                    );
+                    if (toFail.length > 0) {
+                      yield* closeActiveAssistantSegment({
+                        queue: eventQueue,
+                        assistantSegmentRef,
+                      });
+                      for (const tracked of toFail) {
+                        yield* Queue.offer(eventQueue, {
+                          _tag: "ToolCallUpdated" as const,
+                          toolCall: { ...tracked.state, status: "failed" as const },
+                          rawPayload: {
+                            sessionId: started.sessionId,
+                            update: {
+                              sessionUpdate: "tool_call_update",
+                              toolCallId: tracked.state.toolCallId,
+                              status: "failed",
+                              ...(tracked.state.title ? { title: tracked.state.title } : {}),
+                            },
+                          },
+                        });
+                      }
+                    }
+                    yield* Ref.set(toolCallsRef, new Map());
+                  }
+                  yield* closeActiveAssistantSegment({
+                    queue: eventQueue,
+                    assistantSegmentRef,
+                  });
                 }),
               ),
             );
@@ -969,6 +1055,34 @@ export const make = (
           }),
         ),
       ),
+
+      close: Effect.gen(function* () {
+        const state = yield* Ref.get(startStateRef);
+        if (
+          state._tag !== "Started" ||
+          state.result.initializeResult.agentCapabilities?.sessionCapabilities?.close == null
+        )
+          return;
+        const payload = { sessionId: state.result.sessionId };
+        yield* runLoggedRequest(
+          "session/close",
+          payload,
+          acp.agent.closeSession(payload).pipe(
+            Effect.timeoutOption("5 seconds"),
+            Effect.flatMap((response) =>
+              Option.isSome(response)
+                ? Effect.succeed(response.value)
+                : Effect.fail(
+                    new EffectAcpErrors.AcpRequestError({
+                      code: -32000,
+                      errorMessage: "ACP 会话关闭等待超过 5 秒，远端关闭状态未知。",
+                      method: "session/close",
+                    }),
+                  ),
+            ),
+          ),
+        );
+      }),
       setMode: (modeId) =>
         Effect.gen(function* () {
           const modeState = yield* Ref.get(modeStateRef);
@@ -1090,12 +1204,27 @@ const handleSessionUpdate = ({
     }
     for (const event of parsed.events) {
       if (event._tag === "ToolCallUpdated") {
-        yield* closeActiveAssistantSegment({
-          queue,
-          assistantSegmentRef,
-        });
-        const { merged, decision } = yield* Ref.modify(toolCallsRef, (current) => {
+        const { merged, decision, approvalOnly } = yield* Ref.modify(toolCallsRef, (current) => {
           const tracked = current.get(event.toolCall.toolCallId);
+          // 仅审批身份的无内容终态关闭权限气泡；输出、执行更新或不匹配的失败均属于工具证据。
+          if (
+            tracked?.permissionStatus !== undefined &&
+            tracked.permissionStatus !== "pending" &&
+            params.update.sessionUpdate === "tool_call_update" &&
+            event.toolCall.status === tracked.permissionStatus &&
+            Object.keys(params.update).every((key) =>
+              ["sessionUpdate", "toolCallId", "status"].includes(key),
+            )
+          ) {
+            const next = new Map(current);
+            next.delete(event.toolCall.toolCallId);
+            const result = {
+              merged: event.toolCall,
+              decision: { emit: false, skippedSinceEmit: 0 },
+              approvalOnly: true,
+            };
+            return [result, next] as const;
+          }
           const previous = tracked?.state;
           const nextToolCall = mergeToolCallState(previous, event.toolCall);
           const decision = decideToolCallUpdateEmission({
@@ -1116,8 +1245,9 @@ const handleSessionUpdate = ({
               skippedSinceEmit: decision.skippedSinceEmit,
             });
           }
-          return [{ merged: nextToolCall, decision }, next] as const;
+          return [{ merged: nextToolCall, decision, approvalOnly: false }, next] as const;
         });
+        if (!approvalOnly) yield* closeActiveAssistantSegment({ queue, assistantSegmentRef });
         if (!decision.emit) {
           continue;
         }

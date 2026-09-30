@@ -3,6 +3,7 @@ import * as NodePath from "node:path";
 import * as NodeOS from "node:os";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeURL from "node:url";
+import * as NodeProcess from "node:process";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -33,8 +34,8 @@ import {
   isGrokEnterPlanModeToolCall,
   makeGrokAdapter,
   nextGrokPlanModeActive,
-  selectGrokPermissionOptionId,
 } from "./GrokAdapter.ts";
+import { selectAcpPermissionOptionId } from "../acp/AcpAdapterSupport.ts";
 const decodeGrokSettings = Schema.decodeSync(GrokSettings);
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -225,9 +226,9 @@ it("maps Always allow to allow_once when Grok omits allow_always", () => {
     { optionId: "reject-once", kind: "reject_once" },
   ]);
 
-  assert.equal(selectGrokPermissionOptionId(request, "acceptForSession"), "allow-once");
-  assert.equal(selectGrokPermissionOptionId(request, "accept"), "allow-once");
-  assert.equal(selectGrokPermissionOptionId(request, "decline"), "reject-once");
+  assert.equal(selectAcpPermissionOptionId(request, "acceptForSession"), "allow-once");
+  assert.equal(selectAcpPermissionOptionId(request, "accept"), "allow-once");
+  assert.equal(selectAcpPermissionOptionId(request, "decline"), "reject-once");
 });
 
 it("prefers allow_always when Grok offers it", () => {
@@ -237,8 +238,8 @@ it("prefers allow_always when Grok offers it", () => {
     { optionId: "reject-once", kind: "reject_once" },
   ]);
 
-  assert.equal(selectGrokPermissionOptionId(request, "acceptForSession"), "allow-always");
-  assert.equal(selectGrokPermissionOptionId(request, "accept"), "allow-once");
+  assert.equal(selectAcpPermissionOptionId(request, "acceptForSession"), "allow-always");
+  assert.equal(selectAcpPermissionOptionId(request, "accept"), "allow-once");
 });
 
 it("requires a settlement to match the live Grok turn", () => {
@@ -275,6 +276,132 @@ it("requires a settlement to match the live Grok turn", () => {
 });
 
 it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
+  for (const interaction of ["approval", "user-input"] as const) {
+    it.effect(`process exit during ${interaction} settles the turn and rejects late response`, () =>
+      Effect.gen(function* () {
+        const threadId = ThreadId.make("grok-crash-mid-approval");
+        const childLogDir = yield* Effect.promise(() =>
+          NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-crash-agent-")),
+        );
+        const childPidLogPath = NodePath.join(childLogDir, "agent.pid");
+        const wrapperPath = yield* makeMockGrokWrapper({
+          ...(interaction === "approval"
+            ? { CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }
+            : { CODEWORK_ACP_EMIT_XAI_ASK_USER_QUESTION: "1" }),
+          CODEWORK_ACP_CHILD_PID_LOG_PATH: childPidLogPath,
+        });
+        const adapter = yield* makeTestAdapter(wrapperPath);
+        const approvalOpened = yield* Deferred.make<string>();
+        const turnCompleted = yield* Deferred.make<ProviderRuntimeEvent>();
+        const sessionExited = yield* Deferred.make<ProviderRuntimeEvent>();
+        const events: ProviderRuntimeEvent[] = [];
+        yield* Stream.runForEach(adapter.streamEvents, (event) => {
+          if (event.threadId !== threadId) return Effect.void;
+          events.push(event);
+          if (
+            event.type ===
+              (interaction === "approval" ? "request.opened" : "user-input.requested") &&
+            event.requestId
+          ) {
+            return Deferred.succeed(approvalOpened, String(event.requestId)).pipe(Effect.asVoid);
+          }
+          if (event.type === "turn.completed") {
+            return Deferred.succeed(turnCompleted, event).pipe(Effect.asVoid);
+          }
+          if (event.type === "session.exited") {
+            return Deferred.succeed(sessionExited, event).pipe(Effect.asVoid);
+          }
+          return Effect.void;
+        }).pipe(Effect.forkScoped);
+        yield* adapter.startSession({
+          threadId,
+          provider: ProviderDriverKind.make("grok"),
+          cwd: process.cwd(),
+          runtimeMode: "approval-required",
+        });
+        const sendTurn = yield* adapter
+          .sendTurn({
+            threadId,
+            input: "crash while waiting for approval",
+            attachments: [],
+          })
+          .pipe(Effect.forkScoped);
+        const requestId = yield* Deferred.await(approvalOpened);
+        const childPid = Number(
+          yield* Effect.promise(() => NodeFSP.readFile(childPidLogPath, "utf8")),
+        );
+        assert.isTrue(Number.isSafeInteger(childPid) && childPid > 0);
+        // 收到审批后，仅终止本次启动记录的进程，不按名称匹配或使用定时器。
+        yield* Effect.sync(() => NodeProcess.kill(childPid));
+        const completed = yield* Deferred.await(turnCompleted);
+        assert.equal((yield* Fiber.await(sendTurn))._tag, "Failure");
+        assert.equal(yield* adapter.hasSession(threadId), false);
+        const exited = yield* Deferred.await(sessionExited);
+        assert.equal(completed.type, "turn.completed");
+        if (completed.type === "turn.completed") assert.equal(completed.payload.state, "failed");
+        assert.equal(exited.type, "session.exited");
+        if (exited.type === "session.exited") assert.equal(exited.payload.exitKind, "error");
+        assert.equal(
+          events.filter(
+            (event) =>
+              event.type ===
+              (interaction === "approval" ? "request.resolved" : "user-input.resolved"),
+          ).length,
+          1,
+        );
+        const lateApproval = yield* (
+          interaction === "approval"
+            ? adapter.respondToRequest(threadId, ApprovalRequestId.make(requestId), "accept")
+            : adapter.respondToUserInput(threadId, ApprovalRequestId.make(requestId), {})
+        ).pipe(Effect.result);
+        assert.equal(lateApproval._tag, "Failure");
+      }).pipe(TestClock.withLive),
+    );
+  }
+
+  for (const closeBehavior of ["success", "fail", "unsupported"]) {
+    it.effect(`停止会话遵守关闭广告并报告 ${closeBehavior} 结果`, () =>
+      Effect.gen(function* () {
+        const threadId = ThreadId.make(`grok-close-${closeBehavior}`);
+        const logDir = yield* Effect.promise(() =>
+          NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-close-")),
+        );
+        const logPath = NodePath.join(logDir, "requests.jsonl");
+        const wrapperPath = yield* makeMockGrokWrapper({
+          CODEWORK_ACP_REQUEST_LOG_PATH: logPath,
+          ...(closeBehavior === "unsupported"
+            ? {}
+            : { CODEWORK_ACP_CLOSE_BEHAVIOR: closeBehavior }),
+        });
+        const adapter = yield* makeTestAdapter(wrapperPath);
+        const exited = yield* Deferred.make<ProviderRuntimeEvent>();
+        yield* adapter.streamEvents.pipe(
+          Stream.runForEach((event) =>
+            event.type === "session.exited" && event.threadId === threadId
+              ? Deferred.succeed(exited, event).pipe(Effect.asVoid)
+              : Effect.void,
+          ),
+          Effect.forkScoped,
+        );
+        yield* adapter.startSession({
+          threadId,
+          provider: ProviderDriverKind.make("grok"),
+          cwd: process.cwd(),
+          runtimeMode: "full-access",
+        });
+        yield* adapter.stopSession(threadId);
+        const event = yield* Deferred.await(exited);
+        assert.equal(event.type, "session.exited");
+        if (event.type === "session.exited")
+          assert.equal(event.payload.exitKind, closeBehavior === "fail" ? "error" : "graceful");
+        const requests = yield* Effect.promise(() => readJsonLines(logPath));
+        assert.equal(
+          requests.filter((request) => request.method === "session/close").length,
+          closeBehavior === "unsupported" ? 0 : 1,
+        );
+      }),
+    );
+  }
   it.effect("Grok 模式沿共用选项往返并投影当前原始 ID", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("grok-uri-mode");

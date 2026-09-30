@@ -7,6 +7,7 @@ import * as NodeFS from "node:fs";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as TestClock from "effect/testing/TestClock";
@@ -22,6 +23,47 @@ const mockAgentCommand = "node";
 const mockAgentArgs = [mockAgentPath];
 
 describe("AcpSessionRuntime", () => {
+  it.effect("关闭不会启动会话，上游不回应时有界失败", () =>
+    Effect.gen(function* () {
+      const closeStarted = yield* Deferred.make<void>();
+      const methods: string[] = [];
+      yield* Effect.gen(function* () {
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        yield* runtime.close;
+        expect(methods).toEqual([]);
+        yield* runtime.start();
+        const closing = yield* runtime.close.pipe(Effect.result, Effect.forkScoped);
+        yield* Deferred.await(closeStarted);
+        yield* TestClock.adjust("6 seconds");
+        const result = yield* Fiber.join(closing);
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: { code: -32000, method: "session/close" },
+        });
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: { CODEWORK_ACP_CLOSE_BEHAVIOR: "hang" },
+            },
+            cwd: process.cwd(),
+            authMethodId: "test",
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+            requestLogger: (event) =>
+              Effect.gen(function* () {
+                if (event.status !== "started") return;
+                methods.push(event.method);
+                if (event.method === "session/close")
+                  yield* Deferred.succeed(closeStarted, undefined);
+              }),
+          }),
+        ),
+        Effect.scoped,
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
   for (const resume of [false, true]) {
     it.effect(`旧式模型${resume ? "恢复" : "新建"}走 set_model，空配置不撤回独立目录`, () => {
       const requests: Array<AcpSessionRuntime.AcpSessionRequestLogEvent> = [];
@@ -67,6 +109,75 @@ describe("AcpSessionRuntime", () => {
         Effect.provide(NodeServices.layer),
       );
     });
+  }
+  for (const decision of ["allow-native", "deny-native", "cancel"] as const) {
+    it.effect(`仅审批的 ${decision} 终态不生成工具，真实执行和跨会话身份仍保留`, () =>
+      Effect.gen(function* () {
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        const events: AcpSessionRuntime.AcpSessionRuntimeEvent[] = [];
+        const approvals: string[] = [];
+        yield* runtime.handleRequestPermission((request) => {
+          approvals.push(request.toolCall.toolCallId);
+          return Effect.succeed({
+            outcome:
+              decision === "cancel"
+                ? { outcome: "cancelled" as const }
+                : { outcome: "selected" as const, optionId: decision },
+          });
+        });
+        yield* runtime.start();
+        yield* runtime.getEvents().pipe(
+          Stream.runForEach((event) => {
+            if (event._tag === "EventStreamBarrier")
+              return Deferred.succeed(event.acknowledge, undefined);
+            events.push(event);
+            return Effect.void;
+          }),
+          Effect.forkChild,
+        );
+        yield* runtime.prompt({ prompt: [{ type: "text", text: "first" }] });
+        yield* runtime.drainEvents;
+        const tools = events.flatMap((event) =>
+          event._tag === "ToolCallUpdated" ? [event.toolCall] : [],
+        );
+        expect(approvals).toHaveLength(7);
+        expect([...new Set(tools.map((tool) => tool.toolCallId))]).toEqual([
+          "real-before",
+          "real-after",
+          "real-output",
+          "mismatch",
+          "foreign",
+          "unknown",
+        ]);
+        expect(tools.find((tool) => tool.toolCallId === "real-output")?.detail).toBe(
+          "实际执行结果",
+        );
+        expect(tools.find((tool) => tool.toolCallId === "mismatch")?.status).toBe(
+          decision === "allow-native" ? "failed" : "completed",
+        );
+        yield* runtime.prompt({ prompt: [{ type: "text", text: "second" }] });
+        yield* runtime.drainEvents;
+        expect(events.at(-1)).toMatchObject({
+          _tag: "ToolCallUpdated",
+          toolCall: { toolCallId: "reused", status: "completed" },
+        });
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: { CODEWORK_ACP_PERMISSION_LIFECYCLE: "1" },
+            },
+            cwd: process.cwd(),
+            authMethodId: "test",
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+      ),
+    );
   }
   for (const failure of ["rpc", "malformed"]) {
     it.effect(`旧式模式 ${failure} 失败后同连接仍可成功切换模型`, () => {
@@ -596,6 +707,64 @@ describe("AcpSessionRuntime", () => {
             env: {
               CODEWORK_ACP_HANG_FIRST_PROMPT_FOREVER: "1",
             },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
+  );
+
+  it.effect("cancels in-progress tools when the client interrupts a hung prompt", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      const events: AcpSessionRuntime.AcpSessionRuntimeEvent[] = [];
+      const sawInProgress = yield* Deferred.make<void>();
+      yield* runtime.start();
+      yield* runtime.getEvents().pipe(
+        Stream.runForEach((event) => {
+          if (event._tag === "EventStreamBarrier")
+            return Deferred.succeed(event.acknowledge, undefined);
+          events.push(event);
+          if (
+            event._tag === "ToolCallUpdated" &&
+            event.toolCall.toolCallId === "tool-call-long-running-1" &&
+            event.toolCall.status === "inProgress"
+          ) {
+            return Deferred.succeed(sawInProgress, undefined);
+          }
+          return Effect.void;
+        }),
+        Effect.forkChild,
+      );
+
+      const promptFiber = yield* runtime
+        .prompt({ prompt: [{ type: "text", text: "long tool" }] })
+        .pipe(Effect.forkChild({ startImmediately: true }));
+
+      yield* Deferred.await(sawInProgress);
+      yield* runtime.cancel;
+      expect(yield* Fiber.join(promptFiber)).toMatchObject({ stopReason: "cancelled" });
+      yield* runtime.drainEvents;
+
+      const tools = events.flatMap((event) =>
+        event._tag === "ToolCallUpdated" ? [event.toolCall] : [],
+      );
+      expect(tools.map((tool) => tool.status)).toEqual(["pending", "inProgress", "failed"]);
+      expect(tools.at(-1)).toMatchObject({
+        toolCallId: "tool-call-long-running-1",
+        status: "failed",
+      });
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_ACTIVE_TOOL_THEN_HANG: "1" },
           },
           cwd: process.cwd(),
           clientInfo: { name: "codework-test", version: "0.0.0" },
