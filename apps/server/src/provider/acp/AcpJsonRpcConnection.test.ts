@@ -1307,4 +1307,230 @@ describe("AcpSessionRuntime", () => {
         expect(isRequest({ ...base, environmentPolicy: policy })).toBe(false);
     }),
   );
+
+  for (const action of ["cancel", "timeout"] as const) {
+    it.effect(`Kiro 命令 ${action} 终止等待，不重新发送为模型消息`, () => {
+      const requests: AcpSessionRuntime.AcpSessionRequestLogEvent[] = [];
+      return Effect.gen(function* () {
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        yield* runtime.start();
+        const pending = yield* runtime
+          .prompt({ prompt: [{ type: "text", text: "/agent wait" }] })
+          .pipe(Effect.result, Effect.forkChild);
+        yield* runtime.getEvents().pipe(
+          Stream.takeUntil((event) => event._tag === "ModeChanged"),
+          Stream.runDrain,
+        );
+        if (action === "cancel") yield* runtime.cancel;
+        else yield* TestClock.adjust("61 seconds");
+        const result = yield* Fiber.join(pending);
+        if (action === "cancel")
+          expect(result).toMatchObject({ _tag: "Success", success: { stopReason: "cancelled" } });
+        else
+          expect(result).toMatchObject({
+            _tag: "Failure",
+            failure: { errorMessage: expect.stringContaining("60 秒") },
+          });
+        expect(
+          yield* runtime.prompt({ prompt: [{ type: "text", text: "/agent recover" }] }),
+        ).toEqual({ stopReason: "end_turn" });
+        expect(requests.filter((event) => event.method === "session/prompt")).toEqual([]);
+        expect(
+          requests
+            .filter(
+              (event) =>
+                event.status === "started" && event.method === "_kiro.dev/commands/execute",
+            )
+            .map((event) => event.payload),
+        ).toEqual([
+          { sessionId: "mock-session-1", command: { command: "agent", args: { value: "wait" } } },
+          {
+            sessionId: "mock-session-1",
+            command: { command: "agent", args: { value: "recover" } },
+          },
+        ]);
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: { CODEWORK_ACP_EMIT_KIRO_COMMANDS: "1" },
+            },
+            cwd: process.cwd(),
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+            authMethodId: "test",
+            requestLogger: (event) =>
+              Effect.sync(() => {
+                requests.push(event);
+              }),
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+      );
+    });
+  }
+
+  it.effect("Kiro 内置命令走对象请求并展示结果，失败不转发模型", () => {
+    const requests: Array<AcpSessionRuntime.AcpSessionRequestLogEvent> = [];
+    return Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      yield* runtime.start();
+      expect(
+        yield* runtime.prompt({ prompt: [{ type: "text", text: "/agent swap my-agent" }] }),
+      ).toEqual({ stopReason: "end_turn" });
+      const events = Array.from(
+        yield* runtime.getEvents().pipe(
+          Stream.takeUntil((event) => event._tag === "AssistantItemCompleted"),
+          Stream.runCollect,
+        ),
+      );
+      const text = events
+        .flatMap((event) => (event._tag === "ContentDelta" ? [event.text] : []))
+        .join("");
+      expect(text).toContain("命令执行完成");
+      expect(text).toContain("swap my-agent");
+      expect(
+        requests
+          .filter(
+            (event) => event.status === "started" && event.method === "_kiro.dev/commands/execute",
+          )
+          .map((event) => event.payload),
+      ).toEqual([
+        {
+          sessionId: "mock-session-1",
+          command: { command: "agent", args: { value: "swap my-agent" } },
+        },
+      ]);
+      yield* runtime.prompt({ prompt: [{ type: "text", text: "/agent" }] });
+      expect(
+        requests.findLast(
+          (event) => event.status === "started" && event.method === "_kiro.dev/commands/execute",
+        )?.payload,
+      ).toEqual({ sessionId: "mock-session-1", command: { command: "agent", args: {} } });
+      for (const argument of ["reject", "invalid", "rpc-error"]) {
+        expect(
+          (yield* runtime
+            .prompt({ prompt: [{ type: "text", text: `/agent ${argument}` }] })
+            .pipe(Effect.result))._tag,
+        ).toBe("Failure");
+      }
+      expect(
+        (yield* runtime
+          .prompt({
+            prompt: [
+              { type: "text", text: "/agent swap ignored" },
+              { type: "image", data: "AA==", mimeType: "image/png" },
+            ],
+          })
+          .pipe(Effect.result))._tag,
+      ).toBe("Failure");
+      expect(requests.filter((event) => event.method === "session/prompt")).toEqual([]);
+      for (const text of ["/review file.ts", "/help", "/compact", "普通消息"]) {
+        yield* runtime.prompt({ prompt: [{ type: "text", text }] });
+      }
+      expect(
+        requests
+          .filter((event) => event.status === "started" && event.method === "session/prompt")
+          .map((event) => event.payload),
+      ).toEqual(
+        ["/review file.ts", "/help", "/compact", "普通消息"].map((text) => ({
+          sessionId: "mock-session-1",
+          prompt: [{ type: "text", text }],
+        })),
+      );
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_KIRO_COMMANDS: "1" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+          requestLogger: (event) =>
+            Effect.sync(() => {
+              requests.push(event);
+            }),
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
+  it.effect("Kiro 扩展命令复用启动缓存与异步快照，隔离无效通知和其它会话", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      yield* runtime.start();
+      expect(yield* runtime.getAvailableCommands).toEqual([
+        { name: "agent", description: "选择代理", input: { hint: "swap <name>" } },
+        { name: "review", description: "审查变更" },
+      ]);
+      const sendAndDrain = (params: unknown) =>
+        Effect.gen(function* () {
+          yield* runtime.request("_codework.test/kiro-commands", params);
+          return Array.from(
+            yield* runtime.getEvents().pipe(
+              Stream.takeUntil((event) => event._tag === "ModeChanged"),
+              Stream.runCollect,
+            ),
+          ).filter((event) => event._tag === "CommandsUpdated");
+        });
+      const commands = [{ name: "inspect", description: "检查文件", input: { hint: "文件路径" } }];
+      const updates = yield* sendAndDrain({
+        sessionId: "mock-session-1",
+        commands: [
+          { name: " /inspect ", description: " 检查文件 ", meta: { hint: " 文件路径 " } },
+          { name: "///inspect", description: "重复项" },
+          { name: "bad name" },
+        ],
+        prompts: [{ name: "inspect" }],
+        tools: [{ name: "terminal" }],
+      });
+      expect(updates.map((event) => event.commands)).toEqual([commands]);
+      expect(yield* runtime.getAvailableCommands).toEqual(commands);
+      for (const params of [
+        { sessionId: "child-session", commands: [] },
+        { sessionId: "mock-session-1", _meta: { isReplay: true }, commands: [] },
+        { commands: [] },
+        { sessionId: "mock-session-1" },
+        { sessionId: "mock-session-1", commands: "bad" },
+        { sessionId: "mock-session-1", prompts: [{ name: 3 }] },
+      ]) {
+        expect(yield* sendAndDrain(params)).toEqual([]);
+        expect(yield* runtime.getAvailableCommands).toEqual(commands);
+      }
+      expect(
+        (yield* sendAndDrain({ sessionId: "mock-session-1", commands: [], prompts: [] })).map(
+          (event) => event.commands,
+        ),
+      ).toEqual([[]]);
+      expect(yield* runtime.getAvailableCommands).toEqual([]);
+      expect(
+        (yield* sendAndDrain({
+          sessionId: "mock-session-1",
+          prompts: [{ name: "skill-only" }],
+        })).map((event) => event.commands),
+      ).toEqual([[{ name: "skill-only" }]]);
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_KIRO_COMMANDS: "1" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
+  );
 });

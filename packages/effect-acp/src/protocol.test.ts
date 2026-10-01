@@ -853,3 +853,44 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
     }),
   );
 });
+
+it.effect("扩展请求等待时仍处理后续请求，回应保持原请求 ID", () =>
+  Effect.gen(function* () {
+    const { stdio, input, output } = yield* makeInMemoryStdio();
+    const pending = yield* Deferred.make<void>();
+    yield* AcpProtocol.makeAcpPatchedProtocol({
+      stdio,
+      serverRequestMethods: new Set(),
+      onExtRequest: (_method, params) =>
+        (params as { hello: string }).hello === "wait"
+          ? Deferred.await(pending).pipe(Effect.as({ ok: true }))
+          : Effect.succeed({ ok: true }),
+    });
+    for (const [id, hello] of [
+      [7, "wait"],
+      [8, "ready"],
+    ] as const) {
+      yield* Queue.offer(
+        input,
+        yield* encodeJsonl(ExtRequest, {
+          jsonrpc: "2.0",
+          id,
+          method: "x/test",
+          params: { hello },
+          headers: [],
+        }),
+      );
+    }
+    assert.deepEqual(yield* decodeExtResponse(yield* Queue.take(output)), {
+      jsonrpc: "2.0",
+      id: 8,
+      result: { ok: true },
+    });
+    yield* Deferred.succeed(pending, undefined);
+    assert.deepEqual(yield* decodeExtResponse(yield* Queue.take(output)), {
+      jsonrpc: "2.0",
+      id: 7,
+      result: { ok: true },
+    });
+  }),
+);

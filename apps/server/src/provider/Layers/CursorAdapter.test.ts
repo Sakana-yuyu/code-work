@@ -396,7 +396,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
     }),
   );
 
-  for (const commandProtocol of ["标准"] as ReadonlyArray<string>) {
+  for (const commandProtocol of ["标准", "Kiro"] as const) {
     it.effect(`${commandProtocol} ACP 命令在握手期间发现，后续替换及撤回，并原样发送参数`, () =>
       Effect.gen(function* () {
         const adapter = yield* CursorAdapter;

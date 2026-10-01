@@ -24,6 +24,7 @@ const emitToolCalls = process.env.CODEWORK_ACP_EMIT_TOOL_CALLS === "1";
 const emitResources = process.env.CODEWORK_ACP_EMIT_RESOURCES === "1";
 const emitConfigUpdates = process.env.CODEWORK_ACP_EMIT_CONFIG_UPDATES === "1";
 const startupConfig = process.env.CODEWORK_ACP_STARTUP_CONFIG;
+const emitKiroCommands = process.env.CODEWORK_ACP_EMIT_KIRO_COMMANDS === "1";
 const emitCommands = process.env.CODEWORK_ACP_EMIT_COMMANDS === "1";
 const emitInterleavedAssistantToolCalls =
   process.env.CODEWORK_ACP_EMIT_INTERLEAVED_ASSISTANT_TOOL_CALLS === "1";
@@ -512,6 +513,18 @@ const program = Effect.gen(function* () {
 
   yield* agent.handleCreateSession(() =>
     Effect.gen(function* () {
+      if (emitKiroCommands) {
+        writeJsonRpcNotification("_kiro.dev/commands/available", {
+          sessionId,
+          commands: [{ name: "/agent", description: "选择代理", meta: { hint: "swap <name>" } }],
+          prompts: [{ name: "review", description: "审查变更", serverName: "skill:local" }],
+          tools: [{ name: "terminal" }],
+        });
+        writeJsonRpcNotification("_kiro.dev/commands/available", {
+          sessionId: "child-session",
+          commands: [{ name: "/foreign" }],
+        });
+      }
       if (emitCommands) {
         yield* agent.client.sessionUpdate({
           sessionId,
@@ -789,6 +802,14 @@ const program = Effect.gen(function* () {
           },
         });
         return yield* Effect.never;
+      }
+      if (emitKiroCommands) {
+        writeJsonRpcNotification("_kiro.dev/commands/available", {
+          sessionId: requestedSessionId,
+          commands: promptCount === 1 ? [{ name: "/inspect", description: "检查文件" }] : [],
+          prompts: [],
+        });
+        return { stopReason: "end_turn" };
       }
       if (emitCommands) {
         yield* agent.client.sessionUpdate({
@@ -1644,6 +1665,49 @@ const program = Effect.gen(function* () {
   );
 
   yield* agent.handleUnknownExtRequest((method, params) => {
+    if (emitKiroCommands && method === "_kiro.dev/commands/execute") {
+      return Effect.gen(function* () {
+        const value = params as {
+          sessionId: string;
+          command: { command: string; args: { value?: string } };
+        };
+        if (value.command.args.value === "wait") {
+          yield* agent.client.sessionUpdate({
+            sessionId: value.sessionId,
+            update: { sessionUpdate: "current_mode_update", currentModeId },
+          });
+          return yield* Effect.never;
+        }
+        if (value.command.args.value === "invalid") return { unexpected: true };
+        if (value.command.args.value === "rpc-error")
+          return yield* AcpError.AcpRequestError.internalError("模拟命令 RPC 失败");
+        if (value.command.args.value === "reject") return { success: false, message: "命令被拒绝" };
+        if (value.command.command === "inspect") {
+          writeJsonRpcNotification("_kiro.dev/commands/available", {
+            sessionId: value.sessionId,
+            commands: [],
+            prompts: [],
+          });
+        }
+        return {
+          success: true,
+          message: "命令执行完成",
+          data: { selected: value.command.args.value ?? "none" },
+        };
+      });
+    }
+    if (emitKiroCommands && method === "_codework.test/kiro-commands") {
+      return Effect.gen(function* () {
+        writeJsonRpcNotification("_kiro.dev/commands/available", params);
+        // 标准通知作为消费屏障，测试无需依赖固定等待时间。
+        yield* agent.client.sessionUpdate({
+          sessionId,
+          update: { sessionUpdate: "current_mode_update", currentModeId },
+        });
+        return {};
+      });
+    }
+
     if (method === "cursor/list_available_models") {
       return Effect.succeed({
         models: availableModels(),

@@ -91,6 +91,7 @@ const parserFactory = RpcSerialization.ndJsonRpc();
 export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(function* (
   options: AcpPatchedProtocolOptions,
 ): Effect.fn.Return<AcpPatchedProtocol, never, Scope.Scope> {
+  const requestScope = yield* Effect.scope;
   const parser = parserFactory.makeUnsafe();
   const serverQueue = yield* Queue.unbounded<RpcMessage.FromClientEncoded>();
   const clientQueue = yield* Queue.unbounded<RpcMessage.FromServerEncoded>();
@@ -355,6 +356,9 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
               ),
             ),
         }),
+        // 扩展请求可能等待宿主回调；读入循环必须继续处理回应、取消和后续请求。
+        Effect.catch((error) => handleTermination(() => Effect.succeed(error))),
+        Effect.forkIn(requestScope),
         Effect.asVoid,
       );
     }

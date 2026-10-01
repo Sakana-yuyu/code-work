@@ -27,6 +27,18 @@ BYOK 源变化时，`ProviderInstanceRegistryHydration.ts` 只在 `routeThroughB
 
 新增 `server.getAcpRegistryCatalog` 读取 ACP 官方目录。服务端按自身平台标记二进制条目的可用性，只把参数安全且固定版本的 npx 分发转换为可选择的启动命令；目录失败时向导仍保留手工命令入口。选择条目只填写现有 `acpAgent.command`，实例保存、探测与会话启动继续走原有驱动。npx 可能在探测时下载软件包，界面会先明确提示。目录查询需要环境读取权限，并限制响应大小与等待时间。
 
+## Kiro 异步命令与执行
+
+Kiro 的 \_kiro.dev/commands/available 通知复用标准会话更新入口：必须包含 sessionId 和 commands/prompts 至少一个数组，启动前缓存、当前根会话及重放隔离保持一致。空数组撤回广告；无效通知仅告警并保留快照。名称归一化和去重复用共享解析器，tools 不进入命令菜单。
+
+仅当前会话广告的 commands 使用 \_kiro.dev/commands/execute，请求为 {sessionId, command: {command, args: {value}}}，无参数用空 args。prompts、help、compact 继续普通消息。响应 message/data 进入既有正文事件，有长度上限；拒绝、畸形结果、RPC 错误直接失败，不自动重发模型；附件混发明确拒绝。60 秒超时显示状态未知，本地取消不代表远端副作用撤销。
+
+扩展请求在协议所属作用域内并行处理，避免长命令堵住 stdio 读入，导致取消、宿主回调回应和下一命令无法处理；通知仍按序消费，请求回应保留原 ID。通用 ACP 与 Cursor 共用该运行时，没有专有 Adapter 或第二套菜单。返回数据中的 UI 动作只显示，不自动改变客户端设置。
+
+核对日期 2026-10-01；检索词 commands/available、commands/execute、parse_slash_command、stream_command。采用 [Kiro 官方 ACP 文档](https://kiro.dev/docs/cli/acp/)确认方法、[固定 Paseo 适配器](https://github.com/getpaseo/paseo/blob/23c4404b955fbc1a6904b7140f911d9f29de1f27/packages/server/src/server/agent/providers/kiro-acp-agent.ts)确认广告转换、[官方 KiroCrew 请求源码](https://github.com/kirodotdev/KiroCrew/blob/df0ea7909cafa0fa8762e844bf4babc98e282d46/src/kiro_crew/acp/client.py)确认对象参数，优先于第三方猜测；不复制其固定等待或兼容回退。
+
+协议进程测试覆盖广告替换/撤回、错误、参数、取消/超时后同连接继续执行及实例归属。真实版本的握手、工具和界面证据仍独立验收，见 [Kiro 验证边界](./kiro-acp-provider.md)。
+
 ## 尚未提供的
 
 - 二进制和 uvx 分发暂不自动安装；目录会显示它们的手工配置或平台不可用状态。目录选择支持 npx 固定版本条目。

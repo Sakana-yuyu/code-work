@@ -20,6 +20,7 @@ import * as EffectAcpClient from "effect-acp/client";
 import * as EffectAcpErrors from "effect-acp/errors";
 import * as EffectAcpSchema from "effect-acp/schema";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
+import { truncate } from "@codework/shared/String";
 import { resolveSpawnCommand } from "@codework/shared/shell";
 import { stableStringify } from "@codework/shared/relaySigning";
 
@@ -78,6 +79,27 @@ export interface AcpSpawnInput {
   readonly cwd?: string;
   readonly env?: NodeJS.ProcessEnv;
 }
+
+const KiroCommand = Schema.Struct({
+  name: Schema.String,
+  description: Schema.optionalKey(Schema.String),
+  meta: Schema.optionalKey(Schema.Struct({ hint: Schema.optionalKey(Schema.String) })),
+});
+const KiroCommandsNotification = Schema.Struct({
+  sessionId: Schema.String.check(Schema.isMinLength(1)),
+  commands: Schema.optionalKey(Schema.Array(KiroCommand)),
+  prompts: Schema.optionalKey(Schema.Array(KiroCommand)),
+  _meta: Schema.optionalKey(Schema.Struct({ isReplay: Schema.optionalKey(Schema.Boolean) })),
+}).check(Schema.makeFilter((value) => value.commands !== undefined || value.prompts !== undefined));
+const decodeKiroCommandsNotification = Schema.decodeUnknownEffect(KiroCommandsNotification);
+const decodeKiroCommandResult = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    success: Schema.Boolean,
+    message: Schema.optionalKey(Schema.String),
+    data: Schema.optionalKey(Schema.Unknown),
+  }),
+);
+const encodeKiroCommandData = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 export interface AcpSessionRuntimeOptions {
   readonly spawn: AcpSpawnInput;
@@ -327,11 +349,13 @@ export const make = (
     const commandsRef = yield* Ref.make<
       ReadonlyArray<import("@codework/contracts").ServerProviderSlashCommand>
     >([]);
+    const kiroCommandNamesRef = yield* Ref.make<ReadonlySet<string>>(new Set());
     const pendingMetadata = new Map<
       string,
       {
         commands?: {
           notification: EffectAcpSchema.SessionNotification;
+          kiroCommandNames?: ReadonlySet<string>;
         };
         configOptions?: ReadonlyArray<EffectAcpSchema.SessionConfigOption>;
       }
@@ -483,7 +507,10 @@ export const make = (
 
     const acp = yield* Effect.service(EffectAcpClient.AcpClient).pipe(Effect.provide(acpContext));
 
-    const acceptSessionUpdate = (notification: EffectAcpSchema.SessionNotification) =>
+    const acceptSessionUpdate = (
+      notification: EffectAcpSchema.SessionNotification,
+      kiroCommandNames?: ReadonlySet<string>,
+    ) =>
       Effect.gen(function* () {
         const gate = yield* Ref.get(sessionLoadGateRef);
         if (Option.isSome(gate) && gate.value.active) {
@@ -506,7 +533,7 @@ export const make = (
           if (notification.update.sessionUpdate === "available_commands_update") {
             pendingMetadata.set(notification.sessionId, {
               ...pending,
-              commands: { notification },
+              commands: { notification, ...(kiroCommandNames ? { kiroCommandNames } : {}) },
             });
           } else if (notification.update.sessionUpdate === "config_option_update") {
             pendingMetadata.set(notification.sessionId, {
@@ -530,6 +557,7 @@ export const make = (
           return;
         }
         if (notification.update.sessionUpdate === "available_commands_update") {
+          yield* Ref.set(kiroCommandNamesRef, kiroCommandNames ?? new Set());
           for (const event of parseSessionUpdateEvent(notification).events) {
             if (event._tag !== "CommandsUpdated") continue;
             yield* Ref.set(commandsRef, event.commands);
@@ -559,6 +587,37 @@ export const make = (
         });
       });
     yield* acp.handleSessionUpdate(acceptSessionUpdate);
+    // 扩展只转换协议形状；会话归属、重放与启动缓存沿用标准通知的同一入口。
+    yield* acp.handleExtNotification("_kiro.dev/commands/available", Schema.Unknown, (payload) =>
+      decodeKiroCommandsNotification(payload).pipe(
+        Effect.matchEffect({
+          onFailure: () => Effect.logWarning("忽略格式无效的 Kiro 命令通知；保留当前命令快照"),
+          onSuccess: (notification) =>
+            acceptSessionUpdate(
+              {
+                sessionId: notification.sessionId,
+                ...(notification._meta ? { _meta: notification._meta } : {}),
+                update: {
+                  sessionUpdate: "available_commands_update",
+                  availableCommands: [
+                    ...(notification.commands ?? []),
+                    ...(notification.prompts ?? []),
+                  ].map((command) => ({
+                    name: command.name,
+                    description: command.description ?? "",
+                    ...(command.meta?.hint ? { input: { hint: command.meta.hint } } : {}),
+                  })),
+                },
+              },
+              new Set(
+                (notification.commands ?? []).map((command) =>
+                  command.name.trim().replace(/^\/+/, ""),
+                ),
+              ),
+            ),
+        }),
+      ),
+    );
     const initializeClientCapabilities = {
       fs: {
         readTextFile: false,
@@ -727,6 +786,7 @@ export const make = (
       yield* Ref.set(modelsRef, null);
       yield* Ref.set(modeStateRef, undefined);
       yield* Ref.set(commandsRef, []);
+      yield* Ref.set(kiroCommandNamesRef, new Set());
       const initializePayload = {
         protocolVersion: 1,
         clientCapabilities: initializeClientCapabilities,
@@ -866,6 +926,7 @@ export const make = (
       yield* Ref.set(modelsRef, parseSessionModels(sessionSetupResult));
       const initialCommands = initialMetadata?.commands;
       if (initialCommands) {
+        yield* Ref.set(kiroCommandNamesRef, initialCommands.kiroCommandNames ?? new Set());
         for (const event of parseSessionUpdateEvent(initialCommands.notification).events) {
           if (event._tag === "CommandsUpdated") yield* Ref.set(commandsRef, event.commands);
         }
@@ -1005,11 +1066,100 @@ export const make = (
             const cancelledResponse = {
               stopReason: "cancelled",
             } satisfies EffectAcpSchema.PromptResponse;
-            const promptRpcFiber = yield* runLoggedRequest(
-              "session/prompt",
-              requestPayload,
-              acp.agent.prompt(requestPayload),
-            ).pipe(Effect.forkIn(runtimeScope));
+            const firstBlock = payload.prompt[0];
+            const commandMatch =
+              firstBlock?.type === "text"
+                ? /^\/([^\s/]+)(?:\s+([\s\S]*))?$/u.exec(firstBlock.text.trim())
+                : null;
+            const commandName = commandMatch?.[1];
+            const nativeCommand =
+              commandName &&
+              commandName !== "help" &&
+              commandName !== "compact" &&
+              (yield* Ref.get(kiroCommandNamesRef)).has(commandName);
+            const promptRequest = nativeCommand
+              ? Effect.gen(function* () {
+                  if (payload.prompt.length !== 1) {
+                    return yield* new EffectAcpErrors.AcpRequestError({
+                      code: -32602,
+                      errorMessage: "Kiro 内置命令不能同时携带附件或其它内容块，请单独发送命令。",
+                    });
+                  }
+                  const method = "_kiro.dev/commands/execute";
+                  const value = commandMatch?.[2]?.trim();
+                  const commandPayload = {
+                    sessionId: started.sessionId,
+                    command: { command: commandName, args: value ? { value } : {} },
+                  };
+                  const result = yield* runLoggedRequest(
+                    method,
+                    commandPayload,
+                    acp.raw.request(method, commandPayload).pipe(
+                      Effect.timeoutOption(Duration.seconds(60)),
+                      Effect.flatMap((response) =>
+                        Option.isSome(response)
+                          ? Effect.succeed(response.value)
+                          : Effect.fail(
+                              new EffectAcpErrors.AcpRequestError({
+                                code: -32000,
+                                errorMessage:
+                                  "Kiro 命令等待超过 60 秒；执行状态未知，请确认后再操作。",
+                                method,
+                              }),
+                            ),
+                      ),
+                    ),
+                  );
+                  const response = yield* decodeKiroCommandResult(result).pipe(
+                    Effect.mapError(
+                      () =>
+                        new EffectAcpErrors.AcpRequestError({
+                          code: -32603,
+                          errorMessage: "Kiro 命令返回了无效结果，未转发给模型。",
+                          method,
+                        }),
+                    ),
+                  );
+                  if (!response.success) {
+                    return yield* new EffectAcpErrors.AcpRequestError({
+                      code: -32000,
+                      errorMessage: truncate(response.message || "Kiro 命令执行失败", 8000),
+                      method,
+                    });
+                  }
+                  const dataText =
+                    response.data === undefined
+                      ? undefined
+                      : yield* encodeKiroCommandData(response.data).pipe(
+                          Effect.mapError(
+                            () =>
+                              new EffectAcpErrors.AcpRequestError({
+                                code: -32603,
+                                errorMessage: "Kiro 命令结果不能序列化。",
+                                method,
+                              }),
+                          ),
+                        );
+                  const text = truncate(
+                    [response.message, dataText].filter(Boolean).join("\n\n") ||
+                      "Kiro 已确认命令执行成功。",
+                    24000,
+                  );
+                  yield* acceptSessionUpdate({
+                    sessionId: started.sessionId,
+                    update: {
+                      sessionUpdate: "agent_message_chunk",
+                      content: { type: "text", text },
+                    },
+                  });
+                  return { stopReason: "end_turn" } satisfies EffectAcpSchema.PromptResponse;
+                })
+              : runLoggedRequest(
+                  "session/prompt",
+                  requestPayload,
+                  acp.agent.prompt(requestPayload),
+                );
+            const promptRpcFiber = yield* promptRequest.pipe(Effect.forkIn(runtimeScope));
             yield* Ref.set(activePromptFiberRef, Option.some(promptRpcFiber));
             return yield* Fiber.join(promptRpcFiber).pipe(
               Effect.catchCause((cause) =>
