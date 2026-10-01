@@ -47,6 +47,10 @@ import {
 import { normalizeGeminiToolResult } from "./GeminiAcpToolResult.ts";
 import { normalizeCopilotToolResult } from "./CopilotAcpToolResult.ts";
 import { normalizeKiloToolResult } from "./KiloAcpToolResult.ts";
+import {
+  normalizeCodebuddyToolResult,
+  normalizeCodebuddyCancelledToolNotification,
+} from "./CodebuddyAcpToolResult.ts";
 
 interface AcpToolCallTrackedState {
   readonly state: AcpToolCallState;
@@ -517,6 +521,7 @@ export const make = (
     const acceptSessionUpdate = (
       notification: EffectAcpSchema.SessionNotification,
       kiroCommandNames?: ReadonlySet<string>,
+      rawPayload?: unknown,
     ) =>
       Effect.gen(function* () {
         const gate = yield* Ref.get(sessionLoadGateRef);
@@ -598,10 +603,15 @@ export const make = (
           assistantSegmentRef,
           assistantItemRuntimeId,
           params: notification,
+          rawPayload,
           agentName: startState.result.initializeResult.agentInfo?.name,
         });
       });
     yield* acp.handleSessionUpdate(acceptSessionUpdate);
+    yield* acp.handleExtNotification("session/update", Schema.Unknown, (payload) => {
+      const notification = normalizeCodebuddyCancelledToolNotification(payload);
+      return notification ? acceptSessionUpdate(notification, undefined, payload) : Effect.void;
+    });
     // 扩展只转换协议形状；会话归属、重放与启动缓存沿用标准通知的同一入口。
     yield* acp.handleExtNotification("_kiro.dev/commands/available", Schema.Unknown, (payload) =>
       decodeKiroCommandsNotification(payload).pipe(
@@ -1425,6 +1435,7 @@ const handleSessionUpdate = ({
   assistantSegmentRef,
   assistantItemRuntimeId,
   params,
+  rawPayload = params,
   agentName,
 }: {
   readonly queue: Queue.Queue<AcpSessionRuntimeEvent>;
@@ -1433,13 +1444,16 @@ const handleSessionUpdate = ({
   readonly assistantSegmentRef: Ref.Ref<AcpAssistantSegmentState>;
   readonly assistantItemRuntimeId: string;
   readonly params: EffectAcpSchema.SessionNotification;
+  readonly rawPayload?: unknown;
   readonly agentName: string | undefined;
 }): Effect.Effect<void> =>
   Effect.gen(function* () {
     const parsed = parseSessionUpdateEvent(
-      normalizeKiloToolResult(
-        normalizeCopilotToolResult(normalizeGeminiToolResult(params, agentName), agentName),
-        agentName,
+      normalizeCodebuddyToolResult(
+        normalizeKiloToolResult(
+          normalizeCopilotToolResult(normalizeGeminiToolResult(params, agentName), agentName),
+          agentName,
+        ),
       ),
     );
     if (parsed.modeId) {
@@ -1496,7 +1510,7 @@ const handleSessionUpdate = ({
         yield* Queue.offer(queue, {
           _tag: "ToolCallUpdated",
           toolCall: merged,
-          rawPayload: params,
+          rawPayload,
         });
         continue;
       }

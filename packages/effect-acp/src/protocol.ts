@@ -73,6 +73,24 @@ interface AcpPendingRequest {
 }
 
 const decodeSessionUpdate = Schema.decodeUnknownEffect(AcpSchema.SessionNotification);
+// CodeBuddy 2.159.0 以专有取消原因扩展标准工具状态；其它非法状态仍报协议错误。
+export const CodebuddyCancelledToolNotification = Schema.Struct({
+  sessionId: Schema.String.check(Schema.isMinLength(1)),
+  _meta: AcpSchema.SessionNotification.fields._meta,
+  update: Schema.Struct({
+    ...AcpSchema.ToolCallUpdate.fields,
+    sessionUpdate: Schema.Literal("tool_call_update"),
+    toolCallId: Schema.String.check(Schema.isMinLength(1)),
+    status: Schema.Literal("cancelled"),
+    _meta: Schema.Struct({
+      "codebuddy.ai/toolCancelReason": Schema.Literals([
+        "permission_denied",
+        "session_interrupted",
+      ]),
+    }),
+  }),
+});
+export const isCodebuddyCancelledToolNotification = Schema.is(CodebuddyCancelledToolNotification);
 // 仅接收已确认的 Harn 专有进度信封，标准通知的解析错误仍须终止协议。
 const isHarnProgressNotification = Schema.is(
   Schema.Struct({
@@ -295,7 +313,10 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
   const handleRequestEncoded = (message: RpcMessage.RequestEncoded) => {
     if (message.isNotification === true) {
       if (message.tag === CLIENT_METHODS.session_update) {
-        if (isHarnProgressNotification(message.payload)) {
+        if (
+          isHarnProgressNotification(message.payload) ||
+          isCodebuddyCancelledToolNotification(message.payload)
+        ) {
           return dispatchNotification({
             _tag: "ExtNotification",
             method: CLIENT_METHODS.session_update,

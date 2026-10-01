@@ -172,6 +172,105 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
     }),
   );
 
+  it.effect("CodeBuddy 专有取消保留原始载荷，后续标准通知继续解析", () =>
+    Effect.gen(function* () {
+      const { stdio, input } = yield* makeInMemoryStdio();
+      const notifications = yield* Deferred.make<
+        ReadonlyArray<AcpProtocol.AcpIncomingNotification>,
+        AcpError.AcpError
+      >();
+      const transport = yield* AcpProtocol.makeAcpPatchedProtocol({
+        stdio,
+        serverRequestMethods: new Set(),
+        onTermination: (error) => Deferred.fail(notifications, error).pipe(Effect.asVoid),
+      });
+      yield* transport.incoming.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.flatMap((chunk) => Deferred.succeed(notifications, chunk)),
+        Effect.forkScoped,
+      );
+      const cancelled = {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-1",
+          status: "cancelled",
+          _meta: {
+            "codebuddy.ai/toolCancelReason": "session_interrupted",
+            "codebuddy.ai/toolName": "Write",
+          },
+        },
+      };
+      for (const params of [
+        cancelled,
+        {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "done" },
+          },
+        },
+      ])
+        yield* Queue.offer(
+          input,
+          encoder.encode(
+            encodeUnknownJsonString({
+              jsonrpc: "2.0",
+              method: "session/update",
+              params,
+            }) + "\n",
+          ),
+        );
+      const [proprietary, standard] = yield* Deferred.await(notifications);
+      assert.deepEqual(proprietary, {
+        _tag: "ExtNotification",
+        method: "session/update",
+        params: cancelled,
+      });
+      assert.equal(standard?._tag, "SessionUpdate");
+    }),
+  );
+  for (const patch of [
+    { _meta: {} },
+    { _meta: { "codebuddy.ai/toolCancelReason": "unknown" } },
+    { toolCallId: "" },
+    { kind: "unknown" },
+    { content: "invalid" },
+  ]) {
+    it.effect("CodeBuddy 取消扩展不接受畸形字段：" + encodeUnknownJsonString(patch), () =>
+      Effect.gen(function* () {
+        const { stdio, input } = yield* makeInMemoryStdio();
+        const termination = yield* Deferred.make<AcpError.AcpError>();
+        yield* AcpProtocol.makeAcpPatchedProtocol({
+          stdio,
+          serverRequestMethods: new Set(),
+          onTermination: (error) => Deferred.succeed(termination, error).pipe(Effect.asVoid),
+        });
+        yield* Queue.offer(
+          input,
+          encoder.encode(
+            encodeUnknownJsonString({
+              jsonrpc: "2.0",
+              method: "session/update",
+              params: {
+                sessionId: "session-1",
+                update: {
+                  sessionUpdate: "tool_call_update",
+                  toolCallId: "call-1",
+                  status: "cancelled",
+                  _meta: { "codebuddy.ai/toolCancelReason": "permission_denied" },
+                  ...patch,
+                },
+              },
+            }) + "\n",
+          ),
+        );
+        assert.instanceOf(yield* Deferred.await(termination), AcpError.AcpProtocolParseError);
+      }),
+    );
+  }
+
   it.effect("Harn 专有进度保留原始载荷，后续标准通知继续解析", () =>
     Effect.gen(function* () {
       const { stdio, input } = yield* makeInMemoryStdio();
