@@ -37,18 +37,18 @@ CODEBUDDY_BASE_URL为服务基址；models.json的url为完整chat/completions�
 
 ## 实际结果与显示修复
 
-| 项目                    | 固定官方实际证据与边界                                                                                          |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
-| 握手与动态配置          | 版本/help、四认证广告、loadSession=true；非空斜杠命令目录与模型配置；没有执行全部斜杠命令                       |
-| 模型与正文              | 实际本机HTTP路径、合成Bearer、所选模型及SSE正文；不是外部模型推理                                               |
-| Read                    | 原生读取，role=tool含真实文件内容，工具详情含CODEBUDDY_SOURCE_72319                                             |
-| Write允许               | 原allow_once optionId，目标文件精确APPROVED                                                                     |
-| 命令                    | 原生PowerShell输出标记与exit 7；非零归失败，详情保留退出码，原completed帧仍保留                                 |
-| 拒绝                    | 原reject_once optionId，目标文件不存在，工具failed                                                              |
-| 取消                    | 审批中session/cancel、回合cancelled，目标文件不存在，已显示工具结束为failed；没有执行取消的写入                 |
-| 新进程恢复              | session/load同ID，下一实际模型请求中role=tool仍含旧读取正文；不是仅凭同ID或合成回复自证                         |
-| 取消后立即继续          | 单独检查曾返回cancelled而非end_turn；本轮未验收这一行为，需下一模块查远端取消完成顺序，不能靠sleep/自动重发掩盖 |
-| 账号/MCP/媒体/多端/连接 | 本轮未验证，不用本机工具结果替代这些验收                                                                        |
+| 项目                    | 固定官方实际证据与边界                                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| 握手与动态配置          | 版本/help、四认证广告、loadSession=true；非空斜杠命令目录与模型配置；没有执行全部斜杠命令              |
+| 模型与正文              | 实际本机HTTP路径、合成Bearer、所选模型及SSE正文；不是外部模型推理                                      |
+| Read                    | 原生读取，role=tool含真实文件内容，工具详情含CODEBUDDY_SOURCE_72319                                    |
+| Write允许               | 原allow_once optionId，目标文件精确APPROVED                                                            |
+| 命令                    | 原生PowerShell输出标记与exit 7；非零归失败，详情保留退出码，原completed帧仍保留                        |
+| 拒绝                    | 原reject_once optionId，目标文件不存在，工具failed                                                     |
+| 取消                    | 审批中session/cancel、回合cancelled，目标文件不存在，已显示工具结束为failed；没有执行取消的写入        |
+| 新进程恢复              | session/load同ID，下一实际模型请求中role=tool仍含旧读取正文；不是仅凭同ID或合成回复自证                |
+| 取消后立即继续          | 前一模块曾返回cancelled；当前已修复RPC终结顺序并明确保护窗口，见下文当前实现；窗口内未发送，不自动重发 |
+| 账号/MCP/媒体/多端/连接 | 本轮未验证，不用本机工具结果替代这些验收                                                               |
 
 第一处实际缺陷：exit 7通知status=completed，CodeBuddy专有codebuddy.ai/rawResponse.exitCode=7才是命令结果。CodebuddyAcpToolResult只识别Bash/PowerShell专有toolName、completed和缺省/null或execute类型的有效32位非负整数；0保持完成，非零归failed，rawOutput增加exitCode。其它工具/阶段、缺码/畸形码、已有exitCode不覆盖，不从正文猜测。原content、元数据、rawOutput字段及rawPayload保留，未重执行命令。
 
@@ -72,3 +72,17 @@ CodeBuddy另有标题/摘要模型请求，摘要正文会包含本轮用户标�
 检索词CodeBuddy ACP models.json CODEBUDDY_API_KEY CODEBUDDY_BASE_URL toolCancelReason，访问2026-10-01。采用[官方ACP说明](https://www.codebuddy.ai/docs/cli/acp)、[官方模型配置](https://www.codebuddy.ai/docs/cli/models)、[官方权限与身份说明](https://www.codebuddy.ai/docs/cli/iam)和固定已安装2.159.0官方包的help/headless实现，因为它们定义实际调用与厂商字段；在线文档可漂移，IAM复查一度502，认证结论同时以本轮已读取文档、固定官方实现及实际请求为据。调用与安装总览见[通用ACP实现](./generic-acp-provider.md)。
 
 无数据库迁移、依赖或密钥存储变更，可独立撤回本模块；撤回后非零命令可再次误显示成功，专有取消重放可再次终止连接。撤回代码不会撤销已执行命令/文件副作用，保存实例与历史仍保留。全部44/P0–P5目标与A-8最终新鲜独立审计保持未完成。
+
+## 取消后继续（当前实现）
+
+2026-10-01固定官方2.159.0补充复查：原Runtime发送session/cancel后中断原prompt RPC，丢弃原请求回复，并发送非标准@effect/rpc/Interrupt。随后新prompt早于上一回合真正结束，可被厂商取消并返回cancelled，实际模型请求为0。ACP标准要求取消后仍接收回合更新，直到原session/prompt回复cancelled才算完成；参见[官方取消合同](https://agentclientprotocol.com/protocol/v1/prompt-turn#cancellation)。
+
+共同Runtime现在将标准prompt RPC保留在会话Scope，本地Deferred只结束显示和待定根会话审批，回传审批cancelled。下一prompt持串行许可等待原RPC：最多5秒，未确认终结则返回-32000/session/prompt，“新请求未发送，请重新连接会话”，不重复发送。重复并发取消及空闲取消不再产生额外通知。Kiro原生扩展命令保留原有可中断RPC行为，Gajae空闲等待可本地取消，不把等待绑定到原RPC。
+
+固定CodeBuddy实现还维护500毫秒取消保护窗口，原RPC回复可能先到。仅收到stopReason=cancelled且\_meta["codebuddy.ai/outcome"]="CANCELLED"时，Runtime从收到该回复起保守保留500毫秒窗口；窗口内明确返回-32000、“CodeBuddy取消保护窗口尚未结束；新请求未发送，请稍后重试”。这比厂商从取消开始计时略保守，避免依赖传输时间。窗口结束后下一次用户请求才允许发送。没有固定sleep、后台自动重发或新厂商配置，不宣称所有版本都具备同一保护策略。
+
+子进程夹具以Deferred和实际RPC回复控制顺序，证明原RPC待定时没有第二prompt，普通取消确认后可以继续；CodeBuddy窗口内未发送，虚拟时钟推进500毫秒后成功；并发/空闲取消仅一通知且没有@effect/rpc/Interrupt。静默不回复路径证明5秒内显式失败。官方本机工具探针追加严格连续调用合同：窗口内必须是明确未发送错误、启动请求数不变；若实际时间已越过窗口则必须end_turn，不能接受新回合再次cancelled作为成功。原文件无取消写入，新进程恢复历史检查继续保留。
+
+检索词session/cancel、pendingCancellations、lastCancelAtBySession、isCancelBarrierActive；访问2026-10-01。采用固定已安装官方dist/codebuddy-headless.js中A4=500的判断、实际ACP帧与官方ACP规范，因为它们分别解释厂商额外限制和标准终结顺序。官方资产未修改，本机模型端点不证明腾讯认证、外部推理或多端视觉。撤回本次取消模块可恢复旧行为，无迁移；原取消请求/已执行操作无法靠代码回滚撤销。完整44入口和最终独立验收仍未完成。
+
+Grok的xAI扩展同样复用本取消入口。实际原生回执诊断确认旧扩展先结算prompt_complete兜底，再调用Runtime.cancel，竞态会先中断原RPC并丢失取消目标；现在先Runtime.cancel，最终再结算扩展等待，取消失败也会收尾本地兜底。迟到通知测试等待实际Agent正文回执后取消，保留取消后的输出过滤断言；不能只用turn.started推断原生请求已发出。没有新增专属取消调度器。

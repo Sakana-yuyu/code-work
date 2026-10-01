@@ -1358,10 +1358,21 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
   it.effect("lets Stop unblock a fully silent Grok prompt and accept a follow-up turn", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("grok-stop-after-full-silence");
+      const promptSent = yield* Deferred.make<void>();
       const wrapperPath = yield* makeMockGrokWrapper({
         CODEWORK_ACP_HANG_FIRST_PROMPT_FOREVER: "1",
+        CODEWORK_ACP_REPLY_CANCELLED_PROMPT: "1",
       });
-      const adapter = yield* makeTestAdapter(wrapperPath);
+      const adapter = yield* makeTestAdapter(wrapperPath, {
+        nativeEventLogger: {
+          filePath: "memory://grok-silent-prompt",
+          write: (record: unknown) =>
+            JSON.stringify(record).includes('"method":"session/prompt"')
+              ? Deferred.succeed(promptSent, undefined).pipe(Effect.asVoid)
+              : Effect.void,
+          close: () => Effect.void,
+        },
+      });
 
       const runtimeEvents: ProviderRuntimeEvent[] = [];
       const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
@@ -1379,7 +1390,7 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       });
 
       yield* Effect.gen(function* () {
-        yield* Effect.sleep("500 millis");
+        yield* Deferred.await(promptSent);
         yield* adapter.interruptTurn(threadId);
       }).pipe(Effect.forkChild({ startImmediately: true }));
 
@@ -1437,6 +1448,7 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
       const wrapperPath = yield* makeMockGrokWrapper({
         CODEWORK_ACP_HANG_FIRST_PROMPT_FOREVER: "1",
+        CODEWORK_ACP_REPLY_CANCELLED_PROMPT: "1",
         CODEWORK_ACP_REQUEST_LOG_PATH: requestLogPath,
       });
       const adapter = yield* makeTestAdapter(wrapperPath);
@@ -1516,13 +1528,16 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
         CODEWORK_ACP_EMIT_LATE_UPDATE_AFTER_CANCEL: "1",
       });
       const lateNativeUpdate = yield* Deferred.make<void>();
+      const promptRunning = yield* Deferred.make<void>();
       const adapter = yield* makeTestAdapter(wrapperPath, {
         nativeEventLogger: {
           filePath: "memory://grok-cancelled-native-events",
           write: (record: unknown) =>
-            JSON.stringify(record).includes("late after cancel")
-              ? Deferred.succeed(lateNativeUpdate, undefined).pipe(Effect.asVoid)
-              : Effect.void,
+            JSON.stringify(record).includes("late-cancel-prompt-running")
+              ? Deferred.succeed(promptRunning, undefined).pipe(Effect.asVoid)
+              : JSON.stringify(record).includes("late after cancel")
+                ? Deferred.succeed(lateNativeUpdate, undefined).pipe(Effect.asVoid)
+                : Effect.void,
           close: () => Effect.void,
         },
       });
@@ -1554,6 +1569,8 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
         .sendTurn({ threadId, input: "cancel before the late update", attachments: [] })
         .pipe(Effect.forkChild);
       const turnId = yield* Deferred.await(turnStarted).pipe(Effect.timeout("2 seconds"));
+      // 回合已显示开始不等于原生请求已进入；迟到通知场景必须等实际 Agent 回执。
+      yield* Deferred.await(promptRunning).pipe(Effect.timeout("2 seconds"));
       yield* adapter.interruptTurn(threadId, turnId).pipe(Effect.timeout("2 seconds"));
       yield* Fiber.join(sendTurnFiber).pipe(Effect.timeout("2 seconds"));
       yield* Deferred.await(lateNativeUpdate).pipe(Effect.timeout("2 seconds"));

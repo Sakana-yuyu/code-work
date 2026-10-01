@@ -680,7 +680,125 @@ describe("AcpSessionRuntime", () => {
     ),
   );
 
-  it.effect("releases a fully silent prompt when session/cancel is requested", () =>
+  for (const codebuddy of [false, true]) {
+    it.effect("取消后等待原 RPC 终结，重复/空闲取消不污染下一回合：" + codebuddy, () =>
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const cancelReceived = yield* Deferred.make<void>();
+        const wire: string[] = [];
+        return yield* Effect.gen(function* () {
+          const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+          yield* runtime.start();
+          const first = yield* runtime
+            .prompt({ prompt: [{ type: "text", text: "first" }] })
+            .pipe(Effect.forkChild);
+          yield* Deferred.await(started);
+          yield* Effect.all([runtime.cancel, runtime.cancel], { concurrency: "unbounded" });
+          expect(yield* Fiber.join(first)).toMatchObject({ stopReason: "cancelled" });
+          yield* Deferred.await(cancelReceived);
+          const next = yield* runtime
+            .prompt({ prompt: [{ type: "text", text: "second" }] })
+            .pipe(Effect.result, Effect.forkChild({ startImmediately: true }));
+          expect(wire.filter((s) => s.includes('"method":"session/prompt"'))).toHaveLength(1);
+          expect(wire.filter((s) => s.includes('"method":"session/cancel"'))).toHaveLength(1);
+          yield* runtime.request("_codework/release_cancel", {});
+          if (codebuddy) {
+            expect(yield* Fiber.join(next)).toMatchObject({
+              _tag: "Failure",
+              failure: {
+                code: -32000,
+                method: "session/prompt",
+                errorMessage: expect.stringContaining("CodeBuddy 取消保护窗口"),
+              },
+            });
+            expect(wire.filter((s) => s.includes('"method":"session/prompt"'))).toHaveLength(1);
+            yield* TestClock.adjust("500 millis");
+            expect(
+              yield* runtime.prompt({ prompt: [{ type: "text", text: "after window" }] }),
+            ).toMatchObject({ stopReason: "end_turn" });
+          } else
+            expect(yield* Fiber.join(next)).toMatchObject({
+              _tag: "Success",
+              success: { stopReason: "end_turn" },
+            });
+          yield* runtime.cancel;
+          expect(wire.filter((s) => s.includes('"method":"session/cancel"'))).toHaveLength(1);
+          expect(wire.some((s) => s.includes('"method":"@effect/rpc/Interrupt"'))).toBe(false);
+        }).pipe(
+          Effect.provide(
+            AcpSessionRuntime.layer({
+              spawn: {
+                command: mockAgentCommand,
+                args: mockAgentArgs,
+                env: {
+                  CODEWORK_ACP_CANCEL_RESPONSE_BARRIER: "1",
+                  CODEWORK_ACP_CODEBUDDY_CANCEL_WINDOW: codebuddy ? "1" : "0",
+                },
+              },
+              cwd: process.cwd(),
+              authMethodId: "test",
+              clientInfo: { name: "codework-test", version: "0.0.0" },
+              protocolLogging: {
+                logIncoming: true,
+                logOutgoing: true,
+                logger: (event) =>
+                  Effect.gen(function* () {
+                    if (event.stage !== "raw" || typeof event.payload !== "string") return;
+                    if (event.direction === "outgoing") wire.push(event.payload);
+                    else if (event.payload.includes('"title":"first-prompt-running"'))
+                      yield* Deferred.succeed(started, undefined);
+                    else if (event.payload.includes('"title":"cancel-awaiting-release"'))
+                      yield* Deferred.succeed(cancelReceived, undefined);
+                  }),
+              },
+            }),
+          ),
+          Effect.scoped,
+        );
+      }).pipe(Effect.provide(NodeServices.layer)),
+    );
+  }
+
+  it.effect("取消结算正在等待的原生审批，远端回复后下一回合可继续", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      const opened = yield* Deferred.make<void>();
+      let waiting = true;
+      yield* runtime.handleRequestPermission(() =>
+        waiting
+          ? Deferred.succeed(opened, undefined).pipe(Effect.andThen(Effect.never))
+          : Effect.succeed({ outcome: { outcome: "selected" as const, optionId: "allow-once" } }),
+      );
+      yield* runtime.start();
+      const first = yield* runtime
+        .prompt({ prompt: [{ type: "text", text: "waiting permission" }] })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(opened);
+      yield* runtime.cancel;
+      expect(yield* Fiber.join(first)).toMatchObject({ stopReason: "cancelled" });
+      waiting = false;
+      expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "continue" }] })).toMatchObject(
+        { stopReason: "end_turn" },
+      );
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_TOOL_CALLS: "1" },
+          },
+          cwd: process.cwd(),
+          authMethodId: "test",
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
+  );
+
+  it.effect("静默回合可本地取消，未确认远端终结时不发送下一请求", () =>
     Effect.gen(function* () {
       const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
       yield* runtime.start();
@@ -697,10 +815,20 @@ describe("AcpSessionRuntime", () => {
       const firstPromptResult = yield* Fiber.join(promptFiber);
       expect(firstPromptResult).toMatchObject({ stopReason: "cancelled" });
 
-      const secondPromptResult = yield* runtime.prompt({
-        prompt: [{ type: "text", text: "second" }],
+      const secondPrompt = yield* runtime
+        .prompt({
+          prompt: [{ type: "text", text: "second" }],
+        })
+        .pipe(Effect.result, Effect.forkChild({ startImmediately: true }));
+      yield* TestClock.adjust("6 seconds");
+      expect(yield* Fiber.join(secondPrompt)).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          code: -32000,
+          method: "session/prompt",
+          errorMessage: expect.stringContaining("新请求未发送"),
+        },
       });
-      expect(secondPromptResult).toMatchObject({ stopReason: "end_turn" });
     }).pipe(
       Effect.provide(
         AcpSessionRuntime.layer({

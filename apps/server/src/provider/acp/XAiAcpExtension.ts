@@ -483,8 +483,9 @@ export const makeXAiPromptCompletionRuntime = Effect.fn("makeXAiPromptCompletion
         Effect.flatMap((sessionId) =>
           sessionId === undefined
             ? runtime.cancel
-            : abortPendingPromptCompletions(pendingRef, sessionId).pipe(
-                Effect.andThen(runtime.cancel),
+            : // 先通知共同 Runtime，再结算扩展兜底；反向顺序会先中断原 RPC 并丢失取消目标。
+              runtime.cancel.pipe(
+                Effect.ensuring(abortPendingPromptCompletions(pendingRef, sessionId)),
               ),
         ),
       ),

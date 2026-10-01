@@ -5,6 +5,7 @@ import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -421,8 +422,18 @@ export const make = (
       });
     const startStateRef = yield* Ref.make<AcpStartState>({ _tag: "NotStarted" });
     const promptSerializationSemaphore = yield* Semaphore.make(1);
-    const activePromptFiberRef = yield* Ref.make<
-      Option.Option<Fiber.Fiber<EffectAcpSchema.PromptResponse, EffectAcpErrors.AcpError>>
+    const cancelSerializationSemaphore = yield* Semaphore.make(1);
+    const activePromptRef = yield* Ref.make<
+      Option.Option<{
+        readonly fiber: Fiber.Fiber<
+          {
+            readonly response: EffectAcpSchema.PromptResponse;
+            readonly receivedAtMillis: number;
+          },
+          EffectAcpErrors.AcpError
+        >;
+        readonly cancelled: Deferred.Deferred<void>;
+      }>
     >(Option.none());
     const sessionLoadGateRef = yield* Ref.make<Option.Option<SessionLoadGate>>(Option.none());
     // Gajae 的回合 RPC 与空闲通知分开到达，等待归属于当前串行回合。
@@ -1031,7 +1042,15 @@ export const make = (
                 });
               });
             }
-            const response = yield* handler(request);
+            const activePrompt = yield* Ref.get(activePromptRef);
+            const response = yield* rootSession && Option.isSome(activePrompt)
+              ? Effect.raceFirst(
+                  handler(request),
+                  Deferred.await(activePrompt.value.cancelled).pipe(
+                    Effect.as({ outcome: { outcome: "cancelled" as const } }),
+                  ),
+                )
+              : handler(request);
             if (rootSession && toolCall) {
               const outcome = response.outcome;
               const choice =
@@ -1084,6 +1103,34 @@ export const make = (
       prompt: (payload) =>
         promptSerializationSemaphore.withPermit(
           Effect.gen(function* () {
+            // 本地取消已结束显示；下一回合仍须等原 RPC 终结，避免远端取消波及新请求。
+            const previous = yield* Ref.get(activePromptRef);
+            if (Option.isSome(previous)) {
+              const settled = yield* Fiber.await(previous.value.fiber).pipe(
+                Effect.timeoutOption("5 seconds"),
+              );
+              if (Option.isNone(settled))
+                return yield* new EffectAcpErrors.AcpRequestError({
+                  code: -32000,
+                  errorMessage: "上一 ACP 回合取消后仍未确认终结；新请求未发送，请重新连接会话。",
+                  method: "session/prompt",
+                });
+              if (Exit.isFailure(settled.value))
+                return yield* Effect.failCause(settled.value.cause);
+              // 固定 CodeBuddy 的取消回复早于 500ms 保护窗口结束；只按明确厂商结果限制。
+              const { response, receivedAtMillis } = settled.value.value;
+              if (
+                response.stopReason === "cancelled" &&
+                response._meta?.["codebuddy.ai/outcome"] === "CANCELLED" &&
+                (yield* Clock.currentTimeMillis) < receivedAtMillis + 500
+              )
+                return yield* new EffectAcpErrors.AcpRequestError({
+                  code: -32000,
+                  errorMessage: "CodeBuddy 取消保护窗口尚未结束；新请求未发送，请稍后重试。",
+                  method: "session/prompt",
+                });
+              yield* Ref.set(activePromptRef, Option.none());
+            }
             const started = yield* getStartedState;
             // 终态和审批身份只用于当前回合，下一回合保留尚未结束的实际工具。
             yield* Ref.update(
@@ -1211,7 +1258,19 @@ export const make = (
                   acp.agent.prompt(requestPayload),
                 );
             // 等待空闲仍属于当前请求；取消必须能中断整个阶段，超时不伪造成功。
+            const cancelled = yield* Deferred.make<void>();
             const promptRpcFiber = yield* promptRequest.pipe(
+              Effect.flatMap((response) =>
+                Clock.currentTimeMillis.pipe(
+                  Effect.map((receivedAtMillis) => ({ response, receivedAtMillis })),
+                ),
+              ),
+              Effect.forkIn(runtimeScope),
+            );
+            yield* Ref.set(activePromptRef, Option.some({ fiber: promptRpcFiber, cancelled }));
+            // 空闲等待可本地取消；原 RPC 由 runtime Scope 持有直到收到远端回复。
+            return yield* Fiber.join(promptRpcFiber).pipe(
+              Effect.map(({ response }) => response),
               Effect.tap((response) =>
                 gajaeIdle && response.stopReason !== "cancelled"
                   ? Deferred.await(gajaeIdle).pipe(
@@ -1231,10 +1290,7 @@ export const make = (
                     )
                   : Effect.void,
               ),
-              Effect.forkIn(runtimeScope),
-            );
-            yield* Ref.set(activePromptFiberRef, Option.some(promptRpcFiber));
-            return yield* Fiber.join(promptRpcFiber).pipe(
+              Effect.raceFirst(Deferred.await(cancelled).pipe(Effect.as(cancelledResponse))),
               Effect.catchCause((cause) =>
                 Cause.hasInterruptsOnly(cause)
                   ? Effect.succeed(cancelledResponse)
@@ -1242,8 +1298,11 @@ export const make = (
               ),
               Effect.ensuring(
                 Effect.gen(function* () {
-                  yield* Fiber.interrupt(promptRpcFiber).pipe(Effect.ignore);
-                  yield* Ref.set(activePromptFiberRef, Option.none());
+                  // Kiro 扩展命令沿原可中断 RPC 合同；只有标准 prompt 保留取消确认。
+                  if (nativeCommand || !(yield* Deferred.isDone(cancelled))) {
+                    yield* Fiber.interrupt(promptRpcFiber).pipe(Effect.ignore);
+                    yield* Ref.set(activePromptRef, Option.none());
+                  }
                 }),
               ),
               Effect.tap((result) =>
@@ -1291,16 +1350,21 @@ export const make = (
             );
           }),
         ),
-      cancel: getStartedState.pipe(
-        Effect.flatMap((started) =>
-          Effect.gen(function* () {
-            // 先将取消通知入队，再结束本地回合，避免后续关闭或新请求抢先。
-            yield* acp.agent.cancel({ sessionId: started.sessionId }).pipe(Effect.ignore);
-            const activePromptFiber = yield* Ref.get(activePromptFiberRef);
-            if (Option.isSome(activePromptFiber)) {
-              yield* Fiber.interrupt(activePromptFiber.value).pipe(Effect.ignore);
-            }
-          }),
+      cancel: cancelSerializationSemaphore.withPermit(
+        getStartedState.pipe(
+          Effect.flatMap((started) =>
+            Effect.gen(function* () {
+              const activePrompt = yield* Ref.get(activePromptRef);
+              if (
+                Option.isNone(activePrompt) ||
+                (yield* Deferred.isDone(activePrompt.value.cancelled))
+              )
+                return;
+              // 通知先入队，本地停止不丢弃原 RPC；重复/空闲取消不发送新通知。
+              yield* acp.agent.cancel({ sessionId: started.sessionId });
+              yield* Deferred.succeed(activePrompt.value.cancelled, undefined);
+            }),
+          ),
         ),
       ),
 

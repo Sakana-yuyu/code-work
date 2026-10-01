@@ -358,6 +358,23 @@ describe.runIf(Boolean(cliPath))("CodeBuddy 官方 CLI + 本机模型", () => {
             args: { file_path: path.join(cwd, "cancelled.txt"), content: "CANCELLED" },
           };
           expect((yield* prompt(runtime)).stopReason).toBe("cancelled");
+          permission = "allow_once";
+          const sentBeforeContinue = requests.filter(
+            (event) => event.method === "session/prompt" && event.status === "started",
+          ).length;
+          const continued = yield* prompt(runtime).pipe(Effect.result);
+          if (continued._tag === "Failure") {
+            expect(continued.failure).toMatchObject({
+              code: -32000,
+              method: "session/prompt",
+              errorMessage: expect.stringContaining("CodeBuddy 取消保护窗口"),
+            });
+            expect(
+              requests.filter(
+                (event) => event.method === "session/prompt" && event.status === "started",
+              ),
+            ).toHaveLength(sentBeforeContinue);
+          } else expect(continued.success.stopReason).toBe("end_turn");
           yield* runtime.drainEvents;
           expect(nextTool).toBeUndefined();
           expect(decisions).toContain("cancel");

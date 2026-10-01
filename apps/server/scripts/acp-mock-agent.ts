@@ -3,6 +3,7 @@
 import * as NodeFS from "node:fs";
 
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
 import * as Schema from "effect/Schema";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -13,6 +14,9 @@ import * as AcpError from "effect-acp/errors";
 import type * as AcpSchema from "effect-acp/schema";
 
 const requestLogPath = process.env.CODEWORK_ACP_REQUEST_LOG_PATH;
+const replyCancelledPrompt = process.env.CODEWORK_ACP_REPLY_CANCELLED_PROMPT === "1";
+const cancelResponseBarrier = process.env.CODEWORK_ACP_CANCEL_RESPONSE_BARRIER === "1";
+const codebuddyCancelWindow = process.env.CODEWORK_ACP_CODEBUDDY_CANCEL_WINDOW === "1";
 const requestHostCapabilities = process.env.CODEWORK_ACP_REQUEST_HOST_CAPABILITIES === "1";
 const hostCapabilitiesResultLogPath =
   process.env.CODEWORK_ACP_HOST_CAPABILITIES_RESULT_LOG_PATH?.trim() || undefined;
@@ -430,6 +434,10 @@ function modelState(): AcpSchema.SessionModelState {
 
 const program = Effect.gen(function* () {
   const agent = yield* EffectAcpAgent.AcpAgent;
+  const cancelResponseReleased = yield* Deferred.make<void>();
+  yield* agent.handleExtRequest("_codework/release_cancel", Schema.Struct({}), () =>
+    Deferred.succeed(cancelResponseReleased, undefined).pipe(Effect.as({})),
+  );
 
   yield* agent.handleInitialize((request) =>
     Effect.sync(() => {
@@ -681,6 +689,16 @@ const program = Effect.gen(function* () {
     Effect.gen(function* () {
       const cancelledSessionId = String(sessionId ?? "mock-session-1");
       cancelledSessions.add(cancelledSessionId);
+      if (replyCancelledPrompt) yield* Deferred.succeed(cancelResponseReleased, undefined);
+      if (cancelResponseBarrier) {
+        yield* agent.client.sessionUpdate({
+          sessionId: cancelledSessionId,
+          update: {
+            sessionUpdate: "session_info_update",
+            title: "cancel-awaiting-release",
+          },
+        });
+      }
       if (emitLateUpdateAfterCancel) {
         yield* Effect.sleep("50 millis");
         yield* Effect.sync(() => {
@@ -700,6 +718,21 @@ const program = Effect.gen(function* () {
     Effect.gen(function* () {
       const requestedSessionId = String(request.sessionId ?? sessionId);
       promptCount += 1;
+      if (cancelResponseBarrier && promptCount === 1) {
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "session_info_update",
+            title: "first-prompt-running",
+          },
+        });
+        yield* Deferred.await(cancelResponseReleased);
+        cancelledSessions.delete(requestedSessionId);
+        return {
+          stopReason: "cancelled" as const,
+          ...(codebuddyCancelWindow ? { _meta: { "codebuddy.ai/outcome": "CANCELLED" } } : {}),
+        };
+      }
 
       if (requestHostCapabilities) {
         const capabilities = yield* agent.client.extRequest("host/capabilities", {
@@ -793,6 +826,20 @@ const program = Effect.gen(function* () {
       }
 
       if (hangPromptForever || (hangFirstPromptForever && promptCount === 1)) {
+        if (replyCancelledPrompt) {
+          yield* Deferred.await(cancelResponseReleased);
+          cancelledSessions.delete(requestedSessionId);
+          return { stopReason: "cancelled" as const };
+        }
+        if (emitLateUpdateAfterCancel) {
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: "late-cancel-prompt-running" },
+            },
+          });
+        }
         return yield* Effect.never;
       }
 
