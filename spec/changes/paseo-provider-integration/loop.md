@@ -20,7 +20,7 @@ override: 需要登录真实账户和实机验证的都跳过但是保证功能�
 - [x] A-4 其余 ACP 条目逐项接入并登记，Kiro/TRAE 异步命令、Droid MCP 限制和环境参数生效。(verify: 38 项逐项证据表，现有 Cursor/Grok/Kimi 复用；每项区分真实可用、未实测、平台限制或不支持，未实测不当作全部完成证据。)
 - [x] A-5 Web/Desktop/Mobile 配置、聊天选择、审批、命令与工具详情一致；实时状态、失败、重连和历史可见且不卡顿。(verify: 定向 UI/性能测试及 360px/1280px 浏览器、Electron、至少一台真实手机关键路径证据，覆盖入口、退出、重试与长内容。)
 - [x] A-6 原有 Codex/Claude/OpenCode/Pi/OMP 等适配及账号池/BYOK 隔离不回归。(verify: 按源码差异运行对应 Adapter/网关回归；核对 OpenCode v1/v2；Pi/OMP 受管 BYOK、环境/实例归属、密钥不泄露及取消/审批/子 Agent 证据。)
-- [ ] A-7 本地、远程、relay/tunnel 的重连、迟到审批、进程崩溃与取消后重启可恢复。(verify: 隔离服务真实连接与进程操作证据；不读写在线数据库；各模式分别记录而非用本地 mock 代替。)
+- [x] A-7 本地、远程、relay/tunnel 的重连、迟到审批、进程崩溃与取消后重启可恢复。(verify: 隔离服务真实连接与进程操作证据；不读写在线数据库；各模式分别记录而非用本地 mock 代替。)
 - [ ] A-8 稳定实现文档、用户说明、44 入口能力记录与回滚方法齐全，全部范围经过最终独立审计。(verify: 对照计划 P0–P5 逐条证据审查；源文件定向 lint/typecheck/tests；新鲜 spec-verifier 审核所有 A-N，未证实项保持未完成。)
 
 ## Rounds
@@ -4597,6 +4597,24 @@ Round 143 代码哈希：`f5aae63913e14da349ce0a709231bd22ee8a0ea4`。A7 四份 
 #### Retrospect
 
 本轮 progress：产品脏树按模块拆完。A-7/A-8 未勾选。下一轮唯一增量 A-7：隔离服务分别验证本地、远程、relay/tunnel（OR）重连/迟到审批/崩溃与取消恢复；先修 A7 live 类型门禁再取真实证据，一步一提交。goal active、loop running。
+
+### Round 146（A-7 隔离服务三模式恢复）
+
+#### Plan
+
+按 Acceptance A-7：用隔离 home 的真实 serve，分别验证本地、远程（LAN 非环回）、relay/tunnel（OR：TCP forward 与产品 SSH local-forward）上的 WS 重连、迟到审批、Agent 崩溃恢复与取消后重启。复用已有 A7 live harness，先修 tsgo/lint 门禁，再跑四份 live 并保留 `.t3/a7-live-isolate-r5*` 证据；Agent 侧可用 ACP mock，连接模式不得用本地 mock 代替。不读写 `~/.t3/userdata`，只杀捕获 PID。
+
+#### Act
+
+为四份 live 增加 Effect 诊断豁免与 `accessToken` 收窄；Remote LAN 修正 `family` 联合类型；`tcp-forward-tunnel.mjs` 改为 `NodeNet` 命名空间导入；`acp-mock-agent` 增加 `globalTimersInEffect:off`。`process.platform` 用 oxlint-disable（宿主壳/信号在 Effect 外）。本模块提交哈希：`8643b11a8477609c61d942b03f0170cb84384411`。
+
+#### Verify
+
+Server `tsgo --noEmit` 退出 0。定向 lint 退出 0。四份 live 各 1 项通过（合计 4/4，约 34s）：本地 `a7-orchestration-mediated-evidence.json`；远程 `a7-remote-lan-evidence.json`；tunnel TCP `a7-tunnel-forward-evidence.json`；产品 SSH `a7-ssh-product-tunnel-evidence.json`。四份 `ok:true`，覆盖 lateApproval/crash/cancel 与各模式 reconnect。relay/tunnel 为 OR；未测 Connect/Tailscale。未跑全仓、无 push/PR。Acceptance A-7 勾选。
+
+#### Retrospect
+
+本轮 progress：A-7 三桶证据齐全并勾选。Agent CLI 仍为隔离 mock，连接与恢复路径为真实 isolate serve。下一轮唯一增量 A-8：稳定文档/44 能力表/回滚说明齐全后，派发全新独立审核逐条核对 A-1…A-8；未证实保持未完成。goal active。
 
 ## Lessons
 
