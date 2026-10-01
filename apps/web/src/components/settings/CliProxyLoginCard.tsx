@@ -91,7 +91,7 @@ export function CliProxyLoginCard({
     input:
       | { provider: PoolLoginProvider; terminalId: string; models: string[] }
       | { provider: PoolLoginProvider; nativePath: string; models: string[] },
-  ) => void | Promise<void>;
+  ) => boolean | void | Promise<boolean | void>;
 }) {
   const environmentId = EnvironmentId.make(rawEnvironmentId);
   const [platformId, setPlatformId] = useState("codex");
@@ -104,6 +104,7 @@ export function CliProxyLoginCard({
     authorizeUrl: string;
   } | null>(null);
   const active = useRef<{ terminalId: string; provider: PoolLoginProvider } | null>(null);
+  const generation = useRef(0);
   const [nativeLogins, setNativeLogins] = useState<ReadonlyArray<CliProxyNativeLogin>>([]);
   const [importedPaths, setImportedPaths] = useState<ReadonlySet<string>>(new Set());
   const startLogin = useAtomCommand(serverEnvironment.startProviderLogin, { reportFailure: false });
@@ -119,6 +120,7 @@ export function CliProxyLoginCard({
 
   useEffect(
     () => () => {
+      generation.current += 1;
       const login = active.current;
       active.current = null;
       if (!login) return;
@@ -151,59 +153,82 @@ export function CliProxyLoginCard({
   };
 
   const login = async (deviceCode: boolean) => {
-    if (active.current) return;
-    // ZCode 登录是服务端原生 OAuth（无 CLI）：拿授权链接给用户，后台轮询完成。
-    if (current.loginProvider !== undefined) {
-      setBusy(true);
-      setFeedback(null);
-      const result = await zcodeLoginCommand({
-        environmentId,
-        input: {
-          action: "start",
-          family: current.loginProvider as "zai" | "bigmodel",
-          poolLogin: true,
-        },
-      });
-      setBusy(false);
-      if (result._tag === "Success" && result.value.action === "start") {
-        active.current = { terminalId: result.value.sessionId, provider: platform };
-        setZcodeAuth({
-          sessionId: result.value.sessionId,
-          authorizeUrl: result.value.authorizeUrl,
-        });
-      } else {
-        setFeedback(
-          result._tag === "Failure"
-            ? failureFeedback(
-                result.cause,
-                `${current.label}：${t("providerConnection.loginFailed")}`,
-              )
-            : `${current.label}：${t("providerConnection.loginFailed")}`,
-        );
-      }
-      return;
-    }
-    const terminalId = randomUUID();
-    active.current = { terminalId, provider: platform };
+    if (disabled || busy || active.current) return;
+    const requestGeneration = generation.current;
     setBusy(true);
     setFeedback(null);
-    const result = await startLogin({
-      environmentId,
-      input: {
-        instanceId: current.instanceId,
-        terminalId,
-        deviceCode,
-        poolLogin: true,
-        loginProvider: current.loginProvider,
-      },
-    });
-    setBusy(false);
-    if (result._tag === "Success") setSession(result.value);
-    else {
-      active.current = null;
-      setFeedback(
-        failureFeedback(result.cause, `${current.label}：${t("providerConnection.loginFailed")}`),
-      );
+    try {
+      // ZCode 登录是服务端原生 OAuth（无 CLI）：拿授权链接给用户，后台轮询完成。
+      if (current.loginProvider !== undefined) {
+        const result = await zcodeLoginCommand({
+          environmentId,
+          input: {
+            action: "start",
+            family: current.loginProvider as "zai" | "bigmodel",
+            poolLogin: true,
+          },
+        });
+        if (requestGeneration !== generation.current) {
+          if (result._tag === "Success" && result.value.action === "start")
+            await zcodeLoginCommand({
+              environmentId,
+              input: { action: "cancel", sessionId: result.value.sessionId },
+            });
+          return;
+        }
+        if (result._tag === "Success" && result.value.action === "start") {
+          active.current = { terminalId: result.value.sessionId, provider: platform };
+          setZcodeAuth({
+            sessionId: result.value.sessionId,
+            authorizeUrl: result.value.authorizeUrl,
+          });
+        } else {
+          setFeedback(
+            result._tag === "Failure"
+              ? failureFeedback(
+                  result.cause,
+                  `${current.label}：${t("providerConnection.loginFailed")}`,
+                )
+              : `${current.label}：${t("providerConnection.loginFailed")}`,
+          );
+        }
+        return;
+      }
+      const terminalId = randomUUID();
+      active.current = { terminalId, provider: platform };
+      const result = await startLogin({
+        environmentId,
+        input: {
+          instanceId: current.instanceId,
+          terminalId,
+          deviceCode,
+          poolLogin: true,
+          loginProvider: current.loginProvider,
+        },
+      });
+      if (requestGeneration !== generation.current) {
+        // 卸载时的关闭可能先于启动完成；成功回执后再回收一次，始终使用原环境。
+        if (result._tag === "Success")
+          await closeTerminal({
+            environmentId,
+            input: { threadId, terminalId, deleteHistory: true },
+          });
+        return;
+      }
+      if (result._tag === "Success") setSession(result.value);
+      else {
+        active.current = null;
+        setFeedback(
+          failureFeedback(result.cause, `${current.label}：${t("providerConnection.loginFailed")}`),
+        );
+      }
+    } catch {
+      if (requestGeneration === generation.current) {
+        active.current = null;
+        setFeedback(t("providerConnection.loginFailed"));
+      }
+    } finally {
+      if (requestGeneration === generation.current) setBusy(false);
     }
   };
 
@@ -219,23 +244,41 @@ export function CliProxyLoginCard({
     if (zcodeAuth === null) return;
     const sessionId = zcodeAuth.sessionId;
     let disposed = false;
+    let pending = false;
     const timer = window.setInterval(() => {
+      if (disposed || pending) return;
+      pending = true;
       void (async () => {
-        const result = await zcodeLoginCommand({
-          environmentId,
-          input: { action: "status", sessionId },
-        });
-        if (disposed || result._tag !== "Success" || result.value.action !== "status") return;
-        const status = result.value;
-        if (status.status === "ready") {
-          setZcodeAuth(null);
-          finish();
-        } else if (status.status !== "waiting") {
-          settleZcodeAuth(
-            status.message !== undefined && status.message !== ""
-              ? `${current.label}：${status.message}`
-              : `${current.label}：${t("providerConnection.loginFailed")}`,
-          );
+        try {
+          const result = await zcodeLoginCommand({
+            environmentId,
+            input: { action: "status", sessionId },
+          });
+          if (disposed) return;
+          if (result._tag !== "Success") {
+            setFeedback(t("providerConnection.loginFailed"));
+            return;
+          }
+          if (result.value.action !== "status") return;
+          const status = result.value;
+          if (status.status === "waiting") return;
+          disposed = true;
+          window.clearInterval(timer);
+          if (status.status === "ready") {
+            setFeedback(null);
+            setZcodeAuth(null);
+            void finish();
+          } else {
+            settleZcodeAuth(
+              status.message !== undefined && status.message !== ""
+                ? `${current.label}：${status.message}`
+                : `${current.label}：${t("providerConnection.loginFailed")}`,
+            );
+          }
+        } catch {
+          if (!disposed) setFeedback(t("providerConnection.loginFailed"));
+        } finally {
+          pending = false;
         }
       })();
     }, 2000);
@@ -248,12 +291,24 @@ export function CliProxyLoginCard({
 
   /** 「本机已登录」扫描：默认账号目录 + 各实例受管 home 里的凭据文件。 */
   const scanNativeLogins = useCallback(async () => {
-    const result = await cliProxyCommand({
-      environmentId,
-      input: { action: "scanNativeAccounts" },
-    });
-    if (result._tag === "Success") {
-      setNativeLogins(result.value.nativeLogins ?? []);
+    const requestGeneration = generation.current;
+    try {
+      const result = await cliProxyCommand({
+        environmentId,
+        input: { action: "scanNativeAccounts" },
+      });
+      if (requestGeneration !== generation.current) return;
+      if (result._tag === "Success") {
+        setNativeLogins(result.value.nativeLogins ?? []);
+      } else {
+        setFeedback(
+          result._tag === "Failure"
+            ? failureFeedback(result.cause, t("cliProxy.failed"))
+            : t("cliProxy.failed"),
+        );
+      }
+    } catch {
+      if (requestGeneration === generation.current) setFeedback(t("cliProxy.failed"));
     }
   }, [cliProxyCommand, environmentId]);
 
@@ -262,37 +317,55 @@ export function CliProxyLoginCard({
   }, [scanNativeLogins]);
 
   /** 终端结束或对话框关闭：只结算一次，交给号池导入凭据。 */
-  const finish = () => {
+  const finish = async () => {
     const login = active.current;
     active.current = null;
     if (!login) return;
-    void scanNativeLogins();
-    onLoginFinished({
-      provider: login.provider,
-      terminalId: login.terminalId,
-      models: models
-        .split(",")
-        .map((model) => model.trim())
-        .filter(Boolean),
-    });
+    const requestGeneration = generation.current;
+    setBusy(true);
+    try {
+      const imported = await onLoginFinished({
+        provider: login.provider,
+        terminalId: login.terminalId,
+        models: models
+          .split(",")
+          .map((model) => model.trim())
+          .filter(Boolean),
+      });
+      if (requestGeneration === generation.current && imported !== false) await scanNativeLogins();
+    } catch {
+      if (requestGeneration === generation.current) setFeedback(t("cliProxy.failed"));
+    } finally {
+      if (requestGeneration === generation.current) setBusy(false);
+    }
   };
 
   /** 一键导入扫描到的原生登录态；导入完成后同一路径再点是覆盖式更新。 */
-  const importNative = (login: CliProxyNativeLogin) => {
+  const importNative = async (login: CliProxyNativeLogin) => {
+    if (disabled || busy) return;
+    const requestGeneration = generation.current;
     const provider = login.provider;
     if (provider !== "codex" && provider !== "claude" && provider !== "xai" && provider !== "zcode")
       return;
-    setImportedPaths((paths) => new Set(paths).add(login.path));
-    const done = onLoginFinished({
-      provider,
-      nativePath: login.path,
-      models: models
-        .split(",")
-        .map((model) => model.trim())
-        .filter(Boolean),
-    });
-    // 导入完成后重扫——服务端会标记 imported，该行随之隐藏。
-    void Promise.resolve(done).then(() => scanNativeLogins());
+    setBusy(true);
+    try {
+      const imported = await onLoginFinished({
+        provider,
+        nativePath: login.path,
+        models: models
+          .split(",")
+          .map((model) => model.trim())
+          .filter(Boolean),
+      });
+      if (requestGeneration === generation.current && imported !== false) {
+        setImportedPaths((paths) => new Set(paths).add(login.path));
+        await scanNativeLogins();
+      }
+    } catch {
+      if (requestGeneration === generation.current) setFeedback(t("cliProxy.failed"));
+    } finally {
+      if (requestGeneration === generation.current) setBusy(false);
+    }
   };
 
   return (
@@ -368,47 +441,44 @@ export function CliProxyLoginCard({
           <p className="text-xs leading-relaxed text-muted-foreground">
             {t("cliProxy.loginModelsHint")}
           </p>
-          {nativeLogins.filter((login) => !login.imported && !importedPaths.has(login.path))
-            .length > 0 ? (
-            <div className="space-y-1.5 rounded-lg border border-border/60 bg-background/60 p-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium">{t("cliProxy.nativeLoginsTitle")}</span>
-                <Button
-                  size="micro"
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() => void scanNativeLogins()}
-                >
-                  {t("cliProxy.refreshAccounts")}
-                </Button>
-              </div>
-              {nativeLogins
-                .filter((login) => !login.imported && !importedPaths.has(login.path))
-                .map((login) => (
-                  <div
-                    key={`${login.provider}:${login.path}`}
-                    className="flex items-center gap-2 rounded-md bg-muted/40 px-2 py-1.5"
-                  >
-                    <span className="shrink-0 text-xs font-medium">
-                      {POOL_LOGIN_PLATFORMS.find((entry) => entry.provider === login.provider)
-                        ?.label ?? login.provider}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                      {login.label ?? login.path.split(/[\\/]/u).pop() ?? login.path}
-                    </span>
-                    <Button
-                      size="micro"
-                      disabled={disabled || busy}
-                      onClick={() => importNative(login)}
-                    >
-                      {importedPaths.has(login.path)
-                        ? t("cliProxy.nativeImported")
-                        : t("cliProxy.nativeImport")}
-                    </Button>
-                  </div>
-                ))}
+          <div className="space-y-1.5 rounded-lg border border-border/60 bg-background/60 p-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-medium">{t("cliProxy.nativeLoginsTitle")}</span>
+              <Button
+                size="micro"
+                variant="ghost"
+                disabled={disabled || busy}
+                onClick={() => void scanNativeLogins()}
+              >
+                {t("cliProxy.refreshAccounts")}
+              </Button>
             </div>
-          ) : null}
+            {nativeLogins
+              .filter((login) => !login.imported && !importedPaths.has(login.path))
+              .map((login) => (
+                <div
+                  key={`${login.provider}:${login.path}`}
+                  className="flex items-center gap-2 rounded-md bg-muted/40 px-2 py-1.5"
+                >
+                  <span className="shrink-0 text-xs font-medium">
+                    {POOL_LOGIN_PLATFORMS.find((entry) => entry.provider === login.provider)
+                      ?.label ?? login.provider}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    {login.label ?? login.path.split(/[\\/]/u).pop() ?? login.path}
+                  </span>
+                  <Button
+                    size="micro"
+                    disabled={disabled || busy}
+                    onClick={() => importNative(login)}
+                  >
+                    {importedPaths.has(login.path)
+                      ? t("cliProxy.nativeImported")
+                      : t("cliProxy.nativeImport")}
+                  </Button>
+                </div>
+              ))}
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
@@ -489,9 +559,10 @@ export function CliProxyLoginCard({
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    void navigator.clipboard
-                      .writeText(zcodeAuth.authorizeUrl)
-                      .catch(() => undefined);
+                    void navigator.clipboard.writeText(zcodeAuth.authorizeUrl).then(
+                      () => setFeedback(t("cliProxy.done")),
+                      () => setFeedback(t("cliProxy.failed")),
+                    );
                   }}
                 >
                   {t("cliProxy.zcodeCopyLink")}

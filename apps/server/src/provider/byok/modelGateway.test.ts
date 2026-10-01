@@ -9,6 +9,7 @@ import { FetchHttpClient, HttpRouter } from "effect/unstable/http";
 
 import {
   DEFAULT_SERVER_SETTINGS,
+  LOCAL_POOL_DEFAULT_MODELS,
   ServerSettingsError,
   type ServerProvider,
   type ServerSettings,
@@ -378,7 +379,9 @@ describe("gatewayAdapterRoutes", () => {
     } as unknown as ServerSettings;
 
     const routes = gatewayAdapterRoutes(settings, "codex", "gpt-5.4");
-    expect(routes.map((route) => route.id)).toEqual(["local:codex:codex:gpt-5.4"]);
+    expect(routes.map((route) => route.id)).toEqual(
+      LOCAL_POOL_DEFAULT_MODELS.codex.map((model) => `local:codex:codex:${model}`),
+    );
     expect(pickGatewayAdapter(routes, "openai", "local:codex:codex:gpt-5.4")?.localProvider).toBe(
       "codex",
     );
@@ -411,13 +414,15 @@ describe("gatewayAdapterRoutes", () => {
       },
     } as unknown as ServerSettings;
 
-    expect(gatewayAdapterRoutes(settings, "codex", "gpt-6").map((route) => route.id)).toEqual([
-      "local:codex:codex:gpt-5.4",
-      "local:codex:codex:gpt-6",
-    ]);
-    expect(gatewayAdapterRoutes(settings, "codex", "gpt-5.4").map((route) => route.id)).toEqual([
-      "local:codex:codex:gpt-5.4",
-    ]);
+    const customRoutes = gatewayAdapterRoutes(settings, "codex", "gpt-6");
+    expect(customRoutes.filter((route) => route.modelId === "gpt-6")).toHaveLength(1);
+    expect(customRoutes.filter((route) => route.modelId === "gpt-5.4")).toHaveLength(1);
+    expect(new Set(customRoutes.map((route) => route.modelId)).size).toBe(customRoutes.length);
+    expect(
+      gatewayAdapterRoutes(settings, "codex", "gpt-5.4")
+        .map((route) => route.modelId)
+        .sort(),
+    ).toEqual([...LOCAL_POOL_DEFAULT_MODELS.codex].sort());
   });
   it("不为 OpenCode 发布无法使用 Codex OAuth 的 Chat Completions 路由", () => {
     const settings = {

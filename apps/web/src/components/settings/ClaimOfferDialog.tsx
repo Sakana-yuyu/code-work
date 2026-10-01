@@ -91,16 +91,15 @@ export const ClaimOfferDialog = ({
   const [scriptFailed, setScriptFailed] = useState(false);
   const [captchaReady, setCaptchaReady] = useState(false);
   const instanceRef = useRef<{ destroy?: () => void } | null>(null);
+  const onClaimRef = useRef(onClaim);
+  onClaimRef.current = onClaim;
   const elementId = "codework-captcha-element";
   const buttonId = "codework-captcha-button";
 
   useEffect(() => {
-    if (offer === null) {
-      setCaptchaReady(false);
-      setScriptFailed(false);
-      instanceRef.current = null;
-      return;
-    }
+    setCaptchaReady(false);
+    setScriptFailed(false);
+    if (offer === null) return;
     if (captchaConfig?.enabled !== true) return;
     let cancelled = false;
     loadCaptchaScript()
@@ -119,11 +118,18 @@ export const ClaimOfferDialog = ({
           button: `#${buttonId}`,
           language: getCurrentLanguage() === "zh-CN" ? "cn" : "en",
           ...(captchaConfig.region === undefined ? {} : { region: captchaConfig.region }),
-          success: (captchaVerifyParam) => onClaim(captchaVerifyParam, captchaConfig.region),
-          fail: () => setScriptFailed(true),
-          onError: () => setScriptFailed(true),
+          success: (captchaVerifyParam) => {
+            if (!cancelled) onClaimRef.current(captchaVerifyParam, captchaConfig.region);
+          },
+          fail: () => {
+            if (!cancelled) setScriptFailed(true);
+          },
+          onError: () => {
+            if (!cancelled) setScriptFailed(true);
+          },
           getInstance: (instance) => {
-            instanceRef.current = instance;
+            if (cancelled) instance.destroy?.();
+            else instanceRef.current = instance;
           },
         });
         setCaptchaReady(true);
@@ -133,17 +139,16 @@ export const ClaimOfferDialog = ({
       });
     return () => {
       cancelled = true;
-    };
-    // 验证码按弹窗生命周期只初始化一次；onClaim 通过闭包里的最新引用无需要重挂。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offer, captchaConfig?.enabled]);
-
-  useEffect(
-    () => () => {
       instanceRef.current?.destroy?.();
-    },
-    [],
-  );
+      instanceRef.current = null;
+    };
+  }, [
+    offer,
+    captchaConfig?.enabled,
+    captchaConfig?.sceneId,
+    captchaConfig?.prefix,
+    captchaConfig?.region,
+  ]);
 
   const captchaUsable = captchaConfig?.enabled === true && !scriptFailed;
 
@@ -151,7 +156,7 @@ export const ClaimOfferDialog = ({
     <Dialog
       open={offer !== null}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open && !pending) onClose();
       }}
     >
       <DialogPopup className="w-full max-w-lg p-0">
@@ -204,7 +209,7 @@ export const ClaimOfferDialog = ({
                   type="button"
                   size="sm"
                   className="mt-3 w-full"
-                  disabled={pending}
+                  disabled={pending || !captchaReady}
                 >
                   {pending ? t("cliProxy.claimPending") : t("cliProxy.offerClaim")}
                 </Button>
@@ -219,6 +224,7 @@ export const ClaimOfferDialog = ({
             type="button"
             size="sm"
             variant={result !== null && result.success ? "default" : "ghost-muted"}
+            disabled={pending}
             onClick={onClose}
           >
             {result !== null && result.success ? t("cliProxy.claimDone") : t("cancel")}

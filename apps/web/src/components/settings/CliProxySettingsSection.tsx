@@ -27,10 +27,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AuthTerminalOperateScope,
   LOCAL_POOL_DEFAULT_MODELS,
+  LocalAccountId,
+  mergeCliProxyResult,
   ProviderInstanceId,
   type CliProxyAccountClaimResult,
   type CliProxyAccountOffer,
-  type CliProxyCaptchaConfig,
   type CliProxyRequest,
   type CliProxyResult,
   type EnvironmentId,
@@ -42,7 +43,7 @@ import {
 import { squashAtomCommandFailure } from "@codework/client-runtime/state/runtime";
 import { serverEnvironment } from "../../state/server";
 import { useEnvironmentSessionState } from "../../state/session";
-import { usePrimaryEnvironmentId } from "../../state/environments";
+import { useEnvironmentConnectionState, usePrimaryEnvironmentId } from "../../state/environments";
 import { usePrimarySessionState } from "../../environments/primary";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
@@ -72,7 +73,10 @@ export const localAccountIdFromFileName = (name: string): string => {
     .replace(/[^A-Za-z0-9_-]+/gu, "-")
     .replace(/^-+/u, "")
     .slice(0, 96);
-  return /^[A-Za-z]/u.test(normalized) ? normalized : `account-${normalized || "import"}`;
+  return (/^[A-Za-z]/u.test(normalized) ? normalized : `account-${normalized || "import"}`).slice(
+    0,
+    96,
+  );
 };
 
 /**
@@ -226,6 +230,7 @@ export function CliProxySettingsSection({
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const environmentSession = useEnvironmentSessionState(environmentId);
   const primarySession = usePrimarySessionState();
+  const connected = useEnvironmentConnectionState(environmentId).data?.phase === "connected";
   const session = environmentId === primaryEnvironmentId ? primarySession : environmentSession;
   const readOnly =
     providerReadOnly ||
@@ -236,6 +241,7 @@ export function CliProxySettingsSection({
   const [strategy, setStrategy] = useState<LocalAccountPoolStrategy>("round-robin");
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const generation = useRef(0);
   const [feedback, setFeedback] = useState<{ error: boolean; text: string } | null>(null);
   const [deleteName, setDeleteName] = useState<string | null>(null);
   const [deleteLocalId, setDeleteLocalId] = useState<string | null>(null);
@@ -279,20 +285,24 @@ export function CliProxySettingsSection({
 
   const run = useCallback(
     async (input: CliProxyRequest) => {
-      if (lock.current || readOnly) return;
+      if (lock.current || readOnly || !connected) return false;
+      const requestGeneration = generation.current;
       lock.current = true;
       setBusy(true);
       setFeedback(null);
       try {
         const result = await command({ environmentId, input });
+        if (requestGeneration !== generation.current) return false;
         if (result._tag !== "Success") {
           const failure = squashAtomCommandFailure(result);
           throw failure instanceof Error ? failure : new Error(t("cliProxy.failed"));
         }
-        setStatus(result.value);
-        if (input.action === "status" || input.action === "configure") {
-          setStrategy(result.value.config.strategy);
+        setStatus((previous) => mergeCliProxyResult(previous, result.value));
+        if (result.value.localAccounts !== undefined) {
+          const ids = new Set(result.value.localAccounts.map((account) => String(account.id)));
+          setSelectedIds((current) => new Set([...current].filter((id) => ids.has(id))));
         }
+        setStrategy(result.value.config.strategy);
         if (input.action === "importAccount") {
           setImportContent("");
           setImportName("");
@@ -300,6 +310,9 @@ export function CliProxySettingsSection({
         if (input.action === "importLocalAccount") {
           setLocalContent("");
           setLocalApiKey("");
+          setLocalId("");
+          setLocalDisplayName("");
+          setLocalModels("");
         }
         if (result.value.localStrategy) setLocalStrategy(result.value.localStrategy);
         setIssuedExternalKey(result.value.externalGateway?.issuedKey ?? "");
@@ -321,33 +334,63 @@ export function CliProxySettingsSection({
             accountId: fetched.accountId,
             provider: fetched.provider as LocalAccountProvider,
             source: fetched.source,
-            fetched: fetched.models,
-            selected: new Set(fetched.models.filter((model) => declared.includes(model))),
+            fetched: [...new Set([...fetched.models, ...declared])],
+            selected: new Set(declared),
           });
         }
         if (result.value.connectedInstanceId) setInstanceId(result.value.connectedInstanceId);
-        setFeedback({ error: false, text: t("cliProxy.done") });
+        if (input.action === "setLocalAccountModels") setModelsDialog(null);
+        const claimFailed = result.value.accountClaim?.success === false;
+        setFeedback({
+          error: claimFailed,
+          text: claimFailed
+            ? (result.value.accountClaim?.message ?? t("cliProxy.claimFailed"))
+            : t("cliProxy.done"),
+        });
+        return !claimFailed;
       } catch (error) {
+        if (requestGeneration !== generation.current) return false;
+        const text = error instanceof Error ? error.message : t("cliProxy.failed");
+        if (input.action === "claimLocalAccountOffer")
+          setClaimResult({ success: false, message: text });
         setFeedback({
           error: true,
-          text: error instanceof Error ? error.message : t("cliProxy.failed"),
+          text,
         });
+        return false;
       } finally {
-        lock.current = false;
-        setBusy(false);
+        if (requestGeneration === generation.current) {
+          lock.current = false;
+          setBusy(false);
+        }
       }
     },
-    [command, environmentId, readOnly],
+    [command, environmentId, readOnly, connected],
   );
 
   useEffect(() => {
+    generation.current += 1;
+    lock.current = false;
+    setBusy(false);
+    setFeedback(null);
+    setStatus(null);
+    setIssuedExternalKey("");
+    setModelsDialog(null);
+    setClaimTarget(null);
+    setClaimResult(null);
+    setSelectedIds(new Set());
+    let active = true;
     void (async () => {
       await run({ action: "status" });
-      await run({ action: "localAccountUsage" });
+      if (active) await run({ action: "localAccountUsage" });
     })();
+    return () => {
+      active = false;
+      generation.current += 1;
+    };
   }, [run]);
 
-  const disabled = busy || readOnly;
+  const disabled = busy || readOnly || !connected;
   const unavailable = disabled || !status?.running;
   const accounts = status?.localAccounts ?? [];
   const subscriptionsById = new Map(
@@ -447,11 +490,18 @@ export function CliProxySettingsSection({
   };
 
   const readLocalFile = async (file: File) => {
-    const content = await file.text();
-    applyLocalContent(content);
-    setLocalId((current) => current || localAccountIdFromFileName(file.name));
-    const stem = file.name.replace(/\.(json|JSON)$/u, "").trim();
-    setLocalDisplayName((current) => current || stem);
+    if (disabled) return;
+    try {
+      if (file.size > 1048576) throw new Error("文件超过凭据大小限制");
+      const content = await file.text();
+      applyLocalContent(content);
+      setLocalId(localAccountIdFromFileName(file.name));
+      setLocalDisplayName(
+        detectLocalCredential(content).label ?? file.name.replace(/\.json$/iu, "").trim(),
+      );
+    } catch {
+      setFeedback({ error: true, text: t("cliProxy.failed") });
+    }
   };
 
   return (
@@ -471,7 +521,7 @@ export function CliProxySettingsSection({
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Button
             size="sm"
             disabled={
@@ -501,7 +551,7 @@ export function CliProxySettingsSection({
             variant="outline"
             aria-label={t("cliProxy.refresh")}
             disabled={disabled}
-            onClick={() => void run({ action: "status" })}
+            onClick={() => void run({ action: "localAccountUsage" })}
           >
             {t("cliProxy.refresh")}
           </Button>
@@ -527,14 +577,21 @@ export function CliProxySettingsSection({
       ) : null}
 
       {readOnly ? <p className="text-xs text-muted-foreground">{t("cliProxy.noAccess")}</p> : null}
+      {feedback ? (
+        <Alert variant={feedback.error ? "error" : "success"}>
+          <AlertDescription role={feedback.error ? "alert" : "status"}>
+            {feedback.text}
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <CliProxyLoginCard
         environmentId={environmentId}
         disabled={disabled}
         importOpen={showImport}
         onToggleImport={() => setShowImport((open) => !open)}
-        onLoginFinished={(input) =>
-          run(
+        onLoginFinished={async (input) => {
+          const imported = await run(
             "nativePath" in input
               ? {
                   action: "importNativeAccount",
@@ -548,8 +605,10 @@ export function CliProxySettingsSection({
                   terminalId: input.terminalId,
                   models: input.models,
                 },
-          )
-        }
+          );
+          if (imported) await run({ action: "localAccountUsage" });
+          return imported;
+        }}
       />
 
       <div className="rounded-xl border border-border/60 bg-card p-3 shadow-sm sm:p-4">
@@ -837,7 +896,6 @@ export function CliProxySettingsSection({
               disabled={disabled}
               onChange={(event) => {
                 const next = event.target.value as LocalAccountPoolStrategy;
-                setLocalStrategy(next);
                 void run({ action: "setLocalAccountPoolStrategy", strategy: next });
               }}
             >
@@ -890,6 +948,9 @@ export function CliProxySettingsSection({
         <div className={cn(viewMode === "grid" ? "grid gap-4 md:grid-cols-2" : "space-y-3")}>
           {filteredAccounts.map((account) => {
             const selected = selectedIds.has(account.id);
+            const cooldown = status?.accountUsage?.find(
+              (entry) => entry.id === account.id,
+            )?.cooldownUntilUnixMs;
             return (
               <article
                 key={account.id}
@@ -897,7 +958,7 @@ export function CliProxySettingsSection({
                   "min-w-0 rounded-2xl border bg-card p-4 shadow-sm sm:p-5",
                   selected ? "border-primary ring-2 ring-primary/15" : "border-border/70",
                   viewMode === "list" &&
-                    "grid gap-4 lg:grid-cols-[minmax(16rem,1fr)_minmax(0,1.4fr)_auto] lg:items-center",
+                    "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] lg:items-start",
                 )}
               >
                 <div className="flex min-w-0 items-start gap-3">
@@ -917,6 +978,13 @@ export function CliProxySettingsSection({
                       <Badge size="sm" variant="outline">
                         {providerName(account.provider)}
                       </Badge>
+                      {account.enabled && cooldown !== undefined ? (
+                        <Badge size="sm" variant="warning">
+                          {t("cliProxy.coolingUntil", {
+                            time: new Date(cooldown).toLocaleTimeString(),
+                          })}
+                        </Badge>
+                      ) : null}
                       {localStrategy === "weighted-round-robin" ? (
                         <label className="flex h-6 items-center gap-1 rounded-md border border-input bg-background px-1.5 text-xs">
                           <span className="text-muted-foreground">{t("cliProxy.weight")}</span>
@@ -924,13 +992,16 @@ export function CliProxySettingsSection({
                             type="number"
                             min={1}
                             max={99}
+                            key={account.weight ?? 1}
                             defaultValue={account.weight ?? 1}
                             disabled={disabled}
                             aria-label={t("cliProxy.weightFor", { name: account.displayName })}
                             className="w-10 bg-transparent text-right font-medium tabular-nums outline-none"
-                            onChange={(event) => {
+                            onBlur={(event) => {
                               const weight = Number.parseInt(event.target.value, 10);
-                              if (!Number.isFinite(weight)) return;
+                              event.target.value = String(account.weight ?? 1);
+                              if (!Number.isFinite(weight) || weight === (account.weight ?? 1))
+                                return;
                               void run({
                                 action: "setLocalAccountWeight",
                                 id: account.id,
@@ -1026,18 +1097,30 @@ export function CliProxySettingsSection({
                               {t("cliProxy.usageTitle")}
                               {subscription?.plan !== undefined ? ` · ${subscription.plan}` : ""}
                             </p>
-                            {subscription !== undefined ? (
+                            {
                               <Button
                                 size="micro"
                                 variant="ghost"
-                                disabled={busy}
+                                disabled={disabled}
                                 aria-label={t("cliProxy.usageRefresh")}
-                                onClick={() => void run({ action: "localAccountUsage" })}
+                                onClick={() =>
+                                  void run({ action: "localAccountUsage", id: account.id })
+                                }
                               >
                                 <RefreshCwIcon className="size-3" />
                               </Button>
-                            ) : null}
+                            }
                           </div>
+                          {subscription?.fetchedAt !== undefined ? (
+                            <time
+                              className="mt-1 block text-muted-foreground"
+                              dateTime={subscription.fetchedAt}
+                            >
+                              {t("cliProxy.usageUpdatedAt", {
+                                time: new Date(subscription.fetchedAt).toLocaleString(),
+                              })}
+                            </time>
+                          ) : null}
                           {subscription === undefined ? (
                             <p className="mt-0.5 text-muted-foreground">
                               {t("cliProxy.usageNotLoaded")}
@@ -1062,12 +1145,25 @@ export function CliProxySettingsSection({
                                 </p>
                               ) : null}
                               {subscription.windows.map((quotaWindow) => (
-                                <div key={quotaWindow.label} className="flex items-center gap-2">
-                                  <span className="w-16 shrink-0 text-muted-foreground">
+                                <div
+                                  key={quotaWindow.label}
+                                  className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
+                                >
+                                  <span className="min-w-0 basis-full break-words text-muted-foreground">
                                     {quotaWindow.label}
                                   </span>
                                   {quotaWindow.percent !== undefined ? (
-                                    <div className="h-1 min-w-8 flex-1 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                      role="progressbar"
+                                      aria-label={quotaWindow.label}
+                                      aria-valuemin={0}
+                                      aria-valuemax={100}
+                                      aria-valuenow={Math.min(
+                                        100,
+                                        Math.max(0, quotaWindow.percent),
+                                      )}
+                                      className="h-1 min-w-8 flex-1 overflow-hidden rounded-full bg-muted"
+                                    >
                                       <div
                                         className="h-full rounded-full bg-primary"
                                         style={{
@@ -1076,11 +1172,13 @@ export function CliProxySettingsSection({
                                       />
                                     </div>
                                   ) : null}
-                                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                                  <span className="min-w-0 break-words tabular-nums text-muted-foreground">
                                     {[
                                       quotaWindow.percent === undefined
                                         ? undefined
-                                        : `${Math.round(quotaWindow.percent)}%`,
+                                        : t("cliProxy.usageUsedPercent", {
+                                            percent: Math.round(quotaWindow.percent * 10) / 10,
+                                          }),
                                       quotaWindow.remaining,
                                       quotaWindow.resetsAt === undefined
                                         ? undefined
@@ -1092,11 +1190,14 @@ export function CliProxySettingsSection({
                                 </div>
                               ))}
                               {(subscription.metrics ?? []).map((metric) => (
-                                <div key={metric.label} className="flex items-center gap-2">
+                                <div
+                                  key={metric.label}
+                                  className="flex min-w-0 flex-wrap items-center gap-2"
+                                >
                                   <span className="w-20 shrink-0 text-muted-foreground">
                                     {metric.label}
                                   </span>
-                                  <span className="tabular-nums text-foreground/90">
+                                  <span className="min-w-0 break-words tabular-nums text-foreground/90">
                                     {metric.value}
                                   </span>
                                 </div>
@@ -1207,7 +1308,7 @@ export function CliProxySettingsSection({
                       variant="ghost"
                       aria-label={t("cliProxy.refreshAccounts")}
                       disabled={disabled}
-                      onClick={() => void run({ action: "localAccounts" })}
+                      onClick={() => void run({ action: "localAccountUsage", id: account.id })}
                     >
                       <RefreshCwIcon />
                     </Button>
@@ -1666,7 +1767,11 @@ export function CliProxySettingsSection({
           setClaimTarget(null);
           setClaimResult(null);
           // 领取成功后可领取列表会变化，重查一次用量/活动。
-          if (claimed) void run({ action: "localAccountUsage" });
+          if (claimed && claimTarget !== null)
+            void run({
+              action: "localAccountUsage",
+              id: LocalAccountId.make(claimTarget.accountId),
+            });
         }}
         onClaim={(captchaVerifyParam, captchaRegion) => {
           if (claimTarget === null) return;
@@ -1746,6 +1851,11 @@ export function CliProxySettingsSection({
                     {t("cliProxy.modelsUnlimitedHint")}
                   </p>
                 ) : null}
+                {feedback?.error ? (
+                  <p role="alert" className="mt-3 text-xs text-destructive">
+                    {feedback.text}
+                  </p>
+                ) : null}
               </div>
               <DialogFooter>
                 <Button
@@ -1763,7 +1873,6 @@ export function CliProxySettingsSection({
                   onClick={() => {
                     const selected = [...modelsDialog.selected];
                     const accountId = modelsDialog.accountId;
-                    setModelsDialog(null);
                     void run({ action: "setLocalAccountModels", id: accountId, models: selected });
                   }}
                 >
@@ -1776,18 +1885,6 @@ export function CliProxySettingsSection({
           )}
         </DialogPopup>
       </Dialog>
-
-      {feedback ? (
-        <p
-          role={feedback.error ? "alert" : "status"}
-          className={cn(
-            "px-1 text-xs",
-            feedback.error ? "text-destructive" : "text-muted-foreground",
-          )}
-        >
-          {feedback.text}
-        </p>
-      ) : null}
     </section>
   );
 }

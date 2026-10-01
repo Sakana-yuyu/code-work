@@ -89,10 +89,11 @@ const readNumber = (record: Record<string, unknown> | undefined, key: string): n
     ? (record[key] as number)
     : undefined;
 
-const epochSecondsToIso = (value: number | undefined): string | undefined =>
-  value === undefined || !Number.isFinite(value) || value <= 0
-    ? undefined
-    : new Date(value * 1000).toISOString();
+const epochSecondsToIso = (value: number | undefined): string | undefined => {
+  if (value === undefined || !Number.isFinite(value) || value <= 0) return undefined;
+  const date = new Date(value * 1000);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
+};
 
 const formatTokenCount = (value: number): string =>
   value >= 1_000_000
@@ -123,6 +124,8 @@ const getJson = (input: {
       Effect.mapError(() => `${input.failure}（响应不是 JSON）`),
     );
     const record = asRecord(decoded);
+    if (record !== undefined && record.code !== undefined && record.code !== 0)
+      return yield* Effect.fail(`${input.failure}（平台拒绝请求，请检查登录状态）`);
     return record === undefined
       ? yield* Effect.fail(`${input.failure}（响应不是 JSON 对象）`)
       : record;
@@ -197,22 +200,30 @@ export const normalizeStartPlanBalance = (
     const endsAt = readNumber(plan, "ends_at");
     return endsAt === undefined || endsAt > nowSec;
   });
-  const expiredPlanIds = new Set(
-    plans
-      .filter(
-        (plan) =>
-          (readString(plan, "status") ?? "").toLowerCase() === "active" &&
-          (readNumber(plan, "ends_at") ?? Number.POSITIVE_INFINITY) <= nowSec,
-      )
-      .map((plan) => readString(plan, "user_plan_id") ?? readString(plan, "plan_id") ?? "")
-      .filter((id) => id !== ""),
-  );
   const balances = (Array.isArray(data.balances) ? data.balances : [])
     .map((entry) => asRecord(entry))
     .filter((entry): entry is Record<string, unknown> => entry !== undefined)
     .filter((balance) => {
-      const planId = readString(balance, "user_plan_id") ?? readString(balance, "plan_id") ?? "";
-      return planId === "" || !expiredPlanIds.has(planId);
+      const owners = plans.filter((plan) => {
+        const instanceId = readString(balance, "user_plan_id");
+        const ownerId = readString(plan, "user_plan_id");
+        return instanceId !== undefined && ownerId !== undefined
+          ? instanceId === ownerId
+          : readString(balance, "plan_id") !== undefined && balance.plan_id === plan.plan_id;
+      });
+      return (
+        owners.length === 0 ||
+        owners.some((plan) => {
+          const status = readString(plan, "status")?.toLowerCase();
+          return (
+            status !== "expired" &&
+            !(
+              status === "active" &&
+              (readNumber(plan, "ends_at") ?? Number.POSITIVE_INFINITY) <= nowSec
+            )
+          );
+        })
+      );
     });
   const windows = balances
     .map(startPlanWindowOf)
@@ -446,7 +457,9 @@ export const normalizeClaimResult = (payload: unknown): ZCodeClaimOutcome => {
           ...(readString(plan, "name") === undefined
             ? {}
             : { planName: readString(plan, "name")! }),
-          ...(endsAtMs === undefined ? {} : { endsAt: new Date(endsAtMs * 1000).toISOString() }),
+          ...(epochSecondsToIso(endsAtMs) === undefined
+            ? {}
+            : { endsAt: epochSecondsToIso(endsAtMs)! }),
         }),
   };
 };

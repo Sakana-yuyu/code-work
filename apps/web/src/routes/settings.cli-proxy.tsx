@@ -5,6 +5,7 @@ import { EnvironmentId } from "@codework/contracts";
 import { useEnvironment, usePrimaryEnvironment } from "../state/environments";
 import { CliProxySettingsSection } from "../components/settings/CliProxySettingsSection";
 import { SettingsPageContainer } from "../components/settings/settingsLayout";
+import { t } from "~/i18n";
 
 function SettingsCliProxyRoute() {
   const primaryEnvironment = usePrimaryEnvironment();
@@ -12,12 +13,14 @@ function SettingsCliProxyRoute() {
   const requestedEnvironment = useEnvironment(
     search.environmentId === undefined ? null : EnvironmentId.make(search.environmentId),
   );
-  const environment = requestedEnvironment ?? primaryEnvironment;
+  const environment =
+    search.environmentId === undefined ? primaryEnvironment : requestedEnvironment;
   const navigate = useNavigate();
   return (
     <SettingsPageContainer width="expanded" className="gap-4">
       {environment ? (
         <CliProxySettingsSection
+          key={environment.environmentId}
           environmentId={environment.environmentId}
           readOnly={false}
           onConnected={(instanceId) =>
@@ -30,7 +33,11 @@ function SettingsCliProxyRoute() {
             })
           }
         />
-      ) : null}
+      ) : (
+        <p role="status" className="text-sm text-muted-foreground">
+          {t("commandPalette.environmentUnavailable")}
+        </p>
+      )}
     </SettingsPageContainer>
   );
 }

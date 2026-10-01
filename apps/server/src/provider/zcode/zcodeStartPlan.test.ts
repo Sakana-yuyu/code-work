@@ -1,7 +1,8 @@
 // @effect-diagnostics preferSchemaOverJson:off - 测试构造 ZCode 平台响应 JSON。
 // @effect-diagnostics globalDate:off - 夹具时间戳与 ISO 断言按墙上时间构造。
 // 归一化函数按 ZCode 桌面端 3.14.4（host/index.js）的响应形状造数据。
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect } from "vite-plus/test";
+import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -66,6 +67,24 @@ const BALANCE_ACTIVE = {
 };
 
 describe("ZCode 体验套餐余额归一化", () => {
+  it("显式 expired 套餐余额不再显示，同商品其他有效实例不受影响", () => {
+    const expired = { ...BALANCE_ACTIVE.data.plans[0]!, status: "expired" };
+    const view = normalizeStartPlanBalance(
+      {
+        code: 0,
+        data: {
+          plans: [expired, { ...expired, user_plan_id: "up-2", status: "active" }],
+          balances: [
+            BALANCE_ACTIVE.data.balances[0],
+            { ...BALANCE_ACTIVE.data.balances[1], user_plan_id: "up-2" },
+          ],
+        },
+      },
+      NOW_SEC,
+    );
+    expect(view?.models).toEqual(["GLM-5.3-Flash"]);
+    expect(view?.windows).toHaveLength(1);
+  });
   it("active 套餐：plan + 按模型窗口 + 模型清单", () => {
     const view = normalizeStartPlanBalance(BALANCE_ACTIVE, NOW_SEC);
     expect(view).not.toBeUndefined();
@@ -279,17 +298,17 @@ describe("ZCode 体验套餐余额请求", () => {
 });
 
 describe("领取活动请求", () => {
-  it("POST claim 带 Bearer JWT 与验证码头，成功结果归一化", async () => {
-    const requests: Array<{
-      url: string;
-      method?: string;
-      auth?: string;
-      captcha?: string;
-      region?: string;
-      body?: string;
-    }> = [];
-    const outcome = await Effect.runPromise(
-      fetchZCodeClaimOffer({
+  it.effect("POST claim 带 Bearer JWT 与验证码头，成功结果归一化", () =>
+    Effect.gen(function* () {
+      const requests: Array<{
+        url: string;
+        method?: string;
+        auth?: string;
+        captcha?: string;
+        region?: string;
+        body?: string;
+      }> = [];
+      const outcome = yield* fetchZCodeClaimOffer({
         jwt: "jwt-token",
         planId: "zcode-v3-trial-0929",
         captchaVerifyParam: "captcha-param-1",
@@ -340,20 +359,20 @@ describe("领取活动请求", () => {
             ),
           ),
         ),
-      ),
-    );
-    expect(outcome).toMatchObject({ success: true, planName: "国庆体验包" });
-    expect(requests[0]?.url).toBe(`${ZCODE_ORIGIN_TEST}/api/v1/zcode-plan/billing/claim`);
-    expect(requests[0]?.method).toBe("POST");
-    expect(requests[0]?.auth).toBe("Bearer jwt-token");
-    expect(requests[0]?.captcha).toBe("captcha-param-1");
-    expect(requests[0]?.region).toBe("cn");
-    expect(requests[0]?.body).toBe(JSON.stringify({ plan_id: "zcode-v3-trial-0929" }));
-  });
+      );
+      expect(outcome).toMatchObject({ success: true, planName: "国庆体验包" });
+      expect(requests[0]?.url).toBe(`${ZCODE_ORIGIN_TEST}/api/v1/zcode-plan/billing/claim`);
+      expect(requests[0]?.method).toBe("POST");
+      expect(requests[0]?.auth).toBe("Bearer jwt-token");
+      expect(requests[0]?.captcha).toBe("captcha-param-1");
+      expect(requests[0]?.region).toBe("cn");
+      expect(requests[0]?.body).toBe(JSON.stringify({ plan_id: "zcode-v3-trial-0929" }));
+    }),
+  );
 
-  it("上游失败码原样回传，不抛错", async () => {
-    const outcome = await Effect.runPromise(
-      fetchZCodeClaimOffer({
+  it.effect("上游失败码原样回传，不抛错", () =>
+    Effect.gen(function* () {
+      const outcome = yield* fetchZCodeClaimOffer({
         jwt: "jwt-token",
         planId: "p",
         captchaVerifyParam: "captcha-param-1",
@@ -374,8 +393,8 @@ describe("领取活动请求", () => {
             ),
           ),
         ),
-      ),
-    );
-    expect(outcome).toMatchObject({ success: false, code: 1002, message: "验证码校验未通过" });
-  });
+      );
+      expect(outcome).toMatchObject({ success: false, code: 1002, message: "验证码校验未通过" });
+    }),
+  );
 });

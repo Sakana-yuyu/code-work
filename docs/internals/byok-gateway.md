@@ -6,7 +6,7 @@ BYOK 实例保存模型通道，CLI 实例选择其中一条共享线路或聚�
 
 `packages/contracts/src/localAccount.ts` 定义本地账号元数据，`apps/server/src/provider/LocalAccountPool.ts` 负责凭据导入、启停、删除和轮询。`localAccountPool.accounts` 只进入服务器设置的元数据部分，`credentialRef` 对应的 JSON 原文由 `ServerSecretStore` 保存；RPC 结果不返回令牌。`publishLocalAccountPool` 把账号列表绑定到一个现有 Codex、Claude、Grok、Cursor 或 OpenCode 实例；Codex、Claude、Grok、OpenCode 使用本地 HTTP 网关，Cursor ACP 在每个会话启动时注入单账号环境变量（`CURSOR_API_KEY`/`CURSOR_AUTH_TOKEN`）。OpenCode 还必须在请求中选择 Codex 或 Grok 平台。
 
-网关为绑定实例发布 `supplierID: "codework-local-account"` 的本地路由。Codex API Key 使用 OpenAI `/v1/responses`，Codex OAuth 使用 ChatGPT `/backend-api/codex/responses` 并转发 `chatgpt-account-id`、`OAI-Product-Sku: codex`；Claude 使用 Anthropic Messages 端点，OAuth 凭据附加 `oauth-2025-04-20`；Grok 的订阅 OAuth 凭据使用 `cli-chat-proxy.grok.com` 并附加 CLI 会话头，`xai::api_key` 才使用 xAI API 端点。OpenCode 绑定时必须选择 Codex 或 Grok 平台，因为它只消费 OpenAI 兼容路由；其中 Codex 只能使用 API Key 账号。请求开始时 `pickLocalAccount` 按 `round-robin` 或 `fill-first` 选择启用账号；账号声明模型时按模型过滤，空模型列表作为官方 CLI 通配账号参与选择，但不会生成共享 BYOK 模型路由。凭据只持久化在 `ServerSecretStore`，运行时解密到内存和上游请求头，不进入 settings、RPC 或日志。账号池没有可用账号、凭据无效或请求中的模型无法匹配时返回协议错误，不回退到外部 BYOK。
+网关为绑定实例发布 `supplierID: "codework-local-account"` 的本地路由。Codex API Key 使用 OpenAI `/v1/responses`，Codex OAuth 使用 ChatGPT `/backend-api/codex/responses` 并转发 `chatgpt-account-id`、`OAI-Product-Sku: codex`；Claude 使用 Anthropic Messages 端点，OAuth 凭据附加 `oauth-2025-04-20`；Grok 的订阅 OAuth 凭据使用 `cli-chat-proxy.grok.com` 并附加 CLI 会话头，`xai::api_key` 才使用 xAI API 端点。OpenCode 绑定时必须选择 Codex 或 Grok 平台，因为它只消费 OpenAI 兼容路由；其中 Codex 只能使用 API Key 账号。请求开始时 `pickLocalAccount` 按 `round-robin`、`fill-first` 或 `weighted-round-robin` 选择启用账号；账号声明模型时按模型过滤，空模型列表作为官方 CLI 通配账号参与选择，同时使用平台默认目录生成共享 BYOK 模型路由；默认目录不证明上游权限。凭据只持久化在 `ServerSecretStore`，运行时解密到内存和上游请求头，不进入 settings、RPC 或日志。账号池没有可用账号、凭据无效或请求中的模型无法匹配时返回协议错误，不回退到外部 BYOK。
 
 外部 Agent 访问使用独立的 `local-gateway-keys` SecretStore key ring。`CliProxy` 的 create/rotate/revoke/list RPC 只返回摘要，创建和轮换结果携带一次性明文 Key；HTTP 网关同时接受内部 `byok-gateway-token` 与外部 Key，但后者会把路由过滤为 `localProvider`，不能读取普通 BYOK 凭据。Key 是随机高熵值，比较使用常量时间比较；SecretStore 读取或 key ring 解析失败时拒绝请求。外部 URL 仍复用 `/byok-gw/openai/v1` 和 `/byok-gw/anthropic`，服务端默认回环监听，跨主机暴露必须由部署者配置可达监听地址和 HTTPS 反代。
 
@@ -82,7 +82,7 @@ OpenCode 同时设置 `serverUrl` 与 BYOK 路由时，驱动拒绝创建：外�
 
 `/v1` 接受内部 `byok-gateway-token`（供本地驱动使用）和通过 RPC 创建的外部 Agent Key；外部 Key 只能访问 `localProvider` 路由。`/v0/management` 只接受 `X-Management-Key` 管理头，拒绝 `/v1` 使用的 `Authorization`、`x-api-key` 和查询参数，避免推理令牌提升为凭据管理权限。Key 比较使用常量时间比较，凭据永不进入设置 RPC 或日志。
 
-这不是把上游 CPA 可执行程序作为依赖，也不宣称完整实现其所有端点。当前明确未覆盖：完整 OAuth/PKCE 与 xAI device flow、Gemini/Interactions、Realtime/WebSocket、插件、视频/图像扩展、`auth-files/download`、`config.yaml`、weighted-round-robin 和其余 management API；内置凭据导入只要求受支持的 provider 和有效令牌，模型声明是发布共享 BYOK 路由时的必要条件，但官方 CLI 本地账号可以不声明模型。需要这些能力时必须另行实现并增加端到端验收；不能用 `running: true` 或“模型已列出”代替真实推理验证。
+这不是把上游 CPA 可执行程序作为依赖，也不宣称完整实现其所有端点。当前明确未覆盖：完整 OAuth/PKCE 与 xAI device flow、Gemini/Interactions、Realtime/WebSocket、插件、视频/图像扩展、`auth-files/download`、`config.yaml`和其余 management API；内置凭据导入只要求受支持的 provider 和有效令牌，模型声明用于限制账号的模型范围，未声明时共享线路使用平台默认目录。需要这些能力时必须另行实现并增加端到端验收；不能用 `running: true` 或“模型已列出”代替真实推理验证。
 
 ## 验证范围与路由注意事项
 

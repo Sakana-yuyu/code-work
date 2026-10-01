@@ -41,6 +41,8 @@ import {
   importLocalAccount,
   localGatewayAdapters,
   readLocalAccountCredential,
+  ensureLocalAccountCredential,
+  refreshLocalPoolInstanceAdapters,
   removeLocalAccount,
   setLocalAccountModels,
   setLocalAccountsEnabled,
@@ -200,7 +202,7 @@ export const autoRouteLocalAccountPool = (
   sourceInstanceId: ProviderInstanceId,
 ): Pick<ServerSettings, "providerInstances" | "localAccountPool"> => {
   const accounts = Object.values(settings.localAccountPool.accounts).filter(
-    (account) => account.enabled && account.provider !== "cursor" && account.models.length > 0,
+    (account) => account.enabled && account.provider !== "cursor",
   );
   const accountIdsByProvider = new Map<LocalAccountProvider, string[]>();
   for (const account of accounts) {
@@ -483,6 +485,7 @@ export const makeCliProxyService = (
           }>
         | undefined;
       let accountSubscriptions: ReadonlyArray<CliProxyAccountSubscription> | undefined;
+      let importedAccount: { readonly id: LocalAccountId } | undefined;
       let accountModels: CliProxyAccountModels | undefined;
       let accountClaim: CliProxyAccountClaimResult | undefined;
       let captchaConfig: CliProxyResult["captchaConfig"];
@@ -496,7 +499,7 @@ export const makeCliProxyService = (
         case "importAccount": {
           const provider = inferProvider(request.content, request.provider);
           const id = accountIdFromName(request.name);
-          yield* importLocalAccount(settings, secretStore, {
+          importedAccount = yield* importLocalAccount(settings, secretStore, {
             id,
             provider,
             displayName: id,
@@ -509,7 +512,11 @@ export const makeCliProxyService = (
           break;
         }
         case "scanNativeAccounts": {
-          if (hostDeps === undefined) break;
+          if (hostDeps === undefined)
+            return yield* new CliProxyError({
+              code: "upstream_error",
+              detail: "当前环境无法扫描原生 CLI 登录态。",
+            });
           const current = yield* settings.getSettings.pipe(Effect.mapError(safeError));
           const candidates = nativeLoginCandidatePaths({
             stateDir: hostDeps.stateDir,
@@ -586,7 +593,7 @@ export const makeCliProxyService = (
           const label = nativeLoginLabel(request.provider, rawContent);
           // ID 由路径派生：同一路径再次导入覆盖同一个号池账号，不会越导越多。
           const id = nativeAccountId(request.provider, resolvedPath);
-          yield* importLocalAccount(settings, secretStore, {
+          importedAccount = yield* importLocalAccount(settings, secretStore, {
             id,
             provider: request.provider,
             displayName: request.displayName?.trim() || label || id,
@@ -626,7 +633,7 @@ export const makeCliProxyService = (
               return content;
             }
           })();
-          yield* importLocalAccount(settings, secretStore, {
+          importedAccount = yield* importLocalAccount(settings, secretStore, {
             id,
             provider: request.provider,
             // ZCode 凭据自带账号名（user_info），留空让导入逻辑取真实账号名。
@@ -645,12 +652,26 @@ export const makeCliProxyService = (
           break;
         }
         case "localAccountUsage": {
-          if (hostDeps === undefined) break;
+          if (hostDeps === undefined)
+            return yield* new CliProxyError({
+              code: "upstream_error",
+              detail: "当前环境无法查询官方账号额度。",
+            });
           const current = yield* settings.getSettings.pipe(Effect.mapError(safeError));
-          const poolAccounts = Object.values(current.localAccountPool.accounts);
+          if (
+            request.id !== undefined &&
+            current.localAccountPool.accounts[request.id] === undefined
+          )
+            return yield* new CliProxyError({
+              code: "invalid_config",
+              detail: "账号不存在或已被删除。",
+            });
+          const poolAccounts = Object.values(current.localAccountPool.accounts).filter(
+            (account) => request.id === undefined || account.id === request.id,
+          );
           accountSubscriptions = yield* Effect.all(
             poolAccounts.map((account) =>
-              readLocalAccountCredential(account, secretStore).pipe(
+              ensureLocalAccountCredential(account, secretStore, hostDeps.httpClient).pipe(
                 Effect.flatMap((credential) =>
                   fetchLocalAccountSubscription({
                     account,
@@ -658,11 +679,12 @@ export const makeCliProxyService = (
                     authKind: account.authKind ?? credentialAuthKind(credential),
                   }),
                 ),
-                Effect.orElseSucceed(
-                  (): AccountSubscriptionView => ({ windows: [], error: "凭据读取失败" }),
+                Effect.catch((error) =>
+                  Effect.succeed<AccountSubscriptionView>({ windows: [], error: error.detail }),
                 ),
                 Effect.map((view) => ({
                   id: account.id,
+                  fetchedAt: new Date().toISOString(),
                   ...(view.plan === undefined ? {} : { plan: view.plan }),
                   ...(view.status === undefined ? {} : { status: view.status }),
                   ...(view.expiresAt === undefined ? {} : { expiresAt: view.expiresAt }),
@@ -679,14 +701,20 @@ export const makeCliProxyService = (
             ),
             { concurrency: 4 },
           ).pipe(Effect.provideService(HttpClient.HttpClient, hostDeps.httpClient));
-          captchaConfig = yield* fetchZCodeClientConfigs().pipe(
-            Effect.map((configs) => configs.captcha),
-            Effect.provideService(HttpClient.HttpClient, hostDeps.httpClient),
-          );
+          captchaConfig = yield* poolAccounts.some((account) => account.provider === "zcode")
+            ? fetchZCodeClientConfigs().pipe(
+                Effect.map((configs) => configs.captcha),
+                Effect.provideService(HttpClient.HttpClient, hostDeps.httpClient),
+              )
+            : Effect.succeed(undefined);
           break;
         }
         case "fetchLocalAccountModels": {
-          if (hostDeps === undefined) break;
+          if (hostDeps === undefined)
+            return yield* new CliProxyError({
+              code: "upstream_error",
+              detail: "当前环境无法查询官方模型目录。",
+            });
           const current = yield* settings.getSettings.pipe(Effect.mapError(safeError));
           const account = current.localAccountPool.accounts[request.id as LocalAccountId];
           if (account === undefined)
@@ -694,7 +722,11 @@ export const makeCliProxyService = (
               code: "invalid_config",
               detail: "账号不存在或已被删除。",
             });
-          accountModels = yield* readLocalAccountCredential(account, secretStore).pipe(
+          accountModels = yield* ensureLocalAccountCredential(
+            account,
+            secretStore,
+            hostDeps.httpClient,
+          ).pipe(
             Effect.flatMap((credential) =>
               fetchLocalAccountModels({
                 account,
@@ -721,7 +753,11 @@ export const makeCliProxyService = (
           );
           break;
         case "claimLocalAccountOffer": {
-          if (hostDeps === undefined) break;
+          if (hostDeps === undefined)
+            return yield* new CliProxyError({
+              code: "upstream_error",
+              detail: "当前环境无法领取官方套餐。",
+            });
           const current = yield* settings.getSettings.pipe(Effect.mapError(safeError));
           const account = current.localAccountPool.accounts[request.id as LocalAccountId];
           if (account === undefined)
@@ -812,7 +848,7 @@ export const makeCliProxyService = (
           );
           break;
         case "importLocalAccount":
-          yield* importLocalAccount(settings, secretStore, request).pipe(
+          importedAccount = yield* importLocalAccount(settings, secretStore, request).pipe(
             Effect.mapError(
               (error) => new CliProxyError({ code: "invalid_config", detail: error.message }),
             ),
@@ -947,13 +983,7 @@ export const makeCliProxyService = (
               detail: "该实例名称已被其他配置使用，请选择新的实例名称。",
             });
           const accountIds = Object.values(current.localAccountPool.accounts)
-            .filter(
-              (account) =>
-                account.enabled &&
-                account.provider !== "cursor" &&
-                // zcode 的体验套餐通道不依赖声明模型，JWT-only 账号也要能进实例。
-                (account.models.length > 0 || account.provider === "zcode"),
-            )
+            .filter((account) => account.enabled && account.provider !== "cursor")
             .map((account) => account.id);
           const nextSource = {
             ...existing,
@@ -986,36 +1016,28 @@ export const makeCliProxyService = (
         }
       }
 
-      const latest = yield* settings.getSettings.pipe(Effect.mapError(safeError));
+      // 同 ID 导入可能换成另一个官方账号；用已有快照协议清除旧余额和活动。
+      if (importedAccount !== undefined)
+        accountSubscriptions = [
+          {
+            id: importedAccount.id,
+            windows: [],
+            detail: "账号凭据已更新，请刷新用量与订阅。",
+          },
+        ];
+      let latest = yield* settings.getSettings.pipe(Effect.mapError(safeError));
+      // 全部账号禁用或删除时目录可以为空；绑定关系仍在，恢复账号后重建目录。
+      if (Object.keys(latest.localAccountPool.providerInstances).length > 0) {
+        const token = yield* ensureGatewayToken(secretStore);
+        const patch = refreshLocalPoolInstanceAdapters(latest, { origin: serverOrigin, token });
+        if (patch !== undefined)
+          latest = yield* settings.updateSettings(patch).pipe(Effect.mapError(safeError));
+      }
       const localAccounts = Object.values(latest.localAccountPool.accounts);
       const gatewayKeys = yield* readLocalGatewayKeys(secretStore);
-      const connectedInstanceId =
-        runtime.connectedInstanceId ??
-        (Object.entries(latest.localAccountPool.providerInstances).find(
-          ([instanceId, accountIds]) => {
-            const providerInstanceId = ProviderInstanceId.make(instanceId);
-            if (
-              accountIds.length === 0 ||
-              latest.providerInstances[providerInstanceId]?.driver !== "byok"
-            )
-              return false;
-            const config = latest.providerInstances[providerInstanceId]?.config;
-            const adapters =
-              config !== null && typeof config === "object" && !Array.isArray(config)
-                ? (config as Record<string, unknown>).adapters
-                : undefined;
-            return (
-              Array.isArray(adapters) &&
-              adapters.some(
-                (adapter: unknown) =>
-                  adapter !== null &&
-                  typeof adapter === "object" &&
-                  !Array.isArray(adapter) &&
-                  (adapter as Record<string, unknown>).supplierID === "codework-local-account",
-              )
-            );
-          },
-        )?.[0] as ProviderInstanceId | undefined);
+      const connectedInstanceId = Object.keys(latest.localAccountPool.providerInstances).find(
+        (id) => latest.providerInstances[ProviderInstanceId.make(id)]?.driver === "byok",
+      ) as ProviderInstanceId | undefined;
       return {
         config: { strategy: latest.localAccountPool.strategy },
         running: true,

@@ -73,7 +73,8 @@ const readNumber = (record: Record<string, unknown> | undefined, key: string): n
 const epochMsToIso = (value: number | undefined): string | undefined => {
   if (value === undefined || !Number.isFinite(value) || value <= 0) return undefined;
   // 上游字段混用秒与毫秒：大于 1e12 视为毫秒。
-  return new Date(value > 1e12 ? value : value * 1000).toISOString();
+  const date = new Date(value > 1e12 ? value : value * 1000);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
 };
 
 const getJson = (input: {
@@ -98,6 +99,11 @@ const getJson = (input: {
       Effect.mapError(() => `${input.failure}（响应不是 JSON）`),
     );
     const record = asRecord(decoded);
+    if (
+      record?.success === false ||
+      (typeof record?.code === "number" && record.code !== 0 && record.code !== 200)
+    )
+      return yield* Effect.fail(`${input.failure}（平台拒绝请求，请检查账号状态）`);
     return record === undefined
       ? yield* Effect.fail(`${input.failure}（响应不是 JSON 对象）`)
       : record;
@@ -171,7 +177,11 @@ export const codexPlanFromCredential = (
 ): string | undefined => {
   const idToken =
     readString(credential, "id_token") ?? readString(credential, "idToken") ?? undefined;
-  return readString(decodeJwtPayload(idToken), "chatgpt_plan_type");
+  const payload = decodeJwtPayload(idToken);
+  return (
+    readString(asRecord(payload?.["https://api.openai.com/auth"]), "chatgpt_plan_type") ??
+    readString(payload, "chatgpt_plan_type")
+  );
 };
 
 /** Codex OAuth：`wham/usage` 返回 rate_limit 窗口组 + 附加限额（Spark/专属模型）+ plan_type + credits。 */
@@ -222,9 +232,10 @@ const fetchCodexUsage = (
       windows.push(...collectRateLimitWindows(asRecord(record?.rate_limit), prefix));
     }
     const credits = asRecord(data.credits);
-    const balance = readNumber(credits, "balance");
+    const balance = readString(credits, "balance") ?? readNumber(credits, "balance");
     const metrics: Array<{ label: string; value: string }> = [];
-    if (balance !== undefined) metrics.push({ label: "积分余额", value: `$${balance}` });
+    if (credits?.unlimited === true) metrics.push({ label: "积分余额", value: "不限额" });
+    else if (balance !== undefined) metrics.push({ label: "积分余额", value: String(balance) });
     const rateLimit = asRecord(data.rate_limit);
     const status = rateLimit?.limit_reached === true ? "已达上限" : undefined;
     const plan = planLabel(readString(data, "plan_type") ?? codexPlanFromCredential(credential));
@@ -450,7 +461,7 @@ const fetchZCodeUsage = (
                 if (percent === undefined && remaining === undefined) return undefined;
                 return {
                   label: ZCODE_LIMIT_LABELS[type] ?? (type || "额度"),
-                  ...(percent === undefined ? {} : { percent: percent * (percent <= 1 ? 100 : 1) }),
+                  ...(percent === undefined ? {} : { percent }),
                   ...(remaining === undefined
                     ? {}
                     : {
@@ -463,9 +474,16 @@ const fetchZCodeUsage = (
             const level = readString(quotaData, "level");
             return { windows, ...(level === undefined ? {} : { level }) };
           }),
+          Effect.catch((error) =>
+            Effect.succeed({ windows: [], error } as {
+              windows: UsageWindowView[];
+              level?: string;
+              error?: string;
+            }),
+          ),
         );
 
-    // 体验套餐余额/可领取活动与平台活动文案都是可选数据面：失败只丢该区域。
+    // Coding Plan 与体验套餐独立查询，一个失败不能吞掉另一个的余额。
     const range = zcodeActivityRange();
     const startPlan: ZCodeStartPlanOutcome | undefined = yield* jwt === undefined
       ? Effect.succeed(undefined)
@@ -487,46 +505,48 @@ const fetchZCodeUsage = (
               Effect.orElseSucceed(() => undefined),
             ),
         fetchZCodeClientConfigs().pipe(Effect.map((configs) => configs.campaign)),
-        getJson({
-          url:
-            `${host}/api/monitor/usage/credit-usage/activity` +
-            `?type=1&startTime=${encodeURIComponent(range.startTime)}` +
-            `&endTime=${encodeURIComponent(range.endTime)}`,
-          headers,
-          failure: "ZCode 活动统计查询失败",
-        }).pipe(
-          Effect.map((payload) => {
-            const data = asRecord(payload.data);
-            const summary = asRecord(data?.summary);
-            const metrics: Array<{ label: string; value: string }> = [];
-            const totalTokens = readNumber(summary, "totalTokens");
-            const peakTokens = readNumber(summary, "peakDailyTokens");
-            const peakDate = readString(summary, "peakDailyTokensDate");
-            const durationMs = readNumber(summary, "totalUsageDurationMs");
-            const streak = readNumber(summary, "currentStreakDays");
-            const longestStreak = readNumber(summary, "longestStreakDays");
-            if (totalTokens !== undefined)
-              metrics.push({
-                label: "近一年总用量",
-                value: `${formatTokenCount(totalTokens)} tokens`,
-              });
-            if (peakTokens !== undefined)
-              metrics.push({
-                label: "峰值日",
-                value: `${formatTokenCount(peakTokens)}${peakDate === undefined ? "" : `（${peakDate.slice(5)}）`}`,
-              });
-            if (durationMs !== undefined)
-              metrics.push({ label: "累计使用时长", value: formatDuration(durationMs) });
-            if (streak !== undefined)
-              metrics.push({
-                label: "连续使用",
-                value: `${streak} 天${longestStreak === undefined ? "" : ` · 最长 ${longestStreak} 天`}`,
-              });
-            return metrics;
-          }),
-          Effect.orElseSucceed((): Array<{ label: string; value: string }> => []),
-        ),
-        jwt === undefined
+        apiKey === undefined
+          ? Effect.succeed([] as Array<{ label: string; value: string }>)
+          : getJson({
+              url:
+                `${host}/api/monitor/usage/credit-usage/activity` +
+                `?type=1&startTime=${encodeURIComponent(range.startTime)}` +
+                `&endTime=${encodeURIComponent(range.endTime)}`,
+              headers,
+              failure: "ZCode 活动统计查询失败",
+            }).pipe(
+              Effect.map((payload) => {
+                const data = asRecord(payload.data);
+                const summary = asRecord(data?.summary);
+                const metrics: Array<{ label: string; value: string }> = [];
+                const totalTokens = readNumber(summary, "totalTokens");
+                const peakTokens = readNumber(summary, "peakDailyTokens");
+                const peakDate = readString(summary, "peakDailyTokensDate");
+                const durationMs = readNumber(summary, "totalUsageDurationMs");
+                const streak = readNumber(summary, "currentStreakDays");
+                const longestStreak = readNumber(summary, "longestStreakDays");
+                if (totalTokens !== undefined)
+                  metrics.push({
+                    label: "近一年总用量",
+                    value: `${formatTokenCount(totalTokens)} tokens`,
+                  });
+                if (peakTokens !== undefined)
+                  metrics.push({
+                    label: "峰值日",
+                    value: `${formatTokenCount(peakTokens)}${peakDate === undefined ? "" : `（${peakDate.slice(5)}）`}`,
+                  });
+                if (durationMs !== undefined)
+                  metrics.push({ label: "累计使用时长", value: formatDuration(durationMs) });
+                if (streak !== undefined)
+                  metrics.push({
+                    label: "连续使用",
+                    value: `${streak} 天${longestStreak === undefined ? "" : ` · 最长 ${longestStreak} 天`}`,
+                  });
+                return metrics;
+              }),
+              Effect.orElseSucceed((): Array<{ label: string; value: string }> => []),
+            ),
+        jwt === undefined || apiKey === undefined
           ? Effect.succeed(undefined as UsageWindowView | undefined)
           : getJson({
               url: `${ZCODE_API_ORIGIN}/api/v1/mcp/usage`,
@@ -575,6 +595,8 @@ const fetchZCodeUsage = (
     const details = [
       level === undefined ? undefined : `额度水位 ${level}`,
       startPlanView?.expired === true ? "体验套餐已过期" : undefined,
+      "error" in quotaView ? quotaView.error : undefined,
+      startPlan !== undefined && "error" in startPlan ? startPlan.error : undefined,
     ].filter((entry): entry is string => entry !== undefined);
     // 只有体验套餐可查却失败（登录失效）时给出明确错误；Key 账号的错误由
     // quota/limit 主请求给出，这里不覆盖。
@@ -582,14 +604,15 @@ const fetchZCodeUsage = (
       startPlan !== undefined && "error" in startPlan && apiKey === undefined && jwt !== undefined
         ? startPlan.error
         : undefined;
+    const usageError = startPlanError ?? ("error" in quotaView ? quotaView.error : undefined);
     return {
       ...subscription,
       ...(startPlanName === undefined ? {} : { plan: startPlanName }),
       windows,
       ...(activity.length === 0 ? {} : { metrics: activity }),
       ...(details.length === 0 ? {} : { detail: details.join(" · ") }),
-      ...(startPlanError !== undefined && windows.length === 0 && offers === undefined
-        ? { error: startPlanError }
+      ...(usageError !== undefined && windows.length === 0 && offers === undefined
+        ? { error: usageError }
         : {}),
       ...(offers === undefined ? {} : { offers }),
       ...(campaign === undefined ? {} : { campaign }),
@@ -653,27 +676,35 @@ const fetchXaiOAuthUsage = (
           url: `${XAI_CLI_BILLING_BASE}?format=credits`,
           headers,
           failure: "Grok 周额度查询失败",
-        }).pipe(Effect.orElseSucceed(() => undefined as Record<string, unknown> | undefined)),
+        }).pipe(
+          Effect.map((payload) => ({ payload, error: undefined })),
+          Effect.catch((error) => Effect.succeed({ payload: undefined, error })),
+        ),
         getJson({
           url: XAI_CLI_BILLING_BASE,
           headers,
           failure: "Grok 月额度查询失败",
-        }).pipe(Effect.orElseSucceed(() => undefined as Record<string, unknown> | undefined)),
+        }).pipe(
+          Effect.map((payload) => ({ payload, error: undefined })),
+          Effect.catch((error) => Effect.succeed({ payload: undefined, error })),
+        ),
       ],
       { concurrency: "unbounded" },
     );
     const windows = [
-      weekly === undefined ? undefined : xaiBillingWindow("周额度", weekly),
-      monthly === undefined ? undefined : xaiBillingWindow("月额度", monthly),
+      weekly.payload === undefined ? undefined : xaiBillingWindow("周额度", weekly.payload),
+      monthly.payload === undefined ? undefined : xaiBillingWindow("月额度", monthly.payload),
     ].filter((entry): entry is UsageWindowView => entry !== undefined);
     const paidTier = Object.entries(decodeJwtPayload(token) ?? {}).find(([key]) =>
       key.toLowerCase().endsWith("tier"),
     )?.[1];
+    const error = [weekly.error, monthly.error].filter(Boolean).join(" · ");
     return {
       ...(typeof paidTier === "number" && paidTier >= 1 ? { plan: "Paid" } : {}),
       windows,
-      ...(windows.length === 0
-        ? { detail: "Grok 账号未返回额度数据（付费档无公开额度接口）" }
+      ...(error !== "" ? (windows.length === 0 ? { error } : { detail: error }) : {}),
+      ...(windows.length === 0 && error === ""
+        ? { detail: "Grok 账号未返回额度数据，当前接口无法确认余额。" }
         : {}),
     } satisfies AccountSubscriptionView;
   });
@@ -750,6 +781,12 @@ export const fetchLocalAccountSubscription = (input: {
     });
   }
   return fetcher(credential, token).pipe(
-    Effect.catch((detail) => Effect.succeed({ windows: [], error: detail })),
+    Effect.timeout(30_000),
+    Effect.catch((detail) =>
+      Effect.succeed({
+        windows: [],
+        error: typeof detail === "string" ? detail : "账号额度查询超时，请重试。",
+      }),
+    ),
   );
 };

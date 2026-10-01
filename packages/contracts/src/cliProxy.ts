@@ -117,6 +117,8 @@ export type CliProxyAccountCampaign = typeof CliProxyAccountCampaign.Type;
  */
 export const CliProxyAccountSubscription = Schema.Struct({
   id: LocalAccountId,
+  /** 服务端完成本次查询的时间；缺省表示旧版服务端未提供。 */
+  fetchedAt: Schema.optional(Schema.String),
   plan: Schema.optional(Schema.String),
   status: Schema.optional(Schema.String),
   expiresAt: Schema.optional(Schema.String),
@@ -202,7 +204,11 @@ export const CliProxyRequest = Schema.Union([
     models: Schema.optional(Schema.Array(TrimmedNonEmptyString).check(Schema.isMaxLength(50))),
   }),
   Schema.Struct({ action: Schema.Literal("scanNativeAccounts") }),
-  Schema.Struct({ action: Schema.Literal("localAccountUsage") }),
+  Schema.Struct({
+    action: Schema.Literal("localAccountUsage"),
+    /** 缺省查询整个账号池；账号卡刷新只查询指定账号。 */
+    id: Schema.optional(LocalAccountId),
+  }),
   Schema.Struct({
     action: Schema.Literal("fetchLocalAccountModels"),
     id: TrimmedNonEmptyString,
@@ -293,6 +299,30 @@ export const CliProxyResult = Schema.Struct({
   captchaConfig: Schema.optional(CliProxyCaptchaConfig),
 });
 export type CliProxyResult = typeof CliProxyResult.Type;
+
+/** RPC 只携带本次查询的数据面；保留其他账号快照，删除账号时同步清除。 */
+export const mergeCliProxyResult = (
+  previous: CliProxyResult | null,
+  next: CliProxyResult,
+): CliProxyResult => {
+  const subscriptions = new Map(
+    (previous?.accountSubscriptions ?? []).map((entry) => [entry.id, entry]),
+  );
+  for (const entry of next.accountSubscriptions ?? []) subscriptions.set(entry.id, entry);
+  const accountIds = new Set(next.localAccounts?.map((account) => account.id));
+  return {
+    ...next,
+    accountSubscriptions: [...subscriptions.values()].filter(
+      (entry) => next.localAccounts === undefined || accountIds.has(entry.id),
+    ),
+    ...(next.captchaConfig === undefined && previous?.captchaConfig !== undefined
+      ? { captchaConfig: previous.captchaConfig }
+      : {}),
+    ...(next.nativeLogins === undefined && previous?.nativeLogins !== undefined
+      ? { nativeLogins: previous.nativeLogins }
+      : {}),
+  };
+};
 
 export class CliProxyError extends Schema.TaggedErrorClass<CliProxyError>()("CliProxyError", {
   code: Schema.Literals(["invalid_config", "busy", "upstream_error"]),

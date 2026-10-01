@@ -1,6 +1,6 @@
 # ZCode Provider
 
-ZCode（[zai-org/ZCode](https://github.com/zai-org/ZCode)）以 `zcodeAgent` 驱动接入，和 Pi 一样只有 BYOK 一种形态：模型调用全部经本地 BYOK 网关，号池（本地 CLI 账号）路由随网关一并发布。
+ZCode（[zai-org/ZCode](https://github.com/zai-org/ZCode)）以 `zcodeAgent` 驱动接入，支持官方登录与 BYOK 两种形态；BYOK 模式经本地网关使用共享线路及账号池，官方模式使用实例自己的官方登录。
 
 ## 账号形态
 
@@ -59,7 +59,7 @@ zcode 账号池条目存的是归一化凭据快照：Coding Plan API Key（`api
 ### 用量、模型目录与领取活动（serverCliProxy）
 
 - **用量**：`localAccountUsage` 按账号并发 4 查询官方接口并归一化成窗口/指标/套餐视图。Codex `wham/usage`+`subscriptions`+id_token plan_type 兜底；Claude `oauth/usage`+`oauth/profile`（Team/Max/Pro/Free、Fable 周窗 iguana_necktie）；Grok OAuth `cli-chat-proxy.grok.com/v1/billing`（周+月）；ZCode 合并 Coding Plan 订阅/quota、体验套餐余额（`zcode-plan/billing/balance`，Bearer JWT）、`client/configs` 的活动文案（150% 配额）与可领取预览（`billing/preview`）、MCP 额度与近一年活动统计。结果同时带 `captchaConfig`（阿里云验证码 sceneId/prefix/region）。
-- **模型拉取**：`fetchLocalAccountModels` 永不失败——codex OAuth 走 `backend-api/codex/models`，claude/xai API-Key 走各自 `/v1/models`，zcode 合并官方目录与体验套餐 capabilities，其余落 `LOCAL_POOL_DEFAULT_MODELS` 静态目录并标注 `source:"catalog"`；`setLocalAccountModels` 写回后自动刷新 BYOK 实例通道目录，空数组=不限模型。
+- **模型拉取**：`fetchLocalAccountModels` 优先使用平台目录，部分平台允许回退默认目录；账号不存在、凭据刷新失败和服务不可用仍明确报错——codex OAuth 走 `backend-api/codex/models`，claude/xai API-Key 走各自 `/v1/models`，zcode 合并官方目录与体验套餐 capabilities，其余落 `LOCAL_POOL_DEFAULT_MODELS` 静态目录并标注 `source:"catalog"`；`setLocalAccountModels` 写回后自动刷新 BYOK 实例通道目录，空数组=不限模型。
 - **领取活动**：`claimLocalAccountOffer` 需要客户端先渲染阿里云验证码 2.0 拿 `captchaVerifyParam`，服务端 POST `billing/claim`（Bearer JWT + `X-Aliyun-Captcha-Verify-Param`(+Region) + `X-ZCode-App-Version` + `X-Platform`，与桌面端 claimManualPlan 同款）代领；结果透传上游 code/message（成功时省略），客户端以上游文案优先展示。web/desktop 在 `ClaimOfferDialog` 内嵌 SDK；脚本或域名校验失败回退"去官方客户端领取"。
 
 ## 测试

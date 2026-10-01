@@ -2,13 +2,19 @@
 // @effect-diagnostics schemaSyncInEffect:off - 断言持久化后的无类型配置快照。
 // @effect-diagnostics unknownInErrorChannel:off - 测试辅助函数统一运行最小 service 错误。
 // @effect-diagnostics anyUnknownInErrorContext:off - 测试故意把多个服务错误统一交给运行器。
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect } from "vite-plus/test";
+import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import {
   DEFAULT_SERVER_SETTINGS,
+  LocalAccountId,
   CliProxyError,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -84,6 +90,223 @@ const runWithServices = <A>(
 };
 
 describe("内置 CLIProxyAPI 核心", () => {
+  it.effect("批量操作包含已删除账号时整体失败，不能修改其余账号", () =>
+    runWithServices(
+      {
+        localAccountPool: {
+          accounts: { ["codex-a" as never]: account("codex-a", "codex", []) },
+          strategy: "round-robin",
+          providerInstances: {},
+        },
+      },
+      (settings, secrets) =>
+        Effect.gen(function* () {
+          const service = yield* makeCliProxyService(
+            new CliProxyRuntime("http://localhost"),
+            settings,
+            secrets,
+            "http://localhost",
+          );
+          const result = yield* Effect.exit(
+            service.handle({
+              action: "setLocalAccountsEnabled",
+              ids: ["codex-a", "deleted"],
+              enabled: false,
+            }),
+          );
+          expect(result._tag).toBe("Failure");
+          const snapshot = yield* service.handle({ action: "status" });
+          expect(snapshot.localAccounts?.[0]?.enabled).toBe(true);
+        }),
+    ),
+  );
+
+  it.effect("重新导入凭据返回失效快照，客户端不能继续显示旧账号余额", () =>
+    runWithServices({}, (settings, secrets) =>
+      Effect.gen(function* () {
+        const service = yield* makeCliProxyService(
+          new CliProxyRuntime("http://localhost"),
+          settings,
+          secrets,
+          "http://localhost",
+        );
+        const request = {
+          action: "importLocalAccount" as const,
+          id: "reimport",
+          provider: "codex" as const,
+          displayName: "测试",
+          content: '{"api_key":"old"}',
+        };
+        yield* service.handle(request);
+        const result = yield* service.handle({ ...request, content: '{"api_key":"new"}' });
+        expect(result.accountSubscriptions).toEqual([
+          { id: "reimport", windows: [], detail: "账号凭据已更新，请刷新用量与订阅。" },
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("默认模型账号能接入，多个账号不重复发布线路，全部禁用后可恢复", () =>
+    Effect.gen(function* () {
+      yield* runWithServices(
+        { localAccountPool: { accounts: {}, strategy: "round-robin", providerInstances: {} } },
+        (settings, secrets) =>
+          Effect.gen(function* () {
+            const service = yield* makeCliProxyService(
+              new CliProxyRuntime("http://localhost"),
+              settings,
+              secrets,
+              "http://localhost",
+            );
+            for (const id of ["pool-a", "pool-b"])
+              yield* service.handle({
+                action: "importLocalAccount",
+                id,
+                provider: "codex",
+                displayName: id,
+                content: JSON.stringify({ api_key: `test-${id}` }),
+              });
+            const pool = ProviderInstanceId.make("pool");
+            yield* service.handle({
+              action: "connectByok",
+              instanceId: pool,
+              displayName: "共享线路",
+            });
+            const connected = yield* settings.getSettings;
+            expect(connected.localAccountPool.providerInstances[pool]).toEqual([
+              "pool-a",
+              "pool-b",
+            ]);
+            const routes = gatewayAdapterRoutes(connected, pool);
+            expect(routes.length).toBeGreaterThan(0);
+            const adapters = (
+              connected.providerInstances[pool]!.config as { adapters: { id: string }[] }
+            ).adapters;
+            expect(new Set(adapters.map((adapter) => adapter.id)).size).toBe(adapters.length);
+            yield* service.handle({
+              action: "setLocalAccountsEnabled",
+              ids: ["pool-a", "pool-b"],
+              enabled: false,
+            });
+            expect(gatewayAdapterRoutes(yield* settings.getSettings, pool)).toEqual([]);
+            const restarted = yield* makeCliProxyService(
+              new CliProxyRuntime("http://localhost"),
+              settings,
+              secrets,
+              "http://localhost",
+            );
+            expect((yield* restarted.handle({ action: "status" })).connectedInstanceId).toBe(pool);
+            yield* restarted.handle({
+              action: "setLocalAccountEnabled",
+              id: "pool-a",
+              enabled: true,
+            });
+            const restored = yield* settings.getSettings;
+            expect(gatewayAdapterRoutes(restored, pool).length).toBeGreaterThan(0);
+            expect(
+              (restored.providerInstances[pool]!.config as { adapters: unknown[] }).adapters.length,
+            ).toBeGreaterThan(0);
+          }),
+      );
+    }),
+  );
+  it.effect("单账号刷新只访问指定账号，自动刷新凭据并返回查询时间", () =>
+    Effect.gen(function* () {
+      const requests: string[] = [];
+      const httpClient = HttpClient.make((request) => {
+        requests.push(request.url);
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            Response.json(
+              request.url.includes("oauth/token")
+                ? { access_token: "fresh-token", expires_in: 3600 }
+                : { plan_type: "pro", rate_limit: { primary_window: { used_percent: 12 } } },
+            ),
+          ),
+        );
+      });
+      yield* Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        yield* runWithServices(
+          {
+            localAccountPool: {
+              accounts: {
+                [LocalAccountId.make("a")]: { ...account("a", "codex", []), authKind: "oauth" },
+                [LocalAccountId.make("b")]: { ...account("b", "claude", []), authKind: "oauth" },
+              },
+              strategy: "round-robin",
+              providerInstances: {},
+            },
+          },
+          (settings, secrets) =>
+            Effect.gen(function* () {
+              yield* secrets.set(
+                "a",
+                Buffer.from(
+                  JSON.stringify({
+                    access_token: "expired-token",
+                    refresh_token: "refresh",
+                    expires_at: 1,
+                  }),
+                ),
+              );
+              const service = yield* makeCliProxyService(
+                new CliProxyRuntime("http://localhost"),
+                settings,
+                secrets,
+                "http://localhost",
+                undefined,
+                { stateDir: "unused", fileSystem, path, httpClient },
+              );
+              const result = yield* service.handle({
+                action: "localAccountUsage",
+                id: "a" as never,
+              });
+              expect(result.accountSubscriptions).toMatchObject([
+                { id: "a", plan: "Pro", windows: [{ percent: 12 }] },
+              ]);
+              expect(result.accountSubscriptions?.[0]?.fetchedAt).toMatch(/^\d{4}-/u);
+              expect(requests).toEqual([
+                "https://auth.openai.com/oauth/token",
+                "https://chatgpt.com/backend-api/wham/usage",
+              ]);
+              expect(JSON.stringify(result)).not.toContain("fresh-token");
+              expect(
+                (yield* Effect.exit(
+                  service.handle({ action: "localAccountUsage", id: "missing" as never }),
+                ))._tag,
+              ).toBe("Failure");
+            }),
+        );
+      }).pipe(Effect.provide(NodeServices.layer));
+    }),
+  );
+
+  it.effect("不存在的账号不能伪报模型、权重或启停保存成功", () =>
+    Effect.gen(function* () {
+      yield* runWithServices({}, (settings, secrets) =>
+        Effect.gen(function* () {
+          const service = yield* makeCliProxyService(
+            new CliProxyRuntime("http://localhost"),
+            settings,
+            secrets,
+            "http://localhost",
+          );
+          for (const request of [
+            { action: "setLocalAccountModels", id: "missing", models: [] },
+            { action: "setLocalAccountWeight", id: "missing", weight: 2 },
+            { action: "setLocalAccountEnabled", id: "missing", enabled: true },
+          ] as const)
+            expect((yield* Effect.exit(service.handle(request)))._tag).toBe("Failure");
+          expect((yield* Effect.exit(service.handle({ action: "localAccountUsage" })))._tag).toBe(
+            "Failure",
+          );
+        }),
+      );
+    }),
+  );
   it("不再接受外部进程配置，并正确约束 CLI 账号池平台", () => {
     const runtime = new CliProxyRuntime("http://127.0.0.1:3000");
     expect(runtime.running).toBe(true);
@@ -96,19 +319,19 @@ describe("内置 CLIProxyAPI 核心", () => {
     expect(resolveLocalPoolProvider("codex", "xai")).toBeUndefined();
   });
 
-  it("登录添加账号：导入一次性目录里的凭据、写入声明模型并清理目录", async () => {
-    const cleaned: string[] = [];
-    const loginStore = {
-      readCredential: (provider: string, terminalId: string) =>
-        Effect.succeed(
-          provider === "codex" && terminalId === "term-1"
-            ? JSON.stringify({ tokens: { access_token: "login-secret", refresh_token: "r" } })
-            : undefined,
-        ),
-      cleanup: (terminalId: string) => Effect.sync(() => void cleaned.push(terminalId)),
-    };
-    await Effect.runPromise(
-      runWithServices(
+  it.effect("登录添加账号：导入一次性目录里的凭据、写入声明模型并清理目录", () =>
+    Effect.gen(function* () {
+      const cleaned: string[] = [];
+      const loginStore = {
+        readCredential: (provider: string, terminalId: string) =>
+          Effect.succeed(
+            provider === "codex" && terminalId === "term-1"
+              ? JSON.stringify({ tokens: { access_token: "login-secret", refresh_token: "r" } })
+              : undefined,
+          ),
+        cleanup: (terminalId: string) => Effect.sync(() => void cleaned.push(terminalId)),
+      };
+      yield* runWithServices(
         { localAccountPool: { accounts: {}, strategy: "round-robin", providerInstances: {} } },
         (settings, secrets) =>
           Effect.gen(function* () {
@@ -145,27 +368,27 @@ describe("内置 CLIProxyAPI 核心", () => {
             );
             expect(unsupported._tag).toBe("Failure");
           }),
-      ),
-    );
-  });
+      );
+    }),
+  );
 
-  it("登录添加 ZCode 账号：解密凭据文件、抽取 Coding Plan Key 与账号名", async () => {
-    // ZCode 凭据是键值文件；未加密条目按明文放行，加密路径由 zcodeCredentials 测试覆盖。
-    const zcodeCredentials = JSON.stringify({
-      "oauth:active_provider": "zai",
-      "oauth:zai:user_info": JSON.stringify({ user_id: "u-1", name: "Dev", email: "dev@z.ai" }),
-      "account-provider:coding-plan:account:zai-individual-coding-plan:account:u-1:api-key":
-        "plan-api-key",
-    });
-    const loginStore = {
-      readCredential: (provider: string, terminalId: string) =>
-        Effect.succeed(
-          provider === "zcode" && terminalId === "term-z" ? zcodeCredentials : undefined,
-        ),
-      cleanup: () => Effect.void,
-    };
-    await Effect.runPromise(
-      runWithServices(
+  it.effect("登录添加 ZCode 账号：解密凭据文件、抽取 Coding Plan Key 与账号名", () =>
+    Effect.gen(function* () {
+      // ZCode 凭据是键值文件；未加密条目按明文放行，加密路径由 zcodeCredentials 测试覆盖。
+      const zcodeCredentials = JSON.stringify({
+        "oauth:active_provider": "zai",
+        "oauth:zai:user_info": JSON.stringify({ user_id: "u-1", name: "Dev", email: "dev@z.ai" }),
+        "account-provider:coding-plan:account:zai-individual-coding-plan:account:u-1:api-key":
+          "plan-api-key",
+      });
+      const loginStore = {
+        readCredential: (provider: string, terminalId: string) =>
+          Effect.succeed(
+            provider === "zcode" && terminalId === "term-z" ? zcodeCredentials : undefined,
+          ),
+        cleanup: () => Effect.void,
+      };
+      yield* runWithServices(
         { localAccountPool: { accounts: {}, strategy: "round-robin", providerInstances: {} } },
         (settings, secrets) =>
           Effect.gen(function* () {
@@ -219,9 +442,9 @@ describe("内置 CLIProxyAPI 核心", () => {
               },
             ]);
           }),
-      ),
-    );
-  });
+      );
+    }),
+  );
 
   it("导入凭据只返回脱敏摘要，并将本地账号绑定到内置 BYOK 实例", async () =>
     // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests

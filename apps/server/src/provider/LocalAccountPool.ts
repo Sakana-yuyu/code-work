@@ -319,6 +319,10 @@ export const ensureLocalAccountCredential = (
         detail: "官方账号令牌已过期，请重新登录或导入包含 refresh_token 的凭据。",
       });
     }
+    if (account.provider !== "codex" && account.provider !== "claude" && account.provider !== "xai")
+      return yield* new LocalAccountError({
+        detail: "该平台不支持自动刷新，请重新登录或导入凭据。",
+      });
     const endpoint =
       account.provider === "codex"
         ? "https://auth.openai.com/oauth/token"
@@ -388,7 +392,13 @@ export const ensureLocalAccountCredential = (
       .pipe(Effect.mapError(() => new LocalAccountError({ detail: "刷新后的凭据保存失败。" })));
     needsRefresh.delete(key);
     return next;
-  }).pipe(lock.withPermit);
+  }).pipe(
+    Effect.timeout(20_000),
+    Effect.catchTag("TimeoutError", () =>
+      Effect.fail(new LocalAccountError({ detail: "账号凭据刷新超时，请重试。" })),
+    ),
+    lock.withPermit,
+  );
 };
 
 export const readLocalAccountCredential = (
@@ -616,7 +626,11 @@ export const setLocalAccountEnabled = (
     })
     .pipe(
       Effect.mapError(() => new LocalAccountError({ detail: "更新本地账号状态失败。" })),
-      Effect.asVoid,
+      Effect.flatMap((next) =>
+        next.localAccountPool.accounts[id as LocalAccountId] === undefined
+          ? Effect.fail(new LocalAccountError({ detail: "账号不存在或已被删除。" }))
+          : Effect.void,
+      ),
     );
 
 export const setLocalAccountsEnabled = (
@@ -626,6 +640,9 @@ export const setLocalAccountsEnabled = (
 ): Effect.Effect<void, LocalAccountError> =>
   settings
     .updateSettings((current) => {
+      // 在同一次设置更新中核验全部目标，避免并发删除后只完成一部分却报告成功。
+      if (ids.some((id) => current.localAccountPool.accounts[id as LocalAccountId] === undefined))
+        return {};
       const accounts = { ...current.localAccountPool.accounts };
       let changed = false;
       for (const id of ids) {
@@ -644,7 +661,13 @@ export const setLocalAccountsEnabled = (
     })
     .pipe(
       Effect.mapError(() => new LocalAccountError({ detail: "批量更新本地账号状态失败。" })),
-      Effect.asVoid,
+      Effect.flatMap((next) =>
+        ids.some((id) => next.localAccountPool.accounts[id as LocalAccountId] === undefined)
+          ? Effect.fail(
+              new LocalAccountError({ detail: "部分账号不存在或已被删除，请刷新列表后重试。" }),
+            )
+          : Effect.void,
+      ),
     );
 
 export const setLocalAccountPoolStrategy = (
@@ -684,7 +707,11 @@ export const setLocalAccountWeight = (
     })
     .pipe(
       Effect.mapError(() => new LocalAccountError({ detail: "更新本地账号权重失败。" })),
-      Effect.asVoid,
+      Effect.flatMap((next) =>
+        next.localAccountPool.accounts[id] === undefined
+          ? Effect.fail(new LocalAccountError({ detail: "账号不存在或已被删除。" }))
+          : Effect.void,
+      ),
     );
 
 /** 写回账号模型目录；空数组 = 不限模型，同时刷新 BYOK 实例的通道目录。 */
@@ -701,7 +728,7 @@ export const setLocalAccountModels = (
         ...current.localAccountPool,
         accounts: {
           ...current.localAccountPool.accounts,
-          [id]: { ...account, models: [...models] },
+          [id]: { ...account, models: [...new Set(models)] },
         },
       };
       return {
@@ -711,7 +738,11 @@ export const setLocalAccountModels = (
     })
     .pipe(
       Effect.mapError(() => new LocalAccountError({ detail: "更新本地账号模型失败。" })),
-      Effect.asVoid,
+      Effect.flatMap((next) =>
+        next.localAccountPool.accounts[id] === undefined
+          ? Effect.fail(new LocalAccountError({ detail: "账号不存在或已被删除。" }))
+          : Effect.void,
+      ),
     );
 
 /** 从本地账号池生成 CPA 兼容的模型线路；凭据只在服务端网关内解析。 */
@@ -764,7 +795,12 @@ export const localGatewayAdapters = (
         }),
       )
     : [];
-  return [...channelAdapters, ...startPlanAdapters];
+  // 同模型多账号共享一条线路，账号轮询仍由绑定的账号 ID 列表决定。
+  return [
+    ...new Map(
+      [...channelAdapters, ...startPlanAdapters].map((adapter) => [adapter.id, adapter]),
+    ).values(),
+  ];
 };
 
 const isPoolAdapterRecord = (value: unknown): value is Record<string, unknown> =>
@@ -782,6 +818,7 @@ const isPoolAdapterRecord = (value: unknown): value is Record<string, unknown> =
  */
 export const refreshLocalPoolInstanceAdapters = (
   settings: ServerSettings,
+  connection?: { readonly origin: string; readonly token: string },
 ): Pick<ServerSettings, "providerInstances"> | undefined => {
   let changed = false;
   const providerInstances: Record<string, ProviderInstanceConfig> = {};
@@ -794,11 +831,13 @@ export const refreshLocalPoolInstanceAdapters = (
     const adapters = configRecord.adapters;
     if (!Array.isArray(adapters)) continue;
     const anchor = adapters.find(isPoolAdapterRecord);
-    if (anchor === undefined) continue;
-    const baseURL = typeof anchor.baseURL === "string" ? anchor.baseURL : "";
-    const apiKey = typeof anchor.apiKey === "string" ? anchor.apiKey : "";
+    const bound = Object.hasOwn(settings.localAccountPool.providerInstances, instanceId);
+    if (anchor === undefined && (!bound || connection === undefined)) continue;
+    const baseURL =
+      typeof anchor?.baseURL === "string" ? anchor.baseURL : (connection?.origin ?? "");
+    const apiKey = typeof anchor?.apiKey === "string" ? anchor.apiKey : (connection?.token ?? "");
     if (baseURL.length === 0 || apiKey.length === 0) continue;
-    const origin = anchor.protocol === "openai" ? baseURL.replace(/\/v1$/u, "") : baseURL;
+    const origin = anchor?.protocol === "openai" ? baseURL.replace(/\/v1$/u, "") : baseURL;
     const nextAdapters = localGatewayAdapters(settings, origin, apiKey, instanceId);
     const refreshed: unknown[] = [];
     let inserted = false;

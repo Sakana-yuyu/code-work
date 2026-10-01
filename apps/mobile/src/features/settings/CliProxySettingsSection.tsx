@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Alert, Pressable, View } from "react-native";
 import {
   ProviderInstanceId,
+  mergeCliProxyResult,
   type CliProxyRequest,
   type CliProxyResult,
   type EnvironmentId,
@@ -10,6 +11,7 @@ import {
 import { squashAtomCommandFailure } from "@codework/client-runtime/state/runtime";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { serverEnvironment } from "../../state/server";
+import { useEnvironmentConnectionState } from "../../state/environments";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { t } from "../../i18n";
 import { SettingsSection } from "./components/SettingsSection";
@@ -24,19 +26,21 @@ export function CliProxySettingsSection({
   onManageRoutes: () => void;
 }) {
   const command = useAtomCommand(serverEnvironment.cliProxy, { reportFailure: false });
+  const connected = useEnvironmentConnectionState(environmentId).data?.phase === "connected";
   const [status, setStatus] = useState<CliProxyResult | null>(null);
   const [strategy, setStrategy] = useState<LocalAccountPoolStrategy>("round-robin");
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const generation = useRef(0);
   const [feedback, setFeedback] = useState<{ error: boolean; text: string } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importName, setImportName] = useState("");
   const [importContent, setImportContent] = useState("");
   const [instanceId, setInstanceId] = useState("cpa");
   const [displayName, setDisplayName] = useState("CPA");
-  const [localProvider, setLocalProvider] = useState<"codex" | "claude" | "xai" | "cursor">(
-    "codex",
-  );
+  const [localProvider, setLocalProvider] = useState<
+    "codex" | "claude" | "xai" | "cursor" | "zcode"
+  >("codex");
   const [localId, setLocalId] = useState("");
   const [localDisplayName, setLocalDisplayName] = useState("");
   const [localContent, setLocalContent] = useState("");
@@ -48,46 +52,63 @@ export function CliProxySettingsSection({
 
   const run = useCallback(
     async (input: CliProxyRequest) => {
-      if (lock.current || readOnly) return;
+      if (lock.current || readOnly || !connected) return;
+      const requestGeneration = generation.current;
       lock.current = true;
       setBusy(true);
       setFeedback(null);
       try {
         const result = await command({ environmentId, input });
+        if (requestGeneration !== generation.current) return;
         if (result._tag !== "Success") {
           const failure = squashAtomCommandFailure(result);
           throw failure instanceof Error ? failure : new Error(t("cliProxy.failed"));
         }
-        setStatus(result.value);
-        if (input.action === "status" || input.action === "configure") {
-          setStrategy(result.value.config.strategy);
-        }
+        setStatus((previous) => mergeCliProxyResult(previous, result.value));
+        setStrategy(result.value.config.strategy);
         if (input.action === "importAccount") {
           setImportContent("");
           setImportName("");
           setImportOpen(false);
         }
-        if (input.action === "importLocalAccount") setLocalContent("");
+        if (input.action === "importLocalAccount") {
+          setLocalContent("");
+          setLocalId("");
+          setLocalDisplayName("");
+          setLocalModels("");
+        }
         if (result.value.localStrategy) setLocalStrategy(result.value.localStrategy);
         setIssuedExternalKey(result.value.externalGateway?.issuedKey ?? "");
         if (result.value.connectedInstanceId) setInstanceId(result.value.connectedInstanceId);
         setFeedback({ error: false, text: t("cliProxy.done") });
       } catch (error) {
+        if (requestGeneration !== generation.current) return;
         setFeedback({
           error: true,
           text: error instanceof Error ? error.message : t("cliProxy.failed"),
         });
       } finally {
-        lock.current = false;
-        setBusy(false);
+        if (requestGeneration === generation.current) {
+          lock.current = false;
+          setBusy(false);
+        }
       }
     },
-    [command, environmentId, readOnly],
+    [command, environmentId, readOnly, connected],
   );
   useEffect(() => {
-    void run({ action: "status" });
+    generation.current += 1;
+    lock.current = false;
+    setBusy(false);
+    setFeedback(null);
+    setStatus(null);
+    setIssuedExternalKey("");
+    void run({ action: "localAccountUsage" });
+    return () => {
+      generation.current += 1;
+    };
   }, [run]);
-  const disabled = busy || readOnly;
+  const disabled = busy || readOnly || !connected;
   const unavailable = disabled || !status?.running;
   const configure = () => {
     void run({ action: "configure", config: { strategy } });
@@ -135,7 +156,7 @@ export function CliProxySettingsSection({
           <Action
             label={t("cliProxy.refresh")}
             disabled={disabled}
-            onPress={() => void run({ action: "status" })}
+            onPress={() => void run({ action: "localAccountUsage" })}
           />
         </View>
         <View className="gap-2 border-t border-border-subtle pt-3">
@@ -145,7 +166,7 @@ export function CliProxySettingsSection({
           <Text className="text-xs text-foreground-muted">{t("localAccountPool.description")}</Text>
           <Field label={t("localAccountPool.provider")}>
             <View className="flex-row flex-wrap gap-2">
-              {(["codex", "claude", "xai", "cursor"] as const).map((value) => (
+              {(["codex", "claude", "xai", "cursor", "zcode"] as const).map((value) => (
                 <Action
                   key={value}
                   label={t("cliProxy.login", {
@@ -156,7 +177,9 @@ export function CliProxySettingsSection({
                           ? "Claude"
                           : value === "cursor"
                             ? "Cursor"
-                            : "Codex",
+                            : value === "zcode"
+                              ? "ZCode"
+                              : "Codex",
                   })}
                   selected={localProvider === value}
                   disabled={disabled}
@@ -232,7 +255,7 @@ export function CliProxySettingsSection({
           {status?.localAccounts?.map((account) => (
             <View
               key={account.id}
-              className="flex-row items-center justify-between gap-2 rounded-2xl border border-border-subtle p-3"
+              className="flex-row flex-wrap items-center justify-between gap-2 rounded-2xl border border-border-subtle p-3"
             >
               <Text className="flex-1 text-xs text-foreground" numberOfLines={1}>
                 {account.displayName} · {account.provider}
@@ -257,6 +280,11 @@ export function CliProxySettingsSection({
               ) : null}
               <View className="flex-row gap-2">
                 <Action
+                  label={t("cliProxy.usageRefresh")}
+                  disabled={disabled}
+                  onPress={() => void run({ action: "localAccountUsage", id: account.id })}
+                />
+                <Action
                   label={account.enabled ? t("cliProxy.disable") : t("cliProxy.enable")}
                   disabled={disabled}
                   onPress={() =>
@@ -272,6 +300,73 @@ export function CliProxySettingsSection({
                   disabled={disabled}
                   onPress={() => void run({ action: "deleteLocalAccount", id: account.id })}
                 />
+              </View>
+              <View className="w-full gap-1">
+                {(() => {
+                  const subscription = status.accountSubscriptions?.find(
+                    (entry) => entry.id === account.id,
+                  );
+                  if (subscription === undefined)
+                    return (
+                      <Text className="text-xs text-foreground-muted">
+                        {t("cliProxy.usageNotLoaded")}
+                      </Text>
+                    );
+                  return (
+                    <>
+                      <Text className="text-xs text-foreground">
+                        {[subscription.plan, subscription.status, subscription.expiresAt]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                      {subscription.fetchedAt ? (
+                        <Text className="text-xs text-foreground-muted">
+                          {t("cliProxy.usageUpdatedAt", {
+                            time: new Date(subscription.fetchedAt).toLocaleString(),
+                          })}
+                        </Text>
+                      ) : null}
+                      {subscription.windows.map((window) => (
+                        <Text key={window.label} className="text-xs text-foreground-muted">
+                          {[
+                            window.label,
+                            window.percent === undefined
+                              ? undefined
+                              : t("cliProxy.usageUsedPercent", {
+                                  percent: Math.round(window.percent * 10) / 10,
+                                }),
+                            window.remaining,
+                            window.resetsAt,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </Text>
+                      ))}
+                      {subscription.metrics?.map((metric) => (
+                        <Text key={metric.label} className="text-xs text-foreground-muted">
+                          {metric.label} · {metric.value}
+                        </Text>
+                      ))}
+                      {subscription.detail ? (
+                        <Text className="text-xs text-foreground-muted">{subscription.detail}</Text>
+                      ) : null}
+                      {subscription.error ? (
+                        <Text accessibilityRole="alert" className="text-xs text-danger-foreground">
+                          {subscription.error}
+                        </Text>
+                      ) : null}
+                      {!subscription.error &&
+                      !subscription.detail &&
+                      !subscription.plan &&
+                      subscription.windows.length === 0 &&
+                      !subscription.metrics?.length ? (
+                        <Text className="text-xs text-foreground-muted">
+                          {t("cliProxy.usageNoData")}
+                        </Text>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </View>
             </View>
           ))}

@@ -39,6 +39,7 @@ import {
 
 import {
   ByokSettings,
+  LOCAL_POOL_DEFAULT_MODELS,
   ProviderDriverKind,
   resolveProviderInstanceEnabled,
   type ByokModelAdapter,
@@ -232,7 +233,17 @@ export const gatewayAdapterRoutes = (
               account.authKind === "oauth"
             ),
         );
-      const models = [...new Set(accounts.flatMap((account) => account?.models ?? []))];
+      const models = [
+        ...new Set(
+          accounts.flatMap((account) =>
+            account === undefined
+              ? []
+              : account.models.length > 0
+                ? account.models
+                : LOCAL_POOL_DEFAULT_MODELS[account.provider],
+          ),
+        ),
+      ];
       // 同池的其他账号即使声明了模型列表，无声明的账号仍可按请求模型通配；
       // 仅为请求生成一次性路由，交给 pickLocalAccount 校验实际可选账号。
       const requestedModelId = requestedModel?.trim();
@@ -243,7 +254,7 @@ export const gatewayAdapterRoutes = (
       ) {
         models.push(requestedModelId);
       }
-      // 没有能力声明时不发布虚构模型；账号必须在导入凭据中声明可用模型。
+      // 未声明模型时与账号卡、BYOK 目录使用同一默认目录；不代表已探测上游权限。
       for (const modelId of models) {
         routes.push({
           id: `local:${instanceId}:${provider}:${modelId}`,
