@@ -1,3 +1,47 @@
+> 当前提交结论以文末“2026-10-01 当前提交实现”和HEAD文档为准；以下旧记录没有在本轮证明工具可用。
+
+# Factory Droid ACP 接入与验证边界
+
+核对日期：2026-09-30。固定官方目录版本 `0.229.0`（registry `factory-droid`）。本页记录官方 Windows `droid.exe` ACP daemon 握手；不代表 Factory 账号或工具验收。
+
+## 调用与配置
+
+npm `droid@0.229.0` 的 `.cmd` shim 在未跑 postinstall / 缺 `@factory/cli-win32-x64` 时失败。本轮执行 `node install.js` 后得到 `droid/bin/droid.exe`。命令：`droid.exe exec --output-format acp-daemon`，公开环境 `DROID_DISABLE_AUTO_UPDATE=true`、`FACTORY_DROID_AUTO_UPDATE_ENABLED=false`。auth=`device-pairing` / `factory-api-key`。目录默认 `supportsMcpServers:false`（产品侧已生效）。
+
+## 固定版本证据
+
+| 项目 | 结果 |
+| --- | --- |
+| initialize | `agentInfo.name=@factory/cli`、`version=0.229.0`；auth 含 device-pairing / factory-api-key |
+| shim without binary | 退出 1，提示缺 `@factory/cli-win32-x64` |
+| session/new | 成功（无密钥） |
+| session/prompt（R89/R90，`FACTORY_API_KEY=ollama`） | 流式正文 `Error: 401 status code (no body)`，随后 JSON-RPC `-32603 Internal error: Agent error` → **agent/厂商鉴权**，非 Adapter 协议缺陷 |
+| 工具副作用 | 未获（401 阻断） |
+
+隔离：`C:\codework-cli-iso\factory-droid-0.229.0\node_modules\droid\bin\droid.exe`。
+
+## 可重复检查
+
+```powershell
+$env:CODEWORK_FACTORY_DROID_CLI_PATH = 'C:\codework-cli-iso\factory-droid-0.229.0\node_modules\droid\bin\droid.exe'
+.\node_modules\.bin\vp.cmd test run apps/server/src/provider/acp/FactoryDroidAcpCliProbe.test.ts
+```
+
+## 后续与回滚
+
+需真实 Factory 登录/API key 后再验工具。回滚撤回说明；无迁移。
+
+## One-shot 解锁
+
+```powershell
+$env:FACTORY_API_KEY = '<real-factory-key>'
+# 或完成 device-pairing 登录
+$env:CODEWORK_FACTORY_DROID_CLI_PATH = 'C:\codework-cli-iso\factory-droid-0.229.0\node_modules\droid\bin\droid.exe'
+# ToolProbe：session/prompt 不得再 401
+```
+
+## 2026-10-01 当前提交实现
+
 # Factory Droid ACP 接入与认证边界
 
 核对日期2026-10-01，Windows x64，固定官方droid@0.229.0的bin/droid.exe。当前可配置通用ACP实例并握手；无认证的公共版在session/new阶段明确拒绝。没有文本/工具/真实账号验收，本页不把握手或负向测试称为工具接入完成。历史401、session/new成功记录不能替代本次隔离证据；全部44入口与最终审计仍保持原范围。
@@ -10,15 +54,15 @@
 
 ## 本次固定版本结果
 
-| 路径                          | 当前证据                                                                                                  | 结论                                              |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| 已安装与版本                  | 当前仓库外native --version=0.229.0，记录完整二进制SHA-256/大小                                            | 已安装检测；不是所有平台安装证明                  |
-| 实际握手                      | initialize成功，精确版本及两种认证方法断言                                                                | 通过                                              |
-| 无认证会话                    | 原生session/new返回AcpRequestError，code=-32000，Authentication required前缀                              | 明确认证阻断，工具未可用                          |
-| BYOK本机配置                  | 独立settings.json配置generic-chat-completion-api、本机模型端点/合成模型Key，仍在session/new遇同类认证阻断 | BYOK不能据此当作无需Factory账号；本次没有模型请求 |
-| 文本/读写/命令/审批/取消/恢复 | 模型会话未建立，工具步骤没有运行                                                                          | 未验证，不能记为通过                              |
-| MCP关闭/默认/开启             | 当前HEAD的GenericAcpDriver.settings.test真实协议子进程分别验证false/缺省/true的新建与恢复报文             | 共用合同通过；非真实Droid MCP工具调用             |
-| Web/Desktop/Mobile/远程       | 本轮未运行                                                                                                | 未验证                                            |
+| 路径 | 当前证据 | 结论 |
+| --- | --- | --- |
+| 已安装与版本 | 当前仓库外native --version=0.229.0，记录完整二进制SHA-256/大小 | 已安装检测；不是所有平台安装证明 |
+| 实际握手 | initialize成功，精确版本及两种认证方法断言 | 通过 |
+| 无认证会话 | 原生session/new返回AcpRequestError，code=-32000，Authentication required前缀 | 明确认证阻断，工具未可用 |
+| BYOK本机配置 | 独立settings.json配置generic-chat-completion-api、本机模型端点/合成模型Key，仍在session/new遇同类认证阻断 | BYOK不能据此当作无需Factory账号；本次没有模型请求 |
+| 文本/读写/命令/审批/取消/恢复 | 模型会话未建立，工具步骤没有运行 | 未验证，不能记为通过 |
+| MCP关闭/默认/开启 | 当前HEAD的GenericAcpDriver.settings.test真实协议子进程分别验证false/缺省/true的新建与恢复报文 | 共用合同通过；非真实Droid MCP工具调用 |
+| Web/Desktop/Mobile/远程 | 本轮未运行 | 未验证 |
 
 FactoryDroidAcpCliProbe.test.ts现在是明确的固定版本无认证检查：initialize必须成功，session/new必须以指定认证错误失败，不接受成功/失败任一结果，不发送authenticate或session/prompt，且new请求mcpServers为空。仅提供CODEWORK_FACTORY_DROID_CLI_PATH时启用；普通测试跳过不算通过。
 
@@ -34,12 +78,12 @@ Factory目录的supportsMcpServers=false是从Paseo固定目录继承的兼容�
 
 ## 复验、来源与回滚
 
-```powershell
+~~~powershell
 $env:CODEWORK_FACTORY_DROID_CLI_PATH = '<固定0.229.0目录>/node_modules/droid/bin/droid.exe'
 node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/FactoryDroidAcpCliProbe.test.ts
 Remove-Item Env:CODEWORK_FACTORY_DROID_CLI_PATH
 node node_modules/vite-plus/bin/vp test run apps/server/src/provider/Drivers/GenericAcpDriver.settings.test.ts apps/server/src/provider/acp/AcpRegistryCatalog.test.ts
-```
+~~~
 
 检索词Factory Droid ACP custom models、BYOK、MCP Zed、Airgapped deployment，访问2026-10-01。采用[官方BYOK配置](https://docs.factory.com/model-independence/byok)、[官方Exec与ACP限制](https://docs.factory.com/droid-exec/overview)、[官方IDE/MCP说明](https://docs.factory.com/ide-integrations)与[官方Airgap说明](https://docs.factory.com/enterprise/airgapped-deployment)，因为这些定义配置、能力和分发边界。当前在线说明和固定0.229.0可能不同，实际结论来自固定binary/隔离请求；help exec有效，而exec --help在空SHELL时会加载环境后失败。固定帮助使用--only-tools，与当前网页--restrict-tools不同，不能直接套新版参数。
 

@@ -50,3 +50,38 @@ HEAD加精确模块索引的独立源码副本：官方探针1项通过；两文
 独立HOME/USERPROFILE/APPDATA/LOCALAPPDATA与配置复用isolatedProbeEnvironment，显式空置非系统宿主变量，不继承真实账号或本机Ollama。Scope回收本次CLI、终端及临时目录，HTTP服务器关闭自身连接；只结束捕获的子进程，不按名称批量操作。全目标44入口和最终独立审计仍保持未完成。模块回滚可撤回此探针/说明与能力表更新；使用时可停用对应实例并保留历史，无数据库迁移。
 
 检索词fast-agent ACP permissions、config base_url，访问日期2026-10-01。采用[官方ACP说明](https://fast-agent.ai/acp/)及[官方配置参考](https://fast-agent.ai/ref/config_file/)，因为它们定义审批、终端选择与自定义端点；固定版本具体工具名、旧文件读取及load_session另以已安装官方0.10.1源码核对，不以当前网站外推所有旧版本能力。目录与固定44统计见[入口验收合同](./acp-provider-validation.md)。
+
+
+## 历史工作记录（保留原文，不作当前验收）
+
+# fast-agent ACP 接入与验证边界
+
+核对日期：2026-09-30。固定官方目录版本 `0.10.1`（registry `fast-agent` / uvx `fast-agent-acp==0.10.1`）。
+
+## 调用与配置
+
+目录命令：`uvx --from fast-agent-acp==0.10.1 fast-agent-acp -x`，公开环境 `FAST_AGENT_MODEL=codexplan`。本机隔离：`C:\codework-cli-iso\uv`（uv 0.12.21）+ `C:\codework-cli-iso\uv-tools\fast-agent-acp\Scripts\fast-agent-acp.exe`。
+
+本地 Ollama（R85）：`--model openai.qwen2.5:3b --no-permissions`，`OPENAI_BASE_URL=http://127.0.0.1:11434/v1`，`OPENAI_API_KEY=ollama`；auth method `fast-agent-ai-secrets`。
+
+ACP 客户端须广告并处理：`fs/read_text_file`、`fs/write_text_file`、`terminal/create`（及 output/wait_for_exit/kill/release）。缺 `terminal/*` 时 shell 会挂起。
+
+## 固定版本证据
+
+| 项目 | 结果 |
+| --- | --- |
+| initialize | `agentInfo.name=fast-agent-acp` / `version=0.10.1`；auth=`fast-agent-ai-secrets` |
+| authenticate | 成功；返回配置说明 meta（secrets.yaml / env） |
+| session/new | 成功，返回 `sessionId` 与 mode=`agent` |
+| **R85 工具（Ollama）** | 读 marker、写 `write-r85.txt`=`R85_WRITE_OK`、`terminal/create` 落盘 `shell-r85.txt`=`R85_SHELL_OK`；tool kinds read/edit/execute |
+| 拒绝 / 取消 | 本轮未硬测 |
+
+证据：`%TEMP%\codework-a5-r85\fast-agent-summary.json`、`ws-fast-agent\`。
+
+## 可重复检查
+
+```powershell
+$env:CODEWORK_FAST_AGENT_CLI_PATH = 'C:\codework-cli-iso\uv-tools\fast-agent-acp\Scripts\fast-agent-acp.exe'
+.\node_modules\.bin\vp.cmd test run apps/server/src/provider/acp/FastAgentAcpCliProbe.test.ts
+# 或隔离 Ollama 探针：node %TEMP%\codework-a5-r85\ollama-acp-batch2.cjs fast-agent
+```

@@ -14,16 +14,16 @@
 
 ## 固定版本证据
 
-| 项目                         | 结果                                                                                                                                                                                                                                                                                                                                                     |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| initialize                   | `agentInfo.name=harn`、`version=0.10.151`；`authMethods=[{id:none}]`；广告 mode/model 等 configOptions                                                                                                                                                                                                                                                   |
-| authenticate                 | `none` 成功                                                                                                                                                                                                                                                                                                                                              |
-| session/new                  | 带 `environmentPolicy.kind=inherited` 成功；默认 mode=`ask`                                                                                                                                                                                                                                                                                              |
-| NL prompt（R70–R72）         | `Reply with exactly: HARN_OK` → **`Compilation error`**（`harn.acp.prompt_error.v1`）。词法器把英文正文当地源解析。**不是** Code Work 配置错误；需合法 LLM 后按官方 smoke 再验                                                                                                                                                                           |
+| 项目 | 结果 |
+| --- | --- |
+| initialize | `agentInfo.name=harn`、`version=0.10.151`；`authMethods=[{id:none}]`；广告 mode/model 等 configOptions |
+| authenticate | `none` 成功 |
+| session/new | 带 `environmentPolicy.kind=inherited` 成功；默认 mode=`ask` |
+| NL prompt（R70–R72） | `Reply with exactly: HARN_OK` → **`Compilation error`**（`harn.acp.prompt_error.v1`）。词法器把英文正文当地源解析。**不是** Code Work 配置错误；需合法 LLM 后按官方 smoke 再验 |
 | 表达式 + `host/capabilities` | 正文 `1 + 1` 时 Harn 发 `host/capabilities`（params=`{sessionId}`），随后发 `sessionUpdate:"progress"`，包含 `update._meta.harn.message/phase/progress/data`。仅有效的非空字符串会话信封、progress 标记和 Harn 元数据对象作为 ExtNotification 保留；非法标准通知、未知类型及非法进度仍按原协议报错，不作通用解析降级。表达式结束不证明文件或命令工具成功 |
-| 工具读/写/命令/拒绝/取消     | 未通过；无 LLM 凭据时官方 NL smoke 不可用。表达式 end_turn ≠ 工具真实可用                                                                                                                                                                                                                                                                                |
-| Ollama 配置（R76）           | `harn quickstart --non-interactive --provider ollama --model qwen2.5:3b` 成功；`harn local list` 显示 ollama **up** 且已加载 `qwen2.5:3b`。ACP `session/prompt` 英文 NL 仍 **Compilation error**（词法器当 Harn 源码）——配置本地 LLM **未**解锁 ACP NL 工具路径                                                                                          |
-| R90 复验 host/capabilities   | 外部探针补齐 `host/capabilities` 回复后：NL → 即时 `Compilation error`（非 timeout）；表达式 `1+1` → `end_turn`。R89 裸探针 timeout 是**探针缺默认回复**；产品 `AcpSessionRuntime` 已默认回复，无需再改 Adapter                                                                                                                                          |
+| 工具读/写/命令/拒绝/取消 | 未通过；无 LLM 凭据时官方 NL smoke 不可用。表达式 end_turn ≠ 工具真实可用 |
+| Ollama 配置（R76） | `harn quickstart --non-interactive --provider ollama --model qwen2.5:3b` 成功；`harn local list` 显示 ollama **up** 且已加载 `qwen2.5:3b`。ACP `session/prompt` 英文 NL 仍 **Compilation error**（词法器当 Harn 源码）——配置本地 LLM **未**解锁 ACP NL 工具路径 |
+| R90 复验 host/capabilities | 外部探针补齐 `host/capabilities` 回复后：NL → 即时 `Compilation error`（非 timeout）；表达式 `1+1` → `end_turn`。R89 裸探针 timeout 是**探针缺默认回复**；产品 `AcpSessionRuntime` 已默认回复，无需再改 Adapter |
 
 隔离路径：`C:\codework-cli-iso\harn-0.10.151\extract\harn.exe`。
 

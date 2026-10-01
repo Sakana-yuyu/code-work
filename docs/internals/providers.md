@@ -11,7 +11,8 @@ orchestration layer does not know which one is behind a thread.
 
 ## Built-in drivers
 
-[`builtInDrivers.ts`][drivers] exports `BUILT_IN_DRIVERS` with eleven entries:
+[`builtInDrivers.ts`][drivers] exports `BUILT_IN_DRIVERS` with twelve entries (ten named runtimes, one generic ACP driver, and
+one BYOK executor):
 
 | Driver kind   | Driver source                                 |
 | ------------- | --------------------------------------------- |
@@ -24,6 +25,7 @@ orchestration layer does not know which one is behind a thread.
 | `opencode`    | [`Drivers/OpenCodeDriver.ts`][opencode]       |
 | `piAgent`     | [`Drivers/PifamilyDrivers.ts`][pifamily]      |
 | `ompAgent`    | [`Drivers/PifamilyDrivers.ts`][pifamily]      |
+| `zcodeAgent`  | [`Drivers/ZCodeDriver.ts`][zcode]             |
 | `acpAgent`    | [`Drivers/GenericAcpDriver.ts`][genericacp]   |
 | `byok`        | [`Drivers/ByokDriver.ts`][byok]               |
 
@@ -118,6 +120,9 @@ Cursor/Grok 的 ACP `tool_call` 首次状态通常映射为 `item.updated`（`in
 OpenCode、Antigravity、BYOK、Pi、Omp 的定向适配器测试均把实际生成的工具事件送过
 `runtimeEventToActivities` 验证；失败详情在 `tool.completed` 保留。正文增量走运行时流，最终
 消息由 ingestion 收敛，网页和手机分别用共用活动合同派生时间线。
+ACP 的 `search`（本地查找）与 `fetch`（外部数据）目前都投影为 `web_search`；工具 `data.kind`
+随活动保留，网页工作日志据此把 `search` 归为代码搜索、`fetch` 归为网络检索。手机工作日志
+只统计通用“搜索”次数，不区分两者。
 
 ### BYOK 余额查询边界
 
@@ -206,6 +211,14 @@ when a request opens (approval) or user input is requested, via
 
 `session.state.changed(error)` 表示运行中的会话已失败。接入层先把会话和当前回合标为错误，再冲刷该回合尚在缓冲的助手文字并结束已投影消息的流式状态，保留可读的部分回复。带有旧回合 ID 的状态事件不能覆盖新回合；仅 `runtime.error` 活动仍可能先于正式终态到达，不能据此提前清除正文缓存。重试以新的回合开始，历史失败记录仍可查看。
 
+## Rollback (Paseo plan §8)
+
+Aligned with the integration plan’s rollback rule: disable a new provider profile/instance without
+deleting history; keep catalog/contract increments compatible with older `command` strings; revert
+event-parsing or UI changes by commit; stop only PIDs this process started (never kill by name). See
+[paseo-plan-s7-s8-audit.md](./paseo-plan-s7-s8-audit.md) for the R101 §7/§8 audit. Per-entry install
+rollbacks live in `docs/internals/*-acp-provider.md` and [paseo-provider-catalog.md](./paseo-provider-catalog.md).
+
 [drivers]: ../../apps/server/src/provider/builtInDrivers.ts
 [codex]: ../../apps/server/src/provider/Drivers/CodexDriver.ts
 [claude]: ../../apps/server/src/provider/Drivers/ClaudeDriver.ts
@@ -215,6 +228,7 @@ when a request opens (approval) or user input is requested, via
 [antigravity]: ../../apps/server/src/provider/Drivers/AntigravityDriver.ts
 [opencode]: ../../apps/server/src/provider/Drivers/OpenCodeDriver.ts
 [pifamily]: ../../apps/server/src/provider/Drivers/PifamilyDrivers.ts
+[zcode]: ../../apps/server/src/provider/Drivers/ZCodeDriver.ts
 [genericacp]: ../../apps/server/src/provider/Drivers/GenericAcpDriver.ts
 [byok]: ../../apps/server/src/provider/Drivers/ByokDriver.ts
 [adapter]: ../../apps/server/src/provider/Services/ProviderAdapter.ts

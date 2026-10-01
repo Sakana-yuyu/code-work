@@ -235,3 +235,58 @@ node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/GooseAc
 本次模块修改共享Adapter和取消探针/文档，不涉及账户或数据库迁移；回滚仅撤回这一模块提交，需保留上轮工具探针和其它工作区修改。共用变化影响Cursor、Generic ACP和Kimi的宿主终端取消，Grok独立实现未改。读取显示与产品宿主结果的界面整合、产品PTY进程树、外部推理/真实余额、MCP/媒体、Web/Electron/手机及远程连接仍未由本次证明；44入口/P0–P5和最终独立审计未完成。
 
 检索词 Goose v1.52.0 ACP tools cancel OpenAI config Paths，访问日期2026-10-01。采用固定官方 [ACP server](https://github.com/aaif-goose/goose/blob/v1.52.0/crates/goose/src/acp/server.rs)、[文件与终端实现](https://github.com/aaif-goose/goose/blob/v1.52.0/crates/goose/src/acp/fs.rs)、[工具通知转换](https://github.com/aaif-goose/goose/blob/v1.52.0/crates/goose/src/acp/server/tool_calls/conversion.rs)、[OpenAI端点配置](https://github.com/aaif-goose/goose/blob/v1.52.0/crates/goose/src/providers/openai_def.rs)和[数据路径](https://github.com/aaif-goose/goose/blob/v1.52.0/crates/goose/src/config/paths.rs)，因为它们直接定义固定版本的协议/隔离/显示边界；不以 README、其它 ACP 客户端实现或最新版本行为推断本次结果。
+
+## 历史工作记录（原文保留，不作本次验收）
+
+# goose ACP 接入与验证边界
+
+核对日期：2026-09-30（R78）。固定官方目录版本 `1.52.0`（registry `goose`）。本页记录官方 Windows `goose.exe acp` 与本机 Ollama 工具解锁。
+
+## 调用与配置
+
+命令为 `goose.exe acp`。走共用 Generic ACP。广告认证方法 `goose-provider`。
+
+本地解锁：
+
+| 变量 / 配置 | 值 |
+| --- | --- |
+| `GOOSE_PROVIDER` | `ollama` |
+| `GOOSE_MODEL` | `qwen2.5:3b`（R75 曾用 `0.5b`，工具参数不合格） |
+| `OLLAMA_HOST` | `127.0.0.1:11434` |
+| 隔离 `config.yaml` | `active_provider: ollama`；建议禁用 `summon` 扩展，避免模型误调 `load` |
+
+Ollama：`winget` 0.35.0；已 pull `qwen2.5:0.5b` 与 `qwen2.5:3b`（Clash fake-ip 下 R2 需 hosts，见 R75）。
+
+ACP 客户端须广告并处理：`fs/read_text_file`、`fs/write_text_file`、`terminal/create`（及 output/wait_for_exit/kill/release）。缺 `terminal/*` 时 shell 会挂起（R78 早期矩阵）。
+
+## 固定版本证据
+
+| 项目 | 结果 |
+| --- | --- |
+| initialize | `agentInfo.name=goose`、`version=1.52.0`；`authMethods=[{id:goose-provider}]` |
+| session/new（R70，无 provider） | 失败：缺 `GOOSE_PROVIDER` |
+| session/new + 文本（R75，0.5b） | 成功；工具 `read` 失败 `missing field path` |
+| session/prompt + `developer__read`（R76，3b） | **成功**：`rawInput.path=marker-r76.txt`；`tool_call_update` completed；回复含 `R76_OLLAMA_MARKER_44117`；`stopReason=end_turn` |
+| shell/write（R76 / R78 早） | 无 `terminal/*` 或写断言过严 → 超时 / HARD_PASS=0 |
+| **R78 matrix3（qwen2.5:3b）** | **HARD_PASS=4/4**：read / write（`fs/write` 含 `R79_WRITE_OK`）/ shell（`terminal/create` + 文件 `R79_SHELL_OK`）/ reject（`approve` 模式 + deny，`rejected.txt` 不存在）。cancel：`session/cancel` 后仍 `stopReason=end_turn`（**未**证 cancelled） |
+| **R79 cancel2** | 三种策略均 `stopReason=end_turn`（afterTerminal / earlyDouble / afterToolCall）；长 `ping` 工具已开战仍不返回 `cancelled`。**判定**：对本机 Ollama `qwen2.5:3b`+goose 1.52.0，硬 cancel 目前达不到；记为软上限，不冒充通过 |
+
+隔离路径：`C:\codework-cli-iso\goose-1.52.0\extract\goose-package\goose.exe`。
+
+证据：`%TEMP%\codework-ollama-r79\`（`goose-matrix3-summary.json`、`goose-matrix3.jsonl`、`goose-matrix3.console.txt`）；早先 R76/R78 目录仍保留对照。
+
+## 可重复检查
+
+```powershell
+$env:GOOSE_PROVIDER='ollama'; $env:GOOSE_MODEL='qwen2.5:3b'; $env:OLLAMA_HOST='127.0.0.1:11434'
+# 隔离 home 的 config.yaml；ACP 客户端实现 fs/* + terminal/*
+# 再跑 read/write/shell/reject（mode=approve）/cancel
+```
+
+## 目录状态
+
+A-4：**真实可用（本地 Ollama：读/写/命令/拒绝）**。cancel：R79 三策略仍 `end_turn`，视为该模型/版本下软上限；外部云账号与产品 UI 仍待；不以 0.5b、无 terminal 处理器或 summon 误调冒充。
+
+## 回滚
+
+撤回本说明与 R76/R78 证据记录；无迁移。

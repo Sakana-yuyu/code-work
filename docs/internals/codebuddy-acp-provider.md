@@ -1,3 +1,40 @@
+当前提交结论以文末“2026-10-01 当前提交实现”和HEAD文档为准；以下旧握手记录不作为本轮实际工具验收。
+
+# Codebuddy ACP 接入与验证边界
+
+核对日期：2026-09-30。固定官方目录版本 `2.159.0`（registry `codebuddy-code`）。本页记录 npm `@tencent-ai/codebuddy-code --acp` 握手；不代表腾讯/企业登录验收。
+
+## 调用与配置
+
+命令 `codebuddy --acp`。initialize **不返回 `agentInfo`**；auth=`iOA` / `external` / `internal` / `selfhosted`。本轮未登录。
+
+## 固定版本证据
+
+| 项目 | 结果 |
+| --- | --- |
+| initialize | 无 agentInfo；authMethods 含上述四项 |
+| 工具 / prompt | 本轮未发送 |
+
+隔离：`C:\codework-cli-iso\codebuddy-2.159.0\node_modules\.bin\codebuddy.cmd`。
+
+## One-shot 解锁
+
+```powershell
+codebuddy login
+# authenticate 选用广告方法：iOA | external | internal | selfhosted
+$env:CODEWORK_CODEBUDDY_CLI_PATH = 'C:\codework-cli-iso\codebuddy-2.159.0\node_modules\.bin\codebuddy.cmd'
+.\node_modules\.bin\vp.cmd test run apps/server/src/provider/acp/CodebuddyAcpCliProbe.test.ts
+```
+
+## 可重复检查
+
+```powershell
+$env:CODEWORK_CODEBUDDY_CLI_PATH = 'C:\codework-cli-iso\codebuddy-2.159.0\node_modules\.bin\codebuddy.cmd'
+.\node_modules\.bin\vp.cmd test run apps/server/src/provider/acp/CodebuddyAcpCliProbe.test.ts
+```
+
+## 2026-10-01 当前提交实现
+
 # CodeBuddy ACP 调用、工具结果与恢复
 
 核对日期2026-10-01，Windows x64，固定官方npm包@tencent-ai/codebuddy-code@2.159.0。本模块通过既有通用ACP接入，实际官方CLI加本机模型端点验证工具和新进程恢复；不代表腾讯/企业账号认证、外部推理、多端视觉或全部44入口验收。
@@ -10,24 +47,22 @@ acpAgent实例 → GenericAcpDriver → CursorAdapter → AcpSessionRuntime。�
 
 在所选服务器的独立CodeBuddy配置目录创建models.json，按官方格式提供自定义模型；示例中的模型、端点和密钥环境变量应替换为自己的配置：
 
-```json
+~~~json
 {
-  "models": [
-    {
-      "id": "my-model",
-      "name": "自定义模型",
-      "vendor": "OpenAI",
-      "apiKey": "${MY_MODEL_KEY}",
-      "url": "${MY_MODEL_COMPLETIONS_URL}",
-      "maxInputTokens": 32768,
-      "maxOutputTokens": 4096,
-      "supportsToolCall": true,
-      "relatedModels": { "lite": "my-model", "reasoning": "my-model", "subagent": "my-model" }
-    }
-  ],
+  "models": [{
+    "id": "my-model",
+    "name": "自定义模型",
+    "vendor": "OpenAI",
+    "apiKey": "${MY_MODEL_KEY}",
+    "url": "${MY_MODEL_COMPLETIONS_URL}",
+    "maxInputTokens": 32768,
+    "maxOutputTokens": 4096,
+    "supportsToolCall": true,
+    "relatedModels": {"lite": "my-model", "reasoning": "my-model", "subagent": "my-model"}
+  }],
   "availableModels": ["my-model"]
 }
-```
+~~~
 
 CODEBUDDY_BASE_URL为服务基址；models.json的url为完整chat/completions地址，不能互换。探针同时显式设置CODEBUDDY_CONFIG_DIR、CODEBUDDY_API_KEY、CODEBUDDY_BASE_URL；settings.json选择模型、default权限模式、空插件/env，启动--acp --model codework-loopback --permission-mode default --tools Read,Write,PowerShell。--tools限制工具目录，并不等于授予所有工具执行权限，审批仍用厂商原optionId。
 
@@ -37,18 +72,18 @@ CODEBUDDY_BASE_URL为服务基址；models.json的url为完整chat/completions�
 
 ## 实际结果与显示修复
 
-| 项目                    | 固定官方实际证据与边界                                                                                 |
-| ----------------------- | ------------------------------------------------------------------------------------------------------ |
-| 握手与动态配置          | 版本/help、四认证广告、loadSession=true；非空斜杠命令目录与模型配置；没有执行全部斜杠命令              |
-| 模型与正文              | 实际本机HTTP路径、合成Bearer、所选模型及SSE正文；不是外部模型推理                                      |
-| Read                    | 原生读取，role=tool含真实文件内容，工具详情含CODEBUDDY_SOURCE_72319                                    |
-| Write允许               | 原allow_once optionId，目标文件精确APPROVED                                                            |
-| 命令                    | 原生PowerShell输出标记与exit 7；非零归失败，详情保留退出码，原completed帧仍保留                        |
-| 拒绝                    | 原reject_once optionId，目标文件不存在，工具failed                                                     |
-| 取消                    | 审批中session/cancel、回合cancelled，目标文件不存在，已显示工具结束为failed；没有执行取消的写入        |
-| 新进程恢复              | session/load同ID，下一实际模型请求中role=tool仍含旧读取正文；不是仅凭同ID或合成回复自证                |
-| 取消后立即继续          | 前一模块曾返回cancelled；当前已修复RPC终结顺序并明确保护窗口，见下文当前实现；窗口内未发送，不自动重发 |
-| 账号/MCP/媒体/多端/连接 | 本轮未验证，不用本机工具结果替代这些验收                                                               |
+| 项目 | 固定官方实际证据与边界 |
+| --- | --- |
+| 握手与动态配置 | 版本/help、四认证广告、loadSession=true；非空斜杠命令目录与模型配置；没有执行全部斜杠命令 |
+| 模型与正文 | 实际本机HTTP路径、合成Bearer、所选模型及SSE正文；不是外部模型推理 |
+| Read | 原生读取，role=tool含真实文件内容，工具详情含CODEBUDDY_SOURCE_72319 |
+| Write允许 | 原allow_once optionId，目标文件精确APPROVED |
+| 命令 | 原生PowerShell输出标记与exit 7；非零归失败，详情保留退出码，原completed帧仍保留 |
+| 拒绝 | 原reject_once optionId，目标文件不存在，工具failed |
+| 取消 | 审批中session/cancel、回合cancelled，目标文件不存在，已显示工具结束为failed；没有执行取消的写入 |
+| 新进程恢复 | session/load同ID，下一实际模型请求中role=tool仍含旧读取正文；不是仅凭同ID或合成回复自证 |
+| 取消后立即继续 | 前一模块曾返回cancelled；当前已修复RPC终结顺序并明确保护窗口，见下文当前实现；窗口内未发送，不自动重发 |
+| 账号/MCP/媒体/多端/连接 | 本轮未验证，不用本机工具结果替代这些验收 |
 
 第一处实际缺陷：exit 7通知status=completed，CodeBuddy专有codebuddy.ai/rawResponse.exitCode=7才是命令结果。CodebuddyAcpToolResult只识别Bash/PowerShell专有toolName、completed和缺省/null或execute类型的有效32位非负整数；0保持完成，非零归failed，rawOutput增加exitCode。其它工具/阶段、缺码/畸形码、已有exitCode不覆盖，不从正文猜测。原content、元数据、rawOutput字段及rawPayload保留，未重执行命令。
 
@@ -60,12 +95,12 @@ CODEBUDDY_BASE_URL为服务基址；models.json的url为完整chat/completions�
 
 [CodebuddyAcpToolProbe.test.ts](../../apps/server/src/provider/acp/CodebuddyAcpToolProbe.test.ts)显式CODEWORK_CODEBUDDY_CLI_PATH才运行，该变量指向固定官方Node入口。实际六次工具动作通过；13文件相关回归256项通过，普通opt-in探针1项跳过，另实际官方探针1项通过，去重257项。Server定向类型检查、变更运行时与helper的lint、所有索引文件格式检查通过。旧CodebuddyAcpCliProbe只验握手且接受任意会话结果，原样保留，未纳入本次提交或成功证据。
 
-```powershell
+~~~powershell
 $env:CODEWORK_CODEBUDDY_CLI_PATH = '<官方2.159.0安装>/node_modules/@tencent-ai/codebuddy-code/bin/codebuddy'
 node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/CodebuddyAcpToolProbe.test.ts
 Remove-Item Env:CODEWORK_CODEBUDDY_CLI_PATH
 node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/CodebuddyAcpToolResult.test.ts packages/effect-acp/src/protocol.test.ts
-```
+~~~
 
 CodeBuddy另有标题/摘要模型请求，摘要正文会包含本轮用户标记，不能以includes(marker)认定用户请求。夹具仅以固定单条text/<user_query>完整消息识别工具动作和恢复证据；其它请求仍严格校验路径、Bearer和所选模型，不能消耗工具动作或充当历史验收。失败、诊断和最终未插桩检查分别保留；后台摘要误匹配不通过放宽历史断言解决。
 
@@ -79,7 +114,7 @@ CodeBuddy另有标题/摘要模型请求，摘要正文会包含本轮用户标�
 
 共同Runtime现在将标准prompt RPC保留在会话Scope，本地Deferred只结束显示和待定根会话审批，回传审批cancelled。下一prompt持串行许可等待原RPC：最多5秒，未确认终结则返回-32000/session/prompt，“新请求未发送，请重新连接会话”，不重复发送。重复并发取消及空闲取消不再产生额外通知。Kiro原生扩展命令保留原有可中断RPC行为，Gajae空闲等待可本地取消，不把等待绑定到原RPC。
 
-固定CodeBuddy实现还维护500毫秒取消保护窗口，原RPC回复可能先到。仅收到stopReason=cancelled且\_meta["codebuddy.ai/outcome"]="CANCELLED"时，Runtime从收到该回复起保守保留500毫秒窗口；窗口内明确返回-32000、“CodeBuddy取消保护窗口尚未结束；新请求未发送，请稍后重试”。这比厂商从取消开始计时略保守，避免依赖传输时间。窗口结束后下一次用户请求才允许发送。没有固定sleep、后台自动重发或新厂商配置，不宣称所有版本都具备同一保护策略。
+固定CodeBuddy实现还维护500毫秒取消保护窗口，原RPC回复可能先到。仅收到stopReason=cancelled且_meta["codebuddy.ai/outcome"]="CANCELLED"时，Runtime从收到该回复起保守保留500毫秒窗口；窗口内明确返回-32000、“CodeBuddy取消保护窗口尚未结束；新请求未发送，请稍后重试”。这比厂商从取消开始计时略保守，避免依赖传输时间。窗口结束后下一次用户请求才允许发送。没有固定sleep、后台自动重发或新厂商配置，不宣称所有版本都具备同一保护策略。
 
 子进程夹具以Deferred和实际RPC回复控制顺序，证明原RPC待定时没有第二prompt，普通取消确认后可以继续；CodeBuddy窗口内未发送，虚拟时钟推进500毫秒后成功；并发/空闲取消仅一通知且没有@effect/rpc/Interrupt。静默不回复路径证明5秒内显式失败。官方本机工具探针追加严格连续调用合同：窗口内必须是明确未发送错误、启动请求数不变；若实际时间已越过窗口则必须end_turn，不能接受新回合再次cancelled作为成功。原文件无取消写入，新进程恢复历史检查继续保留。
 
