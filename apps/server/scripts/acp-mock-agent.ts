@@ -24,6 +24,7 @@ const emitToolCalls = process.env.CODEWORK_ACP_EMIT_TOOL_CALLS === "1";
 const emitResources = process.env.CODEWORK_ACP_EMIT_RESOURCES === "1";
 const emitConfigUpdates = process.env.CODEWORK_ACP_EMIT_CONFIG_UPDATES === "1";
 const startupConfig = process.env.CODEWORK_ACP_STARTUP_CONFIG;
+const emitGajaeIdle = process.env.CODEWORK_ACP_EMIT_GAJAE_IDLE === "1";
 const emitKiroCommands = process.env.CODEWORK_ACP_EMIT_KIRO_COMMANDS === "1";
 const emitCommands = process.env.CODEWORK_ACP_EMIT_COMMANDS === "1";
 const emitInterleavedAssistantToolCalls =
@@ -722,6 +723,18 @@ const program = Effect.gen(function* () {
         yield* Effect.sleep(`${promptDelayMs} millis`);
       }
 
+      if (emitGajaeIdle) {
+        const first = request.prompt[0];
+        const text = first?.type === "text" ? first.text : "";
+        if (text === "failure")
+          return yield* AcpError.AcpRequestError.internalError("模拟 Gajae 回合失败");
+        if (text === "early")
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
+          });
+        return { stopReason: "end_turn" };
+      }
       if (failPrompt) {
         return yield* AcpError.AcpRequestError.internalError("Mock prompt failure");
       }
@@ -1665,6 +1678,17 @@ const program = Effect.gen(function* () {
   );
 
   yield* agent.handleUnknownExtRequest((method, params) => {
+    if (emitGajaeIdle && method === "_codework.test/gajae-update") {
+      return Effect.gen(function* () {
+        writeJsonRpcNotification("session/update", params);
+        // 顺序通知作为处理屏障，不靠真实睡眠判断通知是否消费。
+        yield* agent.client.sessionUpdate({
+          sessionId,
+          update: { sessionUpdate: "current_mode_update", currentModeId },
+        });
+        return {};
+      });
+    }
     if (emitKiroCommands && method === "_kiro.dev/commands/execute") {
       return Effect.gen(function* () {
         const value = params as {

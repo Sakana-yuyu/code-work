@@ -1533,4 +1533,212 @@ describe("AcpSessionRuntime", () => {
       Effect.provide(NodeServices.layer),
     ),
   );
+
+  it.effect("Gajae 空闲只接受当前根会话阶段，下一回合等待同一串行入口", () => {
+    const replied = Deferred.makeUnsafe<void>();
+    const requests: AcpSessionRuntime.AcpSessionRequestLogEvent[] = [];
+    return Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      yield* runtime.start();
+      const first = yield* runtime
+        .prompt({ prompt: [{ type: "text", text: "late" }] })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(replied);
+      // 请求日志回调仍在 RPC 完成栈上；冻结时钟先排空可运行 fiber，再取消空闲等待。
+      yield* TestClock.adjust("0 millis");
+      // RPC 回应与空闲阶段是两件事，原始回应日志是开始注入通知的屏障。
+      yield* runtime.request("_codework.test/gajae-update", {
+        sessionId: "child",
+        update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
+      });
+      yield* runtime.getEvents().pipe(
+        Stream.takeUntil((event) => event._tag === "ModeChanged"),
+        Stream.runDrain,
+      );
+      const second = yield* runtime
+        .prompt({ prompt: [{ type: "text", text: "early" }] })
+        .pipe(Effect.forkChild);
+      for (const notification of [
+        {
+          sessionId: "child",
+          update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
+        },
+        {
+          sessionId: "mock-session-1",
+          _meta: { isReplay: true },
+          update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
+        },
+        {
+          sessionId: "mock-session-1",
+          update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "working" } },
+        },
+        {
+          sessionId: "mock-session-1",
+          update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: 3 } },
+        },
+        {
+          sessionId: "mock-session-1",
+          update: {
+            sessionUpdate: "current_mode_update",
+            currentModeId: "default",
+            _meta: { gjcPhase: "idle" },
+          },
+        },
+      ]) {
+        yield* runtime.request("_codework.test/gajae-update", notification);
+        yield* runtime.getEvents().pipe(
+          Stream.takeUntil((event) => event._tag === "ModeChanged"),
+          Stream.runDrain,
+        );
+      }
+      yield* TestClock.adjust("59 seconds");
+      expect(
+        requests.filter((event) => event.method === "session/prompt" && event.status === "started"),
+      ).toHaveLength(1);
+      yield* runtime.request("_codework.test/gajae-update", {
+        sessionId: "mock-session-1",
+        update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
+      });
+      expect(yield* Fiber.join(first)).toEqual({ stopReason: "end_turn" });
+      expect(yield* Fiber.join(second)).toEqual({ stopReason: "end_turn" });
+      expect(
+        requests.filter((event) => event.method === "session/prompt" && event.status === "started"),
+      ).toHaveLength(2);
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "gajae-code" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+          requestLogger: (event) =>
+            Effect.gen(function* () {
+              requests.push(event);
+              if (event.method === "session/prompt" && event.status === "succeeded")
+                yield* Deferred.succeed(replied, undefined);
+            }),
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
+  for (const action of ["cancel", "timeout"] as const) {
+    it.effect("Gajae 等待空闲期间 " + action + " 可结束当前回合，随后恢复且不重试", () =>
+      Effect.gen(function* () {
+        const replied = yield* Deferred.make<void>();
+        const requests: AcpSessionRuntime.AcpSessionRequestLogEvent[] = [];
+        yield* Effect.gen(function* () {
+          const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+          yield* runtime.start();
+          const pending = yield* runtime
+            .prompt({ prompt: [{ type: "text", text: "late" }] })
+            .pipe(Effect.result, Effect.forkChild);
+          yield* Deferred.await(replied);
+          // 请求日志回调仍在 RPC 完成栈上；冻结时钟先排空可运行 fiber，再取消空闲等待。
+          yield* TestClock.adjust("0 millis");
+          if (action === "cancel") yield* runtime.cancel;
+          yield* TestClock.adjust("61 seconds");
+          const result = yield* Fiber.join(pending);
+          if (action === "cancel")
+            expect(result).toMatchObject({ _tag: "Success", success: { stopReason: "cancelled" } });
+          else
+            expect(result).toMatchObject({
+              _tag: "Failure",
+              failure: {
+                code: -32000,
+                method: "session/prompt",
+                errorMessage: expect.stringContaining("状态未知"),
+              },
+            });
+          expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "early" }] })).toEqual({
+            stopReason: "end_turn",
+          });
+          expect(
+            requests.filter(
+              (event) => event.method === "session/prompt" && event.status === "started",
+            ),
+          ).toHaveLength(2);
+        }).pipe(
+          Effect.provide(
+            AcpSessionRuntime.layer({
+              spawn: {
+                command: mockAgentCommand,
+                args: mockAgentArgs,
+                env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "gajae-code" },
+              },
+              cwd: process.cwd(),
+              clientInfo: { name: "codework-test", version: "0.0.0" },
+              authMethodId: "test",
+              requestLogger: (event) =>
+                Effect.gen(function* () {
+                  requests.push(event);
+                  if (event.method === "session/prompt" && event.status === "succeeded")
+                    yield* Deferred.succeed(replied, undefined);
+                }),
+            }),
+          ),
+          Effect.scoped,
+        );
+      }).pipe(Effect.provide(NodeServices.layer)),
+    );
+  }
+
+  it.effect("Gajae RPC 失败不等待空闲，下一回合接受提前到达的空闲", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      yield* runtime.start();
+      expect(
+        yield* runtime.prompt({ prompt: [{ type: "text", text: "failure" }] }).pipe(Effect.result),
+      ).toMatchObject({ _tag: "Failure", failure: { code: -32603 } });
+      expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "early" }] })).toEqual({
+        stopReason: "end_turn",
+      });
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "gajae-code" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
+  );
+
+  it.effect("其它 ACP Agent 不增加 Gajae 空闲等待", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      yield* runtime.start();
+      expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "late" }] })).toEqual({
+        stopReason: "end_turn",
+      });
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "other-agent" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
+  );
 });

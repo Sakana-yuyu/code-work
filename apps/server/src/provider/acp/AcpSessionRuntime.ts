@@ -418,6 +418,10 @@ export const make = (
       Option.Option<Fiber.Fiber<EffectAcpSchema.PromptResponse, EffectAcpErrors.AcpError>>
     >(Option.none());
     const sessionLoadGateRef = yield* Ref.make<Option.Option<SessionLoadGate>>(Option.none());
+    // Gajae 的回合 RPC 与空闲通知分开到达，等待归属于当前串行回合。
+    const promptIdleWaiterRef = yield* Ref.make<Option.Option<Deferred.Deferred<void>>>(
+      Option.none(),
+    );
 
     const logRequest = (event: AcpSessionRequestLogEvent) =>
       options.requestLogger ? options.requestLogger(event) : Effect.void;
@@ -551,6 +555,13 @@ export const make = (
           notification.sessionId !== startState.result.sessionId
         ) {
           return;
+        }
+        if (
+          notification.update.sessionUpdate === "session_info_update" &&
+          notification.update._meta?.gjcPhase === "idle"
+        ) {
+          const waiter = yield* Ref.get(promptIdleWaiterRef);
+          if (Option.isSome(waiter)) yield* Deferred.succeed(waiter.value, undefined);
         }
         if (notification.update.sessionUpdate === "config_option_update") {
           yield* updateConfigOptions(notification.update);
@@ -1059,6 +1070,11 @@ export const make = (
               queue: eventQueue,
               assistantSegmentRef,
             });
+            const gajaeIdle =
+              started.initializeResult.agentInfo?.name === "gajae-code"
+                ? yield* Deferred.make<void>()
+                : undefined;
+            if (gajaeIdle) yield* Ref.set(promptIdleWaiterRef, Option.some(gajaeIdle));
             const requestPayload = {
               sessionId: started.sessionId,
               ...payload,
@@ -1077,7 +1093,10 @@ export const make = (
               commandName !== "help" &&
               commandName !== "compact" &&
               (yield* Ref.get(kiroCommandNamesRef)).has(commandName);
-            const promptRequest = nativeCommand
+            const promptRequest: Effect.Effect<
+              EffectAcpSchema.PromptResponse,
+              EffectAcpErrors.AcpError
+            > = nativeCommand
               ? Effect.gen(function* () {
                   if (payload.prompt.length !== 1) {
                     return yield* new EffectAcpErrors.AcpRequestError({
@@ -1159,7 +1178,29 @@ export const make = (
                   requestPayload,
                   acp.agent.prompt(requestPayload),
                 );
-            const promptRpcFiber = yield* promptRequest.pipe(Effect.forkIn(runtimeScope));
+            // 等待空闲仍属于当前请求；取消必须能中断整个阶段，超时不伪造成功。
+            const promptRpcFiber = yield* promptRequest.pipe(
+              Effect.tap((response) =>
+                gajaeIdle && response.stopReason !== "cancelled"
+                  ? Deferred.await(gajaeIdle).pipe(
+                      Effect.timeoutOption(Duration.seconds(60)),
+                      Effect.flatMap((ready) =>
+                        Option.isSome(ready)
+                          ? Effect.void
+                          : Effect.fail(
+                              new EffectAcpErrors.AcpRequestError({
+                                code: -32000,
+                                errorMessage:
+                                  "Gajae 会话等待空闲超过 60 秒，远端回合状态未知，请确认后再操作。",
+                                method: "session/prompt",
+                              }),
+                            ),
+                      ),
+                    )
+                  : Effect.void,
+              ),
+              Effect.forkIn(runtimeScope),
+            );
             yield* Ref.set(activePromptFiberRef, Option.some(promptRpcFiber));
             return yield* Fiber.join(promptRpcFiber).pipe(
               Effect.catchCause((cause) =>
@@ -1214,6 +1255,7 @@ export const make = (
                   });
                 }),
               ),
+              Effect.ensuring(Ref.set(promptIdleWaiterRef, Option.none())),
             );
           }),
         ),
