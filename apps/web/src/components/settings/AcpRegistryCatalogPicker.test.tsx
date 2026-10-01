@@ -138,6 +138,25 @@ it("带 sha256 的官方二进制显示下载安装与归档链接", () => {
     "https://github.com/tao12345666333/amp-acp/releases/download/v0.9.0/amp-acp-windows-x86_64.zip",
   );
   expect(html).not.toContain(t("acpRegistryUseAgent", { name: "Amp" }));
+  // Narrow (≈360px) settings panes must be able to wrap the install control
+  // under the entry text instead of forcing horizontal overflow.
+  expect(html).toContain("flex-wrap");
+  expect(html).toMatch(/aria-label="[^"]*Amp[^"]*"/);
+
+  for (const width of [360, 1280] as const) {
+    const constrained = renderToStaticMarkup(
+      <div style={{ maxWidth: width, width }} data-viewport={width}>
+        <AcpRegistryCatalogPicker
+          environmentId={EnvironmentId.make("local")}
+          selectedCommand=""
+          onSelect={() => {}}
+        />
+      </div>,
+    );
+    expect(constrained).toContain(`data-viewport="${width}"`);
+    expect(constrained).toContain("flex-wrap");
+    expect(constrained).toContain(t("acpRegistryDownloadInstallAgent", { name: "Amp" }));
+  }
 });
 
 it("下载填入命令后，目录行仍显示已选择而不是再次下载", () => {

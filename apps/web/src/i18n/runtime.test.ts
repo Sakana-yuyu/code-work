@@ -9,6 +9,26 @@ afterEach(() => setCurrentLanguage("zh-CN"));
 const INTERNAL_CODENAMES = /cursor-byok|cursor byok|\btcode\b/i;
 
 describe("web i18n runtime", () => {
+  it("目录来源日期在三种语言中完成插值", () => {
+    for (const language of ["zh-CN", "en", "ja"] as const) {
+      setCurrentLanguage(language);
+      for (const key of ["acpRegistryManualPreset", "acpRegistryOfflineSnapshot"]) {
+        expect(t(key, { date: "2026-09-30" })).toContain("2026-09-30");
+        expect(t(key, { date: "2026-09-30" })).not.toContain("{");
+      }
+    }
+  });
+  it("账号池查询时间、冷却与百分比在所有语言中完成插值", () => {
+    for (const language of ["zh-CN", "en", "ja"] as const) {
+      setCurrentLanguage(language);
+      for (const key of ["cliProxy.usageUpdatedAt", "cliProxy.coolingUntil"]) {
+        expect(t(key, { time: "12:34" })).toContain("12:34");
+        expect(t(key, { time: "12:34" })).not.toContain("{");
+      }
+      expect(t("cliProxy.usageUsedPercent", { percent: "0.5" })).toContain("0.5%");
+    }
+  });
+
   it("插值 BYOK 轮次上限错误", () => {
     for (const language of ["zh-CN", "en", "ja"] as const) {
       setCurrentLanguage(language);

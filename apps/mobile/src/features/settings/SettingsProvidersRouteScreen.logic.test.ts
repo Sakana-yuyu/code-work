@@ -7,6 +7,7 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  MOBILE_ACP_QUICK_ENTRIES,
   buildMobileProviderRows,
   filterAcpCatalogEntries,
   makeMobileAcpCatalogInstance,
@@ -90,6 +91,15 @@ describe("移动端 ACP 目录", () => {
     expect(odd).toBe("acp-scope-agent-v2");
     expect(pattern.test(odd)).toBe(true);
     expect(suggestAcpCatalogInstanceId("***", new Set())).toBe("acp-agent");
+  });
+
+  it("快捷入口与网页 Copilot/Gemini 按钮对齐", () => {
+    expect(MOBILE_ACP_QUICK_ENTRIES.map((entry) => entry.id)).toEqual([
+      "github-copilot-cli",
+      "gemini",
+    ]);
+    expect(MOBILE_ACP_QUICK_ENTRIES[0]?.authMethodId).toBe("copilot-login");
+    expect(MOBILE_ACP_QUICK_ENTRIES[1]?.authMethodId).toBe("oauth-personal");
   });
 });
 

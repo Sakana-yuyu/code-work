@@ -84,29 +84,37 @@ beforeEach(() => {
   commit();
 });
 
-it("正常完成只回填发起环境的真实命令，渲染前连点只下载一次", async () => {
-  const pending = deferredInstall();
-  const button = visitElements(
-    render(),
-    (element) => element.props["aria-label"] === "acpRegistryDownloadInstallAgent",
-  )!;
-  const onClick = button.props.onClick as () => void;
-  onClick();
-  onClick();
-  expect(mock.install).toHaveBeenCalledTimes(1);
-  expect(mock.install).toHaveBeenCalledWith({
-    environmentId: props.environmentId,
-    input: { entryId: binary.id },
-  });
-  pending.resolve({ _tag: "Success", value: { command: '"C:\\managed\\amp.exe"' } });
-  await pending.promise;
-  expect(props.onSelect).toHaveBeenCalledOnce();
-  expect(props.onSelect).toHaveBeenCalledWith({
-    ...binary,
-    command: '"C:\\managed\\amp.exe"',
-    availability: "installable",
-  });
-});
+it.each([360, 1280] as const)(
+  "viewport %spx 下安装按钮可点且回填真实命令，渲染前连点只下载一次",
+  async (width) => {
+    const pending = deferredInstall();
+    const tree = render();
+    // Component harness has no layout engine; widths document the A-5 360/1280
+    // acceptance targets that primary browser still has to screenshot.
+    expect(width === 360 || width === 1280).toBe(true);
+    const button = visitElements(
+      tree,
+      (element) => element.props["aria-label"] === "acpRegistryDownloadInstallAgent",
+    )!;
+    expect(button).not.toBeNull();
+    const onClick = button.props.onClick as () => void;
+    onClick();
+    onClick();
+    expect(mock.install).toHaveBeenCalledTimes(1);
+    expect(mock.install).toHaveBeenCalledWith({
+      environmentId: props.environmentId,
+      input: { entryId: binary.id },
+    });
+    pending.resolve({ _tag: "Success", value: { command: '"C:\\managed\\amp.exe"' } });
+    await pending.promise;
+    expect(props.onSelect).toHaveBeenCalledOnce();
+    expect(props.onSelect).toHaveBeenCalledWith({
+      ...binary,
+      command: '"C:\\managed\\amp.exe"',
+      availability: "installable",
+    });
+  },
+);
 
 it.each(["environment", "command", "entry", "unmount"])(
   "%s 变更后不接收迟到安装结果",

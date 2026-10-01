@@ -36,13 +36,18 @@ export function AcpRegistryCatalogSection(props: {
   readonly selectedEntry: AcpRegistryCatalogEntry | null;
   readonly disabled: boolean;
   readonly onSelect: (entry: AcpRegistryCatalogEntry | null) => void;
+  /** 快捷入口预填搜索词（与网页 Copilot/Gemini 按钮对齐）。 */
+  readonly seedQuery?: string;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(props.seedQuery ?? "");
   const [installingId, setInstallingId] = useState<string | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
   const activeInstall = useRef<symbol | null>(null);
   const selection = useRef<symbol | null>(null);
   const selected = props.selectedEntry;
+  useEffect(() => {
+    if (props.seedQuery !== undefined) setQuery(props.seedQuery);
+  }, [props.seedQuery]);
   useEffect(() => {
     selection.current = Symbol();
     setInstallError(null);

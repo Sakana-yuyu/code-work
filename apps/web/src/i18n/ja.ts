@@ -192,7 +192,7 @@ export const ja: Record<string, string> = {
   "cliProxy.modeImport": "認証をインポート",
   "cliProxy.loginModelsPlaceholder": "例: gpt-5, gpt-5-codex",
   "cliProxy.loginModelsHint":
-    "このアカウントが提供するモデル（カンマ区切り）。空の場合はリクエストで決まります。ZCode や Pi などのモデル一覧には宣言済みのモデルのみ表示されます。",
+    "このアカウントが提供するモデル（カンマ区切り）。空の場合はリクエストのモデルを許可し、標準カタログを公開します。利用可否はアカウントの権限によります。",
   "cliProxy.poolLoginHint":
     "ターミナルで公式サインインを完了してください。ターミナル終了またはこのダイアログを閉じると認証がプールにインポートされます。",
   "cliProxy.zcodeLoginHint":
@@ -280,6 +280,9 @@ export const ja: Record<string, string> = {
     "モデルが宣言されていないため、ルーティングはサーバーの既定能力を使用します。",
   "cliProxy.usageTitle": "使用量とサブスクリプション",
   "cliProxy.usageNotLoaded": "使用量はまだ取得していません。",
+  "cliProxy.usageUpdatedAt": "更新日時：{{time}}",
+  "cliProxy.usageUsedPercent": "{{percent}}% 使用済み",
+  "cliProxy.coolingUntil": "{{time}} まで待機",
   "cliProxy.usageRefresh": "使用量を更新",
   "cliProxy.usageExpires": "期限 {{date}}",
   "cliProxy.usageNoData": "このプラットフォームからクォータデータが返されませんでした。",

@@ -1619,3 +1619,100 @@ describe("reconcileExpandedTurnIdsAfterLatestTurnChange", () => {
     expect([...expanded]).toEqual(["turn-1"]);
   });
 });
+
+describe("ACP search vs web fetch icons", () => {
+  it("maps kind=search to search icon and kind=fetch to globe", () => {
+    const turnId = TurnId.make("turn-search-icons");
+    const thread = makeThread({
+      id: ThreadId.make("thread-search-icons"),
+      projectId: ProjectId.make("project-1"),
+      title: "search icons",
+      activities: [
+        makeActivity({
+          id: EventId.make("acp-search"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Find `*.ts`",
+          createdAt: "2026-09-30T00:00:01.000Z",
+          turnId,
+          payload: {
+            toolCallId: "search-1",
+            itemType: "web_search",
+            title: "Find `*.ts`",
+            status: "completed",
+            data: { toolCallId: "search-1", kind: "search" },
+          },
+        }),
+        makeActivity({
+          id: EventId.make("acp-fetch"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Fetch https://example.com",
+          createdAt: "2026-09-30T00:00:02.000Z",
+          turnId,
+          payload: {
+            toolCallId: "fetch-1",
+            itemType: "web_search",
+            title: "Fetch https://example.com",
+            status: "completed",
+            data: { toolCallId: "fetch-1", kind: "fetch" },
+          },
+        }),
+      ],
+    });
+    const feed = buildThreadFeed(thread);
+    const activities = feed.flatMap((entry) =>
+      entry.type === "activity-group" ? [...entry.activities] : [],
+    );
+    const bySummary = Object.fromEntries(
+      activities.map((activity) => [activity.summary, activity.icon]),
+    );
+    expect(bySummary["Find `*.ts`"]).toBe("search");
+    expect(bySummary["Fetch https://example.com"]).toBe("globe");
+  });
+
+  it("status update without kind keeps search icon from first event", () => {
+    const turnId = TurnId.make("turn-search-inherit");
+    const thread = makeThread({
+      id: ThreadId.make("thread-search-inherit"),
+      projectId: ProjectId.make("project-1"),
+      title: "search inherit",
+      activities: [
+        makeActivity({
+          id: EventId.make("acp-search-start"),
+          kind: "tool.updated",
+          tone: "tool",
+          summary: "Search files",
+          createdAt: "2026-09-30T00:00:01.000Z",
+          turnId,
+          payload: {
+            toolCallId: "search",
+            itemType: "web_search",
+            title: "Search files",
+            status: "inProgress",
+            data: { toolCallId: "search", kind: "search" },
+          },
+        }),
+        makeActivity({
+          id: EventId.make("acp-search-done"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Search files",
+          createdAt: "2026-09-30T00:00:02.000Z",
+          turnId,
+          payload: {
+            toolCallId: "search",
+            itemType: "web_search",
+            status: "completed",
+          },
+        }),
+      ],
+    });
+    const feed = buildThreadFeed(thread);
+    const activities = feed.flatMap((entry) =>
+      entry.type === "activity-group" ? [...entry.activities] : [],
+    );
+    expect(activities).toHaveLength(1);
+    expect(activities[0]?.icon).toBe("search");
+  });
+});

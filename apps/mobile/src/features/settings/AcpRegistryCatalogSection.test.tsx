@@ -22,7 +22,9 @@ vi.mock("react", async (original) => ({
 }));
 vi.mock("react/compiler-runtime", () => ({ c: hooks.useMemoCache }));
 vi.mock("react-native", () => ({
-  View: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  View: ({ children, className }: { children: ReactNode; className?: string }) => (
+    <div className={className}>{children}</div>
+  ),
   Pressable: ({
     children,
     accessibilityLabel,
@@ -106,6 +108,23 @@ it("已下载命令由父级选中项传递，按钮与详情不再读取原目�
   expect(html).toContain("providersMobile.acpCatalogSelected");
   expect(html).toContain("C:\\managed\\amp.exe");
   expect(html).not.toContain("providersMobile.acpCatalogDownloadAgent");
+});
+
+it("安装行允许窄屏换行，避免安装按钮把目录行撑出视口", () => {
+  const html = renderToStaticMarkup(render());
+  expect(html).toContain("flex-wrap");
+  expect(html).toContain("providersMobile.acpCatalogDownloadAgent");
+
+  for (const width of [360, 1280] as const) {
+    const constrained = renderToStaticMarkup(
+      <div style={{ maxWidth: width, width }} data-viewport={width}>
+        {render()}
+      </div>,
+    );
+    expect(constrained).toContain(`data-viewport="${width}"`);
+    expect(constrained).toContain("flex-wrap");
+    expect(constrained).toContain("providersMobile.acpCatalogDownloadAgent");
+  }
 });
 
 it("同一下载渲染前连点只发送一次，成功命令完整回填", async () => {

@@ -1082,11 +1082,7 @@ function MessageAttachmentImages({
   const imageAttachments = images.filter((attachment) => attachment.type === "image");
   const audioAttachments = images.filter((attachment) => attachment.type === "audio");
   const fileAttachments = images.filter((attachment) => attachment.type === "file");
-  if (
-    imageAttachments.length === 0 &&
-    audioAttachments.length === 0 &&
-    fileAttachments.length === 0
-  ) {
+  if (imageAttachments.length === 0 && audioAttachments.length === 0 && fileAttachments.length === 0) {
     return null;
   }
   return (
@@ -2696,9 +2692,10 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
 }
 
 function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles" | "sourceActivityKind">,
   workspaceRoot: string | undefined,
 ) {
+  if (workEntry.sourceActivityKind?.startsWith("approval.")) return null;
   if (workEntry.command) return workEntry.command;
   if (workEntry.detail) return workEntry.detail;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;

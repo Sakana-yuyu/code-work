@@ -353,6 +353,50 @@ describe("applyThreadDetailEvent", () => {
   });
 
   describe("thread.message-sent", () => {
+    it("助手图片在增量、完成和重复消息中保持同一附件", () => {
+      const attachment = {
+        type: "image" as const,
+        id: "thread-1-image",
+        name: "agent-image.png",
+        mimeType: "image/png",
+        sizeBytes: 68,
+      };
+      const event = {
+        ...baseEventFields,
+        sequence: 1,
+        occurredAt: "2026-04-01T06:00:00.000Z",
+        aggregateKind: "thread" as const,
+        aggregateId: baseThread.id,
+        type: "thread.message-sent" as const,
+        payload: {
+          threadId: baseThread.id,
+          messageId: MessageId.make("image-message"),
+          role: "assistant" as const,
+          text: "",
+          turnId: TurnId.make("image-turn"),
+          streaming: true,
+          attachments: [attachment],
+          createdAt: "2026-04-01T06:00:00.000Z",
+          updatedAt: "2026-04-01T06:00:00.000Z",
+        },
+      };
+      const first = applyThreadDetailEvent(baseThread, event);
+      if (first.kind !== "updated") throw new Error("图片消息未写入");
+      const { attachments: _, ...complete } = event.payload;
+      const result = applyThreadDetailEvent(first.thread, {
+        ...event,
+        sequence: 2,
+        payload: { ...complete, streaming: false },
+      });
+      if (result.kind !== "updated") throw new Error("图片消息未完成");
+      expect(result.thread.messages).toHaveLength(1);
+      expect(result.thread.messages[0]).toMatchObject({
+        text: "",
+        streaming: false,
+        attachments: [attachment],
+      });
+    });
+
     it("appends a new message", () => {
       const result = applyThreadDetailEvent(baseThread, {
         ...baseEventFields,
@@ -1193,50 +1237,6 @@ describe("applyThreadDetailEvent", () => {
         },
       } as any);
       expect(result.kind).toBe("unchanged");
-    });
-  });
-
-  it("助手图片在增量、完成和重复消息中保持同一附件", () => {
-    const attachment = {
-      type: "image" as const,
-      id: "thread-1-image",
-      name: "agent-image.png",
-      mimeType: "image/png",
-      sizeBytes: 68,
-    };
-    const event = {
-      ...baseEventFields,
-      sequence: 1,
-      occurredAt: "2026-04-01T06:00:00.000Z",
-      aggregateKind: "thread" as const,
-      aggregateId: baseThread.id,
-      type: "thread.message-sent" as const,
-      payload: {
-        threadId: baseThread.id,
-        messageId: MessageId.make("image-message"),
-        role: "assistant" as const,
-        text: "",
-        turnId: TurnId.make("image-turn"),
-        streaming: true,
-        attachments: [attachment],
-        createdAt: "2026-04-01T06:00:00.000Z",
-        updatedAt: "2026-04-01T06:00:00.000Z",
-      },
-    };
-    const first = applyThreadDetailEvent(baseThread, event);
-    if (first.kind !== "updated") throw new Error("图片消息未写入");
-    const { attachments: _, ...complete } = event.payload;
-    const result = applyThreadDetailEvent(first.thread, {
-      ...event,
-      sequence: 2,
-      payload: { ...complete, streaming: false },
-    });
-    if (result.kind !== "updated") throw new Error("图片消息未完成");
-    expect(result.thread.messages).toHaveLength(1);
-    expect(result.thread.messages[0]).toMatchObject({
-      text: "",
-      streaming: false,
-      attachments: [attachment],
     });
   });
 });

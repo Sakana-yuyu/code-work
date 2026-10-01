@@ -127,7 +127,7 @@ export const en: Record<string, string> = {
   "cliProxy.modeImport": "Import credential",
   "cliProxy.loginModelsPlaceholder": "e.g. gpt-5, gpt-5-codex",
   "cliProxy.loginModelsHint":
-    "Models this account may serve, comma separated. Leave empty to let the request decide; ZCode, Pi and other model pickers only list declared models.",
+    "Models this account may serve, comma separated. Leave empty to accept the requested model and publish the platform's default catalog; availability depends on the account.",
   "cliProxy.poolLoginHint":
     "Finish the official sign-in in the terminal. The credential is imported into the pool when the terminal exits or this dialog closes.",
   "cliProxy.zcodeLoginHint":
@@ -217,6 +217,9 @@ export const en: Record<string, string> = {
     "No models declared; routing falls back to the server's default capabilities.",
   "cliProxy.usageTitle": "Usage & subscription",
   "cliProxy.usageNotLoaded": "Usage has not been fetched yet.",
+  "cliProxy.usageUpdatedAt": "Updated: {{time}}",
+  "cliProxy.usageUsedPercent": "{{percent}}% used",
+  "cliProxy.coolingUntil": "Cooling until {{time}}",
   "cliProxy.usageRefresh": "Refresh usage",
   "cliProxy.usageExpires": "expires {{date}}",
   "cliProxy.usageNoData": "No quota data available.",
@@ -6456,7 +6459,7 @@ export const zhCN: Record<string, string> = {
   "cliProxy.modeImport": "导入凭据",
   "cliProxy.loginModelsPlaceholder": "例如 gpt-5, gpt-5-codex",
   "cliProxy.loginModelsHint":
-    "该账号可提供的模型，逗号分隔。留空则由请求决定；ZCode、Pi 等模型列表只展示已声明的模型。",
+    "该账号可提供的模型，逗号分隔。留空则按请求选择并发布平台默认目录；实际可用性以账号权限为准。",
   "cliProxy.poolLoginHint": "在终端里完成官方登录。终端退出或关闭本对话框时，凭据会自动导入号池。",
   "cliProxy.zcodeLoginHint": "ZCode 登录会打开官方授权页，无需安装 CLI。",
   "cliProxy.zcodeLoginUrlHint": "在浏览器中打开下面的授权链接并完成登录，本对话框会自动检测完成。",
@@ -6533,6 +6536,9 @@ export const zhCN: Record<string, string> = {
   "cliProxy.noModelsHint": "未声明模型，路由会使用服务端默认能力。",
   "cliProxy.usageTitle": "用量与订阅",
   "cliProxy.usageNotLoaded": "尚未拉取用量数据。",
+  "cliProxy.usageUpdatedAt": "查询时间：{{time}}",
+  "cliProxy.usageUsedPercent": "已用 {{percent}}%",
+  "cliProxy.coolingUntil": "冷却至 {{time}}",
   "cliProxy.usageRefresh": "刷新用量",
   "cliProxy.usageExpires": "到期 {{date}}",
   "cliProxy.usageNoData": "该平台未返回额度数据。",

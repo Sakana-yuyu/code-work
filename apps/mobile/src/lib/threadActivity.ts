@@ -69,6 +69,7 @@ export interface ThreadFeedActivity {
     | "globe"
     | "hammer"
     | "message"
+    | "search"
     | "warning"
     | "wrench"
     | "zap";
@@ -92,6 +93,8 @@ interface WorkLogEntry {
   changedFiles?: ReadonlyArray<string>;
   tone: "thinking" | "tool" | "info" | "error";
   toolTitle?: string;
+  /** ACP tool_call.kind（如 search/fetch）；合并增量时保留首条。 */
+  toolKind?: string;
   itemType?: ToolLifecycleItemType;
   toolCallId?: string;
   requestKind?: PendingApproval["requestKind"];
@@ -462,6 +465,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (title) {
     entry.toolTitle = title;
   }
+  const toolKind = asTrimmedString(asRecord(payload?.data)?.kind)?.toLowerCase();
+  if (toolKind) {
+    entry.toolKind = toolKind;
+  }
   if (itemType === "mcp_tool_call") {
     const data = asRecord(payload?.data);
     if (data?.item !== undefined) {
@@ -586,6 +593,7 @@ function mergeDerivedWorkLogEntries(
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
   const toolTitle = next.toolTitle ?? previous.toolTitle;
+  const toolKind = next.toolKind ?? previous.toolKind;
   const toolCallId = next.toolCallId ?? previous.toolCallId;
   const itemType = next.itemType ?? previous.itemType;
   const requestKind = next.requestKind ?? previous.requestKind;
@@ -601,6 +609,7 @@ function mergeDerivedWorkLogEntries(
     ...(rawCommand ? { rawCommand } : {}),
     ...(changedFiles.length > 0 ? { changedFiles } : {}),
     ...(toolTitle ? { toolTitle } : {}),
+    ...(toolKind ? { toolKind } : {}),
     ...(toolCallId ? { toolCallId } : {}),
     ...(itemType ? { itemType } : {}),
     ...(requestKind ? { requestKind } : {}),
@@ -644,6 +653,15 @@ function deriveToolLifecycleCollapseKey(entry: DerivedWorkLogEntry): string | un
 
 function normalizeCompactToolLabel(value: string): string {
   return value.replace(/\s+(?:started|complete|completed)\s*$/i, "").trim();
+}
+
+/** 与 Web MessagesTimeline.logic 对齐：ACP kind=search / grep 标题是本地代码搜索，不是网页。 */
+function workLogEntryIsLocalCodeSearch(entry: WorkLogEntry): boolean {
+  if (entry.toolKind === "search") return true;
+  return (
+    entry.itemType === "web_search" &&
+    /\bgrep\b/i.test(normalizeCompactToolLabel(entry.toolTitle ?? entry.label))
+  );
 }
 
 function workLogEntryIsToolLike(entry: WorkLogEntry): boolean {
@@ -738,6 +756,7 @@ function workEntryIcon(entry: DerivedWorkLogEntry): ThreadFeedActivity["icon"] {
   if (entry.requestKind === "file-change") return "edit";
   if (entry.itemType === "command_execution" || entry.command) return "command";
   if (entry.itemType === "file_change" || (entry.changedFiles?.length ?? 0) > 0) return "edit";
+  if (workLogEntryIsLocalCodeSearch(entry)) return "search";
   if (entry.itemType === "web_search") return "globe";
   if (entry.itemType === "image_view") return "eye";
   if (
@@ -1523,7 +1542,13 @@ function workLogToggleBreakdown(hidden: ReadonlyArray<ThreadFeedActivity>): stri
   if (hidden.length === 0 || !hidden.every((activity) => activity.toolLike)) {
     return null;
   }
-  const knownIcons = new Set<ThreadFeedActivity["icon"]>(["eye", "edit", "command", "globe"]);
+  const knownIcons = new Set<ThreadFeedActivity["icon"]>([
+    "eye",
+    "edit",
+    "command",
+    "search",
+    "globe",
+  ]);
   const counts = new Map<ThreadFeedActivity["icon"], number>();
   let other = 0;
   for (const activity of hidden) {
@@ -1541,7 +1566,11 @@ function workLogToggleBreakdown(hidden: ReadonlyArray<ThreadFeedActivity>): stri
   append("eye", "threads.worklog.breakdown.reads");
   append("edit", "threads.worklog.breakdown.edits");
   append("command", "threads.worklog.breakdown.commands");
-  append("globe", "threads.worklog.breakdown.searches");
+  // 本地代码搜索与网页搜索共用「搜索」计数；图标已区分 search vs globe。
+  const searchCount = (counts.get("search") ?? 0) + (counts.get("globe") ?? 0);
+  if (searchCount > 0) {
+    parts.push(t("threads.worklog.breakdown.searches", { count: searchCount, countValue: searchCount }));
+  }
   if (other > 0) {
     parts.push(t("threads.worklog.breakdown.other", { count: other, countValue: other }));
   }

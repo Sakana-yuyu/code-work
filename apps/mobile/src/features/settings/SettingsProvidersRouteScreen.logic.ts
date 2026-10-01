@@ -310,6 +310,22 @@ export function makeMobileProviderInstance(
 /** 移动端一次显示的目录行数上限，其余条目通过搜索访问。 */
 export const MOBILE_ACP_CATALOG_VISIBLE_LIMIT = 12;
 
+/** 与网页添加向导一致的 ACP 快捷入口；选择后仍须在目录中确认版本/命令。 */
+export const MOBILE_ACP_QUICK_ENTRIES = [
+  {
+    id: "github-copilot-cli",
+    labelKey: "providersMobile.acpQuickCopilot",
+    authMethodId: "copilot-login",
+    search: "github-copilot-cli",
+  },
+  {
+    id: "gemini",
+    labelKey: "providersMobile.acpQuickGemini",
+    authMethodId: "oauth-personal",
+    search: "gemini",
+  },
+] as const;
+
 export function filterAcpCatalogEntries(
   entries: ReadonlyArray<AcpRegistryCatalogEntry>,
   query: string,

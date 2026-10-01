@@ -36,6 +36,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsEnvironmentPicker } from "./components/SettingsEnvironmentPicker";
 import { SettingsSection } from "./components/SettingsSection";
 import {
+  MOBILE_ACP_QUICK_ENTRIES,
   MOBILE_PROVIDER_DRIVERS,
   buildMobileProviderRows,
   makeMobileAcpCatalogInstance,
@@ -118,6 +119,7 @@ export function SettingsProvidersRouteScreen() {
   const [newInstanceId, setNewInstanceId] = useState("");
   const [newInstanceName, setNewInstanceName] = useState("");
   const [newCatalogEntry, setNewCatalogEntry] = useState<AcpRegistryCatalogEntry | null>(null);
+  const [catalogSeedQuery, setCatalogSeedQuery] = useState("");
 
   useEffect(() => {
     if (
@@ -129,6 +131,7 @@ export function SettingsProvidersRouteScreen() {
     setSelectedEnvironmentId(environments[0]?.environmentId ?? null);
     setDrafts({});
     setNewCatalogEntry(null);
+    setCatalogSeedQuery("");
   }, [environments, selectedEnvironmentId]);
 
   const rows = useMemo(
@@ -340,6 +343,7 @@ export function SettingsProvidersRouteScreen() {
             setSelectedEnvironmentId(next);
             setDrafts({});
             setNewCatalogEntry(null);
+            setCatalogSeedQuery("");
             setError(null);
             setNotice(null);
           }}
@@ -366,12 +370,30 @@ export function SettingsProvidersRouteScreen() {
               instanceId={newInstanceId}
               instanceName={newInstanceName}
               catalogEntry={newCatalogEntry}
+              catalogSeedQuery={catalogSeedQuery}
               disabled={pendingAction !== null || !canOperate}
               onDriverChange={(driver) => {
                 setNewDriver(driver);
-                if (driver !== "acpAgent") setNewCatalogEntry(null);
+                if (driver !== "acpAgent") {
+                  setNewCatalogEntry(null);
+                  setCatalogSeedQuery("");
+                }
               }}
               onCatalogSelect={selectCatalogEntry}
+              onAcpQuickEntry={(entry) => {
+                setNewDriver("acpAgent");
+                setNewCatalogEntry(null);
+                setCatalogSeedQuery(entry.search);
+                setNewInstanceName(t(entry.labelKey));
+                if (settings !== null) {
+                  setNewInstanceId(
+                    suggestAcpCatalogInstanceId(
+                      entry.id,
+                      new Set(Object.keys(materializeProviderInstances(settings))),
+                    ),
+                  );
+                }
+              }}
               onInstanceIdChange={setNewInstanceId}
               onInstanceNameChange={setNewInstanceName}
               onAdd={() => void addInstance()}
@@ -420,9 +442,11 @@ function AddProviderSection(props: {
   readonly instanceId: string;
   readonly instanceName: string;
   readonly catalogEntry: AcpRegistryCatalogEntry | null;
+  readonly catalogSeedQuery: string;
   readonly disabled: boolean;
   readonly onDriverChange: (driver: MobileProviderDriver) => void;
   readonly onCatalogSelect: (entry: AcpRegistryCatalogEntry | null) => void;
+  readonly onAcpQuickEntry: (entry: (typeof MOBILE_ACP_QUICK_ENTRIES)[number]) => void;
   readonly onInstanceIdChange: (value: string) => void;
   readonly onInstanceNameChange: (value: string) => void;
   readonly onAdd: () => void;
@@ -440,11 +464,28 @@ function AddProviderSection(props: {
           disabled={props.disabled}
           onSelect={props.onDriverChange}
         />
+        <View className="gap-2">
+          <Text className="text-xs text-foreground-muted">{t("providersMobile.acpQuickHint")}</Text>
+          {MOBILE_ACP_QUICK_ENTRIES.map((entry) => (
+            <Pressable
+              key={entry.id}
+              accessibilityRole="button"
+              accessibilityLabel={t(entry.labelKey)}
+              disabled={props.disabled}
+              onPress={() => props.onAcpQuickEntry(entry)}
+              className="rounded-xl border border-input-border px-3 py-2.5 active:opacity-80"
+            >
+              <Text className="text-sm font-codework-medium text-foreground">{t(entry.labelKey)}</Text>
+              <Text className="mt-0.5 text-[11px] text-foreground-muted">ACP</Text>
+            </Pressable>
+          ))}
+        </View>
         {props.driver === "acpAgent" ? (
           <AcpRegistryCatalogSection
-            key={props.environmentId}
+            key={`${props.environmentId}:${props.catalogSeedQuery}`}
             environmentId={props.environmentId}
             selectedEntry={props.catalogEntry}
+            seedQuery={props.catalogSeedQuery}
             disabled={props.disabled}
             onSelect={props.onCatalogSelect}
           />

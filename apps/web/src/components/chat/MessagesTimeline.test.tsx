@@ -249,6 +249,48 @@ function buildAssistantTimelineEntry(text: string) {
 }
 
 describe("MessagesTimeline", () => {
+  it.each(["audio", "file"] as const)("历史纯 %s 助手回复保留有名称的原生播放或下载入口", (type) => {
+    const entry = buildAssistantTimelineEntry("");
+    const markup = renderToStaticMarkup(<MessagesTimeline {...buildProps()} timelineEntries={[{
+      ...entry, message: { ...entry.message, turnId: TurnId.make("old-media-turn"), attachments: [{
+        type, id: "attachment-1", name: "report.wav", mimeType: "audio/wav", sizeBytes: 44,
+        previewUrl: "https://example.test/signed-media",
+      }] },
+    }]} />);
+    expect(markup).toContain(type === "audio" ? '<audio aria-label="report.wav" controls="" preload="metadata" src="https://example.test/signed-media"' : 'download="report.wav"');
+    expect(markup).toContain(type === "audio" ? 'aria-label="report.wav"' : 'aria-label="Download report.wav"');
+    expect(markup).not.toContain("(empty response)");
+  });
+  it("历史纯图片助手回复可见并提供预览，不显示空回复", () => {
+    const entry = buildAssistantTimelineEntry("");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            ...entry,
+            message: {
+              ...entry.message,
+              turnId: TurnId.make("old-image-turn"),
+              attachments: [
+                {
+                  type: "image",
+                  id: "attachment-1",
+                  name: "agent-image.png",
+                  mimeType: "image/png",
+                  sizeBytes: 68,
+                  previewUrl: "https://example.com/signed-image",
+                },
+              ],
+            },
+          },
+        ]}
+      />,
+    );
+    expect(markup).toContain('src="https://example.com/signed-image"');
+    expect(markup).toContain('aria-label="Preview agent-image.png"');
+    expect(markup).not.toContain("(empty response)");
+  });
   it("同一时间线标明不同 Agent 的回复来源", () => {
     const codex = buildAssistantTimelineEntry("Codex 完成设计");
     const claude = buildAssistantTimelineEntry("Claude 继续实现");
@@ -1573,75 +1615,4 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("lucide-x");
     expect(markup).toContain('aria-label="Tool call failed"');
   });
-
-  it("历史纯图片助手回复可见并提供预览，不显示空回复", () => {
-    const entry = buildAssistantTimelineEntry("");
-    const markup = renderToStaticMarkup(
-      <MessagesTimeline
-        {...buildProps()}
-        timelineEntries={[
-          {
-            ...entry,
-            message: {
-              ...entry.message,
-              turnId: TurnId.make("old-image-turn"),
-              attachments: [
-                {
-                  type: "image",
-                  id: "attachment-1",
-                  name: "agent-image.png",
-                  mimeType: "image/png",
-                  sizeBytes: 68,
-                  previewUrl: "https://example.com/signed-image",
-                },
-              ],
-            },
-          },
-        ]}
-      />,
-    );
-    expect(markup).toContain('src="https://example.com/signed-image"');
-    expect(markup).toContain('aria-label="Preview agent-image.png"');
-    expect(markup).not.toContain("(empty response)");
-  });
-
-  it.each(["audio", "file"] as const)(
-    "历史纯 %s 助手回复保留有名称的原生播放或下载入口",
-    (type) => {
-      const entry = buildAssistantTimelineEntry("");
-      const markup = renderToStaticMarkup(
-        <MessagesTimeline
-          {...buildProps()}
-          timelineEntries={[
-            {
-              ...entry,
-              message: {
-                ...entry.message,
-                turnId: TurnId.make("old-media-turn"),
-                attachments: [
-                  {
-                    type,
-                    id: "attachment-1",
-                    name: "report.wav",
-                    mimeType: "audio/wav",
-                    sizeBytes: 44,
-                    previewUrl: "https://example.test/signed-media",
-                  },
-                ],
-              },
-            },
-          ]}
-        />,
-      );
-      expect(markup).toContain(
-        type === "audio"
-          ? '<audio aria-label="report.wav" controls="" preload="metadata" src="https://example.test/signed-media"'
-          : 'download="report.wav"',
-      );
-      expect(markup).toContain(
-        type === "audio" ? 'aria-label="report.wav"' : 'aria-label="Download report.wav"',
-      );
-      expect(markup).not.toContain("(empty response)");
-    },
-  );
 });
