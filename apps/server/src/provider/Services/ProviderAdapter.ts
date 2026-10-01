@@ -27,6 +27,7 @@ import type {
 } from "@codework/contracts";
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
+import type { ProviderAdapterRequestError } from "../Errors.ts";
 
 export type ProviderToolBrokerContext = {
   /** 仅由服务端会话配置绑定，不接受 Provider 工具参数声明。 */
@@ -60,9 +61,17 @@ export type ProviderToolBrokerResult = {
 };
 
 export type ProviderToolBrokerBridge = {
-  readonly invoke: (input: ProviderToolBrokerInvocation) => Effect.Effect<ProviderToolBrokerResult>;
+  readonly invoke: (
+    input: ProviderToolBrokerInvocation,
+    requestApproval?: ProviderToolBrokerApprovalHandler,
+  ) => Effect.Effect<ProviderToolBrokerResult>;
   readonly cancel: (input: ProviderToolBrokerCancellation) => Effect.Effect<void>;
 };
+
+/** 仅在服务端回调中等待现有审批入口，外部工具参数不能提供处理器。 */
+export type ProviderToolBrokerApprovalHandler = (
+  approvalRequestId: string,
+) => Effect.Effect<ProviderApprovalDecision, ProviderAdapterRequestError>;
 
 export type ProviderSessionModelSwitchMode = "in-session" | "unsupported";
 

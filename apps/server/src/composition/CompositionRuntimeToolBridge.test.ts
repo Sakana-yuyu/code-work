@@ -3,13 +3,72 @@ import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
+import * as TestClock from "effect/testing/TestClock";
 
 import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
+import type { ProviderApprovalDecision } from "@codework/contracts";
 import {
   makeCompositionRuntimeToolBridge,
   type CompositionRuntimeToolBridgeDependencies,
 } from "./CompositionRuntimeToolBridge.ts";
 import type { ToolBrokerInput } from "./ToolBroker.ts";
+
+it.effect("宿主审批等待不占执行期限，允许后以同一身份执行一次", () =>
+  Effect.gen(function* () {
+    const requested = yield* Deferred.make<void, string>();
+    const decision = yield* Deferred.make<"accept">();
+    const calls: ToolBrokerInput[] = [];
+    const approved: string[] = [];
+    const dependencies = makeDependencies();
+    const bridge = makeCompositionRuntimeToolBridge({
+      ...dependencies,
+      approve: ({ approvalRequestId }) =>
+        Effect.sync(() => {
+          approved.push(approvalRequestId);
+        }),
+      toolBroker: {
+        ...dependencies.toolBroker,
+        invoke: (request) => {
+          calls.push(request);
+          return dependencies.toolBroker.invoke(request).pipe(
+            Effect.map((result) =>
+              request.approvalRequestId === undefined
+                ? {
+                    ...result,
+                    status: "denied" as const,
+                    errorCode: "tool_approval_required",
+                    approvalRequestId: "approval-1",
+                  }
+                : result,
+            ),
+          );
+        },
+      },
+    });
+    const fiber = yield* Effect.forkChild(
+      bridge
+        .invoke(input, "approval-required", {
+          timeoutMs: 10,
+          requestApproval: (approvalRequestId) =>
+            Effect.gen(function* () {
+              assert.equal(approvalRequestId, "approval-1");
+              yield* Deferred.succeed(requested, undefined);
+              return yield* Deferred.await(decision);
+            }),
+        })
+        .pipe(Effect.tap((result) => Deferred.fail(requested, "工具未等待审批：" + result.status))),
+    );
+    yield* Deferred.await(requested);
+    yield* TestClock.adjust("1 minute");
+    assert.equal(calls.length, 1);
+    assert.deepEqual(approved, []);
+    yield* Deferred.succeed(decision, "accept");
+    assert.equal((yield* Fiber.join(fiber)).status, "succeeded");
+    assert.deepEqual(approved, ["approval-1"]);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[1]!, { ...calls[0]!, approvalRequestId: "approval-1" });
+  }),
+);
 
 const task: CompositionTask = {
   taskId: "task-tool-bridge",
@@ -81,6 +140,176 @@ const makeDependencies = (
   },
   ...overrides,
 });
+
+it.effect("执行期限结束前确认中断，迟到结果不产生副作用", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    const released = yield* Deferred.make<void>();
+    let completed = 0;
+    const dependencies = makeDependencies();
+    const bridge = makeCompositionRuntimeToolBridge({
+      ...dependencies,
+      toolBroker: {
+        ...dependencies.toolBroker,
+        invoke: (request) =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(entered, undefined);
+            yield* Deferred.await(released);
+            completed++;
+            return yield* dependencies.toolBroker.invoke(request);
+          }),
+      },
+    });
+    const fiber = yield* Effect.forkChild(bridge.invoke(input, undefined, { timeoutMs: 10 }));
+    yield* Deferred.await(entered);
+    yield* TestClock.adjust("10 millis");
+    const result = yield* Fiber.join(fiber);
+    assert.equal(result.status, "failed");
+    assert.equal(result.errorCode, "tool_timeout");
+    yield* Deferred.succeed(released, undefined);
+    assert.equal(completed, 0);
+  }),
+);
+
+it.effect("拒绝、取消和未提供的扩大授权决定均不批准或重执行", () =>
+  Effect.gen(function* () {
+    for (const decision of ["decline", "cancel", "acceptForSession", "acceptAlways"] as const) {
+      let calls = 0,
+        cancels = 0,
+        approvals = 0;
+      const dependencies = makeDependencies();
+      const bridge = makeCompositionRuntimeToolBridge({
+        ...dependencies,
+        approve: () =>
+          Effect.sync(() => {
+            approvals++;
+          }),
+        toolBroker: {
+          invoke: (request) =>
+            dependencies.toolBroker.invoke(request).pipe(
+              Effect.map((result) => {
+                calls++;
+                return {
+                  ...result,
+                  status: "denied" as const,
+                  errorCode: "tool_approval_required",
+                  approvalRequestId: "approval-1",
+                };
+              }),
+            ),
+          cancel: () =>
+            Effect.sync(() => {
+              cancels++;
+            }),
+        },
+      });
+      const result = yield* bridge.invoke(input, "approval-required", {
+        requestApproval: () => Effect.succeed(decision),
+      });
+      assert.equal(result.status, decision === "decline" ? "denied" : "cancelled");
+      assert.deepEqual([calls, approvals, cancels], [1, 0, 1]);
+    }
+  }),
+);
+
+it.effect("审批等待期间Run归属改变会拒绝允许结果", () =>
+  Effect.gen(function* () {
+    let changed = false,
+      approvals = 0,
+      calls = 0;
+    const dependencies = makeDependencies();
+    const bridge = makeCompositionRuntimeToolBridge({
+      ...dependencies,
+      taskStore: {
+        ...dependencies.taskStore,
+        getRun: () =>
+          Effect.succeed(Option.some(changed ? { ...run, agentId: "other-agent" } : run)),
+      },
+      approve: () =>
+        Effect.sync(() => {
+          approvals++;
+        }),
+      toolBroker: {
+        ...dependencies.toolBroker,
+        invoke: (request) =>
+          dependencies.toolBroker.invoke(request).pipe(
+            Effect.map((result) => {
+              calls++;
+              return {
+                ...result,
+                status: "denied" as const,
+                errorCode: "tool_approval_required",
+                approvalRequestId: "approval-1",
+              };
+            }),
+          ),
+      },
+    });
+    const result = yield* bridge.invoke(input, "approval-required", {
+      requestApproval: () =>
+        Effect.sync(() => {
+          changed = true;
+          return "accept" as const;
+        }),
+    });
+    assert.equal(result.errorCode, "agent_scope_mismatch");
+    assert.deepEqual([calls, approvals], [1, 0]);
+  }),
+);
+
+it.effect("审批等待中取消保留scope所有权，迟到允许不执行", () =>
+  Effect.gen(function* () {
+    const requested = yield* Deferred.make<void>();
+    const decision = yield* Deferred.make<ProviderApprovalDecision>();
+    let calls = 0,
+      approvals = 0,
+      cancels = 0;
+    const dependencies = makeDependencies();
+    const bridge = makeCompositionRuntimeToolBridge({
+      ...dependencies,
+      approve: () =>
+        Effect.sync(() => {
+          approvals++;
+        }),
+      toolBroker: {
+        invoke: (request) =>
+          dependencies.toolBroker.invoke(request).pipe(
+            Effect.map((result) => {
+              calls++;
+              return {
+                ...result,
+                status: "denied" as const,
+                errorCode: "tool_approval_required",
+                approvalRequestId: "approval-1",
+              };
+            }),
+          ),
+        cancel: () =>
+          Effect.sync(() => {
+            cancels++;
+          }),
+      },
+    });
+    const invoked = yield* Effect.forkChild(
+      bridge.invoke(input, "approval-required", {
+        requestApproval: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(requested, undefined);
+            return yield* Deferred.await(decision);
+          }),
+      }),
+    );
+    yield* Deferred.await(requested);
+    assert.equal((yield* bridge.invoke(input)).errorCode, "tool_invocation_in_progress");
+    assert.deepEqual([calls, approvals, cancels], [1, 0, 0]);
+    assert.equal((yield* bridge.cancel({ ...input, agentId: "other-agent" })).status, "denied");
+    assert.equal((yield* bridge.cancel(input)).status, "cancelled");
+    assert.equal((yield* Fiber.join(invoked)).status, "cancelled");
+    assert.deepEqual([calls, approvals, cancels], [1, 0, 1]);
+    yield* Deferred.succeed(decision, "accept");
+    assert.deepEqual([calls, approvals, cancels], [1, 0, 1]);
+  }),
+);
 
 it.effect("通过 Code Work scope 校验后把请求转成 canonical ToolBroker result", () =>
   Effect.gen(function* () {

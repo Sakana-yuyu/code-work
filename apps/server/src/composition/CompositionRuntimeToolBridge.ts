@@ -7,6 +7,8 @@ import type {
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
+import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -22,6 +24,8 @@ import {
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
 import * as ToolBroker from "./ToolBroker.ts";
+import * as CapabilityPolicy from "./CapabilityPolicy.ts";
+import type { ProviderToolBrokerApprovalHandler } from "../provider/Services/ProviderAdapter.ts";
 
 /** 外部 Runtime 请求 Code Work 执行一次 canonical tool 的输入。 */
 export type CompositionRuntimeToolInvocation = {
@@ -55,6 +59,7 @@ export type CompositionRuntimeToolBridgeDependencies = {
   readonly taskStore: Pick<CompositionTaskStoreShape, "getTask" | "getRun">;
   readonly inputStore: Pick<CompositionTaskInputStoreShape, "get">;
   readonly toolBroker: Pick<ToolBroker.ToolBroker["Service"], "invoke" | "cancel">;
+  readonly approve?: CapabilityPolicy.CapabilityPolicy["Service"]["approve"];
 };
 
 export type CompositionRuntimeToolBridgeShape = {
@@ -62,6 +67,11 @@ export type CompositionRuntimeToolBridgeShape = {
     input: CompositionRuntimeToolInvocation,
     /** 内部服务端调用的可信模式；公开 HTTP/协议入口只传 input。 */
     runtimeMode?: RuntimeMode,
+    /** 内部审批与执行期限；公开协议入口不能提供回调。 */
+    options?: {
+      readonly requestApproval?: ProviderToolBrokerApprovalHandler;
+      readonly timeoutMs?: number;
+    },
   ) => Effect.Effect<ToolBroker.ToolBrokerResult>;
   readonly cancel: (
     input: CompositionRuntimeToolCancellation,
@@ -85,6 +95,21 @@ type ScopeCheck =
     };
 
 type ValidatedScope = Extract<ScopeCheck, { readonly ok: true }>;
+
+/** 两个分支都由本次调用持有，返回前确认败方中断，不留下迟到工具副作用。 */
+const raceOwnedTools = <A>(left: Effect.Effect<A>, right: Effect.Effect<A>) =>
+  Effect.acquireUseRelease(
+    Effect.all([
+      Effect.forkChild(left.pipe(Effect.interruptible)),
+      Effect.forkChild(right.pipe(Effect.interruptible)),
+    ]),
+    ([leftFiber, rightFiber]) => Effect.raceFirst(Fiber.join(leftFiber), Fiber.join(rightFiber)),
+    (fibers) =>
+      Effect.forEach(fibers, (fiber) => Fiber.interrupt(fiber), {
+        discard: true,
+        concurrency: "unbounded",
+      }),
+  );
 
 const invocationId = (idempotencyKey: string): string => `invocation-${idempotencyKey}`;
 
@@ -241,7 +266,7 @@ export const makeCompositionRuntimeToolBridge = (
       return { ok: true, task, run } as const;
     });
 
-  const invoke: CompositionRuntimeToolBridgeShape["invoke"] = (input, runtimeMode) =>
+  const invoke: CompositionRuntimeToolBridgeShape["invoke"] = (input, runtimeMode, options) =>
     Effect.gen(function* () {
       const scope = yield* validateScope(input);
       if (!scope.ok) return denied(input, scope.errorCode);
@@ -285,32 +310,84 @@ export const makeCompositionRuntimeToolBridge = (
               return denied(input, "workspace_input_missing");
             }
 
-            return yield* dependencies.toolBroker
-              .invoke({
-                taskId: input.taskId,
-                runId: input.runId,
-                agentId: input.agentId,
-                toolCallId: input.toolCallId,
-                canonicalToolName: input.canonicalToolName,
-                arguments: trustedToolArguments(input.arguments, workspaceRoot),
-                idempotencyKey: input.idempotencyKey,
-                capabilityGrantIds: input.capabilityGrantIds,
-                runtimeId: input.runtimeId,
-                ...(runtimeMode === undefined ? {} : { runtimeMode }),
-                ...(scope.task.threadId === undefined ? {} : { threadId: scope.task.threadId }),
-                ...(input.approvalRequestId === undefined
-                  ? {}
-                  : { approvalRequestId: input.approvalRequestId }),
-                workspaceRoot,
-              })
-              .pipe(
-                Effect.orElseSucceed(
-                  () => denied(input, "tool_broker_failed") as ToolBroker.ToolBrokerResult,
-                ),
-              );
+            const brokerInput: ToolBroker.ToolBrokerInput = {
+              taskId: input.taskId,
+              runId: input.runId,
+              agentId: input.agentId,
+              toolCallId: input.toolCallId,
+              canonicalToolName: input.canonicalToolName,
+              arguments: trustedToolArguments(input.arguments, workspaceRoot),
+              idempotencyKey: input.idempotencyKey,
+              capabilityGrantIds: input.capabilityGrantIds,
+              runtimeId: input.runtimeId,
+              ...(runtimeMode === undefined ? {} : { runtimeMode }),
+              ...(scope.task.threadId === undefined ? {} : { threadId: scope.task.threadId }),
+              ...(input.approvalRequestId === undefined
+                ? {}
+                : { approvalRequestId: input.approvalRequestId }),
+              workspaceRoot,
+            };
+            const executeTool = (approvalRequestId?: string) => {
+              const effect = dependencies.toolBroker
+                .invoke({
+                  ...brokerInput,
+                  ...(approvalRequestId === undefined ? {} : { approvalRequestId }),
+                })
+                .pipe(Effect.orElseSucceed(() => denied(input, "tool_broker_failed")));
+              // 执行期限只包围工具调用，人工审批等待沿既有可取消 claim。
+              return options?.timeoutMs === undefined
+                ? effect
+                : raceOwnedTools(
+                    effect,
+                    Effect.sleep(Duration.millis(options.timeoutMs)).pipe(
+                      Effect.as(failed(input, "tool_timeout")),
+                    ),
+                  );
+            };
+            const result: ToolBroker.ToolBrokerResult = yield* executeTool(input.approvalRequestId);
+            const requestApproval = options?.requestApproval;
+            const approve = dependencies.approve;
+            if (
+              result.status !== "denied" ||
+              result.errorCode !== "tool_approval_required" ||
+              result.approvalRequestId === undefined ||
+              requestApproval === undefined ||
+              approve === undefined
+            )
+              return result;
+            const approvalRequestId = result.approvalRequestId;
+            return yield* Effect.gen(function* () {
+              const response = yield* Effect.result(requestApproval(approvalRequestId));
+              if (response._tag === "Failure") return failed(input, "tool_approval_failed");
+              const decision = response.success;
+              if (decision !== "accept") {
+                yield* dependencies.toolBroker.cancel({ idempotencyKey: input.idempotencyKey });
+                return decision === "decline"
+                  ? denied(input, "tool_approval_declined")
+                  : cancelled(input);
+              }
+              const currentScope = yield* validateScope(input);
+              if (!currentScope.ok) return denied(input, currentScope.errorCode);
+              const currentInput = yield* dependencies.inputStore
+                .get(input.taskId)
+                .pipe(Effect.orElseSucceed(() => Option.none()));
+              if (
+                Option.isNone(currentInput) ||
+                currentInput.value.taskId !== input.taskId ||
+                currentInput.value.workspaceRoot.trim() !== workspaceRoot
+              )
+                return denied(input, "workspace_scope_mismatch");
+              const approval = yield* Effect.result(approve({ approvalRequestId }));
+              if (approval._tag === "Failure") return denied(input, "tool_approval_failed");
+              return yield* executeTool(approvalRequestId);
+            }).pipe(
+              Effect.onInterrupt(() =>
+                dependencies.toolBroker.cancel({ idempotencyKey: input.idempotencyKey }),
+              ),
+            );
           });
 
-          return Effect.raceFirst(
+          return raceOwnedTools(
             Deferred.await(activeInvocation.cancellation).pipe(Effect.as(cancelled(input))),
             execute,
           );
@@ -355,10 +432,12 @@ const live = Effect.gen(function* () {
   const taskStore = yield* CompositionTaskStore;
   const inputStore = yield* CompositionTaskInputStore;
   const toolBroker = yield* ToolBroker.ToolBroker;
+  const policy = yield* CapabilityPolicy.CapabilityPolicy;
   return makeCompositionRuntimeToolBridge({
     taskStore,
     inputStore,
     toolBroker,
+    approve: policy.approve,
   });
 });
 

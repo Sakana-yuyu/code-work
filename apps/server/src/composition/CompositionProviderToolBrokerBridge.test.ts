@@ -49,21 +49,28 @@ it.effect("可信模式独立传递，Provider 原始参数不能升级权限", 
     for (const runtimeMode of [undefined, "approval-required", "full-access"] as const) {
       let capturedMode: RuntimeMode | undefined;
       let capturedInput: CompositionRuntimeToolInvocation | undefined;
+      const requestApproval = () => Effect.succeed("accept" as const);
+      let capturedApproval: unknown;
       const bridge = makeCompositionProviderToolBrokerBridge({
         context: { ...context, ...(runtimeMode === undefined ? {} : { runtimeMode }) },
         runtimeBridge: {
-          invoke: (input, trustedMode) => {
+          invoke: (input, trustedMode, options) => {
             capturedInput = input;
             capturedMode = trustedMode;
+            capturedApproval = options?.requestApproval;
             return Effect.succeed(result("succeeded"));
           },
           cancel: () => Effect.succeed(result("cancelled")),
         },
       });
-      const forged = { ...invocation, runtimeMode: "full-access" };
+      const forged = { ...invocation, runtimeMode: "full-access", requestApproval };
       yield* bridge.invoke(forged);
       assert.equal(capturedMode, runtimeMode);
       assert.notProperty(capturedInput, "runtimeMode");
+      assert.notProperty(capturedInput, "requestApproval");
+      assert.isUndefined(capturedApproval);
+      yield* bridge.invoke(forged, requestApproval);
+      assert.strictEqual(capturedApproval, requestApproval);
     }
   }),
 );
@@ -127,21 +134,23 @@ it.effect("保留 ToolBroker 的成功、拒绝、失败和取消语义", () =>
   }),
 );
 
-it.effect("只有真实超时才返回 tool_timeout", () =>
+it.effect("执行期限由 Runtime 工具调用管理，审批不占期限", () =>
   Effect.gen(function* () {
+    let capturedTimeout: number | undefined;
     const bridge = makeCompositionProviderToolBrokerBridge({
       context,
       timeoutMs: 0,
       runtimeBridge: {
-        invoke: () => Effect.never,
+        invoke: (_input, _mode, options) => {
+          capturedTimeout = options?.timeoutMs;
+          return Effect.succeed(result("succeeded"));
+        },
         cancel: () => Effect.succeed(result("cancelled")),
       },
     });
 
-    assert.deepEqual(yield* bridge.invoke(invocation), {
-      status: "failed",
-      errorCode: "tool_timeout",
-    });
+    assert.equal((yield* bridge.invoke(invocation)).status, "succeeded");
+    assert.equal(capturedTimeout, 0);
   }),
 );
 

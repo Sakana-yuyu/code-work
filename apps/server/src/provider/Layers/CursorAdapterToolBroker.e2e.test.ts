@@ -8,15 +8,20 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   CursorSettings,
+  ApprovalRequestId,
   ProviderDriverKind,
   ThreadId,
   type ProviderSessionStartInput,
+  type ProviderRuntimeEvent,
 } from "@codework/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
@@ -121,113 +126,185 @@ const TestLayer = Layer.mergeAll(
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
 it.layer(TestLayer, { excludeTestServices: true })("Cursor ACP Provider ToolBroker E2E", (it) => {
-  it.effect("真实子进程经 Runtime Bridge 和 Code Work ToolBroker 读取工作区文件", () =>
-    Effect.gen(function* () {
-      const adapter = yield* CursorAdapter;
-      const settings = yield* ServerSettingsService;
-      const toolBroker = yield* ToolBroker.ToolBroker;
-      const workspaceRoot = yield* Effect.promise(() =>
-        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-toolbroker-real-workspace-")),
-      );
-      const requestedPath = NodePath.join(workspaceRoot, "notes.txt");
-      const resultLogPath = NodePath.join(workspaceRoot, "tool-results.ndjson");
-      yield* Effect.promise(() =>
-        NodeFSP.writeFile(requestedPath, "alpha\nbeta\ngamma\ndelta", "utf8"),
-      );
-      const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({
-          CODEWORK_ACP_READ_TEXT_FILE_PATH: requestedPath,
-          CODEWORK_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
-        }),
-      );
-      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+  for (const action of ["read", "accept", "decline", "cancel"] as const) {
+    it.effect("真实子进程经产品工具代理读取及宿主单次审批：" + action, () =>
+      Effect.gen(function* () {
+        const adapter = yield* CursorAdapter;
+        const settings = yield* ServerSettingsService;
+        const toolBroker = yield* ToolBroker.ToolBroker;
+        const workspaceRoot = yield* Effect.promise(() =>
+          NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-toolbroker-real-workspace-")),
+        );
+        const requestedPath = NodePath.join(workspaceRoot, "notes.txt");
+        const resultLogPath = NodePath.join(workspaceRoot, "tool-results.ndjson");
+        const writtenPath = NodePath.join(workspaceRoot, "written.txt");
+        yield* Effect.promise(() =>
+          NodeFSP.writeFile(requestedPath, "alpha\nbeta\ngamma\ndelta", "utf8"),
+        );
+        const wrapperPath = yield* Effect.promise(() =>
+          makeMockAgentWrapper({
+            CODEWORK_ACP_READ_TEXT_FILE_PATH: requestedPath,
+            CODEWORK_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
+            ...(action === "read"
+              ? {}
+              : {
+                  CODEWORK_ACP_WRITE_TEXT_FILE_PATH: writtenPath,
+                  CODEWORK_ACP_WRITE_TEXT_FILE_CONTENT: "PRODUCT_APPROVED",
+                }),
+          }),
+        );
+        yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
 
-      const threadId = ThreadId.make("cursor-runtime-toolbridge-e2e");
-      const taskId = "task-cursor-runtime-toolbridge-e2e";
-      const runId = "run-cursor-runtime-toolbridge-e2e";
-      const runtimeId = "provider:cursor-e2e";
-      const agentId = "provider:cursor-e2e";
-      const capabilityGrantIds = ["t3.workspace.read_file"];
-      const handshake = yield* adapter.handshakeCapabilities!({
-        runtimeId,
-        taskId,
-        runId,
-        agentId,
-        capabilityGrantIds,
-      });
-      if (handshake.status !== "accepted" || handshake.handshakeId === undefined) {
-        return yield* Effect.die(new Error("Cursor E2E capability handshake 未被接受。"));
-      }
-      const handshakeId = handshake.handshakeId;
-      const task = {
-        taskId,
-        projectId: "project-cursor-e2e",
-        threadId,
-        assigneeKind: "agent" as const,
-        assigneeId: agentId,
-        mode: "serial" as const,
-        status: "running" as const,
-        promptDigest: "sha256:cursor-e2e",
-        dependsOnTaskIds: [],
-        createdAtUnixMs: 1,
-        updatedAtUnixMs: 1,
-      };
-      const run = {
-        runId,
-        taskId,
-        agentId,
-        runtimeId,
-        status: "running" as const,
-        attempt: 1,
-        capabilityGrantIds,
-        capabilityHandshakeId: handshakeId,
-      };
-      const runtimeBridge = makeCompositionRuntimeToolBridge({
-        taskStore: {
-          getTask: (requestedTaskId) =>
-            Effect.succeed(requestedTaskId === taskId ? Option.some(task) : Option.none()),
-          getRun: (requestedRunId) =>
-            Effect.succeed(requestedRunId === runId ? Option.some(run) : Option.none()),
-        },
-        inputStore: {
-          get: (requestedTaskId) =>
-            Effect.succeed(
-              requestedTaskId === taskId
-                ? Option.some({ taskId, prompt: "读取文件", workspaceRoot })
-                : Option.none(),
+        const threadId = ThreadId.make("cursor-runtime-toolbridge-e2e-" + action);
+        yield* Effect.addFinalizer(() =>
+          adapter.hasSession(threadId).pipe(
+            Effect.flatMap((exists) => (exists ? adapter.stopSession(threadId) : Effect.void)),
+            Effect.orDie,
+          ),
+        );
+        const taskId = "task-cursor-runtime-toolbridge-e2e";
+        const runId = "run-cursor-runtime-toolbridge-e2e";
+        const runtimeId = "provider:cursor-e2e";
+        const agentId = "provider:cursor-e2e";
+        const capabilityGrantIds =
+          action === "read"
+            ? ["t3.workspace.read_file"]
+            : ["t3.workspace.read_file", "t3.workspace.write_file"];
+        const handshake = yield* adapter.handshakeCapabilities!({
+          runtimeId,
+          taskId,
+          runId,
+          agentId,
+          capabilityGrantIds,
+        });
+        if (handshake.status !== "accepted" || handshake.handshakeId === undefined) {
+          return yield* Effect.die(new Error("Cursor E2E capability handshake 未被接受。"));
+        }
+        const handshakeId = handshake.handshakeId;
+        const task = {
+          taskId,
+          projectId: "project-cursor-e2e",
+          threadId,
+          assigneeKind: "agent" as const,
+          assigneeId: agentId,
+          mode: "serial" as const,
+          status: "running" as const,
+          promptDigest: "sha256:cursor-e2e",
+          dependsOnTaskIds: [],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+        };
+        const run = {
+          runId,
+          taskId,
+          agentId,
+          runtimeId,
+          status: "running" as const,
+          attempt: 1,
+          capabilityGrantIds,
+          capabilityHandshakeId: handshakeId,
+        };
+        const runtimeBridge = makeCompositionRuntimeToolBridge({
+          approve: capabilityPolicy.approve,
+          taskStore: {
+            getTask: (requestedTaskId) =>
+              Effect.succeed(requestedTaskId === taskId ? Option.some(task) : Option.none()),
+            getRun: (requestedRunId) =>
+              Effect.succeed(requestedRunId === runId ? Option.some(run) : Option.none()),
+          },
+          inputStore: {
+            get: (requestedTaskId) =>
+              Effect.succeed(
+                requestedTaskId === taskId
+                  ? Option.some({ taskId, prompt: "读取文件", workspaceRoot })
+                  : Option.none(),
+              ),
+          },
+          toolBroker,
+        });
+        const context = {
+          runtimeId,
+          taskId,
+          runId,
+          agentId,
+          workspaceRoot,
+          capabilityGrantIds,
+          capabilityHandshakeId: handshakeId,
+          threadId,
+          runtimeMode: "approval-required" as const,
+        };
+        yield* adapter.configureToolBroker!({
+          threadId,
+          context,
+          bridge: makeCompositionProviderToolBrokerBridge({ runtimeBridge, context }),
+        });
+        const events: ProviderRuntimeEvent[] = [];
+        const settled = yield* Deferred.make<void>();
+        const consumer = yield* adapter.streamEvents.pipe(
+          Stream.runForEach((event) => {
+            events.push(event);
+            if (event.type === "turn.completed") return Deferred.succeed(settled, undefined);
+            if (event.type !== "request.opened") return Effect.void;
+            assert.notEqual(action, "read");
+            if (!event.requestId || action === "read") return Effect.die("缺宿主审批身份");
+            assert.match(event.requestId, /^approval-/);
+            return adapter.respondToRequest(
+              threadId,
+              ApprovalRequestId.make(event.requestId),
+              action,
+            );
+          }),
+          Effect.forkChild,
+        );
+        const sessionInput: ProviderSessionStartInput = {
+          threadId,
+          provider: ProviderDriverKind.make("cursor"),
+          cwd: workspaceRoot,
+          runtimeMode: "full-access",
+          capabilityHandshakeId: handshakeId,
+        };
+        yield* adapter.startSession(sessionInput);
+        const outcome = yield* Effect.result(
+          adapter.sendTurn({ threadId, input: "读写测试文件", attachments: [] }),
+        );
+        assert.equal(
+          outcome._tag,
+          action === "read" || action === "accept" ? "Success" : "Failure",
+        );
+        yield* Deferred.await(settled);
+
+        assert.deepStrictEqual(yield* Effect.promise(() => readJsonLines(resultLogPath)), [
+          { method: "fs/read_text_file", result: { content: "beta\ngamma" } },
+          ...(action === "accept" ? [{ method: "fs/write_text_file", result: {} }] : []),
+        ]);
+        assert.equal(
+          yield* Effect.promise(() =>
+            NodeFSP.stat(writtenPath).then(
+              () => true,
+              (error) => {
+                if (error.code === "ENOENT") return false;
+                throw error;
+              },
             ),
-        },
-        toolBroker,
-      });
-      const context = {
-        runtimeId,
-        taskId,
-        runId,
-        agentId,
-        workspaceRoot,
-        capabilityGrantIds,
-        capabilityHandshakeId: handshakeId,
-        threadId,
-      };
-      yield* adapter.configureToolBroker!({
-        threadId,
-        context,
-        bridge: makeCompositionProviderToolBrokerBridge({ runtimeBridge, context }),
-      });
-      const sessionInput: ProviderSessionStartInput = {
-        threadId,
-        provider: ProviderDriverKind.make("cursor"),
-        cwd: workspaceRoot,
-        runtimeMode: "full-access",
-        capabilityHandshakeId: handshakeId,
-      };
-      yield* adapter.startSession(sessionInput);
-      yield* adapter.sendTurn({ threadId, input: "读取测试文件", attachments: [] });
-
-      assert.deepStrictEqual(yield* Effect.promise(() => readJsonLines(resultLogPath)), [
-        { method: "fs/read_text_file", result: { content: "beta\ngamma" } },
-      ]);
-      yield* adapter.stopSession(threadId);
-    }),
-  );
+          ),
+          action === "accept",
+        );
+        if (action === "accept")
+          assert.equal(
+            yield* Effect.promise(() => NodeFSP.readFile(writtenPath, "utf8")),
+            "PRODUCT_APPROVED",
+          );
+        const opened = events.filter((event) => event.type === "request.opened");
+        const resolved = events.filter((event) => event.type === "request.resolved");
+        assert.equal(opened.length, action === "read" ? 0 : 1);
+        assert.equal(resolved.length, opened.length);
+        if (action !== "read") {
+          assert.equal(resolved[0]?.requestId, opened[0]?.requestId);
+          assert.equal(resolved[0]?.payload.decision, action);
+        }
+        yield* adapter.stopSession(threadId);
+        yield* Fiber.interrupt(consumer);
+      }).pipe(Effect.scoped),
+    );
+  }
 });

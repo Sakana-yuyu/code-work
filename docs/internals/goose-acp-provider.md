@@ -88,9 +88,42 @@ node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/GooseAc
 node node_modules/vite-plus/bin/vp test run apps/server/src/composition/CompositionProviderAgentDriver.test.ts apps/server/src/composition/CompositionProviderAgentDriverRegistry.test.ts apps/server/src/composition/CompositionProviderToolBrokerBridge.test.ts apps/server/src/composition/CompositionRuntimeToolBridge.test.ts apps/server/src/composition/CompositionRuntimeToolBridgeHttp.test.ts apps/server/src/composition/CompositionRuntimeToolBridgeProtocol.test.ts apps/server/src/composition/CapabilityPolicy.test.ts apps/server/src/provider/Layers/CursorAdapterToolBroker.e2e.test.ts
 ```
 
-写入授权增量不增加厂商Driver、依赖或第二套权限系统。取消仍沿既有RuntimeBridge/ProviderBridge合同，本次未重新验证真实产品PTY。原生allow_once和宿主approvalRequestId是独立身份，approval-required下的产品审批发起/返回仍需下一增量验证；不把本次明确拒绝算完整审批成功。真实账号/余额、完整数据库Run生命周期、浏览器、Electron、手机、远程和44入口最终审计未由本次证明。
+写入授权增量不增加厂商Driver、依赖或第二套权限系统。该轮取消沿既有RuntimeBridge/ProviderBridge合同，未重新验证真实产品PTY。原生allow_once和宿主approvalRequestId是独立身份，该轮的明确拒绝不能算完整审批成功；产品审批发起/返回的后续证据见下节。真实账号/余额、完整数据库Run生命周期、浏览器、Electron、手机、远程和44入口最终审计未由这项模式传递证明。
 
 回滚只撤回本次可信模式传递、定向回归及稳定文档提交，无数据库或配置迁移；保留前次宿主取消修复、读取探针和其它未提交工作。撤回后恢复写入需要宿主审批的旧行为。
+
+## 产品宿主单次审批与执行期限
+
+源码基线38f60a5a3633f433f2385e796bf4530095ea7fc5。CapabilityPolicy已有单次approve，ToolBroker也已返回approvalRequestId；旧共同Adapter直接把需要审批转为ACP失败，没有发起宿主审批或把决定交回策略。本增量复用已有request.opened/request.resolved、pendingApprovals、respondToRequest及客户端审批合同，不新增厂商Driver、权限系统、公开协议字段或依赖。
+
+共同invokeTool把内部审批回调交给ProviderBridge，再由RuntimeBridge的原在途claim等待。只有明确accept调用真实policy.approve，并用原task/run/agent/toolCallId、幂等键、参数及同一approvalRequestId执行一次；等待后重新核对Run归属、授权身份及持久化工作根，ToolBroker再次检查实际能力。decline拒绝，cancel和未提供的扩大授权决定取消，不升级会话模式。回调只能从服务端第二参数传入，原始工具参数中的伪造回调被忽略；公开HTTP/协议没有回调入口。原生ACP选项审批继续使用原合同，不能代替宿主授权。
+
+宿主审批显示“允许本次、拒绝、取消”三个选项，沿既有file_change_approval或exec_command_approval呈现。事件仅含工具名、宿主调用身份和必要的相对路径，不包含写入正文或环境；同一requestId结算一次，完成/取消/关闭时清理等待项。该身份是宿主调用身份，不伪装成Goose原生工具ID；读取正文显示的协议限制仍按上节保留。
+
+执行期限迁入RuntimeBridge，仅包围实际ToolBroker调用，人工审批等待不消耗默认30秒。取消和期限到达均在返回前中断并等待本次持有的执行分支，随后才释放幂等键所有权；不让迟到审批或工具结果产生后台副作用。最小运行时诊断发现本机已安装Effect beta.103的默认raceFirst返回后未中断实际败方，故用已有acquireUseRelease/forkChild/Fiber.interrupt明确持有并回收两个分支，不修改依赖或只改显示状态。调用可能需等待执行器完成中断清理，不能把返回取消当作外部远程操作已经撤销。
+
+固定Goose 1.52.0配本机受控模型和真实ToolBroker/WorkspaceFileSystem，当前矩阵8个工具动作、7次Broker尝试；其中允许本次包含首次需要审批及一次原身份重试。Task/Run仍为受控有效记录，原生会话仍为auto/full-access，宿主单次审批独立验证。
+
+| 宿主模式与决定            | 实际结果                                                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| full-access写入           | allowed.txt成功，沿前轮可信模式合同                                                                                                  |
+| approval-required拒绝     | denied.txt不存在，原生工具与公共投影均failed                                                                                         |
+| approval-required允许本次 | approved.txt字节恰为GOOSE_PRODUCT_WRITE_31579；两次Broker尝试具有相同参数、调用ID及幂等键，仅第二次附审批ID；原生及公共状态completed |
+| approval-required取消     | cancelled.txt不存在，原生及公共状态failed，审批事件明确cancel；不据此伪造Goose原生工具cancelled状态                                  |
+| 越界读写及缺文件          | 保留既有明确错误、工作区外字节不变和读取脱敏断言                                                                                     |
+
+三次宿主request.opened与resolved逐一同ID配对，决定依次decline/accept/cancel；无正文泄露。普通产品协议子进程E2E同时覆盖read/accept/decline/cancel，无官方CLI时也执行。RuntimeBridge回归覆盖人工等待超过执行期限后允许、拒绝/取消/扩大授权不执行、Run归属变化拒绝、重复在途键不替换取消所有权、错误scope不能取消、取消后迟到允许不执行，以及执行期限后迟到结果无副作用。
+
+本轮HEAD加精确索引的独立副本：普通Bridge/HTTP/协议/策略及产品Adapter回归38项通过、官方probe1项未opt-in跳过；指定固定官方CLI后产品矩阵1项通过；CursorAdapter/GenericAcpDriver/KimiProvider及AcpJsonRpcConnection回归117项通过。Server类型检查及8个变更TS文件定向lint退出0，仅保留原账号池2条类型建议与RuntimeBridge2条既有lint警告。第一次新增测试遗漏早退屏障而超时，修正测试屏障后明确旧生产没有等待审批；取消测试另明确复现迟到执行，修复后原断言通过。新增审批回调和取消清理的类型错误修正后重新跑正式矩阵，不计失败为成功。
+
+```powershell
+node node_modules/vite-plus/bin/vp test run apps/server/src/composition/CompositionRuntimeToolBridge.test.ts apps/server/src/composition/CompositionProviderToolBrokerBridge.test.ts apps/server/src/provider/Layers/CursorAdapterToolBroker.e2e.test.ts
+$env:CODEWORK_GOOSE_CLI_PATH = '<固定1.52.0目录>/goose.exe'
+node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/GooseAcpToolBrokerProbe.test.ts
+Remove-Item Env:CODEWORK_GOOSE_CLI_PATH
+```
+
+本节验证服务端事件、既有回应入口和真实文件副作用，尚未证明浏览器实际点击、Electron、手机、完整数据库Run生命周期或产品PTY进程树；无真实账户/余额或外部模型请求，44入口/P0–P5最终审计仍未完成。共用宿主回调影响Cursor、Generic ACP和Kimi；Grok独立实现无对应宿主ToolBroker入口，此增量不改它。回滚仅撤回本次单次审批/执行期限代码、回归及文档提交，无数据库迁移；保留前轮可信模式与终端取消修复及其它未提交工作。
 
 ## 复验、失败与回滚
 

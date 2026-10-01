@@ -4,6 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import {
   ACP_MODE_OPTION_ID,
+  ApprovalRequestId,
   CursorSettings,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -282,6 +283,7 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
           };
           const hostCalls: Array<{
             toolCallId: string;
+            idempotencyKey: string;
             arguments: unknown;
             status: string;
             result: unknown;
@@ -289,6 +291,7 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
             canonicalToolName: string;
           }> = [];
           const runtimeBridge = makeCompositionRuntimeToolBridge({
+            approve: policy.approve,
             taskStore: {
               getTask: (id) =>
                 Effect.succeed(id === task.taskId ? Option.some(task) : Option.none()),
@@ -312,6 +315,7 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
                       );
                       hostCalls.push({
                         toolCallId: input.toolCallId,
+                        idempotencyKey: input.idempotencyKey,
                         arguments: input.arguments,
                         status: result.status,
                         result: result.result,
@@ -346,9 +350,19 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
           const consumer = yield* adapter.streamEvents.pipe(
             Stream.runForEach((event) => {
               events.push(event);
+              if (event.type === "request.opened") {
+                expect([5, 7, 8]).toContain(sequence);
+                expect(event.requestId).toMatch(/^approval-/);
+                if (!event.requestId) throw new Error("缺宿主审批身份");
+                return adapter.respondToRequest(
+                  threadId,
+                  ApprovalRequestId.make(event.requestId),
+                  sequence === 7 ? "accept" : sequence === 5 ? "decline" : "cancel",
+                );
+              }
               if (event.type === "turn.completed") {
                 expect(event.payload.state).toBe("completed");
-                if (++completed === 6) return Deferred.succeed(completions, undefined);
+                if (++completed === 8) return Deferred.succeed(completions, undefined);
               }
               return Effect.void;
             }),
@@ -386,6 +400,8 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
             [path.join(cwd, "allowed.txt"), "full-access"],
             [path.join(cwd, "denied.txt"), "approval-required"],
             [path.join(root, "outside.txt"), "full-access"],
+            [path.join(cwd, "approved.txt"), "approval-required"],
+            [path.join(cwd, "cancelled.txt"), "approval-required"],
           ] as const) {
             // binding 在建会话时激活；原生 auto 许可不能替代宿主审批模式。
             yield* adapter.stopSession(threadId);
@@ -419,9 +435,9 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
           }
           yield* Deferred.await(completions);
           expect(errors).toEqual([]);
-          expect(requestedTools).toHaveLength(6);
-          expect(modelResults).toHaveLength(6);
-          expect(hostCalls).toHaveLength(4);
+          expect(requestedTools).toHaveLength(8);
+          expect(modelResults).toHaveLength(8);
+          expect(hostCalls).toHaveLength(7);
           expect(hostCalls[0]).toMatchObject({
             status: "succeeded",
             arguments: { cwd, relativePath: "source.txt" },
@@ -441,6 +457,41 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
             errorCode: "tool_approval_required",
             arguments: { cwd, relativePath: "denied.txt" },
           });
+          expect(hostCalls[4]).toMatchObject({
+            status: "denied",
+            errorCode: "tool_approval_required",
+          });
+          expect(hostCalls[5]).toMatchObject({
+            status: "succeeded",
+            arguments: hostCalls[4]!.arguments,
+            toolCallId: hostCalls[4]!.toolCallId,
+            idempotencyKey: hostCalls[4]!.idempotencyKey,
+          });
+          expect(hostCalls[6]).toMatchObject({
+            status: "denied",
+            errorCode: "tool_approval_required",
+          });
+          expect(yield* fs.readFileString(path.join(cwd, "approved.txt"))).toBe(writeContents);
+          expect(yield* fs.exists(path.join(cwd, "cancelled.txt"))).toBe(false);
+          const opened = events.filter((event) => event.type === "request.opened");
+          const resolved = events.filter((event) => event.type === "request.resolved");
+          expect(opened).toHaveLength(3);
+          expect(resolved.map((event) => event.requestId)).toEqual(
+            opened.map((event) => event.requestId),
+          );
+          expect(resolved.map((event) => event.payload.decision)).toEqual([
+            "decline",
+            "accept",
+            "cancel",
+          ]);
+          for (const event of opened) {
+            expect(event.payload.options?.map((option) => option.decision)).toEqual([
+              "accept",
+              "decline",
+              "cancel",
+            ]);
+            expect(event.payload.args).not.toHaveProperty("contents");
+          }
           expect(yield* fs.readFileString(path.join(cwd, "allowed.txt"))).toBe(writeContents);
           expect(yield* fs.exists(path.join(cwd, "denied.txt"))).toBe(false);
           expect(yield* fs.readFileString(path.join(root, "outside.txt"))).toBe(
@@ -456,6 +507,8 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
             "completed",
             "failed",
             "failed",
+            "completed",
+            "failed",
           ]);
           const editActivities = edits
             .flatMap((event) => runtimeEventToActivities(event))
@@ -463,6 +516,8 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
           expect(editActivities).toMatchObject([
             { kind: "tool.completed", payload: { status: "completed" } },
             { kind: "tool.completed", payload: { status: "failed" } },
+            { kind: "tool.completed", payload: { status: "failed" } },
+            { kind: "tool.completed", payload: { status: "completed" } },
             { kind: "tool.completed", payload: { status: "failed" } },
           ]);
           expect(encodeJson(modelResults[0])).toContain("GOOSE_PRODUCT_SOURCE_31579");

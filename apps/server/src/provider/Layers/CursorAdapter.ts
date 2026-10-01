@@ -951,7 +951,68 @@ export function makeCursorAdapter(
                 arguments: argumentsValue,
               };
               binding.inFlightInvocations.set(invocation.toolCallId, invocation);
-              const result = yield* binding.bridge.invoke(invocation).pipe(
+              const requestApproval = (approvalRequestId: string) =>
+                Effect.gen(function* () {
+                  const requestId = ApprovalRequestId.make(approvalRequestId);
+                  const runtimeRequestId = RuntimeRequestId.make(requestId);
+                  const requestType =
+                    canonicalToolName === "workspace.write_file"
+                      ? "file_change_approval"
+                      : "exec_command_approval";
+                  const args = {
+                    toolCallId: invocation.toolCallId,
+                    canonicalToolName,
+                    ...(isRecord(argumentsValue) && typeof argumentsValue.relativePath === "string"
+                      ? { relativePath: argumentsValue.relativePath }
+                      : {}),
+                  };
+                  const decision = yield* Deferred.make<ProviderApprovalDecision>();
+                  const resolve = (resolved: ProviderApprovalDecision) =>
+                    Effect.gen(function* () {
+                      if (!pendingApprovals.delete(requestId)) return;
+                      yield* offerRuntimeEvent({
+                        type: "request.resolved",
+                        ...(yield* makeEventStamp()),
+                        provider: PROVIDER,
+                        threadId: input.threadId,
+                        turnId: ctx?.activeTurnId,
+                        requestId: runtimeRequestId,
+                        payload: { requestType, decision: resolved },
+                      });
+                    });
+                  // 宿主单次审批与原生选项独立；注册、发布和结算沿同一可取消入口。
+                  return yield* Effect.uninterruptibleMask((restore) =>
+                    Effect.gen(function* () {
+                      pendingApprovals.set(requestId, { decision, kind: requestType });
+                      yield* offerRuntimeEvent({
+                        type: "request.opened",
+                        ...(yield* makeEventStamp()),
+                        provider: PROVIDER,
+                        threadId: input.threadId,
+                        turnId: ctx?.activeTurnId,
+                        requestId: runtimeRequestId,
+                        payload: {
+                          requestType,
+                          args,
+                          detail: [canonicalToolName, args.relativePath]
+                            .filter(Boolean)
+                            .join(" · "),
+                          options: [
+                            { decision: "accept", label: "允许本次" },
+                            { decision: "decline", label: "拒绝" },
+                            { decision: "cancel", label: "取消" },
+                          ],
+                        },
+                      });
+                      const resolved = yield* restore(Deferred.await(decision));
+                      return resolved === "accept" || resolved === "decline" ? resolved : "cancel";
+                    }).pipe(
+                      Effect.tap(resolve),
+                      Effect.ensuring(resolve("cancel").pipe(Effect.orDie)),
+                    ),
+                  );
+                });
+              const result = yield* binding.bridge.invoke(invocation, requestApproval).pipe(
                 Effect.ensuring(
                   Effect.sync(() => {
                     binding.inFlightInvocations.delete(invocation.toolCallId);
