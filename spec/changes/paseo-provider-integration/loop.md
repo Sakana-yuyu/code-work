@@ -4559,6 +4559,10 @@ CompositionProviderAgentDriver沿已有releaseContext，在clear配置后释放�
 
 `vp test run packages/effect-acp/src/schema.test.ts packages/effect-acp/src/protocol.test.ts`：2 文件 33 项通过。定向 lint 退出 0。未跑全仓、无 push/PR。
 
+本会话补充核验：03:01:47以vp.cmd执行schema.test.ts/protocol.test.ts/client.test.ts，3文件41项通过（4.38秒）；包内经vp.cmd exec调用已安装tsgo --noEmit退出0；四文件定向lint最终退出0、无警告。外置compare-types.cjs针对8848dd222旧类型仅TS2741缺name退出1，当前相同probe退出0，日志位于C:/Users/Administrator/AppData/Local/Temp/codework-auth-schema-consistency-20261002/type-red.log及type-green.log。初次生成器断言未带属性引号造成1失败/40通过，修正精确输出断言后通过；初次新lint告警通过模块级编译Schema消除；外置副本依赖缺失TS2307修正包依赖引用后才认定类型红绿。没有重新下载/运行整个固定上游资产生成流程，也没有浏览器/真实账号/设备/远程验证。
+
+并发提交边界：本会话提交前发现范围变化并停止；实际93a41e3e6提交正好是已验证四文件，逐文件提交/工作区字节一致，索引为空。因此保留该提交，不重复提交、不改写提交者或钩子记录，不重置别人的索引；此前提交存在不等于本会话重新验证其全部行为。
+
 #### Retrospect
 
 本轮 progress：认证缺省从手改产物收拢到可重复生成规则，避免再生成漂移。同会话内其它模块整理见 Round 145。下一轮继续 A-7 真实连接验收，A-7/A-8 保持未勾选。
@@ -4595,6 +4599,11 @@ Round 143 代码哈希：`f5aae63913e14da349ce0a709231bd22ee8a0ea4`。A7 四份 
 本轮 progress：产品脏树按模块拆完。A-7/A-8 未勾选。下一轮唯一增量 A-7：隔离服务分别验证本地、远程、relay/tunnel（OR）重连/迟到审批/崩溃与取消恢复；先修 A7 live 类型门禁再取真实证据，一步一提交。goal active、loop running。
 
 ## Lessons
+
+### L-106 生成类型与运行时须同义，并发提交先核对字节 (source: Round 144)
+
+只手改生成Schema会在重新生成时丢兼容，且别名类型可与解码optional不一致；生成边界只放宽认证定义的身份缺省，嵌套字段仍必填，固定生成器输出与类型负向分别验证。另一执行方已提交相同四文件时校验提交范围和字节，不重复提交或清空索引。外置对照须使用包依赖边界，排除模块缺失后再认定类型红绿。externalLauncher.reveal已获用户纳入授权，当前暂未提交仍需逐模块核验，不因Round145暂不混入而永久排除。
+
 ### L-105 可信回收排空已有调用，错误与重复保留同一结果 (source: Round 143)
 
 通用terminal.close在终态被拒是原权限合同，不能为清理松门禁；服务端绑定用原runId分组与Manager关闭，先在途claim登记再异步校验，使排空涵盖迟到读取。复用原Deferred回执和一次清理结果，关闭失败不能第二次void伪装成功，公开HTTP/MCP不发布内部回收。真实子PID死与Session不存在分别核对，RPC错误精确tag/Run/terminalId优于message序列化猜测。已有调用排空不自动证明取消未落库期间所有新请求都被拒；保留下一验证边界。隔离缺tsgo shim用已安装同编译器经vp exec，不假装包脚本已成功。新目标要求按模块整理时，先只读分类再确定所属，混合语义/格式与缓存不广泛暂存；既存历史豁免只按当前用户明确授权采用。
