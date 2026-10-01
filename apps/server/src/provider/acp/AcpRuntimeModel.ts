@@ -658,6 +658,11 @@ function makeToolCallState(
       )
     : undefined;
   const rawOutputContent = isRecord(data.rawOutput) ? data.rawOutput.content : undefined;
+  // 文件读取的结构化正文优先于 ACP 展示摘要，仍使用共用输出限长。
+  const fileOutput =
+    kind === "read" && typeof rawOutputContent === "string" && rawOutputContent
+      ? boundToolCallOutputText(rawOutputContent)
+      : undefined;
   const mcpOutput = Array.isArray(rawOutputContent)
     ? rawOutputContent
         .filter(isMcpTextContent)
@@ -690,6 +695,7 @@ function makeToolCallState(
   const detail =
     queryOutput ??
     (mcpOutput ? boundToolCallOutputText(mcpOutput) : undefined) ??
+    fileOutput ??
     textContent ??
     presentation?.detail;
   return {
