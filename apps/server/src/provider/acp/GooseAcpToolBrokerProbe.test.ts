@@ -9,6 +9,7 @@ import {
   ProviderInstanceId,
   ThreadId,
   type ProviderRuntimeEvent,
+  type RuntimeMode,
 } from "@codework/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -38,6 +39,7 @@ const cliPath = process.env.CODEWORK_GOOSE_CLI_PATH;
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeSettings = Schema.decodeSync(CursorSettings);
 const isReadData = Schema.is(Schema.Struct({ kind: Schema.Literal("read") }));
+const isEditData = Schema.is(Schema.Struct({ kind: Schema.Literal("edit") }));
 const decodeRequest = Schema.decodeSync(
   Schema.fromJsonString(
     Schema.Struct({
@@ -73,7 +75,7 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
   "Goose 官方 CLI 经产品 ToolBroker 读取",
   () => {
     it.effect(
-      "实际读取、脱敏、越界/缺文件拒绝与公开详情边界",
+      "实际读取、脱敏、可信模式写入和审批/越界拒绝与公开详情边界",
       () =>
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
@@ -94,6 +96,8 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
           );
           let nextPath: string | undefined,
             sequence = 0;
+          let nextTool: "read" | "write" = "read";
+          const writeContents = "GOOSE_PRODUCT_WRITE_31579";
           const requestedTools: string[] = [],
             modelResults: unknown[] = [],
             errors: unknown[] = [];
@@ -134,7 +138,7 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
                       ? nextPath
                       : undefined;
                   if (toolPath) {
-                    expect(body.tools?.some((tool) => tool.function.name === "read")).toBe(true);
+                    expect(body.tools?.some((tool) => tool.function.name === nextTool)).toBe(true);
                     requestedTools.push(toolPath);
                     nextPath = undefined;
                   } else {
@@ -151,7 +155,13 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
                             index: 0,
                             id: "goose-product-read-" + sequence,
                             type: "function",
-                            function: { name: "read", arguments: encodeJson({ path: toolPath }) },
+                            function: {
+                              name: nextTool,
+                              arguments: encodeJson({
+                                path: toolPath,
+                                ...(nextTool === "write" ? { content: writeContents } : {}),
+                              }),
+                            },
                           },
                         ],
                       }
@@ -237,7 +247,7 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
               Effect.orDie,
             ),
           );
-          const capabilityGrantIds = ["t3.workspace.read_file"];
+          const capabilityGrantIds = ["t3.workspace.read_file", "t3.workspace.write_file"];
           const handshake = yield* adapter.handshakeCapabilities!({
             runtimeId,
             agentId,
@@ -275,6 +285,8 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
             arguments: unknown;
             status: string;
             result: unknown;
+            errorCode: string | undefined;
+            canonicalToolName: string;
           }> = [];
           const runtimeBridge = makeCompositionRuntimeToolBridge({
             taskStore: {
@@ -295,12 +307,16 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
                 broker.invoke(input).pipe(
                   Effect.tap((result) =>
                     Effect.sync(() => {
-                      expect(input.canonicalToolName).toBe("workspace.read_file");
+                      expect(input.canonicalToolName).toBe(
+                        nextTool === "read" ? "workspace.read_file" : "workspace.write_file",
+                      );
                       hostCalls.push({
                         toolCallId: input.toolCallId,
                         arguments: input.arguments,
                         status: result.status,
                         result: result.result,
+                        errorCode: result.errorCode,
+                        canonicalToolName: input.canonicalToolName,
                       });
                     }),
                   ),
@@ -317,6 +333,7 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
             capabilityHandshakeId: handshake.handshakeId,
             workspaceRoot: cwd,
             threadId,
+            runtimeMode: "full-access" as RuntimeMode,
           };
           yield* adapter.configureToolBroker!({
             threadId,
@@ -331,7 +348,7 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
               events.push(event);
               if (event.type === "turn.completed") {
                 expect(event.payload.state).toBe("completed");
-                if (++completed === 3) return Deferred.succeed(completions, undefined);
+                if (++completed === 6) return Deferred.succeed(completions, undefined);
               }
               return Effect.void;
             }),
@@ -365,11 +382,46 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
             });
             expect(nextPath).toBeUndefined();
           }
+          for (const [requestedPath, runtimeMode] of [
+            [path.join(cwd, "allowed.txt"), "full-access"],
+            [path.join(cwd, "denied.txt"), "approval-required"],
+            [path.join(root, "outside.txt"), "full-access"],
+          ] as const) {
+            // binding 在建会话时激活；原生 auto 许可不能替代宿主审批模式。
+            yield* adapter.stopSession(threadId);
+            nextTool = "write";
+            nextPath = requestedPath;
+            const writeContext = { ...context, runtimeMode };
+            yield* adapter.configureToolBroker!({
+              threadId,
+              context: writeContext,
+              bridge: makeCompositionProviderToolBrokerBridge({
+                runtimeBridge,
+                context: writeContext,
+              }),
+            });
+            yield* adapter.startSession({
+              threadId,
+              provider: ProviderDriverKind.make("acpAgent"),
+              cwd,
+              runtimeMode: "full-access",
+              capabilityHandshakeId: handshake.handshakeId,
+              modelSelection: selection,
+            });
+            sequence++;
+            yield* adapter.sendTurn({
+              threadId,
+              input: "GOOSE_PRODUCT_" + sequence + " 执行一次写入。",
+              attachments: [],
+              modelSelection: selection,
+            });
+            expect(nextPath).toBeUndefined();
+          }
           yield* Deferred.await(completions);
           expect(errors).toEqual([]);
-          expect(requestedTools).toHaveLength(3);
-          expect(modelResults).toHaveLength(3);
-          expect(hostCalls).toHaveLength(2);
+          expect(requestedTools).toHaveLength(6);
+          expect(modelResults).toHaveLength(6);
+          expect(hostCalls).toHaveLength(4);
           expect(hostCalls[0]).toMatchObject({
             status: "succeeded",
             arguments: { cwd, relativePath: "source.txt" },
@@ -379,6 +431,40 @@ describe.runIf(Boolean(cliPath) && process.platform === "win32")(
             status: "failed",
             arguments: { cwd, relativePath: "missing.txt" },
           });
+          expect(hostCalls[2]).toMatchObject({
+            status: "succeeded",
+            canonicalToolName: "workspace.write_file",
+            arguments: { cwd, relativePath: "allowed.txt", contents: writeContents },
+          });
+          expect(hostCalls[3]).toMatchObject({
+            status: "denied",
+            errorCode: "tool_approval_required",
+            arguments: { cwd, relativePath: "denied.txt" },
+          });
+          expect(yield* fs.readFileString(path.join(cwd, "allowed.txt"))).toBe(writeContents);
+          expect(yield* fs.exists(path.join(cwd, "denied.txt"))).toBe(false);
+          expect(yield* fs.readFileString(path.join(root, "outside.txt"))).toBe(
+            "GOOSE_OUTSIDE_31579",
+          );
+          expect(encodeJson(modelResults[3])).toContain("Wrote");
+          expect(encodeJson(modelResults[4])).toContain("Code Work ToolBroker 未完成 ACP 请求");
+          expect(encodeJson(modelResults[5])).toContain("ACP 文件路径不在授权工作区内");
+          const edits = events
+            .filter((event) => event.type === "item.completed")
+            .filter((event) => isEditData(event.payload.data));
+          expect(edits.map((event) => event.payload.status)).toEqual([
+            "completed",
+            "failed",
+            "failed",
+          ]);
+          const editActivities = edits
+            .flatMap((event) => runtimeEventToActivities(event))
+            .map(projectActivityPayload);
+          expect(editActivities).toMatchObject([
+            { kind: "tool.completed", payload: { status: "completed" } },
+            { kind: "tool.completed", payload: { status: "failed" } },
+            { kind: "tool.completed", payload: { status: "failed" } },
+          ]);
           expect(encodeJson(modelResults[0])).toContain("GOOSE_PRODUCT_SOURCE_31579");
           expect(encodeJson(modelResults[0])).toContain("[REDACTED]");
           expect(encodeJson(modelResults)).not.toContain("GOOSE_SYNTHETIC_SECRET_31579");

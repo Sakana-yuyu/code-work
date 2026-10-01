@@ -29,18 +29,21 @@ export const makeCompositionProviderToolBrokerBridge = (
   return {
     invoke: (input) =>
       options.runtimeBridge
-        .invoke({
-          runtimeId: options.context.runtimeId,
-          taskId: options.context.taskId,
-          runId: options.context.runId,
-          agentId: options.context.agentId,
-          capabilityGrantIds: options.context.capabilityGrantIds,
-          capabilityHandshakeId: options.context.capabilityHandshakeId,
-          toolCallId: input.toolCallId,
-          canonicalToolName: input.canonicalToolName,
-          arguments: input.arguments,
-          idempotencyKey: input.idempotencyKey,
-        })
+        .invoke(
+          {
+            runtimeId: options.context.runtimeId,
+            taskId: options.context.taskId,
+            runId: options.context.runId,
+            agentId: options.context.agentId,
+            capabilityGrantIds: options.context.capabilityGrantIds,
+            capabilityHandshakeId: options.context.capabilityHandshakeId,
+            toolCallId: input.toolCallId,
+            canonicalToolName: input.canonicalToolName,
+            arguments: input.arguments,
+            idempotencyKey: input.idempotencyKey,
+          },
+          options.context.runtimeMode,
+        )
         .pipe(
           Effect.timeoutOption(Duration.millis(timeoutMs)),
           Effect.map((result) => (result._tag === "Some" ? result.value : timeoutCode())),

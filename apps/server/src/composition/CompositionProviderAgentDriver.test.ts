@@ -649,57 +649,72 @@ describe("CompositionProviderAgentDriver", () => {
     expect(fake.sessionInputs).toHaveLength(0);
   });
 
-  it("把已接受的 Provider capability handshake ID 传入 Session", async () => {
-    const fake = makeAdapter();
-    const driver = makeCompositionProviderAgentDriver({
-      agentId: "agent-codex",
-      runtimeId: "codex-local",
-      providerInstanceId: ProviderInstanceId.make("codex-local"),
-      adapter: {
-        ...fake.adapter,
-        handshakeCapabilities: (input) =>
-          Effect.succeed({
-            ...input,
-            status: "accepted" as const,
-            handshakeId: "provider-handshake-1",
-            acceptedGrantIds: [...input.capabilityGrantIds],
-          }),
-      },
-    });
-
-    const started = await Effect.runPromise(
-      driver.startTask({
-        task: {
-          taskId: "task-provider-grant",
-          projectId: "project-1",
-          assigneeKind: "agent",
-          assigneeId: "agent-codex",
-          mode: "serial",
-          status: "queued",
-          promptDigest: "sha256:provider-grant",
-          dependsOnTaskIds: [],
-          createdAtUnixMs: 1,
-          updatedAtUnixMs: 1,
+  it.each(["full-access", "approval-required"] as const)(
+    "把已接受的握手和可信 %s 模式一致传入 Session 与工具上下文",
+    async (runtimeMode) => {
+      const fake = makeAdapter();
+      const configuredModes: unknown[] = [];
+      const driver = makeCompositionProviderAgentDriver({
+        agentId: "agent-codex",
+        runtimeId: "codex-local",
+        providerInstanceId: ProviderInstanceId.make("codex-local"),
+        runtimeMode,
+        toolBrokerBridge: unusedRuntimeToolBridge,
+        toolBrokerCanonicalTools: ["workspace.read_file"],
+        adapter: {
+          ...fake.adapter,
+          handshakeCapabilities: (input) =>
+            Effect.succeed({
+              ...input,
+              status: "accepted" as const,
+              handshakeId: "provider-handshake-1",
+              acceptedGrantIds: [...input.capabilityGrantIds],
+            }),
+          configureToolBroker: ({ context }) =>
+            Effect.sync(() => {
+              configuredModes.push(context.runtimeMode);
+            }),
+          clearToolBroker: () => Effect.void,
+          revokeCapabilityHandshake: () => Effect.void,
         },
-        run: {
-          runId: "run-provider-grant",
-          taskId: "task-provider-grant",
-          agentId: "agent-codex",
-          runtimeId: "codex-local",
-          status: "queued",
-          attempt: 1,
-          capabilityGrantIds: ["grant-provider-1"],
-        },
-        prompt: "检查工作区",
-      }),
-    );
+      });
 
-    expect(started.capabilityHandshakeId).toBe("provider-handshake-1");
-    expect(fake.sessionInputs[0]).toMatchObject({
-      runtimeMode: "full-access",
-      capabilityHandshakeId: "provider-handshake-1",
-    });
-  });
+      const started = await Effect.runPromise(
+        driver.startTask({
+          task: {
+            taskId: "task-provider-grant",
+            projectId: "project-1",
+            assigneeKind: "agent",
+            assigneeId: "agent-codex",
+            mode: "serial",
+            status: "queued",
+            promptDigest: "sha256:provider-grant",
+            dependsOnTaskIds: [],
+            createdAtUnixMs: 1,
+            updatedAtUnixMs: 1,
+          },
+          run: {
+            runId: "run-provider-grant",
+            taskId: "task-provider-grant",
+            agentId: "agent-codex",
+            runtimeId: "codex-local",
+            status: "queued",
+            attempt: 1,
+            capabilityGrantIds: ["grant-provider-1"],
+          },
+          prompt: "检查工作区",
+          workspaceRoot: "C:/workspace",
+        }),
+      );
+
+      expect(started.capabilityHandshakeId).toBe("provider-handshake-1");
+      expect(fake.sessionInputs[0]).toMatchObject({
+        runtimeMode,
+        capabilityHandshakeId: "provider-handshake-1",
+      });
+      expect(configuredModes).toEqual([runtimeMode]);
+    },
+  );
 
   it.each([
     ["错绑 runtime", { runtimeId: "other-runtime" }],

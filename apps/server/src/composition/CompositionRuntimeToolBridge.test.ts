@@ -165,6 +165,28 @@ it.effect("拒绝 runtime、handshake 或 grant 与 Run 不匹配的请求", () 
   }),
 );
 
+it.effect("只转发内部可信模式，外部输入不能声明 full-access", () =>
+  Effect.gen(function* () {
+    const captured: ToolBrokerInput[] = [];
+    const dependencies = makeDependencies();
+    const bridge = makeCompositionRuntimeToolBridge({
+      ...dependencies,
+      toolBroker: {
+        ...dependencies.toolBroker,
+        invoke: (request) => {
+          captured.push(request);
+          return dependencies.toolBroker.invoke(request);
+        },
+      },
+    });
+    for (const runtimeMode of [undefined, "approval-required", "full-access"] as const) {
+      const forged = { ...input, runtimeMode: "full-access" };
+      yield* bridge.invoke(forged, runtimeMode);
+      assert.equal(captured.at(-1)?.runtimeMode, runtimeMode);
+    }
+  }),
+);
+
 it.effect("缺少持久化 workspaceRoot 时拒绝调用而不信任外部路径", () =>
   Effect.gen(function* () {
     const bridge = makeCompositionRuntimeToolBridge(

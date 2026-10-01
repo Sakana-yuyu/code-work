@@ -22,12 +22,15 @@ import type {
   ProviderUploadFeedbackResult,
   ThreadId,
   ProviderTurnStartResult,
+  RuntimeMode,
   TurnId,
 } from "@codework/contracts";
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
 
 export type ProviderToolBrokerContext = {
+  /** 仅由服务端会话配置绑定，不接受 Provider 工具参数声明。 */
+  readonly runtimeMode?: RuntimeMode;
   readonly runtimeId: string;
   readonly taskId: string;
   readonly runId: string;

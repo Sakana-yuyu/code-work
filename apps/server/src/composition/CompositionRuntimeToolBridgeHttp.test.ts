@@ -63,8 +63,10 @@ describe("CompositionRuntimeToolBridge HTTP", () => {
       Effect.gen(function* () {
         const calls: string[] = [];
         const bridge = CompositionRuntimeToolBridge.CompositionRuntimeToolBridgeService.of({
-          invoke: (input) =>
+          invoke: (input, trustedMode) =>
             Effect.sync(() => {
+              expect(trustedMode).toBeUndefined();
+              expect(input).not.toHaveProperty("runtimeMode");
               calls.push(`${COMPOSITION_RUNTIME_TOOL_INVOKE_PATH}:${input.idempotencyKey}`);
               return successfulResult;
             }),
@@ -133,9 +135,20 @@ describe("CompositionRuntimeToolBridge HTTP", () => {
         yield* client.invoke(invocation);
         yield* client.cancel(cancellation);
 
+        const forgedModeResponse = yield* httpClient.post(COMPOSITION_RUNTIME_TOOL_INVOKE_PATH, {
+          headers: {
+            authorization: "Bearer test-token",
+            "idempotency-key": invocation.idempotencyKey,
+            "x-t3-composition-protocol": COMPOSITION_RUNTIME_TOOL_BRIDGE_PROTOCOL,
+          },
+          body: yield* HttpBody.json({ ...invocation, runtimeMode: "full-access" }),
+        });
+        expect(forgedModeResponse.status).toBe(200);
+
         expect(calls).toEqual([
           `${COMPOSITION_RUNTIME_TOOL_INVOKE_PATH}:${invocation.idempotencyKey}`,
           `${COMPOSITION_RUNTIME_TOOL_CANCEL_PATH}:${cancellation.idempotencyKey}`,
+          `${COMPOSITION_RUNTIME_TOOL_INVOKE_PATH}:${invocation.idempotencyKey}`,
         ]);
       }),
     ).pipe(Effect.provide(NodeHttpServer.layerTest)),

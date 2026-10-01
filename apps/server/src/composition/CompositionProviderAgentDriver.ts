@@ -472,6 +472,7 @@ export const makeCompositionProviderAgentDriver = (
           });
         }
         const context = {
+          runtimeMode,
           runtimeId: options.runtimeId,
           taskId: input.task.taskId,
           runId: input.run.runId,

@@ -1,7 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import { ThreadId, type CompositionToolResult } from "@codework/contracts";
+import { ThreadId, type CompositionToolResult, type RuntimeMode } from "@codework/contracts";
 import type { ProviderToolBrokerInvocation } from "../provider/Services/ProviderAdapter.ts";
 import {
   makeCompositionProviderToolBrokerBridge,
@@ -43,6 +43,30 @@ const result = (
   ...(status === "succeeded" ? { result: { contents: "ok" } } : {}),
   ...(errorCode === undefined ? {} : { errorCode }),
 });
+
+it.effect("可信模式独立传递，Provider 原始参数不能升级权限", () =>
+  Effect.gen(function* () {
+    for (const runtimeMode of [undefined, "approval-required", "full-access"] as const) {
+      let capturedMode: RuntimeMode | undefined;
+      let capturedInput: CompositionRuntimeToolInvocation | undefined;
+      const bridge = makeCompositionProviderToolBrokerBridge({
+        context: { ...context, ...(runtimeMode === undefined ? {} : { runtimeMode }) },
+        runtimeBridge: {
+          invoke: (input, trustedMode) => {
+            capturedInput = input;
+            capturedMode = trustedMode;
+            return Effect.succeed(result("succeeded"));
+          },
+          cancel: () => Effect.succeed(result("cancelled")),
+        },
+      });
+      const forged = { ...invocation, runtimeMode: "full-access" };
+      yield* bridge.invoke(forged);
+      assert.equal(capturedMode, runtimeMode);
+      assert.notProperty(capturedInput, "runtimeMode");
+    }
+  }),
+);
 
 it.effect("固定可信作用域并忽略 Provider 伪造的上下文字段", () =>
   Effect.gen(function* () {

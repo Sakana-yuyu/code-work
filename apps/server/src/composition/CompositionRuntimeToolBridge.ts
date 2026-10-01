@@ -2,6 +2,7 @@ import type {
   CompositionTask,
   CompositionTaskRun,
   CompositionToolResult,
+  RuntimeMode,
 } from "@codework/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -59,6 +60,8 @@ export type CompositionRuntimeToolBridgeDependencies = {
 export type CompositionRuntimeToolBridgeShape = {
   readonly invoke: (
     input: CompositionRuntimeToolInvocation,
+    /** 内部服务端调用的可信模式；公开 HTTP/协议入口只传 input。 */
+    runtimeMode?: RuntimeMode,
   ) => Effect.Effect<ToolBroker.ToolBrokerResult>;
   readonly cancel: (
     input: CompositionRuntimeToolCancellation,
@@ -238,7 +241,7 @@ export const makeCompositionRuntimeToolBridge = (
       return { ok: true, task, run } as const;
     });
 
-  const invoke: CompositionRuntimeToolBridgeShape["invoke"] = (input) =>
+  const invoke: CompositionRuntimeToolBridgeShape["invoke"] = (input, runtimeMode) =>
     Effect.gen(function* () {
       const scope = yield* validateScope(input);
       if (!scope.ok) return denied(input, scope.errorCode);
@@ -293,6 +296,7 @@ export const makeCompositionRuntimeToolBridge = (
                 idempotencyKey: input.idempotencyKey,
                 capabilityGrantIds: input.capabilityGrantIds,
                 runtimeId: input.runtimeId,
+                ...(runtimeMode === undefined ? {} : { runtimeMode }),
                 ...(scope.task.threadId === undefined ? {} : { threadId: scope.task.threadId }),
                 ...(input.approvalRequestId === undefined
                   ? {}

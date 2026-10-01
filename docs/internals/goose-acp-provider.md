@@ -1,6 +1,6 @@
 # Goose ACP 调用、工具与验证边界
 
-核对日期2026-10-01。固定官方 Windows CLI 1.52.0，以已安装二进制的版本与实际协议结果为准；本次不下载或升级 CLI，不使用外部模型或账户。本页的当前证据来自已提交工具、取消与产品读取探针，旧独立脚本的 Ollama 实验保留为工作历史，不进入本次成功统计。
+核对日期2026-10-01。固定官方 Windows CLI 1.52.0，以已安装二进制的版本与实际协议结果为准；本次不下载或升级 CLI，不使用外部模型或账户。本页的当前证据来自已提交工具、取消与产品读写探针，旧独立脚本的 Ollama 实验保留为工作历史，不进入本次成功统计。
 
 ## 调用与隔离
 
@@ -71,6 +71,26 @@
 node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/GooseAcpToolBrokerProbe.test.ts
 node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/GooseAcpToolBrokerProbe.test.ts apps/server/src/provider/Layers/CursorAdapterToolBroker.e2e.test.ts apps/server/src/composition/CompositionRuntimeToolBridge.test.ts apps/server/src/composition/CompositionProviderToolBrokerBridge.test.ts
 ```
+
+## 产品写入与可信运行模式
+
+核对基线5b7772d29ef2eecb4cad485bb7f8efc8e57fd188。上节读取模块的17项/3文件是前次证据；当前同一产品探针扩展为3次读取、3次写入，共6个真实Goose动作、4次真实ToolBroker调用。源码基线具备写入能力、会话为full-access时，allowed.txt仍返回denied；三层回归证实服务端运行模式在到达ToolBroker前丢失。
+
+复用既有RuntimeMode与CapabilityPolicy：CompositionProviderAgentDriver把同一服务端模式绑定到Session和ProviderToolBrokerContext，CompositionProviderToolBrokerBridge只从可信context取模式，CompositionRuntimeToolBridge以内部第二参数接受并传给ToolBroker。公开HTTP/协议输入仍不携带该参数，原始工具输入声明runtimeMode=full-access不生效。未配置模式保持既有审批行为；full-access仍须通过Task/Run/Agent/Handshake、能力授权和持久化workspaceRoot检查，不能访问工作区外文件，策略本身没有修改。
+
+真实官方1.52.0配本机受控模型验证：full-access和有效write授权创建allowed.txt，字节恰为GOOSE_PRODUCT_WRITE_31579；宿主approval-required拒绝denied.txt并返回tool_approval_required，文件不存在；越界write在共同路径校验拒绝，外部合成文件原字节不变。写入原生工具与公共状态分别为completed/failed/failed；原有读取脱敏、缺文件失败和读取正文显示限制仍按上节断言。
+
+探针的ToolBroker binding在建会话时激活，因此每组写入先结束自己启动的会话，再配置并建新会话；不能在活动会话只配置pending binding后声称模式已经改变。负向宿主审批组仍让Goose使用原生auto，证明原生许可不能升级宿主模式；它不代表原生approve/allow_once已经完成产品审批授权。Driver回归另外检查Session与context在full-access/approval-required两种模式一致。
+
+当前独立10文件索引副本：官方产品读写探针1项通过；Provider Driver/Registry/两层Bridge/真实本地HTTP/协议Client/CapabilityPolicy和产品Adapter回归56项通过，普通模式的官方probe1项因无opt-in跳过。HTTP测试直接提交带伪造full-access的JSON，进入Bridge时仍无可信模式；既有策略回归覆盖缺失、越权、过期、撤销授权，即使full-access仍拒绝。Server类型检查退出0，仅原账号池2条建议；定向lint退出0，RuntimeBridge原有未使用类型与内联Schema编译2条警告保留。
+
+```powershell
+node node_modules/vite-plus/bin/vp test run apps/server/src/composition/CompositionProviderAgentDriver.test.ts apps/server/src/composition/CompositionProviderAgentDriverRegistry.test.ts apps/server/src/composition/CompositionProviderToolBrokerBridge.test.ts apps/server/src/composition/CompositionRuntimeToolBridge.test.ts apps/server/src/composition/CompositionRuntimeToolBridgeHttp.test.ts apps/server/src/composition/CompositionRuntimeToolBridgeProtocol.test.ts apps/server/src/composition/CapabilityPolicy.test.ts apps/server/src/provider/Layers/CursorAdapterToolBroker.e2e.test.ts
+```
+
+写入授权增量不增加厂商Driver、依赖或第二套权限系统。取消仍沿既有RuntimeBridge/ProviderBridge合同，本次未重新验证真实产品PTY。原生allow_once和宿主approvalRequestId是独立身份，approval-required下的产品审批发起/返回仍需下一增量验证；不把本次明确拒绝算完整审批成功。真实账号/余额、完整数据库Run生命周期、浏览器、Electron、手机、远程和44入口最终审计未由本次证明。
+
+回滚只撤回本次可信模式传递、定向回归及稳定文档提交，无数据库或配置迁移；保留前次宿主取消修复、读取探针和其它未提交工作。撤回后恢复写入需要宿主审批的旧行为。
 
 ## 复验、失败与回滚
 
