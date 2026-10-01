@@ -45,6 +45,7 @@ import {
   type AcpToolCallState,
 } from "./AcpRuntimeModel.ts";
 import { normalizeGeminiToolResult } from "./GeminiAcpToolResult.ts";
+import { normalizeCopilotToolResult } from "./CopilotAcpToolResult.ts";
 
 interface AcpToolCallTrackedState {
   readonly state: AcpToolCallState;
@@ -1434,7 +1435,9 @@ const handleSessionUpdate = ({
   readonly agentName: string | undefined;
 }): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const parsed = parseSessionUpdateEvent(normalizeGeminiToolResult(params, agentName));
+    const parsed = parseSessionUpdateEvent(
+      normalizeCopilotToolResult(normalizeGeminiToolResult(params, agentName), agentName),
+    );
     if (parsed.modeId) {
       yield* Ref.update(modeStateRef, (current) =>
         current === undefined ? current : updateModeState(current, parsed.modeId!),

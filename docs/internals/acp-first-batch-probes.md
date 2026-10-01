@@ -1,6 +1,6 @@
 # 首批 ACP Agent 的可重复工具验证
 
-Qwen、Cline、Hermes、Gemini 使用现有 GenericAcpDriver 和公共 ACP Runtime。这里交付的是固定官方 CLI 的可重复验证入口，不增加另一套 Driver、工具状态或客户端展示。核对日期2026-10-01，Windows x64；模型回复及工具选择由仅监听127.0.0.1的合成端点产生，文件/命令副作用和ACP通知来自实际CLI。此结果不能证明外部模型推理、账号余额或全部设备/连接可用。
+Qwen、Cline、Hermes、Gemini、Copilot 使用现有 GenericAcpDriver 和公共 ACP Runtime。这里交付的是固定官方 CLI 的可重复验证入口，不增加另一套 Driver、工具状态或客户端展示。核对日期2026-10-01，Windows x64；模型回复及工具选择由仅监听127.0.0.1的合成端点产生，文件/命令副作用和ACP通知来自实际CLI。此结果不能证明外部模型推理、账号余额或全部设备/连接可用。
 
 ## 当前执行结果
 
@@ -12,7 +12,7 @@ Qwen、Cline、Hermes、Gemini 使用现有 GenericAcpDriver 和公共 ACP Runti
 
 三条官方CLI探针本次各1项通过；完整测试包含每行列出的多个动作，不能把动作数量当成独立测试数。Qwen约12.12秒、Cline约7.13秒、Hermes约29.06秒。独立模型端点收到真实CLI请求并返回合成回应；文本标记本身不证明模型推理，工具验证另断言文件内容、命令结果、工具终态及未生成的拒绝/取消文件。
 
-首批范围还包含Copilot：其真实模型探针需要既有账户，当前不重复调用，尚未提交的历史探针也不作为本页交付文件；Gemini的本机工具与版本恢复限制见下节。本页没有替代Copilot或整个首批验收。全部44入口及最终门槛仍见 [入口验收合同](./acp-provider-validation.md)。
+五个首批入口均已有本机模型验证记录；Copilot的离线工具与Gemini的版本恢复限制见各节。历史真实账号探针不作为本页当前交付证据；本页不代替外部账号或整个首批/多端验收。全部44入口及最终门槛仍见 [入口验收合同](./acp-provider-validation.md)。
 
 ## 运行与环境隔离
 
@@ -74,3 +74,7 @@ Remove-Item Env:CODEWORK_GEMINI_CLI_PATH
 检索词Gemini ACP gateway、0.61.0 acpSessionManager/loadSession、shell returnDisplay，访问2026-10-01。采用[官方ACP说明](https://geminicli.com/docs/cli/acp-mode/)、[固定版本端点实现](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/packages/core/src/core/contentGenerator.ts)、[会话管理](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/packages/cli/src/acp/acpSessionManager.ts)、[工具事件](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/packages/cli/src/acp/acpSession.ts)和[shell结果](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/packages/core/src/tools/shell.ts)，因为它们定义实际协议及调用顺序；故障与成功结论来自固定安装包和隔离历史文件的本次实测，不来自能力广告。
 
 没有迁移、账号或依赖变化。本模块可独立撤回；撤回恢复保护会重新暴露0.61.0的已证历史丢失路径，使用该版本时应保留保护或禁用其恢复。首批Copilot、全部44入口及A-8独立审计仍未由本模块完成。
+
+## Copilot 1.0.89 的离线工具闭环
+
+2026-10-01补齐Copilot固定官方CLI本机验证：COPILOT_OFFLINE=true与OpenAI-compatible BYOK端点无需GitHub登录。角色/权限/URI模式、文本、view读取、create允许写入、PowerShell成功与exit7失败、原始optionId拒绝、取消和新进程恢复历史均有本次实测。命令原始completed标签由明确shell_exit结构化退出码修正，保留原ACP帧。探针1项通过，相关回归77通过/1跳过，去重78通过；类型/lint通过。外部账户、推理、UI/设备/连接及完整44范围仍未由本模块完成，Gemini恢复限制不变。入口、环境和回滚见[Copilot当前实现](./copilot-acp-provider.md)。
