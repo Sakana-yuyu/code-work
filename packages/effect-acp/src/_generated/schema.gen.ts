@@ -788,9 +788,10 @@ export type AuthMethod =
       readonly type: "env_var";
       readonly _meta?: { readonly [x: string]: unknown } | null;
       readonly description?: string | null;
-      readonly id: string;
+      /** Some agents omit id; tolerate and let callers choose a fallback methodId. */
+      readonly id?: string;
       readonly link?: string | null;
-      readonly name: string;
+      readonly name?: string;
       readonly vars: ReadonlyArray<AuthEnvVar>;
     }
   | {
@@ -799,14 +800,16 @@ export type AuthMethod =
       readonly args?: ReadonlyArray<string>;
       readonly description?: string | null;
       readonly env?: { readonly [x: string]: string };
-      readonly id: string;
-      readonly name: string;
+      /** Some agents omit id; tolerate and let callers choose a fallback methodId. */
+      readonly id?: string;
+      readonly name?: string;
     }
   | {
       readonly _meta?: { readonly [x: string]: unknown } | null;
       readonly description?: string | null;
-      readonly id: string;
-      readonly name: string;
+      /** Some agents omit id; tolerate and let callers choose a fallback methodId. */
+      readonly id?: string;
+      readonly name?: string;
     };
 export const AuthMethod = Schema.Union([
   Schema.Struct({
@@ -829,9 +832,12 @@ export const AuthMethod = Schema.Union([
         Schema.Null,
       ]),
     ),
-    id: Schema.String.annotate({
-      description: "Unique identifier for this authentication method.",
-    }),
+    id: Schema.optionalKey(
+      Schema.String.annotate({
+        description:
+          "Unique identifier for this authentication method. Optional: some agents omit id; callers must not assume it is always present.",
+      }),
+    ),
     link: Schema.optionalKey(
       Schema.Union([
         Schema.String.annotate({
@@ -840,9 +846,12 @@ export const AuthMethod = Schema.Union([
         Schema.Null,
       ]),
     ),
-    name: Schema.String.annotate({
-      description: "Human-readable name of the authentication method.",
-    }),
+    name: Schema.optionalKey(
+      Schema.String.annotate({
+        description:
+          "Human-readable name of the authentication method. Optional: some agents omit name alongside id.",
+      }),
+    ),
     vars: Schema.Array(AuthEnvVar).annotate({
       description: "The environment variables the client should set.",
     }),
@@ -882,12 +891,18 @@ export const AuthMethod = Schema.Union([
           "Additional environment variables to set when running the agent binary for terminal auth.",
       }),
     ),
-    id: Schema.String.annotate({
-      description: "Unique identifier for this authentication method.",
-    }),
-    name: Schema.String.annotate({
-      description: "Human-readable name of the authentication method.",
-    }),
+    id: Schema.optionalKey(
+      Schema.String.annotate({
+        description:
+          "Unique identifier for this authentication method. Optional: some agents omit id; callers must not assume it is always present.",
+      }),
+    ),
+    name: Schema.optionalKey(
+      Schema.String.annotate({
+        description:
+          "Human-readable name of the authentication method. Optional: some agents omit name alongside id.",
+      }),
+    ),
   }).annotate({
     description:
       "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nTerminal-based authentication method.\n\nThe client runs an interactive terminal for the user to authenticate via a TUI.",
@@ -911,12 +926,18 @@ export const AuthMethod = Schema.Union([
         Schema.Null,
       ]),
     ),
-    id: Schema.String.annotate({
-      description: "Unique identifier for this authentication method.",
-    }),
-    name: Schema.String.annotate({
-      description: "Human-readable name of the authentication method.",
-    }),
+    id: Schema.optionalKey(
+      Schema.String.annotate({
+        description:
+          "Unique identifier for this authentication method. Optional: some agents omit id; callers must not assume it is always present.",
+      }),
+    ),
+    name: Schema.optionalKey(
+      Schema.String.annotate({
+        description:
+          "Human-readable name of the authentication method. Optional: some agents omit name alongside id.",
+      }),
+    ),
   }).annotate({
     title: "agent",
     description:
@@ -4164,8 +4185,8 @@ export const AuthenticateResponse = Schema.Struct({
 export type AuthMethodAgent = {
   readonly _meta?: { readonly [x: string]: unknown } | null;
   readonly description?: string | null;
-  readonly id: string;
-  readonly name: string;
+  readonly id?: string;
+  readonly name?: string;
 };
 export const AuthMethodAgent = Schema.Struct({
   _meta: Schema.optionalKey(
@@ -4186,10 +4207,18 @@ export const AuthMethodAgent = Schema.Struct({
       Schema.Null,
     ]),
   ),
-  id: Schema.String.annotate({ description: "Unique identifier for this authentication method." }),
-  name: Schema.String.annotate({
-    description: "Human-readable name of the authentication method.",
-  }),
+  id: Schema.optionalKey(
+      Schema.String.annotate({
+        description:
+          "Unique identifier for this authentication method. Optional: some agents omit id; callers must not assume it is always present.",
+      }),
+    ),
+  name: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        "Human-readable name of the authentication method. Optional: some agents omit name alongside id.",
+    }),
+  ),
 }).annotate({
   description:
     "Agent handles authentication itself.\n\nThis is the default authentication method type.",
@@ -4198,7 +4227,7 @@ export const AuthMethodAgent = Schema.Struct({
 export type AuthMethodEnvVar = {
   readonly _meta?: { readonly [x: string]: unknown } | null;
   readonly description?: string | null;
-  readonly id: string;
+  readonly id?: string;
   readonly link?: string | null;
   readonly name: string;
   readonly vars: ReadonlyArray<AuthEnvVar>;
@@ -4222,7 +4251,12 @@ export const AuthMethodEnvVar = Schema.Struct({
       Schema.Null,
     ]),
   ),
-  id: Schema.String.annotate({ description: "Unique identifier for this authentication method." }),
+  id: Schema.optionalKey(
+      Schema.String.annotate({
+        description:
+          "Unique identifier for this authentication method. Optional: some agents omit id; callers must not assume it is always present.",
+      }),
+    ),
   link: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({
@@ -4231,9 +4265,12 @@ export const AuthMethodEnvVar = Schema.Struct({
       Schema.Null,
     ]),
   ),
-  name: Schema.String.annotate({
-    description: "Human-readable name of the authentication method.",
-  }),
+  name: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        "Human-readable name of the authentication method. Optional: some agents omit name alongside id.",
+    }),
+  ),
   vars: Schema.Array(AuthEnvVar).annotate({
     description: "The environment variables the client should set.",
   }),
@@ -4247,8 +4284,8 @@ export type AuthMethodTerminal = {
   readonly args?: ReadonlyArray<string>;
   readonly description?: string | null;
   readonly env?: { readonly [x: string]: string };
-  readonly id: string;
-  readonly name: string;
+  readonly id?: string;
+  readonly name?: string;
 };
 export const AuthMethodTerminal = Schema.Struct({
   _meta: Schema.optionalKey(
@@ -4280,10 +4317,18 @@ export const AuthMethodTerminal = Schema.Struct({
         "Additional environment variables to set when running the agent binary for terminal auth.",
     }),
   ),
-  id: Schema.String.annotate({ description: "Unique identifier for this authentication method." }),
-  name: Schema.String.annotate({
-    description: "Human-readable name of the authentication method.",
-  }),
+  id: Schema.optionalKey(
+      Schema.String.annotate({
+        description:
+          "Unique identifier for this authentication method. Optional: some agents omit id; callers must not assume it is always present.",
+      }),
+    ),
+  name: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        "Human-readable name of the authentication method. Optional: some agents omit name alongside id.",
+    }),
+  ),
 }).annotate({
   description:
     "**UNSTABLE**\n\nThis capability is not part of the spec yet, and may be removed or changed at any point.\n\nTerminal-based authentication method.\n\nThe client runs an interactive terminal for the user to authenticate via a TUI.",
@@ -7258,10 +7303,12 @@ export const NewSessionRequest = Schema.Struct({
   environmentPolicy: Schema.optionalKey(
     Schema.Struct({
       kind: Schema.Literals(["inherited", "isolated", "granted"]).annotate({
-        description: "Harn 本地会话策略：inherited、isolated 或 granted。",
+        description:
+          "Harn 本地会话策略：inherited、isolated 或 granted。",
       }),
     }).annotate({
-      description: "Harn session/new 所需的本地环境策略扩展。",
+      description:
+        "Harn session/new 所需的本地环境策略扩展。",
     }),
   ),
   mcpServers: Schema.Array(McpServer).annotate({

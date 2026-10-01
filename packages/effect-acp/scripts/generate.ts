@@ -218,12 +218,8 @@ const generateSchemas = Effect.fn("generateSchemas")(function* (skipDownload: bo
   // Harn 的本地扩展随生成过程保留，避免重新生成后 session/new 再次丢失策略。
   const newSession = normalizedDefinitions.NewSessionRequest;
   if (
-    !newSession ||
-    typeof newSession !== "object" ||
-    Array.isArray(newSession) ||
-    !("properties" in newSession) ||
-    !newSession.properties ||
-    typeof newSession.properties !== "object" ||
+    !newSession || typeof newSession !== "object" || Array.isArray(newSession) ||
+    !("properties" in newSession) || !newSession.properties || typeof newSession.properties !== "object" ||
     Array.isArray(newSession.properties)
   ) {
     return yield* Effect.fail<GenerateCommandError>({
@@ -241,8 +237,7 @@ const generateSchemas = Effect.fn("generateSchemas")(function* (skipDownload: bo
         properties: {
           kind: {
             description: "Harn 本地会话策略：inherited、isolated 或 granted。",
-            type: "string",
-            enum: ["inherited", "isolated", "granted"],
+            type: "string", enum: ["inherited", "isolated", "granted"],
           },
         },
         required: ["kind"],
