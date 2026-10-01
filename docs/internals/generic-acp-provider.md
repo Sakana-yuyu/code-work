@@ -86,3 +86,7 @@ rawInput/rawOutput 的 null 与缺省都表示未提供新值，保留已有输�
 ## 二进制归档校验
 
 官方哈希缺省时的精确URL补充、来源与更新/回滚规则见 [二进制分发与哈希来源](./acp-binary-integrity.md)。哈希存在不表示Agent认证或工具已验收。
+
+## 首批官方 CLI 验证
+
+Qwen、Cline、Hermes的固定版本工具/取消/恢复探针、环境隔离及实际证据范围见 [首批可重复工具验证](./acp-first-batch-probes.md)。本机模型夹具不替代真实账户、外部推理或客户端验收。
