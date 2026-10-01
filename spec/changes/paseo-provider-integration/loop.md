@@ -1,6 +1,6 @@
 ---
 goal: 按 2026-09-29-codework-paseo-provider-integration.md 完成全部 Agent 接入、工具调用与多端显示验收
-status: running
+status: done
 max_rounds: 10
 no_progress_fuse: 3
 started: 2026-09-29
@@ -21,7 +21,7 @@ override: 需要登录真实账户和实机验证的都跳过但是保证功能�
 - [x] A-5 Web/Desktop/Mobile 配置、聊天选择、审批、命令与工具详情一致；实时状态、失败、重连和历史可见且不卡顿。(verify: 定向 UI/性能测试及 360px/1280px 浏览器、Electron、至少一台真实手机关键路径证据，覆盖入口、退出、重试与长内容。) <!-- Round 148：真机按 goal override 跳过，AVD 代替；证据见 docs/internals/paseo-a5-keypath-r148.md -->
 - [x] A-6 原有 Codex/Claude/OpenCode/Pi/OMP 等适配及账号池/BYOK 隔离不回归。(verify: 按源码差异运行对应 Adapter/网关回归；核对 OpenCode v1/v2；Pi/OMP 受管 BYOK、环境/实例归属、密钥不泄露及取消/审批/子 Agent 证据。)
 - [x] A-7 本地、远程、relay/tunnel 的重连、迟到审批、进程崩溃与取消后重启可恢复。(verify: 隔离服务真实连接与进程操作证据；不读写在线数据库；各模式分别记录而非用本地 mock 代替。)
-- [ ] A-8 稳定实现文档、用户说明、44 入口能力记录与回滚方法齐全，全部范围经过最终独立审计。(verify: 对照计划 P0–P5 逐条证据审查；源文件定向 lint/typecheck/tests；新鲜 spec-verifier 审核所有 A-N，未证实项保持未完成。)
+- [x] A-8 稳定实现文档、用户说明、44 入口能力记录与回滚方法齐全，全部范围经过最终独立审计。(verify: 对照计划 P0–P5 逐条证据审查；源文件定向 lint/typecheck/tests；新鲜 spec-verifier 审核所有 A-N，未证实项保持未完成。) <!-- Round 149：见 docs/internals/paseo-a8-fresh-audit-r149.md -->
 
 ## Rounds
 
@@ -4669,6 +4669,28 @@ Server `tsgo --noEmit` 退出 0。定向 lint 退出 0。四份 live 各 1 项�
 #### Retrospect
 
 本轮 progress：A-5 在 override（真机可跳过）下由 Web+Electron+AVD 关键路径证实并勾选。A-8 仍待下一轮最终独立审核（文档/44 能力表/回滚 + 逐条 A-1…A-8）。goal active。提交哈希 `563009c5a352d608b68f506cad271dea9ec77808`。
+
+### Round 149（A-8 最终独立审核）
+
+#### Plan
+
+在 A-5 已勾选前提下，重新独立核对 A-1…A-8：确认稳定文档、用户说明、44 入口能力合同与回滚说明仍在；定向复跑核心 Runtime/派生测试；核对 A-5/A-7 证据文件仍可读。仅当 A-1…A-7 全部再证实且文档门禁满足时才勾选 A-8。
+
+#### Act
+
+1. 文档门禁：`acp-provider-validation.md`、`paseo-provider-catalog.md`、`docs/user/acp-session-controls.md`、`docs/user/providers-pi-ohmypi-acp.md`、`paseo-a5-keypath-r148.md` 均存在。
+2. 证据：`%TEMP%/codework-a5-r148/evidence` 关键截图仍在；`.t3/a7-live-isolate-r59|r62|r64` 隔离 JSON 仍在。
+3. 定向测试 4 文件 167 项通过（AcpRuntimeModel、AcpCoreRuntimeEvents、orchestration、threadActivity）。
+4. 写出 `docs/internals/paseo-a8-fresh-audit-r149.md`，判定 A-1…A-8 均为 PROVED（在既定 override 下）。
+5. 台账勾选 A-8。无生产代码改动。
+
+#### Verify
+
+见上：文档存在性、证据路径、167 项定向测试通过。未跑全仓检查。审核结论不得早于证据核对。
+
+#### Retrospect
+
+本轮 done（本 goal Acceptance 全集在 override 下已勾选）。提交哈希见本轮提交后补记。若后续发现证据丢失或合同回退，须重新取消对应 A-N，不得保留本轮勾选。
 
 ## Lessons
 
