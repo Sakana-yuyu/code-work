@@ -82,3 +82,7 @@ rawInput/rawOutput 的 null 与缺省都表示未提供新值，保留已有输�
 本修复证明共用传输不再被未读的 stderr 管道堵住，不证明所有 Agent 的外部账户、工具或关闭流程已通过。固定 Gajae 的 broker 生命周期错误单独记录于其文档。回滚撤回对应提交，无数据库迁移或账户配置变更。
 
 本轮精确索引副本的 client/protocol/agent 与 Runtime 98项、Cursor/Grok停止/关闭7项通过（合计105项）；协议包及Server类型检查退出0，改动TS定向lint无输出。固定Gajae 0.18.1的未插桩工具探针整项通过一次，另一次基线诊断在session/new失败；二者及历史失败均保留于专页，不混为所有Agent稳定可用。
+
+## 二进制归档校验
+
+官方哈希缺省时的精确URL补充、来源与更新/回滚规则见 [二进制分发与哈希来源](./acp-binary-integrity.md)。哈希存在不表示Agent认证或工具已验收。

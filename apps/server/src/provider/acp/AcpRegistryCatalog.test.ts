@@ -11,6 +11,7 @@ import {
   withAcpRegistryDiagnostics,
 } from "./AcpRegistryCatalog.ts";
 import bundledRegistry from "./registry-snapshot.json" with { type: "json" };
+import sha256Overlay from "./registry-binary-sha256-overlay.json" with { type: "json" };
 import { withManualAcpCatalog } from "./manual-agent-catalog.ts";
 
 const runCatalog = (fetchImplementation: typeof globalThis.fetch) =>
@@ -432,4 +433,77 @@ describe("ACP registry catalog", () => {
       )[0]?.configuredStatus,
     ).toBe("not-configured");
   });
+
+  it("精确归档哈希补充缺省字段，官方非法值和未知归档仍拒绝", () => {
+    const archives: Readonly<Record<string, string>> = sha256Overlay.byArchiveUrl;
+    for (const [archive, sha256] of Object.entries(archives)) {
+      const parse = (target: Record<string, unknown>, platform: NodeJS.Platform = "win32") =>
+        parseAcpRegistryCatalog(
+          {
+            agents: [
+              {
+                id: "fixture",
+                name: "Fixture",
+                distribution: { binary: { "windows-x86_64": target } },
+              },
+            ],
+          },
+          platform,
+          "x64",
+        )[0];
+      const target = { archive, cmd: "agent.exe", args: ["--acp"] };
+      expect(parse(target)?.binaryDistribution).toMatchObject({ archiveUrl: archive, sha256 });
+      expect(parse({ ...target, sha256: "A".repeat(64) })?.binaryDistribution?.sha256).toBe(
+        "a".repeat(64),
+      );
+      for (const invalid of [null, 42, {}, "", "invalid", "b".repeat(63)]) {
+        expect(parse({ ...target, sha256: invalid })?.binaryDistribution).toBeUndefined();
+      }
+      for (const changed of [
+        archive + "?version=next",
+        archive.replace("https:", "http:"),
+        "https://example.com/agent.zip",
+      ]) {
+        expect(parse({ ...target, archive: changed })?.binaryDistribution).toBeUndefined();
+      }
+      expect(parse({ ...target, cmd: "../agent.exe" })?.binaryDistribution).toBeUndefined();
+      expect(parse({ ...target, args: ["$(bad)"] })?.binaryDistribution).toBeUndefined();
+      expect(parse(target, "linux")?.binaryDistribution).toBeUndefined();
+    }
+  });
+
+  it.effect("在线目录在缺少官方哈希时仍交付可校验分发并保留在线来源", () =>
+    Effect.gen(function* () {
+      const archive =
+        "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.6.0/agent-windows-x64.zip";
+      const result = yield* runCatalog(
+        asFetch(
+          async () =>
+            new Response(
+              JSON.stringify({
+                agents: [
+                  {
+                    id: "corust-agent",
+                    name: "Corust Agent",
+                    version: "0.6.0",
+                    distribution: {
+                      binary: { "windows-x86_64": { archive, cmd: "agent.exe", args: ["--acp"] } },
+                    },
+                  },
+                ],
+              }),
+            ),
+        ),
+      );
+      expect(result.source).toBe("registry");
+      expect(result.error).toBeNull();
+      expect(result.snapshotDate).toBeUndefined();
+      expect(
+        result.entries.find((entry) => entry.id === "corust-agent")?.binaryDistribution,
+      ).toMatchObject({
+        archiveUrl: archive,
+        sha256: "79d28ce683cb5c7d436a1c9abb759425314a57ec6aa4d02b5fcfb0c84ca124a2",
+      });
+    }),
+  );
 });

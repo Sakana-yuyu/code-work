@@ -1,0 +1,15 @@
+{
+  "retrievedAt": "2026-09-30",
+  "verifiedAt": "2026-10-01",
+  "source": "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json",
+  "note": "维护者对固定官方 Windows 归档字节计算并复核的 SHA-256，仅按精确 URL 补充缺省字段。不是厂商签名，新归档不沿用旧哈希。",
+  "byArchiveUrl": {
+    "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.6.0/agent-windows-x64.zip": "79d28ce683cb5c7d436a1c9abb759425314a57ec6aa4d02b5fcfb0c84ca124a2",
+    "https://github.com/stakpak/agent/releases/download/v0.3.88/stakpak-windows-x86_64.zip": "67e610b0c8539982fe5dbd8d795abaf6cfc1b70f7b560880f0eddabe41d0490a",
+    "https://github.com/vinhnx/VTCode/releases/download/0.96.14/vtcode-0.96.14-x86_64-pc-windows-msvc.zip": "0056d86329d3a07202956d02b46a1b74d41913756c05a56f0671e34bea34f522",
+    "https://dl.google.com/agy-extensions/releases/windows/agy-acp-server-1.2.1-windows-x86_64.zip": "9b82493819bc14613baa76264d55ad307ddd8ab4a8d6e110edb32da35498c07b",
+    "https://static.devin.ai/cli/3000.11.3/devin-3000.11.3-x86_64-pc-windows.zip": "dded69a40dc54012612eda47e0935f2fb394b97cd38cb4d7d84b1e1d71c5f7ea",
+    "https://sfc-repo.snowflakecomputing.com/cortex-code-cli/a4643c4278/1.0.73%2B180523.e6179a031de9/coco-1.0.73%2B180523.e6179a031de9-windows-amd64.tar.gz": "e58d6b8b20afd426bdde33694712959d2de66d8aacdb135eae824c15a1f2c56d",
+    "https://github.com/JetBrains/junie-acp-release/releases/download/3419.22/junie-release-3419.22-windows-amd64.zip": "937a4e3e7e701d784f7161975d62c2e72de6b9da20b049bdc657eda675fd9820"
+  }
+}

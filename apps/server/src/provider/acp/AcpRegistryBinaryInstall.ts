@@ -144,7 +144,7 @@ export async function installAcpRegistryBinary(
       throw new InstallFailure("download-failed", String(error));
     }
     if ((await sha256File(download)) !== distribution.sha256) {
-      throw new InstallFailure("checksum-mismatch", "下载内容与官方目录 sha256 不一致。");
+      throw new InstallFailure("checksum-mismatch", "下载内容与目录 sha256 不一致。");
     }
 
     const extracted = NodePath.join(temporary, "package");

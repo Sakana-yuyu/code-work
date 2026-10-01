@@ -11,6 +11,7 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import { collectUint8StreamText } from "../../stream/collectUint8StreamText.ts";
 import bundledRegistry from "./registry-snapshot.json" with { type: "json" };
+import sha256Overlay from "./registry-binary-sha256-overlay.json" with { type: "json" };
 import { withManualAcpCatalog } from "./manual-agent-catalog.ts";
 
 const REGISTRY_URL = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
@@ -23,6 +24,7 @@ const PUBLIC_ENVIRONMENT: Readonly<Record<string, string>> = {
   FAST_AGENT_MODEL: "codexplan",
 };
 const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
+const MAINTAINER_ARCHIVE_SHA256: Readonly<Record<string, string>> = sha256Overlay.byArchiveUrl;
 
 type ConfiguredStatus = NonNullable<AcpRegistryCatalogEntry["configuredStatus"]>;
 
@@ -134,15 +136,19 @@ export function acpArchiveFormat(archiveUrl: string, cmd: string): AcpArchiveFor
   return fileName.length > 0 && cmd.toLowerCase().split(/[\\/]/).at(-1) === fileName ? "raw" : null;
 }
 
-/** 只收官方给出 sha256、HTTPS 归档、相对启动路径与安全参数的当前平台分发。 */
+/** 官方哈希缺省时仅补精确 URL 的维护者哈希，仍校验分发安全字段。 */
 function binaryDistributionFor(
   binary: Record<string, unknown> | null,
   platformKey: string | null,
 ): AcpRegistryCatalogEntry["binaryDistribution"] {
   const target = platformKey ? record(binary?.[platformKey]) : null;
   if (!target || !platformKey) return undefined;
-  const { archive, sha256, cmd } = target;
+  const { archive, cmd } = target;
   const args = target.args === undefined ? [] : target.args;
+  const sha256 =
+    target.sha256 === undefined && typeof archive === "string"
+      ? MAINTAINER_ARCHIVE_SHA256[archive]
+      : target.sha256;
   if (
     typeof archive !== "string" ||
     !archive.startsWith("https://") ||
