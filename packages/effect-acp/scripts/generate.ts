@@ -13,6 +13,8 @@ import { Command, Flag } from "effect/unstable/cli";
 import { FetchHttpClient, HttpClient, HttpClientResponse } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
+import { normalizeAuthMethodIdentity } from "./authMethodCompatibility.ts";
+
 const CURRENT_SCHEMA_RELEASE = "v0.11.3";
 
 interface GenerateCommandError {
@@ -211,7 +213,11 @@ const generateSchemas = Effect.fn("generateSchemas")(function* (skipDownload: bo
   const normalizedDefinitions = Object.fromEntries(
     Object.entries(upstreamSchema.$defs).map(([name, schema]) => [
       name,
-      normalizeNullableTypes(schema),
+      normalizeNullableTypes(
+        ["AuthMethod", "AuthMethodAgent", "AuthMethodEnvVar", "AuthMethodTerminal"].includes(name)
+          ? normalizeAuthMethodIdentity(schema)
+          : schema,
+      ),
     ]),
   );
 

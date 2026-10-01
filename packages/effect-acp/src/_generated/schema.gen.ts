@@ -4229,7 +4229,7 @@ export type AuthMethodEnvVar = {
   readonly description?: string | null;
   readonly id?: string;
   readonly link?: string | null;
-  readonly name: string;
+  readonly name?: string;
   readonly vars: ReadonlyArray<AuthEnvVar>;
 };
 export const AuthMethodEnvVar = Schema.Struct({
