@@ -242,6 +242,8 @@ export interface CompositionAgentDriver {
         readonly taskId: string;
         readonly runId: string;
         readonly runtimeTaskId?: string;
+        /** 仅Driver已验证的握手，不采信Provider原始事件声明。 */
+        readonly capabilityHandshakeId?: string;
       }
     | undefined;
   /** Driver 重建后，用受信任的 Runtime 复合键恢复事件归属；不得返回 Task/Run 猜测。 */

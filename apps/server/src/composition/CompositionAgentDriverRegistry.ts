@@ -44,6 +44,8 @@ export interface CompositionAgentDriverRegistry {
         readonly taskId: string;
         readonly runId: string;
         readonly runtimeTaskId?: string;
+        /** 仅Driver已验证的握手，不采信Provider原始事件声明。 */
+        readonly capabilityHandshakeId?: string;
       }
     | undefined
   >;

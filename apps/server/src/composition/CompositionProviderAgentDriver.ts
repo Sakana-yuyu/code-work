@@ -116,6 +116,7 @@ type ProviderRunBinding = {
   readonly turnId: TurnId;
   readonly runtimeTaskId: string;
   readonly capabilityHandshakeId?: string;
+  readonly releaseContext?: Effect.Effect<void, CompositionAgentDriverFailure>;
 };
 
 type PendingProviderRunBinding = Omit<ProviderRunBinding, "turnId" | "runtimeTaskId"> & {
@@ -418,20 +419,27 @@ export const makeCompositionProviderAgentDriver = (
         capabilityHandshakeId = result.handshakeId;
       }
       let toolBrokerConfigured = false;
-      const cleanupProviderContext = () =>
-        Effect.all([
+      let contextReleased = false;
+      // Projector可能先于sendTurn返回清理，同一Run共享一次回收责任。
+      const releaseContext = Effect.suspend(() => {
+        if (contextReleased) return Effect.void;
+        contextReleased = true;
+        return Effect.all([
           ...(toolBrokerConfigured && options.adapter.clearToolBroker !== undefined
             ? [options.adapter.clearToolBroker(threadId).pipe(Effect.ignore)]
             : []),
           ...(capabilityHandshakeId !== undefined &&
           options.adapter.revokeCapabilityHandshake !== undefined
-            ? [
-                options.adapter
-                  .revokeCapabilityHandshake({ handshakeId: capabilityHandshakeId })
-                  .pipe(Effect.ignore),
-              ]
+            ? [options.adapter.revokeCapabilityHandshake({ handshakeId: capabilityHandshakeId })]
             : []),
-        ]).pipe(Effect.asVoid);
+        ]).pipe(
+          Effect.asVoid,
+          Effect.mapError((error) =>
+            makeFailure("provider_capability_handshake_revoke_failed", error),
+          ),
+        );
+      });
+      const cleanupProviderContext = () => releaseContext.pipe(Effect.ignore);
 
       const pending = {
         taskId: input.task.taskId,
@@ -439,6 +447,7 @@ export const makeCompositionProviderAgentDriver = (
         threadId,
         ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
         terminalObserved: false,
+        releaseContext,
       } satisfies PendingProviderRunBinding;
       const hasActiveRunForThread = [...activeRuns.values()].some(
         (active) => active.threadId === threadId,
@@ -465,6 +474,28 @@ export const makeCompositionProviderAgentDriver = (
         runtimeMode,
         ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
       };
+      // 旧Session关闭会清掉thread工具绑定，必须先关闭再配置本Run的握手。
+      if (options.adapter.listSessions !== undefined) {
+        const sessions = yield* options.adapter.listSessions().pipe(
+          Effect.mapError((error) => makeFailure("provider_session_lookup_failed", error)),
+          Effect.tapError(() =>
+            Effect.all([clearPendingRun(), cleanupProviderContext()]).pipe(Effect.asVoid),
+          ),
+        );
+        const existing = sessions.find(
+          (session) =>
+            session.threadId === threadId &&
+            session.providerInstanceId === options.providerInstanceId,
+        );
+        if (existing !== undefined) {
+          yield* options.adapter.stopSession(threadId).pipe(
+            Effect.mapError((error) => makeFailure("provider_session_stop_failed", error)),
+            Effect.tapError(() =>
+              Effect.all([clearPendingRun(), cleanupProviderContext()]).pipe(Effect.asVoid),
+            ),
+          );
+        }
+      }
       if (
         options.toolBrokerBridge !== undefined &&
         options.adapter.configureToolBroker !== undefined
@@ -547,6 +578,7 @@ export const makeCompositionProviderAgentDriver = (
         turnId,
         runtimeTaskId,
         ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
+        releaseContext,
       } satisfies ProviderRunBinding;
       if (!resolvedPending.terminalObserved) activeRuns.set(input.run.runId, binding);
       rememberRun(binding);
@@ -563,6 +595,16 @@ export const makeCompositionProviderAgentDriver = (
     run,
   }) => {
     const active = activeRuns.get(run.runId);
+    const pending = [...pendingRuns.values()].find(
+      (binding) => binding.runId === run.runId && binding.taskId === task.taskId,
+    );
+    const historical = [...historicalRuns.values()].find(
+      (binding) => binding?.runId === run.runId && binding.taskId === task.taskId,
+    );
+    const releaseContext =
+      active?.releaseContext ?? pending?.releaseContext ?? historical?.releaseContext;
+    if (releaseContext !== undefined)
+      return releaseContext.pipe(Effect.ensuring(Effect.sync(() => activeRuns.delete(run.runId))));
     const threadId = active?.threadId ?? taskThreadId(task.taskId, run.runId, task.threadId);
     const capabilityHandshakeId = active?.capabilityHandshakeId ?? run.capabilityHandshakeId;
     const clear =
@@ -598,12 +640,18 @@ export const makeCompositionProviderAgentDriver = (
       const active = activeRuns.get(input.run.runId);
       const threadId =
         active?.threadId ?? taskThreadId(input.task.taskId, input.run.runId, input.task.threadId);
+      const pending = [...pendingRuns.values()].find(
+        (binding) => binding.runId === input.run.runId && binding.taskId === input.task.taskId,
+      );
+      const ownedRelease = active?.releaseContext ?? pending?.releaseContext;
       const cleanup = Effect.all([
         options.adapter.stopSession(threadId).pipe(Effect.ignore),
-        ...(options.adapter.clearToolBroker === undefined
+        ...(ownedRelease === undefined ? [] : [ownedRelease.pipe(Effect.ignore)]),
+        ...(ownedRelease !== undefined || options.adapter.clearToolBroker === undefined
           ? []
           : [options.adapter.clearToolBroker(threadId).pipe(Effect.ignore)]),
-        ...(active?.capabilityHandshakeId === undefined ||
+        ...(ownedRelease !== undefined ||
+        active?.capabilityHandshakeId === undefined ||
         options.adapter.revokeCapabilityHandshake === undefined
           ? []
           : [
@@ -657,6 +705,9 @@ export const makeCompositionProviderAgentDriver = (
           taskId: active.taskId,
           runId: active.runId,
           runtimeTaskId: active.runtimeTaskId,
+          ...(active.capabilityHandshakeId === undefined
+            ? {}
+            : { capabilityHandshakeId: active.capabilityHandshakeId }),
         };
       }
       if (event.turnId !== undefined) {
@@ -667,6 +718,9 @@ export const makeCompositionProviderAgentDriver = (
             taskId: historical.taskId,
             runId: historical.runId,
             runtimeTaskId: historical.runtimeTaskId,
+            ...(historical.capabilityHandshakeId === undefined
+              ? {}
+              : { capabilityHandshakeId: historical.capabilityHandshakeId }),
           };
         }
         const pending = pendingRuns.get(event.threadId);
@@ -683,6 +737,9 @@ export const makeCompositionProviderAgentDriver = (
           taskId: bound.taskId,
           runId: bound.runId,
           runtimeTaskId: `${options.runtimeId}:${bound.threadId}:${bound.turnId}`,
+          ...(bound.capabilityHandshakeId === undefined
+            ? {}
+            : { capabilityHandshakeId: bound.capabilityHandshakeId }),
         };
       }
       return undefined;

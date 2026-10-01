@@ -9,6 +9,7 @@ import {
   type CompositionTask,
   type CompositionTaskRun,
   type ProviderRuntimeEvent,
+  type ProviderSession,
 } from "@codework/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -21,6 +22,7 @@ import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegi
 import { makeCompositionByokAgentDriver } from "./CompositionByokAgentDriver.ts";
 import { makeCapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
 import { makeCompositionCapabilityRegistry } from "./CapabilityRegistry.ts";
+import { makeCompositionRuntimeToolBridge } from "./CompositionRuntimeToolBridge.ts";
 import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDriver.ts";
 import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriver.ts";
 import { makeInMemoryCompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
@@ -110,6 +112,245 @@ const multicaCompletionEvent = (
 });
 
 layer("CompositionTaskRuntimeProjector", (it) => {
+  it.effect("握手激活拒绝其它Driver或已有身份冲突，原始声明不能授予握手", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      for (const scenario of ["agent", "runtime", "conflict", "raw-only"] as const) {
+        const currentTask = {
+          ...task,
+          taskId: "handshake-scope-" + scenario,
+          status: "dispatched" as const,
+        };
+        const currentRun = {
+          ...run,
+          taskId: currentTask.taskId,
+          runId: "handshake-scope-run-" + scenario,
+          status: "dispatched" as const,
+          ...(scenario === "conflict" ? { capabilityHandshakeId: "original-handshake" } : {}),
+        };
+        const registry = makeCompositionAgentDriverRegistry();
+        yield* registry.register({
+          agentId: scenario === "agent" ? "other-agent" : currentRun.agentId,
+          runtimeId: scenario === "runtime" ? "other-runtime" : currentRun.runtimeId,
+          startTask: () => Effect.succeed({}),
+          cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+          resolveRuntimeEvent: () => ({
+            taskId: currentTask.taskId,
+            runId: currentRun.runId,
+            ...(scenario === "raw-only" ? {} : { capabilityHandshakeId: "trusted-handshake" }),
+          }),
+        });
+        yield* store.upsertTask(currentTask);
+        yield* store.upsertRun(currentRun);
+        yield* projectCompositionRuntimeEvent(store, registry, {
+          ...baseEvent,
+          eventId: EventId.make("handshake-scope-event-" + scenario),
+          type: "turn.started",
+          payload: {},
+          raw: { source: "acp.jsonrpc", payload: { capabilityHandshakeId: "raw-handshake" } },
+        });
+        const stored = Option.getOrThrow(yield* store.getRun(currentRun.runId));
+        assert.equal(
+          stored.capabilityHandshakeId,
+          scenario === "conflict" ? "original-handshake" : undefined,
+        );
+        assert.equal(stored.status, scenario === "raw-only" ? "running" : "dispatched");
+        assert.equal(
+          (yield* store.listEvents(currentTask.taskId, currentRun.runId)).length,
+          scenario === "raw-only" ? 1 : 0,
+        );
+      }
+    }),
+  );
+
+  it.effect("Provider回合未返回时持久化可信握手，真实Run工具门禁可用且终态只清理一次", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const registry = makeCompositionAgentDriverRegistry();
+      const sent = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const threadId = ThreadId.make("thread-early-handshake");
+      const turnId = TurnId.make("turn-early-handshake");
+      const taskId = "task-early-handshake",
+        runId = "run-early-handshake";
+      const runtimeId = "provider:early-handshake",
+        agentId = "provider:early-handshake";
+      const workspaceRoot = "C:/workspace/early-handshake";
+      const grantRegistry = makeCapabilityGrantRegistry({
+        capabilityRegistry: makeCompositionCapabilityRegistry(),
+      });
+      let clears = 0,
+        revokes = 0,
+        invokes = 0;
+      let session: ProviderSession | undefined,
+        configured = false;
+      const bridge = makeCompositionRuntimeToolBridge({
+        taskStore: store,
+        inputStore: {
+          get: () => Effect.succeed(Option.some({ taskId, prompt: "读取", workspaceRoot })),
+        },
+        toolBroker: {
+          invoke: (request) =>
+            Effect.sync(() => {
+              invokes++;
+              return {
+                invocationId: "invocation-early-handshake",
+                taskId,
+                runId,
+                toolCallId: request.toolCallId,
+                canonicalToolName: request.canonicalToolName,
+                status: "succeeded" as const,
+                result: { contents: "真实Run门禁后的正文" },
+              };
+            }),
+          cancel: () => Effect.void,
+        },
+      });
+      const driver = makeCompositionProviderAgentDriver({
+        agentId,
+        runtimeId,
+        providerInstanceId: ProviderInstanceId.make("codex-local"),
+        toolBrokerBridge: bridge,
+        toolBrokerCanonicalTools: ["workspace.read_file"],
+        adapter: {
+          handshakeCapabilities: (input) =>
+            Effect.succeed({
+              ...input,
+              status: "accepted" as const,
+              handshakeId: "handshake-before-return",
+              acceptedGrantIds: input.capabilityGrantIds,
+            }),
+          revokeCapabilityHandshake: () =>
+            Effect.sync(() => {
+              revokes++;
+            }),
+          configureToolBroker: () =>
+            Effect.sync(() => {
+              configured = true;
+            }),
+          listSessions: () => Effect.succeed(session === undefined ? [] : [session]),
+          clearToolBroker: () =>
+            Effect.sync(() => {
+              clears++;
+            }),
+          startSession: (input) =>
+            Effect.sync(() => {
+              // 模拟共同ACP入口：关闭旧Session也会清理新配置，先关闭才不会丢握手。
+              if (session !== undefined) configured = false;
+              assert.isTrue(configured);
+              session = {
+                ...input,
+                provider: ProviderDriverKind.make("codex"),
+                status: "ready",
+                createdAt: "2026-10-02T00:00:00.000Z",
+                updatedAt: "2026-10-02T00:00:00.000Z",
+              } satisfies ProviderSession;
+              return session;
+            }),
+          sendTurn: () =>
+            Deferred.succeed(sent, undefined).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.as({ threadId, turnId }),
+            ),
+          interruptTurn: () => Effect.void,
+          stopSession: () =>
+            Effect.sync(() => {
+              session = undefined;
+              configured = false;
+            }),
+        },
+      });
+      yield* registry.register(driver);
+      const orchestrator = makeCompositionOrchestrator(store, registry, grantRegistry);
+      const dispatch = yield* Effect.forkChild(
+        orchestrator.dispatchTask({
+          taskId,
+          runId,
+          projectId: "project-early-handshake",
+          threadId,
+          assigneeKind: "agent",
+          assigneeId: agentId,
+          mode: "serial",
+          promptDigest: "sha256:early-handshake",
+          prompt: "读取",
+          workspaceRoot,
+          dependsOnTaskIds: [],
+          capabilityIds: ["t3.workspace.read_file"],
+        }),
+      );
+      yield* Deferred.await(sent);
+      const started: ProviderRuntimeEvent = {
+        ...baseEvent,
+        threadId,
+        turnId,
+        eventId: EventId.make("event-handshake-before-return"),
+        type: "turn.started",
+        payload: {},
+        raw: { source: "acp.jsonrpc", payload: { capabilityHandshakeId: "不能采信" } },
+      };
+      yield* projectCompositionRuntimeEvent(store, registry, started, grantRegistry);
+      const running = Option.getOrThrow(yield* store.getRun(runId));
+      assert.equal(running.status, "running");
+      assert.equal(running.capabilityHandshakeId, "handshake-before-return");
+      const invocation = {
+        schemaVersion: 1 as const,
+        taskId,
+        runId,
+        agentId,
+        runtimeId,
+        capabilityHandshakeId: "handshake-before-return",
+        toolCallId: "read-before-return",
+        canonicalToolName: "workspace.read_file",
+        arguments: { cwd: workspaceRoot, relativePath: "README.md" },
+        capabilityGrantIds: running.capabilityGrantIds,
+        idempotencyKey: "read-before-return",
+      };
+      assert.equal((yield* bridge.invoke(invocation, "full-access")).status, "succeeded");
+      assert.equal(invokes, 1);
+      yield* projectCompositionRuntimeEvent(store, registry, started, grantRegistry);
+      assert.equal(
+        Option.getOrThrow(yield* store.getRun(runId)).capabilityHandshakeId,
+        running.capabilityHandshakeId,
+      );
+      const terminal: ProviderRuntimeEvent = {
+        ...started,
+        eventId: EventId.make("event-handshake-terminal-before-return"),
+        type: "turn.completed",
+        payload: { state: "completed" },
+      };
+      yield* projectCompositionRuntimeEvent(store, registry, terminal, grantRegistry);
+      yield* projectCompositionRuntimeEvent(store, registry, terminal, grantRegistry);
+      assert.equal(revokes, 1);
+      assert.equal(clears, 1);
+      yield* Deferred.succeed(release, undefined);
+      const result = yield* Fiber.join(dispatch);
+      assert.equal(result.run.status, "completed");
+      assert.equal(result.run.capabilityHandshakeId, "handshake-before-return");
+      assert.equal(revokes, 1);
+      assert.equal(clears, 1);
+      assert.equal((yield* bridge.invoke(invocation)).errorCode, "task_not_running");
+      assert.equal(invokes, 1);
+      const next = yield* orchestrator.dispatchTask({
+        taskId: "task-next-handshake",
+        runId: "run-next-handshake",
+        projectId: "project-early-handshake",
+        threadId,
+        assigneeKind: "agent",
+        assigneeId: agentId,
+        mode: "serial",
+        promptDigest: "sha256:next-handshake",
+        prompt: "下一Run",
+        workspaceRoot,
+        dependsOnTaskIds: [],
+        capabilityIds: ["t3.workspace.read_file"],
+      });
+      assert.equal(next.run.status, "running");
+      yield* driver.revokeCapabilityHandshake!({ task: next.task, run: next.run });
+      assert.equal(revokes, 2);
+      assert.equal(clears, 2);
+    }),
+  );
+
   it.effect("真实 Runtime Adapter 到 Composition Task 终态投影链路可闭合", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

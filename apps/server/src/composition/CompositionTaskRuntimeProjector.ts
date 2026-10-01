@@ -92,6 +92,7 @@ type CompositionRuntimeEventBinding = {
   readonly taskId: string;
   readonly runId: string;
   readonly runtimeTaskId?: string;
+  readonly capabilityHandshakeId?: string;
   readonly source: "driver" | "persistence" | "watchdog";
 };
 
@@ -446,6 +447,22 @@ export const projectCompositionRuntimeEvent = (
 
     const task = taskOption.value;
     const run = runOption.value;
+    // 只有当前Driver的可信绑定能激活握手；冲突身份不覆盖已有Run。
+    if (
+      binding.capabilityHandshakeId !== undefined &&
+      (binding.source !== "driver" ||
+        binding.driver?.agentId !== run.agentId ||
+        binding.driver.runtimeId !== run.runtimeId ||
+        (run.capabilityHandshakeId !== undefined &&
+          run.capabilityHandshakeId !== binding.capabilityHandshakeId))
+    ) {
+      yield* Effect.logWarning("Composition Runtime 握手归属冲突", {
+        reasonCode: "runtime_handshake_binding_conflict",
+        taskId: task.taskId,
+        runId: run.runId,
+      });
+      return;
+    }
     const projected = projectEvent(
       event,
       task.status,
@@ -506,6 +523,12 @@ export const projectCompositionRuntimeEvent = (
     const nextRun: CompositionTaskRun = {
       ...run,
       ...(binding.runtimeTaskId === undefined ? {} : { runtimeTaskId: binding.runtimeTaskId }),
+      // ACP prompt可能到终态才返回；与running在同一事务激活已签发的握手。
+      ...(event.type === "turn.started" &&
+      run.capabilityHandshakeId === undefined &&
+      binding.capabilityHandshakeId !== undefined
+        ? { capabilityHandshakeId: binding.capabilityHandshakeId }
+        : {}),
       status: projection.status,
       ...(runtimeTerminal ? { finishedAtUnixMs: now } : {}),
       ...(projection.failureCode === undefined ? {} : { failureCode: projection.failureCode }),
