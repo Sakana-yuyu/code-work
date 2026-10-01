@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics globalTimersInEffect:off
 import * as NodeFS from "node:fs";
 
 import * as Effect from "effect/Effect";
