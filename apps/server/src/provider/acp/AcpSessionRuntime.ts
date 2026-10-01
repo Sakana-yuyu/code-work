@@ -44,6 +44,7 @@ import {
   type AcpSessionModeState,
   type AcpToolCallState,
 } from "./AcpRuntimeModel.ts";
+import { normalizeGeminiToolResult } from "./GeminiAcpToolResult.ts";
 
 interface AcpToolCallTrackedState {
   readonly state: AcpToolCallState;
@@ -595,6 +596,7 @@ export const make = (
           assistantSegmentRef,
           assistantItemRuntimeId,
           params: notification,
+          agentName: startState.result.initializeResult.agentInfo?.name,
         });
       });
     yield* acp.handleSessionUpdate(acceptSessionUpdate);
@@ -828,6 +830,19 @@ export const make = (
         | EffectAcpSchema.NewSessionResponse
         | EffectAcpSchema.ResumeSessionResponse;
       if (options.resumeSessionId) {
+        // 0.61.0 在 loadSession 读取前重置同 ID 历史，阻止发送以保留原会话。
+        if (
+          initializeResult.agentInfo?.name === "gemini-cli" &&
+          initializeResult.agentInfo.version === "0.61.0"
+        ) {
+          return yield* new EffectAcpErrors.AcpRequestError({
+            code: -32000,
+            method: "session/load",
+            errorMessage:
+              "Gemini CLI 0.61.0 的 ACP 恢复会覆盖历史，已阻止恢复请求；请使用经验证支持恢复的版本。",
+            data: { reason: "gemini-0.61.0-session-load-history-loss" },
+          });
+        }
         const loadPayload = {
           sessionId: options.resumeSessionId,
           cwd: options.cwd,
@@ -1408,6 +1423,7 @@ const handleSessionUpdate = ({
   assistantSegmentRef,
   assistantItemRuntimeId,
   params,
+  agentName,
 }: {
   readonly queue: Queue.Queue<AcpSessionRuntimeEvent>;
   readonly modeStateRef: Ref.Ref<AcpSessionModeState | undefined>;
@@ -1415,9 +1431,10 @@ const handleSessionUpdate = ({
   readonly assistantSegmentRef: Ref.Ref<AcpAssistantSegmentState>;
   readonly assistantItemRuntimeId: string;
   readonly params: EffectAcpSchema.SessionNotification;
+  readonly agentName: string | undefined;
 }): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const parsed = parseSessionUpdateEvent(params);
+    const parsed = parseSessionUpdateEvent(normalizeGeminiToolResult(params, agentName));
     if (parsed.modeId) {
       yield* Ref.update(modeStateRef, (current) =>
         current === undefined ? current : updateModeState(current, parsed.modeId!),
@@ -1472,7 +1489,7 @@ const handleSessionUpdate = ({
         yield* Queue.offer(queue, {
           _tag: "ToolCallUpdated",
           toolCall: merged,
-          rawPayload: event.rawPayload,
+          rawPayload: params,
         });
         continue;
       }
