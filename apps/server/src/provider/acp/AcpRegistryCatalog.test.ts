@@ -247,6 +247,11 @@ describe("ACP registry catalog", () => {
           source: "bundled",
           snapshotDate: bundledRegistry.retrievedAt,
         });
+        // win32 离线快照必须带可校验二进制分发，否则客户端只能显示「需手动安装」。
+        expect(result.entries.some((entry) => entry.binaryDistribution !== undefined)).toBe(true);
+        expect(
+          result.entries.find((entry) => entry.id === "amp-acp")?.binaryDistribution?.cmd,
+        ).toBe("amp-acp.exe");
       }
       const recovered = yield* runCatalog(asFetch(async () => new Response('{"agents":[]}')));
       expect(recovered).toEqual({
@@ -286,6 +291,21 @@ describe("ACP registry catalog", () => {
         args: [],
       },
     });
+    for (const id of [
+      "antigravity-acp",
+      "cortex-code",
+      "corust-agent",
+      "devin",
+      "junie",
+      "stakpak",
+      "vtcode",
+    ] as const) {
+      const entry = entries.find((item) => item.id === id);
+      expect(entry?.binaryDistribution?.platform).toBe("windows-x86_64");
+      expect(entry?.binaryDistribution?.sha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(entry?.binaryDistribution?.archiveUrl?.startsWith("https://")).toBe(true);
+    }
+    expect(entries.find((entry) => entry.id === "junie")?.version).toBe("3419.22.0");
     expect(entries.find((entry) => entry.id === "cline")?.binaryDistribution).toBeUndefined();
     const ampArm = parseAcpRegistryCatalog(bundledRegistry, "win32", "arm64").find(
       (entry) => entry.id === "amp-acp",
@@ -439,31 +459,17 @@ describe("ACP registry catalog", () => {
     for (const [archive, sha256] of Object.entries(archives)) {
       const parse = (target: Record<string, unknown>, platform: NodeJS.Platform = "win32") =>
         parseAcpRegistryCatalog(
-          {
-            agents: [
-              {
-                id: "fixture",
-                name: "Fixture",
-                distribution: { binary: { "windows-x86_64": target } },
-              },
-            ],
-          },
+          { agents: [{ id: "fixture", name: "Fixture", distribution: { binary: { "windows-x86_64": target } } }] },
           platform,
           "x64",
         )[0];
       const target = { archive, cmd: "agent.exe", args: ["--acp"] };
       expect(parse(target)?.binaryDistribution).toMatchObject({ archiveUrl: archive, sha256 });
-      expect(parse({ ...target, sha256: "A".repeat(64) })?.binaryDistribution?.sha256).toBe(
-        "a".repeat(64),
-      );
+      expect(parse({ ...target, sha256: "A".repeat(64) })?.binaryDistribution?.sha256).toBe("a".repeat(64));
       for (const invalid of [null, 42, {}, "", "invalid", "b".repeat(63)]) {
         expect(parse({ ...target, sha256: invalid })?.binaryDistribution).toBeUndefined();
       }
-      for (const changed of [
-        archive + "?version=next",
-        archive.replace("https:", "http:"),
-        "https://example.com/agent.zip",
-      ]) {
+      for (const changed of [archive + "?version=next", archive.replace("https:", "http:"), "https://example.com/agent.zip"]) {
         expect(parse({ ...target, archive: changed })?.binaryDistribution).toBeUndefined();
       }
       expect(parse({ ...target, cmd: "../agent.exe" })?.binaryDistribution).toBeUndefined();
@@ -474,35 +480,16 @@ describe("ACP registry catalog", () => {
 
   it.effect("在线目录在缺少官方哈希时仍交付可校验分发并保留在线来源", () =>
     Effect.gen(function* () {
-      const archive =
-        "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.6.0/agent-windows-x64.zip";
-      const result = yield* runCatalog(
-        asFetch(
-          async () =>
-            new Response(
-              JSON.stringify({
-                agents: [
-                  {
-                    id: "corust-agent",
-                    name: "Corust Agent",
-                    version: "0.6.0",
-                    distribution: {
-                      binary: { "windows-x86_64": { archive, cmd: "agent.exe", args: ["--acp"] } },
-                    },
-                  },
-                ],
-              }),
-            ),
-        ),
-      );
+      const archive = "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.6.0/agent-windows-x64.zip";
+      const result = yield* runCatalog(asFetch(async () => new Response(JSON.stringify({ agents: [{
+        id: "corust-agent", name: "Corust Agent", version: "0.6.0",
+        distribution: { binary: { "windows-x86_64": { archive, cmd: "agent.exe", args: ["--acp"] } } },
+      }] }))));
       expect(result.source).toBe("registry");
       expect(result.error).toBeNull();
       expect(result.snapshotDate).toBeUndefined();
-      expect(
-        result.entries.find((entry) => entry.id === "corust-agent")?.binaryDistribution,
-      ).toMatchObject({
-        archiveUrl: archive,
-        sha256: "79d28ce683cb5c7d436a1c9abb759425314a57ec6aa4d02b5fcfb0c84ca124a2",
+      expect(result.entries.find(entry => entry.id === "corust-agent")?.binaryDistribution).toMatchObject({
+        archiveUrl: archive, sha256: "79d28ce683cb5c7d436a1c9abb759425314a57ec6aa4d02b5fcfb0c84ca124a2",
       });
     }),
   );
