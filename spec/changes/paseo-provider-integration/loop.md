@@ -4668,7 +4668,7 @@ Server `tsgo --noEmit` 退出 0。定向 lint 退出 0。四份 live 各 1 项�
 
 #### Retrospect
 
-本轮 progress：A-5 在 override（真机可跳过）下由 Web+Electron+AVD 关键路径证实并勾选。A-8 仍待下一轮最终独立审核（文档/44 能力表/回滚 + 逐条 A-1…A-8）。goal active。提交哈希见本轮提交后补记。
+本轮 progress：A-5 在 override（真机可跳过）下由 Web+Electron+AVD 关键路径证实并勾选。A-8 仍待下一轮最终独立审核（文档/44 能力表/回滚 + 逐条 A-1…A-8）。goal active。提交哈希 `563009c5a352d608b68f506cad271dea9ec77808`。
 
 ## Lessons
 
