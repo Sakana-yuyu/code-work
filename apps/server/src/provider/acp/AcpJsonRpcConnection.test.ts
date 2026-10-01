@@ -1930,4 +1930,83 @@ describe("AcpSessionRuntime", () => {
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     );
   }
+
+  it.effect("取消返回前通知必须入队，随后关闭不抢先", () =>
+    Effect.gen(function* () {
+      const notificationEntered = yield* Deferred.make<void>();
+      const releaseNotification = yield* Deferred.make<void>();
+      const cancelReturned = yield* Deferred.make<void>();
+      const promptReturned = yield* Deferred.make<void>();
+      const sawInProgress = yield* Deferred.make<void>();
+      const methods: string[] = [];
+      yield* Effect.gen(function* () {
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        yield* runtime.start();
+        yield* runtime.getEvents().pipe(
+          Stream.runForEach((event) => {
+            if (event._tag === "EventStreamBarrier")
+              return Deferred.succeed(event.acknowledge, undefined);
+            return event._tag === "ToolCallUpdated" && event.toolCall.status === "inProgress"
+              ? Deferred.succeed(sawInProgress, undefined)
+              : Effect.void;
+          }),
+          Effect.forkChild,
+        );
+        const prompt = yield* runtime
+          .prompt({ prompt: [{ type: "text", text: "cancel enqueue" }] })
+          .pipe(
+            Effect.tap(() => Deferred.succeed(promptReturned, undefined)),
+            Effect.forkChild,
+          );
+        yield* Deferred.await(sawInProgress);
+        const cancelling = yield* runtime.cancel.pipe(
+          Effect.tap(() => Deferred.succeed(cancelReturned, undefined)),
+          Effect.forkChild,
+        );
+        yield* Deferred.await(notificationEntered);
+        expect(yield* Deferred.isDone(cancelReturned)).toBe(false);
+        expect(yield* Deferred.isDone(promptReturned)).toBe(false);
+        yield* Deferred.succeed(releaseNotification, undefined);
+        yield* Fiber.join(cancelling);
+        expect(yield* Fiber.join(prompt)).toMatchObject({ stopReason: "cancelled" });
+        yield* runtime.close;
+        expect(methods).toEqual(["session/cancel", "session/close"]);
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: {
+                CODEWORK_ACP_EMIT_ACTIVE_TOOL_THEN_HANG: "1",
+                CODEWORK_ACP_CLOSE_BEHAVIOR: "success",
+              },
+            },
+            cwd: process.cwd(),
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+            authMethodId: "test",
+            protocolLogging: {
+              logOutgoing: true,
+              logger: (event) =>
+                Effect.gen(function* () {
+                  if (event.stage !== "raw" || typeof event.payload !== "string") return;
+                  const raw = event.payload;
+                  const method = ["session/cancel", "session/close"].find((method) =>
+                    raw.includes('"method":"' + method + '"'),
+                  );
+                  if (!method) return;
+                  methods.push(method);
+                  if (method === "session/cancel") {
+                    yield* Deferred.succeed(notificationEntered, undefined);
+                    yield* Deferred.await(releaseNotification);
+                  }
+                }),
+            },
+          }),
+        ),
+        Effect.ensuring(Deferred.succeed(releaseNotification, undefined)),
+        Effect.scoped,
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
 });

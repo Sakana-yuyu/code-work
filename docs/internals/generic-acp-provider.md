@@ -68,3 +68,7 @@ rawInput/rawOutput 的 null 与缺省都表示未提供新值，保留已有输�
 2026-10-01 核对；检索词 JSON-RPC notification id empty string、ACP session/cancel、Effect ndJsonRpc isNotification。采用 [JSON-RPC 2.0 规范](https://www.jsonrpc.org/specification#notification)确认省略 id 的语义、[ACP 官方取消合同](https://agentclientprotocol.com/protocol/v1/prompt-turn#cancellation)确认 session/cancel 为通知；与已安装 Effect 4.0.0-beta.103 的序列化实现和真实 CLI 原始报文对照，优先于 Schema 解码后忽略额外字段的旧断言。
 
 定向检查覆盖四类通知的完整原始 JSON、入站标准通知、空字符串请求 ID 的回应、通知日志与编码错误。固定 Gajae 0.18.1 加本机模型响应端点通过连续文本、实际读取、批准命令、审批中取消和会话关闭；详见 [Gajae 边界](./gajae-acp-provider.md)。这是共用 Runtime 的本地及真实 CLI 证据，不替代界面、外部模型或其它 Agent 的实测。回滚撤回对应提交，无数据库迁移、不改变账户或审批策略。
+
+取消时，共用 Runtime 先把 session/cancel 通知放入既有发送队列，再中断本地活动回合并返回。取消通知不再由脱离调用者的后台 fiber 发送；调用者紧接着关闭或提交下一消息时，不会在正常发送路径抢在取消通知之前入队。协议日志位于入队前，所以受控回归在该处设置屏障，核对取消和原 prompt 都尚未返回，放行后验证 cancelled 与 cancel→close 顺序。检查不依赖睡眠或轮询。
+
+这里保证的是本地发送顺序，通知本身没有远端回执。保留既有通知失败时的本地中断策略，失败、工具副作用、远端终态和关闭仍分别验证；未扩大 5 秒关闭或 60 秒空闲预算。63 项 Runtime 和 Cursor/Grok 中断/停止/关闭回归通过，不代表每个官方 Agent 的取消和清理稳定。2026-10-01 最新 Gajae 原探针仍在关闭收到 terminal_uncertain / broker request failed，详见其文档；不增加重试或把失败改为成功。回滚撤回本次发送顺序提交，无迁移。

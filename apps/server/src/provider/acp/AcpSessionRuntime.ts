@@ -1267,13 +1267,12 @@ export const make = (
       cancel: getStartedState.pipe(
         Effect.flatMap((started) =>
           Effect.gen(function* () {
+            // 先将取消通知入队，再结束本地回合，避免后续关闭或新请求抢先。
+            yield* acp.agent.cancel({ sessionId: started.sessionId }).pipe(Effect.ignore);
             const activePromptFiber = yield* Ref.get(activePromptFiberRef);
             if (Option.isSome(activePromptFiber)) {
               yield* Fiber.interrupt(activePromptFiber.value).pipe(Effect.ignore);
             }
-            yield* acp.agent
-              .cancel({ sessionId: started.sessionId })
-              .pipe(Effect.ignore, Effect.forkIn(runtimeScope));
           }),
         ),
       ),

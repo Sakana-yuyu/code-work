@@ -128,3 +128,15 @@ MCP 文本数组识别与长度限制可单独撤回；不撤回认证、关闭�
 核对日期 2026-10-01；检索词 newSession、attachEndpoint、publishAttachment、serialReconcile、session/cancel、isNotification。采用与二进制同版本的 [ACP 实现](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/modes/acp/acp-agent.ts)、[SDK 适配器](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/acp/adapter.ts)、[SDK Router](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/router/session-router.ts)确认生命周期边界；取消格式以 [ACP 官方合同](https://agentclientprotocol.com/protocol/v1/prompt-turn#cancellation)和 [JSON-RPC 通知规范](https://www.jsonrpc.org/specification#notification)为准，不绕过端点权威或推测启动就绪。
 
 原始报文、失败与成功日志保存在仓库外审计目录；探针诊断变体未提交。最终运行留下的独立 broker 经其 broker.json 与已记录进程身份核对后，用官方 broker.shutdown 收到 ok=true，随后确认该 PID 消失；这不证明历史后台进程都已回收。撤回通知编码提交即可回滚，无数据迁移。
+
+## 2026-10-01 会话权威与取消顺序
+
+固定 0.18.1 的诊断运行记录 session/new 成功、第一条 prompt 开始及最终关闭的只读身份。实际模型会话的 host_registered / generation=1、进程身份、端点 mtime 与 inode 在首请求前一致，端点 PID 当时存在；关闭后出现同一身份的 host_unregistered，端点文件消失。这次诊断运行通过工具探针，未复现 session not published。SDK 索引和端点 JSON 的白名单字段保存在仓库外，未复制 token、配置密钥或模型请求。诊断记录会影响时序，不能据此宣布旧失败已修复。
+
+索引可同时包含 ACP 入口自身的 generation=0 记录和真正模型会话的 generation=1 记录，诊断中它们的 sessionId 不同；不能仅凭一个缺少端点文件的 generation=0 行推断目标会话不可附着。固定源码的权威条件还包括端点代次/文件身份、当前进程 incarnation、心跳、终态、不确定性与状态根歧义；文件存在或普通 PID 存活都不是充分证明。未绕过 Router 的 fail-closed 判定或主动刷新其索引来制造可用状态。
+
+源码检查与受控回归另外确认共用取消入口存在发送顺序缺口：本地 prompt 先中断，通知再由后台 fiber 入队，取消可提前返回。现在先入队通知，再结束本地等待；屏障测试在旧实现下失败，修复后通过。它修复本地调用顺序，不声称解决上游附件发布或清理故障，也不等待或伪造远端取消回执。
+
+本轮基线原探针首先在 session/close 超过 5 秒；随后诊断变体完整通过；修复取消顺序后的最终原探针仍失败，session/close 返回 -32603，data.code=terminal_uncertain，details=ACP session cleanup is uncertain: broker request failed。未重跑直到绿灯、放宽关闭断言或增加超时。文件、批准命令与取消检查位于关闭之前，整项探针仍按失败登记；不能以诊断变体通过替代最终实际结果。后台 broker 通过独立目录和记录的 PID/创建时间核对后，经官方 broker.shutdown 得到 ok=true 并确认 PID 消失；该清理不等于 ACP 优雅关闭。
+
+核对日期 2026-10-01；检索词 projectIdentity、isSessionAuthorityEligible、isDirectSessionGcFenceRow、processIncarnation、serialReconcile、session/close terminal_uncertain。采用固定 [SDK 索引实现](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/broker/session-index.ts)、[进程身份实现](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/broker/process-incarnation.ts)、[Router](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/router/session-router.ts)和 [ACP 入口](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/modes/acp/acp-agent.ts)，因它们与固定受测二进制同版本，优先于仅看启动响应的推断。旧发布、机器身份和最新清理失败继续作为未解决门槛。
