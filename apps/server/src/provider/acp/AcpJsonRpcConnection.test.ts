@@ -1823,4 +1823,111 @@ describe("AcpSessionRuntime", () => {
       Effect.provide(NodeServices.layer),
     ),
   );
+
+  for (const status of ["completed", "failed"] as const) {
+    it.effect(status + " 工具在本回合补充通知中保留结果，下一 prompt 同 ID 不继承终态", () =>
+      Effect.gen(function* () {
+        const replied = yield* Deferred.make<void>();
+        const runtime = yield* AcpSessionRuntime.make({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "gajae-code" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+          requestLogger: (event) =>
+            event.method === "session/prompt" && event.status === "succeeded"
+              ? Deferred.succeed(replied, undefined).pipe(Effect.asVoid)
+              : Effect.void,
+        });
+        yield* runtime.start();
+        const firstPrompt = yield* runtime
+          .prompt({ prompt: [{ type: "text", text: "late" }] })
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(replied);
+        yield* TestClock.adjust("0 millis");
+        const seen: Array<AcpSessionRuntime.AcpSessionRuntimeEvent> = [];
+        for (const update of [
+          {
+            sessionUpdate: "tool_call",
+            toolCallId: "terminal-partial",
+            title: "命令",
+            kind: "execute",
+            status,
+            rawInput: { command: "check" },
+            rawOutput: { content: [{ type: "text", text: "FIRST_RESULT" }] },
+          },
+          {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "terminal-partial",
+            title: "补充标题",
+            kind: "execute",
+            rawInput: null,
+            rawOutput: null,
+          },
+          {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "terminal-partial",
+            rawOutput: { content: [{ type: "text", text: "SECOND_RESULT" }] },
+          },
+        ]) {
+          yield* runtime.request("_codework.test/gajae-update", {
+            sessionId: "mock-session-1",
+            update,
+          });
+          yield* runtime.getEvents().pipe(
+            Stream.takeUntil((event) => event._tag === "ModeChanged"),
+            Stream.runForEach((event) =>
+              Effect.sync(() => {
+                seen.push(event);
+              }),
+            ),
+          );
+        }
+        const tools = seen.filter((event) => event._tag === "ToolCallUpdated");
+        expect(tools[1]).toMatchObject({
+          toolCall: { status, command: "check", detail: "FIRST_RESULT" },
+        });
+        expect(tools[2]).toMatchObject({
+          toolCall: { status, command: "check", detail: "SECOND_RESULT" },
+        });
+        expect(tools).toHaveLength(3);
+        yield* runtime.request("_codework.test/gajae-update", {
+          sessionId: "mock-session-1",
+          update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
+        });
+        yield* runtime.getEvents().pipe(
+          Stream.takeUntil((event) => event._tag === "ModeChanged"),
+          Stream.runDrain,
+        );
+        expect(yield* Fiber.join(firstPrompt)).toEqual({ stopReason: "end_turn" });
+        expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "early" }] })).toEqual({
+          stopReason: "end_turn",
+        });
+        yield* runtime.request("_codework.test/gajae-update", {
+          sessionId: "mock-session-1",
+          update: {
+            sessionUpdate: "tool_call",
+            toolCallId: "terminal-partial",
+            title: "新读取",
+            kind: "read",
+            status: "pending",
+            rawInput: { path: "new.txt" },
+          },
+        });
+        const nextEvents = yield* runtime.getEvents().pipe(
+          Stream.takeUntil((event) => event._tag === "ModeChanged"),
+          Stream.runCollect,
+        );
+        const nextTool = nextEvents.find((event) => event._tag === "ToolCallUpdated");
+        expect(nextTool).toMatchObject({ toolCall: { status: "pending", kind: "read" } });
+        if (nextTool?._tag !== "ToolCallUpdated") throw new Error("缺少新工具事件");
+        expect(nextTool.toolCall.command).toBeUndefined();
+        expect(nextTool.toolCall.data.rawOutput).toBeUndefined();
+        expect(nextTool.toolCall.detail).toBe("new.txt");
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    );
+  }
 });

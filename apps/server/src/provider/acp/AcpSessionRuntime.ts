@@ -1058,12 +1058,17 @@ export const make = (
         promptSerializationSemaphore.withPermit(
           Effect.gen(function* () {
             const started = yield* getStartedState;
-            // 审批身份只用于当前回合，未发送终态的权限请求不占用后续回合的工具 ID。
+            // 终态和审批身份只用于当前回合，下一回合保留尚未结束的实际工具。
             yield* Ref.update(
               toolCallsRef,
               (current) =>
                 new Map(
-                  [...current].filter(([, tracked]) => tracked.permissionStatus === undefined),
+                  [...current].filter(
+                    ([, tracked]) =>
+                      tracked.permissionStatus === undefined &&
+                      tracked.state.status !== "completed" &&
+                      tracked.state.status !== "failed",
+                  ),
                 ),
             );
             yield* closeActiveAssistantSegment({
@@ -1451,17 +1456,14 @@ const handleSessionUpdate = ({
             skippedSinceEmit: tracked?.skippedSinceEmit ?? 0,
           });
           const next = new Map(current);
-          if (nextToolCall.status === "completed" || nextToolCall.status === "failed") {
-            next.delete(nextToolCall.toolCallId);
-          } else {
-            next.set(nextToolCall.toolCallId, {
-              state: nextToolCall,
-              lastEmittedDetailLength: decision.emit
-                ? toolCallProgressLength(nextToolCall)
-                : tracked?.lastEmittedDetailLength,
-              skippedSinceEmit: decision.skippedSinceEmit,
-            });
-          }
+          // 终态后仍可能补结果或元数据；保留到下一 prompt，避免丢失正文与状态。
+          next.set(nextToolCall.toolCallId, {
+            state: nextToolCall,
+            lastEmittedDetailLength: decision.emit
+              ? toolCallProgressLength(nextToolCall)
+              : tracked?.lastEmittedDetailLength,
+            skippedSinceEmit: decision.skippedSinceEmit,
+          });
           return [{ merged: nextToolCall, decision, approvalOnly: false }, next] as const;
         });
         if (!approvalOnly) yield* closeActiveAssistantSegment({ queue, assistantSegmentRef });
