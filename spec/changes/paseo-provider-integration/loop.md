@@ -4690,7 +4690,7 @@ Server `tsgo --noEmit` 退出 0。定向 lint 退出 0。四份 live 各 1 项�
 
 #### Retrospect
 
-本轮 done（本 goal Acceptance 全集在 override 下已勾选）。提交哈希见本轮提交后补记。若后续发现证据丢失或合同回退，须重新取消对应 A-N，不得保留本轮勾选。
+本轮 done（本 goal Acceptance 全集在 override 下已勾选）。提交哈希 `9a8173e24c652d7cf7eb22fbf6db708c5f3b9f52`。若后续发现证据丢失或合同回退，须重新取消对应 A-N，不得保留本轮勾选。
 
 ## Lessons
 
