@@ -7,7 +7,6 @@ import type {
 import { Platform, View } from "react-native";
 
 import { AppText as Text } from "./AppText";
-import { CodeworkWordmark } from "./CodeworkWordmark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { useThemeColor } from "../lib/useThemeColor";
@@ -32,6 +31,7 @@ export function brandTitleOffset(nativeLeadingItem: boolean): number {
 
 /**
  * Compact brand lockup sized for native navigation bars.
+ * Mirrors web SidebarBrand: product base name + stage badge (no legacy T3 mark).
  */
 export function CompactBrandTitle(
   props: {
@@ -58,17 +58,16 @@ export function CompactBrandTitle(
         marginLeft: titleOffset,
       }}
     >
-      <CodeworkWordmark color={iconColor} height={15} />
       <Text
         allowFontScaling={props.allowFontScaling}
         style={{
-          color: mutedColor,
-          fontFamily: "DMSans-Medium",
-          fontSize: 21,
-          letterSpacing: -0.5,
+          color: iconColor,
+          fontFamily: "DMSans-Bold",
+          fontSize: 18,
+          letterSpacing: -0.4,
         }}
       >
-        {t("code")}
+        {PRODUCT_IDENTITY.baseName}
       </Text>
       <View
         style={{
