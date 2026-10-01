@@ -34,6 +34,7 @@ export type AssetCreateUrlInput = typeof AssetCreateUrlInput.Type;
 export const AssetCreateUrlResult = Schema.Struct({
   relativeUrl: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),
   expiresAt: Schema.Number,
+  // 项目内图标使用斜杠分隔的相对路径，显式外部图标保留本机绝对路径。
   sourcePath: Schema.optional(
     TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
   ),

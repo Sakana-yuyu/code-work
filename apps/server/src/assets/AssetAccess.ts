@@ -331,7 +331,10 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       if (sourceFaviconPath && !isWorkspaceImagePreviewPath(sourceFaviconPath)) {
         return yield* new AssetPreviewTypeValidationError({ resource: input.resource });
       }
-      sourcePath = sourceFaviconPath ?? undefined;
+      // 公开的工作区相对路径统一用斜杠，文件访问仍使用本机路径。
+      sourcePath = isExternalOverride
+        ? (faviconPath ?? undefined)
+        : relativePath?.split(path.sep).join("/");
       const canonicalFaviconPath = sourceFaviconPath
         ? yield* (
             isExternalOverride

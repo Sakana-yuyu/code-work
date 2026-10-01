@@ -338,6 +338,14 @@ describe("AssetAccess", () => {
 
       expect(result.sourcePath).toBe("brand/custom.svg");
       expect(result.relativeUrl).toMatch(/\/v[0-9a-f]{64}-custom\.svg$/);
+      const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+      const separatorIndex = suffix.indexOf("/");
+      expect(
+        yield* resolveAsset(suffix.slice(0, separatorIndex), suffix.slice(separatorIndex + 1)),
+      ).toEqual({
+        kind: "file",
+        path: yield* fileSystem.realPath(path.join(root, "brand", "custom.svg")),
+      });
     }).pipe(Effect.provide(testLayer)),
   );
 
