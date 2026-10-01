@@ -6,7 +6,7 @@
 
 沿用 `gjc acp → AcpSessionRuntime → GenericAcpDriver / CursorAdapter → ProviderRuntimeIngestion`，客户端复用现有会话、工具、审批和历史显示。没有增加专用 Adapter。受测版本认证方法为 `agent`，配置实例时需显式填写。手工回退目录已预填 `agent`。2026-10-01 实时官方目录的 41 项中没有 Gajae，当前由手工条目补充；未添加面向假设在线条目的认证规则。已有实例仍须核对认证设置，通用缺省 `login` 会被该版本拒绝。
 
-`initialize` 在当前客户端能力下广告 `agent`；官方源码仅在客户端声明终端认证能力时增加 `terminal`。`authenticate(agent)` 返回空对象，处理器不会因此验证模型凭据。空配置可以创建会话，但 `session/prompt` 返回 `model_not_selected`，必须分别检查模型配置和真实请求。不能据此显示账号已登录、余额正常或推理成功。
+`initialize` 在当前客户端能力下广告 `agent`；官方源码仅在客户端声明终端认证能力时增加 `terminal`。`authenticate(agent)` 返回空对象，处理器不会因此验证模型凭据。未配置凭据也可以创建会话；空配置目录仍可能自动发现本机模型。只有没有可用模型时，`session/prompt` 才返回 `model_not_selected`，必须分别检查模型目录和真实请求。不能据此显示账号已登录、余额正常或推理成功。
 
 模型在服务器的 Gajae 配置中设置。官方文档使用 `~/.gjc/agent/models.yml`，自定义 provider 可指定 `baseUrl`、`apiKey`、`api` 和 `models`，默认模型通过 `modelBindings.modelRoles.default` 绑定。`GJC_CODING_AGENT_DIR` 可指定绝对的 Agent 配置目录；`GJC_CONFIG_DIR` 是主目录下的目录名，两者不能混用。本次未导入宿主凭据或发送外部模型请求。
 
@@ -26,7 +26,7 @@
 | authenticate(agent) | 返回 `{}`，仅证明方法被接受                                                                              |
 | session/new         | 隔离空配置下成功；实际产生独立后台会话主机                                                               |
 | 模式和命令          | 上游广告 plan，但实际设置返回 -32602 / unsupported，当前模式保持 default；异步命令包含 `skill:ultragoal` |
-| 空配置 prompt       | `-32603`，原始错误 data.code 为 `model_not_selected`；没有调用模型                                       |
+| 无可用模型 prompt   | 关闭隐式本地发现后返回 `-32603` / `model_not_selected`，没有助手正文；空目录本身不保证这一前置条件       |
 | session/close       | 空配置及新目录单工具回合均返回 {}；多回合实测另出现文件锁清理错误与空闲回执超时，不能概括为所有情况正常  |
 
 二进制和只读源码放在仓库外临时目录，没有全局安装、修改 PATH 或覆盖真实配置。Windows x64 实测不代表 ARM64；官方独立 Windows 资产仅列出 x64，本模块未修改目录平台判定。
@@ -35,14 +35,18 @@
 
 ## 可重复检查与关闭边界
 
-本模块收录 `GajaeAcpToolProbe.test.ts`，需显式提供官方 CLI 路径。它重定向主目录、清空非系统宿主变量，使用仅监听本机的模型响应端点验证连续回合、读取、命令批准和审批期间取消；不代表外部模型或完整账号验收。
+本模块收录 `GajaeAcpCliProbe.test.ts` 与 `GajaeAcpToolProbe.test.ts`，需显式提供固定官方 CLI 路径。认证探针检查 login 拒绝、agent 接受、无可用模型时连续失败与关闭；只在自己的临时 settings.json 禁用六类隐式本地发现，并在发消息前确认版本和模型目录，前置条件不符时关闭会话且失败。工具探针使用独立本机端点。它重定向主目录、清空非系统宿主变量，使用仅监听本机的模型响应端点验证连续回合、读取、命令批准和审批期间取消；不代表外部模型或完整账号验收。
 
 ```powershell
 $env:CODEWORK_GAJAE_CLI_PATH = 'C:/隔离工具目录/gjc.exe'
-.\node_modules\.bin\vp.cmd test run apps/server/src/provider/acp/GajaeAcpToolProbe.test.ts apps/server/src/provider/acp/AcpJsonRpcConnection.test.ts
+.\node_modules\.bin\vp.cmd test run apps/server/src/provider/acp/GajaeAcpCliProbe.test.ts
+.\node_modules\.bin\vp.cmd test run apps/server/src/provider/acp/GajaeAcpToolProbe.test.ts
+.\node_modules\.bin\vp.cmd test run apps/server/src/provider/acp/AcpJsonRpcConnection.test.ts
 ```
 
-未设置路径时官方 CLI 探针跳过，不能记作实测通过。2026-10-01 另用原有未提交认证探针重验，login 拒绝与 agent 接受符合历史记录，但隔离空配置 prompt 返回 end_turn，与早期 model_not_selected 记录不同；关闭成功。该负向预期的前置条件尚未证实稳定，原探针没有纳入本模块，也没有放宽其断言。这个返回不证明推理、凭据或余额正常。
+未设置路径时官方 CLI 探针跳过，不能记作实测通过。2026-10-01 的旧负向探针曾返回 end_turn；本轮在相同固定二进制下复现并记录模型配置：启动时已选择 ollama/qwen2.5:7b，后续实际收到助手正文。固定 model-registry 源码会在未显式配置时自动发现 127.0.0.1:11434 的 Ollama；空目录与清空凭据变量不能阻止该默认发现。本轮已复现负向探针的前置条件错误；旧运行没有原始模型通知，不能断言其每一步的内部原因。不需要改 ACP 错误映射或屏蔽正常本机模型。
+
+负向探针沿用上游 disabledProviders 设置，在临时目录禁用 ollama、llama.cpp、lm-studio、omlx、vllm、sglang，保留宿主服务和配置。连续两个显式请求均要求 -32603 / model_not_selected、没有正文、没有隐式重试且明确关闭。不能把这里的 end_turn、认证接受或目录探测推广为外部模型、账户登录或余额正常。并行运行曾另遇 broker_startup_failed / machine-local identity is unavailable or malformed；Windows 上游读取系统 MachineGuid，未查明该次读取失败原因。探针不重试、不中和这个错误，官方探针分别执行也不能保证启动稳定：随后独立工具探针在 session/prompt 返回 SDK session attachment is unavailable: session not published。该次工具回归失败保留，未把较早的一次通过冒充最新稳定验收；本机服务是否存在、broker 能否启动与会话能否发布属于不同前置条件。
 
 纠正早期记录：失败探针不能证明其前面的模式断言通过，先前“default → plan → default 成功”的表述已撤回。固定版本的原始 RPC 和产品 Runtime 都明确拒绝 plan。早期清理 EPERM 与 10 秒超时是真实失败观察，但本次原始连接、失败后关闭、混合请求 ID、独立 Runtime 及真实时钟探针均正常关闭，不能将旧超时归因于上游固定缺陷；旧测试超时的单一根因尚未确定。
 
@@ -102,3 +106,13 @@ MCP 文本数组识别与长度限制可单独撤回；不撤回认证、关闭�
 2026-10-01 增量合并核对：此前 MCP 结果识别与限长已经提交；仅元数据更新不能把已有正文变回命令摘要，null 原始输入/输出不清除旧值，明确新结果仍可替换。详见通用 ACP 文档的工具结果增量保留合同；本轮没有新增官方 CLI 或界面验收证据。
 
 2026-10-01 目录核对采用 https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json 的实际响应，检索精确 gjc 及 gajae ID，共 41 项、匹配 0；因为它决定当前在线目录行为，不以未来可能收录来证明现存缺陷。响应证据仅为公开目录，不是安装、登录或模型验证。终态后补充通知的保留合同由共用 Runtime 提供，详见通用 ACP 文档；本轮未新增官方 Gajae CLI 验收。
+
+## 无模型负向探针的来源与回滚
+
+核对日期 2026-10-01，检索词 addImplicitDiscoverableProviders、disabledProviders、NoModelSelectedError、MODEL_NOT_SELECTED_PUBLIC_MESSAGE、turn.prompt、machine-local identity。采用同标签固定源码与官方资产原始 RPC，因它们分别解释自动发现、前检错误、SDK 安全消息和 ACP 出口；不按目录是否为空推断模型状态。
+
+- [固定模型注册实现](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/config/model-registry.ts)：隐式本地发现受 disabledProviders 控制。
+- [固定模型说明](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/docs/models.md)：六类本地默认发现与禁用设置。
+- [缺模型错误](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/setup/model-onboarding-guidance.ts)、[SDK 错误出口](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/host/control/dispatch.ts)：model_not_selected 的安全公开消息。
+
+本增量只收录并修正可运行探针和本页，不修改生产默认发现、认证或错误映射。撤回对应提交即可回滚，无数据库迁移；测试设置只写入本次独立临时目录。
