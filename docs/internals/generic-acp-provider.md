@@ -72,3 +72,13 @@ rawInput/rawOutput 的 null 与缺省都表示未提供新值，保留已有输�
 取消时，共用 Runtime 先把 session/cancel 通知放入既有发送队列，再中断本地活动回合并返回。取消通知不再由脱离调用者的后台 fiber 发送；调用者紧接着关闭或提交下一消息时，不会在正常发送路径抢在取消通知之前入队。协议日志位于入队前，所以受控回归在该处设置屏障，核对取消和原 prompt 都尚未返回，放行后验证 cancelled 与 cancel→close 顺序。检查不依赖睡眠或轮询。
 
 这里保证的是本地发送顺序，通知本身没有远端回执。保留既有通知失败时的本地中断策略，失败、工具副作用、远端终态和关闭仍分别验证；未扩大 5 秒关闭或 60 秒空闲预算。63 项 Runtime 和 Cursor/Grok 中断/停止/关闭回归通过，不代表每个官方 Agent 的取消和清理稳定。2026-10-01 最新 Gajae 原探针仍在关闭收到 terminal_uncertain / broker request failed，详见其文档；不增加重试或把失败改为成功。回滚撤回本次发送顺序提交，无迁移。
+
+## ACP 子进程标准错误流
+
+子进程客户端 layerChildProcess 在自身 Scope 中持续排空 child.stderr。stderr 不属于 ACP JSON-RPC，不并入 stdout、工具结果或协议日志，也不在内存中累计。客户端层关闭时取消读取任务；读取失败仅报告固定告警和 PID，不输出可能包含凭据的错误流或异常正文。协议解析、RPC 错误和实际退出码继续沿原错误合同处理，排空不会把这些失败改成成功。
+
+2026-10-01 核对共用 Runtime、Cursor/Kimi、Grok 与 Generic ACP 的调用路径，它们复用同一子进程客户端层；手工调用底层 makeChildStdio 的低层调用者仍自行管理子进程。NodeChildProcessSpawner 默认 stderr=pipe，将它转接到 PassThrough；没有读者时背压会阻止子进程完成写入。真实 Node 子进程回归在每次 RPC 回复前先完成 8 MiB stderr 写入，连续两次检查原样回复及客户端 Scope 结束后的读取任务回收；旧客户端超时，修复后通过，不依赖睡眠、轮询或模型重试。
+
+本修复证明共用传输不再被未读的 stderr 管道堵住，不证明所有 Agent 的外部账户、工具或关闭流程已通过。固定 Gajae 的 broker 生命周期错误单独记录于其文档。回滚撤回对应提交，无数据库迁移或账户配置变更。
+
+本轮精确索引副本的 client/protocol/agent 与 Runtime 98项、Cursor/Grok停止/关闭7项通过（合计105项）；协议包及Server类型检查退出0，改动TS定向lint无输出。固定Gajae 0.18.1的未插桩工具探针整项通过一次，另一次基线诊断在session/new失败；二者及历史失败均保留于专页，不混为所有Agent稳定可用。

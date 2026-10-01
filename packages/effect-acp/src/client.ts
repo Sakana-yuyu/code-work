@@ -581,5 +581,15 @@ export const layerChildProcess = (
 ): Layer.Layer<AcpClient> => {
   const stdio = makeChildStdio(handle);
   const terminationError = makeTerminationError(handle);
-  return Layer.effect(AcpClient, make(stdio, options, terminationError));
+  return Layer.effect(
+    AcpClient,
+    Effect.gen(function* () {
+      yield* handle.stderr.pipe(
+        Stream.runDrain,
+        Effect.catch(() => Effect.logWarning("ACP 子进程标准错误流读取失败", { pid: handle.pid })),
+        Effect.forkScoped,
+      );
+      return yield* make(stdio, options, terminationError);
+    }),
+  );
 };

@@ -140,3 +140,15 @@ MCP 文本数组识别与长度限制可单独撤回；不撤回认证、关闭�
 本轮基线原探针首先在 session/close 超过 5 秒；随后诊断变体完整通过；修复取消顺序后的最终原探针仍失败，session/close 返回 -32603，data.code=terminal_uncertain，details=ACP session cleanup is uncertain: broker request failed。未重跑直到绿灯、放宽关闭断言或增加超时。文件、批准命令与取消检查位于关闭之前，整项探针仍按失败登记；不能以诊断变体通过替代最终实际结果。后台 broker 通过独立目录和记录的 PID/创建时间核对后，经官方 broker.shutdown 得到 ok=true 并确认 PID 消失；该清理不等于 ACP 优雅关闭。
 
 核对日期 2026-10-01；检索词 projectIdentity、isSessionAuthorityEligible、isDirectSessionGcFenceRow、processIncarnation、serialReconcile、session/close terminal_uncertain。采用固定 [SDK 索引实现](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/broker/session-index.ts)、[进程身份实现](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/broker/process-incarnation.ts)、[Router](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/router/session-router.ts)和 [ACP 入口](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/modes/acp/acp-agent.ts)，因它们与固定受测二进制同版本，优先于仅看启动响应的推断。旧发布、机器身份和最新清理失败继续作为未解决门槛。
+
+## 2026-10-01 broker 错误出口与 stderr 背压
+
+固定 0.18.1 的 ACP closeSession 最终调用 broker 的 session.close，收尾将各失败聚合为 terminal_uncertain。broker transport 在 handleRequest 抛异常时，只返回 unavailable / broker request failed，并未把内部异常原因放入公开响应。因此上一轮的关闭错误不能单靠公开消息定位到某个文件、进程或超时，不扩大关闭预算、不重发关闭或模型请求，也不绕过端点权威。
+
+本次先在 HEAD b678d0f12 的独立诊断副本保留失败出口、Scope 结束前的索引、端点、生命周期 ledger 与原始 RPC 白名单，关闭临时目录删除以保留证据。这次未到工具或关闭：session/new 在约 47 秒后返回 -32603 / uncertain_after_send。模型会话 generation=1 的端点 PID 在失败入口仍存在，Scope 结束时已退出；生命周期只见 accepted、effect_started 和 awaiting_ready，没有完成回执。它证明已观察到的阶段，不证明操作从未完成或 stderr 导致这次失败。诊断会影响时序，不计为正式产品通过。
+
+另外，真实子进程回归确定共用客户端未读取 stderr 会产生背压，本轮在 layerChildProcess 复用已有流与 Scope 持续排空，详见通用 ACP 文档。它没有修改 Gajae 的 broker、生命周期或错误分类；不能以通用传输回归宣布旧发布、机器身份、建会话或清理故障解决。固定资产 SHA-256 仍为 ff990f6b8676e76cfabd85b182cb4e27e1994f04a27eb7f22108d0d0049aa7a2。本机模型响应不代表外部模型与真实账户验收。
+
+核对日期 2026-10-01，检索词 closeSession、teardownSession、broker request failed、lifecycle-ledger、awaiting_ready、setupChildOutputStreams。采用与受测资产同标签的 [ACP 入口](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/modes/acp/acp-agent.ts)、[broker transport](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/broker/transport.ts)、[lifecycle ledger](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/broker/lifecycle-ledger.ts)，并核对仓库只读参考与当前安装的 Effect Node 子进程实现；优先使用固定版本实际代码，避免用笼统错误推测根因。回滚撤回共用 stderr 排空提交，无数据迁移；诊断只在自己的临时目录，白名单证据存于仓库外。
+
+最终在精确 HEAD b678d0f12 加本轮 stderr 修正的独立源码上恢复未插桩的原官方探针，整项通过一次（10.21 秒）：连续文本、实际读文件、批准命令、审批中取消、cancelled.txt 不存在、工具 failed 与 session/close。另有105项共用协议、Runtime和Cursor/Grok定向回归通过，协议包/Server类型与改动TS的lint通过。没有增大原5秒关闭预算或降低断言。单次原探针通过不证明此前 uncertain_after_send、session not published、机器身份或 broker 清理故障根因已解决；尤其诊断与原探针时序不同。最终遗留独立 broker 的 PID/创建时间/专用目录核对后，经官方 broker.shutdown 收到 ok=true 并确认 PID 消失；后台清理与 ACP 关闭分别记录。

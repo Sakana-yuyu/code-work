@@ -1,5 +1,6 @@
 import * as Path from "effect/Path";
 import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -89,6 +90,38 @@ it.layer(NodeServices.layer)("effect-acp client", (it) => {
       });
       return yield* spawner.spawn(command);
     });
+
+  it.effect("持续排空子进程 stderr，不阻塞连续 RPC 回复", () =>
+    Effect.gen(function* () {
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const handle = yield* spawner.spawn(
+        ChildProcess.make(process.execPath, [
+          "-e",
+          `require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
+            const request = JSON.parse(line);
+            process.stderr.write(Buffer.alloc(8 * 1024 * 1024, "x"), () => {
+              process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: request.params }) + "\\n");
+            });
+          });`,
+        ]),
+      );
+      const stderrStopped = yield* Deferred.make<void>();
+      yield* Effect.gen(function* () {
+        const acp = yield* AcpClient.AcpClient;
+        for (const sequence of [1, 2]) {
+          assert.deepEqual(yield* acp.raw.request("x/test", { sequence }), { sequence });
+        }
+      }).pipe(
+        Effect.provide(
+          AcpClient.layerChildProcess({
+            ...handle,
+            stderr: handle.stderr.pipe(Stream.ensuring(Deferred.succeed(stderrStopped, undefined))),
+          }),
+        ),
+      );
+      assert.isTrue(yield* Deferred.isDone(stderrStopped));
+    }),
+  );
 
   it.effect("initializes, prompts, receives updates, and handles permission requests", () =>
     Effect.gen(function* () {
