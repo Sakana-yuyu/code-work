@@ -7,7 +7,7 @@ import {
 } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { projectActivityPayload } from "../../orchestration/ActivityPayloadProjection.ts";
-import { parseSessionUpdateEvent } from "./AcpRuntimeModel.ts";
+import { mergeToolCallState, parseSessionUpdateEvent } from "./AcpRuntimeModel.ts";
 import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 
 import {
@@ -414,4 +414,55 @@ describe("AcpCoreRuntimeEvents", () => {
       },
     });
   });
+
+  it.each(["acpAgent", "cursor", "kimi", "grok"])(
+    "%s 元数据终态保留 MCP 长尾结果到公开历史",
+    (driver) => {
+      const [result] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "partial-output",
+          status: "in_progress",
+          rawInput: { command: "check" },
+          rawOutput: { content: [{ type: "text", text: "x".repeat(20_000) + "FINAL_OUTPUT" }] },
+        },
+      }).events;
+      const [metadata] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "partial-output",
+          title: "命令结束",
+          kind: "execute",
+          status: "failed",
+          rawInput: { command: "check" },
+          rawOutput: null,
+        },
+      }).events;
+      if (result?._tag !== "ToolCallUpdated" || metadata?._tag !== "ToolCallUpdated")
+        throw new Error("缺少工具事件");
+      const [activity] = runtimeEventToActivities(
+        makeAcpToolCallEvent({
+          stamp: { eventId: EventId.make("partial-output"), createdAt: "2026-10-01T00:00:00.000Z" },
+          provider: ProviderDriverKind.make(driver),
+          threadId: ThreadId.make("thread"),
+          turnId: TurnId.make("turn"),
+          toolCall: mergeToolCallState(result.toolCall, metadata.toolCall),
+          rawPayload: metadata.rawPayload,
+        }),
+      );
+      if (!activity) throw new Error("缺少工具活动");
+      const payload = projectActivityPayload(activity).payload as {
+        detail: string;
+        status: string;
+        data: { command: string };
+      };
+      expect(payload.status).toBe("failed");
+      expect(payload.data.command).toBe("check");
+      expect(payload.detail).toHaveLength(8_000);
+      expect(payload.detail).toMatch(/FINAL_OUTPUT$/);
+      expect(payload.detail).toEqual(result.toolCall.detail);
+    },
+  );
 });

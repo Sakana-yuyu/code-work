@@ -44,3 +44,13 @@ Kiro 的 \_kiro.dev/commands/available 通知复用标准会话更新入口：�
 - 二进制和 uvx 分发暂不自动安装；目录会显示它们的手工配置或平台不可用状态。目录选择支持 npx 固定版本条目。
 - 模型路由完全由 agent 自身解释，Code Work 不经网关校验其模型清单（`customModels` 只是展示目录）。
 - 通用 agent 的工具面、审批语义取决于各自 ACP 实现，Code Work 只保证 fs/terminal 请求的工作区约束与审批链兜底。
+
+## 工具结果的增量保留
+
+工具实际结果与标题、类型、输入命令分别更新。已收到输出后，仅更新标题、类型或输入的通知保留原有结果详情；明确携带新输出时按新结果替换，不删除真正重复的正文。尚无结果时，输入变化继续更新派生摘要。状态与命令仍按同一 toolCallId 合并，不新增工具执行请求。
+
+rawInput/rawOutput 的 null 与缺省都表示未提供新值，保留已有输入、结果与命令；false、0 和空字符串是合法原始值。MCP 文本优先级、单块输出及派生详情 8,000 字符尾部限制在此前提交已存在，本次只修增量合并，不扩大输出限额或修改历史数据。
+
+通用 ACP、Cursor/Kimi 和 Grok 的生产合并入口共用 AcpSessionRuntime；结果经既有统一事件、ingestion 与公开活动投影提供给 Web/桌面和 Mobile。协议子进程回归覆盖结果→元数据→null→失败终态；公共投影核对长尾与命令分别保留。这些本地检查不替代真实 CLI、界面或设备验收。回滚撤回本次增量提交，无数据库迁移，不改账号或审批策略。
+
+核对日期 2026-10-01；检索词 ACP ToolCallUpdate optional rawInput rawOutput null。采用 [ACP 官方 v1 工具调用文档](https://agentclientprotocol.com/protocol/v1/tool-calls)，因为它明确增量字段与 null 语义；仓库现有 schema 确认可选输入/输出接受原始 JSON。未复制其它项目实现或更改协议依赖。

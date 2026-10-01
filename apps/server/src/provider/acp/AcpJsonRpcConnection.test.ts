@@ -1741,4 +1741,86 @@ describe("AcpSessionRuntime", () => {
       Effect.provide(NodeServices.layer),
     ),
   );
+
+  it.effect("协议子进程工具结果在元数据和 null 增量后保留到失败终态", () =>
+    Effect.gen(function* () {
+      const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+      yield* runtime.start();
+      const seen: Array<AcpSessionRuntime.AcpSessionRuntimeEvent> = [];
+      for (const update of [
+        {
+          sessionUpdate: "tool_call",
+          toolCallId: "partial",
+          title: "原命令",
+          kind: "execute",
+          status: "in_progress",
+          rawInput: { command: "old" },
+          rawOutput: { content: [{ type: "text", text: "真实结果\n真实结果" }] },
+        },
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "partial",
+          title: "更新命令",
+          kind: "execute",
+          rawInput: { command: "new" },
+        },
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "partial",
+          kind: "execute",
+          rawInput: null,
+          rawOutput: null,
+        },
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "partial",
+          kind: "execute",
+          status: "failed",
+        },
+      ]) {
+        yield* runtime.request("_codework.test/gajae-update", {
+          sessionId: "mock-session-1",
+          update,
+        });
+        yield* runtime.getEvents().pipe(
+          Stream.takeUntil((event) => event._tag === "ModeChanged"),
+          Stream.runForEach((event) =>
+            Effect.sync(() => {
+              seen.push(event);
+            }),
+          ),
+        );
+      }
+      const tools = seen.filter((event) => event._tag === "ToolCallUpdated");
+      expect(tools).toHaveLength(2);
+      expect(tools.at(-1)).toMatchObject({
+        toolCall: {
+          toolCallId: "partial",
+          kind: "execute",
+          status: "failed",
+          detail: "真实结果\n真实结果",
+          command: "new",
+          data: {
+            rawInput: { command: "new" },
+            rawOutput: { content: [{ type: "text", text: "真实结果\n真实结果" }] },
+          },
+        },
+      });
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
+  );
 });

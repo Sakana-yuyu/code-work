@@ -639,10 +639,10 @@ function makeToolCallState(
   if (command) {
     data.command = command;
   }
-  if (input.rawInput !== undefined) {
+  if (input.rawInput != null) {
     data.rawInput = input.rawInput;
   }
-  if (input.rawOutput !== undefined) {
+  if (input.rawOutput != null) {
     data.rawOutput = boundToolCallRawOutput(input.rawOutput);
   }
   if (input.content !== undefined) {
@@ -734,7 +734,14 @@ export function mergeToolCallState(
   const title = next.title ?? previous?.title;
   const status = next.status ?? previous?.status;
   const command = next.command ?? previous?.command;
-  const detail = next.detail ?? previous?.detail;
+  // 输出未更新时，标题/类型/输入派生的摘要不能覆盖已收到的结果正文。
+  const keepOutputDetail =
+    next.data.content === undefined &&
+    next.data.rawOutput === undefined &&
+    (previous?.data.content !== undefined || previous?.data.rawOutput !== undefined);
+  const detail = keepOutputDetail
+    ? (previous?.detail ?? next.detail)
+    : (next.detail ?? previous?.detail);
   return {
     toolCallId: next.toolCallId,
     ...(kind ? { kind } : {}),
