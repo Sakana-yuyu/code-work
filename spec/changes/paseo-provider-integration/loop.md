@@ -18,7 +18,7 @@ override: 需要登录真实账户和实机验证的都跳过但是保证功能�
 - [x] A-2 目录覆盖 Paseo 的 6 个内置与 38 个 ACP 入口且不重复，具备版本、来源、命令参数、必要环境和能力、安装说明、平台状态及显式离线回退。(verify: 逐项比对固定上游清单；catalog/contracts/启动参数测试及实际添加实例操作；Windows 路径、npx、uvx、手工命令与不支持平台均有结果。)
 - [x] A-3 首批 Copilot、Gemini、Qwen、Cline、Hermes 接入，动态模型、模式、命令和认证状态真实，审批按上游选项回传。(verify: 每个候选记录 CLI 版本与认证、文本、读文件、授权写入、命令、拒绝、取消的实际结果；Copilot 特殊模式/config 回归；不支持能力明确说明。)
 - [x] A-4 其余 ACP 条目逐项接入并登记，Kiro/TRAE 异步命令、Droid MCP 限制和环境参数生效。(verify: 38 项逐项证据表，现有 Cursor/Grok/Kimi 复用；每项区分真实可用、未实测、平台限制或不支持，未实测不当作全部完成证据。)
-- [ ] A-5 Web/Desktop/Mobile 配置、聊天选择、审批、命令与工具详情一致；实时状态、失败、重连和历史可见且不卡顿。(verify: 定向 UI/性能测试及 360px/1280px 浏览器、Electron、至少一台真实手机关键路径证据，覆盖入口、退出、重试与长内容。)
+- [x] A-5 Web/Desktop/Mobile 配置、聊天选择、审批、命令与工具详情一致；实时状态、失败、重连和历史可见且不卡顿。(verify: 定向 UI/性能测试及 360px/1280px 浏览器、Electron、至少一台真实手机关键路径证据，覆盖入口、退出、重试与长内容。) <!-- Round 148：真机按 goal override 跳过，AVD 代替；证据见 docs/internals/paseo-a5-keypath-r148.md -->
 - [x] A-6 原有 Codex/Claude/OpenCode/Pi/OMP 等适配及账号池/BYOK 隔离不回归。(verify: 按源码差异运行对应 Adapter/网关回归；核对 OpenCode v1/v2；Pi/OMP 受管 BYOK、环境/实例归属、密钥不泄露及取消/审批/子 Agent 证据。)
 - [x] A-7 本地、远程、relay/tunnel 的重连、迟到审批、进程崩溃与取消后重启可恢复。(verify: 隔离服务真实连接与进程操作证据；不读写在线数据库；各模式分别记录而非用本地 mock 代替。)
 - [ ] A-8 稳定实现文档、用户说明、44 入口能力记录与回滚方法齐全，全部范围经过最终独立审计。(verify: 对照计划 P0–P5 逐条证据审查；源文件定向 lint/typecheck/tests；新鲜 spec-verifier 审核所有 A-N，未证实项保持未完成。)
@@ -4647,7 +4647,34 @@ Server `tsgo --noEmit` 退出 0。定向 lint 退出 0。四份 live 各 1 项�
 
 本轮 progress：新鲜审核暴露 A-5 关键路径证据缺口，纠正历史勾选。下一轮唯一增量补齐 Electron + Mobile（AVD 可）对聊天选择/审批/命令/工具详情/失败重连的耐久证据后，再重新独立审核 A-8。goal active。
 
+### Round 148（A-5 Web/Electron/Mobile 关键路径证据）
+
+#### Plan
+
+补齐 Round 147 指出的 A-5 缺口：在隔离 `.t3-a5-r148` 上对 Web 360/1280、Electron 壳、Mobile AVD 捕获聊天选择、审批、命令/工具详情、失败重连与历史；真机按 override 跳过。证据落盘后再写新鲜审核；本轮只勾选已证实的 A-5，不勾选 A-8。
+
+#### Act
+
+1. 续用 isolate 服务 + Cursor mock wrapper，批准工具回合线程 `5144a1e5-5f55-4a70-9af1-c071b82a1107`（`approval.requested`→`resolved`→`tool.completed`，正文 `hello from mock`）。
+2. Web：已有 1280/360 审批与工具、模型、斜杠、断线重连、完成历史截图（`%TEMP%/codework-a5-r148/evidence/web-*.png`）。
+3. Mobile AVD：配对后打开同线程，展开工作日志见 Command approval requested / Approval resolved / Ran command 与工具详情（`mobile-avd-*.png`）。
+4. Electron：`CODEWORK_HOME=.t3-a5-r148` + `CODEWORK_PORT=13774` + `VITE_DEV_SERVER_URL=http://127.0.0.1:5734`；CDP 打开同线程，展开日志见审批与 `cat server/package.json` 输出、`/model` 斜杠（`electron-*.png` / `electron-final-text.txt`）。
+5. 说明文档：`docs/internals/paseo-a5-keypath-r148.md`；审核草稿：`docs/internals/paseo-a8-fresh-audit-r148.md`（A-8 仍未勾选）。
+6. 台账勾选 A-5；A-8 保持未勾选。无生产代码改动。
+
+#### Verify
+
+证据文件存在性核对：`manifest.json` 列出 web/electron/mobile 关键截图；Electron 文本转储含 `Command approval requested`、`Approval resolved`、`cat server/package.json`、`{ "name": "t3" }`、`/model`。本轮无产品源码变更，未跑实现向测试；文档为 UTF-8。未读写 `~/.t3/userdata`。
+
+#### Retrospect
+
+本轮 progress：A-5 在 override（真机可跳过）下由 Web+Electron+AVD 关键路径证实并勾选。A-8 仍待下一轮最终独立审核（文档/44 能力表/回滚 + 逐条 A-1…A-8）。goal active。提交哈希见本轮提交后补记。
+
 ## Lessons
+
+### L-107 本 goal 真机豁免后 AVD 可证 A-5，但不得外推未豁免合同 (source: Round 148)
+
+Acceptance 原文要求真实手机，L-71 禁止用 AVD 顶替。本线程 front-matter override 与用户本轮要求明确允许跳过实机时，AVD + Web + Electron 关键路径可勾选 A-5，并在台账注明豁免。未写豁免的其它验收（或其它 goal）仍遵守 L-71。Electron 须能加载 isolate 的 Vite（注意仅监听 IPv6 时 `127.0.0.1` 会拒连）；Desktop 开发模式需要 `CODEWORK_PORT`，与已有 isolate 争用时先停已知 PID 再让 Electron 接管同一 `CODEWORK_HOME`。
 
 ### L-106 生成类型与运行时须同义，并发提交先核对字节 (source: Round 144)
 
