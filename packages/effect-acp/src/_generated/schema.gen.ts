@@ -7236,6 +7236,10 @@ export const MultiSelectPropertySchema = Schema.Struct({
 export type NewSessionRequest = {
   readonly _meta?: { readonly [x: string]: unknown } | null;
   readonly cwd: string;
+  /** Harn 0.10.151 所需的本地会话策略扩展。 */
+  readonly environmentPolicy?: {
+    readonly kind: "inherited" | "isolated" | "granted";
+  };
   readonly mcpServers: ReadonlyArray<McpServer>;
 };
 export const NewSessionRequest = Schema.Struct({
@@ -7251,6 +7255,15 @@ export const NewSessionRequest = Schema.Struct({
   cwd: Schema.String.annotate({
     description: "The working directory for this session. Must be an absolute path.",
   }),
+  environmentPolicy: Schema.optionalKey(
+    Schema.Struct({
+      kind: Schema.Literals(["inherited", "isolated", "granted"]).annotate({
+        description: "Harn 本地会话策略：inherited、isolated 或 granted。",
+      }),
+    }).annotate({
+      description: "Harn session/new 所需的本地环境策略扩展。",
+    }),
+  ),
   mcpServers: Schema.Array(McpServer).annotate({
     description: "List of MCP (Model Context Protocol) servers the agent should connect to.",
   }),

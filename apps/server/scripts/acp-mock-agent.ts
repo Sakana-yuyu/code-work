@@ -3,6 +3,7 @@
 import * as NodeFS from "node:fs";
 
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -12,6 +13,10 @@ import * as AcpError from "effect-acp/errors";
 import type * as AcpSchema from "effect-acp/schema";
 
 const requestLogPath = process.env.CODEWORK_ACP_REQUEST_LOG_PATH;
+const requestHostCapabilities = process.env.CODEWORK_ACP_REQUEST_HOST_CAPABILITIES === "1";
+const hostCapabilitiesResultLogPath =
+  process.env.CODEWORK_ACP_HOST_CAPABILITIES_RESULT_LOG_PATH?.trim() || undefined;
+const encodeHostCapabilities = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const exitLogPath = process.env.CODEWORK_ACP_EXIT_LOG_PATH;
 const closeBehavior = process.env.CODEWORK_ACP_CLOSE_BEHAVIOR;
 const childPidLogPath = process.env.CODEWORK_ACP_CHILD_PID_LOG_PATH;
@@ -430,6 +435,9 @@ const program = Effect.gen(function* () {
         request.clientCapabilities?._meta?.parameterizedModelPicker === true;
       return {
         protocolVersion: 1,
+        ...(process.env.CODEWORK_ACP_AGENT_NAME
+          ? { agentInfo: { name: process.env.CODEWORK_ACP_AGENT_NAME, version: "0.0.0" } }
+          : {}),
         agentCapabilities: {
           loadSession: true,
           ...(closeBehavior ? { sessionCapabilities: { close: {} } } : {}),
@@ -678,6 +686,24 @@ const program = Effect.gen(function* () {
     Effect.gen(function* () {
       const requestedSessionId = String(request.sessionId ?? sessionId);
       promptCount += 1;
+
+      if (requestHostCapabilities) {
+        const capabilities = yield* agent.client.extRequest("host/capabilities", {
+          sessionId: requestedSessionId,
+        });
+        if (hostCapabilitiesResultLogPath) {
+          const encoded = yield* encodeHostCapabilities(capabilities).pipe(
+            Effect.mapError(
+              (cause) =>
+                new AcpError.AcpTransportError({
+                  detail: "测试宿主能力回复不能编码为 JSON",
+                  cause,
+                }),
+            ),
+          );
+          NodeFS.appendFileSync(hostCapabilitiesResultLogPath, `${encoded}\n`, "utf8");
+        }
+      }
 
       if (Number.isFinite(promptDelayMs) && promptDelayMs > 0) {
         yield* Effect.sleep(`${promptDelayMs} millis`);

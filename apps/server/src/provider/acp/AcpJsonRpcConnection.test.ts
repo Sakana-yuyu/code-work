@@ -7,6 +7,8 @@ import * as NodeFS from "node:fs";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import * as AcpSchema from "effect-acp/schema";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
@@ -21,6 +23,7 @@ const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const mockAgentPath = NodePath.join(__dirname, "../../../scripts/acp-mock-agent.ts");
 const mockAgentCommand = "node";
 const mockAgentArgs = [mockAgentPath];
+const decodeHostCapabilities = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 describe("AcpSessionRuntime", () => {
   it.effect("关闭不会启动会话，上游不回应时有界失败", () =>
@@ -1170,4 +1173,138 @@ describe("AcpSessionRuntime", () => {
       Effect.ensuring(Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }))),
     );
   });
+  for (const [name, clientCapabilities, override] of [
+    ["缺省能力", undefined, false],
+    ["显式能力", { fs: { readTextFile: true, writeTextFile: false }, terminal: true }, false],
+    ["调用方覆盖", undefined, true],
+  ] as const) {
+    it.effect("host/capabilities 复用初始化能力：" + name, () => {
+      const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "codework-acp-host-caps-"));
+      const resultLogPath = NodePath.join(tempDir, "host-capabilities.jsonl");
+      const requests: AcpSessionRuntime.AcpSessionRequestLogEvent[] = [];
+      return Effect.gen(function* () {
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        if (override)
+          yield* runtime.handleExtRequest("host/capabilities", Schema.Unknown, () =>
+            Effect.succeed({ custom: true }),
+          );
+        yield* runtime.start();
+        const response = yield* runtime.prompt({ prompt: [{ type: "text", text: "hello" }] });
+        expect(response.stopReason).toBe("end_turn");
+        const logged = yield* Effect.forEach(
+          NodeFS.readFileSync(resultLogPath, "utf8").trim().split("\n"),
+          (line) => decodeHostCapabilities(line),
+        );
+        expect(logged).toEqual([
+          override
+            ? { custom: true }
+            : {
+                fs: {
+                  readTextFile: clientCapabilities?.fs.readTextFile ?? false,
+                  writeTextFile: false,
+                },
+                terminal: { create: clientCapabilities?.terminal ?? false },
+              },
+        ]);
+        expect(
+          requests.find((e) => e.method === "initialize" && e.status === "started")?.payload,
+        ).toMatchObject({
+          clientCapabilities: clientCapabilities ?? {
+            fs: { readTextFile: false, writeTextFile: false },
+            terminal: false,
+          },
+        });
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            authMethodId: "test",
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: {
+                CODEWORK_ACP_REQUEST_HOST_CAPABILITIES: "1",
+                CODEWORK_ACP_HOST_CAPABILITIES_RESULT_LOG_PATH: resultLogPath,
+                CODEWORK_ACP_PROMPT_RESPONSE_TEXT: "ok",
+              },
+            },
+            cwd: process.cwd(),
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+            clientCapabilities,
+            requestLogger: (event) =>
+              Effect.sync(() => {
+                requests.push(event);
+              }),
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+        Effect.ensuring(
+          Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true })),
+        ),
+      );
+    });
+  }
+
+  for (const [name, agentName, environmentPolicy, expectedPolicy, resumeSessionId] of [
+    ["Harn 缺省", "harn", undefined, { kind: "inherited" }, undefined],
+    ["显式 isolated", "harn", { kind: "isolated" }, { kind: "isolated" }, undefined],
+    ["显式 granted", "harn", { kind: "granted" }, { kind: "granted" }, undefined],
+    ["其它 agent 缺省", "mock", undefined, undefined, undefined],
+    ["其它 agent 显式", "mock", { kind: "isolated" }, { kind: "isolated" }, undefined],
+    ["恢复已有 Harn 会话", "harn", undefined, undefined, "mock-session-1"],
+  ] as const) {
+    it.effect("建会话环境策略：" + name, () => {
+      const requests: AcpSessionRuntime.AcpSessionRequestLogEvent[] = [];
+      return Effect.gen(function* () {
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        yield* runtime.start();
+        const created = requests.find((e) => e.method === "session/new" && e.status === "started");
+        if (resumeSessionId) {
+          expect(created).toBeUndefined();
+          expect(
+            requests.some((e) => e.method === "session/load" && e.status === "succeeded"),
+          ).toBe(true);
+        } else {
+          expect(created?.payload).toEqual({
+            cwd: process.cwd(),
+            mcpServers: [],
+            ...(expectedPolicy ? { environmentPolicy: expectedPolicy } : {}),
+          });
+        }
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: { CODEWORK_ACP_AGENT_NAME: agentName },
+            },
+            cwd: process.cwd(),
+            authMethodId: "test",
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+            environmentPolicy,
+            ...(resumeSessionId ? { resumeSessionId } : {}),
+            requestLogger: (event) =>
+              Effect.sync(() => {
+                requests.push(event);
+              }),
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+      );
+    });
+  }
+
+  it.effect("环境策略只接收 struct.kind 的已知枚举", () =>
+    Effect.sync(() => {
+      const isRequest = Schema.is(AcpSchema.NewSessionRequest);
+      const base = { cwd: process.cwd(), mcpServers: [] };
+      expect(isRequest(base)).toBe(true);
+      for (const kind of ["inherited", "isolated", "granted"])
+        expect(isRequest({ ...base, environmentPolicy: { kind } })).toBe(true);
+      for (const policy of ["inherited", { kind: "unknown" }, {}, null])
+        expect(isRequest({ ...base, environmentPolicy: policy })).toBe(false);
+    }),
+  );
 });

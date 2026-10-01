@@ -178,6 +178,93 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
     }),
   );
 
+  it.effect("Harn 专有进度保留原始载荷，后续标准通知继续解析", () =>
+    Effect.gen(function* () {
+      const { stdio, input } = yield* makeInMemoryStdio();
+      const notifications = yield* Deferred.make<
+        ReadonlyArray<AcpProtocol.AcpIncomingNotification>,
+        AcpError.AcpError
+      >();
+      const transport = yield* AcpProtocol.makeAcpPatchedProtocol({
+        stdio,
+        serverRequestMethods: new Set(),
+        onTermination: (error) => Deferred.fail(notifications, error).pipe(Effect.asVoid),
+      });
+      yield* transport.incoming.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.flatMap((chunk) => Deferred.succeed(notifications, chunk)),
+        Effect.forkScoped,
+      );
+      const progress = {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "progress",
+          _meta: { harn: { message: "Preparing modules" } },
+        },
+      };
+      for (const params of [
+        progress,
+        {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "done" },
+          },
+        },
+      ])
+        yield* Queue.offer(
+          input,
+          encoder.encode(
+            encodeUnknownJsonString({
+              jsonrpc: "2.0",
+              method: "session/update",
+              params,
+            }) + "\n",
+          ),
+        );
+      const [proprietary, standard] = yield* Deferred.await(notifications);
+      assert.deepEqual(proprietary, {
+        _tag: "ExtNotification",
+        method: "session/update",
+        params: progress,
+      });
+      assert.equal(standard?._tag, "SessionUpdate");
+    }),
+  );
+
+  for (const [name, params] of [
+    ["空会话", { sessionId: "", update: { sessionUpdate: "progress", _meta: { harn: {} } } }],
+    ["非字符串会话", { sessionId: 42, update: { sessionUpdate: "progress", _meta: { harn: {} } } }],
+    ["缺少 Harn 元数据", { sessionId: "session-1", update: { sessionUpdate: "progress" } }],
+    [
+      "非法 Harn 元数据",
+      { sessionId: "session-1", update: { sessionUpdate: "progress", _meta: { harn: null } } },
+    ],
+    ["未知更新类型", { sessionId: "session-1", update: { sessionUpdate: "unknown" } }],
+  ] as const) {
+    it.effect("非法进度或未知通知仍报协议错误：" + name, () =>
+      Effect.gen(function* () {
+        const { stdio, input } = yield* makeInMemoryStdio();
+        const termination = yield* Deferred.make<AcpError.AcpError>();
+        yield* AcpProtocol.makeAcpPatchedProtocol({
+          stdio,
+          serverRequestMethods: new Set(),
+          onTermination: (error) => Deferred.succeed(termination, error).pipe(Effect.asVoid),
+        });
+        yield* Queue.offer(
+          input,
+          encoder.encode(
+            encodeUnknownJsonString({ jsonrpc: "2.0", method: "session/update", params }) + "\n",
+          ),
+        );
+        const error = yield* Deferred.await(termination);
+        assert.instanceOf(error, AcpError.AcpProtocolParseError);
+        assert.equal((error as AcpError.AcpProtocolParseError).method, "session/update");
+      }),
+    );
+  }
+
   it.effect("logs outgoing notifications when logOutgoing is enabled", () =>
     Effect.gen(function* () {
       const { stdio } = yield* makeInMemoryStdio();

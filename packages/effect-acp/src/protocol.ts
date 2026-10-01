@@ -72,6 +72,17 @@ interface AcpPendingRequest {
 }
 
 const decodeSessionUpdate = Schema.decodeUnknownEffect(AcpSchema.SessionNotification);
+// 仅接收已确认的 Harn 专有进度信封，标准通知的解析错误仍须终止协议。
+const isHarnProgressNotification = Schema.is(
+  Schema.Struct({
+    sessionId: Schema.String.check(Schema.isMinLength(1)),
+    _meta: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
+    update: Schema.Struct({
+      sessionUpdate: Schema.Literal("progress"),
+      _meta: Schema.Struct({ harn: Schema.Record(Schema.String, Schema.Unknown) }),
+    }),
+  }),
+);
 const decodeElicitationComplete = Schema.decodeUnknownEffect(
   AcpSchema.ElicitationCompleteNotification,
 );
@@ -269,6 +280,13 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
   const handleRequestEncoded = (message: RpcMessage.RequestEncoded) => {
     if (message.id === "") {
       if (message.tag === CLIENT_METHODS.session_update) {
+        if (isHarnProgressNotification(message.payload)) {
+          return dispatchNotification({
+            _tag: "ExtNotification",
+            method: CLIENT_METHODS.session_update,
+            params: message.payload,
+          });
+        }
         return decodeSessionUpdate(message.payload).pipe(
           Effect.map(
             (params) =>

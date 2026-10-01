@@ -66,6 +66,12 @@ const defaultSessionLoadTimeout = Duration.seconds(90);
 const decodeSetModeResponse = Schema.decodeUnknownEffect(EffectAcpSchema.SetSessionModeResponse);
 const defaultSessionLoadReplayIdleGap = Duration.seconds(2);
 
+// Harn 可在回合中询问宿主能力；回复始终复用 initialize 已广告的能力。
+const HostCapabilitiesRequest = Schema.Struct({
+  sessionId: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1))),
+  _meta: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+});
+
 export interface AcpSpawnInput {
   readonly command: string;
   readonly args: ReadonlyArray<string>;
@@ -85,6 +91,8 @@ export interface AcpSessionRuntimeOptions {
     readonly version: string;
   };
   readonly authMethodId: string;
+  /** 显式会话策略优先；仅 Harn 缺省使用 inherited。 */
+  readonly environmentPolicy?: EffectAcpSchema.NewSessionRequest["environmentPolicy"];
   readonly mcpServers?: ReadonlyArray<EffectAcpSchema.McpServer>;
   readonly requestLogger?: (event: AcpSessionRequestLogEvent) => Effect.Effect<void, never>;
   readonly protocolLogging?: {
@@ -565,6 +573,17 @@ export const make = (
       ...(options.clientCapabilities?._meta ? { _meta: options.clientCapabilities._meta } : {}),
     } satisfies NonNullable<EffectAcpSchema.InitializeRequest["clientCapabilities"]>;
 
+    // 调用方仍可通过 handleExtRequest 覆盖回复，缺省不会扩大广告能力。
+    yield* acp.handleExtRequest("host/capabilities", HostCapabilitiesRequest, () =>
+      Effect.succeed({
+        fs: {
+          readTextFile: initializeClientCapabilities.fs.readTextFile === true,
+          writeTextFile: initializeClientCapabilities.fs.writeTextFile === true,
+        },
+        terminal: { create: initializeClientCapabilities.terminal === true },
+      }),
+    );
+
     const getStartedState = Effect.gen(function* () {
       const state = yield* Ref.get(startStateRef);
       if (state._tag === "Started") {
@@ -812,9 +831,15 @@ export const make = (
           return loaded;
         }).pipe(Effect.ensuring(Ref.set(sessionLoadGateRef, Option.none())));
       } else {
+        const environmentPolicy =
+          options.environmentPolicy ??
+          (initializeResult.agentInfo?.name === "harn"
+            ? ({ kind: "inherited" } as const)
+            : undefined);
         const createPayload = {
           cwd: options.cwd,
           mcpServers: options.mcpServers ?? [],
+          ...(environmentPolicy ? { environmentPolicy } : {}),
         } satisfies EffectAcpSchema.NewSessionRequest;
         const created = yield* runLoggedRequest(
           "session/new",
