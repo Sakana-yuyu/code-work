@@ -93,6 +93,7 @@ type CompositionRuntimeEventBinding = {
   readonly runId: string;
   readonly runtimeTaskId?: string;
   readonly capabilityHandshakeId?: string;
+  readonly confirmRuntimeStart?: Effect.Effect<void>;
   readonly source: "driver" | "persistence" | "watchdog";
 };
 
@@ -548,6 +549,17 @@ export const projectCompositionRuntimeEvent = (
       }),
     );
     if (!accepted) return;
+    if (
+      event.type === "turn.started" &&
+      nextRun.status === "running" &&
+      binding.source === "driver" &&
+      binding.capabilityHandshakeId !== undefined &&
+      nextRun.capabilityHandshakeId === binding.capabilityHandshakeId &&
+      binding.confirmRuntimeStart !== undefined
+    ) {
+      // 放行发生在权威事务提交后，工具仍由RuntimeBridge完整重验作用域。
+      yield* binding.confirmRuntimeStart;
+    }
     if (run.leaseId !== undefined) {
       const leaseResult = becameRuntimeTerminal
         ? yield* releaseCompositionRuntimeLease(store, run, now)
@@ -567,7 +579,8 @@ export const projectCompositionRuntimeEvent = (
     const bindingDriver = binding.source === "persistence" ? undefined : binding.driver;
     if (
       becameRuntimeTerminal &&
-      run.capabilityHandshakeId !== undefined &&
+      (run.capabilityHandshakeId !== undefined ||
+        (binding.source === "driver" && binding.capabilityHandshakeId !== undefined)) &&
       bindingDriver?.revokeCapabilityHandshake !== undefined
     ) {
       yield* bindingDriver.revokeCapabilityHandshake({ task, run });

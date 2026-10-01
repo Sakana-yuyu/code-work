@@ -244,6 +244,8 @@ export interface CompositionAgentDriver {
         readonly runtimeTaskId?: string;
         /** 仅Driver已验证的握手，不采信Provider原始事件声明。 */
         readonly capabilityHandshakeId?: string;
+        /** 投影提交后确认启动，仅存在于服务端可信绑定。 */
+        readonly confirmRuntimeStart?: Effect.Effect<void>;
       }
     | undefined;
   /** Driver 重建后，用受信任的 Runtime 复合键恢复事件归属；不得返回 Task/Run 猜测。 */

@@ -171,6 +171,22 @@ Registry live注入现有ProjectionSnapshotQuery.getThreadShellById，每次派�
 
 回滚仅撤回可信运行绑定字段、Projector原子握手激活、Driver共享回收与旧Session顺序、两个回归及本段说明；保留上一轮生产Bridge注入、关联模式和用户原工作，无迁移。
 
+## 宿主请求等待启动事务提交
+
+2026-10-02对照eee08ccc417653a7c275c88489d2512373f4a6f3复验极早请求。前段原子保存握手解决了漏存，但turn.started经异步订阅消费，Provider发出工具请求时投影事务仍可能未提交。确定性回归暂停真实Projector的事务提交，同时真实Orchestrator派发和Provider bridge发起读取；旧实现返回denied/task_not_running，而非工具执行错误。测试不直接写running/handshake，也不通过sleep/poll决定先后。
+
+共同ProviderDriver现在为本Run创建启动确认信号，随既有可信pending/active/history绑定携带内部confirmRuntimeStart；Projector只有在turn.started的权威事务提交、Run为running且握手/Driver归属匹配后确认。Provider宿主bridge收到极早请求时先等待该信号，确认后仍由原RuntimeBridge完整重验Task/Run、握手、grant与工作根。这个Effect仅在服务端内存绑定中传递，不新增公开合同、UI参数、依赖或新权限框架，不从Provider raw payload授予确认。
+
+等待确认最多30秒；未确认返回failed/provider_runtime_start_unconfirmed，不进入ToolBroker。提前回收先唤醒等待者，返回cancelled/tool_cancelled，后续不执行；若提前终态发生在握手尚未落库时，Projector可用同Driver可信绑定中的已签发握手调用既有撤销路径。单次回收责任沿前段releaseContext，确认后才允许的工具仍遵守原权限校验。等待中的请求取消或超时后，晚到投影不会重放请求或制造副作用；这不替代运行中PTY/进程树取消验证。
+
+一个三场景回归复用同一真实存储和业务派发夹具：正常提交确认后工具执行一次；确认前投影cancelled终态则请求被取消且执行零次；TestClock推进30秒仍无确认则失败，随后实际释放迟到提交，执行次数仍零。定向5文件88项与Orchestrator/ACP跨进程2文件32项共120项通过；Server类型检查、5个TS定向lint通过。第一次类型检查发现测试手写errorCode可选类型与exactOptionalPropertyTypes不符，改用已有ProviderToolBrokerResult，未绕过合同或改基线；原账号池建议、Node DEP0190警告保留。
+
+本轮保留完整隔离服务，以普通ACP夹具和现有业务RPC再次真实派发。Web实际出现barrier-approved.txt审批并点击允许本次，Run completed；文件为RUNTIME_START_BARRIER_APPROVED，读取结果beta/gamma。只读隔离SQLite确认对应turn的审批resolved/accept，工具表恰有一次read和一次write成功，截图保留批准后正文/审批退出。约41秒的实际审批等待没有被30秒启动确认期限截断，启动确认期限不等于人工审批或执行期限。
+
+本轮浏览器仅复验正向允许；前段拒绝/取消的实际文件与决定证据仍是前轮结果，不重复累计为本轮通过。Cursor夹具健康agent about超时、Generic ACP Windows.cmd健康路径EINVAL仍未修复，也不冒充官方Cursor/Goose或外部账号推理。完整44入口/P0–P5、产品PTY、迟到审批/恢复、工具历史详情、窄屏/桌面/手机与远程及最终新鲜独立审计各自仍待验证。
+
+回滚只撤回本段内部启动确认字段、Projector提交确认/提前终态回收、Provider bridge等待及三场景回归，保留前段握手落库/单次回收/旧Session顺序和用户工作，无数据迁移。隔离服务/home/业务记录跨轮保留，普通夹具配置已恢复，临时令牌不进入文档/截图/提交。
+
 ## 复验、失败与回滚
 
 ```powershell

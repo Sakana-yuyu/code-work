@@ -22,6 +22,10 @@ import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegi
 import { makeCompositionByokAgentDriver } from "./CompositionByokAgentDriver.ts";
 import { makeCapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
 import { makeCompositionCapabilityRegistry } from "./CapabilityRegistry.ts";
+import type {
+  ProviderToolBrokerBridge,
+  ProviderToolBrokerResult,
+} from "../provider/Services/ProviderAdapter.ts";
 import { makeCompositionRuntimeToolBridge } from "./CompositionRuntimeToolBridge.ts";
 import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDriver.ts";
 import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriver.ts";
@@ -112,6 +116,220 @@ const multicaCompletionEvent = (
 });
 
 layer("CompositionTaskRuntimeProjector", (it) => {
+  it.effect("宿主请求早于启动事务提交时等待确认，结束或超时无迟到副作用", () =>
+    Effect.gen(function* () {
+      for (const scenario of ["commit", "cancel", "timeout"] as const) {
+        const store = yield* CompositionTaskStore;
+        const registry = makeCompositionAgentDriverRegistry();
+        const sessionReady = yield* Deferred.make<void>();
+        const beginRequest = yield* Deferred.make<void>();
+        const requestQueued = yield* Deferred.make<void>();
+        const transactionReached = yield* Deferred.make<void>();
+        const commitProjection = yield* Deferred.make<void>();
+        const taskId = "task-runtime-start-barrier-boundary-" + scenario,
+          runId = "run-runtime-start-barrier-boundary-" + scenario;
+        const runtimeId = "provider:runtime-start-barrier-boundary-" + scenario,
+          agentId = runtimeId;
+        const threadId = ThreadId.make("thread-runtime-start-barrier-boundary-" + scenario),
+          turnId = TurnId.make("turn-runtime-start-barrier-boundary-" + scenario);
+        const workspaceRoot = "C:/workspace/runtime-start-barrier-boundary-" + scenario;
+        const grantRegistry = makeCapabilityGrantRegistry({
+          capabilityRegistry: makeCompositionCapabilityRegistry(),
+        });
+        let providerBridge: ProviderToolBrokerBridge | undefined;
+        let invoked = 0;
+        const results: ProviderToolBrokerResult[] = [];
+        const bridge = makeCompositionRuntimeToolBridge({
+          taskStore: store,
+          inputStore: {
+            get: () => Effect.succeed(Option.some({ taskId, prompt: "读取", workspaceRoot })),
+          },
+          toolBroker: {
+            invoke: (request) =>
+              Effect.sync(() => {
+                invoked++;
+                return {
+                  invocationId: "invocation-runtime-start-barrier-boundary-" + scenario,
+                  taskId,
+                  runId,
+                  toolCallId: request.toolCallId,
+                  canonicalToolName: request.canonicalToolName,
+                  status: "succeeded" as const,
+                  result: { contents: "在权威激活后读取" },
+                };
+              }),
+            cancel: () => Effect.void,
+          },
+        });
+        const driver = makeCompositionProviderAgentDriver({
+          agentId,
+          runtimeId,
+          providerInstanceId: ProviderInstanceId.make("codex-local"),
+          toolBrokerBridge: bridge,
+          toolBrokerCanonicalTools: ["workspace.read_file"],
+          adapter: {
+            handshakeCapabilities: (input) =>
+              Effect.succeed({
+                ...input,
+                status: "accepted" as const,
+                handshakeId: "handshake-runtime-start-barrier-boundary-" + scenario,
+                acceptedGrantIds: input.capabilityGrantIds,
+              }),
+            revokeCapabilityHandshake: () => Effect.void,
+            configureToolBroker: ({ bridge: configured }) =>
+              Effect.sync(() => {
+                providerBridge = configured;
+              }),
+            clearToolBroker: () => Effect.void,
+            startSession: (input) =>
+              Effect.succeed({
+                ...input,
+                provider: ProviderDriverKind.make("codex"),
+                status: "ready",
+                createdAt: "2026-10-02T00:00:00.000Z",
+                updatedAt: "2026-10-02T00:00:00.000Z",
+              } satisfies ProviderSession),
+            sendTurn: () =>
+              Effect.gen(function* () {
+                yield* Deferred.succeed(sessionReady, undefined);
+                yield* Deferred.await(beginRequest);
+                assert.isDefined(providerBridge);
+                yield* Deferred.succeed(requestQueued, undefined);
+                results.push(
+                  yield* providerBridge!.invoke({
+                    toolCallId: "read-runtime-start-barrier-boundary-" + scenario,
+                    canonicalToolName: "workspace.read_file",
+                    arguments: { cwd: workspaceRoot, relativePath: "README.md" },
+                    idempotencyKey: "read-runtime-start-barrier-boundary-" + scenario,
+                  }),
+                );
+                return { threadId, turnId };
+              }),
+            interruptTurn: () => Effect.void,
+            stopSession: () => Effect.void,
+          },
+        });
+        yield* registry.register(driver);
+        const orchestrator = makeCompositionOrchestrator(store, registry, grantRegistry);
+        const dispatch = yield* Effect.forkChild(
+          orchestrator.dispatchTask({
+            taskId,
+            runId,
+            projectId: "project-runtime-start-barrier-boundary-" + scenario,
+            threadId,
+            assigneeKind: "agent",
+            assigneeId: agentId,
+            mode: "serial",
+            promptDigest: "sha256:runtime-start-barrier-boundary-" + scenario,
+            prompt: "读取",
+            workspaceRoot,
+            dependsOnTaskIds: [],
+            capabilityIds: ["t3.workspace.read_file"],
+          }),
+        );
+        yield* Deferred.await(sessionReady);
+        // 阻塞真实投影的提交，工具请求先发起；没有手写running或握手制造成功。
+        const delayedStore: typeof store = {
+          ...store,
+          withTransaction: (effect) =>
+            Deferred.succeed(transactionReached, undefined).pipe(
+              Effect.andThen(Deferred.await(commitProjection)),
+              Effect.andThen(store.withTransaction(effect)),
+            ),
+        };
+        const started: ProviderRuntimeEvent = {
+          ...baseEvent,
+          threadId,
+          turnId,
+          eventId: EventId.make("event-runtime-start-barrier-boundary-" + scenario),
+          type: "turn.started",
+          payload: {},
+        };
+        const projection = yield* Effect.forkChild(
+          projectCompositionRuntimeEvent(delayedStore, registry, started, grantRegistry),
+        );
+        yield* Deferred.await(transactionReached);
+        yield* Deferred.succeed(beginRequest, undefined);
+        yield* Deferred.await(requestQueued);
+        if (scenario === "commit") {
+          yield* Deferred.succeed(commitProjection, undefined);
+          yield* Fiber.join(projection);
+        } else if (scenario === "cancel") {
+          yield* Fiber.interrupt(projection);
+          yield* projectCompositionRuntimeEvent(
+            store,
+            registry,
+            {
+              ...started,
+              eventId: EventId.make("event-start-barrier-cancel"),
+              type: "turn.completed",
+              payload: { state: "cancelled" },
+            },
+            grantRegistry,
+          );
+        } else {
+          yield* TestClock.adjust("30 seconds");
+        }
+        const dispatched = yield* Fiber.join(dispatch);
+        assert.deepEqual(
+          results.map((result) => ({ status: result.status, errorCode: result.errorCode })),
+          [
+            {
+              status:
+                scenario === "commit"
+                  ? "succeeded"
+                  : scenario === "cancel"
+                    ? "cancelled"
+                    : "failed",
+              errorCode:
+                scenario === "commit"
+                  ? undefined
+                  : scenario === "cancel"
+                    ? "tool_cancelled"
+                    : "provider_runtime_start_unconfirmed",
+            },
+          ],
+        );
+        assert.equal(invoked, scenario === "commit" ? 1 : 0);
+        if (scenario === "commit") {
+          assert.equal(dispatched.run.status, "running");
+          assert.equal(
+            dispatched.run.capabilityHandshakeId,
+            "handshake-runtime-start-barrier-boundary-" + scenario,
+          );
+          yield* projectCompositionRuntimeEvent(
+            store,
+            registry,
+            {
+              ...started,
+              eventId: EventId.make("event-start-barrier-completed"),
+              type: "turn.completed",
+              payload: { state: "completed" },
+            },
+            grantRegistry,
+          );
+        } else if (scenario === "cancel") {
+          assert.equal(dispatched.run.status, "cancelled");
+        } else {
+          yield* Deferred.succeed(commitProjection, undefined);
+          yield* Fiber.join(projection);
+          yield* projectCompositionRuntimeEvent(
+            store,
+            registry,
+            {
+              ...started,
+              eventId: EventId.make("event-start-barrier-timeout"),
+              type: "turn.completed",
+              payload: { state: "failed" },
+            },
+            grantRegistry,
+          );
+        }
+        assert.equal(invoked, scenario === "commit" ? 1 : 0);
+      }
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("握手激活拒绝其它Driver或已有身份冲突，原始声明不能授予握手", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
