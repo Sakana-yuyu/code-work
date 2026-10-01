@@ -1,6 +1,6 @@
 # Goose ACP 调用、工具与验证边界
 
-核对日期2026-10-01。固定官方 Windows CLI 1.52.0，以已安装二进制的版本与实际协议结果为准；本次不下载或升级 CLI，不使用外部模型或账户。本页的当前证据来自已提交工具与取消探针，旧独立脚本的 Ollama 实验保留为工作历史，不进入本次成功统计。
+核对日期2026-10-01。固定官方 Windows CLI 1.52.0，以已安装二进制的版本与实际协议结果为准；本次不下载或升级 CLI，不使用外部模型或账户。本页的当前证据来自已提交工具、取消与产品读取探针，旧独立脚本的 Ollama 实验保留为工作历史，不进入本次成功统计。
 
 ## 调用与隔离
 
@@ -25,17 +25,17 @@
 
 证据入口 [GooseAcpToolProbe.test.ts](../../apps/server/src/provider/acp/GooseAcpToolProbe.test.ts)。本次 Windows 受控模型路径如下，不能外推真实模型、账户或其它平台。
 
-| 行为                | 当前证据与边界                                                                                                                                                                                       |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 版本/正文/模型/模式 | 固定 agentInfo/authMethods、approve 模式和当前 model 配置；实际正文标记可见，本机模型目录确实被请求                                                                                                  |
-| 文件读取            | 官方广告 read 调用 fs/read_text_file，实际源文件仅读1次，下一模型请求的 role=tool 内容含旧源标记                                                                                                     |
-| 读取显示限制        | Goose 的 ACP-aware 成功读取通知省略 content/rawOutput；当前共用 ACP 工具条目为 completed、详情为路径。本轮保留该真实边界，未伪造通知正文或重读文件；产品宿主代理结果与界面合并仍需独立检验           |
-| 允许写入            | 官方 write，回传原 allow_once optionId；fs/write_text_file 恰1次，approved.txt 恰为 APPROVED                                                                                                         |
-| 命令成功/失败       | 官方 shell 调用 terminal/create/wait_for_exit/output/release；Windows 原生 shell 执行受控 Node 命令，副作用计数恰x，正文有命令标记；exit7 原通知/公共工具状态为 failed，详情含7；终端创建与释放各2次 |
-| 拒绝                | 回传原 reject_once optionId；denied.txt 不存在，官方工具终态 failed                                                                                                                                  |
-| 取消                | 在写入审批尚未执行时发送 session/cancel，原 prompt 返回 cancelled、工具 failed、cancelled.txt 不存在；不代表运行中命令已停止                                                                         |
-| 取消后继续          | 同一运行时下一独立 prompt=end_turn，无固定等待、自动重发或额外放宽生产超时                                                                                                                           |
-| 新进程恢复          | 关闭旧 CLI 后新进程 session/load 成功；同 sessionId，唯一恢复 prompt 的实际模型请求 role=tool 同时包含旧 read 和 shell 标记；该恢复请求恰1次，恢复正文匹配，全流程工具动作恰6次                      |
+| 行为                | 当前证据与边界                                                                                                                                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 版本/正文/模型/模式 | 固定 agentInfo/authMethods、approve 模式和当前 model 配置；实际正文标记可见，本机模型目录确实被请求                                                                                                            |
+| 文件读取            | 官方广告 read 调用 fs/read_text_file，实际源文件仅读1次，下一模型请求的 role=tool 内容含旧源标记                                                                                                               |
+| 读取显示限制        | Goose 的 ACP-aware 成功读取通知省略 content/rawOutput；当前共用 ACP 工具条目为 completed、详情为路径。本轮保留该真实边界，未伪造通知正文或重读文件；产品宿主读取由下节独立验证；原生通知正文与界面合并仍未实现 |
+| 允许写入            | 官方 write，回传原 allow_once optionId；fs/write_text_file 恰1次，approved.txt 恰为 APPROVED                                                                                                                   |
+| 命令成功/失败       | 官方 shell 调用 terminal/create/wait_for_exit/output/release；Windows 原生 shell 执行受控 Node 命令，副作用计数恰x，正文有命令标记；exit7 原通知/公共工具状态为 failed，详情含7；终端创建与释放各2次           |
+| 拒绝                | 回传原 reject_once optionId；denied.txt 不存在，官方工具终态 failed                                                                                                                                            |
+| 取消                | 在写入审批尚未执行时发送 session/cancel，原 prompt 返回 cancelled、工具 failed、cancelled.txt 不存在；不代表运行中命令已停止                                                                                   |
+| 取消后继续          | 同一运行时下一独立 prompt=end_turn，无固定等待、自动重发或额外放宽生产超时                                                                                                                                     |
+| 新进程恢复          | 关闭旧 CLI 后新进程 session/load 成功；同 sessionId，唯一恢复 prompt 的实际模型请求 role=tool 同时包含旧 read 和 shell 标记；该恢复请求恰1次，恢复正文匹配，全流程工具动作恰6次                                |
 
 旧独立 Ollama 脚本的三种取消实验均返回 end_turn，运行命令未被证明停止；当前审批取消通过不能抹去旧失败或代替运行中终端取消验收。上轮审批探针使用此前已交付的共同通知与取消结算合同；本次另修共用Adapter的宿主终端停止责任，详见下节。文件工具通知与宿主实际请求分别计数，不让通知驱动第二次执行。
 
@@ -51,7 +51,26 @@
 
 证据入口 [GooseAcpCancellationProbe.test.ts](../../apps/server/src/provider/acp/GooseAcpCancellationProbe.test.ts)：普通模式的协议夹具始终执行，旧HEAD明确没有terminal.kill请求，修复后通过。官方1.52.0、本机受控模型和实际捕获Node进程覆盖running、late、denied、late-denied：前两项确实退出，并在同连接下一回合收到正文GOOSE_NEXT_OK和completed回执；后两项仍运行且公开停止失败，最终会话清理关闭。每项停止尝试恰1次，额外未交给Adapter的进程仍活着，没有意外文件副作用。创建/等待/退出/完成均用实际屏障，无新增sleep或自动重发。
 
-官方取消探针的bridge是受控终端替身，执行真实Node进程；不等于产品TerminalManager的PTY或进程树验证。普通协议夹具也不冒充官方CLI。产品ToolBroker协议E2E另跑，当前没有Goose加完整产品工具代理或浏览器按钮联调证据；原生prompt的远端stopReason未在本次Adapter探针中捕获。停止后续聊是实际正文/完成回执证据，停止失败不会被计为成功。历史Ollama end_turn失败保留；上轮读取通知缺正文的边界仍未解决。
+官方取消探针的bridge是受控终端替身，执行真实Node进程；不等于产品TerminalManager的PTY或进程树验证。普通协议夹具也不冒充官方CLI。产品ToolBroker协议E2E另跑，该取消探针不证明产品终端代理/浏览器联调；产品文件读取另由下节验证；原生prompt的远端stopReason未在本次Adapter探针中捕获。停止后续聊是实际正文/完成回执证据，停止失败不会被计为成功。历史Ollama end_turn失败保留；上轮读取通知缺正文的边界仍未解决。
+
+## 产品读取、公开详情与接入条件
+
+证据入口 [GooseAcpToolBrokerProbe.test.ts](../../apps/server/src/provider/acp/GooseAcpToolBrokerProbe.test.ts)，源码基线9a851cdc7a6d64c2f4a9de8974f6f1a8fe240977。固定官方1.52.0与本机受控模型，经Generic共用CursorAdapter → CompositionProviderToolBrokerBridge → CompositionRuntimeToolBridge → 真实ToolBroker/WorkspaceFileSystem；没有使用宿主读取替身，只有Task/Run查询采用受控的已授权记录。独立配置/数据根与auto模式沿前述规则，本次不使用真实账户。
+
+实际发出3次read：工作区文件成功，工作区外文件在共同路径验证拒绝，缺文件由ToolBroker返回failed并转为明确ACP错误。越界请求不进入ToolBroker，源文件成功读取调用恰1次，另1次代理调用为缺文件；模型的对应role=tool身份/正文分别核对，三回合都结束。成功内容按现有ToolBroker规则把合成api_key值替换为[REDACTED]，原文件字节不改；模型/公开事件没有原合成密钥，也没有越界文件正文。此规则不变更生产脱敏策略或读取限额。
+
+公开链路分别核对Adapter item.completed → runtimeEventToActivities → projectActivityPayload：三个原生读取终态为completed/failed/failed，成功详情为源路径，没有content/rawOutput/源正文，三个公共工具记录没有重复宿主执行记录。模型确实收到脱敏源正文，但这不能证明工具详情已显示正文。
+
+原因有明确协议边界：固定官方 [Goose宿主读取请求](https://github.com/aaif-goose/goose/blob/v1.52.0/crates/goose/src/acp/fs.rs)只有sessionId、path、line/limit，没有对应原生toolCallId；成功ACP-aware转换又省略正文。宿主调用使用共同Adapter生成的独立ID，本探针核对它不等于原生itemId。现有Invocation协调记录只保存归属/状态/指纹，不能从记录恢复历史正文。固定 [Paseo读取处理](https://github.com/getpaseo/paseo/blob/23c4404b955fbc1a6904b7140f911d9f29de1f27/packages/server/src/server/agent/providers/acp-agent.ts)也只向CLI回传文件内容，不构造这项关联；不能假设对照项目已解决此边界。
+
+读取正文接入需要Agent在同toolCallId的通知中返回实际结果，或双方协议明确给出宿主请求与工具的关联身份；条件具备后复用现有工具结果合并/预算/公共投影与客户端详情，不另造时间线。在未具备权威关联时，禁止按路径、最近调用或唯一已观察read猜身份：并行同路径和edit的内部读取都可能关联错。也不重读文件填充过去结果或增加第二条工具记录冒充原调用。本轮不改写原生通知，不声称正文显示已完成；浏览器、完整产品终端/持久化Run生命周期、远程连接另验。
+
+复验设置CODEWORK_GOOSE_CLI_PATH后执行下列第一行；没有opt-in或非Windows时该项跳过，不算成功。HEAD加精确3文件索引的独立副本，官方产品读取1项通过；普通协议/RuntimeBridge/ProviderBridge回归17项通过、新官方probe1项跳过。Server类型检查及新probe定向lint退出0，只有原账号池2条类型建议；首次新增测试把未知data当对象访问而失败，改为现有Schema类型验证，并合并Layer提供以消除新生命周期告警后重跑。此模块是产品读取验收与明确边界，不是读取正文UI修复；回滚仅撤回该probe/文档模块，无数据迁移。
+
+```powershell
+node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/GooseAcpToolBrokerProbe.test.ts
+node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/GooseAcpToolBrokerProbe.test.ts apps/server/src/provider/Layers/CursorAdapterToolBroker.e2e.test.ts apps/server/src/composition/CompositionRuntimeToolBridge.test.ts apps/server/src/composition/CompositionProviderToolBrokerBridge.test.ts
+```
 
 ## 复验、失败与回滚
 
