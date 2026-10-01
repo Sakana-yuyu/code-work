@@ -58,3 +58,13 @@ rawInput/rawOutput 的 null 与缺省都表示未提供新值，保留已有输�
 工具 completed/failed 后，当前回合的合并表仍保留有界快照，用于继承后续补充通知未提供的状态、正文与命令。仅补元数据不会重新显示为进行中；补新结果仍更新同一调用。下一 prompt 通过已有清理入口移除终态快照和审批专用身份，保留尚未结束的实际工具；新回合不继承旧终态结果。内存保留量随当前回合工具数量增长，未新增无限跨回合缓存。原有根会话/重放门禁、取消补 failed 和权限身份过滤保持，终态更新沿原即时发出路径。
 
 2026-10-01 的协议子进程回归在 Gajae 空闲等待期间验证成功/失败终态后的元数据与结果补充，随后在下一 prompt 验证同 ID 新调用不带旧输出；这不证明跨回合迟到通知有正确归属。上游更新没有回合 ID，不能凭同 toolCallId 猜新的执行或重新执行工具。回滚仅撤回终态快照保留与清理变更，无数据库迁移。
+
+## JSON-RPC 通知与取消
+
+共用协议层发送标准和扩展通知时，线上报文只包含 jsonrpc、method、params，省略 id。内部沿用 Effect 的 isNotification 标志；接收时也用该标志区分通知，不能把普通请求的空字符串 id 当通知丢掉。带空字符串 id 的扩展请求仍进入处理器，并回传相同 id。普通请求、回应及其错误关联沿用原编码。
+
+复用现有 jsonRpcNotification 和 encodeJsonl，不修改依赖或另建传输层。不可序列化的 BigInt、循环对象继续以 AcpProtocolParseError / encode-message 失败；通知的内部 cause 由 Schema 编码器提供 SchemaError，公开错误说明不包含参数。通知没有 RPC 回执，发送成功不能独立证明远端取消完成；工具副作用、原 prompt 终态和会话关闭分别验收。
+
+2026-10-01 核对；检索词 JSON-RPC notification id empty string、ACP session/cancel、Effect ndJsonRpc isNotification。采用 [JSON-RPC 2.0 规范](https://www.jsonrpc.org/specification#notification)确认省略 id 的语义、[ACP 官方取消合同](https://agentclientprotocol.com/protocol/v1/prompt-turn#cancellation)确认 session/cancel 为通知；与已安装 Effect 4.0.0-beta.103 的序列化实现和真实 CLI 原始报文对照，优先于 Schema 解码后忽略额外字段的旧断言。
+
+定向检查覆盖四类通知的完整原始 JSON、入站标准通知、空字符串请求 ID 的回应、通知日志与编码错误。固定 Gajae 0.18.1 加本机模型响应端点通过连续文本、实际读取、批准命令、审批中取消和会话关闭；详见 [Gajae 边界](./gajae-acp-provider.md)。这是共用 Runtime 的本地及真实 CLI 证据，不替代界面、外部模型或其它 Agent 的实测。回滚撤回对应提交，无数据库迁移、不改变账户或审批策略。

@@ -116,3 +116,15 @@ MCP 文本数组识别与长度限制可单独撤回；不撤回认证、关闭�
 - [缺模型错误](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/setup/model-onboarding-guidance.ts)、[SDK 错误出口](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/host/control/dispatch.ts)：model_not_selected 的安全公开消息。
 
 本增量只收录并修正可运行探针和本页，不修改生产默认发现、认证或错误映射。撤回对应提交即可回滚，无数据库迁移；测试设置只写入本次独立临时目录。
+
+## 2026-10-01 取消通知的线上编码
+
+调查既有 SDK session attachment is unavailable: session not published 时，固定官方 0.18.1 的新运行完成了连续文本、文件读取与批准命令，实际失败发生在审批取消后的 session/close：关闭超过 5 秒。原始线上报文显示 session/cancel 携带 id=""，官方 CLI 将它当作请求，返回 -32601 / Method not found。客户端中断等待和补工具 failed 终态，不能证明取消通知已被远端接受。
+
+修复共用协议的通知编码后，在精确 HEAD 加本增量的独立源码上，原有官方工具探针完整通过一次：两次文本、read 返回实际文件标记、Git Bash 批准命令输出、取消结果 cancelled、cancelled.txt 不存在、取消工具 failed，随后 session/close 成功。固定二进制 SHA-256 为 ff990f6b8676e76cfabd85b182cb4e27e1994f04a27eb7f22108d0d0049aa7a2；模型响应由本机端点提供，未使用外部模型或真实账户。未放宽工具断言、增加等待或重试模型请求。
+
+此前 session not published 与 broker_startup_failed / 机器身份错误没有在这次运行重现，仍是独立未解决门槛。官方 newSession 成功前已等待 attach；SDK Router 的强制索引 reconcile 仍可能拒绝未 published 的附件。通知编码错误与附件发布失效没有因果证据，不能由本次通过宣布旧问题修复或工具链长期稳定。
+
+核对日期 2026-10-01；检索词 newSession、attachEndpoint、publishAttachment、serialReconcile、session/cancel、isNotification。采用与二进制同版本的 [ACP 实现](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/modes/acp/acp-agent.ts)、[SDK 适配器](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/acp/adapter.ts)、[SDK Router](https://github.com/Yeachan-Heo/gajae-code/blob/v0.18.1/packages/coding-agent/src/sdk/router/session-router.ts)确认生命周期边界；取消格式以 [ACP 官方合同](https://agentclientprotocol.com/protocol/v1/prompt-turn#cancellation)和 [JSON-RPC 通知规范](https://www.jsonrpc.org/specification#notification)为准，不绕过端点权威或推测启动就绪。
+
+原始报文、失败与成功日志保存在仓库外审计目录；探针诊断变体未提交。最终运行留下的独立 broker 经其 broker.json 与已记录进程身份核对后，用官方 broker.shutdown 收到 ok=true，随后确认该 PID 消失；这不证明历史后台进程都已回收。撤回通知编码提交即可回滚，无数据迁移。

@@ -16,6 +16,7 @@ import * as RpcServer from "effect/unstable/rpc/RpcServer";
 import * as AcpSchema from "./_generated/schema.gen.ts";
 import { CLIENT_METHODS } from "./_generated/meta.gen.ts";
 import * as AcpError from "./errors.ts";
+import { encodeJsonl, jsonRpcNotification } from "./_internal/shared.ts";
 const isAcpError = Schema.is(AcpError.AcpError);
 
 export interface AcpProtocolLogEvent {
@@ -137,10 +138,23 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
           ? message.requestId
           : undefined;
     const requestId = encodedRequestId === "" ? undefined : encodedRequestId;
-    const encoded = yield* Effect.try({
-      try: () => parser.encode(message),
-      catch: (cause) => AcpError.AcpProtocolParseError.fromEncodingError(method, requestId, cause),
-    });
+    // Effect 的 Request 编码会保留空 ID；ACP 通知必须省略 ID，避免被官方 CLI 当作请求。
+    const encoded =
+      message._tag === "Request" && message.isNotification === true
+        ? yield* encodeJsonl(jsonRpcNotification(message.tag, Schema.Unknown), {
+            jsonrpc: "2.0",
+            method: message.tag,
+            params: message.payload,
+          }).pipe(
+            Effect.mapError((cause) =>
+              AcpError.AcpProtocolParseError.fromEncodingError(method, requestId, cause),
+            ),
+          )
+        : yield* Effect.try({
+            try: () => parser.encode(message),
+            catch: (cause) =>
+              AcpError.AcpProtocolParseError.fromEncodingError(method, requestId, cause),
+          });
 
     if (encoded) {
       yield* logProtocol({
@@ -279,7 +293,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
   };
 
   const handleRequestEncoded = (message: RpcMessage.RequestEncoded) => {
-    if (message.id === "") {
+    if (message.isNotification === true) {
       if (message.tag === CLIENT_METHODS.session_update) {
         if (isHarnProgressNotification(message.payload)) {
           return dispatchNotification({
@@ -572,6 +586,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
     yield* offerOutgoing({
       _tag: "Request",
       id: "",
+      isNotification: true,
       tag: method,
       payload,
       headers: [],

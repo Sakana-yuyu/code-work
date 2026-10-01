@@ -22,10 +22,6 @@ import {
 } from "./_internal/shared.ts";
 import { makeInMemoryStdio, makeTerminationError, makeChildStdio } from "./_internal/stdio.ts";
 
-const SessionCancelNotification = jsonRpcNotification(
-  "session/cancel",
-  AcpSchema.CancelNotification,
-);
 const SessionUpdateNotification = jsonRpcNotification(
   "session/update",
   AcpSchema.SessionNotification,
@@ -41,15 +37,13 @@ const RequestPermissionRequest = jsonRpcRequest(
 const RequestPermissionResponse = jsonRpcResponse(AcpSchema.RequestPermissionResponse);
 const ExtRequest = jsonRpcRequest("x/test", Schema.Struct({ hello: Schema.String }));
 const ExtResponse = jsonRpcResponse(Schema.Struct({ ok: Schema.Boolean }));
-const decodeSessionCancelNotification = Schema.decodeEffect(
-  Schema.fromJsonString(SessionCancelNotification),
-);
 const decodeExtRequest = Schema.decodeEffect(Schema.fromJsonString(ExtRequest));
 const decodeExtResponse = Schema.decodeEffect(Schema.fromJsonString(ExtResponse));
 const decodeRequestPermissionResponse = Schema.decodeEffect(
   Schema.fromJsonString(RequestPermissionResponse),
 );
 const encodeUnknownJsonString = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
+const decodeUnknownJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 const encoder = new TextEncoder();
 const mockPeerPath = Effect.map(Effect.service(Path.Path), (path) =>
   path.join(import.meta.dirname, "../test/fixtures/acp-mock-peer.ts"),
@@ -89,7 +83,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
 
         yield* transport.notify("session/cancel", { sessionId: "session-1" });
         const outbound = yield* Queue.take(output);
-        assert.deepEqual(yield* decodeSessionCancelNotification(outbound), {
+        assert.deepEqual(yield* decodeUnknownJson(outbound), {
           jsonrpc: "2.0",
           method: "session/cancel",
           params: {
@@ -265,6 +259,50 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
     );
   }
 
+  it.effect("所有 ACP 通知在线上省略 id，普通请求的空字符串 id 仍需回应", () =>
+    Effect.gen(function* () {
+      const { stdio, input, output } = yield* makeInMemoryStdio();
+      const transport = yield* AcpProtocol.makeAcpPatchedProtocol({
+        stdio,
+        serverRequestMethods: new Set(),
+        onExtRequest: (_method, params) => Effect.succeed(params),
+      });
+      for (const method of [
+        "session/cancel",
+        "session/update",
+        "session/elicitation/complete",
+        "_codework/event",
+      ]) {
+        const params = { marker: method };
+        yield* transport.notify(method, params);
+        const raw = yield* Queue.take(output);
+        assert.deepEqual(yield* decodeUnknownJson(raw), {
+          jsonrpc: "2.0",
+          method,
+          params,
+        });
+      }
+      // JSON-RPC 允许空字符串请求 ID；只有缺少 ID 的帧才是通知。
+      yield* Queue.offer(
+        input,
+        encoder.encode(
+          encodeUnknownJsonString({
+            jsonrpc: "2.0",
+            id: "",
+            method: "_codework/echo",
+            params: { value: 42 },
+          }) + "\n",
+        ),
+      );
+      const response = yield* Queue.take(output);
+      assert.deepEqual(yield* decodeUnknownJson(response), {
+        jsonrpc: "2.0",
+        id: "",
+        result: { value: 42 },
+      });
+    }),
+  );
+
   it.effect("logs outgoing notifications when logOutgoing is enabled", () =>
     Effect.gen(function* () {
       const { stdio } = yield* makeInMemoryStdio();
@@ -288,6 +326,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
           payload: {
             _tag: "Request",
             id: "",
+            isNotification: true,
             tag: "session/cancel",
             payload: {
               sessionId: "session-1",
@@ -299,7 +338,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
           direction: "outgoing",
           stage: "raw",
           payload:
-            '{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"session-1"},"id":"","headers":[]}\n',
+            '{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"session-1"}}\n',
         },
       ]);
     }),
@@ -349,7 +388,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       assert.instanceOf(bigintError, AcpError.AcpProtocolParseError);
       assert.equal(bigintError.operation, "encode-message");
       assert.equal(bigintError.method, "x/test");
-      assert.instanceOf(bigintError.cause, TypeError);
+      assert.isTrue(Schema.isSchemaError(bigintError.cause));
       assert.equal(
         bigintError.message,
         "ACP protocol operation 'encode-message' failed for method 'x/test'.",
@@ -361,7 +400,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       assert.instanceOf(circularError, AcpError.AcpProtocolParseError);
       assert.equal(circularError.operation, "encode-message");
       assert.equal(circularError.method, "x/test");
-      assert.instanceOf(circularError.cause, TypeError);
+      assert.isTrue(Schema.isSchemaError(circularError.cause));
 
       const requestError = yield* transport.request("x/request", 1n).pipe(
         Effect.match({
