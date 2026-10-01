@@ -226,3 +226,7 @@ when a request opens (approval) or user input is requested, via
 [ingest]: ../../apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts
 [cmd]: ../../apps/server/src/orchestration/Layers/ProviderCommandReactor.ts
 [checkpoint]: ../../apps/server/src/orchestration/Layers/CheckpointReactor.ts
+
+## 接入范围与验证方法
+
+固定6个内置及38个ACP入口的绑定、能力事实来源、工具/账号/多端证据边界和定向验证入口见 [Agent入口与验收合同](./acp-provider-validation.md)。目录数量和历史勾选不能替代逐项执行结果与最终独立验证。
