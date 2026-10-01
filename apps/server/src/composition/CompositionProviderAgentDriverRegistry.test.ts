@@ -160,6 +160,7 @@ describe("CompositionProviderAgentDriverRegistry", () => {
         toolBrokerBridge: {
           invoke: () => Effect.die("unused"),
           cancel: () => Effect.die("unused"),
+          releaseRunResources: () => Effect.void,
         },
         threadQuery: {
           getThreadShellById: (threadId) =>
@@ -343,6 +344,7 @@ describe("CompositionProviderAgentDriverRegistry", () => {
       toolBrokerBridge: {
         invoke: () => Effect.die("unused"),
         cancel: () => Effect.die("unused"),
+        releaseRunResources: () => Effect.void,
       },
     });
     await Effect.runPromise(projection.refresh);
@@ -427,6 +429,7 @@ for (const withBridge of [false, true]) {
         ? Context.add(dependencies, CompositionRuntimeToolBridgeService, {
             invoke: () => Effect.die("尚未调用工具"),
             cancel: () => Effect.die("尚未取消工具"),
+            releaseRunResources: () => Effect.void,
           })
         : dependencies;
       const result = yield* Layer.build(projectionLayer).pipe(

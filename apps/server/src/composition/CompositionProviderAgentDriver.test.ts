@@ -6,6 +6,7 @@ import * as Fiber from "effect/Fiber";
 import {
   ProviderDriverKind,
   ProviderInstanceId,
+  TerminalSessionLookupError,
   EventId,
   type ProviderRuntimeEvent,
   ThreadId,
@@ -23,6 +24,7 @@ import type { CompositionRuntimeToolBridgeShape } from "./CompositionRuntimeTool
 const unusedRuntimeToolBridge = {
   invoke: () => Effect.die("测试不应调用 Runtime Tool Bridge"),
   cancel: () => Effect.die("测试不应取消 Runtime Tool Bridge"),
+  releaseRunResources: () => Effect.void,
 } satisfies CompositionRuntimeToolBridgeShape;
 
 const makeAdapter = (options?: { readonly failTurn?: boolean }) => {
@@ -975,70 +977,109 @@ describe("CompositionProviderAgentDriver", () => {
     expect(calls).toEqual(["revoke:provider-handshake-missing-workspace"]);
   });
 
-  it("取消中断失败时仍停止会话并清理 ToolBroker 与 handshake", async () => {
-    const fake = makeAdapter();
-    const cleanupCalls: string[] = [];
-    const driver = makeCompositionProviderAgentDriver({
-      agentId: "agent-cursor",
-      runtimeId: "provider:cursor-local",
-      providerInstanceId: ProviderInstanceId.make("cursor-local"),
-      toolBrokerBridge: unusedRuntimeToolBridge,
-      toolBrokerCanonicalTools: ["workspace.read_file"],
-      adapter: {
-        ...fake.adapter,
-        handshakeCapabilities: (input) =>
-          Effect.succeed({
-            ...input,
-            status: "accepted" as const,
-            handshakeId: "provider-handshake-cancel",
-            acceptedGrantIds: [...input.capabilityGrantIds],
-          }),
-        revokeCapabilityHandshake: ({ handshakeId }) =>
-          Effect.sync(() => cleanupCalls.push(`revoke:${handshakeId}`)),
-        configureToolBroker: ({ threadId }) =>
-          Effect.sync(() => cleanupCalls.push(`configure:${threadId}`)),
-        clearToolBroker: (threadId) => Effect.sync(() => cleanupCalls.push(`clear:${threadId}`)),
-        interruptTurn: () =>
-          Effect.fail(
-            new ProviderValidationError({ operation: "interruptTurn", issue: "测试中断失败" }),
-          ),
-        stopSession: (threadId) => Effect.sync(() => cleanupCalls.push(`stop:${threadId}`)),
-      },
-    });
-    const task = {
-      taskId: "task-cancel-cleanup",
-      projectId: "project-1",
-      threadId: "thread-cancel-cleanup",
-      assigneeKind: "agent" as const,
-      assigneeId: "agent-cursor",
-      mode: "serial" as const,
-      status: "queued" as const,
-      promptDigest: "sha256:cancel-cleanup",
-      dependsOnTaskIds: [],
-      createdAtUnixMs: 1,
-      updatedAtUnixMs: 1,
-    };
-    const run = {
-      runId: "run-cancel-cleanup",
-      taskId: task.taskId,
-      agentId: "agent-cursor",
-      runtimeId: "provider:cursor-local",
-      status: "queued" as const,
-      attempt: 1,
-      capabilityGrantIds: ["grant-workspace"],
-    };
+  it.each([false, true])(
+    "取消中断失败仍回收资源，重复回收保留结果（关闭失败=%s）",
+    async (releaseFails) => {
+      const fake = makeAdapter();
+      const cleanupCalls: string[] = [];
+      const driver = makeCompositionProviderAgentDriver({
+        agentId: "agent-cursor",
+        runtimeId: "provider:cursor-local",
+        providerInstanceId: ProviderInstanceId.make("cursor-local"),
+        toolBrokerBridge: {
+          ...unusedRuntimeToolBridge,
+          releaseRunResources: (runId) =>
+            Effect.sync(() => cleanupCalls.push(`resources:${runId}`)).pipe(
+              Effect.andThen(
+                releaseFails
+                  ? Effect.fail(
+                      new TerminalSessionLookupError({
+                        threadId: runId,
+                        terminalId: "controlled-close-failure",
+                      }),
+                    )
+                  : Effect.void,
+              ),
+            ),
+        },
+        toolBrokerCanonicalTools: ["workspace.read_file"],
+        adapter: {
+          ...fake.adapter,
+          handshakeCapabilities: (input) =>
+            Effect.succeed({
+              ...input,
+              status: "accepted" as const,
+              handshakeId: "provider-handshake-cancel",
+              acceptedGrantIds: [...input.capabilityGrantIds],
+            }),
+          revokeCapabilityHandshake: ({ handshakeId }) =>
+            Effect.sync(() => cleanupCalls.push(`revoke:${handshakeId}`)),
+          configureToolBroker: ({ threadId }) =>
+            Effect.sync(() => cleanupCalls.push(`configure:${threadId}`)),
+          clearToolBroker: (threadId) => Effect.sync(() => cleanupCalls.push(`clear:${threadId}`)),
+          interruptTurn: () =>
+            Effect.fail(
+              new ProviderValidationError({ operation: "interruptTurn", issue: "测试中断失败" }),
+            ),
+          stopSession: (threadId) => Effect.sync(() => cleanupCalls.push(`stop:${threadId}`)),
+        },
+      });
+      const task = {
+        taskId: "task-cancel-cleanup",
+        projectId: "project-1",
+        threadId: "thread-cancel-cleanup",
+        assigneeKind: "agent" as const,
+        assigneeId: "agent-cursor",
+        mode: "serial" as const,
+        status: "queued" as const,
+        promptDigest: "sha256:cancel-cleanup",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1,
+      };
+      const run = {
+        runId: "run-cancel-cleanup",
+        taskId: task.taskId,
+        agentId: "agent-cursor",
+        runtimeId: "provider:cursor-local",
+        status: "queued" as const,
+        attempt: 1,
+        capabilityGrantIds: ["grant-workspace"],
+      };
 
-    await Effect.runPromise(
-      driver.startTask({ task, run, prompt: "读取文件", workspaceRoot: "C:/workspace" }),
-    );
-    await expect(
-      Effect.runPromise(driver.cancelTask({ task, run, reason: "用户取消" })),
-    ).rejects.toMatchObject({ code: "provider_turn_cancel_failed" });
-    expect(cleanupCalls).toEqual([
-      "configure:thread-cancel-cleanup",
-      "stop:thread-cancel-cleanup",
-      "clear:thread-cancel-cleanup",
-      "revoke:provider-handshake-cancel",
-    ]);
-  });
+      await Effect.runPromise(
+        driver.startTask({ task, run, prompt: "读取文件", workspaceRoot: "C:/workspace" }),
+      );
+      await expect(
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const cancelled = yield* Effect.result(
+              driver.cancelTask({ task, run, reason: "用户取消" }),
+            );
+            for (let attempt = 0; attempt < 2; attempt++) {
+              const released = yield* Effect.result(
+                driver.revokeCapabilityHandshake!({ task, run }),
+              );
+              expect(released._tag).toBe(releaseFails ? "Failure" : "Success");
+              if (released._tag === "Failure")
+                expect(released.failure.code).toBe("provider_resources_release_failed");
+            }
+            return yield* cancelled._tag === "Failure"
+              ? Effect.fail(cancelled.failure)
+              : Effect.succeed(cancelled.success);
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "provider_turn_cancel_failed" });
+      expect(cleanupCalls).toEqual([
+        "configure:thread-cancel-cleanup",
+        "stop:thread-cancel-cleanup",
+        "clear:thread-cancel-cleanup",
+        "resources:run-cancel-cleanup",
+        "revoke:provider-handshake-cancel",
+      ]);
+      expect(cleanupCalls.filter((call) => call.startsWith("resources:"))).toEqual([
+        "resources:run-cancel-cleanup",
+      ]);
+    },
+  );
 });

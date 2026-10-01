@@ -146,8 +146,20 @@ it.layer(TestLayer, { excludeTestServices: true })(
           const completed = yield* Deferred.make<void>();
           const stopAttempted = yield* Deferred.make<void>();
           const invocations: ToolBrokerInput[] = [];
+          const releasedRuns: string[] = [];
           const runtimeBridge = makeCompositionRuntimeToolBridge({
             taskStore: store,
+            terminalManager: {
+              close: ({ threadId: releasedRunId }) =>
+                Effect.gen(function* () {
+                  assert.equal(releasedRunId, runId);
+                  assert.notEqual(
+                    Option.getOrThrow(yield* store.getRun(runId).pipe(Effect.orDie)).status,
+                    "running",
+                  );
+                  releasedRuns.push(releasedRunId);
+                }),
+            },
             inputStore: {
               get: () => Effect.succeed(Option.some({ taskId, prompt: "取消终端", workspaceRoot })),
             },
@@ -283,6 +295,10 @@ it.layer(TestLayer, { excludeTestServices: true })(
             variant === "cancel" ? "cancelled" : variant === "kill" ? "completed" : "failed",
           );
           yield* Deferred.await(completed).pipe(Effect.timeout("5 seconds"));
+          const storedRun = Option.getOrThrow(yield* store.getRun(runId));
+          const storedTask = Option.getOrThrow(yield* store.getTask(taskId));
+          yield* driver.revokeCapabilityHandshake!({ task: storedTask, run: storedRun });
+          assert.deepEqual(releasedRuns, [runId]);
           if (variant === "kill") {
             const entries = (yield* Effect.promise(() => NodeFSP.readFile(resultLogPath, "utf8")))
               .trim()

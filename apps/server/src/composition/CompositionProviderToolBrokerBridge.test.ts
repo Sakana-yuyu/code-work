@@ -60,6 +60,7 @@ it.effect("可信模式独立传递，Provider 原始参数不能升级权限", 
             capturedApproval = options?.requestApproval;
             return Effect.succeed(result("succeeded"));
           },
+          releaseRunResources: () => Effect.die("公开入口不应调用可信资源回收"),
           cancel: () => Effect.succeed(result("cancelled")),
         },
       });
@@ -85,6 +86,7 @@ it.effect("固定可信作用域并忽略 Provider 伪造的上下文字段", ()
           captured = input;
           return Effect.succeed(result("succeeded"));
         },
+        releaseRunResources: () => Effect.die("公开入口不应调用可信资源回收"),
         cancel: () => Effect.succeed(result("cancelled")),
       },
     });
@@ -125,6 +127,7 @@ it.effect("保留 ToolBroker 的成功、拒绝、失败和取消语义", () =>
         context,
         runtimeBridge: {
           invoke: () => Effect.succeed(expected),
+          releaseRunResources: () => Effect.die("公开入口不应调用可信资源回收"),
           cancel: () => Effect.succeed(result("cancelled")),
         },
       });
@@ -145,6 +148,7 @@ it.effect("执行期限由 Runtime 工具调用管理，审批不占期限", () 
           capturedTimeout = options?.timeoutMs;
           return Effect.succeed(result("succeeded"));
         },
+        releaseRunResources: () => Effect.die("公开入口不应调用可信资源回收"),
         cancel: () => Effect.succeed(result("cancelled")),
       },
     });
@@ -161,6 +165,7 @@ it.effect("取消请求保留原 canonical tool 身份和可信作用域", () =>
       context,
       runtimeBridge: {
         invoke: () => Effect.succeed(result("succeeded")),
+        releaseRunResources: () => Effect.die("公开入口不应调用可信资源回收"),
         cancel: (input) => {
           captured = input;
           return Effect.succeed(result("cancelled"));

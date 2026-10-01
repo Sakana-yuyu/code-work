@@ -73,7 +73,7 @@ it.effect("从 MCP 凭据注入可信 Runtime 身份并调用 Code Work Tool Bri
   const cancel = vi.fn(() => Effect.die("unused"));
   const bridgeLayer = Layer.succeed(
     CompositionRuntimeToolBridge.CompositionRuntimeToolBridgeService,
-    { invoke, cancel },
+    { invoke, cancel, releaseRunResources: () => Effect.die("公开入口不应调用可信资源回收") },
   );
   const testLayer = CompositionRuntimeMcpServer.CompositionRuntimeToolkitRegistrationLive.pipe(
     Layer.provideMerge(McpServer.McpServer.layer),
@@ -136,7 +136,7 @@ it.effect("取消请求沿用同一可信绑定且不会接收外部身份字段
   );
   const bridgeLayer = Layer.succeed(
     CompositionRuntimeToolBridge.CompositionRuntimeToolBridgeService,
-    { invoke, cancel },
+    { invoke, cancel, releaseRunResources: () => Effect.die("公开入口不应调用可信资源回收") },
   );
   const testLayer = CompositionRuntimeMcpServer.CompositionRuntimeToolkitRegistrationLive.pipe(
     Layer.provideMerge(McpServer.McpServer.layer),
@@ -211,6 +211,7 @@ it.effect("handshake 撤销会中断已经进入 MCP handler 的调用", () =>
                 }),
               );
             }),
+          releaseRunResources: () => Effect.die("公开入口不应调用可信资源回收"),
           cancel: (input) =>
             Effect.succeed({
               invocationId: `invocation-${input.idempotencyKey}`,
@@ -288,7 +289,11 @@ it.effect("通过真实 HTTP MCP transport 鉴权并调用 Runtime Tool Bridge",
       );
       const bridgeLayer = Layer.succeed(
         CompositionRuntimeToolBridge.CompositionRuntimeToolBridgeService,
-        { invoke, cancel: () => Effect.die("unused") },
+        {
+          invoke,
+          cancel: () => Effect.die("unused"),
+          releaseRunResources: () => Effect.die("公开入口不应调用可信资源回收"),
+        },
       );
       const registryLayer = Layer.succeed(
         CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistry,

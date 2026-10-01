@@ -18,6 +18,7 @@ import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Option from "effect/Option";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 
 import type { ProviderServiceError } from "../provider/Errors.ts";
 import type {
@@ -428,29 +429,53 @@ export const makeCompositionProviderAgentDriver = (
           : Deferred.succeed(runtimeStarted, "started").pipe(Effect.asVoid);
       let toolBrokerConfigured = false;
       let contextReleased = false;
+      const contextReleaseComplete = yield* Deferred.make<void, CompositionAgentDriverFailure>();
       // Projector可能先于sendTurn返回清理，同一Run共享一次回收责任。
       const releaseContext = Effect.suspend(() => {
-        if (contextReleased) return Effect.void;
+        if (contextReleased) return Deferred.await(contextReleaseComplete);
         contextReleased = true;
         return Deferred.succeed(runtimeStarted, "released").pipe(
           Effect.andThen(
-            Effect.all([
-              ...(toolBrokerConfigured && options.adapter.clearToolBroker !== undefined
-                ? [options.adapter.clearToolBroker(threadId).pipe(Effect.ignore)]
-                : []),
-              ...(capabilityHandshakeId !== undefined &&
-              options.adapter.revokeCapabilityHandshake !== undefined
-                ? [
-                    options.adapter.revokeCapabilityHandshake({
-                      handshakeId: capabilityHandshakeId,
-                    }),
-                  ]
-                : []),
-            ]),
+            toolBrokerConfigured && options.adapter.clearToolBroker !== undefined
+              ? options.adapter.clearToolBroker(threadId).pipe(Effect.ignore)
+              : Effect.void,
           ),
-          Effect.asVoid,
-          Effect.mapError((error) =>
-            makeFailure("provider_capability_handshake_revoke_failed", error),
+          Effect.andThen(
+            toolBrokerConfigured && options.toolBrokerBridge !== undefined
+              ? options.toolBrokerBridge
+                  .releaseRunResources(input.run.runId)
+                  .pipe(
+                    Effect.mapError((error) =>
+                      makeFailure("provider_resources_release_failed", error),
+                    ),
+                  )
+              : Effect.void,
+          ),
+          Effect.exit,
+          Effect.flatMap((released) =>
+            Effect.gen(function* () {
+              if (
+                capabilityHandshakeId !== undefined &&
+                options.adapter.revokeCapabilityHandshake !== undefined
+              )
+                yield* options.adapter
+                  .revokeCapabilityHandshake({ handshakeId: capabilityHandshakeId })
+                  .pipe(
+                    Effect.mapError((error) =>
+                      makeFailure("provider_capability_handshake_revoke_failed", error),
+                    ),
+                  );
+              return yield* released;
+            }),
+          ),
+          // 重复回收等待同一结果；失败不能在第二次调用伪装为成功。
+          Effect.onExit((exit) =>
+            Effect.sync(() =>
+              Deferred.doneUnsafe(
+                contextReleaseComplete,
+                Exit.isSuccess(exit) ? Effect.void : Effect.failCause(exit.cause),
+              ),
+            ),
           ),
         );
       });

@@ -70,6 +70,7 @@ describe("CompositionRuntimeToolBridge HTTP", () => {
               calls.push(`${COMPOSITION_RUNTIME_TOOL_INVOKE_PATH}:${input.idempotencyKey}`);
               return successfulResult;
             }),
+          releaseRunResources: () => Effect.die("公开入口不应调用可信资源回收"),
           cancel: (input) =>
             Effect.sync(() => {
               calls.push(`${COMPOSITION_RUNTIME_TOOL_CANCEL_PATH}:${input.idempotencyKey}`);

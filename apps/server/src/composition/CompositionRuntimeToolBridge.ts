@@ -26,6 +26,7 @@ import {
 import * as ToolBroker from "./ToolBroker.ts";
 import * as CapabilityPolicy from "./CapabilityPolicy.ts";
 import type { ProviderToolBrokerApprovalHandler } from "../provider/Services/ProviderAdapter.ts";
+import { TerminalManager, type TerminalError } from "../terminal/Manager.ts";
 
 /** 外部 Runtime 请求 Code Work 执行一次 canonical tool 的输入。 */
 export type CompositionRuntimeToolInvocation = {
@@ -60,6 +61,7 @@ export type CompositionRuntimeToolBridgeDependencies = {
   readonly inputStore: Pick<CompositionTaskInputStoreShape, "get">;
   readonly toolBroker: Pick<ToolBroker.ToolBroker["Service"], "invoke" | "cancel">;
   readonly approve?: CapabilityPolicy.CapabilityPolicy["Service"]["approve"];
+  readonly terminalManager?: Pick<TerminalManager["Service"], "close">;
 };
 
 export type CompositionRuntimeToolBridgeShape = {
@@ -76,6 +78,8 @@ export type CompositionRuntimeToolBridgeShape = {
   readonly cancel: (
     input: CompositionRuntimeToolCancellation,
   ) => Effect.Effect<CompositionToolResult>;
+  /** 仅由服务端Run绑定回收调用；不向Provider Bridge或公开RPC发布。 */
+  readonly releaseRunResources: (runId: string) => Effect.Effect<void, TerminalError>;
 };
 
 export class CompositionRuntimeToolBridgeService extends Context.Service<
@@ -268,9 +272,6 @@ export const makeCompositionRuntimeToolBridge = (
 
   const invoke: CompositionRuntimeToolBridgeShape["invoke"] = (input, runtimeMode, options) =>
     Effect.gen(function* () {
-      const scope = yield* validateScope(input);
-      if (!scope.ok) return denied(input, scope.errorCode);
-
       const cancellationScope: CompositionRuntimeToolCancellation = input;
       return yield* Effect.acquireUseRelease(
         Effect.gen(function* () {
@@ -299,6 +300,9 @@ export const makeCompositionRuntimeToolBridge = (
           if (!claim.claimed) return Effect.succeed(claim.result);
           const activeInvocation = claim.activeInvocation;
           const execute = Effect.gen(function* () {
+            // 先登记再读异步Store，终态回收才能排空仍在校验的迟到请求。
+            const scope = yield* validateScope(input);
+            if (!scope.ok) return denied(input, scope.errorCode);
             const inputOption = yield* dependencies.inputStore
               .get(input.taskId)
               .pipe(Effect.orElseSucceed(() => Option.none()));
@@ -425,7 +429,24 @@ export const makeCompositionRuntimeToolBridge = (
       return yield* Deferred.await(activeInvocation.terminal);
     });
 
-  return { invoke, cancel };
+  const releaseRunResources: CompositionRuntimeToolBridgeShape["releaseRunResources"] = (runId) =>
+    Effect.gen(function* () {
+      const owned = [...activeInvocations.values()].filter((entry) => entry.scope.runId === runId);
+      yield* Effect.forEach(owned, (entry) => Deferred.succeed(entry.cancellation, undefined), {
+        discard: true,
+      });
+      const drained = yield* Effect.exit(
+        Effect.forEach(owned, (entry) => Deferred.await(entry.terminal), {
+          concurrency: "unbounded",
+          discard: true,
+        }),
+      );
+      // 工具fiber已结束后关闭原Run分组；不改通用工具的权限或Task/Run终态门禁。
+      yield* dependencies.terminalManager?.close({ threadId: runId }) ?? Effect.void;
+      return yield* drained;
+    });
+
+  return { invoke, cancel, releaseRunResources };
 };
 
 const live = Effect.gen(function* () {
@@ -433,11 +454,13 @@ const live = Effect.gen(function* () {
   const inputStore = yield* CompositionTaskInputStore;
   const toolBroker = yield* ToolBroker.ToolBroker;
   const policy = yield* CapabilityPolicy.CapabilityPolicy;
+  const terminalManager = yield* TerminalManager;
   return makeCompositionRuntimeToolBridge({
     taskStore,
     inputStore,
     toolBroker,
     approve: policy.approve,
+    terminalManager,
   });
 });
 

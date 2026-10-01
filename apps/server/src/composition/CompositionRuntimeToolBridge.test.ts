@@ -5,7 +5,11 @@ import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as TestClock from "effect/testing/TestClock";
 
-import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
+import {
+  TerminalSessionLookupError,
+  type CompositionTask,
+  type CompositionTaskRun,
+} from "@codework/contracts";
 import type { ProviderApprovalDecision } from "@codework/contracts";
 import {
   makeCompositionRuntimeToolBridge,
@@ -140,6 +144,111 @@ const makeDependencies = (
   },
   ...overrides,
 });
+
+it.effect("可信Run回收排空校验和执行中的请求，保留其它Run与公开终态门禁", () =>
+  Effect.gen(function* () {
+    for (const phase of ["scope", "execute"] as const) {
+      const entered = yield* Deferred.make<void>();
+      const otherEntered = yield* Deferred.make<void>();
+      const continueWork = yield* Deferred.make<void>();
+      const continueOther = yield* Deferred.make<void>();
+      let terminal = false,
+        finalized = false,
+        otherFinalized = false,
+        sideEffects = 0;
+      const closed: string[] = [];
+      const dependencies = makeDependencies();
+      const otherRunId = "other-run";
+      const bridge = makeCompositionRuntimeToolBridge({
+        ...dependencies,
+        taskStore: {
+          getTask: () => Effect.succeed(Option.some(task)),
+          getRun: (runId) =>
+            Effect.gen(function* () {
+              if (phase === "scope" && runId === run.runId && !terminal) {
+                yield* Deferred.succeed(entered, undefined);
+                yield* Deferred.await(continueWork);
+              }
+              return Option.some({
+                ...run,
+                runId,
+                status:
+                  terminal && runId === run.runId ? ("cancelled" as const) : ("running" as const),
+              });
+            }),
+        },
+        toolBroker: {
+          ...dependencies.toolBroker,
+          invoke: (request) =>
+            Effect.gen(function* () {
+              const other = request.runId === otherRunId;
+              yield* Deferred.succeed(other ? otherEntered : entered, undefined);
+              yield* Deferred.await(other ? continueOther : continueWork);
+              sideEffects++;
+              return yield* dependencies.toolBroker.invoke(request);
+            }).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  if (request.runId === otherRunId) otherFinalized = true;
+                }),
+              ),
+            ),
+        },
+        terminalManager: {
+          close: ({ threadId }) =>
+            Effect.sync(() => {
+              assert.equal(threadId, run.runId);
+              assert.equal(finalized, true);
+              assert.equal(otherFinalized, false);
+              closed.push(threadId);
+            }),
+        },
+      });
+      const owned = yield* Effect.forkChild(
+        bridge.invoke(input).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              finalized = true;
+            }),
+          ),
+        ),
+      );
+      const other = yield* Effect.forkChild(
+        bridge.invoke({ ...input, runId: otherRunId, idempotencyKey: "other-invocation" }),
+      );
+      yield* Deferred.await(entered);
+      yield* Deferred.await(otherEntered);
+      terminal = true;
+      yield* bridge.releaseRunResources(run.runId);
+      assert.equal((yield* Fiber.join(owned)).status, "cancelled");
+      yield* Deferred.succeed(continueWork, undefined);
+      assert.equal(sideEffects, 0);
+      assert.deepEqual(closed, [run.runId]);
+      const denied = yield* bridge.invoke({ ...input, canonicalToolName: "terminal.close" });
+      assert.equal(denied.status, "denied");
+      assert.equal(denied.errorCode, "run_not_running");
+      yield* Deferred.succeed(continueOther, undefined);
+      assert.equal((yield* Fiber.join(other)).status, "succeeded");
+      assert.equal(sideEffects, 1);
+    }
+  }),
+);
+
+it.effect("可信终端回收失败不伪造成功", () =>
+  Effect.gen(function* () {
+    const error = new TerminalSessionLookupError({
+      threadId: run.runId,
+      terminalId: "controlled-close-failure",
+    });
+    const bridge = makeCompositionRuntimeToolBridge({
+      ...makeDependencies(),
+      terminalManager: { close: () => Effect.fail(error) },
+    });
+    const result = yield* Effect.result(bridge.releaseRunResources(run.runId));
+    assert.equal(result._tag, "Failure");
+    if (result._tag === "Failure") assert.deepEqual(result.failure, error);
+  }),
+);
 
 it.effect("执行期限结束前确认中断，迟到结果不产生副作用", () =>
   Effect.gen(function* () {
