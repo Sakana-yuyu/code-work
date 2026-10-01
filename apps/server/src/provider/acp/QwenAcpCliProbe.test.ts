@@ -20,6 +20,7 @@ const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeRequest = Schema.decodeSync(
   Schema.fromJsonString(
     Schema.Struct({
+      model: Schema.String,
       stream: Schema.optional(Schema.Boolean),
       tools: Schema.optional(
         Schema.Array(Schema.Struct({ function: Schema.Struct({ name: Schema.String }) })),
@@ -57,6 +58,9 @@ describe.runIf(Boolean(cliPath))("Qwen 官方 ACP CLI + 本地模型夹具", () 
         let completionSequence = 0;
         let promptSequence = 0;
         let promptMarker = "";
+        let restoring = false;
+        let restoredRequestCount = 0;
+        const requests: AcpSessionRuntime.AcpSessionRequestLogEvent[] = [];
         const toolResults: unknown[] = [];
         const serverErrors: unknown[] = [];
         const server = yield* Effect.acquireRelease(
@@ -66,6 +70,18 @@ describe.runIf(Boolean(cliPath))("Qwen 官方 ACP CLI + 本地模型夹具", () 
                 let raw = "";
                 for await (const chunk of request) raw += chunk;
                 const body = decodeRequest(raw);
+                expect(body.model).toBe("codework-loopback");
+                if (
+                  restoring &&
+                  body.messages.at(-1)?.role === "user" &&
+                  encodeJson(body.messages.at(-1)?.content).includes(promptMarker)
+                ) {
+                  // 核对 CLI 重建后真正发出的旧工具内容，合成回复和同 ID 不能自证恢复。
+                  const history = body.messages.filter((message) => message.role === "tool");
+                  expect(encodeJson(history)).toContain("QWEN_SOURCE_72319");
+                  expect(encodeJson(history)).toContain("QWEN_SHELL_72319");
+                  restoredRequestCount++;
+                }
                 const completionId = `qwen-probe-${++completionSequence}`;
                 for (const message of body.messages)
                   if (message.role === "tool") toolResults.push(message.content);
@@ -90,7 +106,10 @@ describe.runIf(Boolean(cliPath))("Qwen 官方 ACP CLI + 本地模型夹具", () 
                         },
                       ],
                     }
-                  : { role: "assistant", content: "QWEN_LOOPBACK_OK" };
+                  : {
+                      role: "assistant",
+                      content: restoring ? "QWEN_RESTORED_OK" : "QWEN_LOOPBACK_OK",
+                    };
                 const finishReason = tool ? "tool_calls" : "stop";
                 if (body.stream) {
                   response.writeHead(200, { "content-type": "text/event-stream" });
@@ -152,6 +171,10 @@ describe.runIf(Boolean(cliPath))("Qwen 官方 ACP CLI + 本地模型夹具", () 
           cwd,
           authMethodId: "openai",
           clientInfo: { name: "codework-qwen-probe", version: "0.0.0" },
+          requestLogger: (event) =>
+            Effect.sync(() => {
+              requests.push(event);
+            }),
         };
         for (const methodId of ["login", "openai"]) {
           const unauthenticated = { ...options.spawn.env };
@@ -202,6 +225,7 @@ describe.runIf(Boolean(cliPath))("Qwen 官方 ACP CLI + 本地模型夹具", () 
           expect(start.initializeResult.authMethods?.map((method) => method.id)).toEqual([
             "openai",
           ]);
+          expect(start.initializeResult.agentCapabilities?.loadSession).toBe(true);
           expect((yield* runtime.getAvailableModels)?.length).toBeGreaterThan(0);
           yield* runtime.setMode("default");
           expect((yield* runtime.getModeState)?.currentModeId).toBe("default");
@@ -279,21 +303,49 @@ describe.runIf(Boolean(cliPath))("Qwen 官方 ACP CLI + 本地模型夹具", () 
           yield* runtime.drainEvents;
           expect(decisions).toContain("cancel");
           expect(yield* fs.exists(path.join(cwd, "cancelled.txt"))).toBe(false);
+          expect(nextTool).toBeUndefined();
+          permission = "allow_once";
+          expect((yield* prompt()).stopReason).toBe("end_turn");
+          yield* runtime.drainEvents;
           yield* Fiber.interrupt(consumer);
           return start.sessionId;
         }).pipe(Effect.provide(AcpSessionRuntime.layer(options)), Effect.scoped);
+        restoring = true;
         yield* Effect.gen(function* () {
           const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
           const start = yield* runtime.start();
           expect(start.sessionId).toBe(sessionId);
+          const text: string[] = [];
+          const consumer = yield* runtime.getEvents().pipe(
+            Stream.runForEach((event) => {
+              if (event._tag === "EventStreamBarrier")
+                return Deferred.succeed(event.acknowledge, undefined);
+              if (event._tag === "ContentDelta" && event.streamKind === "assistant_text")
+                text.push(event.text);
+              return Effect.void;
+            }),
+            Effect.forkChild,
+          );
+          promptMarker = `CODEWORK_RESTORE_${++promptSequence}`;
           expect(
-            (yield* runtime.prompt({ prompt: [{ type: "text", text: "验证恢复后的模型端点" }] }))
-              .stopReason,
+            (yield* runtime.prompt({
+              prompt: [{ type: "text", text: `${promptMarker} 验证恢复。` }],
+            })).stopReason,
           ).toBe("end_turn");
+          yield* runtime.drainEvents;
+          expect(text.join("")).toContain("QWEN_RESTORED_OK");
+          yield* Fiber.interrupt(consumer);
         }).pipe(
           Effect.provide(AcpSessionRuntime.layer({ ...options, resumeSessionId: sessionId })),
           Effect.scoped,
         );
+        expect(restoredRequestCount).toBe(1);
+        expect(toolSequence).toBe(5);
+        expect(
+          requests.filter(
+            (event) => event.method === "session/load" && event.status === "succeeded",
+          ),
+        ).toHaveLength(1);
         expect(serverErrors).toEqual([]);
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     { timeout: 90000 },
