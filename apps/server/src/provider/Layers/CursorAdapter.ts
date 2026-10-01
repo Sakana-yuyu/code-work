@@ -160,15 +160,7 @@ interface PendingUserInput {
 interface CursorToolBrokerBinding {
   readonly bridge: ProviderToolBrokerBridge;
   readonly context: ProviderToolBrokerContext;
-  readonly terminals: Map<
-    string,
-    {
-      readonly outputByteLimit: number | null;
-      readonly turnId: TurnId | undefined;
-      ready: boolean;
-      killed: boolean;
-    }
-  >;
+  readonly terminals: Map<string, { readonly outputByteLimit: number | null; readonly turnId: TurnId | undefined; ready: boolean; killed: boolean }>;
   readonly inFlightInvocations: Map<string, ProviderToolBrokerCancellation>;
   active: boolean;
 }
@@ -586,22 +578,10 @@ export function makeCursorAdapter(
         });
         if (result.status !== "succeeded") {
           const message = `宿主终端停止未确认（${result.status}）。`;
-          yield* offerRuntimeEvent({
-            type: "runtime.error",
-            ...(yield* makeEventStamp()),
-            provider: PROVIDER,
-            threadId: binding.context.threadId,
-            turnId: terminal.turnId,
-            payload: {
-              message,
-              class: result.status === "denied" ? "permission_error" : "provider_error",
-            },
-          });
-          return yield* new ProviderAdapterRequestError({
-            provider: PROVIDER,
-            method: "terminal.kill",
-            detail: message,
-          });
+          yield* offerRuntimeEvent({ type: "runtime.error", ...(yield* makeEventStamp()), provider: PROVIDER,
+            threadId: binding.context.threadId, turnId: terminal.turnId,
+            payload: { message, class: result.status === "denied" ? "permission_error" : "provider_error" } });
+          return yield* new ProviderAdapterRequestError({ provider: PROVIDER, method: "terminal.kill", detail: message });
         }
         terminal.killed = true;
       });
@@ -1057,7 +1037,11 @@ export function makeCursorAdapter(
           const requireOwnedTerminal = (terminalId: string) =>
             Effect.gen(function* () {
               const binding = toolBrokerContexts.get(input.threadId);
-              if (binding === undefined || !binding.active || !binding.terminals.has(terminalId)) {
+              if (
+                binding === undefined ||
+                !binding.active ||
+                !binding.terminals.has(terminalId)
+              ) {
                 return yield* EffectAcpErrors.AcpRequestError.resourceNotFound(
                   "ACP terminal handle 不属于当前授权 Run。",
                 );
@@ -1192,15 +1176,8 @@ export function makeCursorAdapter(
                   );
                   const turnId = ctx.activeTurnId;
                   if (turnId !== undefined && turnId === ctx.interruptedTurnId)
-                    return yield* EffectAcpErrors.AcpRequestError.invalidParams(
-                      "当前 ACP 回合已取消，终端请求未执行。",
-                    );
-                  const terminal = {
-                    outputByteLimit: request.outputByteLimit ?? null,
-                    turnId,
-                    ready: false,
-                    killed: false,
-                  };
+                    return yield* EffectAcpErrors.AcpRequestError.invalidParams("当前 ACP 回合已取消，终端请求未执行。");
+                  const terminal = { outputByteLimit: request.outputByteLimit ?? null, turnId, ready: false, killed: false };
                   binding.terminals.set(terminalId, terminal);
                   const createResult = yield* Effect.result(
                     invokeTool(
@@ -1222,18 +1199,9 @@ export function makeCursorAdapter(
                     return yield* createResult.failure;
                   }
                   terminal.ready = true;
-                  if (
-                    turnId !== ctx.activeTurnId ||
-                    (turnId !== undefined && turnId === ctx.interruptedTurnId)
-                  ) {
-                    yield* killOwnedTerminal(binding, terminalId).pipe(
-                      Effect.mapError(() =>
-                        EffectAcpErrors.AcpRequestError.internalError("晚到宿主终端停止未确认。"),
-                      ),
-                    );
-                    return yield* EffectAcpErrors.AcpRequestError.invalidParams(
-                      "ACP 回合已结束，晚到终端已停止。",
-                    );
+                  if (turnId !== ctx.activeTurnId || (turnId !== undefined && turnId === ctx.interruptedTurnId)) {
+                    yield* killOwnedTerminal(binding, terminalId).pipe(Effect.mapError(() => EffectAcpErrors.AcpRequestError.internalError("晚到宿主终端停止未确认。")));
+                    return yield* EffectAcpErrors.AcpRequestError.invalidParams("ACP 回合已结束，晚到终端已停止。");
                   }
                   return { terminalId };
                 }),
@@ -1349,21 +1317,21 @@ export function makeCursorAdapter(
                     });
                   const resolved = yield* Effect.uninterruptibleMask((restore) =>
                     Effect.gen(function* () {
-                      yield* offerRuntimeEvent({
-                        type: "user-input.requested",
-                        ...(yield* makeEventStamp()),
-                        provider: PROVIDER,
-                        threadId: input.threadId,
-                        turnId: ctx?.activeTurnId,
-                        requestId: runtimeRequestId,
-                        payload: { questions: extractAskQuestions(params) },
-                        raw: {
-                          source: "acp.cursor.extension",
-                          method: "cursor/ask_question",
-                          payload: params,
-                        },
-                      });
-                      return yield* restore(Deferred.await(answers));
+                  yield* offerRuntimeEvent({
+                    type: "user-input.requested",
+                    ...(yield* makeEventStamp()),
+                    provider: PROVIDER,
+                    threadId: input.threadId,
+                    turnId: ctx?.activeTurnId,
+                    requestId: runtimeRequestId,
+                    payload: { questions: extractAskQuestions(params) },
+                    raw: {
+                      source: "acp.cursor.extension",
+                      method: "cursor/ask_question",
+                      payload: params,
+                    },
+                  });
+    return yield* restore(Deferred.await(answers));
                     }).pipe(
                       Effect.tap(resolveInput),
                       Effect.onInterrupt(() => resolveInput({})),
@@ -1462,44 +1430,40 @@ export function makeCursorAdapter(
                           turnId: ctx?.activeTurnId,
                           requestId: runtimeRequestId,
                           permissionRequest,
-                          decision:
-                            resolved !== "cancel" && selectAcpPermissionOptionId(params, resolved)
-                              ? resolved
-                              : "cancel",
+                          decision: resolved !== "cancel" && selectAcpPermissionOptionId(params, resolved)
+                            ? resolved : "cancel",
                         }),
                       );
                     });
                   // 等待可中断，结算不可中断；断线也必须发布且仅发布一次取消终态。
                   const resolved = yield* Effect.uninterruptibleMask((restore) =>
                     Effect.gen(function* () {
-                      yield* offerRuntimeEvent(
-                        makeAcpRequestOpenedEvent({
-                          stamp: yield* makeEventStamp(),
-                          provider: PROVIDER,
-                          threadId: input.threadId,
-                          turnId: ctx?.activeTurnId,
-                          requestId: runtimeRequestId,
-                          permissionRequest,
-                          detail:
-                            permissionRequest.detail ??
-                            encodeJsonStringForDiagnostics(params)?.slice(0, 2000) ??
-                            "[unserializable params]",
-                          args: params,
-                          source: "acp.jsonrpc",
-                          method: "session/request_permission",
-                          rawPayload: params,
-                        }),
-                      );
-                      return yield* restore(Deferred.await(decision));
+                  yield* offerRuntimeEvent(
+                    makeAcpRequestOpenedEvent({
+                      stamp: yield* makeEventStamp(),
+                      provider: PROVIDER,
+                      threadId: input.threadId,
+                      turnId: ctx?.activeTurnId,
+                      requestId: runtimeRequestId,
+                      permissionRequest,
+                      detail:
+                        permissionRequest.detail ??
+                        encodeJsonStringForDiagnostics(params)?.slice(0, 2000) ??
+                        "[unserializable params]",
+                      args: params,
+                      source: "acp.jsonrpc",
+                      method: "session/request_permission",
+                      rawPayload: params,
+                    }),
+                  );
+    return yield* restore(Deferred.await(decision));
                     }).pipe(
                       Effect.tap(resolveApproval),
                       Effect.onInterrupt(() => resolveApproval("cancel")),
                     ),
                   );
-                  const selectedOptionId =
-                    resolved === "cancel"
-                      ? undefined
-                      : selectAcpPermissionOptionId(params, resolved);
+                  const selectedOptionId = resolved === "cancel"
+                    ? undefined : selectAcpPermissionOptionId(params, resolved);
                   return {
                     outcome: !selectedOptionId
                       ? ({ outcome: "cancelled" } as const)
@@ -1617,7 +1581,6 @@ export function makeCursorAdapter(
                       }),
                     );
                     return;
-
                   case "UsageUpdated":
                     yield* logNative(
                       ctx.threadId,
@@ -1884,7 +1847,9 @@ export function makeCursorAdapter(
                     ctx.pendingApprovals.size > 0 || ctx.pendingUserInputs.size > 0;
                   yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
                   yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
-                  if (ctx.promptsInFlight === 1) {
+                  // 中途崩溃时 promptsInFlight 通常为 1；有未结算交互时也必须发布终态，
+                  // 避免宿主只杀 agent 孙子进程后测试/UI 永久等待 turn.completed。
+                  if (ctx.promptsInFlight === 1 || hadPendingInteraction) {
                     yield* offerRuntimeEvent({
                       type: "turn.completed",
                       ...(yield* makeEventStamp()),

@@ -11,12 +11,7 @@ describe("AcpAdapterSupport", () => {
       new EffectAcpErrors.AcpInputStreamEndedError({}),
       new EffectAcpErrors.AcpTransportError({ operation: "read-input-stream", cause: "closed" }),
     ]) {
-      const error = mapAcpToAdapterError(
-        ProviderDriverKind.make("cursor"),
-        "thread-1" as never,
-        "session/prompt",
-        cause,
-      );
+      const error = mapAcpToAdapterError(ProviderDriverKind.make("cursor"), "thread-1" as never, "session/prompt", cause);
       expect(error._tag).toBe("ProviderAdapterSessionClosedError");
       expect(error.cause).toBe(cause);
     }

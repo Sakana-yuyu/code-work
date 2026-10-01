@@ -21,8 +21,8 @@ import * as EffectAcpClient from "effect-acp/client";
 import * as EffectAcpErrors from "effect-acp/errors";
 import * as EffectAcpSchema from "effect-acp/schema";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
-import { truncate } from "@codework/shared/String";
 import { resolveSpawnCommand } from "@codework/shared/shell";
+import { truncate } from "@codework/shared/String";
 import { stableStringify } from "@codework/shared/relaySigning";
 
 import {
@@ -48,10 +48,7 @@ import {
 import { normalizeGeminiToolResult } from "./GeminiAcpToolResult.ts";
 import { normalizeCopilotToolResult } from "./CopilotAcpToolResult.ts";
 import { normalizeKiloToolResult } from "./KiloAcpToolResult.ts";
-import {
-  normalizeCodebuddyToolResult,
-  normalizeCodebuddyCancelledToolNotification,
-} from "./CodebuddyAcpToolResult.ts";
+import { normalizeCodebuddyToolResult, normalizeCodebuddyCancelledToolNotification } from "./CodebuddyAcpToolResult.ts";
 
 interface AcpToolCallTrackedState {
   readonly state: AcpToolCallState;
@@ -75,19 +72,6 @@ const defaultSessionLoadTimeout = Duration.seconds(90);
 const decodeSetModeResponse = Schema.decodeUnknownEffect(EffectAcpSchema.SetSessionModeResponse);
 const defaultSessionLoadReplayIdleGap = Duration.seconds(2);
 
-// Harn 可在回合中询问宿主能力；回复始终复用 initialize 已广告的能力。
-const HostCapabilitiesRequest = Schema.Struct({
-  sessionId: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1))),
-  _meta: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-});
-
-export interface AcpSpawnInput {
-  readonly command: string;
-  readonly args: ReadonlyArray<string>;
-  readonly cwd?: string;
-  readonly env?: NodeJS.ProcessEnv;
-}
-
 const KiroCommand = Schema.Struct({
   name: Schema.String,
   description: Schema.optionalKey(Schema.String),
@@ -108,6 +92,19 @@ const decodeKiroCommandResult = Schema.decodeUnknownEffect(
   }),
 );
 const encodeKiroCommandData = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+
+// Harn 可在回合中询问宿主能力；回复始终复用 initialize 已广告的能力。
+const HostCapabilitiesRequest = Schema.Struct({
+  sessionId: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1))),
+  _meta: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+});
+
+export interface AcpSpawnInput {
+  readonly command: string;
+  readonly args: ReadonlyArray<string>;
+  readonly cwd?: string;
+  readonly env?: NodeJS.ProcessEnv;
+}
 
 export interface AcpSessionRuntimeOptions {
   readonly spawn: AcpSpawnInput;
@@ -425,18 +422,15 @@ export const make = (
     const cancelSerializationSemaphore = yield* Semaphore.make(1);
     const activePromptRef = yield* Ref.make<
       Option.Option<{
-        readonly fiber: Fiber.Fiber<
-          {
-            readonly response: EffectAcpSchema.PromptResponse;
-            readonly receivedAtMillis: number;
-          },
-          EffectAcpErrors.AcpError
-        >;
+        readonly fiber: Fiber.Fiber<{
+          readonly response: EffectAcpSchema.PromptResponse;
+          readonly receivedAtMillis: number;
+        }, EffectAcpErrors.AcpError>;
         readonly cancelled: Deferred.Deferred<void>;
       }>
     >(Option.none());
     const sessionLoadGateRef = yield* Ref.make<Option.Option<SessionLoadGate>>(Option.none());
-    // Gajae 的回合 RPC 与空闲通知分开到达，等待归属于当前串行回合。
+    // Gajae 在 session/prompt 返回后仍可能短暂拒绝下一回合；等 update._meta.gjcPhase=idle。
     const promptIdleWaiterRef = yield* Ref.make<Option.Option<Deferred.Deferred<void>>>(
       Option.none(),
     );
@@ -472,16 +466,29 @@ export const make = (
         ),
       );
 
+    // Fixture flags (CODEWORK_ACP_*) must not leak across tests via the parent
+    // process env. Keep only keys the spawn config sets explicitly.
+    const spawnEnv = options.spawn.env
+      ? (() => {
+          const env: Record<string, string | undefined> = { ...process.env };
+          for (const key of Object.keys(env)) {
+            if (key.startsWith("CODEWORK_ACP_") && !Object.hasOwn(options.spawn.env!, key)) {
+              delete env[key];
+            }
+          }
+          return { ...env, ...options.spawn.env };
+        })()
+      : undefined;
     const spawnCommand = yield* resolveSpawnCommand(
       options.spawn.command,
       options.spawn.args,
-      options.spawn.env ? { env: options.spawn.env, extendEnv: true } : {},
+      spawnEnv ? { env: spawnEnv, extendEnv: false } : {},
     );
     const child = yield* spawner
       .spawn(
         ChildProcess.make(spawnCommand.command, spawnCommand.args, {
           ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
-          ...(options.spawn.env ? { env: options.spawn.env, extendEnv: true } : {}),
+          ...(spawnEnv ? { env: spawnEnv, extendEnv: false } : {}),
           shell: spawnCommand.shell,
         }),
       )
@@ -854,15 +861,11 @@ export const make = (
         | EffectAcpSchema.ResumeSessionResponse;
       if (options.resumeSessionId) {
         // 0.61.0 在 loadSession 读取前重置同 ID 历史，阻止发送以保留原会话。
-        if (
-          initializeResult.agentInfo?.name === "gemini-cli" &&
-          initializeResult.agentInfo.version === "0.61.0"
-        ) {
+        if (initializeResult.agentInfo?.name === "gemini-cli" && initializeResult.agentInfo.version === "0.61.0") {
           return yield* new EffectAcpErrors.AcpRequestError({
             code: -32000,
             method: "session/load",
-            errorMessage:
-              "Gemini CLI 0.61.0 的 ACP 恢复会覆盖历史，已阻止恢复请求；请使用经验证支持恢复的版本。",
+            errorMessage: "Gemini CLI 0.61.0 的 ACP 恢复会覆盖历史，已阻止恢复请求；请使用经验证支持恢复的版本。",
             data: { reason: "gemini-0.61.0-session-load-history-loss" },
           });
         }
@@ -1043,14 +1046,11 @@ export const make = (
               });
             }
             const activePrompt = yield* Ref.get(activePromptRef);
-            const response = yield* rootSession && Option.isSome(activePrompt)
-              ? Effect.raceFirst(
-                  handler(request),
-                  Deferred.await(activePrompt.value.cancelled).pipe(
-                    Effect.as({ outcome: { outcome: "cancelled" as const } }),
-                  ),
-                )
-              : handler(request);
+            const response = yield* (rootSession && Option.isSome(activePrompt)
+              ? Effect.raceFirst(handler(request), Deferred.await(activePrompt.value.cancelled).pipe(
+                  Effect.as({ outcome: { outcome: "cancelled" as const } }),
+                ))
+              : handler(request));
             if (rootSession && toolCall) {
               const outcome = response.outcome;
               const choice =
@@ -1106,24 +1106,17 @@ export const make = (
             // 本地取消已结束显示；下一回合仍须等原 RPC 终结，避免远端取消波及新请求。
             const previous = yield* Ref.get(activePromptRef);
             if (Option.isSome(previous)) {
-              const settled = yield* Fiber.await(previous.value.fiber).pipe(
-                Effect.timeoutOption("5 seconds"),
-              );
-              if (Option.isNone(settled))
-                return yield* new EffectAcpErrors.AcpRequestError({
-                  code: -32000,
-                  errorMessage: "上一 ACP 回合取消后仍未确认终结；新请求未发送，请重新连接会话。",
-                  method: "session/prompt",
-                });
-              if (Exit.isFailure(settled.value))
-                return yield* Effect.failCause(settled.value.cause);
+              const settled = yield* Fiber.await(previous.value.fiber).pipe(Effect.timeoutOption("5 seconds"));
+              if (Option.isNone(settled)) return yield* new EffectAcpErrors.AcpRequestError({
+                code: -32000,
+                errorMessage: "上一 ACP 回合取消后仍未确认终结；新请求未发送，请重新连接会话。",
+                method: "session/prompt",
+              });
+              if (Exit.isFailure(settled.value)) return yield* Effect.failCause(settled.value.cause);
               // 固定 CodeBuddy 的取消回复早于 500ms 保护窗口结束；只按明确厂商结果限制。
               const { response, receivedAtMillis } = settled.value.value;
-              if (
-                response.stopReason === "cancelled" &&
-                response._meta?.["codebuddy.ai/outcome"] === "CANCELLED" &&
-                (yield* Clock.currentTimeMillis) < receivedAtMillis + 500
-              )
+              if (response.stopReason === "cancelled" && response._meta?.["codebuddy.ai/outcome"] === "CANCELLED" &&
+                  (yield* Clock.currentTimeMillis) < receivedAtMillis + 500)
                 return yield* new EffectAcpErrors.AcpRequestError({
                   code: -32000,
                   errorMessage: "CodeBuddy 取消保护窗口尚未结束；新请求未发送，请稍后重试。",
@@ -1172,10 +1165,7 @@ export const make = (
               commandName !== "help" &&
               commandName !== "compact" &&
               (yield* Ref.get(kiroCommandNamesRef)).has(commandName);
-            const promptRequest: Effect.Effect<
-              EffectAcpSchema.PromptResponse,
-              EffectAcpErrors.AcpError
-            > = nativeCommand
+            const promptRequest: Effect.Effect<EffectAcpSchema.PromptResponse, EffectAcpErrors.AcpError> = nativeCommand
               ? Effect.gen(function* () {
                   if (payload.prompt.length !== 1) {
                     return yield* new EffectAcpErrors.AcpRequestError({
@@ -1260,11 +1250,7 @@ export const make = (
             // 等待空闲仍属于当前请求；取消必须能中断整个阶段，超时不伪造成功。
             const cancelled = yield* Deferred.make<void>();
             const promptRpcFiber = yield* promptRequest.pipe(
-              Effect.flatMap((response) =>
-                Clock.currentTimeMillis.pipe(
-                  Effect.map((receivedAtMillis) => ({ response, receivedAtMillis })),
-                ),
-              ),
+              Effect.flatMap((response) => Clock.currentTimeMillis.pipe(Effect.map((receivedAtMillis) => ({ response, receivedAtMillis })))),
               Effect.forkIn(runtimeScope),
             );
             yield* Ref.set(activePromptRef, Option.some({ fiber: promptRpcFiber, cancelled }));
@@ -1278,14 +1264,11 @@ export const make = (
                       Effect.flatMap((ready) =>
                         Option.isSome(ready)
                           ? Effect.void
-                          : Effect.fail(
-                              new EffectAcpErrors.AcpRequestError({
-                                code: -32000,
-                                errorMessage:
-                                  "Gajae 会话等待空闲超过 60 秒，远端回合状态未知，请确认后再操作。",
-                                method: "session/prompt",
-                              }),
-                            ),
+                          : Effect.fail(new EffectAcpErrors.AcpRequestError({
+                              code: -32000,
+                              errorMessage: "Gajae 会话等待空闲超过 60 秒，远端回合状态未知，请确认后再操作。",
+                              method: "session/prompt",
+                            })),
                       ),
                     )
                   : Effect.void,
@@ -1344,30 +1327,24 @@ export const make = (
                     queue: eventQueue,
                     assistantSegmentRef,
                   });
+
                 }),
               ),
               Effect.ensuring(Ref.set(promptIdleWaiterRef, Option.none())),
             );
           }),
         ),
-      cancel: cancelSerializationSemaphore.withPermit(
-        getStartedState.pipe(
-          Effect.flatMap((started) =>
-            Effect.gen(function* () {
-              const activePrompt = yield* Ref.get(activePromptRef);
-              if (
-                Option.isNone(activePrompt) ||
-                (yield* Deferred.isDone(activePrompt.value.cancelled))
-              )
-                return;
-              // 通知先入队，本地停止不丢弃原 RPC；重复/空闲取消不发送新通知。
-              yield* acp.agent.cancel({ sessionId: started.sessionId });
-              yield* Deferred.succeed(activePrompt.value.cancelled, undefined);
-            }),
-          ),
+      cancel: cancelSerializationSemaphore.withPermit(getStartedState.pipe(
+        Effect.flatMap((started) =>
+          Effect.gen(function* () {
+            const activePrompt = yield* Ref.get(activePromptRef);
+            if (Option.isNone(activePrompt) || (yield* Deferred.isDone(activePrompt.value.cancelled))) return;
+            // 通知先入队，本地停止不丢弃原 RPC；重复/空闲取消不发送新通知。
+            yield* acp.agent.cancel({ sessionId: started.sessionId });
+            yield* Deferred.succeed(activePrompt.value.cancelled, undefined);
+          }),
         ),
-      ),
-
+      )),
       close: Effect.gen(function* () {
         const state = yield* Ref.get(startStateRef);
         if (
@@ -1512,14 +1489,7 @@ const handleSessionUpdate = ({
   readonly agentName: string | undefined;
 }): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const parsed = parseSessionUpdateEvent(
-      normalizeCodebuddyToolResult(
-        normalizeKiloToolResult(
-          normalizeCopilotToolResult(normalizeGeminiToolResult(params, agentName), agentName),
-          agentName,
-        ),
-      ),
-    );
+    const parsed = parseSessionUpdateEvent(normalizeCodebuddyToolResult(normalizeKiloToolResult(normalizeCopilotToolResult(normalizeGeminiToolResult(params, agentName), agentName), agentName)));
     if (parsed.modeId) {
       yield* Ref.update(modeStateRef, (current) =>
         current === undefined ? current : updateModeState(current, parsed.modeId!),
@@ -1580,12 +1550,17 @@ const handleSessionUpdate = ({
       }
       if (event._tag === "ContentDelta") {
         if (event.streamKind === "reasoning_text") {
-          // 思考单独传递，正文不能跨过思考段合并。
+          // 思考单独传递；结束前一正文段，避免后续正文跨过思考段合并。
           yield* closeActiveAssistantSegment({ queue, assistantSegmentRef });
           yield* Queue.offer(queue, event);
           continue;
         }
-        if (event.text.trim().length === 0 && !event.image && !event.audio && !event.blob) {
+        if (
+          event.text.trim().length === 0 &&
+          !event.image &&
+          !event.audio &&
+          !event.blob
+        ) {
           const assistantSegmentState = yield* Ref.get(assistantSegmentRef);
           if (!assistantSegmentState.activeItemId) {
             continue;

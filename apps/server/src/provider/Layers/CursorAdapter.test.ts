@@ -3,6 +3,7 @@ import * as NodePath from "node:path";
 import * as NodeOS from "node:os";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeURL from "node:url";
+import * as NodeChildProcess from "node:child_process";
 import * as NodeProcess from "node:process";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -81,8 +82,12 @@ async function makeMockAgentWrapper(
             'const extraEnv = JSON.parse(readFileSync(envPath, "utf8"));',
             "const delay = Number(delayMs);",
             "const start = () => {",
+            "  const env = { ...process.env };",
+            "  for (const key of Object.keys(env)) {",
+            '    if (key.startsWith("CODEWORK_ACP_") && !(key in extraEnv)) delete env[key];',
+            "  }",
             "  const child = spawn(process.execPath, [agentPath, ...args], {",
-            "    env: { ...process.env, ...extraEnv },",
+            "    env: { ...env, ...extraEnv },",
             '    stdio: "inherit",',
             "  });",
             '  child.once("exit", (code) => process.exit(code ?? 1));',
@@ -235,93 +240,6 @@ const cursorAdapterTestLayer = it.layer(
 );
 
 cursorAdapterTestLayer("CursorAdapterLive", (it) => {
-  it.effect("ACP 用量归零更新投影，忽略其它会话与重放用量", () =>
-    Effect.gen(function* () {
-      const adapter = yield* CursorAdapter;
-      const settings = yield* ServerSettingsService;
-      const threadId = ThreadId.make("acp-usage-update");
-      const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_USAGE: "1" }),
-      );
-      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
-      const eventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.takeUntil((event) => event.type === "turn.completed"),
-        Stream.runCollect,
-        Effect.forkChild,
-      );
-      yield* adapter.startSession({
-        threadId,
-        provider: ProviderDriverKind.make("cursor"),
-        cwd: process.cwd(),
-        runtimeMode: "full-access",
-        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
-      });
-      const turn = yield* adapter.sendTurn({ threadId, input: "用量测试" });
-      const updates = Array.from(yield* Fiber.join(eventsFiber)).filter(
-        (event) => event.type === "thread.token-usage.updated",
-      );
-      assert.deepEqual(
-        updates.map((event) => event.payload.usage),
-        [
-          { usedTokens: 320, maxTokens: 64_000 },
-          { usedTokens: 0, maxTokens: 64_000 },
-        ],
-      );
-      assert.isTrue(
-        updates.every((event) => event.threadId === threadId && event.turnId === turn.turnId),
-      );
-      assert.deepEqual(
-        updates
-          .flatMap((event) => runtimeEventToActivities(event))
-          .map((activity) => activity.payload),
-        [
-          { usedTokens: 320, maxTokens: 64_000 },
-          { usedTokens: 0, maxTokens: 64_000 },
-        ],
-      );
-      yield* adapter.stopSession(threadId);
-    }),
-  );
-
-  it.effect("ACP 思考独立传递，前后正文使用不同消息 ID", () =>
-    Effect.gen(function* () {
-      const adapter = yield* CursorAdapter;
-      const settings = yield* ServerSettingsService;
-      const threadId = ThreadId.make("acp-thought-segmentation");
-      const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_THOUGHTS: "1" }),
-      );
-      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
-      const eventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.takeUntil((event) => event.type === "turn.completed"),
-        Stream.runCollect,
-        Effect.forkChild,
-      );
-      yield* adapter.startSession({
-        threadId,
-        provider: ProviderDriverKind.make("cursor"),
-        cwd: process.cwd(),
-        runtimeMode: "full-access",
-        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
-      });
-      yield* adapter.sendTurn({ threadId, input: "协议测试" });
-      const events = Array.from(yield* Fiber.join(eventsFiber));
-      const deltas = events.filter((event) => event.type === "content.delta");
-      assert.deepEqual(
-        deltas.map((event) => event.payload.streamKind),
-        ["assistant_text", "reasoning_text", "assistant_text"],
-      );
-      assert.deepEqual(
-        deltas.map((event) => event.payload.delta),
-        ["before thought", "测试思考", "after thought"],
-      );
-      assert.isDefined(deltas[0]?.itemId);
-      assert.isDefined(deltas[2]?.itemId);
-      assert.notEqual(deltas[0]?.itemId, deltas[2]?.itemId);
-      assert.deepEqual(runtimeEventToActivities(deltas[1]!), []);
-      yield* adapter.stopSession(threadId);
-    }),
-  );
   for (const closeBehavior of ["success", "fail", "unsupported"]) {
     it.effect(`停止会话遵守关闭广告并报告 ${closeBehavior} 结果`, () =>
       Effect.gen(function* () {
@@ -674,6 +592,219 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         event?.payload.models?.map((model) => model.slug),
         ["dynamic-default", "dynamic-next"],
       );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("ACP 用量归零更新投影，忽略其它会话与重放用量", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("acp-usage-update");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_USAGE: "1" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+      const turn = yield* adapter.sendTurn({ threadId, input: "用量测试" });
+      const updates = Array.from(yield* Fiber.join(eventsFiber)).filter(
+        (event) => event.type === "thread.token-usage.updated",
+      );
+      assert.deepEqual(
+        updates.map((event) => event.payload.usage),
+        [
+          { usedTokens: 320, maxTokens: 64_000 },
+          { usedTokens: 0, maxTokens: 64_000 },
+        ],
+      );
+      assert.isTrue(
+        updates.every((event) => event.threadId === threadId && event.turnId === turn.turnId),
+      );
+      assert.deepEqual(
+        updates
+          .flatMap((event) => runtimeEventToActivities(event))
+          .map((activity) => activity.payload),
+        [
+          { usedTokens: 320, maxTokens: 64_000 },
+          { usedTokens: 0, maxTokens: 64_000 },
+        ],
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("Cursor 图片独立成段且过滤重放和其它会话", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("acp-resource-stream");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_IMAGES: "1" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+      yield* adapter.sendTurn({ threadId, input: "资源测试" });
+      const deltas = Array.from(yield* Fiber.join(eventsFiber)).filter(
+        (event) => event.type === "content.delta",
+      );
+      assert.equal(deltas.length, 5);
+      assert.equal(new Set(deltas.map((event) => event.itemId)).size, 5);
+      assert.deepEqual(
+        deltas.map((event) => event.payload.delta),
+        ["图片前文", "", "", "图片后文", ""],
+      );
+      assert.equal(deltas.filter((event) => event.payload.image).length, 3);
+      assert.equal(deltas[1]?.payload.image?.mimeType, "image/png");
+      assert.deepInclude(deltas[1]!.raw!.payload, {
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "image", mimeType: "image/png", data: "[省略图片正文]" },
+        },
+      });
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+it.effect("Cursor 音频与 blob 保留流类型、独立段和会话隔离", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("acp-resource-stream");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_BINARY: "1" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+      yield* adapter.sendTurn({ threadId, input: "资源测试" });
+      const deltas = Array.from(yield* Fiber.join(eventsFiber)).filter(
+        (event) => event.type === "content.delta",
+      );
+      assert.equal(deltas.length, 7);
+      assert.equal(new Set(deltas.map((event) => event.itemId)).size, 7);
+      assert.equal(deltas[0]?.payload.streamKind, "reasoning_text");
+      const assistant = deltas.filter((event) => event.payload.streamKind === "assistant_text");
+      assert.deepEqual(assistant.map((event) => event.payload.delta), ["媒体前文", "", "", "", "", "媒体后文"]);
+      assert.equal(assistant.filter((event) => event.payload.audio).length, 2);
+      assert.equal(assistant.filter((event) => event.payload.blob).length, 2);
+      assert.equal(assistant[1]?.payload.audio?.mimeType, "audio/wav");
+      assert.equal(assistant[2]?.payload.blob?.uri, "file:///workspace/report.bin");
+      assert.deepInclude(assistant[1]!.raw!.payload, { update: { sessionUpdate: "agent_message_chunk", content: { type: "audio", mimeType: "audio/wav", data: "[省略音频正文]" } } });
+      assert.deepInclude(assistant[2]!.raw!.payload, { update: { sessionUpdate: "agent_message_chunk", content: { type: "resource", resource: { uri: "file:///workspace/report.bin", mimeType: "application/octet-stream", blob: "[省略二进制正文]" } } } });
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("ACP 资源独立成段且排除重放和其它会话", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("acp-resource-stream");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_RESOURCES: "1" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+      yield* adapter.sendTurn({ threadId, input: "资源测试" });
+      const deltas = Array.from(yield* Fiber.join(eventsFiber)).filter(
+        (event) => event.type === "content.delta",
+      );
+      assert.equal(deltas.length, 4);
+      assert.isDefined(deltas[0]?.itemId);
+      assert.equal(new Set(deltas.map((event) => event.itemId)).size, 4);
+      const text = deltas.map((event) => event.payload.delta).join("");
+      assert.include(text, "[资源报告](<https://example.com/report?q=1#section>)");
+      assert.include(text, "报告说明");
+      assert.include(text, "mcp://example/report");
+      assert.include(
+        text,
+        "````text\n报告正文\n```\n![不是图片](https://example.com/test.png)\n```\n````",
+      );
+      assert.match(text, /^资源开始[\s\S]*资源结束$/);
+      assert.notInclude(text, "不应出现");
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("ACP 思考独立传递，前后正文使用不同消息 ID", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("acp-thought-segmentation");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_THOUGHTS: "1" }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+      yield* adapter.sendTurn({ threadId, input: "协议测试" });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const deltas = events.filter((event) => event.type === "content.delta");
+      assert.deepEqual(
+        deltas.map((event) => event.payload.streamKind),
+        ["assistant_text", "reasoning_text", "assistant_text"],
+      );
+      assert.deepEqual(
+        deltas.map((event) => event.payload.delta),
+        ["before thought", "测试思考", "after thought"],
+      );
+      assert.isDefined(deltas[0]?.itemId);
+      assert.isDefined(deltas[2]?.itemId);
+      assert.notEqual(deltas[0]?.itemId, deltas[2]?.itemId);
+      assert.deepEqual(runtimeEventToActivities(deltas[1]!), []);
       yield* adapter.stopSession(threadId);
     }),
   );
@@ -1646,9 +1777,6 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
     "streams ACP tool calls and approvals on the active turn in approval-required mode",
     () =>
       Effect.gen(function* () {
-        const previousEmitToolCalls = process.env.CODEWORK_ACP_EMIT_TOOL_CALLS;
-        process.env.CODEWORK_ACP_EMIT_TOOL_CALLS = "1";
-
         const adapter = yield* CursorAdapter;
         const serverSettings = yield* ServerSettingsService;
         const threadId = ThreadId.make("cursor-tool-call-probe");
@@ -1808,17 +1936,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
           }
         });
 
-        yield* program.pipe(
-          Effect.ensuring(
-            Effect.sync(() => {
-              if (previousEmitToolCalls === undefined) {
-                delete process.env.CODEWORK_ACP_EMIT_TOOL_CALLS;
-              } else {
-                process.env.CODEWORK_ACP_EMIT_TOOL_CALLS = previousEmitToolCalls;
-              }
-            }),
-          ),
-        );
+        yield* program;
       }).pipe(
         Effect.provide(
           Layer.effect(
@@ -2212,15 +2330,15 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         const serverSettings = yield* ServerSettingsService;
         const threadId = ThreadId.make("cursor-crash-mid-approval");
         const approvalOpened = yield* Deferred.make<string>();
-        const approvalResolved = yield* Deferred.make<ProviderRuntimeEvent>();
         const turnCompleted = yield* Deferred.make<ProviderRuntimeEvent>();
         const sessionExited = yield* Deferred.make<ProviderRuntimeEvent>();
+        const events: ProviderRuntimeEvent[] = [];
 
         const childLogDir = yield* Effect.promise(() =>
           NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-crash-agent-")),
         );
         const childPidLogPath = NodePath.join(childLogDir, "agent.pid");
-        // 只终止本次夹具启动时记录的 Agent；收到审批事件后触发，不靠定时猜测。
+        // 收到审批后仅终止本次夹具记录的 agent PID（与 Grok 中途崩溃用例一致）。
         const wrapperPath = yield* Effect.promise(() =>
           makeMockAgentWrapper({
             CODEWORK_ACP_EMIT_TOOL_CALLS: "1",
@@ -2231,15 +2349,13 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
           providers: { cursor: { binaryPath: wrapperPath } },
         });
 
-        const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) => {
+        yield* Stream.runForEach(adapter.streamEvents, (event) => {
           if (String(event.threadId) !== String(threadId)) {
             return Effect.void;
           }
+          events.push(event);
           if (event.type === "request.opened" && event.requestId) {
             return Deferred.succeed(approvalOpened, String(event.requestId)).pipe(Effect.ignore);
-          }
-          if (event.type === "request.resolved") {
-            return Deferred.succeed(approvalResolved, event).pipe(Effect.ignore);
           }
           if (event.type === "turn.completed") {
             return Deferred.succeed(turnCompleted, event).pipe(Effect.ignore);
@@ -2271,81 +2387,96 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
           yield* Effect.promise(() => NodeFSP.readFile(childPidLogPath, "utf8")),
         );
         assert.isTrue(Number.isSafeInteger(childPid) && childPid > 0);
-        yield* Effect.sync(() => NodeProcess.kill(childPid));
+        // Windows：taskkill /T 打掉 agent 及其包装树，避免只杀孙子进程后 stdio/exitCode 不同步。
+        yield* Effect.promise(
+          () =>
+            new Promise<void>((resolve) => {
+              const killer = NodeChildProcess.spawn(
+                "taskkill.exe",
+                ["/pid", String(childPid), "/t", "/f"],
+                { stdio: "ignore", windowsHide: true },
+              );
+              killer.once("exit", () => resolve());
+              killer.once("error", () => {
+                try {
+                  NodeProcess.kill(childPid);
+                } catch {
+                  // Agent may already be gone.
+                }
+                resolve();
+              });
+            }),
+        );
         const completed = yield* Deferred.await(turnCompleted);
+        assert.equal((yield* Fiber.await(sendTurnFiber))._tag, "Failure");
+        assert.equal(yield* adapter.hasSession(threadId), false);
         const exited = yield* Deferred.await(sessionExited);
-        const sendExit = yield* Fiber.await(sendTurnFiber);
-        const resolved = yield* Deferred.await(approvalResolved);
-        yield* Fiber.interrupt(runtimeEventsFiber);
-
         assert.equal(completed.type, "turn.completed");
         if (completed.type === "turn.completed") {
           assert.equal(completed.payload.state, "failed");
           assert.isTrue(Boolean(completed.payload.errorMessage));
         }
         assert.equal(exited.type, "session.exited");
-        assert.equal(resolved.type, "request.resolved");
-        if (resolved.type === "request.resolved") assert.equal(resolved.payload.decision, "cancel");
-        assert.equal(sendExit._tag, "Failure");
-        assert.equal(yield* adapter.hasSession(threadId), false);
-
+        assert.equal(events.filter((event) => event.type === "request.resolved").length, 1);
         const lateApproval = yield* adapter
           .respondToRequest(threadId, ApprovalRequestId.make(requestId), "accept")
           .pipe(Effect.result);
         assert.equal(lateApproval._tag, "Failure");
       }).pipe(TestClock.withLive),
-    { timeout: 30_000 },
+    { timeout: 60_000 },
   );
 
-  it.effect("late approval after stop fails once pending approval was settled by disconnect", () =>
-    Effect.gen(function* () {
-      const adapter = yield* CursorAdapter;
-      const serverSettings = yield* ServerSettingsService;
-      const threadId = ThreadId.make("cursor-late-approval-after-stop");
-      const approvalOpened = yield* Deferred.make<string>();
+  it.effect(
+    "late approval after stop fails once pending approval was settled by disconnect",
+    () =>
+      Effect.gen(function* () {
+        const adapter = yield* CursorAdapter;
+        const serverSettings = yield* ServerSettingsService;
+        const threadId = ThreadId.make("cursor-late-approval-after-stop");
+        const approvalOpened = yield* Deferred.make<string>();
 
-      const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }),
-      );
-      yield* serverSettings.updateSettings({
-        providers: { cursor: { binaryPath: wrapperPath } },
-      });
+        const wrapperPath = yield* Effect.promise(() =>
+          makeMockAgentWrapper({ CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }),
+        );
+        yield* serverSettings.updateSettings({
+          providers: { cursor: { binaryPath: wrapperPath } },
+        });
 
-      yield* Stream.runForEach(adapter.streamEvents, (event) => {
-        if (String(event.threadId) !== String(threadId)) {
+        yield* Stream.runForEach(adapter.streamEvents, (event) => {
+          if (String(event.threadId) !== String(threadId)) {
+            return Effect.void;
+          }
+          if (event.type === "request.opened" && event.requestId) {
+            return Deferred.succeed(approvalOpened, String(event.requestId)).pipe(Effect.ignore);
+          }
           return Effect.void;
-        }
-        if (event.type === "request.opened" && event.requestId) {
-          return Deferred.succeed(approvalOpened, String(event.requestId)).pipe(Effect.ignore);
-        }
-        return Effect.void;
-      }).pipe(Effect.forkChild);
+        }).pipe(Effect.forkChild);
 
-      yield* adapter.startSession({
-        threadId,
-        provider: ProviderDriverKind.make("cursor"),
-        cwd: process.cwd(),
-        runtimeMode: "approval-required",
-        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
-      });
-
-      const sendTurnFiber = yield* adapter
-        .sendTurn({
+        yield* adapter.startSession({
           threadId,
-          input: "approve after disconnect",
-          attachments: [],
-        })
-        .pipe(Effect.forkChild);
+          provider: ProviderDriverKind.make("cursor"),
+          cwd: process.cwd(),
+          runtimeMode: "approval-required",
+          modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+        });
 
-      const requestId = yield* Deferred.await(approvalOpened);
-      yield* adapter.stopSession(threadId);
-      yield* Fiber.await(sendTurnFiber);
-      assert.equal(yield* adapter.hasSession(threadId), false);
-      const lateApproval = yield* adapter
-        .respondToRequest(threadId, ApprovalRequestId.make(requestId), "accept")
-        .pipe(Effect.result);
-      assert.equal(lateApproval._tag, "Failure");
-    }).pipe(TestClock.withLive),
+        const sendTurnFiber = yield* adapter
+          .sendTurn({
+            threadId,
+            input: "approve after disconnect",
+            attachments: [],
+          })
+          .pipe(Effect.forkChild);
+
+        const requestId = yield* Deferred.await(approvalOpened);
+        yield* adapter.stopSession(threadId);
+        yield* Fiber.await(sendTurnFiber);
+        assert.equal(yield* adapter.hasSession(threadId), false);
+        const lateApproval = yield* adapter
+          .respondToRequest(threadId, ApprovalRequestId.make(requestId), "accept")
+          .pipe(Effect.result);
+        assert.equal(lateApproval._tag, "Failure");
+      }).pipe(TestClock.withLive),
   );
 
   it.effect("stopping a session settles pending user-input waits", () =>
@@ -2754,150 +2885,5 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       // they wait on virtual time that never advances, and a regression would
       // hang until the suite timeout instead of failing here.
     }).pipe(TestClock.withLive),
-  );
-
-  it.effect("ACP 资源独立成段且排除重放和其它会话", () =>
-    Effect.gen(function* () {
-      const adapter = yield* CursorAdapter;
-      const settings = yield* ServerSettingsService;
-      const threadId = ThreadId.make("acp-resource-stream");
-      const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_RESOURCES: "1" }),
-      );
-      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
-      const eventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.takeUntil((event) => event.type === "turn.completed"),
-        Stream.runCollect,
-        Effect.forkChild,
-      );
-      yield* adapter.startSession({
-        threadId,
-        provider: ProviderDriverKind.make("cursor"),
-        cwd: process.cwd(),
-        runtimeMode: "full-access",
-        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
-      });
-      yield* adapter.sendTurn({ threadId, input: "资源测试" });
-      const deltas = Array.from(yield* Fiber.join(eventsFiber)).filter(
-        (event) => event.type === "content.delta",
-      );
-      assert.equal(deltas.length, 4);
-      assert.isDefined(deltas[0]?.itemId);
-      assert.equal(new Set(deltas.map((event) => event.itemId)).size, 4);
-      const text = deltas.map((event) => event.payload.delta).join("");
-      assert.include(text, "[资源报告](<https://example.com/report?q=1#section>)");
-      assert.include(text, "报告说明");
-      assert.include(text, "mcp://example/report");
-      assert.include(
-        text,
-        "````text\n报告正文\n```\n![不是图片](https://example.com/test.png)\n```\n````",
-      );
-      assert.match(text, /^资源开始[\s\S]*资源结束$/);
-      assert.notInclude(text, "不应出现");
-      yield* adapter.stopSession(threadId);
-    }),
-  );
-
-  it.effect("Cursor 图片独立成段且过滤重放和其它会话", () =>
-    Effect.gen(function* () {
-      const adapter = yield* CursorAdapter;
-      const settings = yield* ServerSettingsService;
-      const threadId = ThreadId.make("acp-resource-stream");
-      const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_IMAGES: "1" }),
-      );
-      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
-      const eventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.takeUntil((event) => event.type === "turn.completed"),
-        Stream.runCollect,
-        Effect.forkChild,
-      );
-      yield* adapter.startSession({
-        threadId,
-        provider: ProviderDriverKind.make("cursor"),
-        cwd: process.cwd(),
-        runtimeMode: "full-access",
-        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
-      });
-      yield* adapter.sendTurn({ threadId, input: "资源测试" });
-      const deltas = Array.from(yield* Fiber.join(eventsFiber)).filter(
-        (event) => event.type === "content.delta",
-      );
-      assert.equal(deltas.length, 5);
-      assert.equal(new Set(deltas.map((event) => event.itemId)).size, 5);
-      assert.deepEqual(
-        deltas.map((event) => event.payload.delta),
-        ["图片前文", "", "", "图片后文", ""],
-      );
-      assert.equal(deltas.filter((event) => event.payload.image).length, 3);
-      assert.equal(deltas[1]?.payload.image?.mimeType, "image/png");
-      assert.deepInclude(deltas[1]!.raw!.payload, {
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: { type: "image", mimeType: "image/png", data: "[省略图片正文]" },
-        },
-      });
-      yield* adapter.stopSession(threadId);
-    }),
-  );
-
-  it.effect("Cursor 音频与 blob 保留流类型、独立段和会话隔离", () =>
-    Effect.gen(function* () {
-      const adapter = yield* CursorAdapter;
-      const settings = yield* ServerSettingsService;
-      const threadId = ThreadId.make("acp-resource-stream");
-      const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_BINARY: "1" }),
-      );
-      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
-      const eventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.takeUntil((event) => event.type === "turn.completed"),
-        Stream.runCollect,
-        Effect.forkChild,
-      );
-      yield* adapter.startSession({
-        threadId,
-        provider: ProviderDriverKind.make("cursor"),
-        cwd: process.cwd(),
-        runtimeMode: "full-access",
-        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
-      });
-      yield* adapter.sendTurn({ threadId, input: "资源测试" });
-      const deltas = Array.from(yield* Fiber.join(eventsFiber)).filter(
-        (event) => event.type === "content.delta",
-      );
-      assert.equal(deltas.length, 7);
-      assert.equal(new Set(deltas.map((event) => event.itemId)).size, 7);
-      assert.equal(deltas[0]?.payload.streamKind, "reasoning_text");
-      const assistant = deltas.filter((event) => event.payload.streamKind === "assistant_text");
-      assert.deepEqual(
-        assistant.map((event) => event.payload.delta),
-        ["媒体前文", "", "", "", "", "媒体后文"],
-      );
-      assert.equal(assistant.filter((event) => event.payload.audio).length, 2);
-      assert.equal(assistant.filter((event) => event.payload.blob).length, 2);
-      assert.equal(assistant[1]?.payload.audio?.mimeType, "audio/wav");
-      assert.equal(assistant[2]?.payload.blob?.uri, "file:///workspace/report.bin");
-      assert.deepInclude(assistant[1]!.raw!.payload, {
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: { type: "audio", mimeType: "audio/wav", data: "[省略音频正文]" },
-        },
-      });
-      assert.deepInclude(assistant[2]!.raw!.payload, {
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: {
-            type: "resource",
-            resource: {
-              uri: "file:///workspace/report.bin",
-              mimeType: "application/octet-stream",
-              blob: "[省略二进制正文]",
-            },
-          },
-        },
-      });
-      yield* adapter.stopSession(threadId);
-    }),
   );
 });

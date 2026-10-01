@@ -30,6 +30,7 @@ import {
   type ServerProvider,
   type ServerProviderModel,
 } from "@codework/contracts";
+import { resolveSpawnCommand } from "@codework/shared/shell";
 
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
@@ -264,10 +265,15 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
           },
         );
         const probe = yield* Effect.gen(function* () {
+          const spawnCommand = yield* resolveSpawnCommand(acpCommand, [...acpArgs, "--version"], {
+            env: injectedEnv,
+            extendEnv: true,
+          });
           const child = yield* spawner.spawn(
-            ChildProcess.make(acpCommand, [...acpArgs, "--version"], {
+            ChildProcess.make(spawnCommand.command, spawnCommand.args, {
               env: injectedEnv,
               extendEnv: true,
+              shell: spawnCommand.shell,
             }),
           );
           return yield* Effect.all(

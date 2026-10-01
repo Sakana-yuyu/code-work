@@ -49,14 +49,10 @@ describe.runIf(Boolean(cliPath))("Harn 官方 ACP CLI 握手", () => {
             authMethods: [{ id: "none" }],
           });
           expect(
-            requests.some(
-              (event) => event.method === "authenticate" && event.status === "succeeded",
-            ),
+            requests.some((event) => event.method === "authenticate" && event.status === "succeeded"),
           ).toBe(true);
           expect(
-            requests.some(
-              (event) => event.method === "session/new" && event.status === "succeeded",
-            ),
+            requests.some((event) => event.method === "session/new" && event.status === "succeeded"),
           ).toBe(true);
           const sessionNew = requests.find(
             (event) => event.method === "session/new" && event.status === "started",

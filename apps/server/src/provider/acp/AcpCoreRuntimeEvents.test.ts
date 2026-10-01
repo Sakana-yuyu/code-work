@@ -1,14 +1,8 @@
-import {
-  EventId,
-  ProviderDriverKind,
-  RuntimeRequestId,
-  ThreadId,
-  TurnId,
-} from "@codework/contracts";
+import { EventId, ProviderDriverKind, RuntimeRequestId, ThreadId, TurnId } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
+import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 import { projectActivityPayload } from "../../orchestration/ActivityPayloadProjection.ts";
 import { mergeToolCallState, parseSessionUpdateEvent } from "./AcpRuntimeModel.ts";
-import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 
 import {
   makeAcpAssistantItemEvent,
@@ -25,47 +19,6 @@ import {
 } from "./AcpCoreRuntimeEvents.ts";
 
 describe("AcpCoreRuntimeEvents", () => {
-  it("上下文用量清零时仍投影新快照，防止客户端保留旧值", () => {
-    const rawPayload = {
-      update: {
-        sessionUpdate: "usage_update",
-        used: 0,
-        size: 64_000,
-        cost: { amount: 7, currency: "USD" },
-      },
-    };
-    const event = makeAcpUsageUpdatedEvent({
-      stamp: { eventId: EventId.make("usage-zero"), createdAt: "2026-09-30T00:00:00.000Z" },
-      provider: ProviderDriverKind.make("acpAgent"),
-      threadId: ThreadId.make("thread-1"),
-      turnId: undefined,
-      usage: { usedTokens: 0, maxTokens: 64_000 },
-      rawPayload,
-    });
-    expect(event.raw?.payload).toEqual(rawPayload);
-    expect(runtimeEventToActivities(event)).toMatchObject([
-      { kind: "context-window.updated", payload: { usedTokens: 0, maxTokens: 64_000 } },
-    ]);
-    expect(runtimeEventToActivities(event)[0]?.payload).not.toHaveProperty("cost");
-    expect(runtimeEventToActivities(event)[0]?.payload).not.toHaveProperty("totalProcessedTokens");
-  });
-
-  it("ACP 思考沿用 reasoning_text 合同，不能作为正文或摘要活动持久化", () => {
-    const event = makeAcpContentDeltaEvent({
-      stamp: { eventId: "thought-1" as never, createdAt: "2026-09-29T00:00:00.000Z" },
-      provider: ProviderDriverKind.make("acpAgent"),
-      threadId: "thread-1" as never,
-      turnId: TurnId.make("turn-1"),
-      streamKind: "reasoning_text",
-      text: "协议测试思考片段",
-      rawPayload: {},
-    });
-    expect(event).toMatchObject({
-      type: "content.delta",
-      payload: { streamKind: "reasoning_text", delta: "协议测试思考片段" },
-    });
-    expect(runtimeEventToActivities(event)).toEqual([]);
-  });
   it("动态元数据统一进入会话活动，保留原始选择和撤回值", () => {
     const base = {
       stamp: { eventId: EventId.make("metadata"), createdAt: "2026-09-30T00:00:00.000Z" },
@@ -89,16 +42,10 @@ describe("AcpCoreRuntimeEvents", () => {
     ];
     expect(events.every((event) => event.type === "session.configured")).toBe(true);
     expect(events.flatMap((event) => runtimeEventToActivities(event))).toMatchObject([
-      {
-        kind: "session.commands.updated",
-        payload: { providerInstanceId: "acpAgent", commands: [] },
-      },
+      { kind: "session.commands.updated", payload: { providerInstanceId: "acpAgent", commands: [] } },
       { kind: "session.models.updated", payload: { providerInstanceId: "acpAgent", models: [] } },
       { kind: "session.mode.updated", payload: { providerInstanceId: "acpAgent", mode } },
-      {
-        kind: "session.config-options.updated",
-        payload: { providerInstanceId: "acpAgent", configOptions: [] },
-      },
+      { kind: "session.config-options.updated", payload: { providerInstanceId: "acpAgent", configOptions: [] } },
       { kind: "session.mode.updated", payload: { providerInstanceId: "acpAgent", mode: null } },
     ]);
   });
@@ -180,30 +127,37 @@ describe("AcpCoreRuntimeEvents", () => {
       },
     ]);
   });
-  it.each(["cursor", "grok"])("%s 的 ACP 工具失败保留同一调用 ID 与详情", (driver) => {
-    const event = makeAcpToolCallEvent({
-      stamp: { eventId: `failed-${driver}` as never, createdAt: "2026-03-27T00:00:00.000Z" },
-      provider: ProviderDriverKind.make(driver),
+  it("上下文用量清零时仍投影新快照，防止客户端保留旧值", () => {
+    const rawPayload = { update: { sessionUpdate: "usage_update", used: 0, size: 64_000, cost: { amount: 7, currency: "USD" } } };
+    const event = makeAcpUsageUpdatedEvent({
+      stamp: { eventId: EventId.make("usage-zero"), createdAt: "2026-09-30T00:00:00.000Z" },
+      provider: ProviderDriverKind.make("acpAgent"), threadId: ThreadId.make("thread-1"),
+      turnId: undefined, usage: { usedTokens: 0, maxTokens: 64_000 }, rawPayload,
+    });
+    expect(event.raw?.payload).toEqual(rawPayload);
+    expect(runtimeEventToActivities(event)).toMatchObject([
+      { kind: "context-window.updated", payload: { usedTokens: 0, maxTokens: 64_000 } },
+    ]);
+    expect(runtimeEventToActivities(event)[0]?.payload).not.toHaveProperty("cost");
+    expect(runtimeEventToActivities(event)[0]?.payload).not.toHaveProperty("totalProcessedTokens");
+  });
+
+
+  it("ACP 思考沿用 reasoning_text 合同，不能作为正文或摘要活动持久化", () => {
+    const event = makeAcpContentDeltaEvent({
+      stamp: { eventId: "thought-1" as never, createdAt: "2026-09-29T00:00:00.000Z" },
+      provider: ProviderDriverKind.make("acpAgent"),
       threadId: "thread-1" as never,
       turnId: TurnId.make("turn-1"),
-      toolCall: {
-        toolCallId: "tool-failed-1",
-        kind: "execute",
-        status: "failed",
-        title: "Terminal",
-        detail: "命令执行失败",
-        data: { command: "check" },
-      },
-      rawPayload: { sessionId: "session-1" },
+      streamKind: "reasoning_text",
+      text: "协议测试思考片段",
+      rawPayload: {},
     });
-
-    expect(event).toMatchObject({ type: "item.completed", payload: { status: "failed" } });
-    expect(runtimeEventToActivities(event)).toMatchObject([
-      {
-        kind: "tool.completed",
-        payload: { toolCallId: "tool-failed-1", status: "failed", detail: "命令执行失败" },
-      },
-    ]);
+    expect(event).toMatchObject({
+      type: "content.delta",
+      payload: { streamKind: "reasoning_text", delta: "协议测试思考片段" },
+    });
+    expect(runtimeEventToActivities(event)).toEqual([]);
   });
 
   it.each(["cursor", "grok"])("%s 的 ACP 工具失败保留同一调用 ID 与详情", (driver) => {
@@ -415,54 +369,18 @@ describe("AcpCoreRuntimeEvents", () => {
     });
   });
 
-  it.each(["acpAgent", "cursor", "kimi", "grok"])(
-    "%s 元数据终态保留 MCP 长尾结果到公开历史",
-    (driver) => {
-      const [result] = parseSessionUpdateEvent({
-        sessionId: "s",
-        update: {
-          sessionUpdate: "tool_call_update",
-          toolCallId: "partial-output",
-          status: "in_progress",
-          rawInput: { command: "check" },
-          rawOutput: { content: [{ type: "text", text: "x".repeat(20_000) + "FINAL_OUTPUT" }] },
-        },
-      }).events;
-      const [metadata] = parseSessionUpdateEvent({
-        sessionId: "s",
-        update: {
-          sessionUpdate: "tool_call_update",
-          toolCallId: "partial-output",
-          title: "命令结束",
-          kind: "execute",
-          status: "failed",
-          rawInput: { command: "check" },
-          rawOutput: null,
-        },
-      }).events;
-      if (result?._tag !== "ToolCallUpdated" || metadata?._tag !== "ToolCallUpdated")
-        throw new Error("缺少工具事件");
-      const [activity] = runtimeEventToActivities(
-        makeAcpToolCallEvent({
-          stamp: { eventId: EventId.make("partial-output"), createdAt: "2026-10-01T00:00:00.000Z" },
-          provider: ProviderDriverKind.make(driver),
-          threadId: ThreadId.make("thread"),
-          turnId: TurnId.make("turn"),
-          toolCall: mergeToolCallState(result.toolCall, metadata.toolCall),
-          rawPayload: metadata.rawPayload,
-        }),
-      );
-      if (!activity) throw new Error("缺少工具活动");
-      const payload = projectActivityPayload(activity).payload as {
-        detail: string;
-        status: string;
-        data: { command: string };
-      };
-      expect(payload.status).toBe("failed");
-      expect(payload.data.command).toBe("check");
-      expect(payload.detail).toHaveLength(8_000);
-      expect(payload.detail).toMatch(/FINAL_OUTPUT$/);
-      expect(payload.detail).toEqual(result.toolCall.detail);
-    },
-  );
+  it.each(["acpAgent", "cursor", "kimi", "grok"])("%s 元数据终态保留 MCP 长尾结果到公开历史", (driver) => {
+    const [result] = parseSessionUpdateEvent({ sessionId: "s", update: { sessionUpdate: "tool_call_update", toolCallId: "partial-output", status: "in_progress", rawInput: { command: "check" }, rawOutput: { content: [{ type: "text", text: "x".repeat(20_000) + "FINAL_OUTPUT" }] } } }).events;
+    const [metadata] = parseSessionUpdateEvent({ sessionId: "s", update: { sessionUpdate: "tool_call_update", toolCallId: "partial-output", title: "命令结束", kind: "execute", status: "failed", rawInput: { command: "check" }, rawOutput: null } }).events;
+    if (result?._tag !== "ToolCallUpdated" || metadata?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
+    const [activity] = runtimeEventToActivities(makeAcpToolCallEvent({ stamp: { eventId: EventId.make("partial-output"), createdAt: "2026-10-01T00:00:00.000Z" }, provider: ProviderDriverKind.make(driver), threadId: ThreadId.make("thread"), turnId: TurnId.make("turn"), toolCall: mergeToolCallState(result.toolCall, metadata.toolCall), rawPayload: metadata.rawPayload }));
+    if (!activity) throw new Error("缺少工具活动");
+    const payload = projectActivityPayload(activity).payload as { detail: string; status: string; data: { command: string } };
+    expect(payload.status).toBe("failed");
+    expect(payload.data.command).toBe("check");
+    expect(payload.detail).toHaveLength(8_000);
+    expect(payload.detail).toMatch(/FINAL_OUTPUT$/);
+    expect(payload.detail).toEqual(result.toolCall.detail);
+  });
+
 });

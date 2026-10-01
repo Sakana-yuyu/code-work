@@ -6,10 +6,10 @@ import {
   type ProviderApprovalDecision,
   type ProviderDriverKind,
   type ProviderRuntimeEvent,
-  type ServerProviderSlashCommand,
   type RuntimeRequestId,
   type ThreadId,
   type ThreadTokenUsageSnapshot,
+  type ServerProviderSlashCommand,
   type ToolLifecycleItemType,
   type TurnId,
 } from "@codework/contracts";
@@ -237,6 +237,7 @@ export function makeAcpUsageUpdatedEvent(input: {
     },
   };
 }
+
 export function makeAcpCommandsUpdatedEvent(input: {
   readonly stamp: AcpEventStamp;
   readonly provider: ProviderDriverKind;

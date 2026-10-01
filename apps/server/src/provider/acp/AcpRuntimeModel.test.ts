@@ -18,37 +18,6 @@ import {
 } from "./AcpRuntimeModel.ts";
 
 describe("AcpRuntimeModel", () => {
-  it.each([
-    { used: 0, size: 0, expected: { usedTokens: 0 } },
-    { used: 320, size: 64_000, expected: { usedTokens: 320, maxTokens: 64_000 } },
-    { used: 64_000, size: 64_000, expected: { usedTokens: 64_000, maxTokens: 64_000 } },
-  ])("用量 $used/$size 保留上下文语义，未知窗口不伪造上限", ({ used, size, expected }) => {
-    const notification = {
-      sessionId: "session-1",
-      update: { sessionUpdate: "usage_update", used, size, cost: { amount: 7, currency: "USD" } },
-    } satisfies EffectAcpSchema.SessionNotification;
-    expect(parseSessionUpdateEvent(notification).events).toEqual([
-      { _tag: "UsageUpdated", usage: expected, rawPayload: notification },
-    ]);
-  });
-
-  it("保留 ACP 思考文本的原始流类型，不混入正文或伪装成摘要", () => {
-    const notification = {
-      sessionId: "session-1",
-      update: {
-        sessionUpdate: "agent_thought_chunk",
-        content: { type: "text", text: "协议测试思考片段" },
-      },
-    } satisfies EffectAcpSchema.SessionNotification;
-    expect(parseSessionUpdateEvent(notification).events).toEqual([
-      {
-        _tag: "ContentDelta",
-        streamKind: "reasoning_text",
-        text: "协议测试思考片段",
-        rawPayload: notification,
-      },
-    ]);
-  });
   it("MCP 文本结果优先于带命令预览和重复正文的 ACP 展示内容", () => {
     const output = "No bash shell found. Set shellPath in settings.json";
     const [event] = parseSessionUpdateEvent({
@@ -257,6 +226,135 @@ describe("AcpRuntimeModel", () => {
     expect(parseSessionModels({ configOptions })).toBeNull();
     expect(toAcpConfigOptions([])).toEqual([]);
   });
+  it("图片独立传递且原始日志不包含图片正文", () => {
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "image", mimeType: "image/png", data: "aW1hZ2UtYnl0ZXM=" },
+      },
+    }).events;
+    expect(event).toMatchObject({
+      _tag: "ContentDelta",
+      standalone: true,
+      text: "",
+      streamKind: "assistant_text",
+      image: { mimeType: "image/png", data: "aW1hZ2UtYnl0ZXM=" },
+    });
+    if (event?._tag !== "ContentDelta") throw new Error("缺少图片事件");
+    expect(JSON.stringify(event.rawPayload)).not.toContain("aW1hZ2UtYnl0ZXM=");
+  });
+  it("音频独立传递且原始日志不包含音频正文", () => {
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "audio", mimeType: "audio/wav", data: "YXVkaW8tYnl0ZXM=" },
+      },
+    }).events;
+    expect(event).toMatchObject({
+      _tag: "ContentDelta",
+      standalone: true,
+      text: "",
+      streamKind: "assistant_text",
+      audio: { mimeType: "audio/wav", data: "YXVkaW8tYnl0ZXM=" },
+    });
+    if (event?._tag !== "ContentDelta") throw new Error("缺少音频事件");
+    expect(JSON.stringify(event.rawPayload)).not.toContain("YXVkaW8tYnl0ZXM=");
+  });
+  it("嵌入 blob 独立传递且原始日志不包含二进制正文", () => {
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "resource",
+          resource: {
+            uri: "file:///workspace/note.bin",
+            mimeType: "application/octet-stream",
+            blob: "YmxvYi1ieXRlcw==",
+          },
+        },
+      },
+    }).events;
+    expect(event).toMatchObject({
+      _tag: "ContentDelta",
+      standalone: true,
+      text: "",
+      streamKind: "assistant_text",
+      blob: {
+        mimeType: "application/octet-stream",
+        data: "YmxvYi1ieXRlcw==",
+        uri: "file:///workspace/note.bin",
+      },
+    });
+    if (event?._tag !== "ContentDelta") throw new Error("缺少 blob 事件");
+    expect(JSON.stringify(event.rawPayload)).not.toContain("YmxvYi1ieXRlcw==");
+  });
+  it("资源链接保留名称、目标和说明，嵌入文本保留字面内容", () => {
+    for (const sessionUpdate of ["agent_message_chunk", "agent_thought_chunk"] as const) {
+      const content = {
+        type: "resource_link",
+        name: "report",
+        title: "审查 [报告]",
+        uri: "https://example.com/a(b)?q=1#part",
+        description: "实际说明",
+      } as const;
+      const [event] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: { sessionUpdate, content },
+      }).events;
+      expect(event).toMatchObject({
+        _tag: "ContentDelta",
+        streamKind: sessionUpdate === "agent_message_chunk" ? "assistant_text" : "reasoning_text",
+        text: "\n\n[审查 \\[报告\\]](<https://example.com/a%28b%29?q=1#part>)\n\n```text\n实际说明\n```\n\n",
+        rawPayload: { update: { content } },
+      });
+    }
+    const text = "```\n<img src=x>\n[外部](https://example.com)\n````";
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "resource",
+          resource: { uri: "file:///workspace/report.txt", mimeType: "text/plain", text },
+        },
+      },
+    }).events;
+    expect(event).toMatchObject({
+      text: `\n\n[file:///workspace/report.txt](<file:///workspace/report.txt>)\n\n\`\`\`\`\`text\n${text}\n\`\`\`\`\`\n\n`,
+    });
+  });
+  it.each(["javascript:alert(1)", "data:text/html,test", "mcp://server/resource", "invalid uri"])(
+    "不将不支持的资源 URI %s 变成可执行链接",
+    (uri) => {
+      const [event] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "resource_link", name: "![危险](x)", uri },
+        },
+      }).events;
+      expect(event).toMatchObject({ _tag: "ContentDelta" });
+      if (event?._tag !== "ContentDelta") throw new Error("缺少资源事件");
+      expect(event.text).toContain("不支持直接打开");
+      expect(event.text).toContain(`\n${uri}\n`);
+      expect(event.text).not.toContain(`](<${uri}`);
+    },
+  );
+  it.each(["", " x\n".repeat(25_000)])("嵌入资源不丢失空值或长文本", (text) => {
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "resource", resource: { uri: "mcp://server/text", text } },
+      },
+    }).events;
+    expect(event).toMatchObject({ _tag: "ContentDelta" });
+    if (event?._tag !== "ContentDelta") throw new Error("缺少资源事件");
+    expect(event.text).toContain(`\`\`\`text\n${text}\n\`\`\``);
+  });
   it("模型目录优先使用分组配置，空快照撤回且未广告保持 null", () => {
     expect(parseSessionModels({})).toBeNull();
     expect(parseSessionModels({ configOptions: [] })).toEqual([]);
@@ -321,6 +419,37 @@ describe("AcpRuntimeModel", () => {
         update: { sessionUpdate: "available_commands_update", availableCommands: [] },
       }).events,
     ).toMatchObject([{ commands: [] }]);
+  });
+  it.each([
+    { used: 0, size: 0, expected: { usedTokens: 0 } },
+    { used: 320, size: 64_000, expected: { usedTokens: 320, maxTokens: 64_000 } },
+    { used: 64_000, size: 64_000, expected: { usedTokens: 64_000, maxTokens: 64_000 } },
+  ])("用量 $used/$size 保留上下文语义，未知窗口不伪造上限", ({ used, size, expected }) => {
+    const notification = {
+      sessionId: "session-1",
+      update: { sessionUpdate: "usage_update", used, size, cost: { amount: 7, currency: "USD" } },
+    } satisfies EffectAcpSchema.SessionNotification;
+    expect(parseSessionUpdateEvent(notification).events).toEqual([
+      { _tag: "UsageUpdated", usage: expected, rawPayload: notification },
+    ]);
+  });
+
+  it("保留 ACP 思考文本的原始流类型，不混入正文或伪装成摘要", () => {
+    const notification = {
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "text", text: "协议测试思考片段" },
+      },
+    } satisfies EffectAcpSchema.SessionNotification;
+    expect(parseSessionUpdateEvent(notification).events).toEqual([
+      {
+        _tag: "ContentDelta",
+        streamKind: "reasoning_text",
+        text: "协议测试思考片段",
+        rawPayload: notification,
+      },
+    ]);
   });
 
   it("parses session mode state from typed ACP session setup responses", () => {
@@ -1180,256 +1309,49 @@ describe("AcpRuntimeModel", () => {
     });
   });
 
-  it("资源链接保留名称、目标和说明，嵌入文本保留字面内容", () => {
-    for (const sessionUpdate of ["agent_message_chunk", "agent_thought_chunk"] as const) {
-      const content = {
-        type: "resource_link",
-        name: "report",
-        title: "审查 [报告]",
-        uri: "https://example.com/a(b)?q=1#part",
-        description: "实际说明",
-      } as const;
-      const [event] = parseSessionUpdateEvent({
-        sessionId: "s",
-        update: { sessionUpdate, content },
-      }).events;
-      expect(event).toMatchObject({
-        _tag: "ContentDelta",
-        streamKind: sessionUpdate === "agent_message_chunk" ? "assistant_text" : "reasoning_text",
-        text: "\n\n[审查 \\[报告\\]](<https://example.com/a%28b%29?q=1#part>)\n\n```text\n实际说明\n```\n\n",
-        rawPayload: { update: { content } },
-      });
-    }
-    const text = "```\n<img src=x>\n[外部](https://example.com)\n````";
-    const [event] = parseSessionUpdateEvent({
-      sessionId: "s",
-      update: {
-        sessionUpdate: "agent_message_chunk",
-        content: {
-          type: "resource",
-          resource: { uri: "file:///workspace/report.txt", mimeType: "text/plain", text },
-        },
-      },
-    }).events;
-    expect(event).toMatchObject({
-      text: `\n\n[file:///workspace/report.txt](<file:///workspace/report.txt>)\n\n\`\`\`\`\`text\n${text}\n\`\`\`\`\`\n\n`,
+  it.each(["mcp", "content", "batch"] as const)("%s 结果不被后续无输出元数据覆盖，失败终态保留重复正文", (shape) => {
+    const output = "真实结果\n真实结果\nFINAL_OUTPUT";
+    const [first] = parseSessionUpdateEvent({ sessionId: "s", update: {
+      sessionUpdate: "tool_call_update", toolCallId: "partial", kind: "execute", status: "in_progress",
+      rawInput: { command: "old-command" },
+      ...(shape === "content" ? { content: [{ type: "content" as const, content: { type: "text" as const, text: output } }] }
+        : { rawOutput: shape === "mcp" ? { content: [{ type: "text", text: output }] } : [{ query: "batch", result: output, success: true }] }),
+    }}).events;
+    if (first?._tag !== "ToolCallUpdated") throw new Error("缺少结果事件");
+    const [last] = parseSessionUpdateEvent({ sessionId: "s", update: {
+      sessionUpdate: "tool_call_update", toolCallId: "partial", title: "重新报告命令", kind: "execute", status: "failed", rawInput: { command: "new-command" },
+    }}).events;
+    if (last?._tag !== "ToolCallUpdated") throw new Error("缺少元数据事件");
+    expect(mergeToolCallState(first.toolCall, last.toolCall)).toMatchObject({
+      toolCallId: "partial", title: "Ran command", status: "failed", command: "new-command",
+      detail: shape === "batch" ? "batch\n" + output : output,
+      data: { command: "new-command", rawInput: { command: "new-command" } },
     });
   });
-
-  it.each(["javascript:alert(1)", "data:text/html,test", "mcp://server/resource", "invalid uri"])(
-    "不将不支持的资源 URI %s 变成可执行链接",
-    (uri) => {
-      const [event] = parseSessionUpdateEvent({
-        sessionId: "s",
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: { type: "resource_link", name: "![危险](x)", uri },
-        },
-      }).events;
-      expect(event).toMatchObject({ _tag: "ContentDelta" });
-      if (event?._tag !== "ContentDelta") throw new Error("缺少资源事件");
-      expect(event.text).toContain("不支持直接打开");
-      expect(event.text).toContain(`\n${uri}\n`);
-      expect(event.text).not.toContain(`](<${uri}`);
-    },
-  );
-
-  it.each(["", " x\n".repeat(25_000)])("嵌入资源不丢失空值或长文本", (text) => {
-    const [event] = parseSessionUpdateEvent({
-      sessionId: "s",
-      update: {
-        sessionUpdate: "agent_message_chunk",
-        content: { type: "resource", resource: { uri: "mcp://server/text", text } },
-      },
-    }).events;
-    expect(event).toMatchObject({ _tag: "ContentDelta" });
-    if (event?._tag !== "ContentDelta") throw new Error("缺少资源事件");
-    expect(event.text).toContain(`\`\`\`text\n${text}\n\`\`\``);
-  });
-
-  it("图片独立传递且原始日志不包含图片正文", () => {
-    const [event] = parseSessionUpdateEvent({
-      sessionId: "s",
-      update: {
-        sessionUpdate: "agent_message_chunk",
-        content: { type: "image", mimeType: "image/png", data: "aW1hZ2UtYnl0ZXM=" },
-      },
-    }).events;
-    expect(event).toMatchObject({
-      _tag: "ContentDelta",
-      standalone: true,
-      text: "",
-      streamKind: "assistant_text",
-      image: { mimeType: "image/png", data: "aW1hZ2UtYnl0ZXM=" },
-    });
-    if (event?._tag !== "ContentDelta") throw new Error("缺少图片事件");
-    expect(JSON.stringify(event.rawPayload)).not.toContain("aW1hZ2UtYnl0ZXM=");
-  });
-
-  it("音频独立传递且原始日志不包含音频正文", () => {
-    const [event] = parseSessionUpdateEvent({
-      sessionId: "s",
-      update: {
-        sessionUpdate: "agent_message_chunk",
-        content: { type: "audio", mimeType: "audio/wav", data: "YXVkaW8tYnl0ZXM=" },
-      },
-    }).events;
-    expect(event).toMatchObject({
-      _tag: "ContentDelta",
-      standalone: true,
-      text: "",
-      streamKind: "assistant_text",
-      audio: { mimeType: "audio/wav", data: "YXVkaW8tYnl0ZXM=" },
-    });
-    if (event?._tag !== "ContentDelta") throw new Error("缺少音频事件");
-    expect(JSON.stringify(event.rawPayload)).not.toContain("YXVkaW8tYnl0ZXM=");
-  });
-
-  it("嵌入 blob 独立传递且原始日志不包含二进制正文", () => {
-    const [event] = parseSessionUpdateEvent({
-      sessionId: "s",
-      update: {
-        sessionUpdate: "agent_message_chunk",
-        content: {
-          type: "resource",
-          resource: {
-            uri: "file:///workspace/note.bin",
-            mimeType: "application/octet-stream",
-            blob: "YmxvYi1ieXRlcw==",
-          },
-        },
-      },
-    }).events;
-    expect(event).toMatchObject({
-      _tag: "ContentDelta",
-      standalone: true,
-      text: "",
-      streamKind: "assistant_text",
-      blob: {
-        mimeType: "application/octet-stream",
-        data: "YmxvYi1ieXRlcw==",
-        uri: "file:///workspace/note.bin",
-      },
-    });
-    if (event?._tag !== "ContentDelta") throw new Error("缺少 blob 事件");
-    expect(JSON.stringify(event.rawPayload)).not.toContain("YmxvYi1ieXRlcw==");
-  });
-
-  it.each(["mcp", "content", "batch"] as const)(
-    "%s 结果不被后续无输出元数据覆盖，失败终态保留重复正文",
-    (shape) => {
-      const output = "真实结果\n真实结果\nFINAL_OUTPUT";
-      const [first] = parseSessionUpdateEvent({
-        sessionId: "s",
-        update: {
-          sessionUpdate: "tool_call_update",
-          toolCallId: "partial",
-          kind: "execute",
-          status: "in_progress",
-          rawInput: { command: "old-command" },
-          ...(shape === "content"
-            ? {
-                content: [
-                  { type: "content" as const, content: { type: "text" as const, text: output } },
-                ],
-              }
-            : {
-                rawOutput:
-                  shape === "mcp"
-                    ? { content: [{ type: "text", text: output }] }
-                    : [{ query: "batch", result: output, success: true }],
-              }),
-        },
-      }).events;
-      if (first?._tag !== "ToolCallUpdated") throw new Error("缺少结果事件");
-      const [last] = parseSessionUpdateEvent({
-        sessionId: "s",
-        update: {
-          sessionUpdate: "tool_call_update",
-          toolCallId: "partial",
-          title: "重新报告命令",
-          kind: "execute",
-          status: "failed",
-          rawInput: { command: "new-command" },
-        },
-      }).events;
-      if (last?._tag !== "ToolCallUpdated") throw new Error("缺少元数据事件");
-      expect(mergeToolCallState(first.toolCall, last.toolCall)).toMatchObject({
-        toolCallId: "partial",
-        title: "Ran command",
-        status: "failed",
-        command: "new-command",
-        detail: shape === "batch" ? "batch\n" + output : output,
-        data: { command: "new-command", rawInput: { command: "new-command" } },
-      });
-    },
-  );
 
   it("null 原始输入输出不撤回已收到的结果，明确新结果仍可替换", () => {
     const parse = (update: EffectAcpSchema.ToolCallUpdate) => {
-      const [event] = parseSessionUpdateEvent({
-        sessionId: "s",
-        update: { sessionUpdate: "tool_call_update", ...update },
-      }).events;
+      const [event] = parseSessionUpdateEvent({ sessionId: "s", update: { sessionUpdate: "tool_call_update", ...update } }).events;
       if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
       return event.toolCall;
     };
-    const first = parse({
-      toolCallId: "partial",
-      kind: "execute",
-      rawInput: { command: "check" },
-      rawOutput: { content: [{ type: "text", text: "FIRST" }] },
-    });
-    const unchanged = mergeToolCallState(
-      first,
-      parse({ toolCallId: "partial", kind: "execute", rawInput: null, rawOutput: null }),
-    );
+    const first = parse({ toolCallId: "partial", kind: "execute", rawInput: { command: "check" }, rawOutput: { content: [{ type: "text", text: "FIRST" }] } });
+    const unchanged = mergeToolCallState(first, parse({ toolCallId: "partial", kind: "execute", rawInput: null, rawOutput: null }));
     expect(unchanged).toMatchObject({ command: "check", detail: "FIRST", data: first.data });
-    expect(
-      mergeToolCallState(
-        unchanged,
-        parse({
-          toolCallId: "partial",
-          rawOutput: { content: [{ type: "text", text: "SECOND" }] },
-        }),
-      ),
-    ).toMatchObject({ detail: "SECOND" });
+    expect(mergeToolCallState(unchanged, parse({ toolCallId: "partial", rawOutput: { content: [{ type: "text", text: "SECOND" }] } }))).toMatchObject({ detail: "SECOND" });
   });
 
   it.each([false, 0, ""])("合法原始值 %s 不按 null 或缺省处理", (value) => {
-    const [event] = parseSessionUpdateEvent({
-      sessionId: "s",
-      update: {
-        sessionUpdate: "tool_call_update",
-        toolCallId: "scalar",
-        rawInput: value,
-        rawOutput: value,
-      },
-    }).events;
+    const [event] = parseSessionUpdateEvent({ sessionId: "s", update: { sessionUpdate: "tool_call_update", toolCallId: "scalar", rawInput: value, rawOutput: value } }).events;
     if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
     expect(event.toolCall.data).toMatchObject({ rawInput: value, rawOutput: value });
   });
 
   it("尚无输出的工具仍能更新派生命令详情", () => {
-    const first: AcpToolCallState = {
-      toolCallId: "partial",
-      command: "old",
-      detail: "old",
-      data: { command: "old" },
-    };
-    const [event] = parseSessionUpdateEvent({
-      sessionId: "s",
-      update: {
-        sessionUpdate: "tool_call_update",
-        toolCallId: "partial",
-        kind: "execute",
-        rawInput: { command: "new" },
-      },
-    }).events;
+    const first: AcpToolCallState = { toolCallId: "partial", command: "old", detail: "old", data: { command: "old" } };
+    const [event] = parseSessionUpdateEvent({ sessionId: "s", update: { sessionUpdate: "tool_call_update", toolCallId: "partial", kind: "execute", rawInput: { command: "new" } } }).events;
     if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
-    expect(mergeToolCallState(first, event.toolCall)).toMatchObject({
-      command: "new",
-      detail: "new",
-    });
+    expect(mergeToolCallState(first, event.toolCall)).toMatchObject({ command: "new", detail: "new" });
   });
+
 });

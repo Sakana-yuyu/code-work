@@ -61,7 +61,6 @@ import {
 } from "../../specWorkflow/SpecWorkflowAgentProtocol.ts";
 import { CompositionAgentDriverRegistryService } from "../../composition/CompositionAgentDriverRegistry.ts";
 import { compositionProviderAgentId } from "../../composition/CompositionProviderAgentDriverRegistry.ts";
-
 import { storeProviderImageAttachment } from "../../assets/ProviderImageAttachment.ts";
 import {
   storeProviderAudioAttachment,
@@ -848,6 +847,7 @@ export function runtimeEventToActivities(
         },
       ];
     }
+
     case "session.started":
     case "session.configured": {
       return [
@@ -921,7 +921,6 @@ export function runtimeEventToActivities(
             ]),
       ];
     }
-
     case "thread.token-usage.updated": {
       const payload = buildContextWindowActivityPayload(event);
       if (!payload) {
@@ -2494,12 +2493,10 @@ const make = Effect.gen(function* () {
           : undefined;
       const proposedPlanDelta =
         event.type === "turn.proposed.delta" ? event.payload.delta : undefined;
-
       const assistantImage =
         event.type === "content.delta" && event.payload.streamKind === "assistant_text"
           ? event.payload.image
           : undefined;
-
       const assistantAudio =
         event.type === "content.delta" && event.payload.streamKind === "assistant_text"
           ? event.payload.audio

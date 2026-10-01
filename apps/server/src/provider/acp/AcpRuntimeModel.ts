@@ -156,6 +156,11 @@ export type AcpParsedSessionEvent =
       readonly rawPayload: unknown;
     }
   | {
+      readonly _tag: "UsageUpdated";
+      readonly usage: ThreadTokenUsageSnapshot;
+      readonly rawPayload: unknown;
+    }
+  | {
       readonly _tag: "ModeChanged";
       readonly modeId: string;
     }
@@ -178,16 +183,11 @@ export type AcpParsedSessionEvent =
       readonly rawPayload: unknown;
     }
   | {
-      readonly _tag: "UsageUpdated";
-      readonly usage: ThreadTokenUsageSnapshot;
-      readonly rawPayload: unknown;
-    }
-  | {
       readonly _tag: "ContentDelta";
-      readonly streamKind: "assistant_text" | "reasoning_text";
       readonly itemId?: string;
       /** 结构化资源独立成段，避免被相邻正文的 Markdown 语法吞入。 */
       readonly standalone?: true;
+      readonly streamKind: "assistant_text" | "reasoning_text";
       readonly text: string;
       readonly image?: { readonly mimeType: string; readonly data: string };
       readonly audio?: { readonly mimeType: string; readonly data: string };
@@ -659,10 +659,9 @@ function makeToolCallState(
     : undefined;
   const rawOutputContent = isRecord(data.rawOutput) ? data.rawOutput.content : undefined;
   // 文件读取的结构化正文优先于 ACP 展示摘要，仍使用共用输出限长。
-  const fileOutput =
-    kind === "read" && typeof rawOutputContent === "string" && rawOutputContent
-      ? boundToolCallOutputText(rawOutputContent)
-      : undefined;
+  const fileOutput = kind === "read" && typeof rawOutputContent === "string" && rawOutputContent
+    ? boundToolCallOutputText(rawOutputContent)
+    : undefined;
   const mcpOutput = Array.isArray(rawOutputContent)
     ? rawOutputContent
         .filter(isMcpTextContent)
@@ -1039,6 +1038,17 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
       });
       break;
     }
+    case "usage_update": {
+      events.push({
+        _tag: "UsageUpdated",
+        usage: {
+          usedTokens: upd.used,
+          ...(upd.size > 0 ? { maxTokens: upd.size } : {}),
+        },
+        rawPayload: params,
+      });
+      break;
+    }
     case "current_mode_update": {
       modeId = upd.currentModeId.trim();
       if (modeId) {
@@ -1089,19 +1099,8 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
       }
       break;
     }
-    case "usage_update": {
-      events.push({
-        _tag: "UsageUpdated",
-        usage: {
-          usedTokens: upd.used,
-          ...(upd.size > 0 ? { maxTokens: upd.size } : {}),
-        },
-        rawPayload: params,
-      });
-      break;
-    }
-    case "agent_thought_chunk":
-    case "agent_message_chunk": {
+    case "agent_message_chunk":
+    case "agent_thought_chunk": {
       const content = upd.content;
       if (content.type === "image") {
         events.push({
