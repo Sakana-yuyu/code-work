@@ -12,6 +12,7 @@ import type {
   TurnId,
   RuntimeMode,
   ProviderRuntimeEvent,
+  CompositionTask,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -72,7 +73,9 @@ export interface CompositionProviderAgentDriverOptions {
     readonly version: string | null;
   }>;
   readonly model?: string;
-  readonly runtimeMode?: RuntimeMode;
+  readonly runtimeMode?:
+    | RuntimeMode
+    | ((task: CompositionTask) => Effect.Effect<RuntimeMode, CompositionAgentDriverFailure>);
 }
 
 type ProviderProfileSnapshot = {
@@ -148,7 +151,6 @@ export const makeCompositionProviderAgentDriver = (
   const activeRuns = new Map<string, ProviderRunBinding>();
   const historicalRuns = new Map<string, ProviderRunBinding | null>();
   const pendingRuns = new Map<ThreadId, PendingProviderRunBinding>();
-  const runtimeMode = options.runtimeMode ?? "full-access";
   const toolBrokerCanonicalTools = options.toolBrokerCanonicalTools ?? [];
 
   const rememberRun = (binding: ProviderRunBinding): void => {
@@ -370,6 +372,10 @@ export const makeCompositionProviderAgentDriver = (
         });
       }
       const threadId = taskThreadId(input.task.taskId, input.run.runId, input.task.threadId);
+      const runtimeMode =
+        typeof options.runtimeMode === "function"
+          ? yield* options.runtimeMode(input.task)
+          : (options.runtimeMode ?? "full-access");
       const model = input.model ?? options.model;
       const modelSelection: ModelSelection | undefined =
         model === undefined ? undefined : { instanceId: options.providerInstanceId, model };
@@ -623,7 +629,8 @@ export const makeCompositionProviderAgentDriver = (
       adapterId: options.runtimeId,
       modelIdentity: input.model ?? options.model ?? null,
       configDigest: null,
-      sessionMode: runtimeMode,
+      sessionMode:
+        typeof options.runtimeMode === "function" ? null : (options.runtimeMode ?? "full-access"),
     }),
     startRecoveryPolicy: {
       mode: "reconcile-only",

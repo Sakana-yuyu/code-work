@@ -649,16 +649,21 @@ describe("CompositionProviderAgentDriver", () => {
     expect(fake.sessionInputs).toHaveLength(0);
   });
 
-  it.each(["full-access", "approval-required"] as const)(
-    "把已接受的握手和可信 %s 模式一致传入 Session 与工具上下文",
-    async (runtimeMode) => {
+  it.each([
+    ["full-access", false],
+    ["approval-required", false],
+    ["full-access", true],
+    ["approval-required", true],
+  ] as const)(
+    "把已接受的握手和可信 %s 模式一致传入 Session 与工具上下文（动态=%s）",
+    async (runtimeMode, dynamic) => {
       const fake = makeAdapter();
       const configuredModes: unknown[] = [];
       const driver = makeCompositionProviderAgentDriver({
         agentId: "agent-codex",
         runtimeId: "codex-local",
         providerInstanceId: ProviderInstanceId.make("codex-local"),
-        runtimeMode,
+        runtimeMode: dynamic ? () => Effect.succeed(runtimeMode) : runtimeMode,
         toolBrokerBridge: unusedRuntimeToolBridge,
         toolBrokerCanonicalTools: ["workspace.read_file"],
         adapter: {
@@ -713,6 +718,7 @@ describe("CompositionProviderAgentDriver", () => {
         capabilityHandshakeId: "provider-handshake-1",
       });
       expect(configuredModes).toEqual([runtimeMode]);
+      expect(driver.getStartIdentity?.({}).sessionMode).toBe(dynamic ? null : runtimeMode);
     },
   );
 

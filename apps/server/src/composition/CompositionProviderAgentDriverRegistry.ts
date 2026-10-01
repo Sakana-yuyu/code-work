@@ -1,4 +1,4 @@
-import { ProviderInstanceId } from "@codework/contracts";
+import { DEFAULT_RUNTIME_MODE, ProviderInstanceId, ThreadId } from "@codework/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -9,6 +9,11 @@ import type { ProviderInstanceRegistryShape } from "../provider/Services/Provide
 import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
 import type { ProviderServiceShape } from "../provider/Services/ProviderService.ts";
 import { ProviderService } from "../provider/Services/ProviderService.ts";
+import {
+  ProjectionSnapshotQuery,
+  type ProjectionSnapshotQueryShape,
+} from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { CompositionAgentDriverFailure } from "./CompositionOrchestrator.ts";
 import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDriver.ts";
 import {
   CompositionRuntimeToolBridgeService,
@@ -53,6 +58,7 @@ export interface CompositionProviderAgentDriverProjectionOptions {
   > &
     Partial<Pick<ProviderServiceShape, "listSessions">>;
   readonly toolBrokerBridge?: CompositionRuntimeToolBridgeShape;
+  readonly threadQuery?: Pick<ProjectionSnapshotQueryShape, "getThreadShellById">;
   readonly registry?: CompositionAgentDriverRegistry;
 }
 
@@ -73,6 +79,7 @@ export const makeCompositionProviderAgentDriverProjection = (
   options: CompositionProviderAgentDriverProjectionOptions,
 ): CompositionProviderAgentDriverProjection => {
   const registry = options.registry ?? makeCompositionAgentDriverRegistry();
+  const threadQuery = options.threadQuery;
   const projectedAgentIds = new Set<string>();
   const projectedAdapters = new Map<string, object>();
 
@@ -114,6 +121,34 @@ export const makeCompositionProviderAgentDriverProjection = (
         runtimeId: agentId,
         providerInstanceId: instance.instanceId,
         providerKind: instance.driverKind,
+        ...(threadQuery === undefined
+          ? {}
+          : {
+              runtimeMode: (task) =>
+                task.threadId === undefined
+                  ? Effect.succeed(DEFAULT_RUNTIME_MODE)
+                  : threadQuery.getThreadShellById(ThreadId.make(task.threadId)).pipe(
+                      Effect.mapError(
+                        (error) =>
+                          new CompositionAgentDriverFailure({
+                            code: "provider_runtime_mode_lookup_failed",
+                            detail: error.message,
+                          }),
+                      ),
+                      Effect.flatMap(
+                        Option.match({
+                          onNone: () =>
+                            Effect.fail(
+                              new CompositionAgentDriverFailure({
+                                code: "provider_thread_not_found",
+                                detail: "关联对话不存在，拒绝派发Provider任务。",
+                              }),
+                            ),
+                          onSome: (thread) => Effect.succeed(thread.runtimeMode),
+                        }),
+                      ),
+                    ),
+            }),
         ...(instance.displayName === undefined ? {} : { displayName: instance.displayName }),
         ...(options.toolBrokerBridge === undefined
           ? {}
@@ -174,11 +209,13 @@ export const makeCompositionProviderAgentDriverProjection = (
 const live = Effect.gen(function* () {
   const providerRegistry = yield* ProviderInstanceRegistry;
   const providerService = yield* ProviderService;
+  const threadQuery = yield* ProjectionSnapshotQuery;
   const toolBrokerBridgeOption = yield* Effect.serviceOption(CompositionRuntimeToolBridgeService);
   const agentDriverRegistry = yield* CompositionAgentDriverRegistryService;
   const projection = makeCompositionProviderAgentDriverProjection({
     providerRegistry,
     providerService,
+    threadQuery,
     ...(Option.isSome(toolBrokerBridgeOption)
       ? { toolBrokerBridge: toolBrokerBridgeOption.value }
       : {}),

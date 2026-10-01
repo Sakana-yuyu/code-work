@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vite-plus/test";
+import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import {
   ProviderDriverKind,
+  DEFAULT_RUNTIME_MODE,
   ProviderInstanceId,
   type ServerProvider,
   ThreadId,
   TurnId,
   type ProviderSession,
   type ProviderTurnStartResult,
+  type OrchestrationThreadShell,
+  type RuntimeMode,
 } from "@codework/contracts";
+import { PersistenceSqlError } from "../persistence/Errors.ts";
 
 import type { ProviderInstance } from "../provider/ProviderDriver.ts";
 import type { ProviderInstanceRegistryShape } from "../provider/Services/ProviderInstanceRegistry.ts";
@@ -109,6 +115,115 @@ const makeProviderServiceHarness = () => {
 };
 
 describe("CompositionProviderAgentDriverRegistry", () => {
+  effectIt.effect("每次派发读取关联对话模式，缺失或查询失败不创建全权限会话", () =>
+    Effect.gen(function* () {
+      const instanceId = ProviderInstanceId.make("cursor-mode");
+      const provider = makeProviderServiceHarness();
+      const sessions: unknown[] = [],
+        contexts: unknown[] = [];
+      let mode: RuntimeMode = "approval-required";
+      let missing = false,
+        failed = false;
+      const lookedUp: string[] = [];
+      const projection = makeCompositionProviderAgentDriverProjection({
+        providerRegistry: {
+          listInstances: Effect.succeed([makeProviderInstance(instanceId, true)]),
+        },
+        providerService: {
+          ...provider.service,
+          startSession: (threadId, input) => {
+            sessions.push(input.runtimeMode);
+            return provider.service.startSession(threadId, input);
+          },
+          configureToolBroker: (instanceId, input) => {
+            contexts.push(input.context.runtimeMode);
+            return provider.service.configureToolBroker(instanceId, input);
+          },
+        },
+        toolBrokerBridge: {
+          invoke: () => Effect.die("unused"),
+          cancel: () => Effect.die("unused"),
+        },
+        threadQuery: {
+          getThreadShellById: (threadId) =>
+            Effect.gen(function* () {
+              lookedUp.push(threadId);
+              if (failed)
+                return yield* new PersistenceSqlError({
+                  operation: "getThreadShellById",
+                  detail: "隔离查询失败",
+                });
+              return missing
+                ? Option.none()
+                : Option.some({ runtimeMode: mode } as OrchestrationThreadShell);
+            }),
+        },
+      });
+      yield* projection.refresh;
+      const agentId = compositionProviderAgentId(instanceId);
+      const driver = yield* projection.registry.get(agentId);
+      expect(driver).toBeDefined();
+      let sequence = 0;
+      const start = (linked: boolean) => {
+        sequence++;
+        const task = {
+          taskId: "mode-task-" + sequence,
+          projectId: "mode-project",
+          ...(linked ? { threadId: "mode-thread" } : {}),
+          assigneeKind: "agent" as const,
+          assigneeId: agentId,
+          mode: "serial" as const,
+          status: "queued" as const,
+          promptDigest: "sha256:mode",
+          dependsOnTaskIds: [],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+        };
+        const run = {
+          runId: "mode-run-" + sequence,
+          taskId: task.taskId,
+          agentId,
+          runtimeId: agentId,
+          status: "queued" as const,
+          attempt: 1,
+          capabilityGrantIds: ["mode-grant"],
+        };
+        return driver!
+          .startTask({
+            task,
+            run,
+            prompt: "写入隔离文件",
+            workspaceRoot: "C:/workspace",
+          })
+          .pipe(Effect.tap(() => driver!.revokeCapabilityHandshake!({ task, run })));
+      };
+      for (const expected of ["approval-required", "full-access", "approval-required"] as const) {
+        mode = expected;
+        yield* start(true);
+      }
+      yield* start(false);
+      expect(sessions).toEqual([
+        "approval-required",
+        "full-access",
+        "approval-required",
+        DEFAULT_RUNTIME_MODE,
+      ]);
+      expect(contexts).toEqual(sessions);
+      expect(lookedUp).toEqual(["mode-thread", "mode-thread", "mode-thread"]);
+      const beforeCalls = provider.calls.length;
+      missing = true;
+      expect(yield* Effect.result(start(true))).toMatchObject({
+        _tag: "Failure",
+        failure: { code: "provider_thread_not_found" },
+      });
+      failed = true;
+      expect(yield* Effect.result(start(true))).toMatchObject({
+        _tag: "Failure",
+        failure: { code: "provider_runtime_mode_lookup_failed" },
+      });
+      expect(provider.calls).toHaveLength(beforeCalls);
+    }),
+  );
   it("projects provider instances into stable Composition Agent Drivers", async () => {
     let instances = [makeProviderInstance("codex_personal")];
     const providerRegistry = {

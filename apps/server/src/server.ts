@@ -540,6 +540,7 @@ const CompositionAgentDriverProjectionLayerLive = Layer.mergeAll(
   CompositionRuntimeAgentDriverProjection.layer,
   CompositionIdeAgentDriverProjection.layer,
 ).pipe(
+  Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
   Layer.provideMerge(CompositionAgentDriverRegistry.layer),
   Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
   Layer.provideMerge(CompositionRuntimeSettingsLayerLive),
