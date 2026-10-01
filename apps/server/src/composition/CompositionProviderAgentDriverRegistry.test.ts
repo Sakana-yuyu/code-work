@@ -2,6 +2,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
+import * as Context from "effect/Context";
+import * as Cause from "effect/Cause";
 
 import {
   ProviderDriverKind,
@@ -18,9 +22,22 @@ import {
 import { PersistenceSqlError } from "../persistence/Errors.ts";
 
 import type { ProviderInstance } from "../provider/ProviderDriver.ts";
+import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
+import { ProviderService } from "../provider/Services/ProviderService.ts";
+import {
+  ProjectionSnapshotQuery,
+  type ProjectionSnapshotQueryShape,
+} from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import {
+  CompositionAgentDriverRegistryService,
+  makeCompositionAgentDriverRegistry,
+} from "./CompositionAgentDriverRegistry.ts";
+import { CompositionRuntimeToolBridgeService } from "./CompositionRuntimeToolBridge.ts";
 import type { ProviderInstanceRegistryShape } from "../provider/Services/ProviderInstanceRegistry.ts";
 import type { ProviderServiceShape } from "../provider/Services/ProviderService.ts";
 import {
+  layer as projectionLayer,
+  CompositionProviderAgentDriverProjectionService,
   compositionProviderAgentId,
   makeCompositionProviderAgentDriverProjection,
 } from "./CompositionProviderAgentDriverRegistry.ts";
@@ -388,3 +405,56 @@ describe("CompositionProviderAgentDriverRegistry", () => {
     ]);
   });
 });
+
+for (const withBridge of [false, true]) {
+  effectIt.effect("生产Projection要求宿主工具Bridge：" + withBridge, () =>
+    Effect.gen(function* () {
+      const provider = makeProviderServiceHarness();
+      const changes = yield* PubSub.unbounded<void>();
+      const registry = makeCompositionAgentDriverRegistry();
+      const dependencies = Context.empty().pipe(
+        Context.add(CompositionAgentDriverRegistryService, registry),
+        Context.add(ProviderInstanceRegistry, {
+          listInstances: Effect.succeed([makeProviderInstance("live-acp", true)]),
+          subscribeChanges: PubSub.subscribe(changes),
+        } as unknown as ProviderInstanceRegistryShape),
+        Context.add(ProviderService, provider.service as ProviderServiceShape),
+        Context.add(ProjectionSnapshotQuery, {
+          getThreadShellById: () => Effect.succeed(Option.none()),
+        } as unknown as ProjectionSnapshotQueryShape),
+      );
+      const services = withBridge
+        ? Context.add(dependencies, CompositionRuntimeToolBridgeService, {
+            invoke: () => Effect.die("尚未调用工具"),
+            cancel: () => Effect.die("尚未取消工具"),
+          })
+        : dependencies;
+      const result = yield* Layer.build(projectionLayer).pipe(
+        // 负向用例故意省略必需服务，验证运行时拒绝缺失依赖而非静默降级。
+        Effect.provide(
+          services as Context.Context<
+            | ProviderInstanceRegistry
+            | ProviderService
+            | ProjectionSnapshotQuery
+            | CompositionAgentDriverRegistryService
+            | CompositionRuntimeToolBridgeService
+          >,
+        ),
+        Effect.exit,
+        Effect.scoped,
+      );
+      if (!withBridge) {
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure")
+          expect(Cause.pretty(result.cause)).toContain("CompositionRuntimeToolBridgeService");
+        return;
+      }
+      expect(result._tag).toBe("Success");
+      if (result._tag !== "Success") return yield* Effect.failCause(result.cause);
+      const projection = Context.get(result.value, CompositionProviderAgentDriverProjectionService);
+      const profiles = yield* projection.registry.listProfiles;
+      expect(profiles[0]?.supportsToolBroker).toBe(true);
+      expect(profiles[0]?.supportsCapabilityHandshake).toBe(true);
+    }),
+  );
+}

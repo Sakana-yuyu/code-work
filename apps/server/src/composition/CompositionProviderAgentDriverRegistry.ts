@@ -210,15 +210,13 @@ const live = Effect.gen(function* () {
   const providerRegistry = yield* ProviderInstanceRegistry;
   const providerService = yield* ProviderService;
   const threadQuery = yield* ProjectionSnapshotQuery;
-  const toolBrokerBridgeOption = yield* Effect.serviceOption(CompositionRuntimeToolBridgeService);
+  const toolBrokerBridge = yield* CompositionRuntimeToolBridgeService;
   const agentDriverRegistry = yield* CompositionAgentDriverRegistryService;
   const projection = makeCompositionProviderAgentDriverProjection({
     providerRegistry,
     providerService,
     threadQuery,
-    ...(Option.isSome(toolBrokerBridgeOption)
-      ? { toolBrokerBridge: toolBrokerBridgeOption.value }
-      : {}),
+    toolBrokerBridge,
     registry: agentDriverRegistry,
   });
 

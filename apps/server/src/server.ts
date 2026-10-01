@@ -534,12 +534,24 @@ const CompositionRuntimeSettingsLayerLive = CompositionRuntimeSettings.layer.pip
   Layer.provideMerge(CompositionTaskStoreLayerLive),
 );
 
+const CompositionTaskInputStoreLayerLive = CompositionTaskInputStoreLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+  Layer.provide(ServerSecretStore.layer),
+);
+
+const CompositionRuntimeToolBridgeLayerLive = CompositionRuntimeToolBridge.layer.pipe(
+  Layer.provideMerge(CompositionTaskStoreLayerLive),
+  Layer.provideMerge(CompositionTaskInputStoreLayerLive),
+  Layer.provideMerge(CompositionToolBrokerLayerLive),
+);
+
 const CompositionAgentDriverProjectionLayerLive = Layer.mergeAll(
   CompositionByokAgentDriverProjection.layer,
   CompositionProviderAgentDriverProjection.layer,
   CompositionRuntimeAgentDriverProjection.layer,
   CompositionIdeAgentDriverProjection.layer,
 ).pipe(
+  Layer.provideMerge(CompositionRuntimeToolBridgeLayerLive),
   Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
   Layer.provideMerge(CompositionAgentDriverRegistry.layer),
   Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
@@ -556,20 +568,10 @@ const CompositionSquadModelBindingResolverLayerLive =
 const CompositionRuntimeDependenciesLive = Layer.empty.pipe(
   Layer.provideMerge(CompositionCapabilityGrantLayerLive),
   Layer.provideMerge(CompositionSquadModelBindingResolverLayerLive),
-  Layer.provideMerge(
-    CompositionTaskInputStoreLive.pipe(
-      Layer.provideMerge(PersistenceLayerLive),
-      Layer.provide(ServerSecretStore.layer),
-    ),
-  ),
+  Layer.provideMerge(CompositionTaskInputStoreLayerLive),
   Layer.provideMerge(CompositionRunStartStoreLive.pipe(Layer.provide(PersistenceLayerLive))),
   Layer.provideMerge(CompositionTaskStoreLayerLive),
   Layer.provideMerge(CompositionGoalLoopRetryStoreLayerLive),
-);
-
-const CompositionRuntimeToolBridgeLayerLive = CompositionRuntimeToolBridge.layer.pipe(
-  Layer.provideMerge(CompositionRuntimeDependenciesLive),
-  Layer.provideMerge(CompositionToolBrokerLayerLive),
 );
 
 const CompositionOrchestratorLayerLive = CompositionOrchestratorService.layer.pipe(
