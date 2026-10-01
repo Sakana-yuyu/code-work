@@ -18,7 +18,7 @@ override: 需要登录真实账户和实机验证的都跳过但是保证功能�
 - [x] A-2 目录覆盖 Paseo 的 6 个内置与 38 个 ACP 入口且不重复，具备版本、来源、命令参数、必要环境和能力、安装说明、平台状态及显式离线回退。(verify: 逐项比对固定上游清单；catalog/contracts/启动参数测试及实际添加实例操作；Windows 路径、npx、uvx、手工命令与不支持平台均有结果。)
 - [x] A-3 首批 Copilot、Gemini、Qwen、Cline、Hermes 接入，动态模型、模式、命令和认证状态真实，审批按上游选项回传。(verify: 每个候选记录 CLI 版本与认证、文本、读文件、授权写入、命令、拒绝、取消的实际结果；Copilot 特殊模式/config 回归；不支持能力明确说明。)
 - [x] A-4 其余 ACP 条目逐项接入并登记，Kiro/TRAE 异步命令、Droid MCP 限制和环境参数生效。(verify: 38 项逐项证据表，现有 Cursor/Grok/Kimi 复用；每项区分真实可用、未实测、平台限制或不支持，未实测不当作全部完成证据。)
-- [x] A-5 Web/Desktop/Mobile 配置、聊天选择、审批、命令与工具详情一致；实时状态、失败、重连和历史可见且不卡顿。(verify: 定向 UI/性能测试及 360px/1280px 浏览器、Electron、至少一台真实手机关键路径证据，覆盖入口、退出、重试与长内容。)
+- [ ] A-5 Web/Desktop/Mobile 配置、聊天选择、审批、命令与工具详情一致；实时状态、失败、重连和历史可见且不卡顿。(verify: 定向 UI/性能测试及 360px/1280px 浏览器、Electron、至少一台真实手机关键路径证据，覆盖入口、退出、重试与长内容。)
 - [x] A-6 原有 Codex/Claude/OpenCode/Pi/OMP 等适配及账号池/BYOK 隔离不回归。(verify: 按源码差异运行对应 Adapter/网关回归；核对 OpenCode v1/v2；Pi/OMP 受管 BYOK、环境/实例归属、密钥不泄露及取消/审批/子 Agent 证据。)
 - [x] A-7 本地、远程、relay/tunnel 的重连、迟到审批、进程崩溃与取消后重启可恢复。(verify: 隔离服务真实连接与进程操作证据；不读写在线数据库；各模式分别记录而非用本地 mock 代替。)
 - [ ] A-8 稳定实现文档、用户说明、44 入口能力记录与回滚方法齐全，全部范围经过最终独立审计。(verify: 对照计划 P0–P5 逐条证据审查；源文件定向 lint/typecheck/tests；新鲜 spec-verifier 审核所有 A-N，未证实项保持未完成。)
@@ -4615,6 +4615,37 @@ Server `tsgo --noEmit` 退出 0。定向 lint 退出 0。四份 live 各 1 项�
 #### Retrospect
 
 本轮 progress：A-7 三桶证据齐全并勾选。Agent CLI 仍为隔离 mock，连接与恢复路径为真实 isolate serve。下一轮唯一增量 A-8：稳定文档/44 能力表/回滚说明齐全后，派发全新独立审核逐条核对 A-1…A-8；未证实保持未完成。goal active。
+
+### Round 147（A-8 新鲜独立审核）
+
+#### Plan
+
+对照计划 P0–P5 与 Acceptance，派发全新独立审核（不信任台账勾选），逐条判定 A-1…A-8；文档/能力表/回滚仅作 A-8 输入，不能代替审核。真实账号/真机按 override 可跳过；连接模式证据不豁免。
+
+#### Act
+
+独立审核子代理（agent `118c5d7c-a9b3-4f1f-97ae-3dbdcd3d6d5f`）只读核对当前 HEAD 与证据。结论摘要：
+
+| ID | 判定 |
+| --- | --- |
+| A-1 | PROVED（定向 191+56 项 fixture/UI 派生） |
+| A-2 | PROVED（6+38 表 + 目录/快照测试） |
+| A-3 | PROVED（登录豁免；首批探针/文档） |
+| A-4 | PROVED（四态登记表） |
+| A-5 | UNPROVED（缺 Desktop/Mobile 聊天选择/审批/命令/工具详情关键路径耐久证据；目录/Amp 安装不够） |
+| A-6 | PROVED（Adapter/账号池定向 90 项） |
+| A-7 | PROVED（r59/r62/r64 隔离 JSON） |
+| A-8 | UNPROVED（因 A-5 未证实，且不得自行勾选） |
+
+台账据此取消 A-5 勾选；A-7 保持勾选；A-8 保持未勾选。未改产品代码。
+
+#### Verify
+
+审核方自行跑了定向测试子集；本轮未额外改实现。禁止把本轮审核写成 A-8 通过。
+
+#### Retrospect
+
+本轮 progress：新鲜审核暴露 A-5 关键路径证据缺口，纠正历史勾选。下一轮唯一增量补齐 Electron + Mobile（AVD 可）对聊天选择/审批/命令/工具详情/失败重连的耐久证据后，再重新独立审核 A-8。goal active。
 
 ## Lessons
 
