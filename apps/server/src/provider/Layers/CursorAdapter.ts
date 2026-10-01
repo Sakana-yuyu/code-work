@@ -1100,6 +1100,17 @@ export function makeCursorAdapter(
                 });
               }),
             );
+          // 原生PTY停止可能给出-1；ACP仅接收uint32，未知退出保留null，不伪造成功码。
+          const terminalExitStatus = (snapshot: { exitCode: unknown; exitSignal: unknown }) => ({
+            exitCode:
+              typeof snapshot.exitCode === "number" &&
+              Number.isInteger(snapshot.exitCode) &&
+              snapshot.exitCode >= 0 &&
+              snapshot.exitCode <= 0xffff_ffff
+                ? snapshot.exitCode
+                : null,
+            signal: typeof snapshot.exitSignal === "number" ? String(snapshot.exitSignal) : null,
+          });
           let activeAcpSessionId: string | undefined;
           const requireActiveAcpSession = (requestSessionId: string) =>
             requestSessionId === activeAcpSessionId
@@ -1246,14 +1257,7 @@ export function makeCursorAdapter(
                     truncated: limited.truncated,
                     ...(exited
                       ? {
-                          exitStatus: {
-                            exitCode:
-                              typeof snapshot.exitCode === "number" ? snapshot.exitCode : null,
-                            signal:
-                              typeof snapshot.exitSignal === "number"
-                                ? String(snapshot.exitSignal)
-                                : null,
-                          },
+                          exitStatus: terminalExitStatus(snapshot),
                         }
                       : {}),
                   };
@@ -1279,13 +1283,7 @@ export function makeCursorAdapter(
                       baseIdentity,
                     );
                     if (snapshot.status === "exited" || snapshot.status === "error") {
-                      return {
-                        exitCode: typeof snapshot.exitCode === "number" ? snapshot.exitCode : null,
-                        signal:
-                          typeof snapshot.exitSignal === "number"
-                            ? String(snapshot.exitSignal)
-                            : null,
-                      };
+                      return terminalExitStatus(snapshot);
                     }
                     yield* Effect.sleep(Duration.millis(100));
                     return yield* Effect.suspend(() => waitForExit(attempt + 1));
@@ -1990,28 +1988,37 @@ export function makeCursorAdapter(
         const interruptedTurnId = ctx.promptsInFlight > 0 ? ctx.activeTurnId : undefined;
         const binding = toolBrokerContexts.get(threadId);
         if (interruptedTurnId !== undefined) ctx.interruptedTurnId = interruptedTurnId;
-        yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
-        yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
-        yield* Effect.ignore(
-          ctx.acp.cancel.pipe(
-            Effect.mapError((error) =>
-              mapAcpToAdapterError(PROVIDER, threadId, "session/cancel", error),
-            ),
+        // ACP取消会先发布终态并撤销Run权限，必须先停止本回合已就绪的宿主进程。
+        yield* Effect.gen(function* () {
+          if (binding?.active && interruptedTurnId !== undefined) {
+            const results = yield* Effect.forEach(
+              [...binding.terminals],
+              ([terminalId, terminal]) =>
+                (terminal.turnId === interruptedTurnId
+                  ? killOwnedTerminal(binding, terminalId)
+                  : Effect.void
+                ).pipe(Effect.result),
+              { concurrency: "unbounded" },
+            );
+            const failure = results.find((result) => result._tag === "Failure");
+            if (failure) return yield* failure.failure;
+          }
+        }).pipe(
+          Effect.ensuring(
+            Effect.gen(function* () {
+              // 停止失败也必须通知Agent取消，保留停止错误供调用方明确结算。
+              yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
+              yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
+              yield* Effect.ignore(
+                ctx.acp.cancel.pipe(
+                  Effect.mapError((error) =>
+                    mapAcpToAdapterError(PROVIDER, threadId, "session/cancel", error),
+                  ),
+                ),
+              );
+            }),
           ),
         );
-        if (binding?.active && interruptedTurnId !== undefined) {
-          const results = yield* Effect.forEach(
-            [...binding.terminals],
-            ([terminalId, terminal]) =>
-              (terminal.turnId === interruptedTurnId
-                ? killOwnedTerminal(binding, terminalId)
-                : Effect.void
-              ).pipe(Effect.result),
-            { concurrency: "unbounded" },
-          );
-          const failure = results.find((result) => result._tag === "Failure");
-          if (failure) return yield* failure.failure;
-        }
       });
 
     const respondToRequest: CursorAdapterShape["respondToRequest"] = (

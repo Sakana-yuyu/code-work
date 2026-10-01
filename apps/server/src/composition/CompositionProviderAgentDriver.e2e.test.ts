@@ -36,6 +36,12 @@ import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegi
 import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDriver.ts";
 import { projectCompositionRuntimeEvent } from "./CompositionTaskRuntimeProjector.ts";
 
+import { makeCompositionOrchestrator } from "./CompositionOrchestrator.ts";
+import { makeCompositionRuntimeToolBridge } from "./CompositionRuntimeToolBridge.ts";
+import { makeCompositionCapabilityRegistry } from "./CapabilityRegistry.ts";
+import { makeCapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
+import type { ToolBrokerInput } from "./ToolBroker.ts";
+
 class CursorAdapter extends Context.Service<CursorAdapter, CursorAdapterShape>()(
   "codework/composition/CompositionProviderAgentDriver.e2e.test/CursorAdapter",
 ) {}
@@ -43,6 +49,19 @@ class CursorAdapter extends Context.Service<CursorAdapter, CursorAdapterShape>()
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const mockAgentPath = NodePath.join(__dirname, "../../scripts/acp-mock-agent.ts");
 const decodeCursorSettings = Schema.decodeSync(CursorSettings);
+const decodeTerminalFixtureLog = Schema.decodeUnknownSync(
+  Schema.Struct({
+    method: Schema.String,
+    result: Schema.Struct({
+      exitCode: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+      exitStatus: Schema.optionalKey(
+        Schema.Struct({
+          exitCode: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+        }),
+      ),
+    }),
+  }),
+);
 
 const makeMockAgentWrapper = async (extraEnv: Record<string, string>): Promise<string> => {
   const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "composition-provider-e2e-"));
@@ -95,6 +114,196 @@ const TestLayer = Layer.mergeAll(
 it.layer(TestLayer, { excludeTestServices: true })(
   "Composition Provider Driver 本地 ACP 跨进程 E2E",
   (it) => {
+    it.effect("宿主终端取消先停止进程，再发布会撤销Run权限的ACP终态", () =>
+      Effect.gen(function* () {
+        for (const variant of ["cancel", "kill", "stop-failed"] as const) {
+          const adapter = yield* CursorAdapter;
+          const settings = yield* ServerSettingsService;
+          const store = yield* CompositionTaskStore;
+          const workspaceRoot = yield* Effect.promise(() =>
+            NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "composition-terminal-cancel-")),
+          );
+          const resultLogPath = NodePath.join(workspaceRoot, "terminal-results.ndjson");
+          const wrapperPath = yield* Effect.promise(() =>
+            makeMockAgentWrapper({
+              CODEWORK_ACP_TERMINAL_COMMAND: "controlled-running-command",
+              CODEWORK_ACP_TERMINAL_CWD: workspaceRoot,
+              ...(variant !== "kill"
+                ? { CODEWORK_ACP_TERMINAL_HANG_AFTER_CREATE: "1" }
+                : { CODEWORK_ACP_TERMINAL_KILL_BEFORE_WAIT: "1" }),
+              CODEWORK_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
+            }),
+          );
+          yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+          const threadId = ThreadId.make("composition-terminal-" + variant),
+            taskId = "task-terminal-" + variant,
+            runId = "run-terminal-" + variant;
+          const agentId = "provider:cursor",
+            registry = makeCompositionAgentDriverRegistry();
+          const grantRegistry = makeCapabilityGrantRegistry({
+            capabilityRegistry: makeCompositionCapabilityRegistry(),
+          });
+          const completed = yield* Deferred.make<void>();
+          const stopAttempted = yield* Deferred.make<void>();
+          const invocations: ToolBrokerInput[] = [];
+          const runtimeBridge = makeCompositionRuntimeToolBridge({
+            taskStore: store,
+            inputStore: {
+              get: () => Effect.succeed(Option.some({ taskId, prompt: "取消终端", workspaceRoot })),
+            },
+            toolBroker: {
+              invoke: (input) =>
+                Effect.gen(function* () {
+                  invocations.push(input);
+                  if (input.canonicalToolName === "terminal.kill") {
+                    // 原门禁已允许执行后，取消终态尚未落库；执行替身仅确认调用顺序。
+                    assert.equal(
+                      Option.getOrThrow(yield* store.getRun(runId).pipe(Effect.orDie)).status,
+                      "running",
+                    );
+                    yield* Deferred.succeed(stopAttempted, undefined);
+                  }
+                  if (variant === "stop-failed" && input.canonicalToolName === "terminal.kill") {
+                    return {
+                      invocationId: input.toolCallId,
+                      taskId,
+                      runId,
+                      toolCallId: input.toolCallId,
+                      canonicalToolName: input.canonicalToolName,
+                      idempotencyKey: input.idempotencyKey,
+                      status: "failed" as const,
+                      errorCode: "controlled_terminal_stop_failed",
+                    };
+                  }
+                  return {
+                    invocationId: input.toolCallId,
+                    taskId,
+                    runId,
+                    toolCallId: input.toolCallId,
+                    canonicalToolName: input.canonicalToolName,
+                    idempotencyKey: input.idempotencyKey,
+                    status: "succeeded" as const,
+                    result:
+                      input.canonicalToolName === "terminal.exec"
+                        ? { status: "running" }
+                        : input.canonicalToolName === "terminal.snapshot"
+                          ? {
+                              status: "exited",
+                              history: "native-stop-output",
+                              exitCode: -1,
+                              exitSignal: null,
+                            }
+                          : {},
+                  };
+                }),
+              cancel: () =>
+                Effect.succeed({
+                  invocationId: "unused",
+                  taskId,
+                  runId,
+                  toolCallId: "unused",
+                  canonicalToolName: "terminal.exec",
+                  idempotencyKey: "unused",
+                  status: "cancelled" as const,
+                }),
+            },
+          });
+          const driver = makeCompositionProviderAgentDriver({
+            agentId,
+            runtimeId: agentId,
+            providerInstanceId: ProviderInstanceId.make("cursor"),
+            providerKind: "cursor",
+            adapter,
+            toolBrokerBridge: runtimeBridge,
+          });
+          yield* registry.register(driver);
+          const orchestrator = makeCompositionOrchestrator(store, registry, grantRegistry);
+          const projector = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+            Effect.gen(function* () {
+              if (event.threadId !== threadId) return;
+              yield* projectCompositionRuntimeEvent(store, registry, event, grantRegistry);
+              if (event.type === "turn.completed") yield* Deferred.succeed(completed, undefined);
+            }),
+          ).pipe(Effect.forkChild);
+          const abortWatch = new AbortController();
+          yield* Effect.addFinalizer(() => Effect.sync(() => abortWatch.abort()));
+          // 等待实际ACP create回复的文件通知，不能只等ToolBroker execute入口。
+          const created = yield* Effect.promise(async () => {
+            for await (const _event of NodeFSP.watch(workspaceRoot, {
+              signal: abortWatch.signal,
+            })) {
+              const content = await NodeFSP.readFile(resultLogPath, "utf8");
+              if (content.includes('"method":"terminal/create"')) return;
+            }
+            throw new Error("终端创建回执未收到");
+          }).pipe(Effect.forkChild);
+          const dispatch = yield* orchestrator
+            .dispatchTask({
+              taskId,
+              runId,
+              projectId: "project-terminal-cancel",
+              threadId,
+              assigneeKind: "agent",
+              assigneeId: agentId,
+              mode: "serial",
+              promptDigest: "sha256:terminal-cancel",
+              prompt: "创建终端后取消",
+              workspaceRoot,
+              dependsOnTaskIds: [],
+              capabilityIds: ["t3.terminal.exec", "t3.terminal.kill", "t3.terminal.close"],
+            })
+            .pipe(Effect.forkChild);
+          yield* Fiber.join(created).pipe(Effect.timeout("10 seconds"));
+          if (variant !== "kill") {
+            const cancellation = yield* Effect.result(
+              orchestrator.cancelTask({ taskId, runId, reason: "取消宿主终端" }),
+            );
+            if (variant === "stop-failed") {
+              assert.equal(cancellation._tag, "Failure");
+              if (cancellation._tag === "Failure")
+                assert.include(cancellation.failure.message, "provider_turn_cancel_failed");
+            } else {
+              assert.equal(cancellation._tag, "Success");
+              if (cancellation._tag === "Success")
+                assert.equal(cancellation.success.status, "cancelled");
+            }
+          }
+          yield* Deferred.await(stopAttempted).pipe(Effect.timeout("5 seconds"));
+          yield* Fiber.join(dispatch);
+          assert.equal(
+            invocations.filter((input) => input.canonicalToolName === "terminal.exec").length,
+            1,
+          );
+          assert.equal(
+            invocations.filter((input) => input.canonicalToolName === "terminal.kill").length,
+            1,
+          );
+          assert.equal(
+            Option.getOrThrow(yield* store.getRun(runId)).status,
+            variant === "cancel" ? "cancelled" : variant === "kill" ? "completed" : "failed",
+          );
+          yield* Deferred.await(completed).pipe(Effect.timeout("5 seconds"));
+          if (variant === "kill") {
+            const entries = (yield* Effect.promise(() => NodeFSP.readFile(resultLogPath, "utf8")))
+              .trim()
+              .split("\n")
+              .map((line) => decodeTerminalFixtureLog(JSON.parse(line)));
+            assert.equal(
+              entries.find((entry) => entry.method === "terminal/output")?.result.exitStatus
+                ?.exitCode,
+              null,
+            );
+            assert.equal(
+              entries.find((entry) => entry.method === "terminal/wait_for_exit")?.result.exitCode,
+              null,
+            );
+            assert.equal(entries.filter((entry) => entry.method === "terminal/release").length, 1);
+          }
+          yield* Fiber.interrupt(projector);
+        }
+      }),
+    );
+
     it.effect("取消终态早于 Provider startTask 返回时仍收口到原 Composition Run", () =>
       Effect.gen(function* () {
         const adapter = yield* CursorAdapter;

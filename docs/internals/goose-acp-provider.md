@@ -187,6 +187,24 @@ Registry live注入现有ProjectionSnapshotQuery.getThreadShellById，每次派�
 
 回滚只撤回本段内部启动确认字段、Projector提交确认/提前终态回收、Provider bridge等待及三场景回归，保留前段握手落库/单次回收/旧Session顺序和用户工作，无数据迁移。隔离服务/home/业务记录跨轮保留，普通夹具配置已恢复，临时令牌不进入文档/截图/提交。
 
+## 产品PTY执行与取消顺序
+
+2026-10-02从b476ba6ba9b1382814ff555c3632ac39e49cf418继续完整生产Run，经现有ACP宿主Bridge、RuntimeBridge、ToolBroker与NodePtyAdapter验证终端。正常实际Node命令输出PRODUCT_PTY_EXIT，wait_for_exit得到退出码7，release成功；只读隔离存储确认一次terminal.exec、一次terminal.close，捕获子进程已退出。这里使用普通ACP请求夹具，但执行端是真实产品PTY，不是之前测试Bridge内的Node替身。
+
+真实取消暴露共同顺序缺口：Cursor共同Adapter先发送ACP cancel，Agent终态可先投影为cancelled并撤销Run权限，随后terminal.kill被原门禁拒绝。现在先停止当前回合已登记且就绪的宿主终端，再结算待决审批/输入和通知Agent取消；所有终端仍各自尝试，停止失败保留明确错误，finally保证取消通知不会因停止失败被跳过。已有回合身份、迟到创建补停和权限门禁保留，没有新增取消框架或放宽终态权限。取消前后实际捕获的Node PID由存活变为退出，工具表只有一次exec和一次kill，取消RPC和Run均为cancelled。
+
+显式terminal/kill复验又揭示Windows原生PTY停止返回-1，与项目内ACP生成schema要求非负uint32不一致，terminal/output无法编码，wait/release未完成。output与wait现在共用有界转换：仅有效uint32作为退出码，其余返回协议允许的null表示未知，不伪造成功0，也不改原生Manager快照。signal沿原已知信号转换。修复后真实kill、output、wait_for_exit、release顺序完整，两种退出查询都是null，输出仍包含PRODUCT_PTY_KILL；一次exec、一次kill、两次snapshot、一次close均成功，实际子进程已退出。
+
+CompositionProviderAgentDriver.e2e.test.ts一个参数化回归使用真实ACP子进程、Orchestrator派发/grant、内存SQLite Store、可信Driver/Projector和RuntimeBridge，分别覆盖取消前kill仍在running作用域、原生负退出码的output/wait/release，以及停止失败仍向Agent发送取消并返回明确失败。测试执行替身仅检查顺序与结果转换，不冒充PTY；完整隔离服务的三种真实终端证明另列。以标准文件通知等待ACP create实际回复，不用固定睡眠或轮询。旧取消顺序回归明确kill执行时Run已cancelled；负退出码回归保持失败记录，原等待终态因编码失败超时后改为先等待实际派发回执再验终态，不放宽成功断言。
+
+定向Composition/Runtime四文件79项、Cursor共同Adapter/真实Manager命令/Goose取消普通模式三文件45项共124项通过，4项官方CLI opt-in跳过不算通过；Server类型检查与两个变更TS定向lint均通过。第一次新增测试类型检查发现ToolBrokerInput与RuntimeInvocation不能互换，以及测试存储错误不符合invoke无错误合同；改为既有输入类型，存储错误在测试明确die，不用断言或屏蔽诊断。原账号池建议、Node DEP0190及ConPTY AttachConsole诊断保留。
+
+开发node --watch在第一次PTY请求后触发重启并使RPC断开，留下孤立Run，这不是成功证明。复验只临时在隔离副本关闭watch、启动后恢复package原字节，保留同一home/项目/端口；自己捕获的服务会话受控重启，没有模式杀进程或写live userdata。夹具最初参数变量拼错使Node进入REPL，修正为现有indexed ARG_0，失败保留；这与产品取消顺序缺口分开。两个失败终端仅按本轮已捕获Run/terminalId使用原RPC关闭，未动用户终端，普通夹具原配置已恢复。
+
+运行中取消后的进程停止已有证据，但终态后clearToolBroker尝试terminal.close仍受到正常门禁拒绝；本轮未证明取消自动release或迟到创建/完整进程树所有边界，必须继续核对可信资源回收责任，不从进程退出推导句柄/历史已经释放。terminal/wait沿现有snapshot轮询，本轮未新增等待轮询。没有本轮浏览器/Electron/手机/远程或官方CLI推理证明，不能以124项及真实PTY替代44入口/P0–P5与最终新鲜独立审计。
+
+回滚只撤回本次共同Adapter取消先后、ACP退出码转换、参数化回归与本段说明，无迁移；保留前轮启动确认、握手、单次审批与用户原工作。共同实现影响Cursor、Generic ACP和Kimi；Grok独立宿主实现未改，非当前普通Cursor夹具入口的实际PTY验证仍单列。隔离完整服务、业务成功/失败记录跨轮保留。
+
 ## 复验、失败与回滚
 
 ```powershell
