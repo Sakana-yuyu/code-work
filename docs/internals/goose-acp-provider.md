@@ -1,6 +1,6 @@
 # Goose ACP 调用、工具与验证边界
 
-核对日期2026-10-01。固定官方 Windows CLI 1.52.0，以已安装二进制的版本与实际协议结果为准；本次不下载或升级 CLI，不使用外部模型或账户。本页的当前证据来自已提交工具探针，旧独立脚本的 Ollama 实验保留为工作历史，不进入本次成功统计。
+核对日期2026-10-01。固定官方 Windows CLI 1.52.0，以已安装二进制的版本与实际协议结果为准；本次不下载或升级 CLI，不使用外部模型或账户。本页的当前证据来自已提交工具与取消探针，旧独立脚本的 Ollama 实验保留为工作历史，不进入本次成功统计。
 
 ## 调用与隔离
 
@@ -15,7 +15,7 @@
 | GOOSE_PROVIDER / active_provider | openai；独立 config/config.yaml 的 providers.openai enabled/configured 为 true |
 | GOOSE_MODEL                      | codework-loopback；HTTP 请求必须携带该模型，模型目录来自本机 /v1/models        |
 | OPENAI_HOST / OPENAI_BASE_PATH   | 127.0.0.1 动态 HTTP 端口 / v1/chat/completions；只用合成 local-test-only Key   |
-| GOOSE_MODE                       | approve，读写/命令按官方广告的审批选项回应                                     |
+| GOOSE_MODE                       | 工具矩阵为approve，按原审批选项回应；运行中取消探针为auto，明确选择会话模式    |
 | extensions                       | developer enabled；summon disabled，配置属于临时数据根                         |
 | GOOSE_DISABLE_SESSION_NAMING     | true，关闭自动会话标题模型任务，不允许后台请求消费工具动作                     |
 
@@ -37,23 +37,35 @@
 | 取消后继续          | 同一运行时下一独立 prompt=end_turn，无固定等待、自动重发或额外放宽生产超时                                                                                                                           |
 | 新进程恢复          | 关闭旧 CLI 后新进程 session/load 成功；同 sessionId，唯一恢复 prompt 的实际模型请求 role=tool 同时包含旧 read 和 shell 标记；该恢复请求恰1次，恢复正文匹配，全流程工具动作恰6次                      |
 
-旧独立 Ollama 脚本的三种取消实验均返回 end_turn，运行命令未被证明停止；当前审批取消通过不能抹去旧失败或代替运行中终端取消验收。此次没有修改生产取消逻辑，使用此前已交付的共同通知与取消结算合同。文件工具通知与宿主实际请求分别计数，不让通知驱动第二次执行。
+旧独立 Ollama 脚本的三种取消实验均返回 end_turn，运行命令未被证明停止；当前审批取消通过不能抹去旧失败或代替运行中终端取消验收。上轮审批探针使用此前已交付的共同通知与取消结算合同；本次另修共用Adapter的宿主终端停止责任，详见下节。文件工具通知与宿主实际请求分别计数，不让通知驱动第二次执行。
 
 探针的宿主处理器校验 sessionId、工作根路径和受控命令并执行真实副作用，但它是本机测试宿主，不能自称完整产品 ToolBroker。产品边界另跑 [CursorAdapterToolBroker.e2e.test.ts](../../apps/server/src/provider/Layers/CursorAdapterToolBroker.e2e.test.ts) 的真实工具代理加协议夹具，以及 [AcpJsonRpcConnection.test.ts](../../apps/server/src/provider/acp/AcpJsonRpcConnection.test.ts) 的传输/取消合同；两者与真实 Goose CLI 结果分别登记。
+
+## 运行中宿主终端取消
+
+共用生产入口为 [CursorAdapter.ts](../../apps/server/src/provider/Layers/CursorAdapter.ts)，被CursorDriver、GenericAcpDriver及KimiDriver复用。原interruptTurn只发送ACP取消；ToolBroker.cancel仅结算策略，并不停止终端进程。固定Goose官方AcpTools.shell调用acp_shell时没有把cancellation_token传入宿主等待，因此本地回合显示cancelled后命令仍可能运行。修复在共同宿主边界，不新增Goose专用Driver或第二套终端管理器。
+
+复用已有终端表，记录创建回合、输出限额及创建/停止状态；terminal.exec调用前登记句柄。取消先标记当前回合，再沿既有bridge对该回合已创建的终端逐个terminal.kill；收集全部停止结果后才返回错误，不因一项失败放弃其它终端。创建结果晚到时补停并返回明确ACP错误，不把句柄交回已取消回合。未授予当前Run的句柄、其它回合及空闲取消不重复停止；句柄继续供Agent查询退出与release/会话清理。
+
+停止被拒或失败沿既有runtime.error公开返回“宿主终端停止未确认”，保留线程/回合归属及permission_error/provider_error类别；普通取消调用同时返回失败，晚到创建通过公开错误反馈。不会以本地cancelled冒充已停止，不输出原命令、环境或模型内容。原prompt RPC结算及共用续聊等待保持原合同，不虚构远端stopReason。
+
+证据入口 [GooseAcpCancellationProbe.test.ts](../../apps/server/src/provider/acp/GooseAcpCancellationProbe.test.ts)：普通模式的协议夹具始终执行，旧HEAD明确没有terminal.kill请求，修复后通过。官方1.52.0、本机受控模型和实际捕获Node进程覆盖running、late、denied、late-denied：前两项确实退出，并在同连接下一回合收到正文GOOSE_NEXT_OK和completed回执；后两项仍运行且公开停止失败，最终会话清理关闭。每项停止尝试恰1次，额外未交给Adapter的进程仍活着，没有意外文件副作用。创建/等待/退出/完成均用实际屏障，无新增sleep或自动重发。
+
+官方取消探针的bridge是受控终端替身，执行真实Node进程；不等于产品TerminalManager的PTY或进程树验证。普通协议夹具也不冒充官方CLI。产品ToolBroker协议E2E另跑，当前没有Goose加完整产品工具代理或浏览器按钮联调证据；原生prompt的远端stopReason未在本次Adapter探针中捕获。停止后续聊是实际正文/完成回执证据，停止失败不会被计为成功。历史Ollama end_turn失败保留；上轮读取通知缺正文的边界仍未解决。
 
 ## 复验、失败与回滚
 
 ```powershell
 $env:CODEWORK_GOOSE_CLI_PATH = '<固定1.52.0目录>/goose.exe'
-node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/GooseAcpToolProbe.test.ts
+node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/GooseAcpToolProbe.test.ts apps/server/src/provider/acp/GooseAcpCancellationProbe.test.ts
 Remove-Item Env:CODEWORK_GOOSE_CLI_PATH
-node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/AcpJsonRpcConnection.test.ts apps/server/src/provider/Layers/CursorAdapterToolBroker.e2e.test.ts
+node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/GooseAcpCancellationProbe.test.ts apps/server/src/provider/acp/AcpJsonRpcConnection.test.ts apps/server/src/provider/Layers/CursorAdapterToolBroker.e2e.test.ts apps/server/src/provider/Layers/CursorAdapter.test.ts apps/server/src/provider/Drivers/GenericAcpDriver.test.ts apps/server/src/provider/Layers/KimiProvider.test.ts
 ```
 
-未提供 opt-in 或非 Windows 时跳过，跳过不记为通过。HEAD加精确模块索引副本、workspace依赖指向副本：官方 CLI 探针1项通过；相关传输/产品工具代理67项通过，普通模式官方probe1项跳过。Server类型检查退出0，仅原账号池文件2条建议；本次探针定向lint与格式通过。首次准备器错误工具名、遗漏模型目录、Windows shell 引号及定向lint失败均保留外置日志，不能算产品缺陷；读取正文的通知缺失有真实失败和固定官方源码对应。
+官方CLI检查未提供opt-in或非Windows时跳过，普通协议夹具仍执行，跳过不记为通过。源码基线397a4ddc0ee85ccb0433a89f42c83bca2968173f加精确4文件索引的独立副本、workspace依赖指向副本：官方工具矩阵1项、官方取消4项和普通夹具1项，共6项通过；普通模式相关传输/产品代理及Cursor/Generic/Kimi共119项通过、4项官方取消跳过，两批有夹具重叠不直接累加。另按runtime.error筛选既有 [ProviderRuntimeIngestion.test.ts](../../apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.test.ts) 的错误状态/工作日志投影，2项通过、97项因筛选跳过；该结果不替代实际GUI。Server类型检查退出0，仅原账号池文件2条建议；改动2源码文件定向lint与4文件格式通过。旧生产实现的官方running检查明确进程仍运行，普通夹具明确无kill；修复后各原断言通过。本轮首次测试在最终回收重复stopSession时失败，改为已有hasSession防重，不吞错误；首次新增测试类型错误改为已有Schema解码模式后通过。首次准备器错误工具名、遗漏模型目录、Windows shell 引号及定向lint失败均保留外置日志，不能算产品缺陷；读取正文的通知缺失有真实失败和固定官方源码对应。
 
 准备阶段未设置 GOOSE_PATH_ROOT 的诊断曾读取默认技能资料，该阶段不能证明数据隔离，并可能生成默认 Goose 会话；没有删除或回写真实 Goose 数据。最终探针显式设置官方绝对路径根，关闭 keyring，不复制账户/密钥或读取在线 Code Work 数据库。CLI、HTTP 连接、捕获终端及临时目录由 Scope 回收；只结束自己捕获的进程，不按名称批量结束。
 
-本模块增加复验入口和明确能力记录，生产 Driver/账户/数据库未改；回滚只需撤回本次探针与文档提交，无迁移。运行中命令取消、读取显示与产品宿主结果的整合、外部推理/真实余额、MCP/媒体、Web/Electron/手机及远程连接均未由本次证明；44入口/P0–P5和最终独立审计仍未完成。
+本次模块修改共享Adapter和取消探针/文档，不涉及账户或数据库迁移；回滚仅撤回这一模块提交，需保留上轮工具探针和其它工作区修改。共用变化影响Cursor、Generic ACP和Kimi的宿主终端取消，Grok独立实现未改。读取显示与产品宿主结果的界面整合、产品PTY进程树、外部推理/真实余额、MCP/媒体、Web/Electron/手机及远程连接仍未由本次证明；44入口/P0–P5和最终独立审计未完成。
 
 检索词 Goose v1.52.0 ACP tools cancel OpenAI config Paths，访问日期2026-10-01。采用固定官方 [ACP server](https://github.com/aaif-goose/goose/blob/v1.52.0/crates/goose/src/acp/server.rs)、[文件与终端实现](https://github.com/aaif-goose/goose/blob/v1.52.0/crates/goose/src/acp/fs.rs)、[工具通知转换](https://github.com/aaif-goose/goose/blob/v1.52.0/crates/goose/src/acp/server/tool_calls/conversion.rs)、[OpenAI端点配置](https://github.com/aaif-goose/goose/blob/v1.52.0/crates/goose/src/providers/openai_def.rs)和[数据路径](https://github.com/aaif-goose/goose/blob/v1.52.0/crates/goose/src/config/paths.rs)，因为它们直接定义固定版本的协议/隔离/显示边界；不以 README、其它 ACP 客户端实现或最新版本行为推断本次结果。

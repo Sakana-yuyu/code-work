@@ -160,7 +160,15 @@ interface PendingUserInput {
 interface CursorToolBrokerBinding {
   readonly bridge: ProviderToolBrokerBridge;
   readonly context: ProviderToolBrokerContext;
-  readonly terminalOutputByteLimits: Map<string, number | null>;
+  readonly terminals: Map<
+    string,
+    {
+      readonly outputByteLimit: number | null;
+      readonly turnId: TurnId | undefined;
+      ready: boolean;
+      killed: boolean;
+    }
+  >;
   readonly inFlightInvocations: Map<string, ProviderToolBrokerCancellation>;
   active: boolean;
 }
@@ -181,6 +189,7 @@ interface CursorSessionContext {
   readonly turns: Array<{ id: TurnId; items: Array<unknown> }>;
   lastPlanFingerprint: string | undefined;
   activeTurnId: TurnId | undefined;
+  interruptedTurnId: TurnId | undefined;
   /** Number of sendTurn prompts currently in flight or being prepared.
    * >0 means a turn is actively running, so a new sendTurn is a steer that
    * continues it, and only the last remaining prompt settles the turn. */
@@ -562,6 +571,41 @@ export function makeCursorAdapter(
         })
         .pipe(Effect.asVoid, Effect.ignore);
 
+    // 只停止已登记的宿主终端；句柄保留给 Agent 查询退出状态和释放。
+    const killOwnedTerminal = (binding: CursorToolBrokerBinding, terminalId: string) =>
+      Effect.gen(function* () {
+        const terminal = binding.terminals.get(terminalId);
+        // 创建未返回时由创建回调补停；已释放或已停止的句柄无需重复操作。
+        if (!terminal?.ready || terminal.killed) return;
+        const id = yield* randomUUIDv4;
+        const result = yield* binding.bridge.invoke({
+          toolCallId: `cursor-acp:interrupt:${id}`,
+          canonicalToolName: "terminal.kill",
+          arguments: { terminalId },
+          idempotencyKey: `cursor-acp:interrupt:${binding.context.capabilityHandshakeId}:${id}`,
+        });
+        if (result.status !== "succeeded") {
+          const message = `宿主终端停止未确认（${result.status}）。`;
+          yield* offerRuntimeEvent({
+            type: "runtime.error",
+            ...(yield* makeEventStamp()),
+            provider: PROVIDER,
+            threadId: binding.context.threadId,
+            turnId: terminal.turnId,
+            payload: {
+              message,
+              class: result.status === "denied" ? "permission_error" : "provider_error",
+            },
+          });
+          return yield* new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "terminal.kill",
+            detail: message,
+          });
+        }
+        terminal.killed = true;
+      });
+
     const cleanupToolBrokerBinding = (threadId: ThreadId, binding: CursorToolBrokerBinding) =>
       Effect.gen(function* () {
         binding.active = false;
@@ -577,8 +621,8 @@ export function makeCursorAdapter(
           concurrency: "unbounded",
           discard: true,
         }).pipe(Effect.ignore);
-        const terminalIds = [...binding.terminalOutputByteLimits.keys()];
-        binding.terminalOutputByteLimits.clear();
+        const terminalIds = [...binding.terminals.keys()];
+        binding.terminals.clear();
         yield* Effect.forEach(
           terminalIds,
           (terminalId) => closeOwnedTerminal(threadId, binding, terminalId),
@@ -667,7 +711,7 @@ export function makeCursorAdapter(
         pendingToolBrokerContexts.set(input.threadId, {
           bridge: input.bridge,
           context: input.context,
-          terminalOutputByteLimits: new Map(),
+          terminals: new Map(),
           inFlightInvocations: new Map(),
           active: true,
         });
@@ -952,11 +996,7 @@ export function makeCursorAdapter(
           const requireOwnedTerminal = (terminalId: string) =>
             Effect.gen(function* () {
               const binding = toolBrokerContexts.get(input.threadId);
-              if (
-                binding === undefined ||
-                !binding.active ||
-                !binding.terminalOutputByteLimits.has(terminalId)
-              ) {
+              if (binding === undefined || !binding.active || !binding.terminals.has(terminalId)) {
                 return yield* EffectAcpErrors.AcpRequestError.resourceNotFound(
                   "ACP terminal handle 不属于当前授权 Run。",
                 );
@@ -1078,6 +1118,18 @@ export function makeCursorAdapter(
                   const env = Object.fromEntries(
                     (request.env ?? []).map((entry) => [entry.name, entry.value]),
                   );
+                  const turnId = ctx.activeTurnId;
+                  if (turnId !== undefined && turnId === ctx.interruptedTurnId)
+                    return yield* EffectAcpErrors.AcpRequestError.invalidParams(
+                      "当前 ACP 回合已取消，终端请求未执行。",
+                    );
+                  const terminal = {
+                    outputByteLimit: request.outputByteLimit ?? null,
+                    turnId,
+                    ready: false,
+                    killed: false,
+                  };
+                  binding.terminals.set(terminalId, terminal);
                   const createResult = yield* Effect.result(
                     invokeTool(
                       "terminal/create",
@@ -1094,9 +1146,23 @@ export function makeCursorAdapter(
                   );
                   if (createResult._tag === "Failure") {
                     yield* closeOwnedTerminal(input.threadId, binding, terminalId);
+                    binding.terminals.delete(terminalId);
                     return yield* createResult.failure;
                   }
-                  binding.terminalOutputByteLimits.set(terminalId, request.outputByteLimit ?? null);
+                  terminal.ready = true;
+                  if (
+                    turnId !== ctx.activeTurnId ||
+                    (turnId !== undefined && turnId === ctx.interruptedTurnId)
+                  ) {
+                    yield* killOwnedTerminal(binding, terminalId).pipe(
+                      Effect.mapError(() =>
+                        EffectAcpErrors.AcpRequestError.internalError("晚到宿主终端停止未确认。"),
+                      ),
+                    );
+                    return yield* EffectAcpErrors.AcpRequestError.invalidParams(
+                      "ACP 回合已结束，晚到终端已停止。",
+                    );
+                  }
                   return { terminalId };
                 }),
               );
@@ -1111,7 +1177,7 @@ export function makeCursorAdapter(
                   );
                   const limited = truncateTerminalOutput(
                     snapshot.history,
-                    binding.terminalOutputByteLimits.get(request.terminalId),
+                    binding.terminals.get(request.terminalId)?.outputByteLimit,
                   );
                   const exited = snapshot.status === "exited" || snapshot.status === "error";
                   return {
@@ -1174,7 +1240,7 @@ export function makeCursorAdapter(
                     { terminalId },
                     yield* makeToolIdentity("terminal/release"),
                   );
-                  binding.terminalOutputByteLimits.delete(terminalId);
+                  binding.terminals.delete(terminalId);
                   return {};
                 });
               yield* acp.handleTerminalKill((request) =>
@@ -1432,6 +1498,7 @@ export function makeCursorAdapter(
             turns: [],
             lastPlanFingerprint: undefined,
             activeTurnId: undefined,
+            interruptedTurnId: undefined,
             promptsInFlight: 0,
             stopped: false,
           };
@@ -1859,6 +1926,9 @@ export function makeCursorAdapter(
     const interruptTurn: CursorAdapterShape["interruptTurn"] = (threadId) =>
       Effect.gen(function* () {
         const ctx = yield* requireSession(threadId);
+        const interruptedTurnId = ctx.promptsInFlight > 0 ? ctx.activeTurnId : undefined;
+        const binding = toolBrokerContexts.get(threadId);
+        if (interruptedTurnId !== undefined) ctx.interruptedTurnId = interruptedTurnId;
         yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
         yield* settlePendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
         yield* Effect.ignore(
@@ -1868,6 +1938,19 @@ export function makeCursorAdapter(
             ),
           ),
         );
+        if (binding?.active && interruptedTurnId !== undefined) {
+          const results = yield* Effect.forEach(
+            [...binding.terminals],
+            ([terminalId, terminal]) =>
+              (terminal.turnId === interruptedTurnId
+                ? killOwnedTerminal(binding, terminalId)
+                : Effect.void
+              ).pipe(Effect.result),
+            { concurrency: "unbounded" },
+          );
+          const failure = results.find((result) => result._tag === "Failure");
+          if (failure) return yield* failure.failure;
+        }
       });
 
     const respondToRequest: CursorAdapterShape["respondToRequest"] = (
