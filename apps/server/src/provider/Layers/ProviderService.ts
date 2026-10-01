@@ -298,9 +298,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         canonicalEventLogger
           ? canonicalEventLogger.write(
               canonicalEvent.type === "content.delta" &&
-                (canonicalEvent.payload.image ||
-                  canonicalEvent.payload.audio ||
-                  canonicalEvent.payload.blob)
+              (canonicalEvent.payload.image ||
+                canonicalEvent.payload.audio ||
+                canonicalEvent.payload.blob)
                 ? {
                     ...canonicalEvent,
                     payload: {

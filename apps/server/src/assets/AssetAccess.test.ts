@@ -16,10 +16,7 @@ import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as CodeworkProjectFileLoader from "../project/CodeworkProjectFileLoader.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { ASSET_ROUTE_PREFIX, issueAssetUrl, resolveAsset } from "./AssetAccess.ts";
-import {
-  storeProviderAudioAttachment,
-  storeProviderBlobAttachment,
-} from "./ProviderBinaryAttachment.ts";
+import { storeProviderAudioAttachment, storeProviderBlobAttachment } from "./ProviderBinaryAttachment.ts";
 
 const configLayer = ServerConfig.ServerConfig.layerTest(process.cwd(), {
   prefix: "codework-asset-access-test-",
@@ -40,19 +37,14 @@ describe("AssetAccess", () => {
       const fileSystem = yield* FileSystem.FileSystem;
       const bytes = new Uint8Array([82, 73, 70, 70, 1, 2, 3]);
       const audio = yield* storeProviderAudioAttachment(ThreadId.make("media-thread"), "audio", {
-        mimeType: "audio/wav",
-        data: "UklGRgECAw==",
+        mimeType: "audio/wav", data: "UklGRgECAw==",
       });
       const blob = yield* storeProviderBlobAttachment(ThreadId.make("media-thread"), "blob", {
-        mimeType: "application/octet-stream",
-        data: "UklGRgECAw==",
-        uri: "file:///workspace/report.bin",
+        mimeType: "application/octet-stream", data: "UklGRgECAw==", uri: "file:///workspace/report.bin",
       });
       for (const result of [audio, blob]) {
         if (!result.attachment) throw new Error("媒体未保存");
-        const issued = yield* issueAssetUrl({
-          resource: { _tag: "attachment", attachmentId: result.attachment.id },
-        });
+        const issued = yield* issueAssetUrl({ resource: { _tag: "attachment", attachmentId: result.attachment.id } });
         const suffix = issued.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
         const token = suffix.slice(0, suffix.indexOf("/"));
         const resolved = yield* resolveAsset(token, "../../other.bin");

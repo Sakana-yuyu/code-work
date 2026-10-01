@@ -26,6 +26,8 @@ import {
   ThreadTurnDiff,
   ThreadTurnStartRequestedPayload,
   isProviderSendTurnSupportedImageMimeType,
+  isProviderAgentSupportedAudioMimeType,
+  isProviderAgentSupportedBlobMimeType,
 } from "./orchestration.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
@@ -1022,4 +1024,14 @@ it("isProviderSendTurnSupportedImageMimeType accepts raster formats and rejects 
   assert.strictEqual(isProviderSendTurnSupportedImageMimeType("image/png"), true);
   assert.strictEqual(isProviderSendTurnSupportedImageMimeType("IMAGE/JPEG"), true);
   assert.strictEqual(isProviderSendTurnSupportedImageMimeType("image/svg+xml"), false);
+});
+
+it("isProviderAgentSupportedAudioMimeType and blob helpers gate unsafe types", () => {
+  assert.strictEqual(isProviderAgentSupportedAudioMimeType("audio/wav"), true);
+  assert.strictEqual(isProviderAgentSupportedAudioMimeType("audio/mpeg"), true);
+  assert.strictEqual(isProviderAgentSupportedAudioMimeType("video/mp4"), false);
+  assert.strictEqual(isProviderAgentSupportedBlobMimeType("application/octet-stream"), true);
+  assert.strictEqual(isProviderAgentSupportedBlobMimeType("application/pdf"), true);
+  assert.strictEqual(isProviderAgentSupportedBlobMimeType("image/svg+xml"), false);
+  assert.strictEqual(isProviderAgentSupportedBlobMimeType("text/html"), false);
 });
