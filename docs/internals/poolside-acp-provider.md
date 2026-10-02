@@ -8,11 +8,11 @@
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize | `agentInfo.name=pool-acp`、`version=1.0.16`；`authMethods=[]` |
+| 项目               | 结果                                                                                |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| initialize         | `agentInfo.name=pool-acp`、`version=1.0.16`；`authMethods=[]`                       |
 | session/new（R70） | 失败：`Authentication required` / `Run pool login …`（空 authMethods ≠ 可匿名会话） |
-| 工具 / prompt | 会话未建成，未发送 |
+| 工具 / prompt      | 会话未建成，未发送                                                                  |
 
 隔离路径：`C:\codework-cli-iso\poolside-1.0.16\extract\pool-windows-amd64.exe`。
 

@@ -19,10 +19,10 @@ $env:CODEWORK_AUTOHAND_CLI_PATH = 'C:\codework-cli-iso\autohand-0.2.1\node_modul
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize | name/version 匹配 0.2.1；缺底层 CLI 时 auth=`autohand-install` |
-| 工具 / prompt | 未实测 |
+| 项目          | 结果                                                           |
+| ------------- | -------------------------------------------------------------- |
+| initialize    | name/version 匹配 0.2.1；缺底层 CLI 时 auth=`autohand-install` |
+| 工具 / prompt | 未实测                                                         |
 
 ## 后续与回滚
 

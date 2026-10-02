@@ -248,11 +248,11 @@ node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/GooseAc
 
 本地解锁：
 
-| 变量 / 配置 | 值 |
-| --- | --- |
-| `GOOSE_PROVIDER` | `ollama` |
-| `GOOSE_MODEL` | `qwen2.5:3b`（R75 曾用 `0.5b`，工具参数不合格） |
-| `OLLAMA_HOST` | `127.0.0.1:11434` |
+| 变量 / 配置        | 值                                                                     |
+| ------------------ | ---------------------------------------------------------------------- |
+| `GOOSE_PROVIDER`   | `ollama`                                                               |
+| `GOOSE_MODEL`      | `qwen2.5:3b`（R75 曾用 `0.5b`，工具参数不合格）                        |
+| `OLLAMA_HOST`      | `127.0.0.1:11434`                                                      |
 | 隔离 `config.yaml` | `active_provider: ollama`；建议禁用 `summon` 扩展，避免模型误调 `load` |
 
 Ollama：`winget` 0.35.0；已 pull `qwen2.5:0.5b` 与 `qwen2.5:3b`（Clash fake-ip 下 R2 需 hosts，见 R75）。
@@ -261,15 +261,15 @@ ACP 客户端须广告并处理：`fs/read_text_file`、`fs/write_text_file`、`
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize | `agentInfo.name=goose`、`version=1.52.0`；`authMethods=[{id:goose-provider}]` |
-| session/new（R70，无 provider） | 失败：缺 `GOOSE_PROVIDER` |
-| session/new + 文本（R75，0.5b） | 成功；工具 `read` 失败 `missing field path` |
-| session/prompt + `developer__read`（R76，3b） | **成功**：`rawInput.path=marker-r76.txt`；`tool_call_update` completed；回复含 `R76_OLLAMA_MARKER_44117`；`stopReason=end_turn` |
-| shell/write（R76 / R78 早） | 无 `terminal/*` 或写断言过严 → 超时 / HARD_PASS=0 |
-| **R78 matrix3（qwen2.5:3b）** | **HARD_PASS=4/4**：read / write（`fs/write` 含 `R79_WRITE_OK`）/ shell（`terminal/create` + 文件 `R79_SHELL_OK`）/ reject（`approve` 模式 + deny，`rejected.txt` 不存在）。cancel：`session/cancel` 后仍 `stopReason=end_turn`（**未**证 cancelled） |
-| **R79 cancel2** | 三种策略均 `stopReason=end_turn`（afterTerminal / earlyDouble / afterToolCall）；长 `ping` 工具已开战仍不返回 `cancelled`。**判定**：对本机 Ollama `qwen2.5:3b`+goose 1.52.0，硬 cancel 目前达不到；记为软上限，不冒充通过 |
+| 项目                                          | 结果                                                                                                                                                                                                                                                 |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| initialize                                    | `agentInfo.name=goose`、`version=1.52.0`；`authMethods=[{id:goose-provider}]`                                                                                                                                                                        |
+| session/new（R70，无 provider）               | 失败：缺 `GOOSE_PROVIDER`                                                                                                                                                                                                                            |
+| session/new + 文本（R75，0.5b）               | 成功；工具 `read` 失败 `missing field path`                                                                                                                                                                                                          |
+| session/prompt + `developer__read`（R76，3b） | **成功**：`rawInput.path=marker-r76.txt`；`tool_call_update` completed；回复含 `R76_OLLAMA_MARKER_44117`；`stopReason=end_turn`                                                                                                                      |
+| shell/write（R76 / R78 早）                   | 无 `terminal/*` 或写断言过严 → 超时 / HARD_PASS=0                                                                                                                                                                                                    |
+| **R78 matrix3（qwen2.5:3b）**                 | **HARD_PASS=4/4**：read / write（`fs/write` 含 `R79_WRITE_OK`）/ shell（`terminal/create` + 文件 `R79_SHELL_OK`）/ reject（`approve` 模式 + deny，`rejected.txt` 不存在）。cancel：`session/cancel` 后仍 `stopReason=end_turn`（**未**证 cancelled） |
+| **R79 cancel2**                               | 三种策略均 `stopReason=end_turn`（afterTerminal / earlyDouble / afterToolCall）；长 `ping` 工具已开战仍不返回 `cancelled`。**判定**：对本机 Ollama `qwen2.5:3b`+goose 1.52.0，硬 cancel 目前达不到；记为软上限，不冒充通过                           |
 
 隔离路径：`C:\codework-cli-iso\goose-1.52.0\extract\goose-package\goose.exe`。
 

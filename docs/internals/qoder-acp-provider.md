@@ -8,10 +8,10 @@
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize | `agentInfo.name=qoder-cli`、`version=0.2.14`；auth 含上述两项 |
-| 工具 / prompt | 本轮未发送 |
+| 项目          | 结果                                                          |
+| ------------- | ------------------------------------------------------------- |
+| initialize    | `agentInfo.name=qoder-cli`、`version=0.2.14`；auth 含上述两项 |
+| 工具 / prompt | 本轮未发送                                                    |
 
 隔离路径：`C:\codework-cli-iso\qoder-0.2.14\node_modules\.bin\qodercli.cmd`。
 

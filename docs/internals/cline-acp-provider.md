@@ -12,11 +12,11 @@
 
 Code Work 的 Cline 目录项预填**空认证方式**。这表示不发 `authenticate`，直接让 CLI 在 `session/new` 或 `session/load` 时使用已有凭据并校验认证。缺凭据依然返回上游错误。需要显式 OAuth 时，可手工填写官方方法 ID；本轮未启动 OAuth 浏览器或完成登录。
 
-| 真实 initialize 广告 | 方法 ID |
-| --- | --- |
-| Cline 账号 | `cline` |
-| ClinePass | `cline-pass` |
-| ChatGPT 订阅 | `openai-codex` |
+| 真实 initialize 广告 | 方法 ID        |
+| -------------------- | -------------- |
+| Cline 账号           | `cline`        |
+| ClinePass            | `cline-pass`   |
+| ChatGPT 订阅         | `openai-codex` |
 
 `login` 不是 Cline 的认证方法。真实 CLI 返回 `-32602 Invalid params: Unsupported auth method: login`；跳过认证但没有任何凭据时，建会话返回 `-32000 Authentication required: Call authenticate before starting a session`。
 
@@ -47,12 +47,12 @@ Code Work 的 Cline 目录项预填**空认证方式**。这表示不发 `authen
 
 复用 `AcpSessionRuntime → CursorAdapter/GenericAcpDriver → ProviderRuntimeIngestion → Web/Mobile`，不新增 Cline 专属 Adapter。
 
-| 官方工具 | 本次验证 | 展示合同 |
-| --- | --- | --- |
-| `read_files` | 读取独立临时目录中的合成文件 | `files[].path` 用于审批路径；实际内容进入 detail，标题在缺省增量中保留 |
-| `apply_patch` | 批准后文件内容正确；拒绝/取消后文件不存在 | 原生审批选项 ID，取消 stopReason=cancelled |
-| `run_commands` | echo 输出成功；`exit 7` 明确失败 | commands 按换行保留；`{query,result,success}[]` 转为结果详情，任一子结果失败时终态为 failed |
-| `session/load` | 原进程退出后新进程恢复，后续模型请求仍含旧工具读取结果 | 同一 sessionId，不把重新建立空会话当作恢复 |
+| 官方工具       | 本次验证                                               | 展示合同                                                                                    |
+| -------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `read_files`   | 读取独立临时目录中的合成文件                           | `files[].path` 用于审批路径；实际内容进入 detail，标题在缺省增量中保留                      |
+| `apply_patch`  | 批准后文件内容正确；拒绝/取消后文件不存在              | 原生审批选项 ID，取消 stopReason=cancelled                                                  |
+| `run_commands` | echo 输出成功；`exit 7` 明确失败                       | commands 按换行保留；`{query,result,success}[]` 转为结果详情，任一子结果失败时终态为 failed |
+| `session/load` | 原进程退出后新进程恢复，后续模型请求仍含旧工具读取结果 | 同一 sessionId，不把重新建立空会话当作恢复                                                  |
 
 上游原始批量输出仍保留在 data.rawOutput；已识别结果的文本按既有 8,000 字符尾部窗口限制。未知数组不猜测字段或状态。Web/桌面和 Mobile 复用已有 detail/status 消费与展开控件；Mobile 行摘要优先命令，完整结果在展开详情，不要求摘要重复完整日志。
 
@@ -68,16 +68,16 @@ $env:CODEWORK_CLINE_CLI_PATH = 'C:/隔离安装目录/node_modules/@cline/cli-wi
 
 仅设置变量时运行官方探针。两个探针均使用作用域临时 workspace、`--config` 和 `CLINE_DATA_DIR`，不使用真实登录文件或启动 OAuth。CliProbe 只验证认证/配置，不发 prompt；ToolProbe 建立本地 HTTP 响应端点并发送真实 prompt，让官方 CLI 实际执行工具。独立目录是配置隔离，不是操作系统级沙箱。
 
-| 检查 | 结果 |
-| --- | --- |
-| 2026-09-30 隔离复测（`C:\codework-cli-iso\cline-3.0.65`，`--ignore-scripts`，cline.exe 3.0.65） | `ClineAcpCliProbe`+`ClineAcpToolProbe` 2 文件 **4** 项通过；本地夹具，非外部账号 |
-| 官方 CLI 三场景：错误方法、缺失密钥、合成密钥建会话与配置 | 通过；无模型请求 |
-| 官方探针、模型解析、通用 Driver、目录、Web/Mobile 表单 | 6 文件 89 项通过 |
-| 公共连接、Cursor 支持、Cursor/Grok Adapter、添加向导 | 5 文件 124 项通过 |
-| 默认值显示调整后的两端表单与添加向导 | 3 文件 25 项通过；与上两行重复，不累加 |
-| 添加向导 Cline 空方法实际保存载荷 | 4 项测试再次通过 |
-| Server/Web/Mobile 类型检查 | 通过；Server 仅既有账号池 Effect 建议 |
-| 浏览器 | 未配置显示 login；选择 Cline 后为空；1280px/360px 无整页横向溢出，窄屏键盘可访问底部操作，返回/关闭有效 |
+| 检查                                                                                            | 结果                                                                                                    |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 2026-09-30 隔离复测（`C:\codework-cli-iso\cline-3.0.65`，`--ignore-scripts`，cline.exe 3.0.65） | `ClineAcpCliProbe`+`ClineAcpToolProbe` 2 文件 **4** 项通过；本地夹具，非外部账号                        |
+| 官方 CLI 三场景：错误方法、缺失密钥、合成密钥建会话与配置                                       | 通过；无模型请求                                                                                        |
+| 官方探针、模型解析、通用 Driver、目录、Web/Mobile 表单                                          | 6 文件 89 项通过                                                                                        |
+| 公共连接、Cursor 支持、Cursor/Grok Adapter、添加向导                                            | 5 文件 124 项通过                                                                                       |
+| 默认值显示调整后的两端表单与添加向导                                                            | 3 文件 25 项通过；与上两行重复，不累加                                                                  |
+| 添加向导 Cline 空方法实际保存载荷                                                               | 4 项测试再次通过                                                                                        |
+| Server/Web/Mobile 类型检查                                                                      | 通过；Server 仅既有账号池 Effect 建议                                                                   |
+| 浏览器                                                                                          | 未配置显示 login；选择 Cline 后为空；1280px/360px 无整页横向溢出，窄屏键盘可访问底部操作，返回/关闭有效 |
 
 上述表格记录认证接入阶段的检查，不与后续重复运行累加。ToolProbe 补足真实 Cline 进程的模型、工具和持久恢复；Cursor Adapter 子进程测试还核对人工批准回传的原始 optionId。没有执行全仓测试。
 

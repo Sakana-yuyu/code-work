@@ -14,22 +14,22 @@ Web／桌面“添加供应商”中的 GitHub Copilot ACP 按钮进入既有 AC
 
 ## 实测矩阵
 
-| 路径 | 实际证据 | 结论 |
-| --- | --- | --- |
-| 版本与握手 | 官方 native CLI 返回 1.0.89；initialize/new 成功 | 通过 |
-| 认证与文本 | 既有 GitHub CLI 登录态下，真实模型返回指定短句；没有 COPILOT_PROVIDER_* 覆盖 | 通过，不代表所有账号有资格 |
-| 模式 | URI Agent → Plan → Agent，读取运行时当前模式一致 | 通过 |
-| 权限默认 | 会话配置 `allow_all` 为 `off` | 没有自动开启无人值守 |
-| 读文件与写入 | 读取隔离 workspace/source.txt；允许一次工具请求后 approved.txt 字节内容正确 | 通过 |
-| 命令工具 | 真正调用 PowerShell 工具执行指定 Write-Output，工具为 execute/completed，回复包含实际结果 | 通过 |
-| 拒绝 | 返回上游 reject_once 的 optionId，denied.txt 不存在 | 通过 |
-| 取消 | 收到权限请求时发送 session/cancel；stopReason=cancelled，cancelled.txt 不存在 | 通过 |
-| 进程重启与恢复 | 关闭首个 CLI，再以同一独立 home 调用 session/load；新回复正确引用之前读取的内容 | 通过 |
-| 命令发现 | 真实 available_commands_update 包含 usage 等条目 | 通过 |
-| 模型目录 | new 未返回 models，配置没有 model 类别；`/model` 返回交互式 CLI 才支持模型选择器 | 本次未广告，不能伪造菜单或宣称动态模型验证通过 |
+| 路径                         | 实际证据                                                                                    | 结论                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| 版本与握手                   | 官方 native CLI 返回 1.0.89；initialize/new 成功                                            | 通过                                              |
+| 认证与文本                   | 既有 GitHub CLI 登录态下，真实模型返回指定短句；没有 COPILOT*PROVIDER*\* 覆盖               | 通过，不代表所有账号有资格                        |
+| 模式                         | URI Agent → Plan → Agent，读取运行时当前模式一致                                            | 通过                                              |
+| 权限默认                     | 会话配置 `allow_all` 为 `off`                                                               | 没有自动开启无人值守                              |
+| 读文件与写入                 | 读取隔离 workspace/source.txt；允许一次工具请求后 approved.txt 字节内容正确                 | 通过                                              |
+| 命令工具                     | 真正调用 PowerShell 工具执行指定 Write-Output，工具为 execute/completed，回复包含实际结果   | 通过                                              |
+| 拒绝                         | 返回上游 reject_once 的 optionId，denied.txt 不存在                                         | 通过                                              |
+| 取消                         | 收到权限请求时发送 session/cancel；stopReason=cancelled，cancelled.txt 不存在               | 通过                                              |
+| 进程重启与恢复               | 关闭首个 CLI，再以同一独立 home 调用 session/load；新回复正确引用之前读取的内容             | 通过                                              |
+| 命令发现                     | 真实 available_commands_update 包含 usage 等条目                                            | 通过                                              |
+| 模型目录                     | new 未返回 models，配置没有 model 类别；`/model` 返回交互式 CLI 才支持模型选择器            | 本次未广告，不能伪造菜单或宣称动态模型验证通过    |
 | custom agent、allow_all 切换 | 合成无工具 profile 被官方广告；角色 → 默认空字符串、on → off 写回后读取一致，模式仍为 Agent | 官方 1.0.89 通过；未在 Allow All 开启期间执行工具 |
-| 浏览器 | 快捷按钮 → 所选环境目录 → 固定版本命令，返回命名；360px 无横向溢出 | 入口通过；未做真实 Copilot 聊天 UI 全链路 |
-| Electron／原生手机／远程连接 | 本轮未运行 | 未验证 |
+| 浏览器                       | 快捷按钮 → 所选环境目录 → 固定版本命令，返回命名；360px 无横向溢出                          | 入口通过；未做真实 Copilot 聊天 UI 全链路         |
+| Electron／原生手机／远程连接 | 本轮未运行                                                                                  | 未验证                                            |
 
 官方 CLI 探针是 `apps/server/src/provider/acp/CopilotAcpCliProbe.test.ts`。仅显式设置二进制路径时运行，会使用现有登录并产生模型用量；普通测试不会安装 CLI 或调用模型。
 
@@ -86,24 +86,24 @@ Copilot支持GitHub后端认证，也支持官方BYOK模式。本次采用COPILO
 
 ## 会话角色、模式与默认模型
 
-模式ID保留官方URI的#agent/#plan，Agent → Plan → Agent真实RPC往返后读取一致。角色agent属于_agent类别，权限allow_all属于permissions；复用现有toAcpConfigOptions/applyAcpConfigSelections，客户端候选value:表示原始空字符串默认角色，acpConfig:编码原configId。角色codework-profile → 默认和allow_all on → off写回后广告一致，失效角色在发送前明确拒绝。开启Allow All期间没有执行工具。
+模式ID保留官方URI的#agent/#plan，Agent → Plan → Agent真实RPC往返后读取一致。角色agent属于\_agent类别，权限allow_all属于permissions；复用现有toAcpConfigOptions/applyAcpConfigSelections，客户端候选value:表示原始空字符串默认角色，acpConfig:编码原configId。角色codework-profile → 默认和allow_all on → off写回后广告一致，失效角色在发送前明确拒绝。开启Allow All期间没有执行工具。
 
 本次new没有模型目录广告；COPILOT_MODEL是BYOK请求设置，不是运行时发现的模型。保留现有CLI默认模型入口，不伪造目录/切换证据。命令目录收到usage，但没有逐条执行斜杠命令。Allow All与应用处理审批的运行模式是两层控制：人工审批应保持Allow All Off，配置生效不撤销已执行工具。
 
 ## 当前实测矩阵
 
-| 路径 | 当前结果 | 证据边界 |
-| --- | --- | --- |
-| 安装/握手 | 已安装固定官方1.0.89，精确握手断言 | 没有本轮重新安装或证明所有平台 |
-| 认证/文本 | 无GitHub登录的离线BYOK建会话，真实CLI请求本机模型且收到正文 | 模型回复是合成回应；外部账号和推理未验证 |
-| 角色/权限/模式 | 空角色编码、profile/default、on/off、非法角色拒绝、URI模式往返 | 复用既有合同，不代表所有自定义角色行为 |
-| 读取 | view实际读取source.txt，模型tool响应包含合成文件内容；read/completed | 没有搜索、MCP或远程文件验证 |
-| 写入/允许 | create经原生allow_once optionId，approved.txt字节为APPROVED | 原生工具执行一次，宿主不重复执行 |
-| 命令成功 | PowerShell Write-Output实际输出；rawOutput.exitCode=0且completed | 只执行合成命令 |
-| 命令失败 | exit 7原始ACP仍completed，但结构化shell_exit为7；派生failed、退出码7，保留原帧 | 不从正文猜测退出码 |
-| 拒绝/取消 | 原始reject_once optionId或cancelled；对应文件不存在，取消回合终态正确 | 取消不是已执行副作用的撤销 |
-| 新进程恢复 | 同sessionId启动第二个CLI；下一模型请求含之前读取的文件内容，回复标记收到 | 不是浏览器刷新、服务器崩溃或设备恢复 |
-| Web/Desktop/Mobile/连接 | 本轮未执行 | 不用共享协议测试替代界面或真实设备 |
+| 路径                    | 当前结果                                                                       | 证据边界                                 |
+| ----------------------- | ------------------------------------------------------------------------------ | ---------------------------------------- |
+| 安装/握手               | 已安装固定官方1.0.89，精确握手断言                                             | 没有本轮重新安装或证明所有平台           |
+| 认证/文本               | 无GitHub登录的离线BYOK建会话，真实CLI请求本机模型且收到正文                    | 模型回复是合成回应；外部账号和推理未验证 |
+| 角色/权限/模式          | 空角色编码、profile/default、on/off、非法角色拒绝、URI模式往返                 | 复用既有合同，不代表所有自定义角色行为   |
+| 读取                    | view实际读取source.txt，模型tool响应包含合成文件内容；read/completed           | 没有搜索、MCP或远程文件验证              |
+| 写入/允许               | create经原生allow_once optionId，approved.txt字节为APPROVED                    | 原生工具执行一次，宿主不重复执行         |
+| 命令成功                | PowerShell Write-Output实际输出；rawOutput.exitCode=0且completed               | 只执行合成命令                           |
+| 命令失败                | exit 7原始ACP仍completed，但结构化shell_exit为7；派生failed、退出码7，保留原帧 | 不从正文猜测退出码                       |
+| 拒绝/取消               | 原始reject_once optionId或cancelled；对应文件不存在，取消回合终态正确          | 取消不是已执行副作用的撤销               |
+| 新进程恢复              | 同sessionId启动第二个CLI；下一模型请求含之前读取的文件内容，回复标记收到       | 不是浏览器刷新、服务器崩溃或设备恢复     |
+| Web/Desktop/Mobile/连接 | 本轮未执行                                                                     | 不用共享协议测试替代界面或真实设备       |
 
 CopilotAcpToolProbe.test.ts是当前可重复入口，只在显式CODEWORK_COPILOT_OFFLINE_CLI_PATH时运行实际CLI，普通测试跳过不计通过。模型端点校验路径、Bearer合成Key、wire model、原始OpenAI请求与SSE；按当前prompt标记和上游工具目录消费动作，防后台请求误领工具。Scope回收自身listener/进程/临时目录，事件drain同步，不使用固定睡眠。
 
@@ -117,11 +117,11 @@ CopilotAcpToolResult只处理握手name=Copilot、tool_call_update/completed且�
 
 ## 复验与回滚
 
-~~~powershell
+```powershell
 $env:CODEWORK_COPILOT_OFFLINE_CLI_PATH = '<固定1.0.89目录>/node_modules/@github/copilot-win32-x64/copilot.exe'
 node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/CopilotAcpToolProbe.test.ts
 Remove-Item Env:CODEWORK_COPILOT_OFFLINE_CLI_PATH
-~~~
+```
 
 历史CopilotAcpCliProbe.test.ts依赖既有GitHub登录并会产生模型用量，本模块没有执行或交付它，不能与当前离线探针共用变量/默认启用。真实账号测试应另行核对授权和范围。
 

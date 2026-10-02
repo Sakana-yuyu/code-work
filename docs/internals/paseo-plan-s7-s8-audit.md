@@ -24,24 +24,24 @@
 
 ## R101 §7 执行证据
 
-| Atom | 状态 | 证据 |
-| --- | --- | --- |
-| §7 四组定向测试 | **proven** | `%TEMP%/codework-paseo-unblock/r101-s7-tests.log`：Batch1 80、Batch2 52、Batch3 11、Batch4 107；**合计 250 passed**；`ALL_OK=True` |
-| 不全仓 | **proven** | 仅跑计划列出的文件 |
-| Agent 记录字段 / 未验证≠通过 | **proven（登记层）** | `paseo-provider-catalog.md` A-3 矩阵 + A-4 四态；各 `*-acp-provider.md`；未实测不当成通过 |
-| 异步等 receipt | **partial→proven for listed suites** | 上述定向测试沿用项目既有 barrier/drain 惯例；本轮未改测试基建 |
+| Atom                         | 状态                                 | 证据                                                                                                                               |
+| ---------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| §7 四组定向测试              | **proven**                           | `%TEMP%/codework-paseo-unblock/r101-s7-tests.log`：Batch1 80、Batch2 52、Batch3 11、Batch4 107；**合计 250 passed**；`ALL_OK=True` |
+| 不全仓                       | **proven**                           | 仅跑计划列出的文件                                                                                                                 |
+| Agent 记录字段 / 未验证≠通过 | **proven（登记层）**                 | `paseo-provider-catalog.md` A-3 矩阵 + A-4 四态；各 `*-acp-provider.md`；未实测不当成通过                                          |
+| 异步等 receipt               | **partial→proven for listed suites** | 上述定向测试沿用项目既有 barrier/drain 惯例；本轮未改测试基建                                                                      |
 
 `tsgo`/改动文件 lint：本轮未宣称全仓 typecheck；按 AGENTS.md 仅对触及范围定向验证。§7 写的是「按实际改动选择」，不是每次强制全仓。
 
 ## R101 §8 执行证据
 
-| Atom | 状态 | 证据 |
-| --- | --- | --- |
-| profile 可逐个禁用、不删历史 | **proven（产品能力）** | Provider 实例启停/禁用走既有 settings；见 `docs/internals/providers.md` |
-| 目录/合同旧命令兼容 | **proven** | catalog / contracts 保留旧 `command`；向导增量字段可选 |
-| 分阶段提交可 `git revert` | **proven（方法）** | 多轮 ledger 记录单主题提交；本页不要求本轮提交 |
-| 停用仅 PID、不按名杀 | **proven（工程约定）** | `AGENTS.md`「The three ways to hurt yourself」 |
-| 风险条款（Windows/副作用/审批/余额） | **documented** | generic-acp / catalog / byok-gateway 等 internals |
+| Atom                                 | 状态                   | 证据                                                                    |
+| ------------------------------------ | ---------------------- | ----------------------------------------------------------------------- |
+| profile 可逐个禁用、不删历史         | **proven（产品能力）** | Provider 实例启停/禁用走既有 settings；见 `docs/internals/providers.md` |
+| 目录/合同旧命令兼容                  | **proven**             | catalog / contracts 保留旧 `command`；向导增量字段可选                  |
+| 分阶段提交可 `git revert`            | **proven（方法）**     | 多轮 ledger 记录单主题提交；本页不要求本轮提交                          |
+| 停用仅 PID、不按名杀                 | **proven（工程约定）** | `AGENTS.md`「The three ways to hurt yourself」                          |
+| 风险条款（Windows/副作用/审批/余额） | **documented**         | generic-acp / catalog / byok-gateway 等 internals                       |
 
 ## 与 loop A-8 的关系（裁决）
 
@@ -63,15 +63,15 @@ A-N 历史线索见 `docs/internals/paseo-a8-independent-audit.md`；它同样�
 
 ## R101 的 P0–P5 历史判定（待最终复核）
 
-| 计划桶 | 判定 | 说明 |
-| --- | --- | --- |
+| 计划桶                    | 判定             | 说明                                                |
+| ------------------------- | ---------------- | --------------------------------------------------- |
 | P0 fixture / CLI 记录方法 | proven / partial | fixture proven；CLI 表有，Gemini 等仍未验证成功路径 |
-| P1 通用 ACP | proven | A-1 `[x]` |
-| P2 目录 | proven | A-2 `[x]` |
-| P2 首批五 CLI | **open** | Gemini 成功路径缺 key → A-3 `[ ]` |
-| P3 其余目录登记 | proven | A-4 `[x]`（P3 允许未实测登记） |
-| P4 原生回归 | proven | A-6 `[x]` |
-| P5 真机/多端 | **open** | 真实手机未出现 → A-5 `[ ]`；远程桶已由 A-7 覆盖 |
+| P1 通用 ACP               | proven           | A-1 `[x]`                                           |
+| P2 目录                   | proven           | A-2 `[x]`                                           |
+| P2 首批五 CLI             | **open**         | Gemini 成功路径缺 key → A-3 `[ ]`                   |
+| P3 其余目录登记           | proven           | A-4 `[x]`（P3 允许未实测登记）                      |
+| P4 原生回归               | proven           | A-6 `[x]`                                           |
+| P5 真机/多端              | **open**         | 真实手机未出现 → A-5 `[ ]`；远程桶已由 A-7 覆盖     |
 
 ## 回滚（本审计页）
 

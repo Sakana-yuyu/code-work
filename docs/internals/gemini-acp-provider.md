@@ -14,12 +14,12 @@
 
 `initialize` 返回协议版本 1、`agentInfo.name=gemini-cli`、`agentInfo.version=0.61.0`，以及以下认证方法：
 
-| 方法 ID | 上游说明 | 当前验证边界 |
-| --- | --- | --- |
-| `oauth-personal` | Google 账号登录 | 握手真实广告；快捷入口预填；尚未成功登录实测 |
+| 方法 ID          | 上游说明                 | 当前验证边界                                              |
+| ---------------- | ------------------------ | --------------------------------------------------------- |
+| `oauth-personal` | Google 账号登录          | 握手真实广告；快捷入口预填；尚未成功登录实测              |
 | `gemini-api-key` | Gemini Developer API Key | 无密钥时 authenticate 返回空成功，session/new 返回 -32000 |
-| `vertex-ai` | Vertex AI | 握手真实广告；未实测调用 |
-| `gateway` | 自定义 AI API Gateway | 握手真实广告；未实测调用 |
+| `vertex-ai`      | Vertex AI                | 握手真实广告；未实测调用                                  |
+| `gateway`        | 自定义 AI API Gateway    | 握手真实广告；未实测调用                                  |
 
 旧通用默认值 `login` 不是 Gemini 支持的认证方式：官方返回 `-32602 Invalid params`，`data` 中列出允许的枚举值。API Key 缺失时的建会话错误为 `-32000 Gemini API key is missing or not configured.`。探针确认这两种失败之后均没有发送 prompt。
 
@@ -46,16 +46,16 @@ $env:CODEWORK_GEMINI_CLI_PATH = 'C:/隔离安装目录/node_modules/@google/gemi
 
 未提供该变量时跳过，不在普通测试中安装软件或调用模型。探针创建临时工作目录与 `GEMINI_CLI_HOME`，覆写系统设置路径、移除常见 Google 密钥/项目环境变量、关闭遥测，使用生产 `AcpSessionRuntime` 验证真实错误。临时目录由作用域清理。独立 home 是配置隔离，不是操作系统沙箱。
 
-| 验证项 | 结果 |
-| --- | --- |
-| 官方 0.61.0 安装、版本、initialize | 通过 |
-| 错误 login 与缺失 API Key | 2 项真实 CLI 负向测试通过，未调用模型 |
-| effect-acp client/protocol、官方探针、添加页 | 4 文件 29 项通过 |
-| AcpJsonRpcConnection、GenericAcpDriver、Cursor/Grok Adapter | 4 文件 124 项通过 |
-| effect-acp、Server、Web 类型检查 | 通过；Server 保留既有账号池建议 |
-| 浏览器添加入口、版本、命令、认证预填、返回步骤 | 通过；360px/1280px 无整页横向溢出 |
-| 登录成功、模型/工具/审批/取消/恢复 | 未验证：缺 Gemini 凭据。R56/R70 再扫：常见 `GEMINI_*`/`GOOGLE_*` 密钥环境变量均 unset；用户级 `.gemini` 无可用 oauth/token；隔离负向探针 **2/2** 仍绿（R70）。不发明密钥。 |
-| Electron 壳、原生手机、远程/relay/tunnel | 本轮未实测 |
+| 验证项                                                      | 结果                                                                                                                                                                       |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 官方 0.61.0 安装、版本、initialize                          | 通过                                                                                                                                                                       |
+| 错误 login 与缺失 API Key                                   | 2 项真实 CLI 负向测试通过，未调用模型                                                                                                                                      |
+| effect-acp client/protocol、官方探针、添加页                | 4 文件 29 项通过                                                                                                                                                           |
+| AcpJsonRpcConnection、GenericAcpDriver、Cursor/Grok Adapter | 4 文件 124 项通过                                                                                                                                                          |
+| effect-acp、Server、Web 类型检查                            | 通过；Server 保留既有账号池建议                                                                                                                                            |
+| 浏览器添加入口、版本、命令、认证预填、返回步骤              | 通过；360px/1280px 无整页横向溢出                                                                                                                                          |
+| 登录成功、模型/工具/审批/取消/恢复                          | 未验证：缺 Gemini 凭据。R56/R70 再扫：常见 `GEMINI_*`/`GOOGLE_*` 密钥环境变量均 unset；用户级 `.gemini` 无可用 oauth/token；隔离负向探针 **2/2** 仍绿（R70）。不发明密钥。 |
+| Electron 壳、原生手机、远程/relay/tunnel                    | 本轮未实测                                                                                                                                                                 |
 
 ## One-shot 解锁（A-3 成功路径）
 

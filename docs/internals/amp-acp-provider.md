@@ -8,13 +8,13 @@
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| 官方资产 | `amp-acp-windows-x86_64.zip` |
-| SHA-256 | `3b2c3d14d703fcf9572da9733e4941703a7744bd37ec4aaa75421d6002c0157b`，与 registry-snapshot 一致 |
-| initialize | `agentInfo.name=amp-acp`、`version=0.9.0`；`authMethods=[{id:setup}]` |
-| CLI `--help`/`--version` | 进程退出 0，无有用 stdout（stdio 面向 ACP） |
-| 工具 / prompt | 本轮未发送 |
+| 项目                     | 结果                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| 官方资产                 | `amp-acp-windows-x86_64.zip`                                                                  |
+| SHA-256                  | `3b2c3d14d703fcf9572da9733e4941703a7744bd37ec4aaa75421d6002c0157b`，与 registry-snapshot 一致 |
+| initialize               | `agentInfo.name=amp-acp`、`version=0.9.0`；`authMethods=[{id:setup}]`                         |
+| CLI `--help`/`--version` | 进程退出 0，无有用 stdout（stdio 面向 ACP）                                                   |
+| 工具 / prompt            | 本轮未发送                                                                                    |
 
 隔离路径：`C:\codework-cli-iso\amp-acp-0.9.0\amp-acp.exe`。
 

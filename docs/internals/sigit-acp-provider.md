@@ -8,10 +8,10 @@
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize | `agentInfo.name=sigit`、`version=1.5.10`；`authMethods=[{id:sigit}]` |
-| R87 | 默认 `onde-large` not found → 未升 |
+| 项目          | 结果                                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------------- |
+| initialize    | `agentInfo.name=sigit`、`version=1.5.10`；`authMethods=[{id:sigit}]`                              |
+| R87           | 默认 `onde-large` not found → 未升                                                                |
 | R88 ToolProbe | session 成功；`read_file` 读 `marker.txt` 回显 `R88_OLLAMA_MARKER_77129` → **真实可用**；写未硬过 |
 
 隔离路径：`C:\codework-cli-iso\sigit-1.5.10\`。证据：`%TEMP%\codework-a5-r88\sigit-summary.json` / `sigit.jsonl`。

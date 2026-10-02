@@ -40,7 +40,6 @@ HEAD加精确模块索引、workspace依赖指向独立副本：官方CLI探针1
 
 检索词Qwen v0.24.7 loadSession restore history ACP，访问日期2026-10-01；采用[官方固定tag ACP入口](https://github.com/QwenLM/qwen-code/blob/v0.24.7/packages/cli/src/acp-integration/acpAgent.ts)、[官方认证说明](https://qwenlm.github.io/qwen-code-docs/en/users/configuration/auth/)与[官方设置](https://qwenlm.github.io/qwen-code-docs/en/users/configuration/settings/)，因为它们定义恢复/配置边界。网页tag文件未直接展现完整代码，本轮具体恢复实现另读取已安装固定0.24.7的loadSessionWithProfiler/projection/replay路径；实际恢复能力以探针为准，不由当前文档的其它认证协议推断该固定版本可用。
 
-
 ## 历史工作记录（原文保留，不作本次验收）
 
 # Qwen Code 的 ACP 接入与工具验证
@@ -65,16 +64,16 @@ Qwen 的 OpenAI 协议配置使用 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENA
 
 ## 官方 CLI 的实际响应
 
-| 项目 | 0.24.7 实际结果 |
-| --- | --- |
-| initialize | 协议 1；agentInfo 为 qwen-code / Qwen Code / 0.24.7 |
-| authMethods | 仅 openai，说明要求 OPENAI_API_KEY |
-| 错误 login | -32602 Invalid params，保留上游枚举诊断 |
-| openai 缺少密钥 | -32603，data.details 包含 Missing API key |
-| 未认证建立会话 | 原始协议探针返回 -32000 Authentication required |
-| 会话能力广告 | loadSession、list、resume；输入 image/audio/embeddedContext；MCP HTTP/SSE |
-| 本地模型会话 | 模型目录含配置的 OpenAI 运行时模型；同时收到 model/mode 配置 |
-| 模式 | plan/default/auto-edit/auto/yolo；此次初始值为 auto，探针显式切到 default |
+| 项目            | 0.24.7 实际结果                                                           |
+| --------------- | ------------------------------------------------------------------------- |
+| initialize      | 协议 1；agentInfo 为 qwen-code / Qwen Code / 0.24.7                       |
+| authMethods     | 仅 openai，说明要求 OPENAI_API_KEY                                        |
+| 错误 login      | -32602 Invalid params，保留上游枚举诊断                                   |
+| openai 缺少密钥 | -32603，data.details 包含 Missing API key                                 |
+| 未认证建立会话  | 原始协议探针返回 -32000 Authentication required                           |
+| 会话能力广告    | loadSession、list、resume；输入 image/audio/embeddedContext；MCP HTTP/SSE |
+| 本地模型会话    | 模型目录含配置的 OpenAI 运行时模型；同时收到 model/mode 配置              |
+| 模式            | plan/default/auto-edit/auto/yolo；此次初始值为 auto，探针显式切到 default |
 
 广告能力不代表应用对应能力全部验收。例如图片、音频、MCP 以及真实外部模型仍需单独证据。需要逐项审批时应核对上游模式与 Code Work 权限，不能从 CLI 初始 auto 推断会出现每次审批。探针显式启用延迟加载的 `run_shell_command`，关闭交互式 shell，验证普通命令路径；Windows 此路径实际使用 cmd，不能假设是 PowerShell。
 
@@ -97,15 +96,15 @@ $env:CODEWORK_QWEN_CLI_PATH = 'C:/隔离安装目录/node_modules/@qwen-code/qwe
 
 验证覆盖：错误认证、缺失密钥、模型及模式目录、文本流、读取真实临时文件、批准写入、命令退出码 0 和输出、原生 optionId 拒绝且文件未生成、取消且文件未生成，以及结束原进程后从同一隔离 home 恢复会话并再次响应。
 
-| 验证范围 | 结果与边界 |
-| --- | --- |
-| 官方 Qwen 探针 + RuntimeModel/CoreRuntimeEvents + Cursor/Grok Adapter | 5 文件 130 项通过，41.82 秒 |
-| 2026-09-30 隔离复测（`C:\codework-cli-iso\qwen-0.24.7`，`--ignore-scripts`，cli 0.24.7） | `QwenAcpCliProbe.test.ts` 1 项通过；本地夹具模型，非外部账号 |
-| 目录、添加向导、目录选择器与官方探针 | 4 文件 21 项通过；与上行存在重复探针，不累计为独立测试数 |
-| Server、Web、Mobile 类型检查 | 通过；Server 仅既有账号池 Effect 建议 |
-| 本轮 8 个源码/测试 lint | 通过 |
-| 浏览器添加流程 | Qwen 0.24.7 命令、openai 预填、从 Gemini 切换后更新认证；360px/1280px 无整页横向溢出 |
-| 外部账号和模型、聊天工具 UI、Electron、原生手机、远程/relay/tunnel | 本轮未完成实测 |
+| 验证范围                                                                                 | 结果与边界                                                                           |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 官方 Qwen 探针 + RuntimeModel/CoreRuntimeEvents + Cursor/Grok Adapter                    | 5 文件 130 项通过，41.82 秒                                                          |
+| 2026-09-30 隔离复测（`C:\codework-cli-iso\qwen-0.24.7`，`--ignore-scripts`，cli 0.24.7） | `QwenAcpCliProbe.test.ts` 1 项通过；本地夹具模型，非外部账号                         |
+| 目录、添加向导、目录选择器与官方探针                                                     | 4 文件 21 项通过；与上行存在重复探针，不累计为独立测试数                             |
+| Server、Web、Mobile 类型检查                                                             | 通过；Server 仅既有账号池 Effect 建议                                                |
+| 本轮 8 个源码/测试 lint                                                                  | 通过                                                                                 |
+| 浏览器添加流程                                                                           | Qwen 0.24.7 命令、openai 预填、从 Gemini 切换后更新认证；360px/1280px 无整页横向溢出 |
+| 外部账号和模型、聊天工具 UI、Electron、原生手机、远程/relay/tunnel                       | 本轮未完成实测                                                                       |
 
 官方包安装提示音频采集安装脚本未获 allowScripts 允许，本轮未启用，音频能力不在通过范围。浏览器只检查添加向导，没有保存真实 Qwen 实例或发送聊天。截图及原始探针结果保留在仓库外；没有写在线数据库。
 

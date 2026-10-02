@@ -16,9 +16,9 @@
 
 新归档须先核对官方目录/发布来源，在独立目录下载并计算完整字节SHA-256，再以精确URL加入表。记录获取/复核日期，变更须通过目录和下载器定向回归。不得把HTTP成功、文件名或同版本号当成哈希依据，也不得在查不到sha256时关闭校验。
 
-~~~powershell
+```powershell
 node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/AcpRegistryCatalog.test.ts apps/server/src/provider/acp/AcpRegistryBinaryInstall.test.ts
-~~~
+```
 
 目录回归覆盖缺省补充、官方优先、非法字段、URL变化、平台及命令安全和在线来源；下载器回归验证实际文件内容、校验失败、归档解包及并发发布。安装成功不能证明认证、文本、工具或账户余额可用；各项仍按 [入口验收合同](./acp-provider-validation.md)取证。
 

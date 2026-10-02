@@ -20,12 +20,12 @@
 
 证据性隔离 `minion-code==0.1.44` + `agent-client-protocol==0.8.0` 可 import，且能生成 initialize 结果，但响应写在 **stderr**，stdout 为空。Code Work `AcpSessionRuntime` 只消费 stdout NDJSON，因此仍无法建立会话。产品不因此改读 stderr（会与日志混流）。
 
-| 项目 | 默认 uvx / uv tool | pin `agent-client-protocol==0.8.0` |
-| --- | --- | --- |
-| 启动 | ImportError | 进程可起 |
-| initialize（stdout） | 无 | **无**（结果在 stderr） |
-| auth | — | 广告 `openrouter-oauth`（未登录） |
-| 工具 / prompt | 未发送 | 未发送 |
+| 项目                 | 默认 uvx / uv tool | pin `agent-client-protocol==0.8.0` |
+| -------------------- | ------------------ | ---------------------------------- |
+| 启动                 | ImportError        | 进程可起                           |
+| initialize（stdout） | 无                 | **无**（结果在 stderr）            |
+| auth                 | —                  | 广告 `openrouter-oauth`（未登录）  |
+| 工具 / prompt        | 未发送             | 未发送                             |
 
 上游需：收紧/适配 `agent-client-protocol`，并把 JSON-RPC 写回 stdout。
 

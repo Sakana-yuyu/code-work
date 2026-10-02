@@ -8,21 +8,21 @@
 
 本地 Ollama（R86–R89，官方文档 `DIRAC_*` + `dirac auth`）：
 
-| 变量/步骤 | 尝试值 |
-| --- | --- |
-| `dirac auth --provider openai --apikey ollama --modelid <model> --baseurl` | `http://127.0.0.1:11434/v1` |
-| `DIRAC_PROVIDER` / `DIRAC_MODEL` / `DIRAC_API_KEY` / `DIRAC_BASE_URL` | `openai` / 模型 id / `ollama` / 同上 |
-| `~/.dirac/data/globalState.json` `actModeOpenAiModelInfo` | `supportsReasoning: false`、`thinkingAlwaysOn: false`（否则 Ollama 报 model does not support thinking） |
-| `DIRAC_NO_AUTO_UPDATE` | `1`（隔离 PATH 缺 npm 时避免 spawn npm ENOENT） |
+| 变量/步骤                                                                  | 尝试值                                                                                                  |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `dirac auth --provider openai --apikey ollama --modelid <model> --baseurl` | `http://127.0.0.1:11434/v1`                                                                             |
+| `DIRAC_PROVIDER` / `DIRAC_MODEL` / `DIRAC_API_KEY` / `DIRAC_BASE_URL`      | `openai` / 模型 id / `ollama` / 同上                                                                    |
+| `~/.dirac/data/globalState.json` `actModeOpenAiModelInfo`                  | `supportsReasoning: false`、`thinkingAlwaysOn: false`（否则 Ollama 报 model does not support thinking） |
+| `DIRAC_NO_AUTO_UPDATE`                                                     | `1`（隔离 PATH 缺 npm 时避免 spawn npm ENOENT）                                                         |
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize | `agentInfo.name=dirac`、`version=0.5.16` |
-| session/new | Ollama openai 配置下成功 |
+| 项目          | 结果                                                                                                                                                                                     |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| initialize    | `agentInfo.name=dirac`、`version=0.5.16`                                                                                                                                                 |
+| session/new   | Ollama openai 配置下成功                                                                                                                                                                 |
 | prompt / 工具 | R89：`qwen2.5:7b` 发出 `list_files`/`read_file`，但反复打开虚构 `src/main.ts`（ENOENT），无 marker 回显、无写盘；`qwen2.5:3b`/`coder:3b` 易触发 YOLO consecutive mistakes → **仍未实测** |
-| R90 约束再推 | 仅 `marker.txt` + customPrompt + 绝对路径提示 + 关 thinking：仍无 marker/写盘（prompt timeout 或路径幻觉）→ **仍未实测**；非 Adapter 缺陷 |
+| R90 约束再推  | 仅 `marker.txt` + customPrompt + 绝对路径提示 + 关 thinking：仍无 marker/写盘（prompt timeout 或路径幻觉）→ **仍未实测**；非 Adapter 缺陷                                                |
 
 隔离路径：`C:\codework-cli-iso\dirac-0.5.16\node_modules\.bin\dirac.cmd`。证据：`%TEMP%\codework-a5-r89\dirac*-summary.json`。
 

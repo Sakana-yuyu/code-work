@@ -51,7 +51,6 @@ HEAD加精确模块索引的独立源码副本：官方探针1项通过；两文
 
 检索词fast-agent ACP permissions、config base_url，访问日期2026-10-01。采用[官方ACP说明](https://fast-agent.ai/acp/)及[官方配置参考](https://fast-agent.ai/ref/config_file/)，因为它们定义审批、终端选择与自定义端点；固定版本具体工具名、旧文件读取及load_session另以已安装官方0.10.1源码核对，不以当前网站外推所有旧版本能力。目录与固定44统计见[入口验收合同](./acp-provider-validation.md)。
 
-
 ## 历史工作记录（保留原文，不作当前验收）
 
 # fast-agent ACP 接入与验证边界
@@ -68,13 +67,13 @@ ACP 客户端须广告并处理：`fs/read_text_file`、`fs/write_text_file`、`
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize | `agentInfo.name=fast-agent-acp` / `version=0.10.1`；auth=`fast-agent-ai-secrets` |
-| authenticate | 成功；返回配置说明 meta（secrets.yaml / env） |
-| session/new | 成功，返回 `sessionId` 与 mode=`agent` |
+| 项目                   | 结果                                                                                                                              |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| initialize             | `agentInfo.name=fast-agent-acp` / `version=0.10.1`；auth=`fast-agent-ai-secrets`                                                  |
+| authenticate           | 成功；返回配置说明 meta（secrets.yaml / env）                                                                                     |
+| session/new            | 成功，返回 `sessionId` 与 mode=`agent`                                                                                            |
 | **R85 工具（Ollama）** | 读 marker、写 `write-r85.txt`=`R85_WRITE_OK`、`terminal/create` 落盘 `shell-r85.txt`=`R85_SHELL_OK`；tool kinds read/edit/execute |
-| 拒绝 / 取消 | 本轮未硬测 |
+| 拒绝 / 取消            | 本轮未硬测                                                                                                                        |
 
 证据：`%TEMP%\codework-a5-r85\fast-agent-summary.json`、`ws-fast-agent\`。
 

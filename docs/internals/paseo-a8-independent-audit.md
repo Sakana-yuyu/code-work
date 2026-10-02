@@ -9,6 +9,7 @@
 **当前判定：** 旧报告不足以证明 A-1…A-8 全部完成。所有 A-N 须对照原 verify 逐项审核；明确范围调整还要关联原始人类消息和适用门槛，跳过真实验证不等于真实验证通过。
 
 历史 marker（仅为本地记录，不自行构成授权或完成证据）：
+
 - `.t3/paseo-unblock/a3-real-account-waived.json`
 - `.t3/paseo-unblock/a5-physical-phone-waived.json`
 
@@ -16,28 +17,28 @@
 
 ## 历史勾选与当前门槛
 
-| ID | State | Basis |
-| --- | --- | --- |
-| A-1 | 历史勾选，待最终复核 | Shared ACP fixture chain |
-| A-2 | 历史勾选，待最终复核 | 44-entry catalog |
+| ID  | State                | Basis                                                                                                                                               |
+| --- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A-1 | 历史勾选，待最终复核 | Shared ACP fixture chain                                                                                                                            |
+| A-2 | 历史勾选，待最终复核 | 44-entry catalog                                                                                                                                    |
 | A-3 | 历史勾选，待最终复核 | Copilot/Qwen/Cline/Hermes success + Gemini **auth-blocked/负向** documented; live Gemini success **not** claimed; override skips real-account login |
-| A-4 | 历史勾选，待最终复核 | Four-state registration (未实测 allowed) |
-| A-5 | 历史勾选，待最终复核 | Web+Electron+AVD; physical waived |
-| A-6 | 历史勾选，待最终复核 | Native providers / BYOK |
-| A-7 | 历史勾选，待最终复核 | Local+LAN+SSH OR |
-| A-8 | 未完成 | 当前台账未勾选；缺覆盖全部 A-N 的新鲜最终独立审核，本页不能代替 |
+| A-4 | 历史勾选，待最终复核 | Four-state registration (未实测 allowed)                                                                                                            |
+| A-5 | 历史勾选，待最终复核 | Web+Electron+AVD; physical waived                                                                                                                   |
+| A-6 | 历史勾选，待最终复核 | Native providers / BYOK                                                                                                                             |
+| A-7 | 历史勾选，待最终复核 | Local+LAN+SSH OR                                                                                                                                    |
+| A-8 | 未完成               | 当前台账未勾选；缺覆盖全部 A-N 的新鲜最终独立审核，本页不能代替                                                                                     |
 
 ---
 
 ## 历史功能线索（本页未重新验证）
 
-| Area | Evidence |
-| --- | --- |
-| ACP core Runtime/Adapters | Focused `vp test run` R109 (see `%TEMP%/codework-paseo-unblock/r109-functional-tests.log`) |
-| Gemini integration path | Generic ACP + settings/UI shortcuts + `GeminiAcpCliProbe` negative auth (version family assert); `gemini-acp-provider.md` + unlock cmd |
-| Registry catalog Web/Mobile | `AcpRegistryCatalogPicker` / `AcpRegistryCatalogSection` tests |
-| `binaryDistribution` in dist | `apps/server/dist/bin.mjs` contains symbol (R109 check) |
-| Unlock for future credentials | `.t3/paseo-unblock/unlock-commands.json` + BLOCKED.md |
+| Area                          | Evidence                                                                                                                               |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| ACP core Runtime/Adapters     | Focused `vp test run` R109 (see `%TEMP%/codework-paseo-unblock/r109-functional-tests.log`)                                             |
+| Gemini integration path       | Generic ACP + settings/UI shortcuts + `GeminiAcpCliProbe` negative auth (version family assert); `gemini-acp-provider.md` + unlock cmd |
+| Registry catalog Web/Mobile   | `AcpRegistryCatalogPicker` / `AcpRegistryCatalogSection` tests                                                                         |
+| `binaryDistribution` in dist  | `apps/server/dist/bin.mjs` contains symbol (R109 check)                                                                                |
+| Unlock for future credentials | `.t3/paseo-unblock/unlock-commands.json` + BLOCKED.md                                                                                  |
 
 ### 历史修改线索
 

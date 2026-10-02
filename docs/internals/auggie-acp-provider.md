@@ -10,11 +10,11 @@ Windows 探针优先 `node …/node_modules/@augmentcode/auggie/augment.mjs --ac
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize | `agentInfo.name=auggie`、`version` 以 `0.36.0` 开头；`authMethods=[]` |
-| session/new | 失败：`Authentication required… run auggie login`（`AuggieAcpToolProbe`） |
-| 工具 / prompt | **阻断**：无登录不可建会话，不发送 prompt |
+| 项目          | 结果                                                                      |
+| ------------- | ------------------------------------------------------------------------- |
+| initialize    | `agentInfo.name=auggie`、`version` 以 `0.36.0` 开头；`authMethods=[]`     |
+| session/new   | 失败：`Authentication required… run auggie login`（`AuggieAcpToolProbe`） |
+| 工具 / prompt | **阻断**：无登录不可建会话，不发送 prompt                                 |
 
 隔离路径：`C:\codework-cli-iso\auggie-0.36.0\node_modules\.bin\auggie.cmd`（解析到同树 `augment.mjs`）。
 

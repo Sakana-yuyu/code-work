@@ -87,7 +87,6 @@ provider 全局目录。命令更新不作为执行工作日志显示，不写�
 
 ## 动态配置与选择
 
-
 `AcpSessionRuntime` 接收当前会话的 `config_option_update`（注意 option 为单数），
 按完整快照替换配置，空数组也会清空，不与旧选项合并。重放和其它会话的通知沿用
 运行时隔离规则。模型切换从最新配置的 `model` 类别解析键名，模式切换从 `mode`
@@ -302,11 +301,9 @@ rawInput/rawOutput 的 null 与缺省都表示未提供新值，保留已有输�
 
 本轮精确索引副本的 client/protocol/agent 与 Runtime 98项、Cursor/Grok停止/关闭7项通过（合计105项）；协议包及Server类型检查退出0，改动TS定向lint无输出。固定Gajae 0.18.1的未插桩工具探针整项通过一次，另一次基线诊断在session/new失败；二者及历史失败均保留于专页，不混为所有Agent稳定可用。
 
-
 ## 二进制归档校验
 
 官方哈希缺省时的精确URL补充、来源与更新/回滚规则见 [二进制分发与哈希来源](./acp-binary-integrity.md)。哈希存在不表示Agent认证或工具已验收。
-
 
 ## 首批官方 CLI 验证
 

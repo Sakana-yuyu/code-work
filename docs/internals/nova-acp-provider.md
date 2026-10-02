@@ -8,11 +8,11 @@
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| npm 包 | `@compass-ai/nova@1.1.48` |
-| initialize | `agentInfo.name=kore-cli`、`version=1.0.0`；`authMethods=[{id:kore-terminal-auth,type:terminal}]` |
-| 工具 / prompt | 本轮未发送 |
+| 项目          | 结果                                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------------- |
+| npm 包        | `@compass-ai/nova@1.1.48`                                                                         |
+| initialize    | `agentInfo.name=kore-cli`、`version=1.0.0`；`authMethods=[{id:kore-terminal-auth,type:terminal}]` |
+| 工具 / prompt | 本轮未发送                                                                                        |
 
 隔离路径：`C:\codework-cli-iso\nova-1.1.48\node_modules\.bin\nova.cmd`。
 

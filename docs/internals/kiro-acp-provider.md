@@ -16,15 +16,15 @@
 
 本机为 Windows 10 build 19045 x64，PATH 无 Kiro。检查官方 `install.ps1` 后，仅下载固定版本 MSI 并用 Windows Installer 管理提取模式放到仓库外临时目录；没有执行普通 `/i` 系统安装，没有修改 PATH、注册全局安装、运行登录或复制真实凭据。提取成功不能当作普通安装成功。
 
-| 项目 | 实际证据 |
-| --- | --- |
-| 下载 | 官方 stable manifest 中的 `2.26.0/kiro-cli-x86_64-pc-windows-msvc.msi` |
-| 包大小 | 199,565,312 字节 |
-| SHA-256 | `3caff2be8071b0466e292c90ac02592d9b6a5b818b489f30ee0d55a84a318942`，与官方清单一致 |
-| 管理提取 | `msiexec /a ... /qn TARGETDIR=...` 退出 0 |
-| 版本 | `kiro-cli-chat 2.26.0`，退出 0 |
-| 帮助 | `acp --help` 退出 0，包含上述引擎及模型选项 |
-| ACP | 进程退出 1，stderr 为 `error: home directory not found`；没有 initialize 响应 |
+| 项目     | 实际证据                                                                           |
+| -------- | ---------------------------------------------------------------------------------- |
+| 下载     | 官方 stable manifest 中的 `2.26.0/kiro-cli-x86_64-pc-windows-msvc.msi`             |
+| 包大小   | 199,565,312 字节                                                                   |
+| SHA-256  | `3caff2be8071b0466e292c90ac02592d9b6a5b818b489f30ee0d55a84a318942`，与官方清单一致 |
+| 管理提取 | `msiexec /a ... /qn TARGETDIR=...` 退出 0                                          |
+| 版本     | `kiro-cli-chat 2.26.0`，退出 0                                                     |
+| 帮助     | `acp --help` 退出 0，包含上述引擎及模型选项                                        |
+| ACP      | 进程退出 1，stderr 为 `error: home directory not found`；没有 initialize 响应      |
 
 探针采用独立 cwd 和 HOME/USERPROFILE/APPDATA/LOCALAPPDATA，不继承模型密钥；后两次按线索补充 HOMEDRIVE/HOMEPATH 以及二进制中可见的 KIRO_HOME/KIRO_DATA_DIR，结果相同。三次均在握手前失败后停止继续猜测环境变量。这是当前受测组合的启动阻断，尚不能确定源于 Windows 10、提取运行方式还是 CLI 的目录初始化逻辑。没有通过放开用户真实主目录来换取表面成功。
 

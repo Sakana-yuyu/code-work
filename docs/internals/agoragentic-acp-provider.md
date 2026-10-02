@@ -10,20 +10,20 @@
 
 在正确 `clientCapabilities` 下 initialize 成功（`protocolVersion` 数字或字符串均可）。随后：
 
-| 方法 | 结果 |
-| --- | --- |
+| 方法                                               | 结果                 |
+| -------------------------------------------------- | -------------------- |
 | `session/new` / `newSession` / `session/create` 等 | **Method not found** |
-| `tools/list` / `tools/call` | 成功（MCP 形状） |
+| `tools/list` / `tools/call`                        | 成功（MCP 形状）     |
 
 结论：`--acp` 旗标下实为 **MCP 工具面**，未实现 ACP `session/*`。R89 探针的「Method not found」来自该上游缺口（及错误字段时的校验失败），**非** Code Work Adapter 回归。建会话/NL 工具验收不可用 → A-4 记 **不支持**（不得升真实可用；不发明 `AGORAGENTIC_API_KEY` 也不能补上 session API）。
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize（放宽 authMethods） | name/version 匹配 |
-| session/new | Method not found（R90 实测） |
-| tools/list | 返回 register 等工具 |
+| 项目                           | 结果                         |
+| ------------------------------ | ---------------------------- |
+| initialize（放宽 authMethods） | name/version 匹配            |
+| session/new                    | Method not found（R90 实测） |
+| tools/list                     | 返回 register 等工具         |
 
 隔离：`C:\codework-cli-iso\agoragentic-1.3.0\node_modules\.bin\agoragentic-mcp.cmd`。证据：`%TEMP%\codework-a5-r90\ago-methods.json`。
 

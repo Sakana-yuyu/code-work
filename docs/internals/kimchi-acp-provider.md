@@ -8,10 +8,10 @@
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize | `agentInfo.name=kimchi`、`version=1.1.39`；auth 含 `kimchi-agent`、`kimchi-agent-us` |
-| 工具 / prompt | 本轮未发送 |
+| 项目          | 结果                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------ |
+| initialize    | `agentInfo.name=kimchi`、`version=1.1.39`；auth 含 `kimchi-agent`、`kimchi-agent-us` |
+| 工具 / prompt | 本轮未发送                                                                           |
 
 隔离路径：`C:\codework-cli-iso\kimchi-1.1.39\extract\bin\kimchi.exe`。
 

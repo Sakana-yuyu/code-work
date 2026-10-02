@@ -8,13 +8,13 @@
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize | `agentInfo.name=minimax-code`、`version=0.2.7`；无 authMethods |
-| ignore-scripts | 启动失败（better-sqlite3 bindings） |
-| Windows spawn | 直接 spawn `.cmd` → EINVAL；spawn 裸 `.js` → EFTYPE；**Node** `process.execPath` + `cli.js acp` 可握手（R70 CliProbe 1/1） |
-| session/new | 无登录返回 `-32000 Authentication required: Run mcode login and try again.` |
-| 工具 / prompt | 会话未建成，未发送 |
+| 项目           | 结果                                                                                                                       |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| initialize     | `agentInfo.name=minimax-code`、`version=0.2.7`；无 authMethods                                                             |
+| ignore-scripts | 启动失败（better-sqlite3 bindings）                                                                                        |
+| Windows spawn  | 直接 spawn `.cmd` → EINVAL；spawn 裸 `.js` → EFTYPE；**Node** `process.execPath` + `cli.js acp` 可握手（R70 CliProbe 1/1） |
+| session/new    | 无登录返回 `-32000 Authentication required: Run mcode login and try again.`                                                |
+| 工具 / prompt  | 会话未建成，未发送                                                                                                         |
 
 隔离路径：`C:\codework-cli-iso\minimax-0.2.7-native\node_modules\@minimax-ai\code\cli.js`（native bindings 包）。
 

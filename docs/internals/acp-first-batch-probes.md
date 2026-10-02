@@ -4,11 +4,11 @@ Qwen、Cline、Hermes、Gemini、Copilot 使用现有 GenericAcpDriver 和公共
 
 ## 当前执行结果
 
-| Agent | 固定版本 | 认证/配置 | 已执行动作 | 未证明的范围 |
-| --- | --- | --- | --- | --- |
-| Qwen | @qwen-code/qwen-code 0.24.7 | openai合成凭据；错误login、明确空密钥失败；模型/模式目录与default模式 | 文本、读取、允许写入、shell输出/退出码0、原生optionId拒绝、取消、同sessionId新进程恢复 | 外部认证/推理、真正UI、设备、远程；恢复后只证明会话ID和再次响应，未断言旧文件结果仍在模型请求中 |
-| Cline | 3.0.65 | 省略authenticate，独立providers.json使用openai-compatible；模型选择gpt-4o，auto_approve保持false | 文本、read_files内容、apply_patch写入、run_commands成功/exit7失败、拒绝、取消、新进程恢复后请求含旧读取结果 | 本轮无OAuth/外部模型；没有再次验证Web/Desktop/Mobile或连接 |
-| Hermes | v2026.9.24，握手0.21.5 | 独立custom本机端点；两个模型实际请求，default模式，显式Git Bash路径 | 文本、read_file内容、write_file、terminal成功/exit7失败、拒绝、取消、新进程恢复后请求含旧读取结果、审批ID不作为真实工具 | 本轮无外部账号/模型；没有再次验证Web/Desktop/Mobile或连接 |
+| Agent  | 固定版本                    | 认证/配置                                                                                        | 已执行动作                                                                                                              | 未证明的范围                                                                                    |
+| ------ | --------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Qwen   | @qwen-code/qwen-code 0.24.7 | openai合成凭据；错误login、明确空密钥失败；模型/模式目录与default模式                            | 文本、读取、允许写入、shell输出/退出码0、原生optionId拒绝、取消、同sessionId新进程恢复                                  | 外部认证/推理、真正UI、设备、远程；恢复后只证明会话ID和再次响应，未断言旧文件结果仍在模型请求中 |
+| Cline  | 3.0.65                      | 省略authenticate，独立providers.json使用openai-compatible；模型选择gpt-4o，auto_approve保持false | 文本、read_files内容、apply_patch写入、run_commands成功/exit7失败、拒绝、取消、新进程恢复后请求含旧读取结果             | 本轮无OAuth/外部模型；没有再次验证Web/Desktop/Mobile或连接                                      |
+| Hermes | v2026.9.24，握手0.21.5      | 独立custom本机端点；两个模型实际请求，default模式，显式Git Bash路径                              | 文本、read_file内容、write_file、terminal成功/exit7失败、拒绝、取消、新进程恢复后请求含旧读取结果、审批ID不作为真实工具 | 本轮无外部账号/模型；没有再次验证Web/Desktop/Mobile或连接                                       |
 
 三条官方CLI探针本次各1项通过；完整测试包含每行列出的多个动作，不能把动作数量当成独立测试数。Qwen约12.12秒、Cline约7.13秒、Hermes约29.06秒。独立模型端点收到真实CLI请求并返回合成回应；文本标记本身不证明模型推理，工具验证另断言文件内容、命令结果、工具终态及未生成的拒绝/取消文件。
 
@@ -18,14 +18,14 @@ Qwen、Cline、Hermes、Gemini、Copilot 使用现有 GenericAcpDriver 和公共
 
 先在仓库外准备相应固定官方安装，将变量指向实际入口，不在测试中自动安装或调用付费模型。Qwen路径是官方cli.js，由Node启动；Cline路径是官方平台可执行文件；Hermes路径是独立venv中的hermes-acp，Windows另需Git for Windows。
 
-~~~powershell
+```powershell
 $env:CODEWORK_QWEN_CLI_PATH = '<实际安装目录>/node_modules/@qwen-code/qwen-code/cli.js'
 $env:CODEWORK_CLINE_CLI_PATH = '<实际安装目录>/node_modules/@cline/cli-windows-x64/bin/cline.exe'
 $env:CODEWORK_HERMES_CLI_PATH = '<实际安装目录>/venv/Scripts/hermes-acp.exe'
 $env:CODEWORK_HERMES_GIT_BASH_PATH = 'C:/Program Files/Git/bin/bash.exe'
 node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/QwenAcpCliProbe.test.ts apps/server/src/provider/acp/ClineAcpToolProbe.test.ts apps/server/src/provider/acp/HermesAcpToolProbe.test.ts
 Remove-Item Env:CODEWORK_QWEN_CLI_PATH, Env:CODEWORK_CLINE_CLI_PATH, Env:CODEWORK_HERMES_CLI_PATH, Env:CODEWORK_HERMES_GIT_BASH_PATH
-~~~
+```
 
 普通测试未提供路径时跳过官方CLI，不把跳过写成成功。握手断言固定版本，其他版本应先核对协议再更新测试，不能只放宽版本或移除失败断言。探针仅用合成材料与独立临时数据，复用Scope收尾、原生审批选项、当前prompt身份和事件drain，不靠固定睡眠。
 
@@ -49,27 +49,27 @@ Qwen关闭自动更新/遥测、重定向系统设置，并限定shell可见性�
 
 真实广告的模型为auto、gemini-2.5-pro、gemini-3.8-flash、gemini-3.5-flash-lite；探针选择已广告gemini-2.5-pro，并核对实际请求URL中的型号。默认/自动编辑/yolo/plan是模式广告，当前只验证default写回；命令目录非空，不等于逐条命令执行。Google API请求和SSE响应按现有Schema校验、prompt标记、唯一响应/工具ID关联，不让后台请求消费下一工具动作。
 
-| 验证项 | 当前结果与边界 |
-| --- | --- |
-| 安装/握手 | 使用仓库外已安装的官方0.61.0，握手断言精确版本，不采用工作树中的宽松版本断言 |
-| 认证 | gateway合成本机配置成功；原GeminiAcpCliProbe的login错误和缺API Key失败2项重新通过；不是外部认证证明 |
-| 文本/读取 | 正文标记收到；真实read_file内容进入模型functionResponse，工具归一状态completed |
-| 写入/允许 | 回传上游allow_once的原始optionId，实际approved.txt内容一致 |
-| 命令 | echo输出实际可见；exit 7的模型结果含Exit Code: 7，归一后失败状态/退出码可见，原始ACP帧仍保持completed用于追溯 |
-| 拒绝/取消 | 回传原始reject_once选项或cancelled；denied.txt/cancelled.txt均不存在，取消回合终态正确 |
+| 验证项     | 当前结果与边界                                                                                                          |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 安装/握手  | 使用仓库外已安装的官方0.61.0，握手断言精确版本，不采用工作树中的宽松版本断言                                            |
+| 认证       | gateway合成本机配置成功；原GeminiAcpCliProbe的login错误和缺API Key失败2项重新通过；不是外部认证证明                     |
+| 文本/读取  | 正文标记收到；真实read_file内容进入模型functionResponse，工具归一状态completed                                          |
+| 写入/允许  | 回传上游allow_once的原始optionId，实际approved.txt内容一致                                                              |
+| 命令       | echo输出实际可见；exit 7的模型结果含Exit Code: 7，归一后失败状态/退出码可见，原始ACP帧仍保持completed用于追溯           |
+| 拒绝/取消  | 回传原始reject_once选项或cancelled；denied.txt/cancelled.txt均不存在，取消回合终态正确                                  |
 | 新进程恢复 | 0.61.0有上游历史丢失缺陷，Code Work在发送session/load前报明确错误，旧会话文件字节不变；当前不支持恢复，不能记为成功恢复 |
 
 实际工具探针1项通过（约12.79秒），两个负向认证项通过（约8秒）；普通相关入口134项通过、三项未启用的官方CLI测试跳过。独立执行3个官方项后，本模块去重共137项通过。Server类型检查、4个变更TS文件定向lint通过；没有重新验证UI/Electron/Mobile/远程。
 
-命令适配只处理gemini-cli的run_shell_command__调用、execute类型、completed终态、无已有rawOutput、唯一标准文本Command exited with code: N，且N为非零有效32位退出码。转换保留正文与原始帧，通过现有失败工具合同进入各客户端，既不重复执行也不推断成功退出码0。纯stdout恰好完全等于该上游标记仍有歧义；有输出的非零退出在0.61.0普通ACP显示中可能不携带退出码，当前不能可靠判定，保留未验证边界。上游提供结构化退出码后应移除文本适配，不能泛化为所有Agent/任意报错正文。
+命令适配只处理gemini-cli的run_shell_command\_\_调用、execute类型、completed终态、无已有rawOutput、唯一标准文本Command exited with code: N，且N为非零有效32位退出码。转换保留正文与原始帧，通过现有失败工具合同进入各客户端，既不重复执行也不推断成功退出码0。纯stdout恰好完全等于该上游标记仍有歧义；有输出的非零退出在0.61.0普通ACP显示中可能不携带退出码，当前不能可靠判定，保留未验证边界。上游提供结构化退出码后应移除文本适配，不能泛化为所有Agent/任意报错正文。
 
 恢复反证显示：上游session/load先initializeSessionConfig，初始化同ID记录时追加仅含session_context的$set.messages，再查SessionSelector；官方读取器据此清除旧消息并认为没有可恢复会话。本模块仅阻止agentInfo.name=gemini-cli且version=0.61.0的恢复，错误reason为gemini-0.61.0-session-load-history-loss，不静默新建会话或重试。其他版本仍按原路径处理，不能据此断言其它版本安全。探针比较目标会话已有jsonl内容，不把上游可清理的空启动记录误当用户历史。
 
-~~~powershell
+```powershell
 $env:CODEWORK_GEMINI_CLI_PATH = '<固定0.61.0安装目录>/node_modules/@google/gemini-cli/bundle/gemini.js'
 node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/GeminiAcpCliProbe.test.ts apps/server/src/provider/acp/GeminiAcpToolProbe.test.ts
 Remove-Item Env:CODEWORK_GEMINI_CLI_PATH
-~~~
+```
 
 检索词Gemini ACP gateway、0.61.0 acpSessionManager/loadSession、shell returnDisplay，访问2026-10-01。采用[官方ACP说明](https://geminicli.com/docs/cli/acp-mode/)、[固定版本端点实现](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/packages/core/src/core/contentGenerator.ts)、[会话管理](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/packages/cli/src/acp/acpSessionManager.ts)、[工具事件](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/packages/cli/src/acp/acpSession.ts)和[shell结果](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/packages/core/src/tools/shell.ts)，因为它们定义实际协议及调用顺序；故障与成功结论来自固定安装包和隔离历史文件的本次实测，不来自能力广告。
 

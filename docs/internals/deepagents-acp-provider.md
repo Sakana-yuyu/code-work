@@ -10,14 +10,14 @@
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| 包版本 | npm `0.1.7` |
-| initialize | `agentInfo.name=deepagents-acp`、`version=0.0.1` |
-| session/new | 成功 |
-| R85 | 缺 `@langchain/anthropic` 时默认 Claude 模型 prompt Internal error |
-| R86 | Ollama 流可启；模型常调用 `task` 且 subagent 类型非法 → Internal error |
-| R87 | 约束 prompt 禁用 task/subagent；`read_file` 完成并回显 `R87_OLLAMA_MARKER_55011` → **真实可用**；`edit` 宣称写入 `write-r87.txt` 但文件长度 0；shell 未硬过 |
+| 项目        | 结果                                                                                                                                                        |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 包版本      | npm `0.1.7`                                                                                                                                                 |
+| initialize  | `agentInfo.name=deepagents-acp`、`version=0.0.1`                                                                                                            |
+| session/new | 成功                                                                                                                                                        |
+| R85         | 缺 `@langchain/anthropic` 时默认 Claude 模型 prompt Internal error                                                                                          |
+| R86         | Ollama 流可启；模型常调用 `task` 且 subagent 类型非法 → Internal error                                                                                      |
+| R87         | 约束 prompt 禁用 task/subagent；`read_file` 完成并回显 `R87_OLLAMA_MARKER_55011` → **真实可用**；`edit` 宣称写入 `write-r87.txt` 但文件长度 0；shell 未硬过 |
 
 隔离路径：`C:\codework-cli-iso\deepagents-0.1.7\node_modules\.bin\deepagents-acp.cmd`。证据：`%TEMP%\codework-a5-r87\deepagents-c3-summary.json` / `deepagents-c3.jsonl`。
 

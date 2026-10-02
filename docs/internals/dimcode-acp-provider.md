@@ -18,12 +18,12 @@ dim provider switch ollama
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize | `agentInfo.name=dimcode`、`version=0.5.15`；`authMethods=[]` |
-| session/new | 配好 ollama provider 后成功；模型 `ollama/qwen2.5:3b` |
+| 项目          | 结果                                                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| initialize    | `agentInfo.name=dimcode`、`version=0.5.15`；`authMethods=[]`                                                              |
+| session/new   | 配好 ollama provider 后成功；模型 `ollama/qwen2.5:3b`                                                                     |
 | R87 ToolProbe | 多次 `glob`/`grep`；grep `marker.txt` 回显 `R87_OLLAMA_MARKER_55011` → **真实可用**（本地读工具）；`write-r87.txt` 未写出 |
-| R66 | 无密钥时 session/new 失败（历史） |
+| R66           | 无密钥时 session/new 失败（历史）                                                                                         |
 
 隔离路径：`C:\codework-cli-iso\dimcode-0.5.15\`。证据：`%TEMP%\codework-a5-r87\dimcode-b2-summary.json` / `dimcode-b2.jsonl`。
 

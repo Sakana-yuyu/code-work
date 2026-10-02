@@ -15,7 +15,7 @@
 | claude   | claudeAgent                 | 已有独立驱动；本轮未实测                                                                                                                     |
 | codex    | codex                       | 已有独立驱动；本轮未实测                                                                                                                     |
 | copilot  | ACP 目录 github-copilot-cli | 官方 1.0.89 的认证、文本、读写、命令、拒绝、取消和恢复实测通过；模型目录/custom agent/多端仍有边界，见 [实测记录](./copilot-acp-provider.md) |
-| opencode | opencode                    | 已有独立驱动；A-6 核对仅保留 OpenCode SDK **v2**（legacy v1 Layer 已删），定向 Adapter/网关回归通过；本轮未做新的官方 CLI 聊天实测             |
+| opencode | opencode                    | 已有独立驱动；A-6 核对仅保留 OpenCode SDK **v2**（legacy v1 Layer 已删），定向 Adapter/网关回归通过；本轮未做新的官方 CLI 聊天实测           |
 | pi       | piAgent                     | 保留受管 BYOK；本轮未实测                                                                                                                    |
 | omp      | ompAgent                    | 保留受管 BYOK；本轮未实测                                                                                                                    |
 
@@ -23,113 +23,113 @@
 
 “官方目录”仅表示具有同 ID 的元数据；已核对的公开环境参数和固定版本 uvx 可随目录选择配置，二进制分发仍按手工/平台限制规则处理，不能据此推断自动安装可用。已有专用驱动的 Cursor、Grok、Kimi 继续复用。
 
-| Paseo ID        | 名称           | Paseo 版本 | 官方目录版本 | Code Work 入口与缺口                                                                                                                                                                       |
-| --------------- | -------------- | ---------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| agoragentic-acp | Agoragentic    | 1.3.6      | 1.3.0        | R90：`--acp` 下 initialize OK，但 **无 `session/new`**（Method not found）；仅 `tools/*` MCP 面 → **不支持** ACP 会话；见 [Agoragentic](./agoragentic-acp-provider.md) |
-| antigravity-acp | Google Antigravity | —     | 1.2.1        | R69 隔离下载 Windows zip，维护者 sha256 写入快照/overlay → `binaryDistribution` 可自动安装校验；initialize=`antigravity-acp@1.2.1`；session/new 需 oauth-personal/gemini-api-key 等，**未发明密钥**；见 [Antigravity](./antigravity-acp-provider.md) |
-| amp-acp         | Amp            | 0.7.0      | 0.9.0        | 官方 Windows zip SHA 匹配目录；隔离 `amp-acp.exe` initialize=`amp-acp@0.9.0`、auth=`setup`；工具/模型需 Amp API key，本轮未发明密钥，见 [Amp](./amp-acp-provider.md) |
-| auggie          | Auggie CLI     | 0.33.0     | 0.36.0       | 隔离 npm `@augmentcode/auggie@0.36.0 --acp` initialize=`auggie`/`0.36.0…`、`authMethods=[]`；**session/new 仍要 `auggie login`**（R66 node 入口 ToolProbe）；工具阻断，见 [Auggie](./auggie-acp-provider.md) |
-| autohand        | Autohand Code  | 0.2.1      | 0.2.1        | 隔离 `@autohandai/autohand-acp@0.2.1` initialize 通过（name/version 匹配）；底层 Autohand CLI 未装时 auth=`autohand-install`；工具/模型未实测 |
-| cline           | Cline          | 3.0.46     | 3.0.65       | 官方 Windows CLI + 本地模型端点：模型、读写/命令、审批/拒绝/取消和持久恢复通过；外部账号/推理未验，见 cline-acp-provider.md                                                                |
-| codebuddy-code  | Codebuddy Code | manual     | 2.159.0      | 隔离 npm `@tencent-ai/codebuddy-code@2.159.0 --acp` initialize 通过但**无 agentInfo**；auth=`iOA`/`external`/`internal`/`selfhosted`；见 [Codebuddy](./codebuddy-acp-provider.md) |
-| codewhale       | CodeWhale      | 0.8.55     | 未收录同 ID  | R87：`DEEPSEEK_API_KEY=ollama` + `config.toml` `providers.deepseek.base_url=…/v1` model=`qwen2.5:3b` → marker 回读 + `write-r87.txt` 写盘；shell 未硬过；外部 DeepSeek 账号待，见 [CodeWhale](./codewhale-acp-provider.md) |
-| cortex-code     | Cortex Code    | 1.0.73     | 1.0.73       | R69 隔离 tar.gz + sha256 overlay；initialize=`Cortex Code`；session/new 成功；无密钥下 prompt 返回 `end_turn`（未验文件/命令工具）；见 [Cortex](./cortex-code-acp-provider.md) |
-| corust-agent    | Corust Agent   | 0.5.1      | 0.6.0        | R69 隔离 zip + sha256；initialize=`corust-acp`；session/new 要 `oauth_browser`；工具未测 |
-| crow-cli        | crow-cli       | 0.1.23     | 0.1.24       | 真实资产为 PyPI/`github.com/crow-cli/crow-cli`（需 Python≥3.14+uv，`crow-cli acp`）；npm 同名包无关。本机 uv 装 0.1.37 后 Windows 因 `termios`/`pty` 无法启动 CLI；ACP 协议未实测 |
-| cursor          | Cursor         | 2026.03.30 | 2026.09.26   | 已有专用驱动；不重复新增驱动                                                                                                                                                               |
-| deepagents      | DeepAgents     | 0.1.20     | 0.1.7        | R87：`--model openai:qwen2.5:3b` + Ollama；`read_file` 回显 marker → 真实可用；edit 宣称成功但 `write-r87.txt` 0 字节；见 [DeepAgents](./deepagents-acp-provider.md) |
-| devin           | Devin CLI      | manual     | 3000.11.3    | R69 隔离 zip + sha256；需隔离 `APPDATA`；initialize=`affogato`；auth=`devin-browser`；工具未测 |
-| dimcode         | DimCode        | 0.2.36     | 0.5.15       | R87：`dim provider add ollama --base-url …/v1 --api-key ollama --model qwen2.5:3b` 后 ACP 会话成功；grep 读出 marker；写未硬过；见 [DimCode](./dimcode-acp-provider.md) |
-| dirac           | Dirac          | 0.4.22     | 0.5.16       | R89：`dirac auth openai`+Ollama + `supportsReasoning:false` API 通；`qwen2.5:7b` 有 list/read_file 但反复读虚构 `src/main.ts`，无 marker/写 → 仍未实测；见 [Dirac](./dirac-acp-provider.md) |
-| factory-droid   | Factory Droid  | 0.179.0    | 0.229.0      | MCP 注入默认关闭可开；`acp-daemon` 握手+session OK；prompt 无真实 key → 401/`Internal error: Agent error`（R90，agent-side）；见 [Factory Droid](./factory-droid-acp-provider.md) |
-| fast-agent      | fast-agent     | 0.9.22     | 0.10.1       | R85 Ollama `qwen2.5:3b`：initialize/auth/session + 读/写/`terminal/create` shell 副作用通过（须客户端 `fs/*`+`terminal/*`）；见 [fast-agent](./fast-agent-acp-provider.md) |
-| gemini          | Gemini CLI     | 0.52.0     | 0.61.0       | 官方安装、握手与认证失败实测通过；本机 PATH 有 gemini 0.55.1，缺可用凭据故模型/工具未实测，见 [接入记录](./gemini-acp-provider.md)                                                         |
-| gjc             | Gajae Code     | manual     | 未收录同 ID  | 官方 v0.18.1 隔离再验：认证 CliProbe 3/3；工具探针连续两回合文本、read、bash 批准、审批中取消补 failed 1/1；Runtime 等 `gjcPhase=idle`；恢复/外部模型/设备仍待，见 [Gajae](./gajae-acp-provider.md) |
-| glm-acp-agent   | GLM Agent      | 1.3.0      | 1.13.0       | R86：`Z_AI_API_KEY=ollama` + `ACP_GLM_BASE_URL=http://127.0.0.1:11434/v1` Ollama 读/写工具副作用通过；shell 未硬过；见 [GLM](./glm-acp-provider.md) |
-| goose           | goose          | 1.33.1     | 1.52.0       | 官方 Windows zip 隔离 `goose.exe acp`；R78 Ollama `qwen2.5:3b` 读/写/命令/拒绝 HARD_PASS=4/4（客户端须 `fs/*`+`terminal/*`）；cancel 未硬通过；见 [goose](./goose-acp-provider.md) |
-| grok            | Grok           | 0.2.11     | 未收录同 ID  | 已有专用驱动；不重复新增驱动                                                                                                                                                               |
-| harn            | Harn           | —          | 0.10.151     | 官方 Windows zip；`serve acp` + `environmentPolicy:{kind:inherited}` 可建会话；见 [Harn](./harn-acp-provider.md) |
-| hermes          | Hermes         | manual     | 未收录同 ID  | 官方 v2026.9.24/0.21.5 配本机模型，读写、命令、拒绝/取消、模型切换、进程恢复及浏览器实测；2026-09-30 隔离 Python3.13 安装复测 CLI+工具探针 4/4；PATH 仍无 hermes；外部模型/设备待验，见 [Hermes](./hermes-acp-provider.md) |
-| junie           | Junie          | 1468.30.0  | 3419.22.0    | R69 隔离 zip + sha256；stdio 探针 initialize=`@jetbrains/junie` 且 session/new 成功；`AcpSessionRuntime.start` 本机可挂起故未进 Effect CliProbe；auth=`jetbrains-account`；工具未测 |
-| kilo            | Kilo           | 7.2.40     | 7.8.1        | R88：`OPENAI_API_KEY=ollama` + `OPENAI_BASE_URL=…/v1` + `~/.config/kilo/config.json` openai 模型 `qwen2.5:3b` → read/write 工具副作用；见 [Kilo](./kilo-acp-provider.md) |
-| kiro            | Kiro CLI       | manual     | 未收录同 ID  | 官方 2.26.0 Windows x64 包校验、提取、版本/帮助通过；本机 ACP 握手前目录初始化失败，真实命令/工具未验；Windows ARM64 标记不可用，见 [Kiro](./kiro-acp-provider.md)                         |
-| kimi            | Kimi Code CLI  | 0.11.0     | 1.52.0       | 已有专用驱动；不重复新增驱动                                                                                                                                                               |
-| minimax-code    | MiniMax Code   | 0.1.2      | 0.2.7        | 隔离 npm `@minimax-ai/code@0.2.7`（需 native better-sqlite3）initialize=`minimax-code@0.2.7`、无 authMethods；`--ignore-scripts` 会启动失败，见 [MiniMax](./minimax-acp-provider.md) |
-| minion-code     | Minion Code    | 0.1.44     | 0.1.44       | 官方 uvx 可装但 **ACP 不可用**：默认 `agent-client-protocol≥0.9` → ImportError(`AuthMethod`)；pin 0.8 后 JSON-RPC 写 stderr；见 [Minion](./minion-code-acp-provider.md) |
-| mistral-vibe    | Mistral Vibe   | 2.9.3      | 2.25.8       | 官方 Windows `vibe-acp.exe` initialize=`@mistralai/mistral-vibe@2.25.8`、auth=`browser-auth`；工具需 Studio 登录，本轮未发明，见 [Mistral Vibe](./mistral-vibe-acp-provider.md) |
-| nova            | Nova           | 1.1.29     | 1.1.48       | 隔离 npm `@compass-ai/nova@1.1.48`；广告身份为 `kore-cli@1.0.0`、auth=`kore-terminal-auth`；工具未实测，见 [Nova](./nova-acp-provider.md) |
-| poolside        | Poolside       | 1.0.0      | 1.0.16       | 官方 Windows amd64 zip SHA 匹配；`pool-windows-amd64.exe acp` initialize=`pool-acp@1.0.16`、`authMethods=[]`；见 [Poolside](./poolside-acp-provider.md) |
-| qoder           | Qoder CLI      | 1.1.4      | 0.2.14       | 隔离 npm `@qoder-ai/qodercli@0.2.14 --acp` initialize=`qoder-cli@0.2.14`、auth=`qodercli-login`/`qoder-personal-access-token`；见 [Qoder](./qoder-acp-provider.md) |
-| qwen-code       | Qwen Code      | 0.20.1     | 0.24.7       | 官方 CLI + 本地模型端点：文本/文件/命令/审批/取消/恢复通过；2026-09-30 隔离安装 0.24.7 探针再验通过；本机 PATH 仍无 qwen；外部模型与聊天 UI 待验，见 qwen-acp-provider.md |
-| sigit           | siGit Code     | 1.0.3      | 1.5.10       | R88：本地/Ollama 路径 `read_file` 回显 marker → 真实可用；写未硬过；见 [siGit](./sigit-acp-provider.md) |
-| stakpak         | Stakpak        | 0.3.80     | 0.3.88       | R69 隔离 zip + sha256；initialize=`stakpak@0.3.88`；session/new 要 `stakpak` 浏览器登录；工具未测 |
-| traecli         | TRAE CLI       | manual     | 未收录同 ID  | 已补具名手工入口；官方安装脚本 `https://trae.cn/trae-cli/install.ps1` 本机区域 403；文档要求企业登录后才能任务；CLI/ACP 仍未实测 |
-| vtcode          | VT Code        | 0.96.14    | 0.96.14      | R85 Ollama `--provider ollama --model qwen2.5:3b` + `VT_ACP_ENABLED=1`：session/prompt end_turn；marker 回读 + `write-r85.txt` 写盘；shell 未硬过；见 [VT Code](./vtcode-acp-provider.md) |
+| Paseo ID        | 名称               | Paseo 版本 | 官方目录版本 | Code Work 入口与缺口                                                                                                                                                                                                                                 |
+| --------------- | ------------------ | ---------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| agoragentic-acp | Agoragentic        | 1.3.6      | 1.3.0        | R90：`--acp` 下 initialize OK，但 **无 `session/new`**（Method not found）；仅 `tools/*` MCP 面 → **不支持** ACP 会话；见 [Agoragentic](./agoragentic-acp-provider.md)                                                                               |
+| antigravity-acp | Google Antigravity | —          | 1.2.1        | R69 隔离下载 Windows zip，维护者 sha256 写入快照/overlay → `binaryDistribution` 可自动安装校验；initialize=`antigravity-acp@1.2.1`；session/new 需 oauth-personal/gemini-api-key 等，**未发明密钥**；见 [Antigravity](./antigravity-acp-provider.md) |
+| amp-acp         | Amp                | 0.7.0      | 0.9.0        | 官方 Windows zip SHA 匹配目录；隔离 `amp-acp.exe` initialize=`amp-acp@0.9.0`、auth=`setup`；工具/模型需 Amp API key，本轮未发明密钥，见 [Amp](./amp-acp-provider.md)                                                                                 |
+| auggie          | Auggie CLI         | 0.33.0     | 0.36.0       | 隔离 npm `@augmentcode/auggie@0.36.0 --acp` initialize=`auggie`/`0.36.0…`、`authMethods=[]`；**session/new 仍要 `auggie login`**（R66 node 入口 ToolProbe）；工具阻断，见 [Auggie](./auggie-acp-provider.md)                                         |
+| autohand        | Autohand Code      | 0.2.1      | 0.2.1        | 隔离 `@autohandai/autohand-acp@0.2.1` initialize 通过（name/version 匹配）；底层 Autohand CLI 未装时 auth=`autohand-install`；工具/模型未实测                                                                                                        |
+| cline           | Cline              | 3.0.46     | 3.0.65       | 官方 Windows CLI + 本地模型端点：模型、读写/命令、审批/拒绝/取消和持久恢复通过；外部账号/推理未验，见 cline-acp-provider.md                                                                                                                          |
+| codebuddy-code  | Codebuddy Code     | manual     | 2.159.0      | 隔离 npm `@tencent-ai/codebuddy-code@2.159.0 --acp` initialize 通过但**无 agentInfo**；auth=`iOA`/`external`/`internal`/`selfhosted`；见 [Codebuddy](./codebuddy-acp-provider.md)                                                                    |
+| codewhale       | CodeWhale          | 0.8.55     | 未收录同 ID  | R87：`DEEPSEEK_API_KEY=ollama` + `config.toml` `providers.deepseek.base_url=…/v1` model=`qwen2.5:3b` → marker 回读 + `write-r87.txt` 写盘；shell 未硬过；外部 DeepSeek 账号待，见 [CodeWhale](./codewhale-acp-provider.md)                           |
+| cortex-code     | Cortex Code        | 1.0.73     | 1.0.73       | R69 隔离 tar.gz + sha256 overlay；initialize=`Cortex Code`；session/new 成功；无密钥下 prompt 返回 `end_turn`（未验文件/命令工具）；见 [Cortex](./cortex-code-acp-provider.md)                                                                       |
+| corust-agent    | Corust Agent       | 0.5.1      | 0.6.0        | R69 隔离 zip + sha256；initialize=`corust-acp`；session/new 要 `oauth_browser`；工具未测                                                                                                                                                             |
+| crow-cli        | crow-cli           | 0.1.23     | 0.1.24       | 真实资产为 PyPI/`github.com/crow-cli/crow-cli`（需 Python≥3.14+uv，`crow-cli acp`）；npm 同名包无关。本机 uv 装 0.1.37 后 Windows 因 `termios`/`pty` 无法启动 CLI；ACP 协议未实测                                                                    |
+| cursor          | Cursor             | 2026.03.30 | 2026.09.26   | 已有专用驱动；不重复新增驱动                                                                                                                                                                                                                         |
+| deepagents      | DeepAgents         | 0.1.20     | 0.1.7        | R87：`--model openai:qwen2.5:3b` + Ollama；`read_file` 回显 marker → 真实可用；edit 宣称成功但 `write-r87.txt` 0 字节；见 [DeepAgents](./deepagents-acp-provider.md)                                                                                 |
+| devin           | Devin CLI          | manual     | 3000.11.3    | R69 隔离 zip + sha256；需隔离 `APPDATA`；initialize=`affogato`；auth=`devin-browser`；工具未测                                                                                                                                                       |
+| dimcode         | DimCode            | 0.2.36     | 0.5.15       | R87：`dim provider add ollama --base-url …/v1 --api-key ollama --model qwen2.5:3b` 后 ACP 会话成功；grep 读出 marker；写未硬过；见 [DimCode](./dimcode-acp-provider.md)                                                                              |
+| dirac           | Dirac              | 0.4.22     | 0.5.16       | R89：`dirac auth openai`+Ollama + `supportsReasoning:false` API 通；`qwen2.5:7b` 有 list/read_file 但反复读虚构 `src/main.ts`，无 marker/写 → 仍未实测；见 [Dirac](./dirac-acp-provider.md)                                                          |
+| factory-droid   | Factory Droid      | 0.179.0    | 0.229.0      | MCP 注入默认关闭可开；`acp-daemon` 握手+session OK；prompt 无真实 key → 401/`Internal error: Agent error`（R90，agent-side）；见 [Factory Droid](./factory-droid-acp-provider.md)                                                                    |
+| fast-agent      | fast-agent         | 0.9.22     | 0.10.1       | R85 Ollama `qwen2.5:3b`：initialize/auth/session + 读/写/`terminal/create` shell 副作用通过（须客户端 `fs/*`+`terminal/*`）；见 [fast-agent](./fast-agent-acp-provider.md)                                                                           |
+| gemini          | Gemini CLI         | 0.52.0     | 0.61.0       | 官方安装、握手与认证失败实测通过；本机 PATH 有 gemini 0.55.1，缺可用凭据故模型/工具未实测，见 [接入记录](./gemini-acp-provider.md)                                                                                                                   |
+| gjc             | Gajae Code         | manual     | 未收录同 ID  | 官方 v0.18.1 隔离再验：认证 CliProbe 3/3；工具探针连续两回合文本、read、bash 批准、审批中取消补 failed 1/1；Runtime 等 `gjcPhase=idle`；恢复/外部模型/设备仍待，见 [Gajae](./gajae-acp-provider.md)                                                  |
+| glm-acp-agent   | GLM Agent          | 1.3.0      | 1.13.0       | R86：`Z_AI_API_KEY=ollama` + `ACP_GLM_BASE_URL=http://127.0.0.1:11434/v1` Ollama 读/写工具副作用通过；shell 未硬过；见 [GLM](./glm-acp-provider.md)                                                                                                  |
+| goose           | goose              | 1.33.1     | 1.52.0       | 官方 Windows zip 隔离 `goose.exe acp`；R78 Ollama `qwen2.5:3b` 读/写/命令/拒绝 HARD_PASS=4/4（客户端须 `fs/*`+`terminal/*`）；cancel 未硬通过；见 [goose](./goose-acp-provider.md)                                                                   |
+| grok            | Grok               | 0.2.11     | 未收录同 ID  | 已有专用驱动；不重复新增驱动                                                                                                                                                                                                                         |
+| harn            | Harn               | —          | 0.10.151     | 官方 Windows zip；`serve acp` + `environmentPolicy:{kind:inherited}` 可建会话；见 [Harn](./harn-acp-provider.md)                                                                                                                                     |
+| hermes          | Hermes             | manual     | 未收录同 ID  | 官方 v2026.9.24/0.21.5 配本机模型，读写、命令、拒绝/取消、模型切换、进程恢复及浏览器实测；2026-09-30 隔离 Python3.13 安装复测 CLI+工具探针 4/4；PATH 仍无 hermes；外部模型/设备待验，见 [Hermes](./hermes-acp-provider.md)                           |
+| junie           | Junie              | 1468.30.0  | 3419.22.0    | R69 隔离 zip + sha256；stdio 探针 initialize=`@jetbrains/junie` 且 session/new 成功；`AcpSessionRuntime.start` 本机可挂起故未进 Effect CliProbe；auth=`jetbrains-account`；工具未测                                                                  |
+| kilo            | Kilo               | 7.2.40     | 7.8.1        | R88：`OPENAI_API_KEY=ollama` + `OPENAI_BASE_URL=…/v1` + `~/.config/kilo/config.json` openai 模型 `qwen2.5:3b` → read/write 工具副作用；见 [Kilo](./kilo-acp-provider.md)                                                                             |
+| kiro            | Kiro CLI           | manual     | 未收录同 ID  | 官方 2.26.0 Windows x64 包校验、提取、版本/帮助通过；本机 ACP 握手前目录初始化失败，真实命令/工具未验；Windows ARM64 标记不可用，见 [Kiro](./kiro-acp-provider.md)                                                                                   |
+| kimi            | Kimi Code CLI      | 0.11.0     | 1.52.0       | 已有专用驱动；不重复新增驱动                                                                                                                                                                                                                         |
+| minimax-code    | MiniMax Code       | 0.1.2      | 0.2.7        | 隔离 npm `@minimax-ai/code@0.2.7`（需 native better-sqlite3）initialize=`minimax-code@0.2.7`、无 authMethods；`--ignore-scripts` 会启动失败，见 [MiniMax](./minimax-acp-provider.md)                                                                 |
+| minion-code     | Minion Code        | 0.1.44     | 0.1.44       | 官方 uvx 可装但 **ACP 不可用**：默认 `agent-client-protocol≥0.9` → ImportError(`AuthMethod`)；pin 0.8 后 JSON-RPC 写 stderr；见 [Minion](./minion-code-acp-provider.md)                                                                              |
+| mistral-vibe    | Mistral Vibe       | 2.9.3      | 2.25.8       | 官方 Windows `vibe-acp.exe` initialize=`@mistralai/mistral-vibe@2.25.8`、auth=`browser-auth`；工具需 Studio 登录，本轮未发明，见 [Mistral Vibe](./mistral-vibe-acp-provider.md)                                                                      |
+| nova            | Nova               | 1.1.29     | 1.1.48       | 隔离 npm `@compass-ai/nova@1.1.48`；广告身份为 `kore-cli@1.0.0`、auth=`kore-terminal-auth`；工具未实测，见 [Nova](./nova-acp-provider.md)                                                                                                            |
+| poolside        | Poolside           | 1.0.0      | 1.0.16       | 官方 Windows amd64 zip SHA 匹配；`pool-windows-amd64.exe acp` initialize=`pool-acp@1.0.16`、`authMethods=[]`；见 [Poolside](./poolside-acp-provider.md)                                                                                              |
+| qoder           | Qoder CLI          | 1.1.4      | 0.2.14       | 隔离 npm `@qoder-ai/qodercli@0.2.14 --acp` initialize=`qoder-cli@0.2.14`、auth=`qodercli-login`/`qoder-personal-access-token`；见 [Qoder](./qoder-acp-provider.md)                                                                                   |
+| qwen-code       | Qwen Code          | 0.20.1     | 0.24.7       | 官方 CLI + 本地模型端点：文本/文件/命令/审批/取消/恢复通过；2026-09-30 隔离安装 0.24.7 探针再验通过；本机 PATH 仍无 qwen；外部模型与聊天 UI 待验，见 qwen-acp-provider.md                                                                            |
+| sigit           | siGit Code         | 1.0.3      | 1.5.10       | R88：本地/Ollama 路径 `read_file` 回显 marker → 真实可用；写未硬过；见 [siGit](./sigit-acp-provider.md)                                                                                                                                              |
+| stakpak         | Stakpak            | 0.3.80     | 0.3.88       | R69 隔离 zip + sha256；initialize=`stakpak@0.3.88`；session/new 要 `stakpak` 浏览器登录；工具未测                                                                                                                                                    |
+| traecli         | TRAE CLI           | manual     | 未收录同 ID  | 已补具名手工入口；官方安装脚本 `https://trae.cn/trae-cli/install.ps1` 本机区域 403；文档要求企业登录后才能任务；CLI/ACP 仍未实测                                                                                                                     |
+| vtcode          | VT Code            | 0.96.14    | 0.96.14      | R85 Ollama `--provider ollama --model qwen2.5:3b` + `VT_ACP_ENABLED=1`：session/prompt end_turn；marker 回读 + `write-r85.txt` 写盘；shell 未硬过；见 [VT Code](./vtcode-acp-provider.md)                                                            |
 
 ## 四十四基线入口及两个额外目录项的历史能力表
 
 状态含义（A-2 目录层；不等于 A-3/A-4「工具实测完成」）：
 
-| 状态 | 含义 |
-| ---- | ---- |
-| 真实可用 | 历史标签；仍须按具体通过的动作、版本/平台和证据范围复核，部分工具通过不代表全部工具可用 |
-| 可配置 | 目录可选手动/自动命令与环境；Adapter 或 Generic 可建实例；工具未全验 |
-| 握手-only | initialize（±auth 广告）通过；session/工具未成功 |
-| 凭据阻断 | 缺密钥/登录；负向或边界已记，不发明凭据 |
-| 平台限制 | OS/依赖阻断（如 Win10、termios、区域 403） |
-| 手工无校验 | 上游有可下载 archive，但无 sha256 → 产品拒自动安装；未冒充已装 |
-| Windows可装未全验 | 维护者隔离下载已算 sha256（快照+overlay），可自动安装校验；握手/会话已记；工具多需登录 |
-| 不支持 | ACP/入口当前不可用（已写明原因） |
-| 专用复用 | 已有非目录专用驱动，目录不重复新增 |
+| 状态              | 含义                                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| 真实可用          | 历史标签；仍须按具体通过的动作、版本/平台和证据范围复核，部分工具通过不代表全部工具可用 |
+| 可配置            | 目录可选手动/自动命令与环境；Adapter 或 Generic 可建实例；工具未全验                    |
+| 握手-only         | initialize（±auth 广告）通过；session/工具未成功                                        |
+| 凭据阻断          | 缺密钥/登录；负向或边界已记，不发明凭据                                                 |
+| 平台限制          | OS/依赖阻断（如 Win10、termios、区域 403）                                              |
+| 手工无校验        | 上游有可下载 archive，但无 sha256 → 产品拒自动安装；未冒充已装                          |
+| Windows可装未全验 | 维护者隔离下载已算 sha256（快照+overlay），可自动安装校验；握手/会话已记；工具多需登录  |
+| 不支持            | ACP/入口当前不可用（已写明原因）                                                        |
+| 专用复用          | 已有非目录专用驱动，目录不重复新增                                                      |
 
-| ID | 能力状态 | 安装/平台要点 |
-| -- | -------- | ------------- |
-| claude | 可配置 | 专用驱动；本轮未新实测 |
-| codex | 可配置 | 专用驱动；本轮未新实测 |
-| copilot | 真实可用 | github-copilot-cli；模型目录/custom agent/多端仍有边界 |
-| opencode | 可配置 | SDK v2 回归（A-6）；新聊天未测 |
-| pi | 可配置 | 受管 BYOK；未新实测 |
-| omp | 可配置 | 受管 BYOK；未新实测 |
-| agoragentic-acp | 不支持 | R90：`--acp` 无 session/new（仅 MCP tools/*） |
-| antigravity-acp | Windows可装未全验 | R69 sha256 overlay；会话需凭据 |
-| amp-acp | 凭据阻断 | 握手+setup auth；需 Amp key |
-| auggie | 凭据阻断 | authMethods=[] 仍要 `auggie login` |
-| autohand | 凭据阻断 | 底层 CLI/安装 auth |
-| cline | 真实可用 | 本地模型端点工具链通过 |
-| codebuddy-code | 凭据阻断 | 握手；多 auth 方法 |
-| codewhale | 真实可用 | R87 Ollama/DeepSeek-compat：读/写副作用；shell 未硬过；外部账号待 |
-| cortex-code | Windows可装未全验 | R69/R70；prompt 无密钥 end_turn，工具副作用未验 |
-| corust-agent | Windows可装未全验 | R69；oauth_browser |
-| crow-cli | 平台限制 | Windows termios/pty |
-| cursor | 专用复用 | 专用驱动 |
-| deepagents | 未实测（仅局部读取记录） | R87 Ollama：read_file 回显 marker；edit 宣称写盘但文件 0 字节；shell 未硬过 |
-| devin | Windows可装未全验 | R69；需隔离 APPDATA；devin-browser |
-| dimcode | 未实测（仅局部读取记录） | R87 Ollama：`provider add ollama`…/v1；grep 读 marker；写未硬过 |
-| dirac | 凭据阻断 | R90 Ollama openai 会话+工具；路径幻觉无 marker → 仍未实测 |
-| factory-droid | 凭据阻断 | MCP 默认关可开；prompt 401 Agent error（需 Factory 账号） |
-| fast-agent | 真实可用 | R85 Ollama：读/写/shell 副作用；外部账号待 |
-| gemini | 凭据阻断 | 握手/认证失败路径有证据；无可用 key |
-| gjc | 局部实测，生命周期仍待核对 | R119 未插桩工具探针通过一次；诊断 session/new uncertain_after_send 与旧发布/关闭失败均保留，见 Gajae 专页 |
-| glm-acp-agent | 真实可用 | R86 Ollama OpenAI-compat：读/写副作用；shell 未硬过；外部 Z.AI 账号待 |
-| goose | 真实可用 | R78/R79：Ollama `qwen2.5:3b` 读/写/命令/拒绝 HARD_PASS=4/4；cancel 三策略仍 `end_turn`（记软上限）；外部账号待 |
-| grok | 专用复用 | 专用驱动 |
-| harn | 凭据阻断 | R76：Ollama quickstart/local up 仍 ACP NL Compilation；表达式 end_turn≠工具可用 |
-| hermes | 真实可用 | 本地模型工具链；外部模型待 |
-| junie | Windows可装未全验 | R69；stdio 握手成功；Effect start 可挂起 |
-| kilo | 真实可用 | R88 Ollama：`OPENAI_BASE_URL`+config openai/`qwen2.5:3b`；read+write |
-| kiro | 平台限制 | Win10 握手前失败；需 Win11+ |
-| kimi | 专用复用 | 专用驱动 |
-| minimax-code | 凭据阻断 | R70：Node+cli.js 握手；session 要 `mcode login` |
-| minion-code | 不支持 | ACP 依赖/协议写 stderr |
-| mistral-vibe | 凭据阻断 | 需 browser-auth |
-| nova | 凭据阻断 | kore-terminal-auth |
-| poolside | 凭据阻断 | R70：authMethods=[] 仍要 `pool login` |
-| qoder | 凭据阻断 | 需 login/PAT |
-| qwen-code | 真实可用 | 本地模型端点工具链通过 |
-| sigit | 未实测（仅局部读取记录） | R88 Ollama/本地模型：`read_file` 回显 marker；写未硬过 |
-| stakpak | Windows可装未全验 | R69；session 503/登录（厂商） |
-| traecli | 平台限制 | 安装脚本区域 403；企业登录 |
-| vtcode | 真实可用 | R85 Ollama：读+写工具副作用；shell 未硬过；外部账号待 |
+| ID              | 能力状态                   | 安装/平台要点                                                                                                  |
+| --------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| claude          | 可配置                     | 专用驱动；本轮未新实测                                                                                         |
+| codex           | 可配置                     | 专用驱动；本轮未新实测                                                                                         |
+| copilot         | 真实可用                   | github-copilot-cli；模型目录/custom agent/多端仍有边界                                                         |
+| opencode        | 可配置                     | SDK v2 回归（A-6）；新聊天未测                                                                                 |
+| pi              | 可配置                     | 受管 BYOK；未新实测                                                                                            |
+| omp             | 可配置                     | 受管 BYOK；未新实测                                                                                            |
+| agoragentic-acp | 不支持                     | R90：`--acp` 无 session/new（仅 MCP tools/\*）                                                                 |
+| antigravity-acp | Windows可装未全验          | R69 sha256 overlay；会话需凭据                                                                                 |
+| amp-acp         | 凭据阻断                   | 握手+setup auth；需 Amp key                                                                                    |
+| auggie          | 凭据阻断                   | authMethods=[] 仍要 `auggie login`                                                                             |
+| autohand        | 凭据阻断                   | 底层 CLI/安装 auth                                                                                             |
+| cline           | 真实可用                   | 本地模型端点工具链通过                                                                                         |
+| codebuddy-code  | 凭据阻断                   | 握手；多 auth 方法                                                                                             |
+| codewhale       | 真实可用                   | R87 Ollama/DeepSeek-compat：读/写副作用；shell 未硬过；外部账号待                                              |
+| cortex-code     | Windows可装未全验          | R69/R70；prompt 无密钥 end_turn，工具副作用未验                                                                |
+| corust-agent    | Windows可装未全验          | R69；oauth_browser                                                                                             |
+| crow-cli        | 平台限制                   | Windows termios/pty                                                                                            |
+| cursor          | 专用复用                   | 专用驱动                                                                                                       |
+| deepagents      | 未实测（仅局部读取记录）   | R87 Ollama：read_file 回显 marker；edit 宣称写盘但文件 0 字节；shell 未硬过                                    |
+| devin           | Windows可装未全验          | R69；需隔离 APPDATA；devin-browser                                                                             |
+| dimcode         | 未实测（仅局部读取记录）   | R87 Ollama：`provider add ollama`…/v1；grep 读 marker；写未硬过                                                |
+| dirac           | 凭据阻断                   | R90 Ollama openai 会话+工具；路径幻觉无 marker → 仍未实测                                                      |
+| factory-droid   | 凭据阻断                   | MCP 默认关可开；prompt 401 Agent error（需 Factory 账号）                                                      |
+| fast-agent      | 真实可用                   | R85 Ollama：读/写/shell 副作用；外部账号待                                                                     |
+| gemini          | 凭据阻断                   | 握手/认证失败路径有证据；无可用 key                                                                            |
+| gjc             | 局部实测，生命周期仍待核对 | R119 未插桩工具探针通过一次；诊断 session/new uncertain_after_send 与旧发布/关闭失败均保留，见 Gajae 专页      |
+| glm-acp-agent   | 真实可用                   | R86 Ollama OpenAI-compat：读/写副作用；shell 未硬过；外部 Z.AI 账号待                                          |
+| goose           | 真实可用                   | R78/R79：Ollama `qwen2.5:3b` 读/写/命令/拒绝 HARD_PASS=4/4；cancel 三策略仍 `end_turn`（记软上限）；外部账号待 |
+| grok            | 专用复用                   | 专用驱动                                                                                                       |
+| harn            | 凭据阻断                   | R76：Ollama quickstart/local up 仍 ACP NL Compilation；表达式 end_turn≠工具可用                                |
+| hermes          | 真实可用                   | 本地模型工具链；外部模型待                                                                                     |
+| junie           | Windows可装未全验          | R69；stdio 握手成功；Effect start 可挂起                                                                       |
+| kilo            | 真实可用                   | R88 Ollama：`OPENAI_BASE_URL`+config openai/`qwen2.5:3b`；read+write                                           |
+| kiro            | 平台限制                   | Win10 握手前失败；需 Win11+                                                                                    |
+| kimi            | 专用复用                   | 专用驱动                                                                                                       |
+| minimax-code    | 凭据阻断                   | R70：Node+cli.js 握手；session 要 `mcode login`                                                                |
+| minion-code     | 不支持                     | ACP 依赖/协议写 stderr                                                                                         |
+| mistral-vibe    | 凭据阻断                   | 需 browser-auth                                                                                                |
+| nova            | 凭据阻断                   | kore-terminal-auth                                                                                             |
+| poolside        | 凭据阻断                   | R70：authMethods=[] 仍要 `pool login`                                                                          |
+| qoder           | 凭据阻断                   | 需 login/PAT                                                                                                   |
+| qwen-code       | 真实可用                   | 本地模型端点工具链通过                                                                                         |
+| sigit           | 未实测（仅局部读取记录）   | R88 Ollama/本地模型：`read_file` 回显 marker；写未硬过                                                         |
+| stakpak         | Windows可装未全验          | R69；session 503/登录（厂商）                                                                                  |
+| traecli         | 平台限制                   | 安装脚本区域 403；企业登录                                                                                     |
+| vtcode          | 真实可用                   | R85 Ollama：读+写工具副作用；shell 未硬过；外部账号待                                                          |
 
 合计：能力表含 **6 内置 + 与上节同集合的 ACP 行（40，含官方扩容 antigravity-acp/harn 等）**，ID **无重复**；覆盖 Paseo 固定 **6+38** 基线并多记官方目录新增项。自动安装矩阵：HTTPS archive **且** 64 位 sha256（官方字段或 `registry-binary-sha256-overlay.json` 维护者核对）时暴露 `binaryDistribution`；七项前空壳已在 Windows-x86_64 写入维护者 sha256，**其它平台仍空**。
 
@@ -151,21 +151,21 @@
 
 书面条：`每个候选记录 CLI 版本与认证、文本、读文件、授权写入、命令、拒绝、取消的实际结果；Copilot 特殊模式/config 回归；不支持能力明确说明。` 候选：**Copilot、Gemini、Qwen、Cline、Hermes**（Gajae 属目录余项，不计入 A-3 勾选）。
 
-| 原子项 | Copilot | Gemini | Qwen | Cline | Hermes |
-| --- | --- | --- | --- | --- | --- |
-| CLI 版本 | 1.0.89 ✓ | 0.61.0 ✓ | 0.24.7 ✓ | 3.0.65 ✓ | 0.21.5 ✓ |
-| 认证 | gh 后备 ✓ | 负向失败 ✓；成功路径缺 key ✗ | openai 边界+本地夹具 ✓ | 空方法+本地 ✓ | 空方法+本地 ✓ |
-| 文本 | ✓ | ✗ 无 key | ✓ 本地夹具 | ✓ 本地夹具 | ✓ 本地夹具 |
-| 读文件 | ✓ | ✗ | ✓ | ✓ | ✓ |
-| 授权写入 | ✓ | ✗ | ✓ | ✓ | ✓ |
-| 命令 | ✓ | ✗ | ✓ | ✓ | ✓ |
-| 拒绝 | ✓ | ✗ | ✓ | ✓ | ✓ |
-| 取消 | ✓ | ✗ | ✓ | ✓ | ✓ |
-| 动态模型 | 未广告；CLI 默认入口说明 ✓ | 未建成会话 | ✓ 本地目录 | ✓ openai-compatible | ✓ custom:… |
-| 模式 | Agent/Plan ✓ | ✗ | plan/default… ✓ | Plan/Act ✓ | default/accept_edits ✓ |
-| 命令发现 | available_commands ✓ | ✗ | （夹具路径） | （夹具路径） | （夹具路径） |
-| 审批上游 optionId | ✓ | ✗ | ✓ | ✓ allow_once | ✓ |
-| 不支持说明 | 模型目录未广告等 ✓ | 成功路径缺凭据 ✓ | 外部账号未验 ✓ | 外部账号未验 ✓ | 外部模型未验 ✓ |
+| 原子项            | Copilot                    | Gemini                       | Qwen                   | Cline               | Hermes                 |
+| ----------------- | -------------------------- | ---------------------------- | ---------------------- | ------------------- | ---------------------- |
+| CLI 版本          | 1.0.89 ✓                   | 0.61.0 ✓                     | 0.24.7 ✓               | 3.0.65 ✓            | 0.21.5 ✓               |
+| 认证              | gh 后备 ✓                  | 负向失败 ✓；成功路径缺 key ✗ | openai 边界+本地夹具 ✓ | 空方法+本地 ✓       | 空方法+本地 ✓          |
+| 文本              | ✓                          | ✗ 无 key                     | ✓ 本地夹具             | ✓ 本地夹具          | ✓ 本地夹具             |
+| 读文件            | ✓                          | ✗                            | ✓                      | ✓                   | ✓                      |
+| 授权写入          | ✓                          | ✗                            | ✓                      | ✓                   | ✓                      |
+| 命令              | ✓                          | ✗                            | ✓                      | ✓                   | ✓                      |
+| 拒绝              | ✓                          | ✗                            | ✓                      | ✓                   | ✓                      |
+| 取消              | ✓                          | ✗                            | ✓                      | ✓                   | ✓                      |
+| 动态模型          | 未广告；CLI 默认入口说明 ✓ | 未建成会话                   | ✓ 本地目录             | ✓ openai-compatible | ✓ custom:…             |
+| 模式              | Agent/Plan ✓               | ✗                            | plan/default… ✓        | Plan/Act ✓          | default/accept_edits ✓ |
+| 命令发现          | available_commands ✓       | ✗                            | （夹具路径）           | （夹具路径）        | （夹具路径）           |
+| 审批上游 optionId | ✓                          | ✗                            | ✓                      | ✓ allow_once        | ✓                      |
+| 不支持说明        | 模型目录未广告等 ✓         | 成功路径缺凭据 ✓             | 外部账号未验 ✓         | 外部账号未验 ✓      | 外部模型未验 ✓         |
 
 **Copilot 特殊 mode/config**：agent / allow_all 往返 ✓（见 copilot-acp-provider.md）。  
 **整条 A-3（证据层）**：Gemini 成功路径仍缺真实账号（负向/握手 ✓；文本/工具 ✗）——**不得伪造 live 成功**。  
@@ -175,48 +175,48 @@
 
 书面 verify 只用四态：`真实可用` / `未实测` / `平台限制` / `不支持`。下表覆盖目录中与 Paseo 基线对齐的 ACP ID（含官方扩容 antigravity/harn 等）；**未实测不得当作全部完成**。Cursor/Grok/Kimi 为专用驱动复用。
 
-| ID | A-4 四态 | 证据摘要 |
-| -- | -------- | -------- |
-| agoragentic-acp | 不支持 | R90：`--acp` 无 session/new（仅 MCP tools/*）；非 Adapter bug |
-| antigravity-acp | 未实测 | Windows 可装+握手；session 需 oauth/key |
-| amp-acp | 未实测 | 握手；装 amp CLI 后仍 Authentication required（需 Amp key） |
-| auggie | 未实测 | 握手；`auggie login`（ACP 不支持认证） |
-| autohand | 未实测 | 握手；底层 CLI/安装 auth |
-| cline | 真实可用 | 本地夹具工具链（读/写/命令/拒绝/取消） |
-| codebuddy-code | 未实测 | 握手；多 auth |
-| codewhale | 真实可用 | R87 Ollama DeepSeek-compat：marker + write；shell 未硬过 |
-| cortex-code | 未实测 | 可装+会话；R82 Ollama 注入仍需 Snowflake 连接，工具副作用未验 |
-| corust-agent | 未实测 | 可装+握手；oauth_browser |
-| crow-cli | 平台限制 | Windows termios/pty |
-| cursor | 真实可用 | 专用驱动复用 |
-| deepagents | 未实测（仅局部读取记录） | R87 Ollama：`read_file` 回显 marker；写文件空/未硬过 |
-| devin | 未实测 | 可装+握手；devin-browser |
-| dimcode | 未实测（仅局部读取记录） | R87 Ollama provider：grep 读出 marker；写未硬过 |
-| dirac | 未实测 | R90：Ollama openai+关 thinking；约束 workspace 仍无 marker/写 |
-| factory-droid | 未实测 | 握手+session；prompt 401/`Agent error`（需 Factory 账号；非 Adapter） |
-| fast-agent | 真实可用 | R85 Ollama `qwen2.5:3b`：读/写/`terminal/create` shell 副作用（客户端须 `fs/*`+`terminal/*`）；拒绝/取消未硬测 |
-| gemini | 未实测 | 握手/负向认证有证；Ollama 404；成功工具缺 Google key（亦堵 A-3） |
-| gjc | 真实可用 | 工具探针（读/bash/取消等） |
-| glm-acp-agent | 真实可用 | R86 Ollama：`Z_AI_API_KEY=ollama` + `ACP_GLM_BASE_URL=…/v1`；marker 回读 + write 写盘；shell 未硬过 |
-| goose | 真实可用 | R78：Ollama 读/写/shell/拒绝 HARD_PASS=4/4；R79 cancel 三策略仍 end_turn（软上限） |
-| grok | 真实可用 | 专用驱动复用 |
-| harn | 未实测 | R90：host/capabilities 已由产品默认回复；NL Compilation；表达式 end_turn≠工具可用 |
-| hermes | 真实可用 | 本地夹具工具链 |
-| junie | 未实测 | stdio 握手/会话；Effect start 可挂起；工具未测 |
-| kilo | 真实可用 | R88 Ollama OpenAI-compat：marker 回读 + write 写盘 |
-| kiro | 平台限制 | Win10 握手前失败；异步命令 live 未验 |
-| kimi | 真实可用 | 专用驱动复用 |
-| minimax-code | 未实测 | R89：Ollama custom provider 会话可建；工具调用落成正文 JSON，无 marker/写；仍常 login |
-| minion-code | 不支持 | ACP 依赖/协议写 stderr |
-| mistral-vibe | 未实测 | session 可建；`MISTRAL_API_KEY=ollama` → Invalid API key |
-| nova | 未实测 | 握手；需 Nova Setup / kore-terminal-auth |
-| poolside | 未实测 | 握手；`pool login`（空 authMethods≠匿名） |
-| qoder | 未实测 | 握手；login/PAT |
-| qwen-code | 真实可用 | 本地夹具工具链 |
-| sigit | 未实测（仅局部读取记录） | R88：read_file 回显 marker；写未硬过 |
-| stakpak | 未实测 | 可装+握手；session/new 503 Service Unavailable（厂商 API；非 Adapter） |
-| traecli | 平台限制 | 安装脚本区域 403；企业登录；异步命令未验 |
-| vtcode | 真实可用 | R85 Ollama：marker 回读 + write 写盘；shell 未硬过；拒绝/取消未硬测 |
+| ID              | A-4 四态                 | 证据摘要                                                                                                       |
+| --------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| agoragentic-acp | 不支持                   | R90：`--acp` 无 session/new（仅 MCP tools/\*）；非 Adapter bug                                                 |
+| antigravity-acp | 未实测                   | Windows 可装+握手；session 需 oauth/key                                                                        |
+| amp-acp         | 未实测                   | 握手；装 amp CLI 后仍 Authentication required（需 Amp key）                                                    |
+| auggie          | 未实测                   | 握手；`auggie login`（ACP 不支持认证）                                                                         |
+| autohand        | 未实测                   | 握手；底层 CLI/安装 auth                                                                                       |
+| cline           | 真实可用                 | 本地夹具工具链（读/写/命令/拒绝/取消）                                                                         |
+| codebuddy-code  | 未实测                   | 握手；多 auth                                                                                                  |
+| codewhale       | 真实可用                 | R87 Ollama DeepSeek-compat：marker + write；shell 未硬过                                                       |
+| cortex-code     | 未实测                   | 可装+会话；R82 Ollama 注入仍需 Snowflake 连接，工具副作用未验                                                  |
+| corust-agent    | 未实测                   | 可装+握手；oauth_browser                                                                                       |
+| crow-cli        | 平台限制                 | Windows termios/pty                                                                                            |
+| cursor          | 真实可用                 | 专用驱动复用                                                                                                   |
+| deepagents      | 未实测（仅局部读取记录） | R87 Ollama：`read_file` 回显 marker；写文件空/未硬过                                                           |
+| devin           | 未实测                   | 可装+握手；devin-browser                                                                                       |
+| dimcode         | 未实测（仅局部读取记录） | R87 Ollama provider：grep 读出 marker；写未硬过                                                                |
+| dirac           | 未实测                   | R90：Ollama openai+关 thinking；约束 workspace 仍无 marker/写                                                  |
+| factory-droid   | 未实测                   | 握手+session；prompt 401/`Agent error`（需 Factory 账号；非 Adapter）                                          |
+| fast-agent      | 真实可用                 | R85 Ollama `qwen2.5:3b`：读/写/`terminal/create` shell 副作用（客户端须 `fs/*`+`terminal/*`）；拒绝/取消未硬测 |
+| gemini          | 未实测                   | 握手/负向认证有证；Ollama 404；成功工具缺 Google key（亦堵 A-3）                                               |
+| gjc             | 真实可用                 | 工具探针（读/bash/取消等）                                                                                     |
+| glm-acp-agent   | 真实可用                 | R86 Ollama：`Z_AI_API_KEY=ollama` + `ACP_GLM_BASE_URL=…/v1`；marker 回读 + write 写盘；shell 未硬过            |
+| goose           | 真实可用                 | R78：Ollama 读/写/shell/拒绝 HARD_PASS=4/4；R79 cancel 三策略仍 end_turn（软上限）                             |
+| grok            | 真实可用                 | 专用驱动复用                                                                                                   |
+| harn            | 未实测                   | R90：host/capabilities 已由产品默认回复；NL Compilation；表达式 end_turn≠工具可用                              |
+| hermes          | 真实可用                 | 本地夹具工具链                                                                                                 |
+| junie           | 未实测                   | stdio 握手/会话；Effect start 可挂起；工具未测                                                                 |
+| kilo            | 真实可用                 | R88 Ollama OpenAI-compat：marker 回读 + write 写盘                                                             |
+| kiro            | 平台限制                 | Win10 握手前失败；异步命令 live 未验                                                                           |
+| kimi            | 真实可用                 | 专用驱动复用                                                                                                   |
+| minimax-code    | 未实测                   | R89：Ollama custom provider 会话可建；工具调用落成正文 JSON，无 marker/写；仍常 login                          |
+| minion-code     | 不支持                   | ACP 依赖/协议写 stderr                                                                                         |
+| mistral-vibe    | 未实测                   | session 可建；`MISTRAL_API_KEY=ollama` → Invalid API key                                                       |
+| nova            | 未实测                   | 握手；需 Nova Setup / kore-terminal-auth                                                                       |
+| poolside        | 未实测                   | 握手；`pool login`（空 authMethods≠匿名）                                                                      |
+| qoder           | 未实测                   | 握手；login/PAT                                                                                                |
+| qwen-code       | 真实可用                 | 本地夹具工具链                                                                                                 |
+| sigit           | 未实测（仅局部读取记录） | R88：read_file 回显 marker；写未硬过                                                                           |
+| stakpak         | 未实测                   | 可装+握手；session/new 503 Service Unavailable（厂商 API；非 Adapter）                                         |
+| traecli         | 平台限制                 | 安装脚本区域 403；企业登录；异步命令未验                                                                       |
+| vtcode          | 真实可用                 | R85 Ollama：marker 回读 + write 写盘；shell 未硬过；拒绝/取消未硬测                                            |
 
 **Kiro/TRAE 异步命令**：产品有扩展命令路由；**真实 CLI live 未通过**（平台/区域）→ 四态 **平台限制**（R94：不当作 Adapter 真缺口继续 fail）。  
 **Droid MCP**：`supportsMcpServers:false` 目录默认 + Driver 注入门禁测试 ✓。  
@@ -227,41 +227,41 @@
 
 书面四态不变：握手≠真实可用。下表只登记**解锁命令**；升态仍需 ToolProbe（文本+工具副作用）。机器可读副本：`.t3/paseo-unblock/unlock-commands.json`（gitignore）。旧Gap verifier：`node .t3/paseo-unblock/paseo-a8-gap-verifier.cjs`。它不是当前全部范围最终独立审核，不能根据marker自行豁免或宣布完成。
 
-| ID | One-shot 解锁 |
-| -- | --- |
-| antigravity-acp | `$env:GEMINI_API_KEY='…'` 或 oauth-personal / agent-platform 登录后 ToolProbe |
-| amp-acp | `amp login`（或 amp-acp `authenticate` methodId=`setup` + Amp API key）后 ToolProbe |
-| auggie | `auggie login` 后 `auggie --acp` ToolProbe（`AUGMENT_DISABLE_AUTO_UPDATE=1`） |
-| autohand | 安装底层 Autohand CLI 并完成 `autohand-install` 认证后 ToolProbe |
-| codebuddy-code | `codebuddy login`（iOA/external/internal/selfhosted）后 `codebuddy --acp` ToolProbe |
-| cortex-code | 配置 **Snowflake** 连接（Ollama 不够）后 `cortex.exe acp serve` ToolProbe |
-| corust-agent | 完成 `oauth_browser` 登录后 ToolProbe |
-| devin | 完成 `devin-browser` 登录后 `bin/devin.exe acp` ToolProbe |
-| dirac | `dirac auth --provider openai --apikey <REAL> --modelid <m> --baseurl <url>`；ToolProbe 须回显 marker（本地 Ollama 仍常路径幻觉） |
-| factory-droid | `$env:FACTORY_API_KEY='…'` 或 device-pairing；`droid.exe exec --output-format acp-daemon` ToolProbe |
-| gemini | `$env:GEMINI_API_KEY='…'; powershell -File .t3/paseo-unblock/paseo-a3-gemini-probe.ps1`（亦堵 A-3） |
-| harn | `harn doctor` 配齐真实 LLM 凭据；ACP NL 须离开 Compilation 后再 ToolProbe |
-| junie | JetBrains 账号（`jetbrains-account`）后 `junie.exe --acp=true` ToolProbe |
-| minimax-code | `mcode login` 后 Node+`cli.js acp` ToolProbe |
-| mistral-vibe | `$env:MISTRAL_API_KEY='…'` 或 `browser-auth`；`vibe-acp.exe` ToolProbe |
-| nova | `nova setup` / `kore-terminal-auth` 后 `nova acp` ToolProbe |
-| poolside | `pool login` 后 `pool-windows-amd64.exe acp` ToolProbe |
-| qoder | `qodercli login` 或 PAT（`qoder-personal-access-token`）后 `qodercli --acp` ToolProbe |
-| stakpak | `stakpak login` + 厂商 API 非 503 后 `stakpak.exe acp` ToolProbe |
+| ID              | One-shot 解锁                                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| antigravity-acp | `$env:GEMINI_API_KEY='…'` 或 oauth-personal / agent-platform 登录后 ToolProbe                                                     |
+| amp-acp         | `amp login`（或 amp-acp `authenticate` methodId=`setup` + Amp API key）后 ToolProbe                                               |
+| auggie          | `auggie login` 后 `auggie --acp` ToolProbe（`AUGMENT_DISABLE_AUTO_UPDATE=1`）                                                     |
+| autohand        | 安装底层 Autohand CLI 并完成 `autohand-install` 认证后 ToolProbe                                                                  |
+| codebuddy-code  | `codebuddy login`（iOA/external/internal/selfhosted）后 `codebuddy --acp` ToolProbe                                               |
+| cortex-code     | 配置 **Snowflake** 连接（Ollama 不够）后 `cortex.exe acp serve` ToolProbe                                                         |
+| corust-agent    | 完成 `oauth_browser` 登录后 ToolProbe                                                                                             |
+| devin           | 完成 `devin-browser` 登录后 `bin/devin.exe acp` ToolProbe                                                                         |
+| dirac           | `dirac auth --provider openai --apikey <REAL> --modelid <m> --baseurl <url>`；ToolProbe 须回显 marker（本地 Ollama 仍常路径幻觉） |
+| factory-droid   | `$env:FACTORY_API_KEY='…'` 或 device-pairing；`droid.exe exec --output-format acp-daemon` ToolProbe                               |
+| gemini          | `$env:GEMINI_API_KEY='…'; powershell -File .t3/paseo-unblock/paseo-a3-gemini-probe.ps1`（亦堵 A-3）                               |
+| harn            | `harn doctor` 配齐真实 LLM 凭据；ACP NL 须离开 Compilation 后再 ToolProbe                                                         |
+| junie           | JetBrains 账号（`jetbrains-account`）后 `junie.exe --acp=true` ToolProbe                                                          |
+| minimax-code    | `mcode login` 后 Node+`cli.js acp` ToolProbe                                                                                      |
+| mistral-vibe    | `$env:MISTRAL_API_KEY='…'` 或 `browser-auth`；`vibe-acp.exe` ToolProbe                                                            |
+| nova            | `nova setup` / `kore-terminal-auth` 后 `nova acp` ToolProbe                                                                       |
+| poolside        | `pool login` 后 `pool-windows-amd64.exe acp` ToolProbe                                                                            |
+| qoder           | `qodercli login` 或 PAT（`qoder-personal-access-token`）后 `qodercli --acp` ToolProbe                                             |
+| stakpak         | `stakpak login` + 厂商 API 非 503 后 `stakpak.exe acp` ToolProbe                                                                  |
 
 ## A-4 原子要求核对（R71）
 
 书面条：`38 项逐项证据表，现有 Cursor/Grok/Kimi 复用；每项区分真实可用、未实测、平台限制或不支持，未实测不当作全部完成证据。` 另：Kiro/TRAE 异步命令、Droid MCP 限制、环境参数生效。
 
-| 原子 | 状态 |
-| --- | --- |
-| 38 项能力表存在且分类 | ✓ R71/R90 四态全表；agoragentic→不支持；真实可用 16；未实测 19；平台限制 3；不支持 2 — **P3 验收已满足（登记结论，非要求零未实测）** |
-| Cursor/Grok/Kimi 复用 | ✓ 专用驱动 |
-| Droid `supportsMcpServers:false` | ✓ 目录/Driver 注入门禁测试 |
-| Harn `environmentPolicy` | ✓ 产品默认 inherited；建会话通过 |
-| Harn `host/capabilities` | ✓ Runtime 默认回复；R90 证实缺回复才 timeout；NL Compilation；表达式 end_turn |
-| Kiro/TRAE 异步命令 live | ✓ 平台限制（kiro+traecli 四态已登记；Win10/区域阻断 live，非 Adapter 缺口） |
-| 余项工具真实可用 | 登记为未实测 19（凭据/厂商 API/dirac 路径幻觉等）；**不当作「已验证支持」**；无新 Adapter bug |
+| 原子                             | 状态                                                                                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 38 项能力表存在且分类            | ✓ R71/R90 四态全表；agoragentic→不支持；真实可用 16；未实测 19；平台限制 3；不支持 2 — **P3 验收已满足（登记结论，非要求零未实测）** |
+| Cursor/Grok/Kimi 复用            | ✓ 专用驱动                                                                                                                           |
+| Droid `supportsMcpServers:false` | ✓ 目录/Driver 注入门禁测试                                                                                                           |
+| Harn `environmentPolicy`         | ✓ 产品默认 inherited；建会话通过                                                                                                     |
+| Harn `host/capabilities`         | ✓ Runtime 默认回复；R90 证实缺回复才 timeout；NL Compilation；表达式 end_turn                                                        |
+| Kiro/TRAE 异步命令 live          | ✓ 平台限制（kiro+traecli 四态已登记；Win10/区域阻断 live，非 Adapter 缺口）                                                          |
+| 余项工具真实可用                 | 登记为未实测 19（凭据/厂商 API/dirac 路径幻觉等）；**不当作「已验证支持」**；无新 Adapter bug                                        |
 
 **整条 A-4**：**已勾选**（R100：对齐计划 P3；未实测仍是合法登记态，升「真实可用」需各自 ToolProbe/凭据）。
 

@@ -20,14 +20,14 @@ model = "qwen2.5:3b"
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| 官方资产 | `codewhale-windows-x64-portable.zip`，72,410,428 字节 |
-| SHA-256 | `cfdd13ecb92d559fe36799025e7c1958341a057d8e6bb4f3c07baba03cf3b1d7`，与 `codewhale-binary-sha256.txt` 一致 |
-| 版本 | `codewhale 0.10.0 (1be1a703b975)` |
-| `serve --help` | 含 `--acp` |
-| initialize | `agentInfo.name=codewhale`、`version=0.10.0`；`authMethods=[{id:codewhale-terminal-auth,type:terminal}]` |
-| R87 ToolProbe | session 成功；marker 回读 + `write-r87.txt` 含 `R87_WRITE_OK`；shell 未硬过 → **真实可用**（本地夹具）；外部 DeepSeek 账号待 |
+| 项目           | 结果                                                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 官方资产       | `codewhale-windows-x64-portable.zip`，72,410,428 字节                                                                        |
+| SHA-256        | `cfdd13ecb92d559fe36799025e7c1958341a057d8e6bb4f3c07baba03cf3b1d7`，与 `codewhale-binary-sha256.txt` 一致                    |
+| 版本           | `codewhale 0.10.0 (1be1a703b975)`                                                                                            |
+| `serve --help` | 含 `--acp`                                                                                                                   |
+| initialize     | `agentInfo.name=codewhale`、`version=0.10.0`；`authMethods=[{id:codewhale-terminal-auth,type:terminal}]`                     |
+| R87 ToolProbe  | session 成功；marker 回读 + `write-r87.txt` 含 `R87_WRITE_OK`；shell 未硬过 → **真实可用**（本地夹具）；外部 DeepSeek 账号待 |
 
 隔离路径：`C:\codework-cli-iso\codewhale-0.10.0\portable\codewhale-windows-x64-portable\codewhale.exe`。证据：`%TEMP%\codework-a5-r87\codewhale-ds-summary.json`、`ws-codewhale-ds/write-r87.txt`。
 

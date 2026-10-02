@@ -9,6 +9,7 @@
 命令：`kilo acp`。广告 auth=`kilo-login`。本机可用 OpenAI-compat 指向 Ollama（与 OpenCode 系配置相近）：
 
 环境：
+
 - `OPENAI_API_KEY=ollama`
 - `OPENAI_BASE_URL=http://127.0.0.1:11434/v1`
 
@@ -30,10 +31,10 @@
 
 ## 固定版本证据
 
-| 项目 | 结果 |
-| --- | --- |
-| initialize | `Kilo@7.8.1`；auth=`kilo-login` |
-| R87 | authenticate 空成功后 session/new 易挂起 |
+| 项目          | 结果                                                                            |
+| ------------- | ------------------------------------------------------------------------------- |
+| initialize    | `Kilo@7.8.1`；auth=`kilo-login`                                                 |
+| R87           | authenticate 空成功后 session/new 易挂起                                        |
 | R88 ToolProbe | session 成功；read marker + write `write-r88.txt`=`R88_WRITE_OK` → **真实可用** |
 
 隔离路径：`C:\codework-cli-iso\kilo-7.8.1\extract\kilo.exe`。证据：`%TEMP%\codework-a5-r88\kilo-summary.json`。
@@ -61,7 +62,7 @@ acpAgent实例 → GenericAcpDriver → CursorAdapter → AcpSessionRuntime，�
 
 实际initialize为Kilo@7.8.1，广告kilo-login与loadSession=true。自定义provider使用内置@ai-sdk/openai-compatible；KILO_CONFIG指向独立kilo.json。不调用authenticate，实际session/new成功；这不证明Kilo Gateway账号认证通过。配置示例中模型ID、地址和Key需要替换，生产Key可按官方配置使用环境引用，不把合成示例Key写进生产配置：
 
-~~~json
+```json
 {
   "model": "codework-local/codework-loopback",
   "small_model": "codework-local/codework-loopback",
@@ -75,12 +76,18 @@ acpAgent实例 → GenericAcpDriver → CursorAdapter → AcpSessionRuntime，�
   "provider": {
     "codework-local": {
       "npm": "@ai-sdk/openai-compatible",
-      "options": {"baseURL": "http://127.0.0.1:<本机端口>/v1", "apiKey": "local-test-only"},
-      "models": {"codework-loopback": {"name": "本机模型", "tool_call": true, "limit": {"context": 32768, "output": 4096}}}
+      "options": { "baseURL": "http://127.0.0.1:<本机端口>/v1", "apiKey": "local-test-only" },
+      "models": {
+        "codework-loopback": {
+          "name": "本机模型",
+          "tool_call": true,
+          "limit": { "context": 32768, "output": 4096 }
+        }
+      }
     }
   }
 }
-~~~
+```
 
 探针配置两个合成模型，实际默认模式code，切换模型后下一聊天/工具请求使用第二模型。Kilo会后台生成标题，独立small_model仍使用第一个模型；夹具仅按固定版本的两条消息、明确标题system/user前缀及无工具识别这一请求，其余请求继续严格校验当前聊天模型，标题不能消耗工具动作或充当恢复证据。
 
@@ -88,16 +95,16 @@ isolatedProbeEnvironment清空非系统宿主变量，覆盖HOME/USERPROFILE/APP
 
 ## 固定官方实际结果
 
-| 项目 | 本次证据与边界 |
-| --- | --- |
-| 版本与配置 | 二进制SHA-256/大小、官方help、精确initialize；code模式、动态模型、非空命令目录通过；未执行全部模式/斜杠命令 |
-| 正文与模型 | 实际HTTP路径、合成Bearer、当前聊天模型及SSE正文；标题请求另按固定形状校验；通过本机端点，不是外部推理 |
-| 读取/写入 | 原生read/write工具；模型收到实际文件内容，工具详情含正文；原allow_once选项批准，精确写入APPROVED |
-| 命令成功/失败 | 原生bash执行echo标记与exit 7，检查输出及退出状态；非零失败且详情显示退出码，保留原completed帧 |
-| 拒绝 | 原上游reject_once选项，目标文件不存在，实际工具failed |
-| 审批中取消 | 原审批请求的工具ID和目标路径、cancelled结果、文件不存在；此时尚无执行工具事件，不伪造失败工具；下一真实回合成功 |
-| 恢复 | 关闭原CLI后新进程session/load同ID；下一实际模型请求role=tool含之前读取正文才返回恢复标记；通过 |
-| MCP/媒体/外部账号/多端/远程 | 本轮未运行，不能据此宣称通过 |
+| 项目                        | 本次证据与边界                                                                                                  |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| 版本与配置                  | 二进制SHA-256/大小、官方help、精确initialize；code模式、动态模型、非空命令目录通过；未执行全部模式/斜杠命令     |
+| 正文与模型                  | 实际HTTP路径、合成Bearer、当前聊天模型及SSE正文；标题请求另按固定形状校验；通过本机端点，不是外部推理           |
+| 读取/写入                   | 原生read/write工具；模型收到实际文件内容，工具详情含正文；原allow_once选项批准，精确写入APPROVED                |
+| 命令成功/失败               | 原生bash执行echo标记与exit 7，检查输出及退出状态；非零失败且详情显示退出码，保留原completed帧                   |
+| 拒绝                        | 原上游reject_once选项，目标文件不存在，实际工具failed                                                           |
+| 审批中取消                  | 原审批请求的工具ID和目标路径、cancelled结果、文件不存在；此时尚无执行工具事件，不伪造失败工具；下一真实回合成功 |
+| 恢复                        | 关闭原CLI后新进程session/load同ID；下一实际模型请求role=tool含之前读取正文才返回恢复标记；通过                  |
+| MCP/媒体/外部账号/多端/远程 | 本轮未运行，不能据此宣称通过                                                                                    |
 
 [KiloAcpToolProbe.test.ts](../../apps/server/src/provider/acp/KiloAcpToolProbe.test.ts)仅显式CODEWORK_KILO_CLI_PATH时运行，最终未插桩官方工具探针1项通过。12文件相关回归224项通过、普通未启用探针1项跳过，去重225项。Server类型检查、四变更TS定向lint与格式检查通过。旧KiloAcpCliProbe允许任意会话结果，原样保留，不纳入此提交或作为本次工具验收。
 
@@ -109,12 +116,12 @@ isolatedProbeEnvironment清空非系统宿主变量，覆盖HOME/USERPROFILE/APP
 
 ## 复验、来源与回滚
 
-~~~powershell
+```powershell
 $env:CODEWORK_KILO_CLI_PATH = '<固定7.8.1目录>/kilo.exe'
 node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/KiloAcpToolProbe.test.ts
 Remove-Item Env:CODEWORK_KILO_CLI_PATH
 node node_modules/vite-plus/bin/vp test run apps/server/src/provider/acp/KiloAcpToolResult.test.ts apps/server/src/provider/acp/AcpJsonRpcConnection.test.ts apps/server/src/provider/Layers/CursorAdapter.test.ts
-~~~
+```
 
 检索词Kilo ACP custom provider KILO_CONFIG metadata.exit small_model title，访问2026-10-01。采用[官方CLI说明](https://kilo.ai/docs/code-with-ai/platforms/cli)、[固定7.8.1配置源码](https://github.com/Kilo-Org/kilocode/blob/v7.8.1/packages/opencode/src/config/config.ts)、[固定ACP服务](https://github.com/Kilo-Org/kilocode/blob/v7.8.1/packages/opencode/src/acp/service.ts)、[固定标题模型选择](https://github.com/Kilo-Org/kilocode/blob/v7.8.1/packages/opencode/src/session/prompt.ts)，因为这些来源定义实际配置与生命周期；在线文档可漂移，当前结论以固定官方未插桩CLI与原始HTTP/文件/事件为据。通用入口与安装见[通用ACP实现](./generic-acp-provider.md)。
 
