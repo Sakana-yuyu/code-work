@@ -141,7 +141,7 @@ export function AcpRegistryCatalogPicker({
           <p className="text-xs text-muted-foreground">{t("acpRegistryEmpty")}</p>
         ) : null
       ) : (
-        <div className="max-h-44 divide-y divide-border/60 overflow-y-auto rounded-md border border-border/60">
+        <div className="max-h-72 divide-y divide-border/60 overflow-y-auto rounded-md border border-border/60">
           {entries.map((entry) => {
             // 下载安装后命令只存在于表单/选中态，目录查询仍可能是 null。
             const installedForSelection =

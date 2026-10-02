@@ -37,7 +37,7 @@ describe("ProviderSettingsForm helpers", () => {
     });
   });
   it("连接区域接管网关开关时只隐藏重复字段，添加供应商表单仍可配置", () => {
-    for (const driver of ["codex", "claudeAgent", "grok", "opencode"]) {
+    for (const driver of ["codex", "claudeAgent", "grok", "opencode", "acpAgent"]) {
       const definition = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make(driver)]!;
       const fields = deriveProviderSettingsFields(definition);
       expect(fields.map((field) => field.key)).toContain("routeThroughByok");
@@ -45,6 +45,16 @@ describe("ProviderSettingsForm helpers", () => {
         fields.filter((field) => field.key !== "routeThroughByok"),
       );
     }
+  });
+
+  it("acpAgent 实例卡隐藏命令与网关字段，留给连接区与高级区", () => {
+    const definition = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("acpAgent")]!;
+    const visible = deriveProviderSettingsFields(definition, [
+      "routeThroughByok",
+      "byokSourceInstanceId",
+      "command",
+    ]);
+    expect(visible.map((field) => field.key)).toEqual(["authMethodId", "supportsMcpServers"]);
   });
 
   it("derives visible provider config fields from the client definition schema", () => {

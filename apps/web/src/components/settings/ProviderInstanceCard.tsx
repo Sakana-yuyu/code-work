@@ -14,6 +14,7 @@ import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  EnvironmentId,
   isProviderDriverKind,
   resolveProviderInstanceEnabled,
   type ProviderInstanceConfig,
@@ -43,6 +44,7 @@ import { providerSettingsTabClassName } from "./providerSettingsTabs";
 import { ProviderSettingsForm } from "./ProviderSettingsForm";
 import { ProviderConnectionSection } from "./ProviderConnectionSection";
 import { ProviderModelsSection } from "./ProviderModelsSection";
+import { AcpRegistryCatalogPicker } from "./AcpRegistryCatalogPicker";
 import {
   ByokModelAdaptersSection,
   readByokModelAdapters,
@@ -158,6 +160,12 @@ function readConfigStringArray(config: unknown, key: string): ReadonlyArray<stri
   const value = (config as Record<string, unknown>)[key];
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+function readConfigString(config: unknown, key: string): string | undefined {
+  if (config === null || typeof config !== "object") return undefined;
+  const value = (config as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
 }
 
 /**
@@ -551,6 +559,7 @@ export function ProviderInstanceCard({
   isInstalling = false,
 }: ProviderInstanceCardProps) {
   const [activeTab, setActiveTab] = useState<"models" | "configuration">("configuration");
+  const [showAcpCatalog, setShowAcpCatalog] = useState(false);
   const enabled = resolveProviderInstanceEnabled(instance);
   // A locally disabled provider stays neutral even if its last server status
   // is stale. Enabled providers use the server status when one is available.
@@ -608,7 +617,10 @@ export function ProviderInstanceCard({
     "antigravity",
     "opencode",
     "zcodeAgent",
+    "acpAgent",
   ].includes(instance.driver);
+  const isAcpAgent = instance.driver === "acpAgent";
+  const acpCommand = readConfigString(instance.config, "command") ?? "";
 
   const customModels = readConfigStringArray(instance.config, "customModels");
   // Server-returned models may lag behind settings writes. Treat probe
@@ -1057,17 +1069,94 @@ export function ProviderInstanceCard({
             />
           ) : null}
 
+          {isAcpAgent ? (
+            <div className="grid gap-2 rounded-lg border border-border/70 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-sm font-medium">{t("acpReselectAgent")}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("acpReselectAgentDescription")}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowAcpCatalog((open) => !open)}
+                >
+                  {showAcpCatalog ? t("clear") : t("acpReselectAgent")}
+                </Button>
+              </div>
+              {showAcpCatalog ? (
+                <AcpRegistryCatalogPicker
+                  environmentId={EnvironmentId.make(environmentId)}
+                  selectedCommand={acpCommand}
+                  onSelect={(entry) => {
+                    const nextConfig = {
+                      ...(instance.config !== null && typeof instance.config === "object"
+                        ? (instance.config as Record<string, unknown>)
+                        : {}),
+                      command: entry.command,
+                      authMethodId: entry.authMethodId ?? "login",
+                      supportsMcpServers: entry.supportsMcpServers ?? true,
+                    };
+                    void updateConfig(nextConfig);
+                    if (entry.environment?.length) {
+                      void updateEnvironment(entry.environment);
+                    }
+                    setShowAcpCatalog(false);
+                  }}
+                />
+              ) : null}
+            </div>
+          ) : null}
+
           {driverOption ? (
-            <ProviderSettingsForm
-              definition={driverOption}
-              hiddenFields={
-                hasConnectionSection ? ["routeThroughByok", "byokSourceInstanceId"] : undefined
-              }
-              value={instance.config}
-              idPrefix={`provider-instance-${instanceId}`}
-              variant="card"
-              onChange={updateConfig}
-            />
+            <>
+              <ProviderSettingsForm
+                definition={driverOption}
+                hiddenFields={[
+                  ...(hasConnectionSection ? ["routeThroughByok", "byokSourceInstanceId"] : []),
+                  ...(isAcpAgent ? ["command"] : []),
+                ]}
+                value={instance.config}
+                idPrefix={`provider-instance-${instanceId}`}
+                variant="card"
+                onChange={updateConfig}
+              />
+              {isAcpAgent ? (
+                <details className="rounded-lg border border-border/70 p-3">
+                  <summary className="cursor-pointer text-sm font-medium">
+                    {t("acpAdvancedCommand")}
+                  </summary>
+                  <div className="mt-3 grid gap-1.5">
+                    <label
+                      htmlFor={`provider-instance-${instanceId}-acp-command`}
+                      className="text-xs font-medium text-foreground"
+                    >
+                      {t("providers.settings.acpCommand")}
+                    </label>
+                    <DraftInput
+                      id={`provider-instance-${instanceId}-acp-command`}
+                      value={acpCommand}
+                      onCommit={(value) => {
+                        const nextConfig = nextConfigBlobWithValue(
+                          instance.config,
+                          "command",
+                          value,
+                        );
+                        void updateConfig(nextConfig);
+                      }}
+                      placeholder={t("providers.settings.acpCommand")}
+                      spellCheck={false}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t("providers.settings.acpCommandDescription")}
+                    </p>
+                  </div>
+                </details>
+              ) : null}
+            </>
           ) : null}
 
           {driverOption === undefined ? (

@@ -8,13 +8,20 @@
 export const en: Record<string, string> = {
   "providers.settings.acpCommand": "Launch command",
   "providers.settings.acpCommandDescription":
-    "Full command for starting the ACP agent. Selecting a registry entry fills it automatically.",
-  "providers.settings.acpAuthMethod": "Authentication method",
+    "Full command used to start this agent. Choosing an agent from the list fills it automatically.",
+  "providers.settings.acpAuthMethod": "Sign-in method",
   "providers.settings.acpAuthMethodDescription":
-    "The agent's ACP authentication method. Leave empty to start a session using existing CLI sign-in or environment credentials.",
+    "How the agent signs in when a session starts. Leave empty to use an existing CLI login or environment credentials.",
   "providers.settings.acpAuthMethodPlaceholder": "Leave empty to use existing credentials",
   "providers.settings.acpByokDescription":
     "Provide models through this environment's local gateway by injecting OpenAI/Anthropic endpoint variables. This applies to agents that support these variables.",
+  "acpShortcut.cline": "Cline",
+  "acpShortcut.qwen": "Qwen Code",
+  acpReselectAgent: "Change agent",
+  acpReselectAgentDescription:
+    "Pick another agent from the list to update the launch command and defaults.",
+  "providerConnection.acpNativeHint":
+    "Sign in with this agent's CLI on the selected server environment first (for example `cline auth` or the vendor login command). Then start a chat to confirm the session connects.",
   "providers.settings.injectMcp": "Inject Code Work MCP tools",
   "providers.settings.injectMcpDescription":
     "Disable if the agent rejects MCP servers during session setup. Code Work MCP tools will be unavailable; the agent's own tools remain available. Applies to new or resumed sessions.",
@@ -1087,21 +1094,20 @@ export const en: Record<string, string> = {
     "This stops the running processes and clears their history: {{labelList}}.",
   about: "About",
   accentColor: "Accent color",
-  acpAgent: "ACP Agent",
-  acpRegistry: "ACP Registry",
+  acpAgent: "More agents",
+  acpRegistry: "Choose an agent",
   acpRegistryDescription:
-    "Choose a compatible agent for this environment, or enter a command below.",
-  acpRegistrySearch: "Search ACP agents",
-  acpRegistryLoading: "Loading the ACP registry…",
-  acpRegistryUnavailable:
-    "The ACP registry is unavailable. You can still enter a command manually.",
+    "Search by product name for this environment, or enter a launch command below.",
+  acpRegistrySearch: "Search agents by name",
+  acpRegistryLoading: "Loading agents…",
+  acpRegistryUnavailable: "The agent list is unavailable. You can still enter a command manually.",
   acpRegistryOfflineSnapshot:
-    "The online registry is unavailable. Showing the bundled snapshot from {{date}}; versions may be outdated. You can still enter a command manually.",
+    "The online list is unavailable. Showing the bundled snapshot from {{date}}; versions may be outdated. You can still enter a command manually.",
   acpRegistryEmpty: "No matching agents.",
   acpRegistryManual: "Manual setup",
   acpRegistryManualPreset: "Install CLI first · local version · docs checked {{date}}",
   acpRegistryInstallation: "Installation guide",
-  acpRegistryDocumentation: "ACP documentation",
+  acpRegistryDocumentation: "Documentation",
   acpRegistryDownloadInstall: "Download & install",
   acpRegistryDownloadInstallAgent: "Download and install {{name}}",
   acpRegistryDownloading: "Downloading…",
@@ -1123,6 +1129,7 @@ export const en: Record<string, string> = {
     "Selecting an agent fills its launch command. Manual entries require the CLI to be installed first. npx/uvx entries require Node.js or uv and may download the pinned package during checks or startup.",
   acpRegistryEnvironmentHint:
     "These public environment defaults will be saved with the instance. You can edit them in instance settings after adding it.",
+  acpAdvancedCommand: "Advanced launch settings",
   externalSessionsTitle: "Import CLI sessions",
   externalSessionsDescription:
     "Choose a project to import Codex or Claude Code history from its server environment. Original files remain unchanged.",
@@ -6349,14 +6356,20 @@ export const en: Record<string, string> = {
 
 export const zhCN: Record<string, string> = {
   "providers.settings.acpCommand": "启动命令",
-  "providers.settings.acpCommandDescription":
-    "ACP 智能体的完整启动命令。选择目录条目后会自动填入。",
-  "providers.settings.acpAuthMethod": "认证方式",
+  "providers.settings.acpCommandDescription": "完整的启动命令。从列表选择智能体后会自动填入。",
+  "providers.settings.acpAuthMethod": "登录方式",
   "providers.settings.acpAuthMethodDescription":
-    "ACP 认证方法名。留空时直接建立会话，使用 CLI 已有登录或环境凭据。",
+    "建立会话时使用的登录方式。留空则使用 CLI 已有登录或环境凭据。",
   "providers.settings.acpAuthMethodPlaceholder": "留空使用已有凭据",
   "providers.settings.acpByokDescription":
     "通过注入 OpenAI/Anthropic 端点环境变量，使用当前环境的本地网关提供模型；仅对支持这些变量的智能体生效。",
+  "acpShortcut.cline": "Cline",
+  "acpShortcut.qwen": "Qwen Code",
+  acpReselectAgent: "更换智能体",
+  acpReselectAgentDescription: "从列表重新选择，以更新启动命令和默认项。",
+  "providerConnection.acpNativeHint":
+    "请先在所选服务器环境用该智能体自己的 CLI 登录（例如 `cline auth` 或厂商登录命令），再在对话里确认可以连上。",
+  acpAdvancedCommand: "高级启动设置",
   "providers.settings.injectMcp": "注入 Code Work MCP 工具",
   "providers.settings.injectMcpDescription":
     "若 Agent 在建立会话时拒绝 MCP 服务器，可关闭此项。关闭后无法使用 Code Work MCP 工具，Agent 自带工具仍可用；新建或恢复会话时生效。",
@@ -11033,19 +11046,19 @@ export const zhCN: Record<string, string> = {
   yourChangesAreNowActive: "您的更改现已生效。",
   yourChangesAreSaved: "您的更改已保存。",
   zed: "Zed",
-  acpAgent: "ACP 智能体",
-  acpRegistry: "ACP 注册表",
-  acpRegistryDescription: "为此环境选择兼容的智能体，或在下方手工填写命令。",
-  acpRegistrySearch: "搜索 ACP 智能体",
-  acpRegistryLoading: "正在加载 ACP 注册表…",
-  acpRegistryUnavailable: "ACP 注册表暂时不可用，仍可手工填写命令。",
+  acpAgent: "更多智能体",
+  acpRegistry: "选择智能体",
+  acpRegistryDescription: "按产品名称搜索本环境可用的智能体，或在下方手工填写启动命令。",
+  acpRegistrySearch: "按名称搜索智能体",
+  acpRegistryLoading: "正在加载智能体列表…",
+  acpRegistryUnavailable: "智能体列表暂时不可用，仍可手工填写命令。",
   acpRegistryOfflineSnapshot:
-    "在线目录暂时不可用，现显示 {{date}} 的内置快照，版本可能已过期。仍可手工填写命令。",
+    "在线列表暂时不可用，现显示 {{date}} 的内置快照，版本可能已过期。仍可手工填写命令。",
   acpRegistryEmpty: "没有匹配的智能体。",
   acpRegistryManual: "需手工配置",
   acpRegistryManualPreset: "需先安装 CLI · 使用本机版本 · 文档核对于 {{date}}",
   acpRegistryInstallation: "安装说明",
-  acpRegistryDocumentation: "ACP 官方文档",
+  acpRegistryDocumentation: "使用文档",
   acpRegistryDownloadInstall: "下载并安装",
   acpRegistryDownloadInstallAgent: "下载并安装 {{name}}",
   acpRegistryDownloading: "下载中…",

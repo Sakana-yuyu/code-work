@@ -174,8 +174,26 @@ export function providerSupportsSharedRoute(driver: string): boolean {
     driver === "claudeAgent" ||
     driver === "grok" ||
     driver === "opencode" ||
-    driver === "kimi"
+    driver === "kimi" ||
+    driver === "acpAgent"
   );
+}
+
+/** Fields shown under Connection for agents that share the web gateway pattern. */
+export function providerConnectionFields(driver: string): ReadonlyArray<MobileProviderField> {
+  return providerFields(driver).filter((field) => field.key === "routeThroughByok");
+}
+
+/** Primary install/login fields (excludes connection + advanced). */
+export function providerPrimaryFields(driver: string): ReadonlyArray<MobileProviderField> {
+  return providerFields(driver).filter(
+    (field) => field.key !== "routeThroughByok" && field.key !== "supportsMcpServers",
+  );
+}
+
+/** Optional advanced toggles (MCP injection, etc.). */
+export function providerAdvancedFields(driver: string): ReadonlyArray<MobileProviderField> {
+  return providerFields(driver).filter((field) => field.key === "supportsMcpServers");
 }
 
 export function providerDisplayNameKey(
@@ -310,7 +328,7 @@ export function makeMobileProviderInstance(
 /** 移动端一次显示的目录行数上限，其余条目通过搜索访问。 */
 export const MOBILE_ACP_CATALOG_VISIBLE_LIMIT = 12;
 
-/** 与网页添加向导一致的 ACP 快捷入口；选择后仍须在目录中确认版本/命令。 */
+/** 与网页添加向导一致的常用智能体快捷入口；选择后仍须在目录中确认版本/命令。 */
 export const MOBILE_ACP_QUICK_ENTRIES = [
   {
     id: "github-copilot-cli",
@@ -323,6 +341,18 @@ export const MOBILE_ACP_QUICK_ENTRIES = [
     labelKey: "providersMobile.acpQuickGemini",
     authMethodId: "oauth-personal",
     search: "gemini",
+  },
+  {
+    id: "cline",
+    labelKey: "providersMobile.acpQuickCline",
+    authMethodId: "",
+    search: "cline",
+  },
+  {
+    id: "qwen",
+    labelKey: "providersMobile.acpQuickQwen",
+    authMethodId: "openai",
+    search: "qwen",
   },
 ] as const;
 

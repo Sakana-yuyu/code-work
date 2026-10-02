@@ -82,7 +82,21 @@ describe("AddProviderInstanceDialog environment routing", () => {
       command: "npx -y @google/gemini-cli@0.61.0 --acp",
       auth: "oauth-personal",
     },
-  ] as const)("$id 入口使用所选环境的 ACP 目录及原生认证方式", async (entry) => {
+    {
+      id: "cline",
+      label: "acpShortcut.cline",
+      version: "3.0.65",
+      command: "npx -y cline@3.0.65 --acp",
+      auth: "",
+    },
+    {
+      id: "qwen",
+      label: "acpShortcut.qwen",
+      version: "0.24.7",
+      command: "npx -y @qwen-code/qwen-code@0.24.7 --acp",
+      auth: "openai",
+    },
+  ] as const)("$id 快捷入口预填目录搜索与登录方式", async (entry) => {
     const render = () => {
       hooks.beginRender();
       return AddProviderInstanceDialog({

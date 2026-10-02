@@ -6,13 +6,20 @@
 export const ja: Record<string, string> = {
   "providers.settings.acpCommand": "起動コマンド",
   "providers.settings.acpCommandDescription":
-    "ACP Agent の起動コマンド全体です。レジストリから選ぶと自動入力されます。",
-  "providers.settings.acpAuthMethod": "認証方式",
+    "このエージェントの起動コマンド全体です。一覧から選ぶと自動入力されます。",
+  "providers.settings.acpAuthMethod": "サインイン方式",
   "providers.settings.acpAuthMethodDescription":
-    "Agent の ACP 認証方式です。空欄にすると既存の CLI ログインまたは環境の認証情報でセッションを開始します。",
+    "セッション開始時のサインイン方式です。空欄にすると既存の CLI ログインまたは環境の認証情報を使います。",
   "providers.settings.acpAuthMethodPlaceholder": "既存の認証情報を使う場合は空欄",
   "providers.settings.acpByokDescription":
     "OpenAI/Anthropic の接続先変数を渡し、この環境のローカルゲートウェイからモデルを提供します。対応する Agent にのみ適用されます。",
+  "acpShortcut.cline": "Cline",
+  "acpShortcut.qwen": "Qwen Code",
+  acpReselectAgent: "エージェントを変更",
+  acpReselectAgentDescription: "一覧から選び直すと起動コマンドと既定値が更新されます。",
+  "providerConnection.acpNativeHint":
+    "先に選択したサーバー環境で、そのエージェントの CLI にサインインしてください（例: `cline auth`）。その後チャットで接続を確認します。",
+  acpAdvancedCommand: "詳細な起動設定",
   "providers.settings.injectMcp": "Code Work MCP ツールを追加",
   "providers.settings.injectMcpDescription":
     "セッション開始時に MCP サーバーが拒否される場合は無効にしてください。Code Work MCP ツールは使用できなくなりますが、エージェント自身のツールは引き続き使用できます。新規または再開するセッションに適用されます。",
@@ -1146,20 +1153,20 @@ export const ja: Record<string, string> = {
     "実行中のプロセスを停止し、その履歴を消去します: {{labelList}}。",
   about: "このアプリについて",
   accentColor: "アクセントカラー",
-  acpAgent: "ACP エージェント",
-  acpRegistry: "ACPレジストリ",
+  acpAgent: "その他のエージェント",
+  acpRegistry: "エージェントを選ぶ",
   acpRegistryDescription:
-    "この環境に対応するエージェントを選ぶか、下でコマンドを入力してください。",
-  acpRegistrySearch: "ACPエージェントを検索",
-  acpRegistryLoading: "ACPレジストリを読み込み中…",
-  acpRegistryUnavailable: "ACPレジストリを利用できません。コマンドは手動で入力できます。",
+    "この環境で使えるエージェントを製品名で検索するか、下で起動コマンドを入力してください。",
+  acpRegistrySearch: "名前でエージェントを検索",
+  acpRegistryLoading: "エージェント一覧を読み込み中…",
+  acpRegistryUnavailable: "エージェント一覧を利用できません。コマンドは手動で入力できます。",
   acpRegistryOfflineSnapshot:
     "オンライン一覧を利用できません。{{date}} の内蔵スナップショットを表示しています。バージョンが古い可能性があります。コマンドは手動で入力できます。",
   acpRegistryEmpty: "一致するエージェントがありません。",
   acpRegistryManual: "手動設定が必要",
   acpRegistryManualPreset: "CLIの事前インストールが必要・ローカル版を使用・文書確認日 {{date}}",
   acpRegistryInstallation: "インストール手順",
-  acpRegistryDocumentation: "ACP公式文書",
+  acpRegistryDocumentation: "ドキュメント",
   acpRegistryDownloadInstall: "ダウンロードしてインストール",
   acpRegistryDownloadInstallAgent: "{{name}}をダウンロードしてインストール",
   acpRegistryDownloading: "ダウンロード中…",

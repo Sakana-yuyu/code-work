@@ -13,7 +13,10 @@ import {
   makeMobileAcpCatalogInstance,
   suggestAcpCatalogInstanceId,
   materializeProviderInstances,
+  providerAdvancedFields,
+  providerConnectionFields,
   providerFields,
+  providerPrimaryFields,
   readProviderConfigBoolean,
   readProviderConfigString,
   providerSupportsSharedRoute,
@@ -93,13 +96,31 @@ describe("移动端 ACP 目录", () => {
     expect(suggestAcpCatalogInstanceId("***", new Set())).toBe("acp-agent");
   });
 
-  it("快捷入口与网页 Copilot/Gemini 按钮对齐", () => {
+  it("快捷入口与网页 Copilot/Gemini/Cline/Qwen 对齐", () => {
     expect(MOBILE_ACP_QUICK_ENTRIES.map((entry) => entry.id)).toEqual([
       "github-copilot-cli",
       "gemini",
+      "cline",
+      "qwen",
     ]);
     expect(MOBILE_ACP_QUICK_ENTRIES[0]?.authMethodId).toBe("copilot-login");
     expect(MOBILE_ACP_QUICK_ENTRIES[1]?.authMethodId).toBe("oauth-personal");
+    expect(MOBILE_ACP_QUICK_ENTRIES[2]?.authMethodId).toBe("");
+    expect(MOBILE_ACP_QUICK_ENTRIES[3]?.authMethodId).toBe("openai");
+  });
+
+  it("acpAgent 支持共享网关并分区字段", () => {
+    expect(providerSupportsSharedRoute("acpAgent")).toBe(true);
+    expect(providerConnectionFields("acpAgent").map((field) => field.key)).toEqual([
+      "routeThroughByok",
+    ]);
+    expect(providerPrimaryFields("acpAgent").map((field) => field.key)).toEqual([
+      "command",
+      "authMethodId",
+    ]);
+    expect(providerAdvancedFields("acpAgent").map((field) => field.key)).toEqual([
+      "supportsMcpServers",
+    ]);
   });
 });
 

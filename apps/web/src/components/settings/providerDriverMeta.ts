@@ -152,7 +152,6 @@ export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = 
       return t("acpAgent");
     },
     icon: AcpAgentIcon,
-    badgeLabel: "ACP",
     settingsSchema: AcpAgentSettings,
   },
   {

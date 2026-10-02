@@ -42,8 +42,11 @@ import {
   makeMobileAcpCatalogInstance,
   makeMobileProviderInstance,
   materializeProviderInstances,
+  providerAdvancedFields,
+  providerConnectionFields,
   providerEnabled,
   providerFields,
+  providerPrimaryFields,
   providerSupportsSharedRoute,
   readProviderConfigBoolean,
   readProviderConfigString,
@@ -475,8 +478,9 @@ function AddProviderSection(props: {
               onPress={() => props.onAcpQuickEntry(entry)}
               className="rounded-xl border border-input-border px-3 py-2.5 active:opacity-80"
             >
-              <Text className="text-sm font-codework-medium text-foreground">{t(entry.labelKey)}</Text>
-              <Text className="mt-0.5 text-[11px] text-foreground-muted">ACP</Text>
+              <Text className="text-sm font-codework-medium text-foreground">
+                {t(entry.labelKey)}
+              </Text>
             </Pressable>
           ))}
         </View>
@@ -534,7 +538,17 @@ function ProviderCard(props: {
   readonly onInstall: () => void;
 }) {
   const instance = props.draft ?? props.row.instance;
-  const fields = providerFields(props.row.driver);
+  const isAcpAgent = props.row.driver === "acpAgent";
+  const fields = isAcpAgent
+    ? [
+        ...providerConnectionFields(props.row.driver),
+        ...providerPrimaryFields(props.row.driver),
+        ...providerAdvancedFields(props.row.driver),
+      ]
+    : providerFields(props.row.driver);
+  const connectionFields = isAcpAgent ? providerConnectionFields(props.row.driver) : [];
+  const primaryFields = isAcpAgent ? providerPrimaryFields(props.row.driver) : fields;
+  const advancedFields = isAcpAgent ? providerAdvancedFields(props.row.driver) : [];
   const config = instance.config;
   const dirty = props.draft !== undefined;
   const snapshot = props.snapshot;
@@ -547,6 +561,31 @@ function ProviderCard(props: {
       config: updateProviderConfig(config, field, value),
     });
   };
+
+  const renderField = (field: MobileProviderField) => (
+    <Field key={field.key} label={t(field.labelKey)}>
+      {field.kind === "switch" ? (
+        <View className="flex-row items-center justify-between rounded-2xl bg-input px-3.5 py-3">
+          <Text className="text-sm text-foreground-muted">{t(field.labelKey)}</Text>
+          <Switch
+            value={readProviderConfigBoolean(config, field.key, field.defaultBooleanValue)}
+            disabled={props.disabled}
+            onValueChange={(value) => changeField(field, value)}
+          />
+        </View>
+      ) : (
+        <TextInput
+          value={readProviderConfigString(config, field.key, field.defaultStringValue)}
+          onChangeText={(value) => changeField(field, value)}
+          placeholder={field.placeholderKey === null ? undefined : t(field.placeholderKey)}
+          secureTextEntry={field.kind === "password"}
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!props.disabled}
+        />
+      )}
+    </Field>
+  );
 
   return (
     <View className="gap-3 border-b border-border-subtle p-4 last:border-b-0">
@@ -587,31 +626,30 @@ function ProviderCard(props: {
         <Text className="text-sm text-warning-foreground">
           {t("providersMobile.unknownDriver")}
         </Text>
+      ) : isAcpAgent ? (
+        <>
+          <Text className="text-sm font-codework-medium text-foreground">
+            {t("providersMobile.sectionConnection")}
+          </Text>
+          <Text className="text-xs text-foreground-muted">
+            {t("providersMobile.acpNativeHint")}
+          </Text>
+          {connectionFields.map(renderField)}
+          <Text className="text-sm font-codework-medium text-foreground">
+            {t("providersMobile.sectionInstall")}
+          </Text>
+          {primaryFields.map(renderField)}
+          {advancedFields.length > 0 ? (
+            <>
+              <Text className="text-sm font-codework-medium text-foreground">
+                {t("providersMobile.sectionAdvanced")}
+              </Text>
+              {advancedFields.map(renderField)}
+            </>
+          ) : null}
+        </>
       ) : (
-        fields.map((field) => (
-          <Field key={field.key} label={t(field.labelKey)}>
-            {field.kind === "switch" ? (
-              <View className="flex-row items-center justify-between rounded-2xl bg-input px-3.5 py-3">
-                <Text className="text-sm text-foreground-muted">{t(field.labelKey)}</Text>
-                <Switch
-                  value={readProviderConfigBoolean(config, field.key, field.defaultBooleanValue)}
-                  disabled={props.disabled}
-                  onValueChange={(value) => changeField(field, value)}
-                />
-              </View>
-            ) : (
-              <TextInput
-                value={readProviderConfigString(config, field.key, field.defaultStringValue)}
-                onChangeText={(value) => changeField(field, value)}
-                placeholder={field.placeholderKey === null ? undefined : t(field.placeholderKey)}
-                secureTextEntry={field.kind === "password"}
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!props.disabled}
-              />
-            )}
-          </Field>
-        ))
+        fields.map(renderField)
       )}
       {props.row.driver === "cursor" ? (
         <Text className="text-xs text-foreground-muted">{t("cliProxy.cursorHint")}</Text>

@@ -15,7 +15,6 @@ import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hook
 import { cn } from "../../lib/utils";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { Button } from "../ui/button";
-import { Gemini, GithubCopilotIcon } from "../Icons";
 import {
   Dialog,
   DialogDescription,
@@ -39,6 +38,7 @@ import {
 } from "./AddProviderInstanceDialog.logic";
 import { AddProviderInstanceWizardSteps } from "./AddProviderInstanceWizardSteps";
 import { AcpRegistryCatalogPicker } from "./AcpRegistryCatalogPicker";
+import { ACP_CURATED_SHORTCUTS } from "./acpCuratedShortcuts";
 import { t } from "~/i18n";
 
 const PROVIDER_ACCENT_SWATCHES = [
@@ -309,39 +309,32 @@ export function AddProviderInstanceDialog({
                     );
                   })}
                 </RadioGroup>
-                {[
-                  {
-                    id: "github-copilot-cli",
-                    label: t("githubCopilot"),
-                    icon: GithubCopilotIcon,
-                    auth: "copilot-login",
-                  },
-                  { id: "gemini", label: t("gemini"), icon: Gemini, auth: "oauth-personal" },
-                ].map((entry) => (
-                  <Button
-                    key={entry.id}
-                    variant="outline"
-                    className="justify-start gap-3"
-                    onClick={() => {
-                      setDriver(ProviderDriverKind.make("acpAgent"));
-                      setLabel(entry.label);
-                      setInstanceIdOverride(null);
-                      setCatalogSelection(null);
-                      setConfigByDriver((existing) => ({
-                        ...existing,
-                        acpAgent: { authMethodId: entry.auth },
-                      }));
-                      setCatalogQuery(entry.id);
-                      setWizardStep(2);
-                    }}
-                  >
-                    <entry.icon className="size-4 shrink-0" aria-hidden />
-                    {entry.label}
-                    <Badge variant="warning" size="sm">
-                      ACP
-                    </Badge>
-                  </Button>
-                ))}
+                {ACP_CURATED_SHORTCUTS.map((entry) => {
+                  const IconComponent = entry.icon;
+                  const labelText = entry.label();
+                  return (
+                    <Button
+                      key={entry.id}
+                      variant="outline"
+                      className="justify-start gap-3"
+                      onClick={() => {
+                        setDriver(ProviderDriverKind.make("acpAgent"));
+                        setLabel(labelText);
+                        setInstanceIdOverride(null);
+                        setCatalogSelection(null);
+                        setConfigByDriver((existing) => ({
+                          ...existing,
+                          acpAgent: { authMethodId: entry.auth },
+                        }));
+                        setCatalogQuery(entry.catalogQuery);
+                        setWizardStep(2);
+                      }}
+                    >
+                      <IconComponent className="size-4 shrink-0" aria-hidden />
+                      {labelText}
+                    </Button>
+                  );
+                })}
               </div>
 
               <div

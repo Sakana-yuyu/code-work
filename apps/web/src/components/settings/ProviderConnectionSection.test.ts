@@ -33,15 +33,25 @@ describe("供应商连接设置", () => {
     });
   });
   it("旧网关开关映射为共享渠道，可从统一入口关闭且保留其他配置", () => {
-    for (const driver of ["codex", "claudeAgent", "grok", "opencode"]) {
+    for (const driver of ["codex", "claudeAgent", "grok", "opencode", "acpAgent"]) {
       const legacy = {
         driver: ProviderDriverKind.make(driver),
-        config: { routeThroughByok: true, binaryPath: "custom-cli" },
+        config: {
+          routeThroughByok: true,
+          ...(driver === "acpAgent"
+            ? { command: "npx -y cline@3.0.65 --acp" }
+            : { binaryPath: "custom-cli" }),
+        },
       };
       expect(providerConnectionMode(legacy)).toBe("gateway");
       const native = withProviderConnection(legacy, "native", "", "");
       expect(providerConnectionMode(native)).toBe("native");
-      expect(native.config).toEqual({ routeThroughByok: false, binaryPath: "custom-cli" });
+      expect(native.config).toEqual({
+        routeThroughByok: false,
+        ...(driver === "acpAgent"
+          ? { command: "npx -y cline@3.0.65 --acp" }
+          : { binaryPath: "custom-cli" }),
+      });
     }
   });
 

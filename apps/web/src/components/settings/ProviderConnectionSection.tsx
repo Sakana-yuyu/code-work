@@ -39,7 +39,8 @@ const supportsGatewayConnection = (driver: string): boolean =>
   driver === "claudeAgent" ||
   driver === "grok" ||
   driver === "opencode" ||
-  driver === "kimi";
+  driver === "kimi" ||
+  driver === "acpAgent";
 const apiNames = (driver: string, bearer = false) =>
   driver === "codex"
     ? { url: "CODEWORK_CODEX_BASE_URL", key: "CODEWORK_CODEX_API_KEY" }
@@ -466,7 +467,9 @@ export function ProviderConnectionSection({
             <p className="text-xs leading-relaxed text-muted-foreground animate-in fade-in-50 duration-150 motion-reduce:animate-none">
               {t(
                 mode === "native"
-                  ? "providerConnection.nativeHint"
+                  ? instance.driver === "acpAgent"
+                    ? "providerConnection.acpNativeHint"
+                    : "providerConnection.nativeHint"
                   : "providerConnection.gatewayHint",
               )}
             </p>
