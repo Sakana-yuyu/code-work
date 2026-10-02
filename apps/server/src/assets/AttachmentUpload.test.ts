@@ -10,7 +10,11 @@ import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
-import { parseThreadSegmentFromAttachmentId } from "../attachmentStore.ts";
+import {
+  parseThreadSegmentFromAttachmentId,
+  resolveAttachmentPath,
+  resolveAttachmentPathById,
+} from "../attachmentStore.ts";
 import {
   ATTACHMENT_UPLOAD_ROUTE_PREFIX,
   deletePendingAttachment,
@@ -107,6 +111,42 @@ describe("AttachmentUpload", () => {
       expect(
         NodeFS.readdirSync(config.attachmentsDir).filter((entry) => entry.endsWith(".part")),
       ).toEqual([]);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("stores binary uploads at the path used by attachment metadata and id lookup", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      for (const [type, name, mimeType, extension] of [
+        ["audio", "recording.mp3", "audio/mpeg", ".mp3"],
+        ["audio", "recording.wav", "audio/wav", ".wav"],
+        ["file", "document.pdf", "application/pdf", ".pdf"],
+        ["file", "archive.zip", "application/zip", ".zip"],
+        ["file", "download", "application/octet-stream", ".bin"],
+      ] as const) {
+        const attachment = {
+          type,
+          id: `thread-${extension.slice(1)}`,
+          name,
+          mimeType,
+          sizeBytes: 3,
+        };
+        const bytes = new Uint8Array([1, 2, 3]);
+        expect(
+          yield* storeAttachmentUpload({ ...attachment, attachmentId: attachment.id }, bytes, type),
+        ).toEqual({ ok: true });
+        const expectedPath = NodePath.join(config.attachmentsDir, `${attachment.id}${extension}`);
+        expect(resolveAttachmentPath({ attachmentsDir: config.attachmentsDir, attachment })).toBe(
+          expectedPath,
+        );
+        expect(
+          resolveAttachmentPathById({
+            attachmentsDir: config.attachmentsDir,
+            attachmentId: attachment.id,
+          }),
+        ).toBe(expectedPath);
+        expect(NodeFS.readFileSync(expectedPath)).toEqual(Buffer.from(bytes));
+      }
     }).pipe(Effect.provide(testLayer)),
   );
 

@@ -35,7 +35,7 @@ it.effect("音频原子保存，事件重试不重复", () =>
     if (!first.attachment) throw new Error("音频未保存");
     expect(first.attachment.type).toBe("audio");
     expect(
-      NodeFS.readFileSync(NodePath.join(config.attachmentsDir, `${first.attachment.id}.bin`)),
+      NodeFS.readFileSync(NodePath.join(config.attachmentsDir, `${first.attachment.id}.wav`)),
     ).toEqual(Buffer.from(wav, "base64"));
   }).pipe(Effect.provide(layer)),
 );

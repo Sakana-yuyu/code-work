@@ -4,6 +4,7 @@ import * as NodeCrypto from "node:crypto";
 import {
   ATTACHMENT_UPLOAD_URL_TTL_MS,
   type AttachmentCreateUploadUrlInput,
+  type ChatAttachment,
   AttachmentUploadSigningKeyError,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
@@ -15,6 +16,7 @@ import * as Schema from "effect/Schema";
 
 import {
   createPendingAttachmentId,
+  inferAttachmentExtension,
   parseThreadSegmentFromAttachmentId,
   PENDING_ATTACHMENT_THREAD_SEGMENT,
   resolveAttachmentPathById,
@@ -142,6 +144,7 @@ export type StoreAttachmentUploadResult =
 export const storeAttachmentUpload = Effect.fn("AttachmentUpload.store")(function* (
   claims: Pick<AttachmentUploadClaims, "attachmentId" | "name" | "mimeType" | "sizeBytes">,
   bytes: Uint8Array,
+  type: ChatAttachment["type"] = "image",
 ) {
   if (bytes.byteLength !== claims.sizeBytes) {
     return {
@@ -152,7 +155,8 @@ export const storeAttachmentUpload = Effect.fn("AttachmentUpload.store")(functio
   }
 
   const config = yield* ServerConfig.ServerConfig;
-  const extension = inferImageExtension({ mimeType: claims.mimeType, fileName: claims.name });
+  const inferExtension = type === "image" ? inferImageExtension : inferAttachmentExtension;
+  const extension = inferExtension({ mimeType: claims.mimeType, fileName: claims.name });
   const relativePath = `${claims.attachmentId}${extension}`;
   const finalPath = resolveAttachmentRelativePath({
     attachmentsDir: config.attachmentsDir,

@@ -120,6 +120,7 @@ export const storeProviderAudioAttachment = Effect.fn("storeProviderAudioAttachm
       sizeBytes: decoded.bytes.length,
     },
     decoded.bytes,
+    attachment.type,
   );
   return stored.ok ? { attachment } : { error: "音频保存失败，请检查环境的附件存储后重试。" };
 });
@@ -160,6 +161,7 @@ export const storeProviderBlobAttachment = Effect.fn("storeProviderBlobAttachmen
       sizeBytes: decoded.bytes.length,
     },
     decoded.bytes,
+    attachment.type,
   );
   return stored.ok ? { attachment } : { error: "二进制资源保存失败，请检查环境的附件存储后重试。" };
 });

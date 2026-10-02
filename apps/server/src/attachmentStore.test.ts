@@ -3,6 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import type { ChatAttachment } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -11,6 +12,7 @@ import {
   parseAttachmentUuid,
   planAttachmentClaim,
   parseThreadSegmentFromAttachmentId,
+  resolveAttachmentPath,
   resolveAttachmentPathById,
   sweepStalePendingAttachments,
 } from "./attachmentStore.ts";
@@ -72,6 +74,71 @@ describe("attachmentStore", () => {
         attachmentId,
       });
       expect(resolved).toBe(pngPath);
+    } finally {
+      NodeFS.rmSync(attachmentsDir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["image", "photo.png", "image/png", ".png"],
+    ["image", "photo.jpg", "image/jpeg", ".jpg"],
+    ["image", "photo.webp", "image/webp", ".webp"],
+    ["audio", "recording.mp3", "audio/mpeg", ".mp3"],
+    ["audio", "recording.wav", "audio/wav", ".wav"],
+    ["file", "document.pdf", "application/pdf", ".pdf"],
+    ["file", "archive.zip", "application/zip", ".zip"],
+    ["file", "download", "application/octet-stream", ".bin"],
+    ["audio", "recording.MP3", "audio/wav", ".mp3"],
+    ["file", "archive.ZIP", "application/pdf", ".zip"],
+    ["file", "document.pdf", "image/png", ".pdf"],
+    ["audio", "recording", "audio/mpeg", ".mp3"],
+    ["audio", "recording.unknown", "audio/x-wav", ".wav"],
+    ["file", "document", "application/pdf", ".pdf"],
+    ["file", "archive.unknown", "application/zip", ".zip"],
+    ["file", "download.exe", "application/x-unknown", ".bin"],
+    ["file", "download", "toString", ".bin"],
+  ] as const)("resolves %s %s (%s) consistently as %s", (type, name, mimeType, extension) => {
+    const attachmentsDir = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "codework-attachment-extension-"),
+    );
+    try {
+      const attachment: ChatAttachment = {
+        type,
+        id: "thread-1-attachment",
+        name,
+        mimeType,
+        sizeBytes: 5,
+      };
+      const expectedPath = NodePath.join(attachmentsDir, `${attachment.id}${extension}`);
+      const resolved = resolveAttachmentPath({ attachmentsDir, attachment });
+      expect(resolved).toBe(expectedPath);
+      NodeFS.writeFileSync(expectedPath, "hello");
+      expect(resolveAttachmentPathById({ attachmentsDir, attachmentId: attachment.id })).toBe(
+        resolved,
+      );
+    } finally {
+      NodeFS.rmSync(attachmentsDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps binary attachments stored with the legacy extension readable", () => {
+    const attachmentsDir = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "codework-attachment-legacy-"),
+    );
+    try {
+      const attachment: ChatAttachment = {
+        type: "audio",
+        id: "thread-legacy",
+        name: "recording.mp3",
+        mimeType: "audio/mpeg",
+        sizeBytes: 5,
+      };
+      const legacyPath = NodePath.join(attachmentsDir, `${attachment.id}.bin`);
+      NodeFS.writeFileSync(legacyPath, "hello");
+      expect(resolveAttachmentPath({ attachmentsDir, attachment })).toBe(legacyPath);
+      expect(resolveAttachmentPathById({ attachmentsDir, attachmentId: attachment.id })).toBe(
+        legacyPath,
+      );
     } finally {
       NodeFS.rmSync(attachmentsDir, { recursive: true, force: true });
     }

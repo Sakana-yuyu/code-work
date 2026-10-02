@@ -9,9 +9,34 @@ import {
   normalizeAttachmentRelativePath,
   resolveAttachmentRelativePath,
 } from "./attachmentPaths.ts";
-import { inferImageExtension, SAFE_IMAGE_FILE_EXTENSIONS } from "./imageMime.ts";
+import {
+  IMAGE_EXTENSION_BY_MIME_TYPE,
+  inferImageExtension,
+  SAFE_IMAGE_FILE_EXTENSIONS,
+} from "./imageMime.ts";
 
-const ATTACHMENT_FILENAME_EXTENSIONS = [...SAFE_IMAGE_FILE_EXTENSIONS, ".bin"];
+const ATTACHMENT_EXTENSION_BY_MIME_TYPE: Record<string, string> = {
+  ...IMAGE_EXTENSION_BY_MIME_TYPE,
+  "audio/aac": ".aac",
+  "audio/flac": ".flac",
+  "audio/mp4": ".m4a",
+  "audio/mpeg": ".mp3",
+  "audio/ogg": ".ogg",
+  "audio/wav": ".wav",
+  "audio/wave": ".wav",
+  "audio/webm": ".webm",
+  "audio/x-wav": ".wav",
+  "application/pdf": ".pdf",
+  "application/zip": ".zip",
+  "application/x-zip-compressed": ".zip",
+  "application/json": ".json",
+  "text/plain": ".txt",
+};
+const ATTACHMENT_FILENAME_EXTENSIONS = new Set([
+  ...SAFE_IMAGE_FILE_EXTENSIONS,
+  ...Object.values(ATTACHMENT_EXTENSION_BY_MIME_TYPE),
+  ".bin",
+]);
 const ATTACHMENT_ID_THREAD_SEGMENT_MAX_CHARS = 80;
 const ATTACHMENT_ID_THREAD_SEGMENT_PATTERN = "[a-z0-9_]+(?:-[a-z0-9_]+)*";
 const ATTACHMENT_ID_UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -71,28 +96,47 @@ export function parseThreadSegmentFromAttachmentId(attachmentId: string): string
   return match[1]?.toLowerCase() ?? null;
 }
 
-export function attachmentRelativePath(attachment: ChatAttachment): string {
-  switch (attachment.type) {
-    case "image":
-    case "audio":
-    case "file": {
-      const extension = inferImageExtension({
-        mimeType: attachment.mimeType,
-        fileName: attachment.name,
-      });
-      return `${attachment.id}${extension}`;
-    }
+export function inferAttachmentExtension(input: { mimeType: string; fileName: string }): string {
+  const mimeType = input.mimeType.trim().toLowerCase();
+  const fileNameExtension = NodePath.extname(input.fileName.trim()).toLowerCase();
+  if (ATTACHMENT_FILENAME_EXTENSIONS.has(fileNameExtension)) {
+    return fileNameExtension;
   }
+  return Object.hasOwn(ATTACHMENT_EXTENSION_BY_MIME_TYPE, mimeType)
+    ? ATTACHMENT_EXTENSION_BY_MIME_TYPE[mimeType]!
+    : ".bin";
+}
+
+export function attachmentRelativePath(attachment: ChatAttachment): string {
+  const inferExtension =
+    attachment.type === "image" ? inferImageExtension : inferAttachmentExtension;
+  const extension = inferExtension({
+    mimeType: attachment.mimeType,
+    fileName: attachment.name,
+  });
+  return `${attachment.id}${extension}`;
 }
 
 export function resolveAttachmentPath(input: {
   readonly attachmentsDir: string;
   readonly attachment: ChatAttachment;
 }): string | null {
-  return resolveAttachmentRelativePath({
+  const resolved = resolveAttachmentRelativePath({
     attachmentsDir: input.attachmentsDir,
     relativePath: attachmentRelativePath(input.attachment),
   });
+  if (!resolved || input.attachment.type === "image" || NodeFS.existsSync(resolved)) {
+    return resolved;
+  }
+  const legacyExtension = inferImageExtension({
+    mimeType: input.attachment.mimeType,
+    fileName: input.attachment.name,
+  });
+  const legacyPath = resolveAttachmentRelativePath({
+    attachmentsDir: input.attachmentsDir,
+    relativePath: `${input.attachment.id}${legacyExtension}`,
+  });
+  return legacyPath && NodeFS.existsSync(legacyPath) ? legacyPath : resolved;
 }
 
 export function resolveAttachmentPathById(input: {
