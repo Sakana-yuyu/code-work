@@ -68,7 +68,7 @@ describe("Codex plan_type 兜底", () => {
 });
 
 describe("ZCode 额度接口隔离", () => {
-  const run = (credential: Record<string, unknown>, quotaStatus: number) =>
+  const run = (credential: Record<string, unknown>, quotaStatus: number, percentage = 0.5) =>
     Effect.gen(function* () {
       resetZCodeClientConfigsCacheForTest();
       const urls: string[] = [];
@@ -78,7 +78,7 @@ describe("ZCode 额度接口隔离", () => {
         const payload = url.includes("quota/limit")
           ? {
               code: 200,
-              data: { limits: [{ type: "TOKEN_LIMIT", percentage: 0.5, nextResetTime: 1e100 }] },
+              data: { limits: [{ type: "TOKEN_LIMIT", percentage, nextResetTime: 1e100 }] },
             }
           : url.includes("billing/balance")
             ? {
@@ -124,6 +124,20 @@ describe("ZCode 额度接口隔离", () => {
       expect(view.error).toBeUndefined();
     }),
   );
+  for (const fixture of [
+    { percentage: 1, percent: 1 },
+    { percentage: 0.5, percent: 0.5 },
+    { percentage: 50, percent: 50 },
+    { percentage: 100, percent: 100 },
+  ]) {
+    it.effect(`Coding Plan percentage ${fixture.percentage} 保持百分数口径`, () =>
+      Effect.gen(function* () {
+        const { view } = yield* run({ api_key: "test-key" }, 200, fixture.percentage);
+        expect(view.windows).toEqual([{ label: "Token", percent: fixture.percent }]);
+        expect(view.error).toBeUndefined();
+      }),
+    );
+  }
   it.effect("Coding Plan 失败仍返回体验套餐余额并保留错误说明", () =>
     Effect.gen(function* () {
       const { view } = yield* run({ api_key: "test-key", zcode_jwt: "test-jwt" }, 401);
