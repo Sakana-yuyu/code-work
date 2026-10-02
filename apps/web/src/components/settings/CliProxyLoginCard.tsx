@@ -3,6 +3,7 @@ import { Cause } from "effect";
 import { useAtomValue } from "@effect/atom-react";
 import {
   EnvironmentId,
+  CliProxyError,
   ProviderInstanceId,
   ThreadId,
   type CliProxyNativeLogin,
@@ -143,6 +144,9 @@ export function CliProxyLoginCard({
   /** 失败的统一文案：预检/服务端错误把内层可读原因带上来。 */
   const failureFeedback = (cause: Cause.Cause<unknown>, fallback: string): string => {
     const squashed = Cause.squash(cause);
+    if (squashed instanceof CliProxyError && squashed.code === "upstream_error") {
+      return t("cliProxy.upstreamUnavailable");
+    }
     const detail =
       squashed instanceof Error && squashed.cause instanceof Error
         ? squashed.cause.message

@@ -59,6 +59,7 @@ export const ja: Record<string, string> = {
   "localAccountPool.displayName": "表示名",
   "localAccountPool.credential": "認証情報 JSON",
   "localAccountPool.models": "モデル（カンマ区切り）",
+  "cliProxy.modelsPending": "モデル同期待ち",
   "localAccountPool.strategy": "プール戦略",
   "localAccountPool.bind": "CLI インスタンスに紐付け",
   "localAccountPool.externalTitle": "外部 Agent ゲートウェイ",
@@ -134,6 +135,8 @@ export const ja: Record<string, string> = {
     "経路 {{id}} を接続しました。対応 CLI はこの経路のモデルを自動で使用します。",
   "cliProxy.done": "完了。サーバーの現在の状態を取得しました。",
   "cliProxy.failed": "操作に失敗しました。接続を確認して再試行してください。",
+  "cliProxy.upstreamUnavailable":
+    "現在の環境ではこのアカウント操作を完了できません。サーバーがこの機能に対応し、アカウントサービスに接続できることを確認して再試行してください。",
   "cliProxy.invalidConfig": "資格情報をインポートし、アカウント方式を設定してください。",
   "cliProxy.sharedRoute": "共有アカウントとモデル経路",
   "cliProxy.allRoutes": "すべての BYOK 経路（従来の設定）",

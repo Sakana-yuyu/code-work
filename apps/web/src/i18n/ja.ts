@@ -199,7 +199,7 @@ export const ja: Record<string, string> = {
   "cliProxy.modeImport": "認証をインポート",
   "cliProxy.loginModelsPlaceholder": "例: gpt-5, gpt-5-codex",
   "cliProxy.loginModelsHint":
-    "このアカウントが提供するモデル（カンマ区切り）。空の場合はリクエストのモデルを許可し、標準カタログを公開します。利用可否はアカウントの権限によります。",
+    "このアカウントが提供するモデル（カンマ区切り）。空の場合も紐付けは保持されますが、選択可能なモデルは公開されません。モデルを取得して保存すると選択欄に追加されます。明示的なモデル指定の利用可否はアカウントの権限によります。",
   "cliProxy.poolLoginHint":
     "ターミナルで公式サインインを完了してください。ターミナル終了またはこのダイアログを閉じると認証がプールにインポートされます。",
   "cliProxy.zcodeLoginHint":
@@ -259,6 +259,7 @@ export const ja: Record<string, string> = {
   "cliProxy.authMethodLabel": "認証方式",
   "cliProxy.availableModels": "利用可能なモデル",
   "cliProxy.modelsDeclared": "{{count}} 件宣言済み",
+  "cliProxy.modelsPending": "モデル同期待ち",
   "cliProxy.modelsDefault": "{{count}} 件デフォルト",
   "cliProxy.fetchModels": "モデルを取得",
   "cliProxy.modelsDialogTitle": "モデルを確認 · {{name}}",
@@ -267,9 +268,9 @@ export const ja: Record<string, string> = {
   "cliProxy.modelsDialogCatalog":
     "このプラットフォームにはカタログ API がないため、内蔵のデフォルトカタログを表示しています。",
   "cliProxy.modelsSave": "{{count}} 件のモデルを保存",
-  "cliProxy.modelsSaveUnlimited": "空のリストを保存（モデル無制限）",
+  "cliProxy.modelsSaveUnlimited": "空のリストを保存（同期待ち）",
   "cliProxy.modelsUnlimitedHint":
-    "何も選択しない場合はモデル制限が解除され、ルーティングは任意のモデルを受け付けます。",
+    "何も選択しない場合も紐付けは保持されますが、モデルは選択欄から削除されます。明示的なモデル指定は引き続き受け付けます。",
   "cliProxy.offersTitle": "受け取り可能なキャンペーン",
   "cliProxy.offerClaim": "受け取る",
   "cliProxy.offerPeriodDaily": "毎日",
@@ -282,9 +283,9 @@ export const ja: Record<string, string> = {
     "ここではキャプチャを読み込めません。公式 ZCode クライアントで受け取ってください。",
   "cliProxy.claimDone": "完了",
   "cliProxy.defaultModelsHint":
-    "明示的な宣言なし。プラットフォームのデフォルト目録を表示；ルーティングは他のモデルも受け付けます。",
+    "モデルが保存されていません。紐付けは保持されますが、選択可能なモデルは公開されません。",
   "cliProxy.noModelsHint":
-    "モデルが宣言されていないため、ルーティングはサーバーの既定能力を使用します。",
+    "モデルを取得して保存すると選択欄に追加されます。アカウントの紐付けは保持されます。",
   "cliProxy.usageTitle": "使用量とサブスクリプション",
   "cliProxy.usageNotLoaded": "使用量はまだ取得していません。",
   "cliProxy.usageUpdatedAt": "更新日時：{{time}}",
@@ -339,6 +340,8 @@ export const ja: Record<string, string> = {
   "cliProxy.connected": "経路 {{id}} を接続しました。CLI の共有経路選択から適用してください。",
   "cliProxy.done": "完了。サーバーの現在の状態を取得しました。",
   "cliProxy.failed": "操作に失敗しました。接続を確認して再試行してください。",
+  "cliProxy.upstreamUnavailable":
+    "現在の環境ではこのアカウント操作を完了できません。サーバーがこの機能に対応し、アカウントサービスに接続できることを確認して再試行してください。",
   "cliProxy.invalidConfig": "資格情報をインポートし、アカウント方式を設定してください。",
   "cliProxy.sharedRoute": "共有アカウントとモデル経路",
   "cliProxy.allRoutes": "すべての BYOK 経路（従来の設定）",

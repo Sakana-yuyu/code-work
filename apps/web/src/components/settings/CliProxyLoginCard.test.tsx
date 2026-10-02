@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { CliProxyError } from "@codework/contracts";
+import * as Cause from "effect/Cause";
 import { reactHookHarness as hooks } from "../../test/reactHookHarness";
 import { visitElements } from "../../test/reactElementTree";
 import { t } from "~/i18n";
@@ -74,6 +76,24 @@ it("扫描没有结果或失败后仍显示可重试的刷新入口", async () =
   (control(t("cliProxy.refreshAccounts")).props.onClick as () => void)();
   await flush();
   expect(mock.scan).toHaveBeenCalledTimes(2);
+});
+
+it("宿主不支持原生账号扫描时显示可读提示而不是原始错误详情", async () => {
+  mock.scan.mockResolvedValueOnce({
+    _tag: "Failure",
+    cause: Cause.fail(
+      new CliProxyError({
+        code: "upstream_error",
+        detail: "当前环境无法扫描原生 CLI 登录态。",
+      }),
+    ),
+  });
+  (control(t("cliProxy.refreshAccounts")).props.onClick as () => void)();
+  await flush();
+  expect(
+    visitElements(render(), (element) => element.props.role === "status")?.props.children,
+  ).toBe(t("cliProxy.upstreamUnavailable"));
+  expect(control(t("cliProxy.refreshAccounts")).props.disabled).toBe(false);
 });
 
 it("ZCode 慢轮询不重叠，失败结果允许下次查询，ready 只结算一次", async () => {

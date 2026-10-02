@@ -134,7 +134,7 @@ export const en: Record<string, string> = {
   "cliProxy.modeImport": "Import credential",
   "cliProxy.loginModelsPlaceholder": "e.g. gpt-5, gpt-5-codex",
   "cliProxy.loginModelsHint":
-    "Models this account may serve, comma separated. Leave empty to accept the requested model and publish the platform's default catalog; availability depends on the account.",
+    "Models this account may serve, comma separated. Leave empty to keep the account bound without publishing selectable models. Fetch and save models to add them to the picker; explicit model requests still depend on account access.",
   "cliProxy.poolLoginHint":
     "Finish the official sign-in in the terminal. The credential is imported into the pool when the terminal exits or this dialog closes.",
   "cliProxy.zcodeLoginHint":
@@ -196,6 +196,7 @@ export const en: Record<string, string> = {
   "cliProxy.authMethodLabel": "Auth method",
   "cliProxy.availableModels": "Available models",
   "cliProxy.modelsDeclared": "{{count}} declared",
+  "cliProxy.modelsPending": "Awaiting model sync",
   "cliProxy.modelsDefault": "{{count}} defaults",
   "cliProxy.fetchModels": "Fetch models",
   "cliProxy.modelsDialogTitle": "Confirm models · {{name}}",
@@ -204,9 +205,9 @@ export const en: Record<string, string> = {
   "cliProxy.modelsDialogCatalog":
     "This platform has no catalog API — showing the built-in default catalog.",
   "cliProxy.modelsSave": "Save {{count}} models",
-  "cliProxy.modelsSaveUnlimited": "Save empty list (unlimited)",
+  "cliProxy.modelsSaveUnlimited": "Save empty list (awaiting sync)",
   "cliProxy.modelsUnlimitedHint":
-    "Nothing selected removes the model restriction — routing accepts any model again.",
+    "Selecting nothing keeps the account bound but removes its models from the picker. Explicit model requests are still accepted.",
   "cliProxy.offersTitle": "Claimable offers",
   "cliProxy.offerClaim": "Claim",
   "cliProxy.offerPeriodDaily": "daily",
@@ -219,9 +220,9 @@ export const en: Record<string, string> = {
     "The captcha could not be loaded here — open the official ZCode client to claim this offer.",
   "cliProxy.claimDone": "Done",
   "cliProxy.defaultModelsHint":
-    "No explicit declaration — the platform's default catalog is shown; routing still accepts other models.",
+    "No models saved. The account remains bound but does not publish selectable models.",
   "cliProxy.noModelsHint":
-    "No models declared; routing falls back to the server's default capabilities.",
+    "Fetch and save models to add them to the picker. The account remains bound.",
   "cliProxy.usageTitle": "Usage & subscription",
   "cliProxy.usageNotLoaded": "Usage has not been fetched yet.",
   "cliProxy.usageUpdatedAt": "Updated: {{time}}",
@@ -277,6 +278,8 @@ export const en: Record<string, string> = {
   "cliProxy.connected": "Route {{id}} connected. Compatible CLIs now use its models.",
   "cliProxy.done": "Done. Current server state loaded.",
   "cliProxy.failed": "Operation failed. Check the server connection and retry.",
+  "cliProxy.upstreamUnavailable":
+    "The current environment cannot complete this account operation. Check that the server supports it and can reach the account provider, then retry.",
   "cliProxy.invalidConfig": "Import a credential and configure the account strategy.",
   "cliProxy.sharedRoute": "Shared account & model route",
   "cliProxy.allRoutes": "All BYOK routes (legacy setting)",
@@ -6472,7 +6475,7 @@ export const zhCN: Record<string, string> = {
   "cliProxy.modeImport": "导入凭据",
   "cliProxy.loginModelsPlaceholder": "例如 gpt-5, gpt-5-codex",
   "cliProxy.loginModelsHint":
-    "该账号可提供的模型，逗号分隔。留空则按请求选择并发布平台默认目录；实际可用性以账号权限为准。",
+    "该账号可提供的模型，逗号分隔。留空会保留绑定，但不发布可选模型；拉取并保存模型后才会出现在选择器中。显式指定模型的请求仍以账号权限为准。",
   "cliProxy.poolLoginHint": "在终端里完成官方登录。终端退出或关闭本对话框时，凭据会自动导入号池。",
   "cliProxy.zcodeLoginHint": "ZCode 登录会打开官方授权页，无需安装 CLI。",
   "cliProxy.zcodeLoginUrlHint": "在浏览器中打开下面的授权链接并完成登录，本对话框会自动检测完成。",
@@ -6527,14 +6530,16 @@ export const zhCN: Record<string, string> = {
   "cliProxy.authMethodLabel": "认证方式",
   "cliProxy.availableModels": "可用模型",
   "cliProxy.modelsDeclared": "{{count}} 个已声明",
+  "cliProxy.modelsPending": "待同步模型",
   "cliProxy.modelsDefault": "{{count}} 个默认",
   "cliProxy.fetchModels": "拉取模型",
   "cliProxy.modelsDialogTitle": "确认模型 · {{name}}",
   "cliProxy.modelsDialogSource": "已从平台接口拉取。勾选的模型会写入账号并开放转发。",
   "cliProxy.modelsDialogCatalog": "该平台无模型目录接口，展示内置默认目录。",
   "cliProxy.modelsSave": "保存 {{count}} 个模型",
-  "cliProxy.modelsSaveUnlimited": "保存空列表（不限模型）",
-  "cliProxy.modelsUnlimitedHint": "不勾选任何模型即恢复不限模型，路由接受任意模型。",
+  "cliProxy.modelsSaveUnlimited": "保存空列表（待同步）",
+  "cliProxy.modelsUnlimitedHint":
+    "不勾选模型会保留账号绑定，但从选择器移除模型；仍接受显式指定模型的请求。",
   "cliProxy.offersTitle": "可领取活动",
   "cliProxy.offerClaim": "领取",
   "cliProxy.offerPeriodDaily": "每日",
@@ -6545,8 +6550,8 @@ export const zhCN: Record<string, string> = {
   "cliProxy.claimFailed": "领取失败",
   "cliProxy.claimCaptchaFallback": "此处无法加载验证码，请前往 ZCode 官方客户端领取。",
   "cliProxy.claimDone": "完成",
-  "cliProxy.defaultModelsHint": "未显式声明模型，展示平台默认目录；路由仍接受目录外的模型。",
-  "cliProxy.noModelsHint": "未声明模型，路由会使用服务端默认能力。",
+  "cliProxy.defaultModelsHint": "尚未保存模型。账号绑定会保留，但不发布可选模型。",
+  "cliProxy.noModelsHint": "请拉取并保存模型后再从选择器使用；账号绑定会保留。",
   "cliProxy.usageTitle": "用量与订阅",
   "cliProxy.usageNotLoaded": "尚未拉取用量数据。",
   "cliProxy.usageUpdatedAt": "查询时间：{{time}}",
@@ -6601,6 +6606,8 @@ export const zhCN: Record<string, string> = {
   "cliProxy.connected": "已连接线路 {{id}}；对应 CLI 已自动使用这条线路的模型。",
   "cliProxy.done": "操作成功，已读取服务器当前状态。",
   "cliProxy.failed": "操作失败，请检查服务器连接后重试。",
+  "cliProxy.upstreamUnavailable":
+    "当前环境无法完成此账号操作。请确认服务器支持该功能，且能够连接账号服务，然后重试。",
   "cliProxy.invalidConfig": "请先导入凭据并配置账号调度策略。",
   "cliProxy.sharedRoute": "共享账号与模型线路",
   "cliProxy.allRoutes": "全部 BYOK 线路（兼容旧设置）",

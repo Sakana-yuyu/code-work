@@ -45,6 +45,7 @@ export const en: Record<string, string> = {
   "localAccountPool.displayName": "Display name",
   "localAccountPool.credential": "Credential JSON",
   "localAccountPool.models": "Models (comma separated)",
+  "cliProxy.modelsPending": "Awaiting model sync",
   "localAccountPool.strategy": "Pool strategy",
   "localAccountPool.bind": "Bind to CLI instance",
   "localAccountPool.externalTitle": "External Agent gateway",
@@ -120,6 +121,8 @@ export const en: Record<string, string> = {
   "cliProxy.connected": "Route {{id}} connected. Compatible CLIs now use its models.",
   "cliProxy.done": "Done. Current server state loaded.",
   "cliProxy.failed": "Operation failed. Check the server connection and retry.",
+  "cliProxy.upstreamUnavailable":
+    "The current environment cannot complete this account operation. Check that the server supports it and can reach the account provider, then retry.",
   "cliProxy.invalidConfig": "Import a credential and configure the account strategy.",
   "cliProxy.sharedRoute": "Shared account & model route",
   "cliProxy.allRoutes": "All BYOK routes (legacy setting)",
@@ -2759,6 +2762,7 @@ export const zhCN: Record<string, string> = {
   "localAccountPool.displayName": "显示名称",
   "localAccountPool.credential": "凭据 JSON",
   "localAccountPool.models": "模型（逗号分隔）",
+  "cliProxy.modelsPending": "待同步模型",
   "localAccountPool.strategy": "账号池策略",
   "localAccountPool.bind": "绑定到 CLI 实例",
   "localAccountPool.externalTitle": "外部 Agent 网关",
@@ -2831,6 +2835,8 @@ export const zhCN: Record<string, string> = {
   "cliProxy.connected": "已连接线路 {{id}}；对应 CLI 已自动使用这条线路的模型。",
   "cliProxy.done": "操作成功，已读取服务器当前状态。",
   "cliProxy.failed": "操作失败，请检查服务器连接后重试。",
+  "cliProxy.upstreamUnavailable":
+    "当前环境无法完成此账号操作。请确认服务器支持该功能，且能够连接账号服务，然后重试。",
   "cliProxy.invalidConfig": "请先导入凭据并配置账号调度策略。",
   "cliProxy.sharedRoute": "共享账号与模型线路",
   "cliProxy.allRoutes": "全部 BYOK 线路（兼容旧设置）",

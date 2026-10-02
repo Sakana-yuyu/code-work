@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Alert, Pressable, View } from "react-native";
 import {
   ProviderInstanceId,
+  CliProxyError,
   mergeCliProxyResult,
   type CliProxyRequest,
   type CliProxyResult,
@@ -85,7 +86,12 @@ export function CliProxySettingsSection({
         if (requestGeneration !== generation.current) return;
         setFeedback({
           error: true,
-          text: error instanceof Error ? error.message : t("cliProxy.failed"),
+          text:
+            error instanceof CliProxyError && error.code === "upstream_error"
+              ? t("cliProxy.upstreamUnavailable")
+              : error instanceof Error
+                ? error.message
+                : t("cliProxy.failed"),
         });
       } finally {
         if (requestGeneration === generation.current) {
@@ -277,6 +283,9 @@ export function CliProxySettingsSection({
                     });
                   }}
                 />
+              ) : null}
+              {account.models.length === 0 ? (
+                <Text className="text-xs text-foreground-muted">{t("cliProxy.modelsPending")}</Text>
               ) : null}
               <View className="flex-row gap-2">
                 <Action

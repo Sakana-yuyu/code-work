@@ -1,10 +1,13 @@
 import {
   EnvironmentId,
+  CliProxyError,
   LocalAccountId,
+  LOCAL_POOL_DEFAULT_MODELS,
   AuthTerminalOperateScope,
   type CliProxyResult,
 } from "@codework/contracts";
 import { beforeEach, expect, it, vi } from "vite-plus/test";
+import * as Cause from "effect/Cause";
 import { reactHookHarness as hooks } from "../../test/reactHookHarness";
 import { visitElements } from "../../test/reactElementTree";
 import { t } from "~/i18n";
@@ -89,6 +92,24 @@ it("只向选中环境提交内置状态/刷新操作", async () => {
     input: { action: "localAccountUsage" },
   });
   expect(button("cliProxy.refreshAccounts").props.disabled).toBe(false);
+});
+
+it("宿主不支持额度查询时显示可读提示而不是原始错误详情", async () => {
+  const detail = "当前环境无法查询官方账号额度。";
+  mock.command.mockResolvedValueOnce({
+    _tag: "Failure",
+    cause: Cause.fail(new CliProxyError({ code: "upstream_error", detail })),
+  });
+  (button("cliProxy.refresh").props.onClick as () => void)();
+  await flush();
+  expect(
+    visitElements(
+      render(),
+      (element) => element.props.children === t("cliProxy.upstreamUnavailable"),
+    ),
+  ).not.toBeNull();
+  expect(visitElements(render(), (element) => element.props.children === detail)).toBeNull();
+  expect(button("cliProxy.refresh").props.disabled).toBe(false);
 });
 
 it("读取额度时同步服务端调度策略，不能把旧策略误保存回去", async () => {
@@ -196,6 +217,43 @@ it("启停账号保留订阅快照，卡片刷新只查询当前账号", async (
     environmentId,
     input: { action: "localAccountUsage", id: accountId },
   });
+});
+
+it("空模型账号显示待同步且不展示默认模型，同步和清空后状态随之更新", async () => {
+  for (const models of [[], ["synced-model"], []]) {
+    mock.command.mockResolvedValueOnce({
+      _tag: "Success",
+      value: {
+        ...accountStatus,
+        localAccounts: [{ ...accountStatus.localAccounts![0]!, models }],
+      },
+    });
+    await clickLabel(t("cliProxy.refresh"));
+    const tree = render();
+    const pending = visitElements(
+      tree,
+      (element) =>
+        element.props.children === t("cliProxy.modelsPending") ||
+        (Array.isArray(element.props.children) &&
+          element.props.children.includes(t("cliProxy.modelsPending"))),
+    );
+    expect(pending !== null).toBe(models.length === 0);
+    for (const model of LOCAL_POOL_DEFAULT_MODELS.codex) {
+      expect(visitElements(tree, (element) => element.props.children === model)).toBeNull();
+    }
+    expect(
+      visitElements(tree, (element) => element.props.children === "synced-model") !== null,
+    ).toBe(models.length > 0);
+    const connect = visitElements(
+      tree,
+      (element) =>
+        Array.isArray(element.props.children) &&
+        element.props.children.includes(t("cliProxy.autoConnect")) &&
+        typeof element.props.onClick === "function",
+    );
+    expect(connect).not.toBeNull();
+    expect(connect!.props.disabled).toBe(false);
+  }
 });
 
 it("模型查询保留自定义模型，保存失败保留弹窗和选择", async () => {

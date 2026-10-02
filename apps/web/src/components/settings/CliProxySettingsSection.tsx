@@ -26,7 +26,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AuthTerminalOperateScope,
-  LOCAL_POOL_DEFAULT_MODELS,
+  CliProxyError,
   LocalAccountId,
   mergeCliProxyResult,
   ProviderInstanceId,
@@ -350,7 +350,12 @@ export function CliProxySettingsSection({
         return !claimFailed;
       } catch (error) {
         if (requestGeneration !== generation.current) return false;
-        const text = error instanceof Error ? error.message : t("cliProxy.failed");
+        const text =
+          error instanceof CliProxyError && error.code === "upstream_error"
+            ? t("cliProxy.upstreamUnavailable")
+            : error instanceof Error
+              ? error.message
+              : t("cliProxy.failed");
         if (input.action === "claimLocalAccountOffer")
           setClaimResult({ success: false, message: text });
         setFeedback({
@@ -528,12 +533,8 @@ export function CliProxySettingsSection({
               disabled ||
               accounts.every(
                 (account) =>
-                  !account.enabled ||
-                  account.provider === "cursor" ||
-                  // 未声明模型的账号用平台默认目录出通道，不算"无可发布线路"。
-                  (account.models.length === 0 &&
-                    (LOCAL_POOL_DEFAULT_MODELS[account.provider as LocalAccountProvider] ?? [])
-                      .length === 0),
+                  // 未声明模型的账号仍可绑定，同步前不发布可选模型。
+                  !account.enabled || account.provider === "cursor",
               ) ||
               status?.connectedInstanceId !== undefined
             }
@@ -1028,11 +1029,9 @@ export function CliProxySettingsSection({
                   </div>
                   <div className="rounded-xl bg-muted/35 p-3">
                     {(() => {
-                      // 空 models 的语义是"不限模型"；展示与网关通道用平台默认目录兜底。
-                      const defaults =
-                        LOCAL_POOL_DEFAULT_MODELS[account.provider as LocalAccountProvider] ?? [];
+                      // 空 models 保留显式请求通配，但同步前不展示或发布可选模型。
                       const declared = account.models.length > 0;
-                      const shown = declared ? account.models : defaults;
+                      const shown = account.models;
                       return (
                         <>
                           <div className="flex items-center justify-between gap-2 text-xs">
@@ -1043,7 +1042,7 @@ export function CliProxySettingsSection({
                             <span className="flex items-center gap-1.5 text-muted-foreground">
                               {declared
                                 ? t("cliProxy.modelsDeclared", { count: shown.length })
-                                : t("cliProxy.modelsDefault", { count: shown.length })}
+                                : t("cliProxy.modelsPending")}
                               <Button
                                 size="micro"
                                 variant="ghost"
@@ -1077,11 +1076,6 @@ export function CliProxySettingsSection({
                               {t("cliProxy.noModelsHint")}
                             </p>
                           )}
-                          {!declared && shown.length > 0 ? (
-                            <p className="mt-1.5 text-xs text-muted-foreground">
-                              {t("cliProxy.defaultModelsHint")}
-                            </p>
-                          ) : null}
                         </>
                       );
                     })()}
