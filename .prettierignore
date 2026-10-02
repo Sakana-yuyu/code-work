@@ -1,0 +1,2 @@
+# Vendored third-party bundles are upstream code; never reformat them.
+apps/server/vendor/
