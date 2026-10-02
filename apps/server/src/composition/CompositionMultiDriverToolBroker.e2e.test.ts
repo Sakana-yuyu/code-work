@@ -6,9 +6,11 @@ import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
+  EventId,
   ProviderDriverKind,
   ProviderInstanceId,
   TurnId,
+  type ProviderRuntimeEvent,
   type ProviderSession,
   type ProviderSessionStartInput,
   type ProviderSendTurnInput,
@@ -182,6 +184,7 @@ it.layer(TestLayer, { excludeTestServices: true })(
           capabilityGrantIds: ["t3.workspace.read_file"],
         };
         let providerResult: ToolBroker.ToolBrokerResult | ProviderToolBrokerResult | undefined;
+        let capturedSessionThreadId: ProviderSessionStartInput["threadId"] | undefined;
         let configuredBridge:
           | Parameters<NonNullable<CompositionProviderSessionAdapter["configureToolBroker"]>>[0]
           | undefined;
@@ -195,25 +198,22 @@ it.layer(TestLayer, { excludeTestServices: true })(
             }),
           configureToolBroker: (input) => Effect.sync(() => void (configuredBridge = input)),
           startSession: (input: ProviderSessionStartInput) =>
-            Effect.succeed({
-              provider: ProviderDriverKind.make("codex"),
-              providerInstanceId: input.providerInstanceId,
-              status: "ready" as const,
-              runtimeMode: "full-access" as const,
-              threadId: input.threadId,
-              createdAt: "2026-08-26T00:00:00.000Z",
-              updatedAt: "2026-08-26T00:00:00.000Z",
-            } satisfies ProviderSession),
+            Effect.sync(() => {
+              capturedSessionThreadId = input.threadId;
+              return {
+                provider: ProviderDriverKind.make("codex"),
+                providerInstanceId: input.providerInstanceId,
+                status: "ready" as const,
+                runtimeMode: "full-access" as const,
+                threadId: input.threadId,
+                createdAt: "2026-08-26T00:00:00.000Z",
+                updatedAt: "2026-08-26T00:00:00.000Z",
+              } satisfies ProviderSession;
+            }),
           sendTurn: (input: ProviderSendTurnInput): Effect.Effect<ProviderTurnStartResult, never> =>
             Effect.gen(function* () {
               if (configuredBridge === undefined)
                 return yield* Effect.die("Provider bridge 未配置");
-              providerResult = yield* configuredBridge.bridge.invoke({
-                toolCallId: "provider-read-shared",
-                canonicalToolName: "workspace.read_file",
-                arguments: { cwd: workspaceRoot, relativePath: "shared.txt" },
-                idempotencyKey: "provider-read-shared-idempotency",
-              });
               return {
                 threadId: input.threadId,
                 turnId: TurnId.make("provider-turn-multi-driver"),
@@ -254,11 +254,30 @@ it.layer(TestLayer, { excludeTestServices: true })(
           toolBrokerCanonicalTools: ["workspace.read_file"],
         });
 
-        yield* providerDriver.startTask({
+        const providerStarted = yield* providerDriver.startTask({
           task: providerTask,
           run: providerRun,
           prompt: "读取 shared.txt",
           workspaceRoot,
+        });
+        // 与生产一致：Projector 经 resolveRuntimeEvent 拿到权威 Run 启动确认后才放行宿主工具。
+        const startedEvent = {
+          eventId: EventId.make("event-multi-driver-provider-started"),
+          provider: ProviderDriverKind.make("codex"),
+          providerInstanceId: ProviderInstanceId.make("provider-e2e"),
+          threadId: capturedSessionThreadId!,
+          turnId: TurnId.make("provider-turn-multi-driver"),
+          createdAt: "2026-08-26T00:00:00.000Z",
+          type: "turn.started",
+          payload: {},
+        } as ProviderRuntimeEvent;
+        const confirmedBinding = providerDriver.resolveRuntimeEvent!(startedEvent);
+        yield* confirmedBinding!.confirmRuntimeStart!;
+        providerResult = yield* configuredBridge!.bridge.invoke({
+          toolCallId: "provider-read-shared",
+          canonicalToolName: "workspace.read_file",
+          arguments: { cwd: workspaceRoot, relativePath: "shared.txt" },
+          idempotencyKey: "provider-read-shared-idempotency",
         });
 
         assert.equal(providerResult?.status, "succeeded");
