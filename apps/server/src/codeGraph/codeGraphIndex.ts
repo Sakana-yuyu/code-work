@@ -31,7 +31,7 @@ import {
  * when the CLI moved.
  */
 // 基线 = 实际跑通 init/index/sync/status/explore 全链路并核实命令面的版本。
-export const CODEGRAPH_VALIDATED_CLI_VERSION = "1.6.0";
+export const CODEGRAPH_VALIDATED_CLI_VERSION = "1.6.1";
 
 export const CODEGRAPH_INDEX_DIR_NAME = ".codegraph";
 
