@@ -687,7 +687,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
     }),
   );
 
-it.effect("Cursor 音频与 blob 保留流类型、独立段和会话隔离", () =>
+  it.effect("Cursor 音频与 blob 保留流类型、独立段和会话隔离", () =>
     Effect.gen(function* () {
       const adapter = yield* CursorAdapter;
       const settings = yield* ServerSettingsService;
@@ -716,13 +716,33 @@ it.effect("Cursor 音频与 blob 保留流类型、独立段和会话隔离", ()
       assert.equal(new Set(deltas.map((event) => event.itemId)).size, 7);
       assert.equal(deltas[0]?.payload.streamKind, "reasoning_text");
       const assistant = deltas.filter((event) => event.payload.streamKind === "assistant_text");
-      assert.deepEqual(assistant.map((event) => event.payload.delta), ["媒体前文", "", "", "", "", "媒体后文"]);
+      assert.deepEqual(
+        assistant.map((event) => event.payload.delta),
+        ["媒体前文", "", "", "", "", "媒体后文"],
+      );
       assert.equal(assistant.filter((event) => event.payload.audio).length, 2);
       assert.equal(assistant.filter((event) => event.payload.blob).length, 2);
       assert.equal(assistant[1]?.payload.audio?.mimeType, "audio/wav");
       assert.equal(assistant[2]?.payload.blob?.uri, "file:///workspace/report.bin");
-      assert.deepInclude(assistant[1]!.raw!.payload, { update: { sessionUpdate: "agent_message_chunk", content: { type: "audio", mimeType: "audio/wav", data: "[省略音频正文]" } } });
-      assert.deepInclude(assistant[2]!.raw!.payload, { update: { sessionUpdate: "agent_message_chunk", content: { type: "resource", resource: { uri: "file:///workspace/report.bin", mimeType: "application/octet-stream", blob: "[省略二进制正文]" } } } });
+      assert.deepInclude(assistant[1]!.raw!.payload, {
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "audio", mimeType: "audio/wav", data: "[省略音频正文]" },
+        },
+      });
+      assert.deepInclude(assistant[2]!.raw!.payload, {
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "resource",
+            resource: {
+              uri: "file:///workspace/report.bin",
+              mimeType: "application/octet-stream",
+              blob: "[省略二进制正文]",
+            },
+          },
+        },
+      });
       yield* adapter.stopSession(threadId);
     }),
   );
@@ -2426,57 +2446,55 @@ it.effect("Cursor 音频与 blob 保留流类型、独立段和会话隔离", ()
     { timeout: 60_000 },
   );
 
-  it.effect(
-    "late approval after stop fails once pending approval was settled by disconnect",
-    () =>
-      Effect.gen(function* () {
-        const adapter = yield* CursorAdapter;
-        const serverSettings = yield* ServerSettingsService;
-        const threadId = ThreadId.make("cursor-late-approval-after-stop");
-        const approvalOpened = yield* Deferred.make<string>();
+  it.effect("late approval after stop fails once pending approval was settled by disconnect", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const serverSettings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-late-approval-after-stop");
+      const approvalOpened = yield* Deferred.make<string>();
 
-        const wrapperPath = yield* Effect.promise(() =>
-          makeMockAgentWrapper({ CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }),
-        );
-        yield* serverSettings.updateSettings({
-          providers: { cursor: { binaryPath: wrapperPath } },
-        });
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }),
+      );
+      yield* serverSettings.updateSettings({
+        providers: { cursor: { binaryPath: wrapperPath } },
+      });
 
-        yield* Stream.runForEach(adapter.streamEvents, (event) => {
-          if (String(event.threadId) !== String(threadId)) {
-            return Effect.void;
-          }
-          if (event.type === "request.opened" && event.requestId) {
-            return Deferred.succeed(approvalOpened, String(event.requestId)).pipe(Effect.ignore);
-          }
+      yield* Stream.runForEach(adapter.streamEvents, (event) => {
+        if (String(event.threadId) !== String(threadId)) {
           return Effect.void;
-        }).pipe(Effect.forkChild);
+        }
+        if (event.type === "request.opened" && event.requestId) {
+          return Deferred.succeed(approvalOpened, String(event.requestId)).pipe(Effect.ignore);
+        }
+        return Effect.void;
+      }).pipe(Effect.forkChild);
 
-        yield* adapter.startSession({
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "approval-required",
+        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
+      });
+
+      const sendTurnFiber = yield* adapter
+        .sendTurn({
           threadId,
-          provider: ProviderDriverKind.make("cursor"),
-          cwd: process.cwd(),
-          runtimeMode: "approval-required",
-          modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "default" },
-        });
+          input: "approve after disconnect",
+          attachments: [],
+        })
+        .pipe(Effect.forkChild);
 
-        const sendTurnFiber = yield* adapter
-          .sendTurn({
-            threadId,
-            input: "approve after disconnect",
-            attachments: [],
-          })
-          .pipe(Effect.forkChild);
-
-        const requestId = yield* Deferred.await(approvalOpened);
-        yield* adapter.stopSession(threadId);
-        yield* Fiber.await(sendTurnFiber);
-        assert.equal(yield* adapter.hasSession(threadId), false);
-        const lateApproval = yield* adapter
-          .respondToRequest(threadId, ApprovalRequestId.make(requestId), "accept")
-          .pipe(Effect.result);
-        assert.equal(lateApproval._tag, "Failure");
-      }).pipe(TestClock.withLive),
+      const requestId = yield* Deferred.await(approvalOpened);
+      yield* adapter.stopSession(threadId);
+      yield* Fiber.await(sendTurnFiber);
+      assert.equal(yield* adapter.hasSession(threadId), false);
+      const lateApproval = yield* adapter
+        .respondToRequest(threadId, ApprovalRequestId.make(requestId), "accept")
+        .pipe(Effect.result);
+      assert.equal(lateApproval._tag, "Failure");
+    }).pipe(TestClock.withLive),
   );
 
   it.effect("stopping a session settles pending user-input waits", () =>

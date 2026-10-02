@@ -175,63 +175,153 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
   it.effect("CodeBuddy 专有取消保留原始载荷，后续标准通知继续解析", () =>
     Effect.gen(function* () {
       const { stdio, input } = yield* makeInMemoryStdio();
-      const notifications = yield* Deferred.make<ReadonlyArray<AcpProtocol.AcpIncomingNotification>, AcpError.AcpError>();
+      const notifications = yield* Deferred.make<
+        ReadonlyArray<AcpProtocol.AcpIncomingNotification>,
+        AcpError.AcpError
+      >();
       const transport = yield* AcpProtocol.makeAcpPatchedProtocol({
-        stdio, serverRequestMethods: new Set(),
+        stdio,
+        serverRequestMethods: new Set(),
         onTermination: (error) => Deferred.fail(notifications, error).pipe(Effect.asVoid),
       });
-      yield* transport.incoming.pipe(Stream.take(2), Stream.runCollect,
-        Effect.flatMap((chunk) => Deferred.succeed(notifications, chunk)), Effect.forkScoped);
-      const cancelled = { sessionId: "session-1", update: {
-        sessionUpdate: "tool_call_update", toolCallId: "call-1", status: "cancelled",
-        _meta: { "codebuddy.ai/toolCancelReason": "session_interrupted", "codebuddy.ai/toolName": "Write" },
-      }};
-      for (const params of [cancelled, { sessionId: "session-1", update: {
-        sessionUpdate: "agent_message_chunk", content: { type: "text", text: "done" },
-      }}]) yield* Queue.offer(input, encoder.encode(encodeUnknownJsonString({
-        jsonrpc: "2.0", method: "session/update", params,
-      }) + "\n"));
+      yield* transport.incoming.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.flatMap((chunk) => Deferred.succeed(notifications, chunk)),
+        Effect.forkScoped,
+      );
+      const cancelled = {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-1",
+          status: "cancelled",
+          _meta: {
+            "codebuddy.ai/toolCancelReason": "session_interrupted",
+            "codebuddy.ai/toolName": "Write",
+          },
+        },
+      };
+      for (const params of [
+        cancelled,
+        {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "done" },
+          },
+        },
+      ])
+        yield* Queue.offer(
+          input,
+          encoder.encode(
+            encodeUnknownJsonString({
+              jsonrpc: "2.0",
+              method: "session/update",
+              params,
+            }) + "\n",
+          ),
+        );
       const [proprietary, standard] = yield* Deferred.await(notifications);
-      assert.deepEqual(proprietary, { _tag: "ExtNotification", method: "session/update", params: cancelled });
+      assert.deepEqual(proprietary, {
+        _tag: "ExtNotification",
+        method: "session/update",
+        params: cancelled,
+      });
       assert.equal(standard?._tag, "SessionUpdate");
     }),
   );
-  for (const patch of [{ _meta: {} }, { _meta: { "codebuddy.ai/toolCancelReason": "unknown" } },
-    { toolCallId: "" }, { kind: "unknown" }, { content: "invalid" }]) {
-    it.effect("CodeBuddy 取消扩展不接受畸形字段：" + encodeUnknownJsonString(patch), () => Effect.gen(function* () {
-      const { stdio, input } = yield* makeInMemoryStdio();
-      const termination = yield* Deferred.make<AcpError.AcpError>();
-      yield* AcpProtocol.makeAcpPatchedProtocol({ stdio, serverRequestMethods: new Set(),
-        onTermination: (error) => Deferred.succeed(termination, error).pipe(Effect.asVoid),
-      });
-      yield* Queue.offer(input, encoder.encode(encodeUnknownJsonString({ jsonrpc: "2.0", method: "session/update",
-        params: { sessionId: "session-1", update: { sessionUpdate: "tool_call_update", toolCallId: "call-1",
-          status: "cancelled", _meta: { "codebuddy.ai/toolCancelReason": "permission_denied" }, ...patch } },
-      }) + "\n"));
-      assert.instanceOf(yield* Deferred.await(termination), AcpError.AcpProtocolParseError);
-    }));
+  for (const patch of [
+    { _meta: {} },
+    { _meta: { "codebuddy.ai/toolCancelReason": "unknown" } },
+    { toolCallId: "" },
+    { kind: "unknown" },
+    { content: "invalid" },
+  ]) {
+    it.effect("CodeBuddy 取消扩展不接受畸形字段：" + encodeUnknownJsonString(patch), () =>
+      Effect.gen(function* () {
+        const { stdio, input } = yield* makeInMemoryStdio();
+        const termination = yield* Deferred.make<AcpError.AcpError>();
+        yield* AcpProtocol.makeAcpPatchedProtocol({
+          stdio,
+          serverRequestMethods: new Set(),
+          onTermination: (error) => Deferred.succeed(termination, error).pipe(Effect.asVoid),
+        });
+        yield* Queue.offer(
+          input,
+          encoder.encode(
+            encodeUnknownJsonString({
+              jsonrpc: "2.0",
+              method: "session/update",
+              params: {
+                sessionId: "session-1",
+                update: {
+                  sessionUpdate: "tool_call_update",
+                  toolCallId: "call-1",
+                  status: "cancelled",
+                  _meta: { "codebuddy.ai/toolCancelReason": "permission_denied" },
+                  ...patch,
+                },
+              },
+            }) + "\n",
+          ),
+        );
+        assert.instanceOf(yield* Deferred.await(termination), AcpError.AcpProtocolParseError);
+      }),
+    );
   }
 
   it.effect("Harn 专有进度保留原始载荷，后续标准通知继续解析", () =>
     Effect.gen(function* () {
       const { stdio, input } = yield* makeInMemoryStdio();
-      const notifications = yield* Deferred.make<ReadonlyArray<AcpProtocol.AcpIncomingNotification>, AcpError.AcpError>();
+      const notifications = yield* Deferred.make<
+        ReadonlyArray<AcpProtocol.AcpIncomingNotification>,
+        AcpError.AcpError
+      >();
       const transport = yield* AcpProtocol.makeAcpPatchedProtocol({
-        stdio, serverRequestMethods: new Set(),
+        stdio,
+        serverRequestMethods: new Set(),
         onTermination: (error) => Deferred.fail(notifications, error).pipe(Effect.asVoid),
       });
-      yield* transport.incoming.pipe(Stream.take(2), Stream.runCollect,
-        Effect.flatMap((chunk) => Deferred.succeed(notifications, chunk)), Effect.forkScoped);
-      const progress = { sessionId: "session-1", update: {
-        sessionUpdate: "progress", _meta: { harn: { message: "Preparing modules" } },
-      }};
-      for (const params of [progress, { sessionId: "session-1", update: {
-        sessionUpdate: "agent_message_chunk", content: { type: "text", text: "done" },
-      }}]) yield* Queue.offer(input, encoder.encode(encodeUnknownJsonString({
-        jsonrpc: "2.0", method: "session/update", params,
-      }) + "\n"));
+      yield* transport.incoming.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.flatMap((chunk) => Deferred.succeed(notifications, chunk)),
+        Effect.forkScoped,
+      );
+      const progress = {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "progress",
+          _meta: { harn: { message: "Preparing modules" } },
+        },
+      };
+      for (const params of [
+        progress,
+        {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "done" },
+          },
+        },
+      ])
+        yield* Queue.offer(
+          input,
+          encoder.encode(
+            encodeUnknownJsonString({
+              jsonrpc: "2.0",
+              method: "session/update",
+              params,
+            }) + "\n",
+          ),
+        );
       const [proprietary, standard] = yield* Deferred.await(notifications);
-      assert.deepEqual(proprietary, { _tag: "ExtNotification", method: "session/update", params: progress });
+      assert.deepEqual(proprietary, {
+        _tag: "ExtNotification",
+        method: "session/update",
+        params: progress,
+      });
       assert.equal(standard?._tag, "SessionUpdate");
     }),
   );
@@ -240,22 +330,33 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
     ["空会话", { sessionId: "", update: { sessionUpdate: "progress", _meta: { harn: {} } } }],
     ["非字符串会话", { sessionId: 42, update: { sessionUpdate: "progress", _meta: { harn: {} } } }],
     ["缺少 Harn 元数据", { sessionId: "session-1", update: { sessionUpdate: "progress" } }],
-    ["非法 Harn 元数据", { sessionId: "session-1", update: { sessionUpdate: "progress", _meta: { harn: null } } }],
+    [
+      "非法 Harn 元数据",
+      { sessionId: "session-1", update: { sessionUpdate: "progress", _meta: { harn: null } } },
+    ],
     ["未知更新类型", { sessionId: "session-1", update: { sessionUpdate: "unknown" } }],
   ] as const) {
-    it.effect("非法进度或未知通知仍报协议错误：" + name, () => Effect.gen(function* () {
-      const { stdio, input } = yield* makeInMemoryStdio();
-      const termination = yield* Deferred.make<AcpError.AcpError>();
-      yield* AcpProtocol.makeAcpPatchedProtocol({ stdio, serverRequestMethods: new Set(),
-        onTermination: (error) => Deferred.succeed(termination, error).pipe(Effect.asVoid),
-      });
-      yield* Queue.offer(input, encoder.encode(encodeUnknownJsonString({ jsonrpc: "2.0", method: "session/update", params }) + "\n"));
-      const error = yield* Deferred.await(termination);
-      assert.instanceOf(error, AcpError.AcpProtocolParseError);
-      assert.equal((error as AcpError.AcpProtocolParseError).method, "session/update");
-    }));
+    it.effect("非法进度或未知通知仍报协议错误：" + name, () =>
+      Effect.gen(function* () {
+        const { stdio, input } = yield* makeInMemoryStdio();
+        const termination = yield* Deferred.make<AcpError.AcpError>();
+        yield* AcpProtocol.makeAcpPatchedProtocol({
+          stdio,
+          serverRequestMethods: new Set(),
+          onTermination: (error) => Deferred.succeed(termination, error).pipe(Effect.asVoid),
+        });
+        yield* Queue.offer(
+          input,
+          encoder.encode(
+            encodeUnknownJsonString({ jsonrpc: "2.0", method: "session/update", params }) + "\n",
+          ),
+        );
+        const error = yield* Deferred.await(termination);
+        assert.instanceOf(error, AcpError.AcpProtocolParseError);
+        assert.equal((error as AcpError.AcpProtocolParseError).method, "session/update");
+      }),
+    );
   }
-
 
   it.effect("所有 ACP 通知在线上省略 id，普通请求的空字符串 id 仍需回应", () =>
     Effect.gen(function* () {
@@ -265,21 +366,38 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
         serverRequestMethods: new Set(),
         onExtRequest: (_method, params) => Effect.succeed(params),
       });
-      for (const method of ["session/cancel", "session/update", "session/elicitation/complete", "_codework/event"]) {
+      for (const method of [
+        "session/cancel",
+        "session/update",
+        "session/elicitation/complete",
+        "_codework/event",
+      ]) {
         const params = { marker: method };
         yield* transport.notify(method, params);
         const raw = yield* Queue.take(output);
         assert.deepEqual(yield* decodeUnknownJson(raw), {
-          jsonrpc: "2.0", method, params,
+          jsonrpc: "2.0",
+          method,
+          params,
         });
       }
       // JSON-RPC 允许空字符串请求 ID；只有缺少 ID 的帧才是通知。
-      yield* Queue.offer(input, encoder.encode(encodeUnknownJsonString({
-        jsonrpc: "2.0", id: "", method: "_codework/echo", params: { value: 42 },
-      }) + "\n"));
+      yield* Queue.offer(
+        input,
+        encoder.encode(
+          encodeUnknownJsonString({
+            jsonrpc: "2.0",
+            id: "",
+            method: "_codework/echo",
+            params: { value: 42 },
+          }) + "\n",
+        ),
+      );
       const response = yield* Queue.take(output);
       assert.deepEqual(yield* decodeUnknownJson(response), {
-        jsonrpc: "2.0", id: "", result: { value: 42 },
+        jsonrpc: "2.0",
+        id: "",
+        result: { value: 42 },
       });
     }),
   );
@@ -823,10 +941,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
         .request("x/test", { hello: "world" })
         .pipe(Effect.forkScoped);
       yield* Queue.take(output);
-      yield* Deferred.succeed(
-        processExit,
-        new AcpError.AcpProcessExitedError({ code: 7 }),
-      );
+      yield* Deferred.succeed(processExit, new AcpError.AcpProcessExitedError({ code: 7 }));
 
       const error = yield* Fiber.join(response).pipe(
         Effect.match({
@@ -854,10 +969,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
         .request("x/test", { hello: "world" })
         .pipe(Effect.forkScoped);
       yield* Queue.take(output);
-      yield* Deferred.succeed(
-        processExit,
-        new AcpError.AcpProcessExitedError({ code: 0 }),
-      );
+      yield* Deferred.succeed(processExit, new AcpError.AcpProcessExitedError({ code: 0 }));
       yield* Queue.end(input);
 
       const error = yield* Fiber.join(response).pipe(
@@ -868,38 +980,55 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       );
       assert.instanceOf(error, AcpError.AcpProcessExitedError);
       assert.equal(error.code, 0);
-      const lateError = yield* transport.request("x/late", {}).pipe(Effect.match({
-        onFailure: (error) => error,
-        onSuccess: () => assert.fail("断开的连接不能接受新请求"),
-      }));
+      const lateError = yield* transport.request("x/late", {}).pipe(
+        Effect.match({
+          onFailure: (error) => error,
+          onSuccess: () => assert.fail("断开的连接不能接受新请求"),
+        }),
+      );
       assert.instanceOf(lateError, AcpError.AcpProcessExitedError);
       assert.equal(lateError.code, 0);
     }),
   );
 });
 
-  it.effect("扩展请求等待时仍处理后续请求，回应保持原请求 ID", () =>
-    Effect.gen(function* () {
-      const { stdio, input, output } = yield* makeInMemoryStdio();
-      const pending = yield* Deferred.make<void>();
-      yield* AcpProtocol.makeAcpPatchedProtocol({
-        stdio, serverRequestMethods: new Set(),
-        onExtRequest: (_method, params) =>
-          (params as { hello: string }).hello === "wait"
-            ? Deferred.await(pending).pipe(Effect.as({ ok: true }))
-            : Effect.succeed({ ok: true }),
-      });
-      for (const [id, hello] of [[7, "wait"], [8, "ready"]] as const) {
-        yield* Queue.offer(input, yield* encodeJsonl(ExtRequest, {
-          jsonrpc: "2.0", id, method: "x/test", params: { hello }, headers: [],
-        }));
-      }
-      assert.deepEqual(yield* decodeExtResponse(yield* Queue.take(output)), {
-        jsonrpc: "2.0", id: 8, result: { ok: true },
-      });
-      yield* Deferred.succeed(pending, undefined);
-      assert.deepEqual(yield* decodeExtResponse(yield* Queue.take(output)), {
-        jsonrpc: "2.0", id: 7, result: { ok: true },
-      });
-    }),
-  );
+it.effect("扩展请求等待时仍处理后续请求，回应保持原请求 ID", () =>
+  Effect.gen(function* () {
+    const { stdio, input, output } = yield* makeInMemoryStdio();
+    const pending = yield* Deferred.make<void>();
+    yield* AcpProtocol.makeAcpPatchedProtocol({
+      stdio,
+      serverRequestMethods: new Set(),
+      onExtRequest: (_method, params) =>
+        (params as { hello: string }).hello === "wait"
+          ? Deferred.await(pending).pipe(Effect.as({ ok: true }))
+          : Effect.succeed({ ok: true }),
+    });
+    for (const [id, hello] of [
+      [7, "wait"],
+      [8, "ready"],
+    ] as const) {
+      yield* Queue.offer(
+        input,
+        yield* encodeJsonl(ExtRequest, {
+          jsonrpc: "2.0",
+          id,
+          method: "x/test",
+          params: { hello },
+          headers: [],
+        }),
+      );
+    }
+    assert.deepEqual(yield* decodeExtResponse(yield* Queue.take(output)), {
+      jsonrpc: "2.0",
+      id: 8,
+      result: { ok: true },
+    });
+    yield* Deferred.succeed(pending, undefined);
+    assert.deepEqual(yield* decodeExtResponse(yield* Queue.take(output)), {
+      jsonrpc: "2.0",
+      id: 7,
+      result: { ok: true },
+    });
+  }),
+);

@@ -18,7 +18,13 @@ function resolveDimcodeNodeSpawn(cliPath: string): { command: string; args: stri
   const normalized = cliPath.replace(/\\/g, "/");
   const idx = normalized.toLowerCase().indexOf("/node_modules/");
   if (idx >= 0) {
-    const packageRoot = NodePath.join(cliPath.slice(0, idx), "node_modules", "dimcode", "bin", "dim.mjs");
+    const packageRoot = NodePath.join(
+      cliPath.slice(0, idx),
+      "node_modules",
+      "dimcode",
+      "bin",
+      "dim.mjs",
+    );
     return { command: process.execPath, args: [packageRoot, "acp"] };
   }
   if (normalized.endsWith("dim.mjs")) {

@@ -47,11 +47,17 @@ describe.runIf(Boolean(cliPath))("Gajae 官方 CLI + 本地模型工具链路", 
         yield* fs.makeDirectory(cwd);
         yield* fs.makeDirectory(agentDir, { recursive: true });
         yield* Effect.addFinalizer(() =>
-          fs.remove(root, { recursive: true }).pipe(
-            Effect.catch((error) => error.reason._tag === "Busy"
-              ? Effect.logWarning("Gajae 隔离测试目录仍被系统占用，未清除；工具断言与资源回收分别记录。")
-              : Effect.die(error)),
-          ),
+          fs
+            .remove(root, { recursive: true })
+            .pipe(
+              Effect.catch((error) =>
+                error.reason._tag === "Busy"
+                  ? Effect.logWarning(
+                      "Gajae 隔离测试目录仍被系统占用，未清除；工具断言与资源回收分别记录。",
+                    )
+                  : Effect.die(error),
+              ),
+            ),
         );
         if (platform === "win32") {
           yield* Effect.sync(() =>
@@ -244,7 +250,8 @@ describe.runIf(Boolean(cliPath))("Gajae 官方 CLI + 本地模型工具链路", 
                 return Deferred.succeed(event.acknowledge, undefined);
               if (event._tag === "ContentDelta" && event.streamKind === "assistant_text")
                 text.push(event.text);
-              if (event._tag === "ToolCallUpdated") tools.set(event.toolCall.toolCallId, event.toolCall);
+              if (event._tag === "ToolCallUpdated")
+                tools.set(event.toolCall.toolCallId, event.toolCall);
               return Effect.void;
             }),
             Effect.forkChild,
@@ -284,9 +291,9 @@ describe.runIf(Boolean(cliPath))("Gajae 官方 CLI + 本地模型工具链路", 
               (tool) => tool.kind === "execute" && tool.status === "completed",
             ),
           ).toBe(true);
-          expect(
-            [...tools.values()].find((tool) => tool.kind === "execute")?.detail,
-          ).toContain("GAJAE_SHELL_72319");
+          expect([...tools.values()].find((tool) => tool.kind === "execute")?.detail).toContain(
+            "GAJAE_SHELL_72319",
+          );
           permission = "cancel";
           const beforeCancel = new Set(tools.keys());
           nextTool = {

@@ -30,7 +30,9 @@ function attachmentSummary(message: ChatMessage): string | null {
   const namesSummary = names.join(", ");
   const extraCount = count - names.length;
   const extraSummary = extraCount > 0 ? t("interface.value-more", { value1: extraCount }) : "";
-  const kind = attachments.every((attachment) => attachment.type === "image") ? "image" : "attachment";
+  const kind = attachments.every((attachment) => attachment.type === "image")
+    ? "image"
+    : "attachment";
   return `[Attached ${kind}${count === 1 ? "" : "s"}: ${namesSummary}${extraSummary}]`;
 }
 

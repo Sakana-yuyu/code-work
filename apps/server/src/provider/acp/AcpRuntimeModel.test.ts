@@ -1309,49 +1309,121 @@ describe("AcpRuntimeModel", () => {
     });
   });
 
-  it.each(["mcp", "content", "batch"] as const)("%s 结果不被后续无输出元数据覆盖，失败终态保留重复正文", (shape) => {
-    const output = "真实结果\n真实结果\nFINAL_OUTPUT";
-    const [first] = parseSessionUpdateEvent({ sessionId: "s", update: {
-      sessionUpdate: "tool_call_update", toolCallId: "partial", kind: "execute", status: "in_progress",
-      rawInput: { command: "old-command" },
-      ...(shape === "content" ? { content: [{ type: "content" as const, content: { type: "text" as const, text: output } }] }
-        : { rawOutput: shape === "mcp" ? { content: [{ type: "text", text: output }] } : [{ query: "batch", result: output, success: true }] }),
-    }}).events;
-    if (first?._tag !== "ToolCallUpdated") throw new Error("缺少结果事件");
-    const [last] = parseSessionUpdateEvent({ sessionId: "s", update: {
-      sessionUpdate: "tool_call_update", toolCallId: "partial", title: "重新报告命令", kind: "execute", status: "failed", rawInput: { command: "new-command" },
-    }}).events;
-    if (last?._tag !== "ToolCallUpdated") throw new Error("缺少元数据事件");
-    expect(mergeToolCallState(first.toolCall, last.toolCall)).toMatchObject({
-      toolCallId: "partial", title: "Ran command", status: "failed", command: "new-command",
-      detail: shape === "batch" ? "batch\n" + output : output,
-      data: { command: "new-command", rawInput: { command: "new-command" } },
-    });
-  });
+  it.each(["mcp", "content", "batch"] as const)(
+    "%s 结果不被后续无输出元数据覆盖，失败终态保留重复正文",
+    (shape) => {
+      const output = "真实结果\n真实结果\nFINAL_OUTPUT";
+      const [first] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "partial",
+          kind: "execute",
+          status: "in_progress",
+          rawInput: { command: "old-command" },
+          ...(shape === "content"
+            ? {
+                content: [
+                  { type: "content" as const, content: { type: "text" as const, text: output } },
+                ],
+              }
+            : {
+                rawOutput:
+                  shape === "mcp"
+                    ? { content: [{ type: "text", text: output }] }
+                    : [{ query: "batch", result: output, success: true }],
+              }),
+        },
+      }).events;
+      if (first?._tag !== "ToolCallUpdated") throw new Error("缺少结果事件");
+      const [last] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "partial",
+          title: "重新报告命令",
+          kind: "execute",
+          status: "failed",
+          rawInput: { command: "new-command" },
+        },
+      }).events;
+      if (last?._tag !== "ToolCallUpdated") throw new Error("缺少元数据事件");
+      expect(mergeToolCallState(first.toolCall, last.toolCall)).toMatchObject({
+        toolCallId: "partial",
+        title: "Ran command",
+        status: "failed",
+        command: "new-command",
+        detail: shape === "batch" ? "batch\n" + output : output,
+        data: { command: "new-command", rawInput: { command: "new-command" } },
+      });
+    },
+  );
 
   it("null 原始输入输出不撤回已收到的结果，明确新结果仍可替换", () => {
     const parse = (update: EffectAcpSchema.ToolCallUpdate) => {
-      const [event] = parseSessionUpdateEvent({ sessionId: "s", update: { sessionUpdate: "tool_call_update", ...update } }).events;
+      const [event] = parseSessionUpdateEvent({
+        sessionId: "s",
+        update: { sessionUpdate: "tool_call_update", ...update },
+      }).events;
       if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
       return event.toolCall;
     };
-    const first = parse({ toolCallId: "partial", kind: "execute", rawInput: { command: "check" }, rawOutput: { content: [{ type: "text", text: "FIRST" }] } });
-    const unchanged = mergeToolCallState(first, parse({ toolCallId: "partial", kind: "execute", rawInput: null, rawOutput: null }));
+    const first = parse({
+      toolCallId: "partial",
+      kind: "execute",
+      rawInput: { command: "check" },
+      rawOutput: { content: [{ type: "text", text: "FIRST" }] },
+    });
+    const unchanged = mergeToolCallState(
+      first,
+      parse({ toolCallId: "partial", kind: "execute", rawInput: null, rawOutput: null }),
+    );
     expect(unchanged).toMatchObject({ command: "check", detail: "FIRST", data: first.data });
-    expect(mergeToolCallState(unchanged, parse({ toolCallId: "partial", rawOutput: { content: [{ type: "text", text: "SECOND" }] } }))).toMatchObject({ detail: "SECOND" });
+    expect(
+      mergeToolCallState(
+        unchanged,
+        parse({
+          toolCallId: "partial",
+          rawOutput: { content: [{ type: "text", text: "SECOND" }] },
+        }),
+      ),
+    ).toMatchObject({ detail: "SECOND" });
   });
 
   it.each([false, 0, ""])("合法原始值 %s 不按 null 或缺省处理", (value) => {
-    const [event] = parseSessionUpdateEvent({ sessionId: "s", update: { sessionUpdate: "tool_call_update", toolCallId: "scalar", rawInput: value, rawOutput: value } }).events;
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "scalar",
+        rawInput: value,
+        rawOutput: value,
+      },
+    }).events;
     if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
     expect(event.toolCall.data).toMatchObject({ rawInput: value, rawOutput: value });
   });
 
   it("尚无输出的工具仍能更新派生命令详情", () => {
-    const first: AcpToolCallState = { toolCallId: "partial", command: "old", detail: "old", data: { command: "old" } };
-    const [event] = parseSessionUpdateEvent({ sessionId: "s", update: { sessionUpdate: "tool_call_update", toolCallId: "partial", kind: "execute", rawInput: { command: "new" } } }).events;
+    const first: AcpToolCallState = {
+      toolCallId: "partial",
+      command: "old",
+      detail: "old",
+      data: { command: "old" },
+    };
+    const [event] = parseSessionUpdateEvent({
+      sessionId: "s",
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "partial",
+        kind: "execute",
+        rawInput: { command: "new" },
+      },
+    }).events;
     if (event?._tag !== "ToolCallUpdated") throw new Error("缺少工具事件");
-    expect(mergeToolCallState(first, event.toolCall)).toMatchObject({ command: "new", detail: "new" });
+    expect(mergeToolCallState(first, event.toolCall)).toMatchObject({
+      command: "new",
+      detail: "new",
+    });
   });
-
 });

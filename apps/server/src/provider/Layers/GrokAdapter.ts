@@ -1032,43 +1032,45 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                       const turnId = resolveSessionCallbackTurnId(sessions, input.threadId);
                       pendingUserInputs.set(requestId, { resolution });
                       yield* signalSessionTurnLiveness(input.threadId, turnId);
-                  const resolveInput = (resolved: PendingUserInputResolution) =>
-                    Effect.gen(function* () {
-                      if (!pendingUserInputs.delete(requestId)) return;
-                      yield* resumeSessionTurnLiveness(input.threadId, turnId);
-                      yield* offerRuntimeEvent({
-                        type: "user-input.resolved",
-                        ...(yield* makeEventStamp()),
-                        provider: PROVIDER,
-                        threadId: input.threadId,
-                        turnId: turnId,
-                        requestId: runtimeRequestId,
-                        payload: { answers: resolved._tag === "answered" ? resolved.answers : {} },
-                        raw: { source: "acp.grok.extension", method, payload: params },
-                      });
-                    });
-                  const resolved = yield* Effect.uninterruptibleMask((restore) =>
-                    Effect.gen(function* () {
-                      yield* offerRuntimeEvent({
-                        type: "user-input.requested",
-                        ...(yield* makeEventStamp()),
-                        provider: PROVIDER,
-                        threadId: input.threadId,
-                        turnId,
-                        requestId: runtimeRequestId,
-                        payload: { questions: extractXAiAskUserQuestions(params) },
-                        raw: {
-                          source: "acp.grok.extension",
-                          method,
-                          payload: params,
-                        },
-                      });
-    return yield* restore(Deferred.await(resolution));
-                    }).pipe(
-                      Effect.tap(resolveInput),
-                      Effect.onInterrupt(() => resolveInput({ _tag: "cancelled" })),
-                    ),
-                  );
+                      const resolveInput = (resolved: PendingUserInputResolution) =>
+                        Effect.gen(function* () {
+                          if (!pendingUserInputs.delete(requestId)) return;
+                          yield* resumeSessionTurnLiveness(input.threadId, turnId);
+                          yield* offerRuntimeEvent({
+                            type: "user-input.resolved",
+                            ...(yield* makeEventStamp()),
+                            provider: PROVIDER,
+                            threadId: input.threadId,
+                            turnId: turnId,
+                            requestId: runtimeRequestId,
+                            payload: {
+                              answers: resolved._tag === "answered" ? resolved.answers : {},
+                            },
+                            raw: { source: "acp.grok.extension", method, payload: params },
+                          });
+                        });
+                      const resolved = yield* Effect.uninterruptibleMask((restore) =>
+                        Effect.gen(function* () {
+                          yield* offerRuntimeEvent({
+                            type: "user-input.requested",
+                            ...(yield* makeEventStamp()),
+                            provider: PROVIDER,
+                            threadId: input.threadId,
+                            turnId,
+                            requestId: runtimeRequestId,
+                            payload: { questions: extractXAiAskUserQuestions(params) },
+                            raw: {
+                              source: "acp.grok.extension",
+                              method,
+                              payload: params,
+                            },
+                          });
+                          return yield* restore(Deferred.await(resolution));
+                        }).pipe(
+                          Effect.tap(resolveInput),
+                          Effect.onInterrupt(() => resolveInput({ _tag: "cancelled" })),
+                        ),
+                      );
                       switch (resolved._tag) {
                         case "answered":
                           return makeXAiAskUserQuestionResponse(params, resolved.answers);
@@ -1178,40 +1180,44 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                           turnId: turnId,
                           requestId: runtimeRequestId,
                           permissionRequest,
-                          decision: resolved !== "cancel" && selectAcpPermissionOptionId(params, resolved)
-                            ? resolved : "cancel",
+                          decision:
+                            resolved !== "cancel" && selectAcpPermissionOptionId(params, resolved)
+                              ? resolved
+                              : "cancel",
                         }),
                       );
                     });
                   // 等待可中断，结算不可中断；断线也必须发布且仅发布一次取消终态。
                   const resolved = yield* Effect.uninterruptibleMask((restore) =>
                     Effect.gen(function* () {
-                  yield* offerRuntimeEvent(
-                    makeAcpRequestOpenedEvent({
-                      stamp: yield* makeEventStamp(),
-                      provider: PROVIDER,
-                      threadId: input.threadId,
-                      turnId,
-                      requestId: runtimeRequestId,
-                      permissionRequest,
-                      detail:
-                        permissionRequest.detail ??
-                        encodeJsonStringForDiagnostics(params)?.slice(0, 2000) ??
-                        "[unserializable params]",
-                      args: params,
-                      source: "acp.jsonrpc",
-                      method: "session/request_permission",
-                      rawPayload: params,
-                    }),
-                  );
-    return yield* restore(Deferred.await(decision));
+                      yield* offerRuntimeEvent(
+                        makeAcpRequestOpenedEvent({
+                          stamp: yield* makeEventStamp(),
+                          provider: PROVIDER,
+                          threadId: input.threadId,
+                          turnId,
+                          requestId: runtimeRequestId,
+                          permissionRequest,
+                          detail:
+                            permissionRequest.detail ??
+                            encodeJsonStringForDiagnostics(params)?.slice(0, 2000) ??
+                            "[unserializable params]",
+                          args: params,
+                          source: "acp.jsonrpc",
+                          method: "session/request_permission",
+                          rawPayload: params,
+                        }),
+                      );
+                      return yield* restore(Deferred.await(decision));
                     }).pipe(
                       Effect.tap(resolveApproval),
                       Effect.onInterrupt(() => resolveApproval("cancel")),
                     ),
                   );
-                  const selectedOptionId = resolved === "cancel"
-                    ? undefined : selectAcpPermissionOptionId(params, resolved);
+                  const selectedOptionId =
+                    resolved === "cancel"
+                      ? undefined
+                      : selectAcpPermissionOptionId(params, resolved);
                   if (
                     resolved === "acceptForSession" &&
                     selectedOptionId &&
@@ -1387,14 +1393,16 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 }
 
                 if (event._tag === "UsageUpdated") {
-                  yield* offerRuntimeEvent(makeAcpUsageUpdatedEvent({
-                    stamp: yield* makeEventStamp(),
-                    provider: PROVIDER,
-                    threadId: ctx.threadId,
-                    turnId: resolveNotificationTurnId(ctx),
-                    usage: event.usage,
-                    rawPayload: event.rawPayload,
-                  }));
+                  yield* offerRuntimeEvent(
+                    makeAcpUsageUpdatedEvent({
+                      stamp: yield* makeEventStamp(),
+                      provider: PROVIDER,
+                      threadId: ctx.threadId,
+                      turnId: resolveNotificationTurnId(ctx),
+                      usage: event.usage,
+                      rawPayload: event.rawPayload,
+                    }),
+                  );
                   return;
                 }
 
@@ -1956,20 +1964,25 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 Effect.gen(function* () {
                   const ctx = sessions.get(input.threadId);
                   if (!ctx || ctx.acpSessionId !== prepared.acpSessionId || ctx.stopped) return;
-                  const disconnected = failure !== undefined && (
-                    failure._tag === "AcpProcessExitedError" ||
-                    failure._tag === "AcpInputStreamEndedError" ||
-                    failure._tag === "AcpTransportError"
-                  );
+                  const disconnected =
+                    failure !== undefined &&
+                    (failure._tag === "AcpProcessExitedError" ||
+                      failure._tag === "AcpInputStreamEndedError" ||
+                      failure._tag === "AcpTransportError");
                   // 应用请求失败保留可用会话；断开时结算整回合和待定交互，拒绝迟到审批。
                   if (disconnected) {
                     yield* settlePendingApprovalsAsCancelled(ctx.pendingApprovals);
                     yield* settlePendingUserInputsAsCancelled(ctx.pendingUserInputs);
                   }
-                  yield* settlePromptInFlight(input.threadId, prepared.turnId, prepared.acpSessionId, {
-                    errorMessage,
-                    settleAllPrompts: disconnected,
-                  });
+                  yield* settlePromptInFlight(
+                    input.threadId,
+                    prepared.turnId,
+                    prepared.acpSessionId,
+                    {
+                      errorMessage,
+                      settleAllPrompts: disconnected,
+                    },
+                  );
                   if (!disconnected) return;
                   ctx.stopped = true;
                   if (ctx.notificationFiber) yield* Fiber.interrupt(ctx.notificationFiber);

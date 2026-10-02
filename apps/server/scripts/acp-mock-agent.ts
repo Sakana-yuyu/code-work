@@ -68,8 +68,7 @@ const emitOverlappingXAiPromptCompleteOutOfOrder =
 const failPrompt = process.env.CODEWORK_ACP_FAIL_PROMPT === "1";
 const failSetConfigOption = process.env.CODEWORK_ACP_FAIL_SET_CONFIG_OPTION === "1";
 const exitOnSetConfigOption = process.env.CODEWORK_ACP_EXIT_ON_SET_CONFIG_OPTION === "1";
-const exitAfterPermissionRequest =
-  process.env.CODEWORK_ACP_EXIT_AFTER_PERMISSION_REQUEST === "1";
+const exitAfterPermissionRequest = process.env.CODEWORK_ACP_EXIT_AFTER_PERMISSION_REQUEST === "1";
 const crashSignalPath = process.env.CODEWORK_ACP_CRASH_SIGNAL_PATH?.trim() || undefined;
 const promptResponseText = process.env.CODEWORK_ACP_PROMPT_RESPONSE_TEXT;
 const initialGrokReasoningEffort =
@@ -695,9 +694,13 @@ const program = Effect.gen(function* () {
       cancelledSessions.add(cancelledSessionId);
       if (replyCancelledPrompt) yield* Deferred.succeed(cancelResponseReleased, undefined);
       if (cancelResponseBarrier) {
-        yield* agent.client.sessionUpdate({ sessionId: cancelledSessionId, update: {
-          sessionUpdate: "session_info_update", title: "cancel-awaiting-release",
-        }});
+        yield* agent.client.sessionUpdate({
+          sessionId: cancelledSessionId,
+          update: {
+            sessionUpdate: "session_info_update",
+            title: "cancel-awaiting-release",
+          },
+        });
       }
       if (emitLateUpdateAfterCancel) {
         yield* Effect.sleep("50 millis");
@@ -719,12 +722,17 @@ const program = Effect.gen(function* () {
       const requestedSessionId = String(request.sessionId ?? sessionId);
       promptCount += 1;
       if (cancelResponseBarrier && promptCount === 1) {
-        yield* agent.client.sessionUpdate({ sessionId: requestedSessionId, update: {
-          sessionUpdate: "session_info_update", title: "first-prompt-running",
-        }});
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "session_info_update",
+            title: "first-prompt-running",
+          },
+        });
         yield* Deferred.await(cancelResponseReleased);
         cancelledSessions.delete(requestedSessionId);
-        return { stopReason: "cancelled" as const,
+        return {
+          stopReason: "cancelled" as const,
           ...(codebuddyCancelWindow ? { _meta: { "codebuddy.ai/outcome": "CANCELLED" } } : {}),
         };
       }
@@ -735,15 +743,15 @@ const program = Effect.gen(function* () {
         });
         if (hostCapabilitiesResultLogPath) {
           const encoded = yield* encodeHostCapabilities(capabilities).pipe(
-            Effect.mapError((cause) => new AcpError.AcpTransportError({
-              detail: "测试宿主能力回复不能编码为 JSON", cause,
-            })),
+            Effect.mapError(
+              (cause) =>
+                new AcpError.AcpTransportError({
+                  detail: "测试宿主能力回复不能编码为 JSON",
+                  cause,
+                }),
+            ),
           );
-          NodeFS.appendFileSync(
-            hostCapabilitiesResultLogPath,
-            `${encoded}\n`,
-            "utf8",
-          );
+          NodeFS.appendFileSync(hostCapabilitiesResultLogPath, `${encoded}\n`, "utf8");
         }
       }
 
@@ -754,11 +762,13 @@ const program = Effect.gen(function* () {
       if (emitGajaeIdle) {
         const first = request.prompt[0];
         const text = first?.type === "text" ? first.text : "";
-        if (text === "failure") return yield* AcpError.AcpRequestError.internalError("模拟 Gajae 回合失败");
-        if (text === "early") yield* agent.client.sessionUpdate({
-          sessionId: requestedSessionId,
-          update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
-        });
+        if (text === "failure")
+          return yield* AcpError.AcpRequestError.internalError("模拟 Gajae 回合失败");
+        if (text === "early")
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
+          });
         return { stopReason: "end_turn" };
       }
       if (failPrompt) {
@@ -825,9 +835,13 @@ const program = Effect.gen(function* () {
           return { stopReason: "cancelled" as const };
         }
         if (emitLateUpdateAfterCancel) {
-          yield* agent.client.sessionUpdate({ sessionId: requestedSessionId, update: {
-            sessionUpdate: "agent_message_chunk", content: { type: "text", text: "late-cancel-prompt-running" },
-          }});
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: "late-cancel-prompt-running" },
+            },
+          });
         }
         return yield* Effect.never;
       }
@@ -936,34 +950,71 @@ const program = Effect.gen(function* () {
       if (process.env.CODEWORK_ACP_EMIT_BINARY === "1") {
         // 使用可解码的两秒 PCM WAV，浏览器验收检查原生播放位置。
         const wav = Buffer.alloc(44 + 32_000);
-        wav.write("RIFF", 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
-        wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
-        wav.writeUInt32LE(8_000, 24); wav.writeUInt32LE(16_000, 28);
-        wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
-        wav.write("data", 36); wav.writeUInt32LE(32_000, 40);
-        const audio = { type: "audio" as const, mimeType: "audio/wav", data: wav.toString("base64") };
-        const blob = { type: "resource" as const, resource: {
-          uri: "file:///workspace/report.bin", mimeType: "application/octet-stream",
-          blob: Buffer.from("媒体附件下载校验\n").toString("base64"),
-        } };
+        wav.write("RIFF", 0);
+        wav.writeUInt32LE(wav.length - 8, 4);
+        wav.write("WAVEfmt ", 8);
+        wav.writeUInt32LE(16, 16);
+        wav.writeUInt16LE(1, 20);
+        wav.writeUInt16LE(1, 22);
+        wav.writeUInt32LE(8_000, 24);
+        wav.writeUInt32LE(16_000, 28);
+        wav.writeUInt16LE(2, 32);
+        wav.writeUInt16LE(16, 34);
+        wav.write("data", 36);
+        wav.writeUInt32LE(32_000, 40);
+        const audio = {
+          type: "audio" as const,
+          mimeType: "audio/wav",
+          data: wav.toString("base64"),
+        };
+        const blob = {
+          type: "resource" as const,
+          resource: {
+            uri: "file:///workspace/report.bin",
+            mimeType: "application/octet-stream",
+            blob: Buffer.from("媒体附件下载校验\n").toString("base64"),
+          },
+        };
         for (const notification of [
           { sessionId: "mock-child-session-1" },
           { sessionId: requestedSessionId, _meta: { isReplay: true } },
-        ]) yield* agent.client.sessionUpdate({ ...notification,
-          update: { sessionUpdate: "agent_message_chunk", content: audio },
-        });
-        yield* agent.client.sessionUpdate({ sessionId: requestedSessionId,
+        ])
+          yield* agent.client.sessionUpdate({
+            ...notification,
+            update: { sessionUpdate: "agent_message_chunk", content: audio },
+          });
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
           update: { sessionUpdate: "agent_thought_chunk", content: audio },
         });
         for (const content of [
-          { type: "text" as const, text: "媒体前文" }, audio, blob,
+          { type: "text" as const, text: "媒体前文" },
+          audio,
+          blob,
           { type: "audio" as const, mimeType: "audio/wav", data: "invalid" },
-          { type: "resource" as const, resource: { uri: "file:///workspace/x.svg", mimeType: "image/svg+xml", blob: Buffer.from("<svg></svg>").toString("base64") } },
-          ...(process.env.CODEWORK_ACP_BINARY_DECODE_ERROR === "1" ? [{ type: "audio" as const, mimeType: "audio/wav", data: Buffer.from("invalid-WAV-header").toString("base64") }] : []),
+          {
+            type: "resource" as const,
+            resource: {
+              uri: "file:///workspace/x.svg",
+              mimeType: "image/svg+xml",
+              blob: Buffer.from("<svg></svg>").toString("base64"),
+            },
+          },
+          ...(process.env.CODEWORK_ACP_BINARY_DECODE_ERROR === "1"
+            ? [
+                {
+                  type: "audio" as const,
+                  mimeType: "audio/wav",
+                  data: Buffer.from("invalid-WAV-header").toString("base64"),
+                },
+              ]
+            : []),
           { type: "text" as const, text: "媒体后文" },
-        ]) yield* agent.client.sessionUpdate({ sessionId: requestedSessionId,
-          update: { sessionUpdate: "agent_message_chunk", content },
-        });
+        ])
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: { sessionUpdate: "agent_message_chunk", content },
+          });
         return { stopReason: "end_turn" };
       }
 

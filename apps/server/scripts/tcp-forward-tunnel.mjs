@@ -9,7 +9,9 @@ const [listenHost, listenPortRaw, targetHost, targetPortRaw] = process.argv.slic
 const listenPort = Number(listenPortRaw);
 const targetPort = Number(targetPortRaw);
 if (!listenHost || !Number.isFinite(listenPort) || !targetHost || !Number.isFinite(targetPort)) {
-  console.error("usage: tcp-forward-tunnel.mjs <listenHost> <listenPort> <targetHost> <targetPort>");
+  console.error(
+    "usage: tcp-forward-tunnel.mjs <listenHost> <listenPort> <targetHost> <targetPort>",
+  );
   process.exit(2);
 }
 

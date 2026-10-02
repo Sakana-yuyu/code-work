@@ -377,35 +377,91 @@ else await import(${encodeLiteral(mockAgent)});
         const log = NodePath.join(directory, id + ".ndjson");
         const launcher = NodePath.join(directory, id + ".mjs");
         const mock = new URL("../../../scripts/acp-mock-agent.ts", import.meta.url).href;
-        yield* fs.writeFileString(launcher,
-          'process.env.CODEWORK_ACP_EMIT_KIRO_COMMANDS = ' + encodeLiteral(native ? "1" : "0") + ';\n' +
-          'process.env.CODEWORK_ACP_REQUEST_LOG_PATH = ' + encodeLiteral(log) + ';\nawait import(' + encodeLiteral(mock) + ');\n');
-        const instance = yield* GenericAcpDriver.create({ instanceId, displayName: undefined, enabled: true, environment: [],
-          config: yield* decodeAcpSettings({ command: '"' + process.execPath + '" "' + launcher + '"', authMethodId: "test" }),
+        yield* fs.writeFileString(
+          launcher,
+          "process.env.CODEWORK_ACP_EMIT_KIRO_COMMANDS = " +
+            encodeLiteral(native ? "1" : "0") +
+            ";\n" +
+            "process.env.CODEWORK_ACP_REQUEST_LOG_PATH = " +
+            encodeLiteral(log) +
+            ";\nawait import(" +
+            encodeLiteral(mock) +
+            ");\n",
+        );
+        const instance = yield* GenericAcpDriver.create({
+          instanceId,
+          displayName: undefined,
+          enabled: true,
+          environment: [],
+          config: yield* decodeAcpSettings({
+            command: '"' + process.execPath + '" "' + launcher + '"',
+            authMethodId: "test",
+          }),
         });
-        const startup = yield* instance.adapter.streamEvents.pipe(Stream.takeUntil((event) => event.type === "thread.started"), Stream.runCollect, Effect.forkChild);
-        yield* instance.adapter.startSession({ threadId, provider: GenericAcpDriver.driverKind, cwd: directory, runtimeMode: "full-access", modelSelection: { instanceId, model: "default" } });
-        const initial = Array.from(yield* Fiber.join(startup)).find((event) => event.type === "session.started");
+        const startup = yield* instance.adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "thread.started"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* instance.adapter.startSession({
+          threadId,
+          provider: GenericAcpDriver.driverKind,
+          cwd: directory,
+          runtimeMode: "full-access",
+          modelSelection: { instanceId, model: "default" },
+        });
+        const initial = Array.from(yield* Fiber.join(startup)).find(
+          (event) => event.type === "session.started",
+        );
         expect(initial?.providerInstanceId).toBe(instanceId);
-        if (native) expect(initial?.payload.slashCommands?.map((command) => command.name)).toEqual(["agent", "review"]);
-        for (const input of native ? ["/agent swap chosen", "/agent reject"] : ["/agent swap chosen"]) {
-          const completed = yield* instance.adapter.streamEvents.pipe(Stream.takeUntil((event) => event.type === "turn.completed"), Stream.runCollect, Effect.forkChild);
+        if (native)
+          expect(initial?.payload.slashCommands?.map((command) => command.name)).toEqual([
+            "agent",
+            "review",
+          ]);
+        for (const input of native
+          ? ["/agent swap chosen", "/agent reject"]
+          : ["/agent swap chosen"]) {
+          const completed = yield* instance.adapter.streamEvents.pipe(
+            Stream.takeUntil((event) => event.type === "turn.completed"),
+            Stream.runCollect,
+            Effect.forkChild,
+          );
           const sent = yield* instance.adapter.sendTurn({ threadId, input }).pipe(Effect.result);
           expect(sent._tag).toBe(input.endsWith("reject") ? "Failure" : "Success");
           const events = Array.from(yield* Fiber.join(completed));
           expect(events.every((event) => event.providerInstanceId === instanceId)).toBe(true);
           const failure = input.endsWith("reject");
-          if (failure) expect(events.findLast((event) => event.type === "turn.completed")?.payload.errorMessage).toContain("命令被拒绝");
+          if (failure)
+            expect(
+              events.findLast((event) => event.type === "turn.completed")?.payload.errorMessage,
+            ).toContain("命令被拒绝");
           if (!failure && native) {
-            expect(events.filter((event) => event.type === "content.delta").map((event) => event.payload.delta).join("")).toContain("swap chosen");
+            expect(
+              events
+                .filter((event) => event.type === "content.delta")
+                .map((event) => event.payload.delta)
+                .join(""),
+            ).toContain("swap chosen");
           }
-          expect(events.findLast((event) => event.type === "turn.completed")?.payload.state).toBe(failure ? "failed" : "completed");
+          expect(events.findLast((event) => event.type === "turn.completed")?.payload.state).toBe(
+            failure ? "failed" : "completed",
+          );
         }
         yield* instance.adapter.stopSession(threadId);
-        const decodeRequest = Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({ method: Schema.String })));
-        const requests = yield* Effect.forEach((yield* fs.readFileString(log)).trim().split("\n"), (line) => decodeRequest(line));
-        expect(requests.filter((request) => request.method === "_kiro.dev/commands/execute")).toHaveLength(native ? 2 : 0);
-        expect(requests.filter((request) => request.method === "session/prompt")).toHaveLength(native ? 0 : 1);
+        const decodeRequest = Schema.decodeEffect(
+          Schema.fromJsonString(Schema.Struct({ method: Schema.String })),
+        );
+        const requests = yield* Effect.forEach(
+          (yield* fs.readFileString(log)).trim().split("\n"),
+          (line) => decodeRequest(line),
+        );
+        expect(
+          requests.filter((request) => request.method === "_kiro.dev/commands/execute"),
+        ).toHaveLength(native ? 2 : 0);
+        expect(requests.filter((request) => request.method === "session/prompt")).toHaveLength(
+          native ? 0 : 1,
+        );
       }
     }),
   );

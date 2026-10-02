@@ -291,87 +291,108 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
         Effect.forkChild,
       );
       yield* adapter.startSession({
-        threadId, provider: ProviderDriverKind.make("grok"), cwd: process.cwd(),
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
         runtimeMode: "full-access",
         modelSelection: { instanceId: ProviderInstanceId.make("grok"), model: "grok-mock-alt" },
       });
-      const update = Array.from(yield* Fiber.join(events)).find((event) => event.type === "thread.token-usage.updated");
+      const update = Array.from(yield* Fiber.join(events)).find(
+        (event) => event.type === "thread.token-usage.updated",
+      );
       assert.isDefined(update);
       assert.equal(update?.threadId, threadId);
       assert.isUndefined(update?.turnId);
       assert.deepEqual(update?.payload.usage, { usedTokens: 0, maxTokens: 64_000 });
       assert.deepInclude(update && runtimeEventToActivities(update)[0], {
-        kind: "context-window.updated", payload: { usedTokens: 0, maxTokens: 64_000 },
+        kind: "context-window.updated",
+        payload: { usedTokens: 0, maxTokens: 64_000 },
       });
       yield* adapter.stopSession(threadId);
     }),
   );
 
   for (const interaction of ["approval", "user-input"] as const) {
-  it.effect(`process exit during ${interaction} settles the turn and rejects late response`, () =>
-    Effect.gen(function* () {
-      const threadId = ThreadId.make("grok-crash-mid-approval");
-      const childLogDir = yield* Effect.promise(() =>
-        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-crash-agent-")),
-      );
-      const childPidLogPath = NodePath.join(childLogDir, "agent.pid");
-      const wrapperPath = yield* makeMockGrokWrapper({
-        ...(interaction === "approval"
-          ? { CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }
-          : { CODEWORK_ACP_EMIT_XAI_ASK_USER_QUESTION: "1" }),
-        CODEWORK_ACP_CHILD_PID_LOG_PATH: childPidLogPath,
-      });
-      const adapter = yield* makeTestAdapter(wrapperPath);
-      const approvalOpened = yield* Deferred.make<string>();
-      const turnCompleted = yield* Deferred.make<ProviderRuntimeEvent>();
-      const sessionExited = yield* Deferred.make<ProviderRuntimeEvent>();
-      const events: ProviderRuntimeEvent[] = [];
-      yield* Stream.runForEach(adapter.streamEvents, (event) => {
-        if (event.threadId !== threadId) return Effect.void;
-        events.push(event);
-        if (event.type === (interaction === "approval" ? "request.opened" : "user-input.requested") && event.requestId) {
-          return Deferred.succeed(approvalOpened, String(event.requestId)).pipe(Effect.asVoid);
-        }
-        if (event.type === "turn.completed") {
-          return Deferred.succeed(turnCompleted, event).pipe(Effect.asVoid);
-        }
-        if (event.type === "session.exited") {
-          return Deferred.succeed(sessionExited, event).pipe(Effect.asVoid);
-        }
-        return Effect.void;
-      }).pipe(Effect.forkScoped);
-      yield* adapter.startSession({
-        threadId,
-        provider: ProviderDriverKind.make("grok"),
-        cwd: process.cwd(),
-        runtimeMode: "approval-required",
-      });
-      const sendTurn = yield* adapter.sendTurn({
-        threadId,
-        input: "crash while waiting for approval",
-        attachments: [],
-      }).pipe(Effect.forkScoped);
-      const requestId = yield* Deferred.await(approvalOpened);
-      const childPid = Number(yield* Effect.promise(() => NodeFSP.readFile(childPidLogPath, "utf8")));
-      assert.isTrue(Number.isSafeInteger(childPid) && childPid > 0);
-      // 收到审批后，仅终止本次启动记录的进程，不按名称匹配或使用定时器。
-      yield* Effect.sync(() => NodeProcess.kill(childPid));
-      const completed = yield* Deferred.await(turnCompleted);
-      assert.equal((yield* Fiber.await(sendTurn))._tag, "Failure");
-      assert.equal(yield* adapter.hasSession(threadId), false);
-      const exited = yield* Deferred.await(sessionExited);
-      assert.equal(completed.type, "turn.completed");
-      if (completed.type === "turn.completed") assert.equal(completed.payload.state, "failed");
-      assert.equal(exited.type, "session.exited");
-      if (exited.type === "session.exited") assert.equal(exited.payload.exitKind, "error");
-      assert.equal(events.filter((event) => event.type === (interaction === "approval" ? "request.resolved" : "user-input.resolved")).length, 1);
-      const lateApproval = yield* (interaction === "approval"
-        ? adapter.respondToRequest(threadId, ApprovalRequestId.make(requestId), "accept")
-        : adapter.respondToUserInput(threadId, ApprovalRequestId.make(requestId), {}))
-        .pipe(Effect.result);
-      assert.equal(lateApproval._tag, "Failure");
-    }).pipe(TestClock.withLive),
-  );
+    it.effect(`process exit during ${interaction} settles the turn and rejects late response`, () =>
+      Effect.gen(function* () {
+        const threadId = ThreadId.make("grok-crash-mid-approval");
+        const childLogDir = yield* Effect.promise(() =>
+          NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-crash-agent-")),
+        );
+        const childPidLogPath = NodePath.join(childLogDir, "agent.pid");
+        const wrapperPath = yield* makeMockGrokWrapper({
+          ...(interaction === "approval"
+            ? { CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }
+            : { CODEWORK_ACP_EMIT_XAI_ASK_USER_QUESTION: "1" }),
+          CODEWORK_ACP_CHILD_PID_LOG_PATH: childPidLogPath,
+        });
+        const adapter = yield* makeTestAdapter(wrapperPath);
+        const approvalOpened = yield* Deferred.make<string>();
+        const turnCompleted = yield* Deferred.make<ProviderRuntimeEvent>();
+        const sessionExited = yield* Deferred.make<ProviderRuntimeEvent>();
+        const events: ProviderRuntimeEvent[] = [];
+        yield* Stream.runForEach(adapter.streamEvents, (event) => {
+          if (event.threadId !== threadId) return Effect.void;
+          events.push(event);
+          if (
+            event.type ===
+              (interaction === "approval" ? "request.opened" : "user-input.requested") &&
+            event.requestId
+          ) {
+            return Deferred.succeed(approvalOpened, String(event.requestId)).pipe(Effect.asVoid);
+          }
+          if (event.type === "turn.completed") {
+            return Deferred.succeed(turnCompleted, event).pipe(Effect.asVoid);
+          }
+          if (event.type === "session.exited") {
+            return Deferred.succeed(sessionExited, event).pipe(Effect.asVoid);
+          }
+          return Effect.void;
+        }).pipe(Effect.forkScoped);
+        yield* adapter.startSession({
+          threadId,
+          provider: ProviderDriverKind.make("grok"),
+          cwd: process.cwd(),
+          runtimeMode: "approval-required",
+        });
+        const sendTurn = yield* adapter
+          .sendTurn({
+            threadId,
+            input: "crash while waiting for approval",
+            attachments: [],
+          })
+          .pipe(Effect.forkScoped);
+        const requestId = yield* Deferred.await(approvalOpened);
+        const childPid = Number(
+          yield* Effect.promise(() => NodeFSP.readFile(childPidLogPath, "utf8")),
+        );
+        assert.isTrue(Number.isSafeInteger(childPid) && childPid > 0);
+        // 收到审批后，仅终止本次启动记录的进程，不按名称匹配或使用定时器。
+        yield* Effect.sync(() => NodeProcess.kill(childPid));
+        const completed = yield* Deferred.await(turnCompleted);
+        assert.equal((yield* Fiber.await(sendTurn))._tag, "Failure");
+        assert.equal(yield* adapter.hasSession(threadId), false);
+        const exited = yield* Deferred.await(sessionExited);
+        assert.equal(completed.type, "turn.completed");
+        if (completed.type === "turn.completed") assert.equal(completed.payload.state, "failed");
+        assert.equal(exited.type, "session.exited");
+        if (exited.type === "session.exited") assert.equal(exited.payload.exitKind, "error");
+        assert.equal(
+          events.filter(
+            (event) =>
+              event.type ===
+              (interaction === "approval" ? "request.resolved" : "user-input.resolved"),
+          ).length,
+          1,
+        );
+        const lateApproval = yield* (
+          interaction === "approval"
+            ? adapter.respondToRequest(threadId, ApprovalRequestId.make(requestId), "accept")
+            : adapter.respondToUserInput(threadId, ApprovalRequestId.make(requestId), {})
+        ).pipe(Effect.result);
+        assert.equal(lateApproval._tag, "Failure");
+      }).pipe(TestClock.withLive),
+    );
   }
 
   for (const closeBehavior of ["success", "fail", "unsupported"]) {
@@ -658,7 +679,7 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
     }),
   );
 
-it.effect("Grok 音频与 blob 保留流类型、独立段和会话隔离", () =>
+  it.effect("Grok 音频与 blob 保留流类型、独立段和会话隔离", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("grok-resource-stream");
       const wrapperPath = yield* makeMockGrokWrapper({ CODEWORK_ACP_EMIT_BINARY: "1" });
@@ -683,13 +704,33 @@ it.effect("Grok 音频与 blob 保留流类型、独立段和会话隔离", () =
       assert.equal(new Set(deltas.map((event) => event.itemId)).size, 7);
       assert.equal(deltas[0]?.payload.streamKind, "reasoning_text");
       const assistant = deltas.filter((event) => event.payload.streamKind === "assistant_text");
-      assert.deepEqual(assistant.map((event) => event.payload.delta), ["媒体前文", "", "", "", "", "媒体后文"]);
+      assert.deepEqual(
+        assistant.map((event) => event.payload.delta),
+        ["媒体前文", "", "", "", "", "媒体后文"],
+      );
       assert.equal(assistant.filter((event) => event.payload.audio).length, 2);
       assert.equal(assistant.filter((event) => event.payload.blob).length, 2);
       assert.equal(assistant[1]?.payload.audio?.mimeType, "audio/wav");
       assert.equal(assistant[2]?.payload.blob?.uri, "file:///workspace/report.bin");
-      assert.deepInclude(assistant[1]!.raw!.payload, { update: { sessionUpdate: "agent_message_chunk", content: { type: "audio", mimeType: "audio/wav", data: "[省略音频正文]" } } });
-      assert.deepInclude(assistant[2]!.raw!.payload, { update: { sessionUpdate: "agent_message_chunk", content: { type: "resource", resource: { uri: "file:///workspace/report.bin", mimeType: "application/octet-stream", blob: "[省略二进制正文]" } } } });
+      assert.deepInclude(assistant[1]!.raw!.payload, {
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "audio", mimeType: "audio/wav", data: "[省略音频正文]" },
+        },
+      });
+      assert.deepInclude(assistant[2]!.raw!.payload, {
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "resource",
+            resource: {
+              uri: "file:///workspace/report.bin",
+              mimeType: "application/octet-stream",
+              blob: "[省略二进制正文]",
+            },
+          },
+        },
+      });
       yield* adapter.stopSession(threadId);
     }),
   );
@@ -1459,8 +1500,10 @@ it.effect("Grok 音频与 blob 保留流类型、独立段和会话隔离", () =
       const adapter = yield* makeTestAdapter(wrapperPath, {
         nativeEventLogger: {
           filePath: "memory://grok-silent-prompt",
-          write: (record: unknown) => JSON.stringify(record).includes('"method":"session/prompt"')
-            ? Deferred.succeed(promptSent, undefined).pipe(Effect.asVoid) : Effect.void,
+          write: (record: unknown) =>
+            JSON.stringify(record).includes('"method":"session/prompt"')
+              ? Deferred.succeed(promptSent, undefined).pipe(Effect.asVoid)
+              : Effect.void,
           close: () => Effect.void,
         },
       });
@@ -1627,8 +1670,8 @@ it.effect("Grok 音频与 blob 保留流类型、独立段和会话隔离", () =
             JSON.stringify(record).includes("late-cancel-prompt-running")
               ? Deferred.succeed(promptRunning, undefined).pipe(Effect.asVoid)
               : JSON.stringify(record).includes("late after cancel")
-              ? Deferred.succeed(lateNativeUpdate, undefined).pipe(Effect.asVoid)
-              : Effect.void,
+                ? Deferred.succeed(lateNativeUpdate, undefined).pipe(Effect.asVoid)
+                : Effect.void,
           close: () => Effect.void,
         },
       });

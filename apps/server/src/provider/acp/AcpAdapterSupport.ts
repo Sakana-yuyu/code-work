@@ -70,7 +70,11 @@ export function mapAcpToAdapterError(
   method: string,
   error: EffectAcpErrors.AcpError,
 ): ProviderAdapterError {
-  if (isAcpProcessExitedError(error) || isAcpInputStreamEndedError(error) || isAcpTransportError(error)) {
+  if (
+    isAcpProcessExitedError(error) ||
+    isAcpInputStreamEndedError(error) ||
+    isAcpTransportError(error)
+  ) {
     return new ProviderAdapterSessionClosedError({
       provider,
       threadId,

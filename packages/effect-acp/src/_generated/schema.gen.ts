@@ -4208,11 +4208,11 @@ export const AuthMethodAgent = Schema.Struct({
     ]),
   ),
   id: Schema.optionalKey(
-      Schema.String.annotate({
-        description:
-          "Unique identifier for this authentication method. Optional: some agents omit id; callers must not assume it is always present.",
-      }),
-    ),
+    Schema.String.annotate({
+      description:
+        "Unique identifier for this authentication method. Optional: some agents omit id; callers must not assume it is always present.",
+    }),
+  ),
   name: Schema.optionalKey(
     Schema.String.annotate({
       description:
@@ -4252,11 +4252,11 @@ export const AuthMethodEnvVar = Schema.Struct({
     ]),
   ),
   id: Schema.optionalKey(
-      Schema.String.annotate({
-        description:
-          "Unique identifier for this authentication method. Optional: some agents omit id; callers must not assume it is always present.",
-      }),
-    ),
+    Schema.String.annotate({
+      description:
+        "Unique identifier for this authentication method. Optional: some agents omit id; callers must not assume it is always present.",
+    }),
+  ),
   link: Schema.optionalKey(
     Schema.Union([
       Schema.String.annotate({
@@ -4318,11 +4318,11 @@ export const AuthMethodTerminal = Schema.Struct({
     }),
   ),
   id: Schema.optionalKey(
-      Schema.String.annotate({
-        description:
-          "Unique identifier for this authentication method. Optional: some agents omit id; callers must not assume it is always present.",
-      }),
-    ),
+    Schema.String.annotate({
+      description:
+        "Unique identifier for this authentication method. Optional: some agents omit id; callers must not assume it is always present.",
+    }),
+  ),
   name: Schema.optionalKey(
     Schema.String.annotate({
       description:
@@ -7303,12 +7303,10 @@ export const NewSessionRequest = Schema.Struct({
   environmentPolicy: Schema.optionalKey(
     Schema.Struct({
       kind: Schema.Literals(["inherited", "isolated", "granted"]).annotate({
-        description:
-          "Harn 本地会话策略：inherited、isolated 或 granted。",
+        description: "Harn 本地会话策略：inherited、isolated 或 granted。",
       }),
     }).annotate({
-      description:
-        "Harn session/new 所需的本地环境策略扩展。",
+      description: "Harn session/new 所需的本地环境策略扩展。",
     }),
   ),
   mcpServers: Schema.Array(McpServer).annotate({

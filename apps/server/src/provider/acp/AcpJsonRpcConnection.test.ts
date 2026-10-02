@@ -402,11 +402,23 @@ describe("AcpSessionRuntime", () => {
             _tag: "Failure",
             failure: { errorMessage: expect.stringContaining("60 秒") },
           });
-        expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "/agent recover" }] })).toEqual({ stopReason: "end_turn" });
+        expect(
+          yield* runtime.prompt({ prompt: [{ type: "text", text: "/agent recover" }] }),
+        ).toEqual({ stopReason: "end_turn" });
         expect(requests.filter((event) => event.method === "session/prompt")).toEqual([]);
-        expect(requests.filter((event) => event.status === "started" && event.method === "_kiro.dev/commands/execute").map((event) => event.payload)).toEqual([
+        expect(
+          requests
+            .filter(
+              (event) =>
+                event.status === "started" && event.method === "_kiro.dev/commands/execute",
+            )
+            .map((event) => event.payload),
+        ).toEqual([
           { sessionId: "mock-session-1", command: { command: "agent", args: { value: "wait" } } },
-          { sessionId: "mock-session-1", command: { command: "agent", args: { value: "recover" } } },
+          {
+            sessionId: "mock-session-1",
+            command: { command: "agent", args: { value: "recover" } },
+          },
         ]);
       }).pipe(
         Effect.provide(
@@ -419,7 +431,10 @@ describe("AcpSessionRuntime", () => {
             cwd: process.cwd(),
             clientInfo: { name: "codework-test", version: "0.0.0" },
             authMethodId: "test",
-            requestLogger: (event) => Effect.sync(() => { requests.push(event); }),
+            requestLogger: (event) =>
+              Effect.sync(() => {
+                requests.push(event);
+              }),
           }),
         ),
         Effect.scoped,
@@ -890,7 +905,6 @@ describe("AcpSessionRuntime", () => {
     ),
   );
 
-
   it.effect("取消返回前通知必须入队，随后关闭不抢先", () =>
     Effect.gen(function* () {
       const notificationEntered = yield* Deferred.make<void>();
@@ -909,37 +923,63 @@ describe("AcpSessionRuntime", () => {
             return event._tag === "ToolCallUpdated" && event.toolCall.status === "inProgress"
               ? Deferred.succeed(sawInProgress, undefined)
               : Effect.void;
-          }), Effect.forkChild,
+          }),
+          Effect.forkChild,
         );
-        const prompt = yield* runtime.prompt({prompt:[{type:"text",text:"cancel enqueue"}]}).pipe(Effect.tap(() => Deferred.succeed(promptReturned, undefined)), Effect.forkChild);
+        const prompt = yield* runtime
+          .prompt({ prompt: [{ type: "text", text: "cancel enqueue" }] })
+          .pipe(
+            Effect.tap(() => Deferred.succeed(promptReturned, undefined)),
+            Effect.forkChild,
+          );
         yield* Deferred.await(sawInProgress);
         const cancelling = yield* runtime.cancel.pipe(
-          Effect.tap(() => Deferred.succeed(cancelReturned, undefined)), Effect.forkChild,
+          Effect.tap(() => Deferred.succeed(cancelReturned, undefined)),
+          Effect.forkChild,
         );
         yield* Deferred.await(notificationEntered);
         expect(yield* Deferred.isDone(cancelReturned)).toBe(false);
         expect(yield* Deferred.isDone(promptReturned)).toBe(false);
         yield* Deferred.succeed(releaseNotification, undefined);
         yield* Fiber.join(cancelling);
-        expect(yield* Fiber.join(prompt)).toMatchObject({stopReason:"cancelled"});
+        expect(yield* Fiber.join(prompt)).toMatchObject({ stopReason: "cancelled" });
         yield* runtime.close;
         expect(methods).toEqual(["session/cancel", "session/close"]);
       }).pipe(
-        Effect.provide(AcpSessionRuntime.layer({
-          spawn:{command:mockAgentCommand,args:mockAgentArgs,env:{CODEWORK_ACP_EMIT_ACTIVE_TOOL_THEN_HANG:"1",CODEWORK_ACP_CLOSE_BEHAVIOR:"success"}},
-          cwd:process.cwd(),clientInfo:{name:"codework-test",version:"0.0.0"},authMethodId:"test",
-          protocolLogging:{logOutgoing:true,logger:(event)=>Effect.gen(function*(){
-            if(event.stage!=="raw"||typeof event.payload!=="string")return;
-            const raw = event.payload;
-            const method=["session/cancel", "session/close"].find(method=>raw.includes('"method":"'+method+'"'));
-            if(!method)return;
-            methods.push(method);
-            if(method==="session/cancel"){
-              yield* Deferred.succeed(notificationEntered, undefined);
-              yield* Deferred.await(releaseNotification);
-            }
-          })},
-        })), Effect.ensuring(Deferred.succeed(releaseNotification, undefined)), Effect.scoped,
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: {
+                CODEWORK_ACP_EMIT_ACTIVE_TOOL_THEN_HANG: "1",
+                CODEWORK_ACP_CLOSE_BEHAVIOR: "success",
+              },
+            },
+            cwd: process.cwd(),
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+            authMethodId: "test",
+            protocolLogging: {
+              logOutgoing: true,
+              logger: (event) =>
+                Effect.gen(function* () {
+                  if (event.stage !== "raw" || typeof event.payload !== "string") return;
+                  const raw = event.payload;
+                  const method = ["session/cancel", "session/close"].find((method) =>
+                    raw.includes('"method":"' + method + '"'),
+                  );
+                  if (!method) return;
+                  methods.push(method);
+                  if (method === "session/cancel") {
+                    yield* Deferred.succeed(notificationEntered, undefined);
+                    yield* Deferred.await(releaseNotification);
+                  }
+                }),
+            },
+          }),
+        ),
+        Effect.ensuring(Deferred.succeed(releaseNotification, undefined)),
+        Effect.scoped,
       );
     }).pipe(Effect.provide(NodeServices.layer)),
   );
@@ -951,39 +991,74 @@ describe("AcpSessionRuntime", () => {
         const cancelReceived = yield* Deferred.make<void>();
         const wire: string[] = [];
         return yield* Effect.gen(function* () {
-        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
-        yield* runtime.start();
-        const first = yield* runtime.prompt({ prompt: [{ type: "text", text: "first" }] }).pipe(Effect.forkChild);
-        yield* Deferred.await(started);
-        yield* Effect.all([runtime.cancel, runtime.cancel], { concurrency: "unbounded" });
-        expect(yield* Fiber.join(first)).toMatchObject({ stopReason: "cancelled" });
-        yield* Deferred.await(cancelReceived);
-        const next = yield* runtime.prompt({ prompt: [{ type: "text", text: "second" }] }).pipe(Effect.result, Effect.forkChild({ startImmediately: true }));
-        expect(wire.filter((s) => s.includes('"method":"session/prompt"'))).toHaveLength(1);
-        expect(wire.filter((s) => s.includes('"method":"session/cancel"'))).toHaveLength(1);
-        yield* runtime.request("_codework/release_cancel", {});
-        if (codebuddy) {
-          expect(yield* Fiber.join(next)).toMatchObject({ _tag: "Failure", failure: {
-            code: -32000, method: "session/prompt", errorMessage: expect.stringContaining("CodeBuddy 取消保护窗口"),
-          }});
+          const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+          yield* runtime.start();
+          const first = yield* runtime
+            .prompt({ prompt: [{ type: "text", text: "first" }] })
+            .pipe(Effect.forkChild);
+          yield* Deferred.await(started);
+          yield* Effect.all([runtime.cancel, runtime.cancel], { concurrency: "unbounded" });
+          expect(yield* Fiber.join(first)).toMatchObject({ stopReason: "cancelled" });
+          yield* Deferred.await(cancelReceived);
+          const next = yield* runtime
+            .prompt({ prompt: [{ type: "text", text: "second" }] })
+            .pipe(Effect.result, Effect.forkChild({ startImmediately: true }));
           expect(wire.filter((s) => s.includes('"method":"session/prompt"'))).toHaveLength(1);
-          yield* TestClock.adjust("500 millis");
-          expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "after window" }] })).toMatchObject({ stopReason: "end_turn" });
-        } else expect(yield* Fiber.join(next)).toMatchObject({ _tag: "Success", success: { stopReason: "end_turn" } });
-        yield* runtime.cancel;
-        expect(wire.filter((s) => s.includes('"method":"session/cancel"'))).toHaveLength(1);
-        expect(wire.some((s) => s.includes('"method":"@effect/rpc/Interrupt"'))).toBe(false);
-      }).pipe(Effect.provide(AcpSessionRuntime.layer({
-        spawn: { command: mockAgentCommand, args: mockAgentArgs, env: {
-          CODEWORK_ACP_CANCEL_RESPONSE_BARRIER: "1", CODEWORK_ACP_CODEBUDDY_CANCEL_WINDOW: codebuddy ? "1" : "0",
-        }}, cwd: process.cwd(), authMethodId: "test", clientInfo: { name: "codework-test", version: "0.0.0" },
-        protocolLogging: { logIncoming: true, logOutgoing: true, logger: (event) => Effect.gen(function* () {
-          if (event.stage !== "raw" || typeof event.payload !== "string") return;
-          if (event.direction === "outgoing") wire.push(event.payload);
-          else if (event.payload.includes('"title":"first-prompt-running"')) yield* Deferred.succeed(started, undefined);
-          else if (event.payload.includes('"title":"cancel-awaiting-release"')) yield* Deferred.succeed(cancelReceived, undefined);
-        })},
-      })), Effect.scoped);
+          expect(wire.filter((s) => s.includes('"method":"session/cancel"'))).toHaveLength(1);
+          yield* runtime.request("_codework/release_cancel", {});
+          if (codebuddy) {
+            expect(yield* Fiber.join(next)).toMatchObject({
+              _tag: "Failure",
+              failure: {
+                code: -32000,
+                method: "session/prompt",
+                errorMessage: expect.stringContaining("CodeBuddy 取消保护窗口"),
+              },
+            });
+            expect(wire.filter((s) => s.includes('"method":"session/prompt"'))).toHaveLength(1);
+            yield* TestClock.adjust("500 millis");
+            expect(
+              yield* runtime.prompt({ prompt: [{ type: "text", text: "after window" }] }),
+            ).toMatchObject({ stopReason: "end_turn" });
+          } else
+            expect(yield* Fiber.join(next)).toMatchObject({
+              _tag: "Success",
+              success: { stopReason: "end_turn" },
+            });
+          yield* runtime.cancel;
+          expect(wire.filter((s) => s.includes('"method":"session/cancel"'))).toHaveLength(1);
+          expect(wire.some((s) => s.includes('"method":"@effect/rpc/Interrupt"'))).toBe(false);
+        }).pipe(
+          Effect.provide(
+            AcpSessionRuntime.layer({
+              spawn: {
+                command: mockAgentCommand,
+                args: mockAgentArgs,
+                env: {
+                  CODEWORK_ACP_CANCEL_RESPONSE_BARRIER: "1",
+                  CODEWORK_ACP_CODEBUDDY_CANCEL_WINDOW: codebuddy ? "1" : "0",
+                },
+              },
+              cwd: process.cwd(),
+              authMethodId: "test",
+              clientInfo: { name: "codework-test", version: "0.0.0" },
+              protocolLogging: {
+                logIncoming: true,
+                logOutgoing: true,
+                logger: (event) =>
+                  Effect.gen(function* () {
+                    if (event.stage !== "raw" || typeof event.payload !== "string") return;
+                    if (event.direction === "outgoing") wire.push(event.payload);
+                    else if (event.payload.includes('"title":"first-prompt-running"'))
+                      yield* Deferred.succeed(started, undefined);
+                    else if (event.payload.includes('"title":"cancel-awaiting-release"'))
+                      yield* Deferred.succeed(cancelReceived, undefined);
+                  }),
+              },
+            }),
+          ),
+          Effect.scoped,
+        );
       }).pipe(Effect.provide(NodeServices.layer)),
     );
   }
@@ -993,20 +1068,38 @@ describe("AcpSessionRuntime", () => {
       const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
       const opened = yield* Deferred.make<void>();
       let waiting = true;
-      yield* runtime.handleRequestPermission(() => waiting
-        ? Deferred.succeed(opened, undefined).pipe(Effect.andThen(Effect.never))
-        : Effect.succeed({ outcome: { outcome: "selected" as const, optionId: "allow-once" } }));
+      yield* runtime.handleRequestPermission(() =>
+        waiting
+          ? Deferred.succeed(opened, undefined).pipe(Effect.andThen(Effect.never))
+          : Effect.succeed({ outcome: { outcome: "selected" as const, optionId: "allow-once" } }),
+      );
       yield* runtime.start();
-      const first = yield* runtime.prompt({ prompt: [{ type: "text", text: "waiting permission" }] }).pipe(Effect.forkChild);
+      const first = yield* runtime
+        .prompt({ prompt: [{ type: "text", text: "waiting permission" }] })
+        .pipe(Effect.forkChild);
       yield* Deferred.await(opened);
       yield* runtime.cancel;
       expect(yield* Fiber.join(first)).toMatchObject({ stopReason: "cancelled" });
       waiting = false;
-      expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "continue" }] })).toMatchObject({ stopReason: "end_turn" });
-    }).pipe(Effect.provide(AcpSessionRuntime.layer({
-      spawn: { command: mockAgentCommand, args: mockAgentArgs, env: { CODEWORK_ACP_EMIT_TOOL_CALLS: "1" } },
-      cwd: process.cwd(), authMethodId: "test", clientInfo: { name: "codework-test", version: "0.0.0" },
-    })), Effect.scoped, Effect.provide(NodeServices.layer)),
+      expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "continue" }] })).toMatchObject(
+        { stopReason: "end_turn" },
+      );
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_TOOL_CALLS: "1" },
+          },
+          cwd: process.cwd(),
+          authMethodId: "test",
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
   );
 
   it.effect("静默回合可本地取消，未确认远端终结时不发送下一请求", () =>
@@ -1026,13 +1119,20 @@ describe("AcpSessionRuntime", () => {
       const firstPromptResult = yield* Fiber.join(promptFiber);
       expect(firstPromptResult).toMatchObject({ stopReason: "cancelled" });
 
-      const secondPrompt = yield* runtime.prompt({
-        prompt: [{ type: "text", text: "second" }],
-      }).pipe(Effect.result, Effect.forkChild({ startImmediately: true }));
+      const secondPrompt = yield* runtime
+        .prompt({
+          prompt: [{ type: "text", text: "second" }],
+        })
+        .pipe(Effect.result, Effect.forkChild({ startImmediately: true }));
       yield* TestClock.adjust("6 seconds");
-      expect(yield* Fiber.join(secondPrompt)).toMatchObject({ _tag: "Failure", failure: {
-        code: -32000, method: "session/prompt", errorMessage: expect.stringContaining("新请求未发送"),
-      }});
+      expect(yield* Fiber.join(secondPrompt)).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          code: -32000,
+          method: "session/prompt",
+          errorMessage: expect.stringContaining("新请求未发送"),
+        },
+      });
     }).pipe(
       Effect.provide(
         AcpSessionRuntime.layer({
@@ -1506,7 +1606,6 @@ describe("AcpSessionRuntime", () => {
     );
   });
 
-  
   for (const [name, clientCapabilities, override] of [
     ["缺省能力", undefined, false],
     ["显式能力", { fs: { readTextFile: true, writeTextFile: false }, terminal: true }, false],
@@ -1518,7 +1617,10 @@ describe("AcpSessionRuntime", () => {
       const requests: AcpSessionRuntime.AcpSessionRequestLogEvent[] = [];
       return Effect.gen(function* () {
         const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
-        if (override) yield* runtime.handleExtRequest("host/capabilities", Schema.Unknown, () => Effect.succeed({ custom: true }));
+        if (override)
+          yield* runtime.handleExtRequest("host/capabilities", Schema.Unknown, () =>
+            Effect.succeed({ custom: true }),
+          );
         yield* runtime.start();
         const response = yield* runtime.prompt({ prompt: [{ type: "text", text: "hello" }] });
         expect(response.stopReason).toBe("end_turn");
@@ -1526,21 +1628,53 @@ describe("AcpSessionRuntime", () => {
           NodeFS.readFileSync(resultLogPath, "utf8").trim().split("\n"),
           (line) => decodeHostCapabilities(line),
         );
-        expect(logged).toEqual([override ? { custom: true } : {
-          fs: { readTextFile: clientCapabilities?.fs.readTextFile ?? false, writeTextFile: false },
-          terminal: { create: clientCapabilities?.terminal ?? false },
-        }]);
-        expect(requests.find((e) => e.method === "initialize" && e.status === "started")?.payload)
-          .toMatchObject({ clientCapabilities: clientCapabilities ?? { fs: { readTextFile: false, writeTextFile: false }, terminal: false } });
-      }).pipe(Effect.provide(AcpSessionRuntime.layer({
-        authMethodId: "test", spawn: { command: mockAgentCommand, args: mockAgentArgs, env: {
-          CODEWORK_ACP_REQUEST_HOST_CAPABILITIES: "1",
-          CODEWORK_ACP_HOST_CAPABILITIES_RESULT_LOG_PATH: resultLogPath,
-          CODEWORK_ACP_PROMPT_RESPONSE_TEXT: "ok",
-        }}, cwd: process.cwd(), clientInfo: { name: "codework-test", version: "0.0.0" },
-        clientCapabilities, requestLogger: (event) => Effect.sync(() => { requests.push(event); }),
-      })), Effect.scoped, Effect.provide(NodeServices.layer),
-      Effect.ensuring(Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }))));
+        expect(logged).toEqual([
+          override
+            ? { custom: true }
+            : {
+                fs: {
+                  readTextFile: clientCapabilities?.fs.readTextFile ?? false,
+                  writeTextFile: false,
+                },
+                terminal: { create: clientCapabilities?.terminal ?? false },
+              },
+        ]);
+        expect(
+          requests.find((e) => e.method === "initialize" && e.status === "started")?.payload,
+        ).toMatchObject({
+          clientCapabilities: clientCapabilities ?? {
+            fs: { readTextFile: false, writeTextFile: false },
+            terminal: false,
+          },
+        });
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            authMethodId: "test",
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: {
+                CODEWORK_ACP_REQUEST_HOST_CAPABILITIES: "1",
+                CODEWORK_ACP_HOST_CAPABILITIES_RESULT_LOG_PATH: resultLogPath,
+                CODEWORK_ACP_PROMPT_RESPONSE_TEXT: "ok",
+              },
+            },
+            cwd: process.cwd(),
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+            clientCapabilities,
+            requestLogger: (event) =>
+              Effect.sync(() => {
+                requests.push(event);
+              }),
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+        Effect.ensuring(
+          Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true })),
+        ),
+      );
     });
   }
 
@@ -1560,27 +1694,52 @@ describe("AcpSessionRuntime", () => {
         const created = requests.find((e) => e.method === "session/new" && e.status === "started");
         if (resumeSessionId) {
           expect(created).toBeUndefined();
-          expect(requests.some((e) => e.method === "session/load" && e.status === "succeeded")).toBe(true);
+          expect(
+            requests.some((e) => e.method === "session/load" && e.status === "succeeded"),
+          ).toBe(true);
         } else {
-          expect(created?.payload).toEqual({ cwd: process.cwd(), mcpServers: [], ...(expectedPolicy ? { environmentPolicy: expectedPolicy } : {}) });
+          expect(created?.payload).toEqual({
+            cwd: process.cwd(),
+            mcpServers: [],
+            ...(expectedPolicy ? { environmentPolicy: expectedPolicy } : {}),
+          });
         }
-      }).pipe(Effect.provide(AcpSessionRuntime.layer({
-        spawn: { command: mockAgentCommand, args: mockAgentArgs, env: { CODEWORK_ACP_AGENT_NAME: agentName } },
-        cwd: process.cwd(), authMethodId: "test", clientInfo: { name: "codework-test", version: "0.0.0" },
-        environmentPolicy, ...(resumeSessionId ? { resumeSessionId } : {}),
-        requestLogger: (event) => Effect.sync(() => { requests.push(event); }),
-      })), Effect.scoped, Effect.provide(NodeServices.layer));
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: {
+              command: mockAgentCommand,
+              args: mockAgentArgs,
+              env: { CODEWORK_ACP_AGENT_NAME: agentName },
+            },
+            cwd: process.cwd(),
+            authMethodId: "test",
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+            environmentPolicy,
+            ...(resumeSessionId ? { resumeSessionId } : {}),
+            requestLogger: (event) =>
+              Effect.sync(() => {
+                requests.push(event);
+              }),
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+      );
     });
   }
 
-  it.effect("环境策略只接收 struct.kind 的已知枚举", () => Effect.sync(() => {
-    const isRequest = Schema.is(AcpSchema.NewSessionRequest);
-    const base = { cwd: process.cwd(), mcpServers: [] };
-    expect(isRequest(base)).toBe(true);
-    for (const kind of ["inherited", "isolated", "granted"]) expect(isRequest({ ...base, environmentPolicy: { kind } })).toBe(true);
-    for (const policy of ["inherited", { kind: "unknown" }, {}, null]) expect(isRequest({ ...base, environmentPolicy: policy })).toBe(false);
-  }));
-
+  it.effect("环境策略只接收 struct.kind 的已知枚举", () =>
+    Effect.sync(() => {
+      const isRequest = Schema.is(AcpSchema.NewSessionRequest);
+      const base = { cwd: process.cwd(), mcpServers: [] };
+      expect(isRequest(base)).toBe(true);
+      for (const kind of ["inherited", "isolated", "granted"])
+        expect(isRequest({ ...base, environmentPolicy: { kind } })).toBe(true);
+      for (const policy of ["inherited", { kind: "unknown" }, {}, null])
+        expect(isRequest({ ...base, environmentPolicy: policy })).toBe(false);
+    }),
+  );
 
   it.effect("Gajae 空闲只接受当前根会话阶段，下一回合等待同一串行入口", () => {
     const replied = Deferred.makeUnsafe<void>();
@@ -1588,38 +1747,92 @@ describe("AcpSessionRuntime", () => {
     return Effect.gen(function* () {
       const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
       yield* runtime.start();
-      const first = yield* runtime.prompt({ prompt: [{ type: "text", text: "late" }] }).pipe(Effect.forkChild);
+      const first = yield* runtime
+        .prompt({ prompt: [{ type: "text", text: "late" }] })
+        .pipe(Effect.forkChild);
       yield* Deferred.await(replied);
-          // 请求日志回调仍在 RPC 完成栈上；冻结时钟先排空可运行 fiber，再取消空闲等待。
-          yield* TestClock.adjust("0 millis");
+      // 请求日志回调仍在 RPC 完成栈上；冻结时钟先排空可运行 fiber，再取消空闲等待。
+      yield* TestClock.adjust("0 millis");
       // RPC 回应与空闲阶段是两件事，原始回应日志是开始注入通知的屏障。
-      yield* runtime.request("_codework.test/gajae-update", { sessionId: "child", update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } } });
-      yield* runtime.getEvents().pipe(Stream.takeUntil((event) => event._tag === "ModeChanged"), Stream.runDrain);
-      const second = yield* runtime.prompt({ prompt: [{ type: "text", text: "early" }] }).pipe(Effect.forkChild);
+      yield* runtime.request("_codework.test/gajae-update", {
+        sessionId: "child",
+        update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
+      });
+      yield* runtime.getEvents().pipe(
+        Stream.takeUntil((event) => event._tag === "ModeChanged"),
+        Stream.runDrain,
+      );
+      const second = yield* runtime
+        .prompt({ prompt: [{ type: "text", text: "early" }] })
+        .pipe(Effect.forkChild);
       for (const notification of [
-        { sessionId: "child", update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } } },
-        { sessionId: "mock-session-1", _meta: { isReplay: true }, update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } } },
-        { sessionId: "mock-session-1", update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "working" } } },
-        { sessionId: "mock-session-1", update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: 3 } } },
-        { sessionId: "mock-session-1", update: { sessionUpdate: "current_mode_update", currentModeId: "default", _meta: { gjcPhase: "idle" } } },
+        {
+          sessionId: "child",
+          update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
+        },
+        {
+          sessionId: "mock-session-1",
+          _meta: { isReplay: true },
+          update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
+        },
+        {
+          sessionId: "mock-session-1",
+          update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "working" } },
+        },
+        {
+          sessionId: "mock-session-1",
+          update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: 3 } },
+        },
+        {
+          sessionId: "mock-session-1",
+          update: {
+            sessionUpdate: "current_mode_update",
+            currentModeId: "default",
+            _meta: { gjcPhase: "idle" },
+          },
+        },
       ]) {
         yield* runtime.request("_codework.test/gajae-update", notification);
-        yield* runtime.getEvents().pipe(Stream.takeUntil((event) => event._tag === "ModeChanged"), Stream.runDrain);
+        yield* runtime.getEvents().pipe(
+          Stream.takeUntil((event) => event._tag === "ModeChanged"),
+          Stream.runDrain,
+        );
       }
       yield* TestClock.adjust("59 seconds");
-      expect(requests.filter((event) => event.method === "session/prompt" && event.status === "started")).toHaveLength(1);
-      yield* runtime.request("_codework.test/gajae-update", { sessionId: "mock-session-1", update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } } });
+      expect(
+        requests.filter((event) => event.method === "session/prompt" && event.status === "started"),
+      ).toHaveLength(1);
+      yield* runtime.request("_codework.test/gajae-update", {
+        sessionId: "mock-session-1",
+        update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
+      });
       expect(yield* Fiber.join(first)).toEqual({ stopReason: "end_turn" });
       expect(yield* Fiber.join(second)).toEqual({ stopReason: "end_turn" });
-      expect(requests.filter((event) => event.method === "session/prompt" && event.status === "started")).toHaveLength(2);
-    }).pipe(Effect.provide(AcpSessionRuntime.layer({ spawn: { command: mockAgentCommand, args: mockAgentArgs,
-      env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "gajae-code" } }, cwd: process.cwd(),
-      clientInfo: { name: "codework-test", version: "0.0.0" }, authMethodId: "test",
-      requestLogger: (event) => Effect.gen(function* () {
-        requests.push(event);
-        if (event.method === "session/prompt" && event.status === "succeeded") yield* Deferred.succeed(replied, undefined);
-      }),
-    })), Effect.scoped, Effect.provide(NodeServices.layer));
+      expect(
+        requests.filter((event) => event.method === "session/prompt" && event.status === "started"),
+      ).toHaveLength(2);
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "gajae-code" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+          requestLogger: (event) =>
+            Effect.gen(function* () {
+              requests.push(event);
+              if (event.method === "session/prompt" && event.status === "succeeded")
+                yield* Deferred.succeed(replied, undefined);
+            }),
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    );
   });
 
   for (const action of ["cancel", "timeout"] as const) {
@@ -1630,25 +1843,55 @@ describe("AcpSessionRuntime", () => {
         yield* Effect.gen(function* () {
           const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
           yield* runtime.start();
-          const pending = yield* runtime.prompt({ prompt: [{ type: "text", text: "late" }] }).pipe(Effect.result, Effect.forkChild);
+          const pending = yield* runtime
+            .prompt({ prompt: [{ type: "text", text: "late" }] })
+            .pipe(Effect.result, Effect.forkChild);
           yield* Deferred.await(replied);
           // 请求日志回调仍在 RPC 完成栈上；冻结时钟先排空可运行 fiber，再取消空闲等待。
           yield* TestClock.adjust("0 millis");
           if (action === "cancel") yield* runtime.cancel;
           yield* TestClock.adjust("61 seconds");
           const result = yield* Fiber.join(pending);
-          if (action === "cancel") expect(result).toMatchObject({ _tag: "Success", success: { stopReason: "cancelled" } });
-          else expect(result).toMatchObject({ _tag: "Failure", failure: { code: -32000, method: "session/prompt", errorMessage: expect.stringContaining("状态未知") } });
-          expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "early" }] })).toEqual({ stopReason: "end_turn" });
-          expect(requests.filter((event) => event.method === "session/prompt" && event.status === "started")).toHaveLength(2);
-        }).pipe(Effect.provide(AcpSessionRuntime.layer({ spawn: { command: mockAgentCommand, args: mockAgentArgs,
-          env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "gajae-code" } }, cwd: process.cwd(),
-          clientInfo: { name: "codework-test", version: "0.0.0" }, authMethodId: "test",
-          requestLogger: (event) => Effect.gen(function* () {
-            requests.push(event);
-            if (event.method === "session/prompt" && event.status === "succeeded") yield* Deferred.succeed(replied, undefined);
-          }),
-        })), Effect.scoped);
+          if (action === "cancel")
+            expect(result).toMatchObject({ _tag: "Success", success: { stopReason: "cancelled" } });
+          else
+            expect(result).toMatchObject({
+              _tag: "Failure",
+              failure: {
+                code: -32000,
+                method: "session/prompt",
+                errorMessage: expect.stringContaining("状态未知"),
+              },
+            });
+          expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "early" }] })).toEqual({
+            stopReason: "end_turn",
+          });
+          expect(
+            requests.filter(
+              (event) => event.method === "session/prompt" && event.status === "started",
+            ),
+          ).toHaveLength(2);
+        }).pipe(
+          Effect.provide(
+            AcpSessionRuntime.layer({
+              spawn: {
+                command: mockAgentCommand,
+                args: mockAgentArgs,
+                env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "gajae-code" },
+              },
+              cwd: process.cwd(),
+              clientInfo: { name: "codework-test", version: "0.0.0" },
+              authMethodId: "test",
+              requestLogger: (event) =>
+                Effect.gen(function* () {
+                  requests.push(event);
+                  if (event.method === "session/prompt" && event.status === "succeeded")
+                    yield* Deferred.succeed(replied, undefined);
+                }),
+            }),
+          ),
+          Effect.scoped,
+        );
       }).pipe(Effect.provide(NodeServices.layer)),
     );
   }
@@ -1657,23 +1900,53 @@ describe("AcpSessionRuntime", () => {
     Effect.gen(function* () {
       const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
       yield* runtime.start();
-      expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "failure" }] }).pipe(Effect.result)).toMatchObject({ _tag: "Failure", failure: { code: -32603 } });
-      expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "early" }] })).toEqual({ stopReason: "end_turn" });
-    }).pipe(Effect.provide(AcpSessionRuntime.layer({ spawn: { command: mockAgentCommand, args: mockAgentArgs,
-      env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "gajae-code" } }, cwd: process.cwd(),
-      clientInfo: { name: "codework-test", version: "0.0.0" }, authMethodId: "test",
-    })), Effect.scoped, Effect.provide(NodeServices.layer)),
+      expect(
+        yield* runtime.prompt({ prompt: [{ type: "text", text: "failure" }] }).pipe(Effect.result),
+      ).toMatchObject({ _tag: "Failure", failure: { code: -32603 } });
+      expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "early" }] })).toEqual({
+        stopReason: "end_turn",
+      });
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "gajae-code" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
   );
 
   it.effect("其它 ACP Agent 不增加 Gajae 空闲等待", () =>
     Effect.gen(function* () {
       const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
       yield* runtime.start();
-      expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "late" }] })).toEqual({ stopReason: "end_turn" });
-    }).pipe(Effect.provide(AcpSessionRuntime.layer({ spawn: { command: mockAgentCommand, args: mockAgentArgs,
-      env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "other-agent" } }, cwd: process.cwd(),
-      clientInfo: { name: "codework-test", version: "0.0.0" }, authMethodId: "test",
-    })), Effect.scoped, Effect.provide(NodeServices.layer)),
+      expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "late" }] })).toEqual({
+        stopReason: "end_turn",
+      });
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "other-agent" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
   );
 
   it.effect("协议子进程工具结果在元数据和 null 增量后保留到失败终态", () =>
@@ -1682,54 +1955,179 @@ describe("AcpSessionRuntime", () => {
       yield* runtime.start();
       const seen: Array<AcpSessionRuntime.AcpSessionRuntimeEvent> = [];
       for (const update of [
-        { sessionUpdate: "tool_call", toolCallId: "partial", title: "原命令", kind: "execute", status: "in_progress", rawInput: { command: "old" }, rawOutput: { content: [{ type: "text", text: "真实结果\n真实结果" }] } },
-        { sessionUpdate: "tool_call_update", toolCallId: "partial", title: "更新命令", kind: "execute", rawInput: { command: "new" } },
-        { sessionUpdate: "tool_call_update", toolCallId: "partial", kind: "execute", rawInput: null, rawOutput: null },
-        { sessionUpdate: "tool_call_update", toolCallId: "partial", kind: "execute", status: "failed" },
+        {
+          sessionUpdate: "tool_call",
+          toolCallId: "partial",
+          title: "原命令",
+          kind: "execute",
+          status: "in_progress",
+          rawInput: { command: "old" },
+          rawOutput: { content: [{ type: "text", text: "真实结果\n真实结果" }] },
+        },
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "partial",
+          title: "更新命令",
+          kind: "execute",
+          rawInput: { command: "new" },
+        },
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "partial",
+          kind: "execute",
+          rawInput: null,
+          rawOutput: null,
+        },
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "partial",
+          kind: "execute",
+          status: "failed",
+        },
       ]) {
-        yield* runtime.request("_codework.test/gajae-update", { sessionId: "mock-session-1", update });
-        yield* runtime.getEvents().pipe(Stream.takeUntil((event) => event._tag === "ModeChanged"), Stream.runForEach((event) => Effect.sync(() => { seen.push(event); })));
+        yield* runtime.request("_codework.test/gajae-update", {
+          sessionId: "mock-session-1",
+          update,
+        });
+        yield* runtime.getEvents().pipe(
+          Stream.takeUntil((event) => event._tag === "ModeChanged"),
+          Stream.runForEach((event) =>
+            Effect.sync(() => {
+              seen.push(event);
+            }),
+          ),
+        );
       }
       const tools = seen.filter((event) => event._tag === "ToolCallUpdated");
       expect(tools).toHaveLength(2);
-      expect(tools.at(-1)).toMatchObject({ toolCall: { toolCallId: "partial", kind: "execute", status: "failed", detail: "真实结果\n真实结果", command: "new", data: { rawInput: { command: "new" }, rawOutput: { content: [{ type: "text", text: "真实结果\n真实结果" }] } } } });
-    }).pipe(Effect.provide(AcpSessionRuntime.layer({ spawn: { command: mockAgentCommand, args: mockAgentArgs, env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1" } }, cwd: process.cwd(), clientInfo: { name: "codework-test", version: "0.0.0" }, authMethodId: "test" })), Effect.scoped, Effect.provide(NodeServices.layer)),
+      expect(tools.at(-1)).toMatchObject({
+        toolCall: {
+          toolCallId: "partial",
+          kind: "execute",
+          status: "failed",
+          detail: "真实结果\n真实结果",
+          command: "new",
+          data: {
+            rawInput: { command: "new" },
+            rawOutput: { content: [{ type: "text", text: "真实结果\n真实结果" }] },
+          },
+        },
+      });
+    }).pipe(
+      Effect.provide(
+        AcpSessionRuntime.layer({
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+        }),
+      ),
+      Effect.scoped,
+      Effect.provide(NodeServices.layer),
+    ),
   );
 
-
   for (const status of ["completed", "failed"] as const) {
-    it.effect(
-      status + " 工具在本回合补充通知中保留结果，下一 prompt 同 ID 不继承终态",
-      () => Effect.gen(function* () {
+    it.effect(status + " 工具在本回合补充通知中保留结果，下一 prompt 同 ID 不继承终态", () =>
+      Effect.gen(function* () {
         const replied = yield* Deferred.make<void>();
         const runtime = yield* AcpSessionRuntime.make({
-          spawn: { command: mockAgentCommand, args: mockAgentArgs, env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "gajae-code" } },
-          cwd: process.cwd(), clientInfo: { name: "codework-test", version: "0.0.0" }, authMethodId: "test",
-          requestLogger: (event) => event.method === "session/prompt" && event.status === "succeeded" ? Deferred.succeed(replied, undefined).pipe(Effect.asVoid) : Effect.void,
+          spawn: {
+            command: mockAgentCommand,
+            args: mockAgentArgs,
+            env: { CODEWORK_ACP_EMIT_GAJAE_IDLE: "1", CODEWORK_ACP_AGENT_NAME: "gajae-code" },
+          },
+          cwd: process.cwd(),
+          clientInfo: { name: "codework-test", version: "0.0.0" },
+          authMethodId: "test",
+          requestLogger: (event) =>
+            event.method === "session/prompt" && event.status === "succeeded"
+              ? Deferred.succeed(replied, undefined).pipe(Effect.asVoid)
+              : Effect.void,
         });
         yield* runtime.start();
-        const firstPrompt = yield* runtime.prompt({ prompt: [{ type: "text", text: "late" }] }).pipe(Effect.forkChild);
+        const firstPrompt = yield* runtime
+          .prompt({ prompt: [{ type: "text", text: "late" }] })
+          .pipe(Effect.forkChild);
         yield* Deferred.await(replied);
         yield* TestClock.adjust("0 millis");
         const seen: Array<AcpSessionRuntime.AcpSessionRuntimeEvent> = [];
         for (const update of [
-          { sessionUpdate: "tool_call", toolCallId: "terminal-partial", title: "命令", kind: "execute", status, rawInput: { command: "check" }, rawOutput: { content: [{ type: "text", text: "FIRST_RESULT" }] } },
-          { sessionUpdate: "tool_call_update", toolCallId: "terminal-partial", title: "补充标题", kind: "execute", rawInput: null, rawOutput: null },
-          { sessionUpdate: "tool_call_update", toolCallId: "terminal-partial", rawOutput: { content: [{ type: "text", text: "SECOND_RESULT" }] } },
+          {
+            sessionUpdate: "tool_call",
+            toolCallId: "terminal-partial",
+            title: "命令",
+            kind: "execute",
+            status,
+            rawInput: { command: "check" },
+            rawOutput: { content: [{ type: "text", text: "FIRST_RESULT" }] },
+          },
+          {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "terminal-partial",
+            title: "补充标题",
+            kind: "execute",
+            rawInput: null,
+            rawOutput: null,
+          },
+          {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "terminal-partial",
+            rawOutput: { content: [{ type: "text", text: "SECOND_RESULT" }] },
+          },
         ]) {
-          yield* runtime.request("_codework.test/gajae-update", { sessionId: "mock-session-1", update });
-          yield* runtime.getEvents().pipe(Stream.takeUntil((event) => event._tag === "ModeChanged"), Stream.runForEach((event) => Effect.sync(() => { seen.push(event); })));
+          yield* runtime.request("_codework.test/gajae-update", {
+            sessionId: "mock-session-1",
+            update,
+          });
+          yield* runtime.getEvents().pipe(
+            Stream.takeUntil((event) => event._tag === "ModeChanged"),
+            Stream.runForEach((event) =>
+              Effect.sync(() => {
+                seen.push(event);
+              }),
+            ),
+          );
         }
         const tools = seen.filter((event) => event._tag === "ToolCallUpdated");
-        expect(tools[1]).toMatchObject({ toolCall: { status, command: "check", detail: "FIRST_RESULT" } });
-        expect(tools[2]).toMatchObject({ toolCall: { status, command: "check", detail: "SECOND_RESULT" } });
+        expect(tools[1]).toMatchObject({
+          toolCall: { status, command: "check", detail: "FIRST_RESULT" },
+        });
+        expect(tools[2]).toMatchObject({
+          toolCall: { status, command: "check", detail: "SECOND_RESULT" },
+        });
         expect(tools).toHaveLength(3);
-        yield* runtime.request("_codework.test/gajae-update", { sessionId: "mock-session-1", update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } } });
-        yield* runtime.getEvents().pipe(Stream.takeUntil((event) => event._tag === "ModeChanged"), Stream.runDrain);
+        yield* runtime.request("_codework.test/gajae-update", {
+          sessionId: "mock-session-1",
+          update: { sessionUpdate: "session_info_update", _meta: { gjcPhase: "idle" } },
+        });
+        yield* runtime.getEvents().pipe(
+          Stream.takeUntil((event) => event._tag === "ModeChanged"),
+          Stream.runDrain,
+        );
         expect(yield* Fiber.join(firstPrompt)).toEqual({ stopReason: "end_turn" });
-        expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "early" }] })).toEqual({ stopReason: "end_turn" });
-        yield* runtime.request("_codework.test/gajae-update", { sessionId: "mock-session-1", update: { sessionUpdate: "tool_call", toolCallId: "terminal-partial", title: "新读取", kind: "read", status: "pending", rawInput: { path: "new.txt" } } });
-        const nextEvents = yield* runtime.getEvents().pipe(Stream.takeUntil((event) => event._tag === "ModeChanged"), Stream.runCollect);
+        expect(yield* runtime.prompt({ prompt: [{ type: "text", text: "early" }] })).toEqual({
+          stopReason: "end_turn",
+        });
+        yield* runtime.request("_codework.test/gajae-update", {
+          sessionId: "mock-session-1",
+          update: {
+            sessionUpdate: "tool_call",
+            toolCallId: "terminal-partial",
+            title: "新读取",
+            kind: "read",
+            status: "pending",
+            rawInput: { path: "new.txt" },
+          },
+        });
+        const nextEvents = yield* runtime.getEvents().pipe(
+          Stream.takeUntil((event) => event._tag === "ModeChanged"),
+          Stream.runCollect,
+        );
         const nextTool = nextEvents.find((event) => event._tag === "ToolCallUpdated");
         expect(nextTool).toMatchObject({ toolCall: { status: "pending", kind: "read" } });
         if (nextTool?._tag !== "ToolCallUpdated") throw new Error("缺少新工具事件");
@@ -1739,5 +2137,4 @@ describe("AcpSessionRuntime", () => {
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     );
   }
-
 });

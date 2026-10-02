@@ -1082,7 +1082,11 @@ function MessageAttachmentImages({
   const imageAttachments = images.filter((attachment) => attachment.type === "image");
   const audioAttachments = images.filter((attachment) => attachment.type === "audio");
   const fileAttachments = images.filter((attachment) => attachment.type === "file");
-  if (imageAttachments.length === 0 && audioAttachments.length === 0 && fileAttachments.length === 0) {
+  if (
+    imageAttachments.length === 0 &&
+    audioAttachments.length === 0 &&
+    fileAttachments.length === 0
+  ) {
     return null;
   }
   return (

@@ -4,12 +4,22 @@ export function isolatedProbeEnvironment(
   environment: Readonly<NodeJS.ProcessEnv> = process.env,
 ): NodeJS.ProcessEnv {
   const systemKeys = new Set([
-    "PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "TEMP", "TMP",
+    "PATH",
+    "PATHEXT",
+    "SYSTEMROOT",
+    "SYSTEMDRIVE",
+    "WINDIR",
+    "COMSPEC",
+    "TEMP",
+    "TMP",
   ]);
   return {
-    ...Object.fromEntries(Object.entries(environment).map(([key, value]) => [
-      key, systemKeys.has(key.toUpperCase()) ? value : "",
-    ])),
+    ...Object.fromEntries(
+      Object.entries(environment).map(([key, value]) => [
+        key,
+        systemKeys.has(key.toUpperCase()) ? value : "",
+      ]),
+    ),
     HOME: home,
     USERPROFILE: home,
     APPDATA: home,

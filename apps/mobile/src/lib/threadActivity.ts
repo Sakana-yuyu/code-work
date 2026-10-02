@@ -1569,7 +1569,9 @@ function workLogToggleBreakdown(hidden: ReadonlyArray<ThreadFeedActivity>): stri
   // 本地代码搜索与网页搜索共用「搜索」计数；图标已区分 search vs globe。
   const searchCount = (counts.get("search") ?? 0) + (counts.get("globe") ?? 0);
   if (searchCount > 0) {
-    parts.push(t("threads.worklog.breakdown.searches", { count: searchCount, countValue: searchCount }));
+    parts.push(
+      t("threads.worklog.breakdown.searches", { count: searchCount, countValue: searchCount }),
+    );
   }
   if (other > 0) {
     parts.push(t("threads.worklog.breakdown.other", { count: other, countValue: other }));
