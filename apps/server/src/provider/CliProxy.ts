@@ -971,10 +971,13 @@ export const makeCliProxyService = (
           const current = yield* settings.getSettings.pipe(Effect.mapError(safeError));
           const token = yield* ensureGatewayToken(secretStore);
           const adapters = localGatewayAdapters(current, serverOrigin, token, request.instanceId);
-          if (adapters.length === 0)
+          const accountIds = Object.values(current.localAccountPool.accounts)
+            .filter((account) => account.enabled && account.provider !== "cursor")
+            .map((account) => account.id);
+          if (accountIds.length === 0)
             return yield* new CliProxyError({
               code: "invalid_config",
-              detail: "请先导入并启用至少一个带模型声明的官方账号。",
+              detail: "请先导入并启用至少一个官方账号。",
             });
           const existing = current.providerInstances[request.instanceId];
           if (existing !== undefined && existing.driver !== "byok")
@@ -982,9 +985,6 @@ export const makeCliProxyService = (
               code: "invalid_config",
               detail: "该实例名称已被其他配置使用，请选择新的实例名称。",
             });
-          const accountIds = Object.values(current.localAccountPool.accounts)
-            .filter((account) => account.enabled && account.provider !== "cursor")
-            .map((account) => account.id);
           const nextSource = {
             ...existing,
             driver: ProviderDriverKind.make("byok"),

@@ -39,7 +39,6 @@ import {
 
 import {
   ByokSettings,
-  LOCAL_POOL_DEFAULT_MODELS,
   ProviderDriverKind,
   resolveProviderInstanceEnabled,
   type ByokModelAdapter,
@@ -233,20 +232,19 @@ export const gatewayAdapterRoutes = (
               account.authKind === "oauth"
             ),
         );
-      const models = [
-        ...new Set(
-          accounts.flatMap((account) =>
-            account === undefined
-              ? []
-              : account.models.length > 0
-                ? account.models
-                : LOCAL_POOL_DEFAULT_MODELS[account.provider],
-          ),
-        ),
-      ];
+      const models = [...new Set(accounts.flatMap((account) => account?.models ?? []))];
       // 同池的其他账号即使声明了模型列表，无声明的账号仍可按请求模型通配；
       // 仅为请求生成一次性路由，交给 pickLocalAccount 校验实际可选账号。
-      const requestedModelId = requestedModel?.trim();
+      const requested = requestedModel?.trim();
+      const localPrefix = `local:${instanceId}:${provider}:`;
+      const requestedModelId = requested?.startsWith("local:")
+        ? requested.startsWith(localPrefix)
+          ? requested
+              .slice(localPrefix.length)
+              .replace(/\[[^[\]]*\]$/u, "")
+              .trim()
+          : undefined
+        : requested;
       if (
         requestedModelId &&
         !models.includes(requestedModelId) &&
@@ -272,7 +270,10 @@ export const gatewayAdapterRoutes = (
       }
       // zcode 账号额外发布体验套餐通道：官方三模型、zcode-plan 网关、JWT 鉴权，
       // 与 Coding Plan Key 的 ultra 通道并存；池里没有 JWT 时由转发层报错兜底。
-      if (provider === "zcode") {
+      if (
+        provider === "zcode" &&
+        accounts.some((account) => account !== undefined && account.models.length > 0)
+      ) {
         for (const modelId of ZCODE_START_PLAN_MODELS) {
           routes.push({
             id: `local:${instanceId}:zcode-start:${modelId}`,

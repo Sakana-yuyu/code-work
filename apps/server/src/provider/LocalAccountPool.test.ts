@@ -190,6 +190,37 @@ describe("LocalAccountPool", () => {
     expect(pickLocalAccount(value, "codex", undefined, "gpt-b")?.id).toBe("b");
     expect(pickLocalAccount(value, "codex", undefined, "gpt-c")).toBeUndefined();
   });
+  it.each(["codex", "claude", "xai", "zcode"] as const)(
+    "%s 空模型账号不贡献默认目录或体验套餐通道，已同步账号仍可选",
+    (provider) => {
+      const base = settings("fill-first");
+      const pending = {
+        ...base,
+        localAccountPool: {
+          ...base.localAccountPool,
+          accounts: {
+            [id("a")]: { ...base.localAccountPool.accounts[id("a")]!, provider },
+          },
+        },
+      };
+      expect(localGatewayAdapters(pending, "http://localhost", "token", "pool")).toEqual([]);
+      const mixed = {
+        ...pending,
+        localAccountPool: {
+          ...pending.localAccountPool,
+          accounts: {
+            ...pending.localAccountPool.accounts,
+            [id("b")]: { ...base.localAccountPool.accounts[id("b")]!, models: ["gpt-ready"] },
+          },
+        },
+      };
+      expect(
+        localGatewayAdapters(mixed, "http://localhost", "token", "pool").map(
+          (adapter) => adapter.id,
+        ),
+      ).toEqual(["local:pool:codex:gpt-ready"]);
+    },
+  );
   it("refreshLocalPoolInstanceAdapters 对最新目录返回 undefined", () => {
     const base = {
       ...settings("round-robin"),

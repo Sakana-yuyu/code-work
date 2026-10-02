@@ -9,7 +9,7 @@ import { FetchHttpClient, HttpRouter } from "effect/unstable/http";
 
 import {
   DEFAULT_SERVER_SETTINGS,
-  LOCAL_POOL_DEFAULT_MODELS,
+  LocalAccountId,
   ServerSettingsError,
   type ServerProvider,
   type ServerSettings,
@@ -316,7 +316,46 @@ describe("gatewayAdapterRoutes", () => {
         providerInstances: { cpa: ["z1"] },
       },
     } as ServerSettings;
-    const routes = gatewayAdapterRoutes(settings, "cpa");
+    expect(gatewayAdapterRoutes(settings, "cpa")).toEqual([]);
+    expect(routedServerProviderModels(settings, "anthropic", "cpa")).toEqual([]);
+    expect(
+      pickGatewayAdapter(
+        gatewayAdapterRoutes(settings, "cpa"),
+        "anthropic",
+        "local:cpa:zcode-start:GLM-5.2",
+      ),
+    ).toBeUndefined();
+    const accountId = LocalAccountId.make("z1");
+    const synced = {
+      ...settings,
+      localAccountPool: {
+        ...settings.localAccountPool,
+        accounts: {
+          [accountId]: { ...settings.localAccountPool.accounts[accountId]!, models: ["GLM-5.3"] },
+        },
+      },
+    };
+    const routes = gatewayAdapterRoutes(synced, "cpa");
+    expect(
+      routes.filter((route) => route.localChannel === undefined).map((route) => route.id),
+    ).toEqual(["local:cpa:zcode:GLM-5.3"]);
+    expect(
+      routedServerProviderModels(synced, "anthropic", "cpa").map((model) => model.slug),
+    ).toEqual(routes.map((route) => route.id));
+    expect(
+      gatewayAdapterRoutes(
+        {
+          ...synced,
+          localAccountPool: {
+            ...synced.localAccountPool,
+            accounts: {
+              [accountId]: { ...synced.localAccountPool.accounts[accountId]!, enabled: false },
+            },
+          },
+        },
+        "cpa",
+      ),
+    ).toEqual([]);
     const start = routes.filter((route) => route.localChannel === "zcode-start");
     expect(start.map((route) => route.id)).toEqual([
       "local:cpa:zcode-start:GLM-5.3-Flash",
@@ -378,14 +417,56 @@ describe("gatewayAdapterRoutes", () => {
       },
     } as unknown as ServerSettings;
 
+    expect(gatewayAdapterRoutes(settings, "codex")).toEqual([]);
+    expect(routedServerProviderModels(settings, "openai", "codex")).toEqual([]);
     const routes = gatewayAdapterRoutes(settings, "codex", "gpt-5.4");
-    expect(routes.map((route) => route.id)).toEqual(
-      LOCAL_POOL_DEFAULT_MODELS.codex.map((model) => `local:codex:codex:${model}`),
-    );
+    expect(routes.map((route) => route.id)).toEqual(["local:codex:codex:gpt-5.4"]);
     expect(pickGatewayAdapter(routes, "openai", "local:codex:codex:gpt-5.4")?.localProvider).toBe(
       "codex",
     );
   });
+  it.each([
+    [undefined, "local:pool:codex:gpt-5.4", ["local:pool:codex:gpt-5.4"]],
+    [undefined, "local:other:codex:gpt-5.4", ["local:other:codex:gpt-5.4"]],
+    ["pool", "local:other:codex:gpt-5.4", []],
+    [undefined, "local:pool:claude:claude-sonnet-5", []],
+  ] as const)("完整 slug 按来源 %s 隔离请求 %s", (source, requested, expected) => {
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      ...settingsWithInstances({
+        pool: { driver: "byok", enabled: true, config: {} },
+        other: { driver: "byok", enabled: true, config: {} },
+      }),
+      localAccountPool: {
+        accounts: Object.fromEntries(
+          [
+            ["codex-a", "codex"],
+            ["codex-b", "codex"],
+            ["xai-a", "xai"],
+          ].map(([id, provider]) => [
+            id,
+            { id, provider, displayName: id, credentialRef: id, enabled: true, models: [] },
+          ]),
+        ),
+        strategy: "round-robin",
+        providerInstances: { pool: ["codex-a", "xai-a"], other: ["codex-b"] },
+      },
+    } as ServerSettings;
+    const routes = gatewayAdapterRoutes(settings, source, requested);
+    expect(routes.map((route) => route.id)).toEqual(expected);
+    expect(routes.map((route) => route.modelId)).toEqual(expected.map(() => "gpt-5.4"));
+    if (expected.length > 0) {
+      expect(pickGatewayAdapter(routes, "openai", requested)).toMatchObject({
+        id: requested,
+        localProvider: "codex",
+        localAccountIds: requested.startsWith("local:pool:") ? ["codex-a", "xai-a"] : ["codex-b"],
+      });
+    } else {
+      expect(pickGatewayAdapter(routes, "openai", requested)).toBeUndefined();
+    }
+    expect(gatewayAdapterRoutes(settings)).toEqual([]);
+  });
+
   it("混合模型限制与通配账号时仍为请求模型生成唯一路由", () => {
     const settings = {
       ...DEFAULT_SERVER_SETTINGS,
@@ -414,7 +495,14 @@ describe("gatewayAdapterRoutes", () => {
       },
     } as unknown as ServerSettings;
 
+    expect(gatewayAdapterRoutes(settings, "codex").map((route) => route.id)).toEqual([
+      "local:codex:codex:gpt-5.4",
+    ]);
+    expect(
+      routedServerProviderModels(settings, "openai", "codex").map((model) => model.slug),
+    ).toEqual(["local:codex:codex:gpt-5.4"]);
     const customRoutes = gatewayAdapterRoutes(settings, "codex", "gpt-6");
+    expect(customRoutes.map((route) => route.modelId)).toEqual(["gpt-5.4", "gpt-6"]);
     expect(customRoutes.filter((route) => route.modelId === "gpt-6")).toHaveLength(1);
     expect(customRoutes.filter((route) => route.modelId === "gpt-5.4")).toHaveLength(1);
     expect(new Set(customRoutes.map((route) => route.modelId)).size).toBe(customRoutes.length);
@@ -422,7 +510,7 @@ describe("gatewayAdapterRoutes", () => {
       gatewayAdapterRoutes(settings, "codex", "gpt-5.4")
         .map((route) => route.modelId)
         .sort(),
-    ).toEqual([...LOCAL_POOL_DEFAULT_MODELS.codex].sort());
+    ).toEqual(["gpt-5.4"]);
   });
   it("不为 OpenCode 发布无法使用 Codex OAuth 的 Chat Completions 路由", () => {
     const settings = {

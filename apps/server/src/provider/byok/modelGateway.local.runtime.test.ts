@@ -240,7 +240,7 @@ describe("本地账号网关 runtime smoke", () => {
         displayName: "Z",
         credentialRef: "z-jwt",
         enabled: true,
-        models: [],
+        models: ["GLM-5.3-Flash"],
       },
     });
     const gateway = makeGateway(settings, [
@@ -292,7 +292,7 @@ describe("本地账号网关 runtime smoke", () => {
         displayName: "KeyOnly",
         credentialRef: "z-key",
         enabled: true,
-        models: [],
+        models: ["GLM-5.3"],
       },
       "z-both": {
         id: "z-both",
@@ -300,7 +300,7 @@ describe("本地账号网关 runtime smoke", () => {
         displayName: "Both",
         credentialRef: "z-both",
         enabled: true,
-        models: [],
+        models: ["GLM-5.3"],
       },
     });
     const gateway = makeGateway(settings, [
@@ -524,6 +524,116 @@ describe("本地账号网关 runtime smoke", () => {
     });
     expect(gateway.captured[0]?.headers.authorization).toBe("Bearer codex-oauth-token");
     await gateway.dispose();
+  });
+
+  it.each([
+    ["/byok-gw/openai/source/pool/v1/responses", "local:pool:codex:gpt-5.4", 200],
+    ["/v1/responses", "local:pool:codex:gpt-5.4", 200],
+    ["/v1/responses", "gpt-5.4", 200],
+    ["/byok-gw/openai/source/pool/v1/responses", "local:other:codex:gpt-5.4", 404],
+    ["/v1/responses", "local:other:codex:gpt-5.4", 404],
+    ["/v1/responses", "local:pool:xai:gpt-5.4", 404],
+    ["/byok-gw/anthropic/source/pool/v1/messages", "local:pool:codex:gpt-5.4", 404],
+    ["/v1/responses", "local:pool:codex:", 404],
+  ] as const)("空目录 HTTP %s 请求 %s 返回 %i 且不发布临时模型", async (path, model, status) => {
+    const settings = localSettings("pool", "byok", "codex", ["codex-oauth"], {
+      "codex-oauth": {
+        id: "codex-oauth",
+        provider: "codex",
+        authKind: "oauth",
+        displayName: "Pending",
+        credentialRef: "codex-oauth",
+        enabled: true,
+        models: [],
+      },
+    });
+    const gateway = makeGateway(
+      settings,
+      [Response.json({ id: "response-1" })],
+      undefined,
+      path.startsWith("/v1/") ? cliProxyGatewayRouteLayer : byokGatewayRouteLayer,
+    );
+    const catalog = () =>
+      gateway.handler(
+        new Request(
+          `http://gateway.test${path.startsWith("/v1/") ? "/v1/models" : "/byok-gw/openai/source/pool/v1/models"}`,
+          { headers: { authorization: `Bearer ${gateway.token}` } },
+        ),
+      );
+    try {
+      const before = await catalog();
+      expect(before.status).toBe(200);
+      expect(await before.json()).toEqual({ object: "list", data: [] });
+      const response = await gateway.handler(
+        new Request(`http://gateway.test${path}`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${gateway.token}`, "content-type": "application/json" },
+          body: JSON.stringify({ model, input: "hi" }),
+        }),
+      );
+      expect(response.status).toBe(status);
+      if (status === 200) {
+        expect(await response.json()).toEqual({ id: "response-1" });
+        expect(gateway.captured).toHaveLength(1);
+        expect(gateway.captured[0]).toMatchObject({
+          url: "https://chatgpt.com/backend-api/codex/responses",
+          headers: { authorization: "Bearer codex-oauth-token" },
+          body: { model: "gpt-5.4", input: "hi" },
+        });
+      } else {
+        expect(await response.json()).toMatchObject({
+          error: {
+            type: path.includes("/anthropic/") ? "not_found_error" : "invalid_request_error",
+            message: expect.stringContaining(model),
+          },
+        });
+        expect(gateway.captured).toEqual([]);
+      }
+      const after = await catalog();
+      expect(after.status).toBe(200);
+      expect(await after.json()).toEqual({ object: "list", data: [] });
+    } finally {
+      await gateway.dispose();
+    }
+  });
+
+  it("空模型 Claude HTTP 完整 slug 保留上下文限定兼容并仅转发裸模型", async () => {
+    const settings = localSettings("pool", "byok", "claude", ["claude-oauth"], {
+      "claude-oauth": {
+        id: "claude-oauth",
+        provider: "claude",
+        authKind: "oauth",
+        displayName: "Pending",
+        credentialRef: "claude-oauth",
+        enabled: true,
+        models: [],
+      },
+    });
+    const gateway = makeGateway(settings, [Response.json({ content: [] })]);
+    try {
+      const response = await gateway.handler(
+        new Request("http://gateway.test/byok-gw/anthropic/source/pool/v1/messages", {
+          method: "POST",
+          headers: { authorization: `Bearer ${gateway.token}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "local:pool:claude:claude-sonnet-5[1m]",
+            max_tokens: 16,
+            messages: [],
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ content: [] });
+      expect(gateway.captured).toHaveLength(1);
+      expect(gateway.captured[0]).toMatchObject({
+        url: "https://api.anthropic.com/v1/messages",
+        headers: { authorization: "Bearer claude-oauth-token" },
+        body: { model: "claude-sonnet-5", max_tokens: 16, messages: [] },
+      });
+      expect(gatewayAdapterRoutes(settings, "pool")).toEqual([]);
+    } finally {
+      await gateway.dispose();
+    }
   });
 
   it("首账号 429 时换用健康账号且只返回第二次的流", async () => {

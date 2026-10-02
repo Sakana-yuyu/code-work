@@ -5,7 +5,6 @@
 import * as NodeCrypto from "node:crypto";
 import {
   ByokModelAdapter,
-  LOCAL_POOL_DEFAULT_MODELS,
   LocalAccountProvider,
   type LocalAccount,
   type LocalAccountAuthKind,
@@ -487,8 +486,10 @@ export const importLocalAccount = (
         const previousAccount = current.localAccountPool.accounts[localAccountId];
         const autoRoutedByokInstances = new Set(
           Object.entries(current.providerInstances)
-            .filter(([, instance]) => {
+            .filter(([instanceId, instance]) => {
               if (instance.driver !== "byok") return false;
+              if (Object.hasOwn(current.localAccountPool.providerInstances, instanceId))
+                return true;
               const config = instance.config;
               return (
                 config !== null &&
@@ -753,15 +754,12 @@ export const localGatewayAdapters = (
   instanceId: string,
 ): readonly ByokModelAdapter[] => {
   const accounts = Object.values(settings.localAccountPool.accounts).filter(
-    (account) => account.enabled && account.provider !== "cursor",
+    (account) => account.enabled && account.provider !== "cursor" && account.models.length > 0,
   );
   const channelAdapters = accounts.flatMap((account) =>
-    // 未声明模型的账号按平台默认目录出通道；路由语义仍是"不限模型"，
-    // 目录只决定 BYOK 实例里能看到/选到哪些模型。
-    (account.models.length > 0
-      ? account.models
-      : LOCAL_POOL_DEFAULT_MODELS[account.provider]
-    ).flatMap((modelId) => {
+    // 未声明模型的账号保留绑定，但不贡献可选目录；
+    // 显式请求仍可按模型通配，目录只决定 BYOK 实例里能看到/选到哪些模型。
+    account.models.flatMap((modelId) => {
       const protocol =
         account.provider === "claude" || account.provider === "zcode"
           ? ("anthropic" as const)

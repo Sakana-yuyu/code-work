@@ -26,11 +26,15 @@ import { CliProxyRuntime } from "./CliProxyRuntime.ts";
 import { makeCliProxyService, resolveLocalPoolProvider } from "./CliProxy.ts";
 import { localGatewayAdapters } from "./LocalAccountPool.ts";
 import { localPoolUsageStore } from "./LocalPoolUsage.ts";
-import { gatewayAdapterRoutes, pickGatewayAdapter } from "./byok/modelGateway.ts";
+import {
+  gatewayAdapterRoutes,
+  pickGatewayAdapter,
+  routedServerProviderModels,
+} from "./byok/modelGateway.ts";
 
 const account = (
   id: string,
-  provider: "codex" | "claude" | "xai" | "cursor",
+  provider: "codex" | "claude" | "xai" | "cursor" | "zcode",
   models: readonly string[],
 ) => ({
   id: id as never,
@@ -146,7 +150,7 @@ describe("内置 CLIProxyAPI 核心", () => {
     ),
   );
 
-  it.effect("默认模型账号能接入，多个账号不重复发布线路，全部禁用后可恢复", () =>
+  it.effect("空模型账号能接入，同步后多个账号不重复发布线路，全部禁用后可恢复", () =>
     Effect.gen(function* () {
       yield* runWithServices(
         { localAccountPool: { accounts: {}, strategy: "round-robin", providerInstances: {} } },
@@ -177,11 +181,28 @@ describe("内置 CLIProxyAPI 核心", () => {
               "pool-a",
               "pool-b",
             ]);
-            const routes = gatewayAdapterRoutes(connected, pool);
-            expect(routes.length).toBeGreaterThan(0);
+            expect(gatewayAdapterRoutes(connected, pool)).toEqual([]);
+            expect(routedServerProviderModels(connected, "openai", pool)).toEqual([]);
+            expect(connected.providerInstances[pool]!.config).toMatchObject({ adapters: [] });
+            for (const id of ["pool-a", "pool-b"])
+              yield* service.handle({
+                action: "setLocalAccountModels",
+                id,
+                models: ["gpt-5.4"],
+              });
+            const synced = yield* settings.getSettings;
+            expect(synced.localAccountPool.providerInstances).toEqual(
+              connected.localAccountPool.providerInstances,
+            );
+            const routes = gatewayAdapterRoutes(synced, pool);
+            expect(routes.map((route) => route.id)).toEqual(["local:pool:codex:gpt-5.4"]);
+            expect(
+              routedServerProviderModels(synced, "openai", pool).map((model) => model.slug),
+            ).toEqual(["local:pool:codex:gpt-5.4"]);
             const adapters = (
-              connected.providerInstances[pool]!.config as { adapters: { id: string }[] }
+              synced.providerInstances[pool]!.config as { adapters: { id: string }[] }
             ).adapters;
+            expect(adapters.map((adapter) => adapter.id)).toEqual(["local:pool:codex:gpt-5.4"]);
             expect(new Set(adapters.map((adapter) => adapter.id)).size).toBe(adapters.length);
             yield* service.handle({
               action: "setLocalAccountsEnabled",
@@ -202,14 +223,221 @@ describe("内置 CLIProxyAPI 核心", () => {
               enabled: true,
             });
             const restored = yield* settings.getSettings;
-            expect(gatewayAdapterRoutes(restored, pool).length).toBeGreaterThan(0);
+            expect(gatewayAdapterRoutes(restored, pool).map((route) => route.id)).toEqual([
+              "local:pool:codex:gpt-5.4",
+            ]);
             expect(
-              (restored.providerInstances[pool]!.config as { adapters: unknown[] }).adapters.length,
-            ).toBeGreaterThan(0);
+              (
+                restored.providerInstances[pool]!.config as { adapters: { id: string }[] }
+              ).adapters.map((adapter) => adapter.id),
+            ).toEqual(["local:pool:codex:gpt-5.4"]);
           }),
       );
     }),
   );
+  it.effect.each([
+    ["codex", "codex", "openai", "gpt-5.4"],
+    ["claude", "claudeAgent", "anthropic", "claude-sonnet-5"],
+    ["xai", "grok", "openai", "grok-3"],
+    ["zcode", "zcodeAgent", "anthropic", "GLM-5.3"],
+  ] as const)(
+    "%s 空模型账号保留自动绑定，同步后才出现在路由和选择目录",
+    ([provider, driver, protocol, modelId]) =>
+      runWithServices(
+        {
+          providerInstances: {
+            [ProviderInstanceId.make(driver)]: {
+              driver: ProviderDriverKind.make(driver),
+              enabled: true,
+              config: {},
+            },
+          },
+          localAccountPool: {
+            accounts: { [LocalAccountId.make("pending")]: account("pending", provider, []) },
+            strategy: "round-robin",
+            providerInstances: {},
+          },
+        },
+        (settings, secrets) =>
+          Effect.gen(function* () {
+            const pool = ProviderInstanceId.make("pending-pool");
+            const service = yield* makeCliProxyService(
+              new CliProxyRuntime("http://localhost"),
+              settings,
+              secrets,
+              "http://localhost",
+            );
+            const connected = yield* service.handle({
+              action: "connectByok",
+              instanceId: pool,
+              displayName: "待同步账号池",
+            });
+            expect(connected.connectedInstanceId).toBe(pool);
+            expect(connected.localAccounts).toMatchObject([{ id: "pending", models: [] }]);
+            const before = yield* settings.getSettings;
+            expect(before.localAccountPool.providerInstances[pool]).toEqual(["pending"]);
+            expect(before.providerInstances[ProviderInstanceId.make(driver)]?.config).toMatchObject(
+              {
+                byokSourceInstanceId: pool,
+              },
+            );
+            expect(before.providerInstances[pool]?.config).toMatchObject({ adapters: [] });
+            expect(gatewayAdapterRoutes(before, pool)).toEqual([]);
+            expect(routedServerProviderModels(before, protocol, pool)).toEqual([]);
+            const slug = `local:${pool}:${provider}:${modelId}`;
+            expect(
+              pickGatewayAdapter(gatewayAdapterRoutes(before, pool), protocol, slug),
+            ).toBeUndefined();
+            yield* service.handle({
+              action: "setLocalAccountModels",
+              id: "pending",
+              models: [modelId],
+            });
+            const after = yield* settings.getSettings;
+            const slugs = [
+              slug,
+              ...(provider === "zcode"
+                ? ["GLM-5.3-Flash", "GLM-5.2", "GLM-5-Turbo"].map(
+                    (model) => `local:${pool}:zcode-start:${model}`,
+                  )
+                : []),
+            ];
+            expect(after.localAccountPool.providerInstances).toEqual(
+              before.localAccountPool.providerInstances,
+            );
+            expect(after.providerInstances[ProviderInstanceId.make(driver)]).toEqual(
+              before.providerInstances[ProviderInstanceId.make(driver)],
+            );
+            expect(
+              (
+                after.providerInstances[pool]!.config as { adapters: { id: string }[] }
+              ).adapters.map((adapter) => adapter.id),
+            ).toEqual(slugs);
+            expect(gatewayAdapterRoutes(after, pool).map((route) => route.id)).toEqual(slugs);
+            expect(
+              routedServerProviderModels(after, protocol, pool).map((model) => model.slug),
+            ).toEqual(slugs);
+            expect(
+              pickGatewayAdapter(gatewayAdapterRoutes(after, pool), protocol, slug),
+            ).toMatchObject({
+              id: slug,
+              localProvider: provider,
+              localAccountIds: ["pending"],
+            });
+            yield* service.handle({ action: "setLocalAccountModels", id: "pending", models: [] });
+            const cleared = yield* settings.getSettings;
+            expect(cleared.localAccountPool.providerInstances).toEqual(
+              before.localAccountPool.providerInstances,
+            );
+            expect(cleared.providerInstances[pool]?.config).toMatchObject({ adapters: [] });
+            expect(gatewayAdapterRoutes(cleared, pool)).toEqual([]);
+            expect(routedServerProviderModels(cleared, protocol, pool)).toEqual([]);
+          }),
+      ),
+  );
+
+  it.effect("空目录账号池导入其他平台后绑定与目录一致，禁用、删除及重新导入保持池身份", () =>
+    runWithServices(
+      {
+        providerInstances: {
+          [ProviderInstanceId.make("ordinary-byok")]: {
+            driver: ProviderDriverKind.make("byok"),
+            enabled: true,
+            config: { adapters: [] },
+          },
+        },
+        localAccountPool: {
+          accounts: { [LocalAccountId.make("pending")]: account("pending", "codex", []) },
+          strategy: "round-robin",
+          providerInstances: {},
+        },
+      },
+      (settings, secrets) =>
+        Effect.gen(function* () {
+          const pool = ProviderInstanceId.make("pending-pool");
+          const ordinary = ProviderInstanceId.make("ordinary-byok");
+          const service = yield* makeCliProxyService(
+            new CliProxyRuntime("http://localhost"),
+            settings,
+            secrets,
+            "http://localhost",
+          );
+          yield* service.handle({
+            action: "connectByok",
+            instanceId: pool,
+            displayName: "待同步池",
+          });
+          const originalOrdinary = (yield* settings.getSettings).providerInstances[ordinary];
+          const assertPool = (accountIds: readonly string[], slugs: readonly string[]) =>
+            Effect.gen(function* () {
+              const current = yield* settings.getSettings;
+              expect(current.localAccountPool.providerInstances[pool]).toEqual(accountIds);
+              expect(
+                (
+                  current.providerInstances[pool]!.config as { adapters: { id: string }[] }
+                ).adapters.map((adapter) => adapter.id),
+              ).toEqual(slugs);
+              const routes = gatewayAdapterRoutes(current, pool);
+              expect(routes.map((route) => route.id)).toEqual(slugs);
+              expect(routes.map((route) => route.localAccountIds)).toEqual(
+                slugs.map(() => accountIds),
+              );
+              expect(
+                [
+                  ...routedServerProviderModels(current, "openai", pool),
+                  ...routedServerProviderModels(current, "anthropic", pool),
+                ].map((model) => model.slug),
+              ).toEqual(slugs);
+              expect(current.localAccountPool.providerInstances[ordinary]).toBeUndefined();
+              expect(current.providerInstances[ordinary]).toEqual(originalOrdinary);
+              expect(gatewayAdapterRoutes(current, ordinary)).toEqual([]);
+            });
+          yield* assertPool(["pending"], []);
+          yield* service.handle({
+            action: "importLocalAccount",
+            id: "claude-new",
+            provider: "claude",
+            displayName: "Claude",
+            content: JSON.stringify({ api_key: "claude-key", models: ["claude-sonnet-5"] }),
+          });
+          const claudeSlug = `local:${pool}:claude:claude-sonnet-5`;
+          yield* assertPool(["pending", "claude-new"], [claudeSlug]);
+          yield* service.handle({
+            action: "setLocalAccountEnabled",
+            id: "claude-new",
+            enabled: false,
+          });
+          yield* assertPool(["pending", "claude-new"], []);
+          yield* service.handle({
+            action: "setLocalAccountEnabled",
+            id: "claude-new",
+            enabled: true,
+          });
+          yield* assertPool(["pending", "claude-new"], [claudeSlug]);
+          yield* service.handle({ action: "deleteLocalAccount", id: "claude-new" });
+          yield* assertPool(["pending"], []);
+          yield* service.handle({ action: "deleteLocalAccount", id: "pending" });
+          yield* assertPool([], []);
+          yield* service.handle({
+            action: "importLocalAccount",
+            id: "xai-new",
+            provider: "xai",
+            displayName: "Grok",
+            content: JSON.stringify({ api_key: "xai-key", models: ["grok-3"] }),
+          });
+          yield* assertPool(["xai-new"], [`local:${pool}:xai:grok-3`]);
+          yield* service.handle({
+            action: "importLocalAccount",
+            id: "cursor-new",
+            provider: "cursor",
+            displayName: "Cursor",
+            content: JSON.stringify({ api_key: "cursor-key", models: ["cursor-model"] }),
+          });
+          yield* assertPool(["xai-new"], [`local:${pool}:xai:grok-3`]);
+        }),
+    ),
+  );
+
   it.effect("单账号刷新只访问指定账号，自动刷新凭据并返回查询时间", () =>
     Effect.gen(function* () {
       const requests: string[] = [];
