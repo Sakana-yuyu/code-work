@@ -43,3 +43,11 @@ release-local/
 *.log
 .env*
 !.env.example
+
+# Agent/tool local state and build caches.
+.codegraph/
+.harn/
+.harn-runs/
+.vite-plus/
+.gradle/
+.t3-*/
