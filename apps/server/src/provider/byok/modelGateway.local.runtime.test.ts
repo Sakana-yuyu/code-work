@@ -1,6 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off - 运行时 smoke 使用 Effect HTTP 客户端替身。
 import { describe, expect, it } from "vite-plus/test";
-import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -732,7 +731,7 @@ describe("本地账号网关 runtime smoke", () => {
         "Bearer codex-three-key-b",
         "Bearer codex-three-key-c",
       ]);
-      const now = Effect.runSync(Clock.currentTimeMillis);
+      const now = Date.now();
       expect(localPoolUsageStore.cooldownUntilUnixMs("codex-three-a")).toBeGreaterThan(now);
       expect(localPoolUsageStore.cooldownUntilUnixMs("codex-three-b")).toBeGreaterThan(now);
     } finally {

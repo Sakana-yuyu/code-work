@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // ZCode `--prompt … --output-format stream-json` 的最小替身：逐行输出会话事件信封，
 // 最后一行 type:"result"。MOCK_ZCODE_MODE 控制场景；MOCK_ZCODE_ARGV_FILE 记录每轮 argv。
-import { appendFileSync } from "node:fs";
+import * as NodeFS from "node:fs";
 
 const argv = process.argv.slice(2);
 if (process.env.MOCK_ZCODE_ARGV_FILE) {
-  appendFileSync(process.env.MOCK_ZCODE_ARGV_FILE, `${JSON.stringify(argv)}\n`);
+  NodeFS.appendFileSync(process.env.MOCK_ZCODE_ARGV_FILE, `${JSON.stringify(argv)}\n`);
 }
 const resumeIndex = argv.indexOf("--resume");
 const sessionId = resumeIndex >= 0 ? argv[resumeIndex + 1] : "zc-session-1";

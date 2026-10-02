@@ -13,7 +13,8 @@
  * @module provider/zcode/zcodeCredentials
  */
 import * as NodeCrypto from "node:crypto";
-import * as NodeOs from "node:os";
+import * as NodeOS from "node:os";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -69,11 +70,11 @@ const zcodeCredentialSecret = (env: Readonly<Record<string, string | undefined>>
   if (configured) return configured;
   let username = "unknown";
   try {
-    username = NodeOs.userInfo().username;
+    username = NodeOS.userInfo().username;
   } catch {
     // 与 ZCode 相同：拿不到 OS 用户信息时退回 unknown。
   }
-  return `zcode-credential-fallback:${NodeOs.platform()}:${NodeOs.homedir()}:${username}`;
+  return `zcode-credential-fallback:${HostProcessPlatform.defaultValue()}:${NodeOS.homedir()}:${username}`;
 };
 
 const cipherKey = (env: Readonly<Record<string, string | undefined>>) =>

@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off - 内嵌运行时解析用 node:url 取模块目录。
-import { fileURLToPath } from "node:url";
+import * as NodeURL from "node:url";
 
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -43,7 +43,7 @@ const isExplicitBinaryPath = (binaryPath: string): boolean =>
 
 /** vendored bundle 的候选目录：dev(src) 与 dist/打包(server.asar) 两种布局。 */
 const bundledSourceCandidates = (): ReadonlyArray<string> => {
-  const dirname = fileURLToPath(new URL(".", import.meta.url));
+  const dirname = NodeURL.fileURLToPath(new URL(".", import.meta.url));
   return [
     // dev：`apps/server/src/provider/zcode` → `apps/server/vendor/zcode`
     `${dirname}../../../vendor/zcode`,

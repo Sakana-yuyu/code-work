@@ -1,8 +1,8 @@
 // @effect-diagnostics preferSchemaOverJson:off - 测试构造 ZCode 登录响应 JSON。
 // @effect-diagnostics nodeBuiltinImport:off - 测试用临时目录直接读写凭据文件。
 import * as NodeCrypto from "node:crypto";
-import * as NodeFs from "node:fs";
-import * as NodeOs from "node:os";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -22,7 +22,7 @@ import { writeZCodeLoginCredentials, type ZCodeLoginReadyResult } from "./zcodeL
 
 const TEST_ENV = { ZCODE_CREDENTIAL_SECRET: "test-secret" };
 
-const makeTempDir = () => NodeFs.mkdtempSync(NodePath.join(NodeOs.tmpdir(), "zcode-login-flow-"));
+const makeTempDir = () => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "zcode-login-flow-"));
 
 const READY_ZAI: ZCodeLoginReadyResult = {
   userId: "u-1",
@@ -55,7 +55,7 @@ describe("ZCode 登录凭据写入", () => {
           env: TEST_ENV,
         });
         expect(filePath).toBe(NodePath.join(home, ".zcode", "v2", "credentials.json"));
-        const raw = JSON.parse(NodeFs.readFileSync(filePath, "utf8")) as Record<string, string>;
+        const raw = JSON.parse(NodeFS.readFileSync(filePath, "utf8")) as Record<string, string>;
         // 上游格式：全部值都是 enc:v1 加密串。
         expect(Object.values(raw).every((v) => v.startsWith("enc:v1:"))).toBe(true);
         const record = decryptZCodeCredentialRecord(raw, TEST_ENV);
@@ -82,7 +82,7 @@ describe("ZCode 登录凭据写入", () => {
           apiKey: "bigmodel-key",
           env: TEST_ENV,
         });
-        const raw = JSON.parse(NodeFs.readFileSync(filePath, "utf8")) as Record<string, string>;
+        const raw = JSON.parse(NodeFS.readFileSync(filePath, "utf8")) as Record<string, string>;
         const info = JSON.parse(
           decryptZCodeValue(raw["oauth:bigmodel:user_info"]!, TEST_ENV),
         ) as Record<string, unknown>;
@@ -100,12 +100,12 @@ describe("ZCode 登录凭据写入", () => {
       Effect.gen(function* () {
         const home = makeTempDir();
         const dir = NodePath.join(home, ".zcode", "v2");
-        NodeFs.mkdirSync(dir, { recursive: true });
+        NodeFS.mkdirSync(dir, { recursive: true });
         const fs = yield* FileSystem.FileSystem;
         // 预置一条与登录无关的既有 key。
         const kept = `enc:v1:${NodeCrypto.randomBytes(12).toString("base64url")}.x.y`;
         void fs;
-        NodeFs.writeFileSync(
+        NodeFS.writeFileSync(
           NodePath.join(dir, "credentials.json"),
           JSON.stringify({ "oauth:custom": kept }),
         );
@@ -117,7 +117,7 @@ describe("ZCode 登录凭据写入", () => {
           env: TEST_ENV,
         });
         const raw = JSON.parse(
-          NodeFs.readFileSync(NodePath.join(dir, "credentials.json"), "utf8"),
+          NodeFS.readFileSync(NodePath.join(dir, "credentials.json"), "utf8"),
         ) as Record<string, string>;
         expect(raw["oauth:custom"]).toBe(kept);
       }),

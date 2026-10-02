@@ -12,7 +12,7 @@ import { mergeProviderInstanceEnvironment } from "./ProviderInstanceEnvironment.
 import { expandHomePath } from "../pathExpansion.ts";
 import { resolveGrokHome } from "./grokHome.ts";
 import { resolveZCodeDataDir } from "./zcode/zcodeByokConfig.ts";
-import * as NodeFsPromises from "node:fs/promises";
+import * as NodeFSP from "node:fs/promises";
 import {
   LOCAL_POOL_LOGIN_HOME_ENV,
   isLocalPoolLoginProvider,
@@ -159,7 +159,7 @@ export const startProviderLogin = Effect.fn("startProviderLogin")(function* (inp
       });
     }
     const home = localPoolLoginHome(server.stateDir, input.terminalId);
-    yield* Effect.tryPromise(() => NodeFsPromises.mkdir(home, { recursive: true })).pipe(
+    yield* Effect.tryPromise(() => NodeFSP.mkdir(home, { recursive: true })).pipe(
       Effect.mapError(
         () =>
           new ServerSettingsError({
