@@ -7,9 +7,11 @@ import * as Path from "effect/Path";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_AGORAGENTIC_CLI_PATH;
 
-describe.runIf(Boolean(cliPath))("Agoragentic 官方 ACP CLI 握手", () => {
+describe.runIf(isProbeExecutableAvailable(cliPath))("Agoragentic 官方 ACP CLI 握手", () => {
   it.live(
     "initialize 成功（容忍 authMethods 缺 id）；不发 prompt",
     () =>

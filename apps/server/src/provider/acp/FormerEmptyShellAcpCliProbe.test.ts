@@ -1,4 +1,5 @@
 /** 七项前空壳 Windows 二进制：隔离握手；不发明凭据、不强制工具成功。 */
+import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -6,6 +7,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
 
 const root = process.env.CODEWORK_A4_EMPTY_SHELL_ROOT;
 
@@ -59,8 +61,7 @@ const specs: Spec[] = [
   // AcpSessionRuntime.start 在本机可挂起 >90s，改由 docs 记录脚本证据，不在此强制 Effect 超时。
   {
     id: "cortex-code",
-    relativeCommand:
-      "cortex-code/extract/coco-1.0.73+180523.e6179a031de9-windows-amd64/cortex.exe",
+    relativeCommand: "cortex-code/extract/coco-1.0.73+180523.e6179a031de9-windows-amd64/cortex.exe",
     args: ["acp", "serve"],
     expectAgentName: "Cortex Code",
     expectSession: "created",
@@ -69,7 +70,9 @@ const specs: Spec[] = [
 
 describe.runIf(Boolean(root))("前空壳七项官方 ACP CLI 握手（隔离）", () => {
   for (const spec of specs) {
-    it.live(
+    it.live.skipIf(
+      !isProbeExecutableAvailable(root ? NodePath.join(root, spec.relativeCommand) : undefined),
+    )(
       `${spec.id} initialize`,
       () =>
         Effect.gen(function* () {
@@ -83,7 +86,9 @@ describe.runIf(Boolean(root))("前空壳七项官方 ACP CLI 握手（隔离）"
           yield* fs.makeDirectory(path.join(home, "AppData"), { recursive: true });
           yield* fs.makeDirectory(path.join(home, "AppData", "Roaming"), { recursive: true });
           yield* fs.makeDirectory(path.join(home, "AppData", "Local"), { recursive: true });
-          yield* Effect.addFinalizer(() => fs.remove(temp, { recursive: true }).pipe(Effect.ignore));
+          yield* Effect.addFinalizer(() =>
+            fs.remove(temp, { recursive: true }).pipe(Effect.ignore),
+          );
           const systemKeys = new Set([
             "PATH",
             "PATHEXT",
@@ -104,10 +109,9 @@ describe.runIf(Boolean(root))("前空壳七项官方 ACP CLI 握手（隔离）"
           const command = path.join(root!, ...spec.relativeCommand.split("/"));
           yield* Effect.gen(function* () {
             const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
-            const started = yield* runtime.start().pipe(
-              Effect.timeout("90 seconds"),
-              Effect.result,
-            );
+            const started = yield* runtime
+              .start()
+              .pipe(Effect.timeout("90 seconds"), Effect.result);
             const initialize = requests.find(
               (event) => event.method === "initialize" && event.status === "succeeded",
             )?.result as { agentInfo?: { name?: string } } | undefined;

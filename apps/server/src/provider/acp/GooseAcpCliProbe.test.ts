@@ -7,9 +7,11 @@ import * as Path from "effect/Path";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_GOOSE_CLI_PATH;
 
-describe.runIf(Boolean(cliPath))("Goose 官方 ACP CLI 握手", () => {
+describe.runIf(isProbeExecutableAvailable(cliPath))("Goose 官方 ACP CLI 握手", () => {
   it.live(
     "initialize 成功；会话结果如实记录",
     () =>

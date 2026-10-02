@@ -7,9 +7,11 @@ import * as Path from "effect/Path";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_GROK_BUILD_CLI_PATH;
 
-describe.runIf(Boolean(cliPath))("Grok Build 官方 ACP CLI 握手", () => {
+describe.runIf(isProbeExecutableAvailable(cliPath))("Grok Build 官方 ACP CLI 握手", () => {
   it.live(
     "initialize 成功；会话结果如实记录",
     () =>
@@ -72,7 +74,6 @@ describe.runIf(Boolean(cliPath))("Grok Build 官方 ACP CLI 握手", () => {
                   APPDATA: home,
                   LOCALAPPDATA: home,
                   PATH: process.env.PATH ?? "",
-
                 },
               },
               cwd,

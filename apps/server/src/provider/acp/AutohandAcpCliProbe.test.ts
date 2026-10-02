@@ -7,9 +7,11 @@ import * as Path from "effect/Path";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_AUTOHAND_CLI_PATH;
 
-describe.runIf(Boolean(cliPath))("Autohand ACP 适配器握手", () => {
+describe.runIf(isProbeExecutableAvailable(cliPath))("Autohand ACP 适配器握手", () => {
   it.live(
     "initialize 广告适配器版本；底层 CLI 缺失时记录 auth=autohand-install",
     () =>

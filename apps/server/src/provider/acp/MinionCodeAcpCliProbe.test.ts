@@ -11,9 +11,11 @@ import * as Path from "effect/Path";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_MINION_CODE_CLI_PATH;
 
-describe.runIf(Boolean(cliPath))("Minion Code 默认 ACP 入口（预期失败）", () => {
+describe.runIf(isProbeExecutableAvailable(cliPath))("Minion Code 默认 ACP 入口（预期失败）", () => {
   it.live(
     "initialize 不会在 stdout JSON-RPC 成功；不发 prompt",
     () =>

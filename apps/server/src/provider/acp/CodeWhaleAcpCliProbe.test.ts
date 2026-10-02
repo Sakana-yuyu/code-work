@@ -7,9 +7,11 @@ import * as Path from "effect/Path";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_CODEWHALE_CLI_PATH;
 
-describe.runIf(Boolean(cliPath))("CodeWhale 官方 ACP CLI 握手与会话", () => {
+describe.runIf(isProbeExecutableAvailable(cliPath))("CodeWhale 官方 ACP CLI 握手与会话", () => {
   it.live(
     "initialize 与 session/new；无宿主凭据、不发 prompt",
     () =>

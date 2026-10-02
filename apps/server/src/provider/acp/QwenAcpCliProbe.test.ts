@@ -14,6 +14,7 @@ import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 import type { AcpToolCallState } from "./AcpRuntimeModel.ts";
 import { isolatedProbeEnvironment } from "./isolatedProbeEnvironment.ts";
+import { isProbeScriptAvailable } from "./acpCliProbeGate.ts";
 
 const cliPath = process.env.CODEWORK_QWEN_CLI_PATH;
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -32,7 +33,7 @@ const decodeRequest = Schema.decodeSync(
   ),
 );
 
-describe.runIf(Boolean(cliPath))("Qwen 官方 ACP CLI + 本地模型夹具", () => {
+describe.runIf(isProbeScriptAvailable(cliPath))("Qwen 官方 ACP CLI + 本地模型夹具", () => {
   it.effect(
     "真实握手、配置、文件工具、拒绝、取消和恢复",
     () =>

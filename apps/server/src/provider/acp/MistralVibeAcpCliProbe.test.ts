@@ -7,9 +7,11 @@ import * as Path from "effect/Path";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_MISTRAL_VIBE_CLI_PATH;
 
-describe.runIf(Boolean(cliPath))("Mistral Vibe 官方 ACP CLI 握手", () => {
+describe.runIf(isProbeExecutableAvailable(cliPath))("Mistral Vibe 官方 ACP CLI 握手", () => {
   it.live(
     "initialize 成功；会话结果如实记录",
     () =>
@@ -67,7 +69,10 @@ describe.runIf(Boolean(cliPath))("Mistral Vibe 官方 ACP CLI 握手", () => {
               cwd,
               authMethodId: "",
               clientInfo: { name: "codework-mistral-vibe-probe", version: "0.0.0" },
-              requestLogger: (event) => Effect.sync(() => { requests.push(event); }),
+              requestLogger: (event) =>
+                Effect.sync(() => {
+                  requests.push(event);
+                }),
             }),
           ),
           Effect.scoped,

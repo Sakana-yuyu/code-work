@@ -13,11 +13,13 @@ import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 import { toAcpConfigOptions, type AcpToolCallState } from "./AcpRuntimeModel.ts";
 import { applyAcpConfigSelections } from "./AcpAdapterSupport.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_COPILOT_CLI_PATH;
 const agentMode = "https://agentclientprotocol.com/protocol/session-modes#agent";
 const planMode = "https://agentclientprotocol.com/protocol/session-modes#plan";
 
-describe.runIf(Boolean(cliPath))("Copilot 官方 ACP CLI", () => {
+describe.runIf(isProbeExecutableAvailable(cliPath))("Copilot 官方 ACP CLI", () => {
   it.effect(
     "隔离会话验证模式、真实工具、拒绝、取消与恢复",
     () =>

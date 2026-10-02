@@ -10,10 +10,12 @@ import * as Schema from "effect/Schema";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_HERMES_CLI_PATH;
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
-describe.runIf(Boolean(cliPath))("Hermes 官方 ACP 认证与配置", () => {
+describe.runIf(isProbeExecutableAvailable(cliPath))("Hermes 官方 ACP 认证与配置", () => {
   for (const scenario of ["login", "configured", "missing-config"]) {
     const authMethodId = scenario === "login" ? "login" : "";
     it.effect(

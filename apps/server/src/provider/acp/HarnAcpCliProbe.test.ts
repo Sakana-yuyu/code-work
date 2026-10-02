@@ -7,9 +7,11 @@ import * as Path from "effect/Path";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_HARN_CLI_PATH;
 
-describe.runIf(Boolean(cliPath))("Harn 官方 ACP CLI 握手", () => {
+describe.runIf(isProbeExecutableAvailable(cliPath))("Harn 官方 ACP CLI 握手", () => {
   it.live(
     "initialize、authenticate(none)、session/new(inherited) 成功",
     () =>
@@ -49,10 +51,14 @@ describe.runIf(Boolean(cliPath))("Harn 官方 ACP CLI 握手", () => {
             authMethods: [{ id: "none" }],
           });
           expect(
-            requests.some((event) => event.method === "authenticate" && event.status === "succeeded"),
+            requests.some(
+              (event) => event.method === "authenticate" && event.status === "succeeded",
+            ),
           ).toBe(true);
           expect(
-            requests.some((event) => event.method === "session/new" && event.status === "succeeded"),
+            requests.some(
+              (event) => event.method === "session/new" && event.status === "succeeded",
+            ),
           ).toBe(true);
           const sessionNew = requests.find(
             (event) => event.method === "session/new" && event.status === "started",

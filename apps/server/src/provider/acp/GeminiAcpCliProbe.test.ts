@@ -7,9 +7,11 @@ import * as Path from "effect/Path";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
+import { isProbeScriptAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_GEMINI_CLI_PATH;
 
-describe.runIf(Boolean(cliPath))("Gemini 官方 ACP CLI 认证边界", () => {
+describe.runIf(isProbeScriptAvailable(cliPath))("Gemini 官方 ACP CLI 认证边界", () => {
   for (const methodId of ["login", "gemini-api-key"]) {
     it.effect(
       `${methodId} 缺少有效认证时不能启动会话`,

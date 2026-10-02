@@ -39,10 +39,7 @@ import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
-import {
-  initialAgentStreamState,
-  reduceAgentStreamState,
-} from "../cli/agentControlStreamState.ts";
+import { initialAgentStreamState, reduceAgentStreamState } from "../cli/agentControlStreamState.ts";
 import { openControlClient, type ControlRpcClient } from "../cli/controlClient.ts";
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -150,11 +147,10 @@ const killPidTree = (pid: number) =>
       new Promise<void>((resolve) => {
         // oxlint-disable-next-line codework/no-global-process-runtime -- live harness signals follow the real host outside Effect.
         if (process.platform === "win32") {
-          const killer = NodeChildProcess.spawn(
-            "taskkill.exe",
-            ["/pid", String(pid), "/t", "/f"],
-            { stdio: "ignore", windowsHide: true },
-          );
+          const killer = NodeChildProcess.spawn("taskkill.exe", ["/pid", String(pid), "/t", "/f"], {
+            stdio: "ignore",
+            windowsHide: true,
+          });
           killer.once("exit", () => resolve());
           killer.once("error", () => {
             try {
@@ -203,8 +199,9 @@ const awaitThread = (
       }).pipe(
         Stream.filter((item) => item.kind === "snapshot"),
         Stream.take(1),
-        Stream.runFold(() => initialAgentStreamState, (current, item) =>
-          reduceAgentStreamState(current, item),
+        Stream.runFold(
+          () => initialAgentStreamState,
+          (current, item) => reduceAgentStreamState(current, item),
         ),
         Effect.catch(() => Effect.succeed(initialAgentStreamState)),
       );
@@ -268,7 +265,7 @@ const setCursorBinary = (rpc: ControlRpcClient, binaryPath: string) =>
     },
   });
 
-it.effect(
+it.effect.skipIf(process.env.LIVE !== "1")(
   "orchestration-mediated late-approval, agent-crash recover, and cancel-restart via isolate serve WS",
   () =>
     Effect.gen(function* () {
@@ -397,9 +394,8 @@ it.effect(
           environmentId: evidence.environmentId,
         });
 
-        const withRpc = <A, E, R>(
-          use: (rpc: ControlRpcClient) => Effect.Effect<A, E, R>,
-        ) => openControlClient({ serverUrl, accessToken }, use);
+        const withRpc = <A, E, R>(use: (rpc: ControlRpcClient) => Effect.Effect<A, E, R>) =>
+          openControlClient({ serverUrl, accessToken }, use);
 
         const childPidLogPath = NodePath.join(isolateHome, "agent.pid");
         const approvalWrapper = yield* Effect.promise(() =>
@@ -416,7 +412,7 @@ it.effect(
           model: "default",
         } as const;
 
-        yield* withRpc( (rpc) =>
+        yield* withRpc((rpc) =>
           Effect.gen(function* () {
             yield* setCursorBinary(rpc, approvalWrapper);
             yield* rpc[ORCHESTRATION_WS_METHODS.dispatchCommand]({
@@ -436,7 +432,7 @@ it.effect(
         // 1) Late approval after client disconnect/reconnect
         const lateThreadId = ThreadId.make(uuid());
         let lateRequestId = "";
-        yield* withRpc( (rpc) =>
+        yield* withRpc((rpc) =>
           Effect.gen(function* () {
             yield* startTurn(rpc, {
               projectId,
@@ -456,7 +452,10 @@ it.effect(
             lateRequestId = approvalRequestId(thread) ?? "";
           }),
         );
-        step(evidence, "late-approval-opened", { threadId: lateThreadId, requestId: lateRequestId });
+        step(evidence, "late-approval-opened", {
+          threadId: lateThreadId,
+          requestId: lateRequestId,
+        });
         assert.isTrue(lateRequestId.length > 0);
 
         yield* withRpc((rpc) =>

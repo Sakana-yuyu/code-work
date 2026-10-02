@@ -7,9 +7,11 @@ import * as Path from "effect/Path";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_CLINE_CLI_PATH;
 
-describe.runIf(Boolean(cliPath))("Cline 官方 ACP CLI 认证与配置", () => {
+describe.runIf(isProbeExecutableAvailable(cliPath))("Cline 官方 ACP CLI 认证与配置", () => {
   for (const scenario of ["invalid-method", "missing-key", "configured-key"]) {
     it.effect(
       scenario,

@@ -13,9 +13,11 @@ import * as Stream from "effect/Stream";
 import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_GAJAE_CLI_PATH;
 
-describe.runIf(Boolean(cliPath))("Gajae 官方 ACP 认证与会话生命周期", () => {
+describe.runIf(isProbeExecutableAvailable(cliPath))("Gajae 官方 ACP 认证与会话生命周期", () => {
   for (const scenario of ["login", "agent", "session"]) {
     const authMethodId = scenario === "login" ? "login" : "agent";
     it.live(

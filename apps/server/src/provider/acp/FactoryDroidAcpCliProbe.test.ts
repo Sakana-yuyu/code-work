@@ -8,9 +8,13 @@ import { describe, expect } from "vite-plus/test";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 import { isolatedProbeEnvironment } from "./isolatedProbeEnvironment.ts";
 
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
+
 const cliPath = process.env.CODEWORK_FACTORY_DROID_CLI_PATH;
 
-describe.runIf(Boolean(cliPath))("Factory Droid 官方无认证 ACP", () => {
+describe.runIf(
+  isProbeExecutableAvailable(cliPath) && isProbeExecutableAvailable(process.env.COMSPEC),
+)("Factory Droid 官方无认证 ACP", () => {
   it.effect(
     "固定版本握手后明确拒绝 session/new，不发送模型请求",
     () =>

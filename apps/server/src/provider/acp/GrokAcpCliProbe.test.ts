@@ -19,6 +19,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import { describe, expect } from "vite-plus/test";
 
 import { makeGrokAcpRuntime } from "./GrokAcpSupport.ts";
+import { isProbeExecutableAvailable } from "./acpCliProbeGate.ts";
 
 const makeProbeRuntime = Effect.gen(function* () {
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -31,7 +32,10 @@ const makeProbeRuntime = Effect.gen(function* () {
   });
 });
 
-describe.runIf(process.env.CODEWORK_GROK_ACP_PROBE === "1")("Grok ACP CLI probe", () => {
+const probeEnabled =
+  process.env.CODEWORK_GROK_ACP_PROBE === "1" && isProbeExecutableAvailable("grok");
+
+describe.runIf(probeEnabled)("Grok ACP CLI probe", () => {
   it.effect("initialize and authenticate against real grok agent stdio", () =>
     Effect.gen(function* () {
       const runtime = yield* makeProbeRuntime;
