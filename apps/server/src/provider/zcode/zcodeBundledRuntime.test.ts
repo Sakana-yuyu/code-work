@@ -34,9 +34,13 @@ describe("extractBundledZCode", () => {
         for (const file of files) {
           expect((yield* fs.stat(path.join(targetDir, file))).type).toBe("File");
         }
-        const source = yield* fs.stat(
-          path.join(process.cwd(), "apps/server/vendor/zcode/zcode.cjs"),
-        );
+        const source = yield* fs
+          .stat(path.join(process.cwd(), "vendor/zcode/zcode.cjs"))
+          .pipe(
+            Effect.catch(() =>
+              fs.stat(path.join(process.cwd(), "apps/server/vendor/zcode/zcode.cjs")),
+            ),
+          );
         const target = yield* fs.stat(path.join(targetDir, "zcode.cjs"));
         expect(target.size).toBe(source.size);
       } finally {
