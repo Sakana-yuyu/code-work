@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
 
 import { extractBundledZCode } from "./zcodeBundledRuntime.ts";
 
@@ -65,8 +66,23 @@ describe("extractBundledZCode", () => {
         expect((yield* fs.stat(path.join(targetDir, "zcode.cjs"))).type).toBe("File");
 
         yield* fs.remove(targetDir, { recursive: true, force: true });
-        yield* fs.writeFileString(targetDir, "阻止目录创建");
-        const failed = yield* extractBundledZCode(stateDir);
+        const failingFileSystem = FileSystem.FileSystem.of({
+          ...fs,
+          writeFile: (filePath: string, contents: Uint8Array) =>
+            filePath.endsWith("zcode.cjs.tmp")
+              ? Effect.fail(
+                  PlatformError.systemError({
+                    _tag: "PermissionDenied",
+                    module: "FileSystem",
+                    method: "writeFile",
+                    pathOrDescriptor: filePath,
+                  }),
+                )
+              : fs.writeFile(filePath, contents),
+        });
+        const failed = yield* extractBundledZCode(stateDir).pipe(
+          Effect.provideService(FileSystem.FileSystem, failingFileSystem),
+        );
         expect(Option.isNone(failed)).toBe(true);
         expect(
           Option.isNone(yield* fs.stat(path.join(targetDir, "source.sha")).pipe(Effect.option)),
