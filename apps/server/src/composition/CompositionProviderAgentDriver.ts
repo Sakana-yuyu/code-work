@@ -121,6 +121,8 @@ type ProviderRunBinding = {
   readonly capabilityHandshakeId?: string;
   readonly releaseContext?: Effect.Effect<void, CompositionAgentDriverFailure>;
   readonly confirmRuntimeStart?: Effect.Effect<void>;
+  /** 事件明确绑不上当前实例时，立即唤醒 ToolBroker 等待者。 */
+  readonly rejectRuntimeStart?: () => void;
 };
 
 type PendingProviderRunBinding = Omit<ProviderRunBinding, "turnId" | "runtimeTaskId"> & {
@@ -422,11 +424,13 @@ export const makeCompositionProviderAgentDriver = (
         }
         capabilityHandshakeId = result.handshakeId;
       }
-      const runtimeStarted = yield* Deferred.make<"started" | "released">();
+      const runtimeStarted = yield* Deferred.make<"started" | "released" | "unbound">();
       const confirmRuntimeStart =
         options.toolBrokerBridge === undefined
           ? undefined
           : Deferred.succeed(runtimeStarted, "started").pipe(Effect.asVoid);
+      const rejectRuntimeStart = () =>
+        Deferred.doneUnsafe(runtimeStarted, Effect.succeed("unbound" as const));
       let toolBrokerConfigured = false;
       let contextReleased = false;
       const contextReleaseComplete = yield* Deferred.make<void, CompositionAgentDriverFailure>();
@@ -489,6 +493,7 @@ export const makeCompositionProviderAgentDriver = (
         terminalObserved: false,
         releaseContext,
         ...(confirmRuntimeStart === undefined ? {} : { confirmRuntimeStart }),
+        rejectRuntimeStart,
       } satisfies PendingProviderRunBinding;
       const hasActiveRunForThread = [...activeRuns.values()].some(
         (active) => active.threadId === threadId,
@@ -585,12 +590,14 @@ export const makeCompositionProviderAgentDriver = (
                   toolCallId: request.toolCallId,
                   canonicalToolName: request.canonicalToolName,
                   status:
-                    contextReleased || Option.isSome(confirmation)
+                    contextReleased ||
+                    (Option.isSome(confirmation) && confirmation.value !== "unbound")
                       ? ("cancelled" as const)
                       : ("failed" as const),
-                  errorCode:
-                    contextReleased || Option.isSome(confirmation)
-                      ? "tool_cancelled"
+                  errorCode: contextReleased
+                    ? "tool_cancelled"
+                    : Option.isSome(confirmation) && confirmation.value === "unbound"
+                      ? "provider_runtime_start_unbound"
                       : "provider_runtime_start_unconfirmed",
                 };
               }
@@ -653,6 +660,7 @@ export const makeCompositionProviderAgentDriver = (
         ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
         releaseContext,
         ...(confirmRuntimeStart === undefined ? {} : { confirmRuntimeStart }),
+        rejectRuntimeStart,
       } satisfies ProviderRunBinding;
       if (!resolvedPending.terminalObserved && !contextReleased)
         activeRuns.set(input.run.runId, binding);
@@ -770,6 +778,11 @@ export const makeCompositionProviderAgentDriver = (
         event.providerInstanceId !== undefined &&
         event.providerInstanceId !== options.providerInstanceId
       ) {
+        const pending = pendingRuns.get(event.threadId);
+        pending?.rejectRuntimeStart?.();
+        for (const active of activeRuns.values()) {
+          if (active.threadId === event.threadId) active.rejectRuntimeStart?.();
+        }
         return undefined;
       }
       for (const active of activeRuns.values()) {

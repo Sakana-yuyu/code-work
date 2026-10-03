@@ -33,6 +33,14 @@ export interface ZCodeSpawnTarget {
 const BUNDLE_DIR_NAME = "zcode";
 const BUNDLE_FILE_NAME = "zcode.cjs";
 const BUNDLE_MARKER_NAME = "source.sha";
+/** Electron asar 对单文件 readFile/writeFile 支持稳定；不要递归复制虚拟目录。 */
+const BUNDLE_FILES = [
+  BUNDLE_FILE_NAME,
+  "provider/zcode-builtin.json",
+  "LICENSE",
+  "NOTICE.md",
+  "THIRD-PARTY-NOTICES.md",
+] as const;
 
 /** `binaryPath` 是显式用户配置（非默认命令名）时尊重配置。 */
 const isExplicitBinaryPath = (binaryPath: string): boolean =>
@@ -69,44 +77,69 @@ export const extractBundledZCode = Effect.fn("extractBundledZCode")(function* (
 ): Effect.fn.Return<Option.Option<string>, never, FileSystem.FileSystem | Path.Path> {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  let sourceDir: string | undefined;
-  for (const candidate of bundledSourceCandidates()) {
-    const stats = yield* fs.stat(path.join(candidate, BUNDLE_FILE_NAME)).pipe(Effect.option);
-    if (Option.isSome(stats) && stats.value.type === "File") {
-      sourceDir = candidate;
-      break;
+  return yield* Effect.gen(function* () {
+    let sourceDir: string | undefined;
+    for (const candidate of bundledSourceCandidates()) {
+      const stats = yield* fs.stat(path.join(candidate, BUNDLE_FILE_NAME)).pipe(Effect.option);
+      if (Option.isSome(stats) && stats.value.type === "File") {
+        sourceDir = candidate;
+        break;
+      }
     }
-  }
-  if (sourceDir === undefined) return Option.none();
+    if (sourceDir === undefined) return Option.none<string>();
 
-  const sourceFile = path.join(sourceDir, BUNDLE_FILE_NAME);
-  const sourceStats = yield* fs.stat(sourceFile).pipe(Effect.option);
-  if (Option.isNone(sourceStats)) return Option.none();
-  const fingerprint = bundleFingerprint({
-    size: Number(sourceStats.value.size),
-    mtime: sourceStats.value.mtime,
-  });
+    const sourceFile = path.join(sourceDir, BUNDLE_FILE_NAME);
+    const sourceStats = yield* fs.stat(sourceFile).pipe(Effect.option);
+    if (Option.isNone(sourceStats) || sourceStats.value.type !== "File") {
+      return Option.none<string>();
+    }
+    const fingerprint = bundleFingerprint({
+      size: Number(sourceStats.value.size),
+      mtime: sourceStats.value.mtime,
+    });
 
-  const targetDir = path.join(stateDir, "bin", BUNDLE_DIR_NAME);
-  const targetFile = path.join(targetDir, BUNDLE_FILE_NAME);
-  const markerFile = path.join(targetDir, BUNDLE_MARKER_NAME);
-  const marker = yield* fs.readFileString(markerFile).pipe(Effect.option);
-  const targetStats = yield* fs.stat(targetFile).pipe(Effect.option);
-  const ready =
-    Option.isSome(marker) &&
-    marker.value.trim() === fingerprint &&
-    Option.isSome(targetStats) &&
-    targetStats.value.type === "File";
+    const targetDir = path.join(stateDir, "bin", BUNDLE_DIR_NAME);
+    const targetFile = path.join(targetDir, BUNDLE_FILE_NAME);
+    const markerFile = path.join(targetDir, BUNDLE_MARKER_NAME);
+    const marker = yield* fs.readFileString(markerFile).pipe(Effect.option);
+    const targetFiles = yield* Effect.forEach(BUNDLE_FILES, (relativePath) =>
+      fs.stat(path.join(targetDir, relativePath)).pipe(Effect.option),
+    );
+    const ready =
+      Option.isSome(marker) &&
+      marker.value.trim() === fingerprint &&
+      targetFiles.every(
+        (stats, index) =>
+          Option.isSome(stats) &&
+          stats.value.type === "File" &&
+          (index !== 0 || Number(stats.value.size) === Number(sourceStats.value.size)),
+      );
 
-  if (!ready) {
-    yield* fs.makeDirectory(targetDir, { recursive: true }).pipe(Effect.orElseSucceed(() => null));
-    // 整个目录拷贝，保证 `provider/zcode-builtin.json` 相对 bundle 的路径形状不变。
-    yield* fs
-      .copy(sourceDir, targetDir, { overwrite: true })
-      .pipe(Effect.orElseSucceed(() => null));
-    yield* fs.writeFileString(markerFile, fingerprint).pipe(Effect.orElseSucceed(() => undefined));
-  }
-  return Option.some(targetFile);
+    if (!ready) {
+      yield* fs.makeDirectory(targetDir, { recursive: true });
+      for (const relativePath of BUNDLE_FILES) {
+        const sourcePath = path.join(sourceDir, relativePath);
+        const targetPath = path.join(targetDir, relativePath);
+        const targetParent = path.dirname(targetPath);
+        yield* fs.makeDirectory(targetParent, { recursive: true });
+        const contents = yield* fs.readFile(sourcePath);
+        const temporaryPath = `${targetPath}.tmp`;
+        yield* fs.writeFile(temporaryPath, contents);
+        yield* fs.rename(temporaryPath, targetPath);
+      }
+      const writtenStats = yield* fs.stat(targetFile);
+      if (
+        writtenStats.type !== "File" ||
+        Number(writtenStats.size) !== Number(sourceStats.value.size)
+      ) {
+        return Option.none<string>();
+      }
+      const markerTemp = `${markerFile}.tmp`;
+      yield* fs.writeFileString(markerTemp, fingerprint);
+      yield* fs.rename(markerTemp, markerFile);
+    }
+    return Option.some(targetFile);
+  }).pipe(Effect.orElseSucceed(() => Option.none<string>()));
 });
 
 /**

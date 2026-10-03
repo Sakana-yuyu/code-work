@@ -155,6 +155,7 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
         ZCODE_DATA_BASE_DIR: dataDir,
       };
       const managedProcessEnv = managedEnv as NodeJS.ProcessEnv;
+      const effectiveConfig = { ...config, enabled } satisfies ZCodeAgentSettings;
 
       // 每次 yield* 都重新读取 settings；BYOK 源变化 → fingerprint → 实例重建。
       const resolveRoutes: Effect.Effect<
@@ -220,31 +221,38 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
               }),
           ),
         );
-      yield* writeConfig(undefined).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: DRIVER_KIND,
-              instanceId,
-              detail: cause.issue,
-            }),
-        ),
-      );
-
-      const effectiveConfig = { ...config, enabled } satisfies ZCodeAgentSettings;
+      if (effectiveConfig.enabled) {
+        yield* writeConfig(undefined).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ProviderDriverError({
+                driver: DRIVER_KIND,
+                instanceId,
+                detail: cause.issue,
+              }),
+          ),
+        );
+      }
       const maintenanceCapabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
         MAINTENANCE,
         { binaryPath: effectiveConfig.binaryPath, env: managedProcessEnv },
       );
 
       // spawn 目标：显式 binaryPath → 内嵌 bundle（释放到 stateDir）→ PATH。
-      const spawnTarget = yield* resolveZCodeSpawnTarget({
-        binaryPath: effectiveConfig.binaryPath,
-        stateDir: serverConfig.stateDir,
-      }).pipe(
-        Effect.provideService(FileSystem.FileSystem, fileSystem),
-        Effect.provideService(Path.Path, path),
-      );
+      const spawnTarget = effectiveConfig.enabled
+        ? yield* resolveZCodeSpawnTarget({
+            binaryPath: effectiveConfig.binaryPath,
+            stateDir: serverConfig.stateDir,
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, path),
+          )
+        : {
+            command: effectiveConfig.binaryPath.trim() || "zcode",
+            argsPrefix: [],
+            displayPath: effectiveConfig.binaryPath,
+            source: "path" as const,
+          };
 
       const adapter = yield* makeZCodeAdapter(effectiveConfig, {
         instanceId,

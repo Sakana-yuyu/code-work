@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off - 运行时 smoke 使用 Effect HTTP 客户端替身。
+// @effect-diagnostics globalDate:off - 冷却断言比较真实墙上时间，测试不依赖 Effect Clock。
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

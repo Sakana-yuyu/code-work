@@ -24,6 +24,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import * as Schema from "effect/Schema";
 import {
   AuthTerminalOperateScope,
   CliProxyError,
@@ -351,7 +352,7 @@ export function CliProxySettingsSection({
       } catch (error) {
         if (requestGeneration !== generation.current) return false;
         const text =
-          error instanceof CliProxyError && error.code === "upstream_error"
+          Schema.is(CliProxyError)(error) && error.code === "upstream_error"
             ? t("cliProxy.upstreamUnavailable")
             : error instanceof Error
               ? error.message

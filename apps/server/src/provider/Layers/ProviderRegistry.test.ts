@@ -1819,6 +1819,7 @@ it.layer(
             ),
           );
           let cursorSpawned = false;
+          let zcodeSpawned = false;
           const scope = yield* Scope.make();
           yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
           const testConfigLayer = ServerConfig.layerTest(process.cwd(), {
@@ -1846,6 +1847,9 @@ it.layer(
               mockCommandSpawnerLayer((command, args) => {
                 if (command === "cursor-agent") {
                   cursorSpawned = true;
+                }
+                if (command === "zcode" || command.toLowerCase().includes("zcode")) {
+                  zcodeSpawned = true;
                 }
                 const joined = args.join(" ");
                 if (joined === "--version") {
@@ -1889,6 +1893,7 @@ it.layer(
               "grok",
               "kimi",
               "opencode",
+              "zcodeAgent",
             ]);
             assert.strictEqual(cursorProvider?.enabled, false);
             assert.strictEqual(cursorProvider?.status, "disabled");
@@ -1897,6 +1902,12 @@ it.layer(
               "Cursor is disabled in Code Work settings.",
             );
             assert.strictEqual(cursorSpawned, false);
+            const zcodeProvider = providers.find(
+              (provider) => provider.instanceId === ProviderInstanceId.make("zcodeAgent"),
+            );
+            assert.strictEqual(zcodeProvider?.enabled, false);
+            assert.strictEqual(zcodeProvider?.status, "disabled");
+            assert.strictEqual(zcodeSpawned, false);
           }).pipe(Effect.provide(runtimeServices));
         }),
     );

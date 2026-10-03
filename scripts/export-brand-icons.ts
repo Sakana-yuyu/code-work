@@ -655,10 +655,10 @@ const logManualMacOsExportInstructions = Effect.fn("iconExport.logManualMacOsExp
   function* () {
     yield* Console.warn(
       [
-        "macOS icons require Icon Composer's GUI-only pre-Tahoe preset and were not changed.",
-        "Export each source with Platform: macOS pre-Tahoe, Appearance: Default, Size: 1024pt, Scale: 1×:",
+        "macOS PNG 已由光栅导出器确定性生成；如需原生 safe-area 版本，再使用 Icon Composer。",
+        "原生导出时请使用 Platform: macOS、Appearance: Default、Size: 1024pt、Scale: 1×：",
         ...ICON_VARIANTS.map((variant) => `- ${variant.source} -> ${variant.outputs.macos}`),
-        "See assets/README.md for the complete workflow.",
+        "完整流程见 assets/README.md。",
         "",
         "Copy/paste this prompt into Codex to perform the native exports:",
         "---",

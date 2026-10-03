@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - 探针门控需要同步读取本地 CLI 文件。
 import * as NodeFS from "node:fs";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import { SpawnExecutableResolution } from "@codework/shared/shell";

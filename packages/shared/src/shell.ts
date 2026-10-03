@@ -59,6 +59,9 @@ const WINDOWS_SHELL_META_CHARS = /([()\][%!^"`<>&|;, *?])/g;
  * `CommandLineToArgvW` parsing. Mirrors cross-spawn's argument escaping.
  */
 function escapeWindowsShellArg(arg: string): string {
+  if (/[\r\n]/.test(arg)) {
+    throw new Error("Windows cmd.exe shim 不支持包含换行的参数；请改用 .exe 或内置运行时。");
+  }
   // Double up backslashes that precede a double quote, then escape the quote
   // itself so it survives CommandLineToArgvW.
   let escaped = arg.replace(/(\\*)"/g, '$1$1\\"');

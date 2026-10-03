@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - 隔离握手测试需要读取本地探针路径。
 /** 七项前空壳 Windows 二进制：隔离握手；不发明凭据、不强制工具成功。 */
 import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";

@@ -38,12 +38,22 @@ export function applySessionModelCatalogs(
   const snapshots = new Map<string, ReadonlyArray<ServerProviderModel> | null>();
   const modes = new Map<string, SelectProviderOptionDescriptor | null>();
   const configs = new Map<string, ReadonlyArray<SelectProviderOptionDescriptor>>();
+  const instanceIds = new Set(providers.map((provider) => provider.instanceId));
+  const allInstancesResolved = (values: ReadonlyMap<string, unknown>): boolean =>
+    [...instanceIds].every((instanceId) => values.has(instanceId));
   for (let index = activities.length - 1; index >= 0; index--) {
     const activity = activities[index];
     if (activity?.kind === "session.config-options.updated") {
       const decoded = decodeConfigOptions(activity.payload);
       if (Option.isSome(decoded) && !configs.has(decoded.value.providerInstanceId)) {
         configs.set(decoded.value.providerInstanceId, decoded.value.configOptions);
+      }
+      if (
+        allInstancesResolved(snapshots) &&
+        allInstancesResolved(modes) &&
+        allInstancesResolved(configs)
+      ) {
+        break;
       }
       continue;
     }
@@ -52,12 +62,26 @@ export function applySessionModelCatalogs(
       if (Option.isSome(decoded) && !modes.has(decoded.value.providerInstanceId)) {
         modes.set(decoded.value.providerInstanceId, decoded.value.mode);
       }
+      if (
+        allInstancesResolved(snapshots) &&
+        allInstancesResolved(modes) &&
+        allInstancesResolved(configs)
+      ) {
+        break;
+      }
       continue;
     }
     if (activity?.kind !== "session.models.updated") continue;
     const decoded = decodeModels(activity.payload);
     if (Option.isSome(decoded) && !snapshots.has(decoded.value.providerInstanceId)) {
       snapshots.set(decoded.value.providerInstanceId, decoded.value.models);
+    }
+    if (
+      allInstancesResolved(snapshots) &&
+      allInstancesResolved(modes) &&
+      allInstancesResolved(configs)
+    ) {
+      break;
     }
   }
   if (snapshots.size === 0 && modes.size === 0 && configs.size === 0) return providers;

@@ -17,9 +17,12 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import {
   ProviderInstanceId,
@@ -110,7 +113,11 @@ const runWithAdapter = (
     readonly recorder: Recorder;
     readonly argvFile: string;
     readonly preparedModels: string[];
-  }) => Effect.Effect<void, ProviderAdapterError>,
+  }) => Effect.Effect<void, ProviderAdapterError, Scope.Scope>,
+  spawnGate?: {
+    readonly secondSpawnAttempted: Deferred.Deferred<void>;
+    readonly releaseFile: string;
+  },
 ) =>
   Effect.gen(function* () {
     const wrapperPath = yield* Effect.promise(makeMockAgentWrapper);
@@ -121,6 +128,26 @@ const runWithAdapter = (
       "argv.jsonl",
     );
     const preparedModels: string[] = [];
+    const baseSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    let spawnCount = 0;
+    let firstHandle: ChildProcessSpawner.ChildProcessHandle | undefined;
+    const spawner =
+      spawnGate === undefined
+        ? baseSpawner
+        : ChildProcessSpawner.make((command) =>
+            Effect.gen(function* () {
+              spawnCount += 1;
+              const handle = yield* baseSpawner.spawn(command);
+              if (spawnCount === 1) {
+                firstHandle = handle;
+              } else if (spawnCount === 2) {
+                yield* Deferred.succeed(spawnGate.secondSpawnAttempted, undefined);
+                yield* Effect.promise(() => NodeFSP.writeFile(spawnGate.releaseFile, "release\n"));
+                if (firstHandle !== undefined) yield* firstHandle.exitCode;
+              }
+              return handle;
+            }),
+          );
     const adapter = yield* makeZCodeAdapter(
       decodeSettings({ enabled: true, binaryPath: wrapperPath, launchArgs: "" }),
       {
@@ -136,7 +163,7 @@ const runWithAdapter = (
         prepareTurnConfig: (selected) =>
           Effect.sync(() => void preparedModels.push(selected.adapterId)),
       },
-    );
+    ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
     const recorder = yield* makeRecorder();
     yield* adapter.streamEvents.pipe(
       Stream.runForEach((event) => recorder.record(event)),
@@ -227,6 +254,40 @@ describe("makeZCodeAdapter", () => {
         expect(outcome._tag).toBe("Failure");
       }),
     ),
+  );
+
+  it.effect("上一回合迟到的退出帧不会错杀下一回合", () =>
+    Effect.gen(function* () {
+      const secondSpawnAttempted = yield* Deferred.make<void>();
+      const releaseFile = NodePath.join(
+        yield* Effect.promise(() =>
+          NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "codework-zcode-release-")),
+        ),
+        "release",
+      );
+      yield* runWithAdapter(
+        { MOCK_ZCODE_MODE: "delayed-exit", MOCK_ZCODE_RELEASE_FILE: releaseFile },
+        ({ adapter, recorder }) =>
+          Effect.gen(function* () {
+            const threadId = ThreadId.make("zcode-delayed-exit");
+            yield* adapter.startSession({ threadId, runtimeMode: "full-access" });
+            yield* adapter.sendTurn({ threadId, input: "first" });
+            yield* recorder.waitFor((event) => event.type === "turn.completed");
+            const cutoff = recorder.events.length;
+            const secondTurn = yield* adapter
+              .sendTurn({ threadId, input: "second" })
+              .pipe(Effect.forkScoped);
+            yield* Deferred.await(secondSpawnAttempted);
+            yield* Fiber.join(secondTurn);
+            const second = yield* recorder.waitFor(
+              (event) => event.type === "turn.completed",
+              cutoff,
+            );
+            expect(second.payload).toMatchObject({ state: "completed" });
+          }),
+        { secondSpawnAttempted, releaseFile },
+      );
+    }),
   );
 
   it.effect("turn.failed 以失败终态收尾并带上上游错误", () =>

@@ -38,8 +38,8 @@ Release 不执行以下操作：
 
 ## 发布前检查
 
-Release 会先执行质量门禁，再开始桌面矩阵构建。质量门禁包括格式检查、类型检查和测试；任何一项
-失败都不会创建 GitHub Release。
+Release 会先确认被打 tag 的提交已经有一次完整成功的 `ci.yml` 工作流，再执行质量门禁和桌面矩阵构建。
+质量门禁包括格式检查、类型检查和测试；CI 或任一门禁失败都不会创建 GitHub Release。
 
 桌面 Release 不读取 Relay 部署状态，也不需要 Axiom、Cloudflare 或 Relay 凭据；因此它可以
 独立完成普通本地/远程桌面包构建。需要更新 Relay 基础设施时，再手动运行
@@ -48,10 +48,11 @@ Release 会先执行质量门禁，再开始桌面矩阵构建。质量门禁包
 正式发布前确认：
 
 1. 版本已经写入对应的包配置和更新逻辑；
-2. 工作区中没有准备误提交的本地缓存或构建产物；
-3. GitHub Actions 所需的生产配置和可选签名密钥已在仓库环境中配置；
-4. 已经接受这是一次真实发布，而不是测试构建；
-5. 运行 `node scripts/check-codegraph-upstream.ts` 对照 npm 上的上游
+2. 被打 tag 的提交在 `ci.yml` 中有一次成功运行（包含 Check、Test、Test Server 和 Release Smoke）；
+3. 工作区中没有准备误提交的本地缓存或构建产物；
+4. GitHub Actions 所需的生产配置和可选签名密钥已在仓库环境中配置；
+5. 已经接受这是一次真实发布，而不是测试构建；
+6. 运行 `node scripts/check-codegraph-upstream.ts` 对照 npm 上的上游
    `@colbymchenry/codegraph` 最新版本与代码里固定的
    `CODEGRAPH_VALIDATED_CLI_VERSION`。报告有新版本时，审阅上游变更是否影响
    `codegraph init` / `codegraph explore` 的行为或输出，确认无碍后把

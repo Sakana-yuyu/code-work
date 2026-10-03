@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - 测试直接构造隔离的本地文件夹和临时 CLI。
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";

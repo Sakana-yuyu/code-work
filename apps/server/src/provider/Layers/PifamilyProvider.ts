@@ -92,10 +92,11 @@ export const checkPifamilyProviderStatus = Effect.fn("checkPifamilyProviderStatu
     const models = pifamilyProviderModels(input.routes);
     const label = PRESENTATIONS[input.driverKind].displayName;
 
-    // 探测不受开关影响：禁用只决定状态文案，安装与否必须如实上报。
-    // 内嵌运行时（vendored bundle 随包分发）不存在"CLI 未安装"状态，直接跳过探针。
-    const probe =
-      input.assumeInstalled === true
+    // 禁用实例不启动 CLI 探针；启用后才验证安装状态。内嵌运行时
+    // （vendored bundle 随包分发）不存在"CLI 未安装"状态，直接跳过探针。
+    const probe = !input.settings.enabled
+      ? Result.succeed({ stdout: "", stderr: "", code: 1 })
+      : input.assumeInstalled === true
         ? Result.succeed({ stdout: "", stderr: "", code: 0 })
         : yield* Effect.gen(function* () {
             const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;

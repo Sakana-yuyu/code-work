@@ -110,7 +110,7 @@ describe("会话模型目录", () => {
       expect(result?.models).toHaveLength(2);
       for (const resolved of result!.models) {
         const descriptors = getProviderOptionDescriptors({
-          caps: resolved.capabilities,
+          caps: resolved.capabilities!,
           selections: [{ id: ACP_MODE_OPTION_ID, value: "removed" }],
         });
         expect(descriptors).toEqual([mode]);
@@ -177,5 +177,28 @@ describe("会话模型目录", () => {
         [...history, row({ providerInstanceId: "a", models: null })],
       )[0],
     ).toBe(original);
+  });
+
+  it("三个会话目录覆盖所有实例后停止读取更早活动", () => {
+    let olderReads = 0;
+    const older = new Proxy(row({ providerInstanceId: "a", models: [] }), {
+      get(target, key) {
+        olderReads += 1;
+        return Reflect.get(target, key);
+      },
+    });
+    const history = [
+      older,
+      row({ providerInstanceId: "a", models: [model] }),
+      { ...row({ providerInstanceId: "a", mode: null }), kind: "session.mode.updated" },
+      {
+        ...row({ providerInstanceId: "a", configOptions: [] }),
+        kind: "session.config-options.updated",
+      },
+    ];
+    expect(applySessionModelCatalogs([provider], history)[0]?.models).toEqual([
+      { ...model, capabilities: { optionDescriptors: [] } },
+    ]);
+    expect(olderReads).toBe(0);
   });
 });

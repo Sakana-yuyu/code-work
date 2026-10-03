@@ -2,6 +2,7 @@
 // ZCode `--prompt … --output-format stream-json` 的最小替身：逐行输出会话事件信封，
 // 最后一行 type:"result"。MOCK_ZCODE_MODE 控制场景；MOCK_ZCODE_ARGV_FILE 记录每轮 argv。
 import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 
 const argv = process.argv.slice(2);
 if (process.env.MOCK_ZCODE_ARGV_FILE) {
@@ -10,6 +11,7 @@ if (process.env.MOCK_ZCODE_ARGV_FILE) {
 const resumeIndex = argv.indexOf("--resume");
 const sessionId = resumeIndex >= 0 ? argv[resumeIndex + 1] : "zc-session-1";
 const mode = process.env.MOCK_ZCODE_MODE ?? "happy";
+const releaseFile = process.env.MOCK_ZCODE_RELEASE_FILE;
 let seq = 0;
 const emit = (type, payload, extra = {}) =>
   process.stdout.write(
@@ -19,6 +21,10 @@ const emit = (type, payload, extra = {}) =>
 if (mode === "crash") {
   process.stderr.write("zcode: provider not ready\n");
   process.exit(3);
+}
+
+if (mode === "delayed-exit" && resumeIndex >= 0 && releaseFile) {
+  NodeFS.writeFileSync(releaseFile, "release\n");
 }
 
 emit("turn.started", { turnNumber: 1, input: "x" });
@@ -58,4 +64,20 @@ if (mode === "hang") {
   process.stdout.write(
     `${JSON.stringify({ type: "result", sessionId, response: "hello world" })}\n`,
   );
+}
+
+if (mode === "delayed-exit" && resumeIndex < 0 && releaseFile) {
+  await new Promise((resolve) => {
+    const watcher = NodeFS.watch(NodePath.dirname(releaseFile), (_event, filename) => {
+      if (
+        filename?.toString() !== NodePath.basename(releaseFile) ||
+        !NodeFS.existsSync(releaseFile)
+      ) {
+        return;
+      }
+      watcher.close();
+      resolve();
+    });
+  });
+  emit("process_exit", {}, { error: "old process exited after the next turn started" });
 }

@@ -29,7 +29,7 @@ vi.mock("../components/settings/CliProxySettingsSection", () => ({
   CliProxySettingsSection: () => null,
 }));
 
-import "./settings.cli-proxy";
+import { Route } from "./settings.cli-proxy";
 import { CliProxySettingsSection } from "../components/settings/CliProxySettingsSection";
 
 beforeEach(() => {
@@ -38,8 +38,15 @@ beforeEach(() => {
 });
 
 const panel = async () => {
-  const { component } = await state.splitLoaders[0]!();
-  return visitElements(component({}), (element) => element.type === CliProxySettingsSection);
+  const loader = state.splitLoaders[0];
+  const component = loader
+    ? (await loader()).component
+    : (
+        Route.options as unknown as {
+          readonly component: (props?: Record<string, never>) => unknown;
+        }
+      ).component;
+  return visitElements(component(), (element) => element.type === CliProxySettingsSection);
 };
 
 it("指定环境不存在时不回退到本机账号池", async () => {

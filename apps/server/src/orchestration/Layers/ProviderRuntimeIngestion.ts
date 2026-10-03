@@ -19,6 +19,9 @@ import {
   type OrchestrationThread,
   type OrchestrationThreadActivity,
   type ProviderRuntimeEvent,
+  type SessionConfiguredPayload,
+  type SessionExitedPayload,
+  type SessionStartedPayload,
   type ProviderSession,
 } from "@codework/contracts";
 import * as Cache from "effect/Cache";
@@ -406,21 +409,25 @@ export function runtimeEventToActivities(
       : {};
   })();
   switch (event.type) {
-    case "session.exited":
-      return event.payload.exitKind === "error"
+    case "session.exited": {
+      const payload = (event as ProviderRuntimeEvent & { readonly payload?: SessionExitedPayload })
+        .payload;
+      if (payload === undefined) return [];
+      return payload.exitKind === "error"
         ? [
             {
               id: event.eventId,
               createdAt: event.createdAt,
               tone: "error",
               kind: "session.exited",
-              summary: event.payload.reason ?? "Agent 会话异常退出。",
-              payload: event.payload,
+              summary: payload.reason ?? "Agent 会话异常退出。",
+              payload,
               turnId: toTurnId(event.turnId) ?? null,
               ...maybeSequence,
             },
           ]
         : [];
+    }
     case "request.opened": {
       if (event.payload.requestType === "tool_user_input") {
         return [];
@@ -850,8 +857,14 @@ export function runtimeEventToActivities(
 
     case "session.started":
     case "session.configured": {
+      const payload = (
+        event as ProviderRuntimeEvent & {
+          readonly payload?: SessionStartedPayload | SessionConfiguredPayload;
+        }
+      ).payload;
+      if (payload === undefined) return [];
       return [
-        ...(event.payload.configOptions === undefined
+        ...(payload.configOptions === undefined
           ? []
           : [
               {
@@ -862,13 +875,13 @@ export function runtimeEventToActivities(
                 summary: "会话角色与权限已更新",
                 payload: {
                   providerInstanceId: event.providerInstanceId ?? event.provider,
-                  configOptions: event.payload.configOptions,
+                  configOptions: payload.configOptions,
                 },
                 turnId: null,
                 ...maybeSequence,
               },
             ]),
-        ...(event.payload.mode === undefined
+        ...(payload.mode === undefined
           ? []
           : [
               {
@@ -879,13 +892,13 @@ export function runtimeEventToActivities(
                 summary: "会话模式已更新",
                 payload: {
                   providerInstanceId: event.providerInstanceId ?? event.provider,
-                  mode: event.payload.mode,
+                  mode: payload.mode,
                 },
                 turnId: null,
                 ...maybeSequence,
               },
             ]),
-        ...(event.payload.slashCommands === undefined
+        ...(payload.slashCommands === undefined
           ? []
           : [
               {
@@ -896,13 +909,13 @@ export function runtimeEventToActivities(
                 summary: "会话命令已更新",
                 payload: {
                   providerInstanceId: event.providerInstanceId ?? event.provider,
-                  commands: event.payload.slashCommands,
+                  commands: payload.slashCommands,
                 },
                 turnId: null,
                 ...maybeSequence,
               },
             ]),
-        ...(event.payload.models === undefined
+        ...(payload.models === undefined
           ? []
           : [
               {
@@ -913,7 +926,7 @@ export function runtimeEventToActivities(
                 summary: "会话模型已更新",
                 payload: {
                   providerInstanceId: event.providerInstanceId ?? event.provider,
-                  models: event.payload.models,
+                  models: payload.models,
                 },
                 turnId: null,
                 ...maybeSequence,

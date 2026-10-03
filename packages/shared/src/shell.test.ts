@@ -449,6 +449,26 @@ effectIt.layer(NodeServices.layer)("resolveSpawnCommand", (it) => {
       });
     }),
   );
+
+  it.effect("拒绝通过 cmd shim 传递多行参数，避免 cmd.exe 截断或注入", () =>
+    Effect.gen(function* () {
+      const result = yield* resolveSpawnCommand("zcode", ["--prompt=a\nb & echo pwned"], {
+        env: { PATH: "", PATHEXT: ".COM;.EXE;.BAT;.CMD" },
+      }).pipe(
+        Effect.provideService(HostProcessPlatform, "win32"),
+        Effect.provideService(
+          SpawnExecutableResolution,
+          () => "C:\\Users\\tester\\AppData\\Roaming\\npm\\zcode.cmd",
+        ),
+        Effect.exit,
+      );
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(String(result.cause)).toContain("不支持包含换行");
+      }
+    }),
+  );
 });
 
 effectIt.layer(NodeServices.layer)("resolveWindowsEnvironment", (it) => {

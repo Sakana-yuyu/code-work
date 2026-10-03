@@ -47,6 +47,18 @@ jobs:
           cache: true
           run-install: true
 
+      - name: Require successful CI for tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          successful="$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --limit 20 --json status,conclusion --jq '[.[] | select(.status == "completed" and .conclusion == "success")] | length')"
+          if [ "$successful" -lt 1 ]; then
+            echo "拒绝发版：被打 tag 的提交没有成功的 ci.yml 工作流。" >&2
+            gh run list --workflow ci.yml --commit "$GITHUB_SHA" --limit 20 || true
+            exit 1
+          fi
+          echo "已确认 $GITHUB_SHA 存在成功的 ci.yml 工作流。"
+
       - id: release_meta
         name: Resolve release version
         shell: bash

@@ -206,6 +206,7 @@ export const makeZCodeAdapter = (config: ZCodeAgentSettings, options: ZCodeAdapt
       emitApi: PifamilyEmitApi,
       proc: JsonlRpcProcess,
       frame: unknown,
+      ownTurnId: TurnId,
     ) {
       const { ctx } = state;
       const terminal = makePifamilyTerminalApi({ provider: PROVIDER, ctx, emitApi });
@@ -219,7 +220,7 @@ export const makeZCodeAdapter = (config: ZCodeAgentSettings, options: ZCodeAdapt
         if (state.current !== proc) return;
         state.current = null;
         const turn = ctx.turn;
-        if (turn === null || turn.settled) return;
+        if (turn === null || turn.turnId !== ownTurnId || turn.settled) return;
         if (turn.interrupting) {
           yield* terminal.completeTurn("interrupted");
           return;
@@ -233,6 +234,10 @@ export const makeZCodeAdapter = (config: ZCodeAgentSettings, options: ZCodeAdapt
         yield* terminal.failTurn(exit.error);
         return;
       }
+
+      // 每个进程只拥有创建它的回合；旧进程迟到的 result/增量不能触碰新回合。
+      const activeTurn = ctx.turn;
+      if (activeTurn === null || activeTurn.turnId !== ownTurnId || activeTurn.settled) return;
 
       const sessionId = asString(event.sessionId);
       if (sessionId !== undefined) yield* adoptSessionId(state, emitApi, sessionId);
@@ -557,6 +562,8 @@ export const makeZCodeAdapter = (config: ZCodeAgentSettings, options: ZCodeAdapt
       };
       ctx.session = { ...ctx.session, status: "running", activeTurnId: turnId };
       state.streamedText = false;
+      // 新回合先脱离旧进程；旧进程随后到达的退出帧只能被自己的 turnId 守卫丢弃。
+      state.current = null;
 
       const emitApi = makeEmitApi(ctx);
       yield* emitApi.emit({
@@ -603,7 +610,7 @@ export const makeZCodeAdapter = (config: ZCodeAgentSettings, options: ZCodeAdapt
         );
         state.current = proc;
         yield* proc.streamEvents.pipe(
-          Stream.runForEach((frame) => handleFrame(state, emitApi, proc, frame)),
+          Stream.runForEach((frame) => handleFrame(state, emitApi, proc, frame, turnId)),
           Effect.ensuring(Scope.close(turnScope, Exit.void)),
           Effect.forkScoped,
           Effect.provideService(Scope.Scope, ctx.sessionScope),

@@ -18,12 +18,35 @@ import {
 } from "@codework/contracts";
 
 import { ProviderValidationError } from "../provider/Errors.ts";
+import type { ProviderToolBrokerBridge } from "../provider/Services/ProviderAdapter.ts";
 import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDriver.ts";
 import type { CompositionRuntimeToolBridgeShape } from "./CompositionRuntimeToolBridge.ts";
 
 const unusedRuntimeToolBridge = {
   invoke: () => Effect.die("测试不应调用 Runtime Tool Bridge"),
   cancel: () => Effect.die("测试不应取消 Runtime Tool Bridge"),
+  releaseRunResources: () => Effect.void,
+} satisfies CompositionRuntimeToolBridgeShape;
+
+const successfulRuntimeToolBridge = {
+  invoke: (input) =>
+    Effect.succeed({
+      invocationId: `invocation-${input.idempotencyKey}`,
+      taskId: input.taskId,
+      runId: input.runId,
+      toolCallId: input.toolCallId,
+      canonicalToolName: input.canonicalToolName,
+      status: "succeeded" as const,
+    }),
+  cancel: (input) =>
+    Effect.succeed({
+      invocationId: `invocation-${input.idempotencyKey}`,
+      taskId: input.taskId,
+      runId: input.runId,
+      toolCallId: input.toolCallId,
+      canonicalToolName: input.canonicalToolName,
+      status: "cancelled" as const,
+    }),
   releaseRunResources: () => Effect.void,
 } satisfies CompositionRuntimeToolBridgeShape;
 
@@ -459,6 +482,148 @@ describe("CompositionProviderAgentDriver", () => {
       ),
     ).resolves.toMatchObject({ runtimeTaskId: "cursor-local:thread-toolbroker-retry:turn-1" });
     expect(configureAttempts).toBe(2);
+  });
+
+  it("Provider 实例绑不上时立即结束 ToolBroker 等待", async () => {
+    let configuredBridge: ProviderToolBrokerBridge | undefined;
+    const driver = makeCompositionProviderAgentDriver({
+      agentId: "agent-cursor",
+      runtimeId: "cursor-local",
+      providerInstanceId: ProviderInstanceId.make("cursor-local"),
+      toolBrokerBridge: unusedRuntimeToolBridge,
+      toolBrokerCanonicalTools: ["workspace.read_file"],
+      adapter: {
+        ...makeAdapter().adapter,
+        handshakeCapabilities: (input) =>
+          Effect.succeed({
+            ...input,
+            status: "accepted" as const,
+            handshakeId: "handshake-runtime-binding",
+            acceptedGrantIds: [...input.capabilityGrantIds],
+          }),
+        configureToolBroker: ({ bridge }) => Effect.sync(() => void (configuredBridge = bridge)),
+        clearToolBroker: () => Effect.void,
+        revokeCapabilityHandshake: () => Effect.void,
+      },
+    });
+    const task = {
+      taskId: "task-runtime-binding",
+      projectId: "project-1",
+      threadId: "thread-runtime-binding",
+      assigneeKind: "agent" as const,
+      assigneeId: "agent-cursor",
+      mode: "serial" as const,
+      status: "queued" as const,
+      promptDigest: "sha256:runtime-binding",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 1,
+    };
+    const run = {
+      runId: "run-runtime-binding",
+      taskId: task.taskId,
+      agentId: task.assigneeId,
+      runtimeId: "cursor-local",
+      status: "queued" as const,
+      attempt: 1,
+      capabilityGrantIds: ["grant-runtime-binding"],
+    };
+    await Effect.runPromise(
+      driver.startTask({ task, run, prompt: "等待确认", workspaceRoot: "C:/workspace" }),
+    );
+    expect(configuredBridge).toBeDefined();
+    const invocation = configuredBridge!.invoke({
+      toolCallId: "tool-runtime-binding",
+      canonicalToolName: "workspace.read_file",
+      arguments: { relativePath: "notes.txt" },
+      idempotencyKey: "idem-runtime-binding",
+    });
+    driver.resolveRuntimeEvent?.({
+      eventId: EventId.make("event-wrong-provider-instance"),
+      provider: ProviderDriverKind.make("codex"),
+      providerInstanceId: ProviderInstanceId.make("cursor-rebuilt"),
+      threadId: ThreadId.make(task.threadId),
+      turnId: TurnId.make("turn-1"),
+      createdAt: "2026-08-27T00:00:00.000Z",
+      type: "turn.started",
+      payload: {},
+    });
+    await expect(Effect.runPromise(invocation)).resolves.toMatchObject({
+      status: "failed",
+      errorCode: "provider_runtime_start_unbound",
+    });
+  });
+
+  it("Provider 实例确认稍后到达时仍能完成 ToolBroker 调用", async () => {
+    let configuredBridge: ProviderToolBrokerBridge | undefined;
+    const driver = makeCompositionProviderAgentDriver({
+      agentId: "agent-cursor",
+      runtimeId: "cursor-local",
+      providerInstanceId: ProviderInstanceId.make("cursor-local"),
+      toolBrokerBridge: successfulRuntimeToolBridge,
+      toolBrokerCanonicalTools: ["workspace.read_file"],
+      adapter: {
+        ...makeAdapter().adapter,
+        handshakeCapabilities: (input) =>
+          Effect.succeed({
+            ...input,
+            status: "accepted" as const,
+            handshakeId: "handshake-runtime-binding-late",
+            acceptedGrantIds: [...input.capabilityGrantIds],
+          }),
+        configureToolBroker: ({ bridge }) => Effect.sync(() => void (configuredBridge = bridge)),
+        clearToolBroker: () => Effect.void,
+        revokeCapabilityHandshake: () => Effect.void,
+      },
+    });
+    const task = {
+      taskId: "task-runtime-binding-late",
+      projectId: "project-1",
+      threadId: "thread-runtime-binding-late",
+      assigneeKind: "agent" as const,
+      assigneeId: "agent-cursor",
+      mode: "serial" as const,
+      status: "queued" as const,
+      promptDigest: "sha256:runtime-binding-late",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 1,
+    };
+    const run = {
+      runId: "run-runtime-binding-late",
+      taskId: task.taskId,
+      agentId: task.assigneeId,
+      runtimeId: "cursor-local",
+      status: "queued" as const,
+      attempt: 1,
+      capabilityGrantIds: ["grant-runtime-binding-late"],
+    };
+    await Effect.runPromise(
+      driver.startTask({ task, run, prompt: "等待稍后确认", workspaceRoot: "C:/workspace" }),
+    );
+    expect(configuredBridge).toBeDefined();
+    const invocation = configuredBridge!.invoke({
+      toolCallId: "tool-runtime-binding-late",
+      canonicalToolName: "workspace.read_file",
+      arguments: { relativePath: "notes.txt" },
+      idempotencyKey: "idem-runtime-binding-late",
+    });
+    const pending = Effect.runFork(invocation);
+    const binding = driver.resolveRuntimeEvent?.({
+      eventId: EventId.make("event-runtime-binding-late"),
+      provider: ProviderDriverKind.make("codex"),
+      providerInstanceId: ProviderInstanceId.make("cursor-local"),
+      threadId: ThreadId.make(task.threadId),
+      turnId: TurnId.make("turn-1"),
+      createdAt: "2026-08-27T00:00:00.000Z",
+      type: "turn.started",
+      payload: {},
+    });
+    expect(binding?.confirmRuntimeStart).toBeDefined();
+    await Effect.runPromise(binding!.confirmRuntimeStart!);
+    await expect(Effect.runPromise(Fiber.join(pending))).resolves.toMatchObject({
+      status: "succeeded",
+    });
   });
 
   it("starts a provider session and sends the transient task prompt", async () => {
