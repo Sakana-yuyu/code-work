@@ -23,22 +23,27 @@
  * @module provider/Layers/ByokAdapter
  */
 import {
+  ApprovalRequestId,
   EventId,
   type ByokModelAdapter,
   type ByokSettings,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ProviderUserInputAnswers,
   RuntimeItemId,
+  RuntimeRequestId,
   type ProviderRuntimeEvent,
   type ProviderSession,
   type ServerSettings,
   type ServerSettingsError,
   ThreadId,
   TurnId,
+  type UserInputQuestion,
 } from "@codework/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
+import * as Deferred from "effect/Deferred";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -63,6 +68,7 @@ import {
   spawnCodeGraphIndexInit,
 } from "../../codeGraph/codeGraphIndex.ts";
 import {
+  ByokAgentLoopCheckpointError,
   runByokAgentLoop,
   type ByokAgentTool,
   type ByokAgentToolCall,
@@ -93,6 +99,13 @@ import {
 } from "./byokChatClient.ts";
 import { getModelSelectionStringOptionValue } from "@codework/shared/model";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
+import {
+  BYOK_ASK_USER_TOOL,
+  BYOK_ASK_USER_TOOL_NAME,
+  extractAskUserQuestionsFromText,
+  formatAskUserAnswers,
+  parseAskUserToolArguments,
+} from "../byok/ByokAskUser.ts";
 import { applyPromptTemplate, renderPromptTemplate } from "../byok/PromptTemplate.ts";
 import {
   buildVisionPrompt,
@@ -223,6 +236,8 @@ interface ByokSessionContext {
   steerWindowOpen: boolean;
   /** 已写入历史、等待循环注入的引导文本；窗口关闭时必须清空。 */
   readonly pendingSteers: Array<string>;
+  /** 进行中的问答。回答经 respondToUserInput 完成对应 Deferred。 */
+  readonly pendingUserInputs: Map<ApprovalRequestId, Deferred.Deferred<ProviderUserInputAnswers>>;
   totalProcessedTokens: number;
   totalModelDurationMs: number;
 }
@@ -430,6 +445,61 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
     const emit = (event: ProviderRuntimeEvent) =>
       Queue.offer(runtimeEvents, event).pipe(Effect.asVoid);
 
+    const requestUserAnswers = (
+      ctx: ByokSessionContext,
+      turnId: TurnId,
+      questions: readonly UserInputQuestion[],
+    ) =>
+      Effect.gen(function* () {
+        const requestId = ApprovalRequestId.make(yield* randomUUIDv4);
+        const answers = yield* Deferred.make<ProviderUserInputAnswers>();
+        ctx.pendingUserInputs.set(requestId, answers);
+        yield* emit({
+          ...(yield* makeEventStamp()),
+          type: "user-input.requested",
+          provider: PROVIDER,
+          threadId: ctx.session.threadId,
+          turnId,
+          requestId: RuntimeRequestId.make(requestId),
+          payload: { questions: [...questions] },
+        });
+        return yield* Deferred.await(answers).pipe(
+          Effect.onExit((exit) =>
+            Effect.uninterruptible(
+              Effect.gen(function* () {
+                ctx.pendingUserInputs.delete(requestId);
+                yield* emit({
+                  ...(yield* makeEventStamp()),
+                  type: "user-input.resolved",
+                  provider: PROVIDER,
+                  threadId: ctx.session.threadId,
+                  turnId,
+                  requestId: RuntimeRequestId.make(requestId),
+                  payload: {
+                    answers: Exit.isSuccess(exit) ? exit.value : { cancelled: true },
+                  },
+                });
+              }),
+            ),
+          ),
+        );
+      });
+
+    const awaitAskUser = (
+      ctx: ByokSessionContext,
+      turnId: TurnId,
+      questions: readonly UserInputQuestion[],
+    ) =>
+      requestUserAnswers(ctx, turnId, questions).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ByokAgentLoopCheckpointError({
+              code: "ask_user",
+              detail: cause.message,
+            }),
+        ),
+      );
+
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
         sessions.clear();
@@ -609,6 +679,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           activeTurnFiber: undefined,
           steerWindowOpen: false,
           pendingSteers: [],
+          pendingUserInputs: new Map(),
           totalProcessedTokens: resumed?.totalProcessedTokens ?? 0,
           totalModelDurationMs: resumed?.totalModelDurationMs ?? 0,
         };
@@ -984,6 +1055,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           );
         }
       }
+      projectTools = [...projectTools, BYOK_ASK_USER_TOOL];
       const agentSystemPrompt = [
         systemPrompt,
         "你正在 Code Work 中处理当前项目，可用操作以本轮工具清单为准。",
@@ -999,6 +1071,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         // 承载，而不是把结论倒进 markdown 表格或长代码块。
         "当产出独立的分析型交付物（审计、评审、代码地图、量化分析、数据密集结论、对比、时间线）时，优先用 canvas.create 工具承载并随任务推进复用相同 canvasId 更新它，而不是写大段 markdown 表格或长代码块；定向实现、调试等明确交付物不适用。",
         "画布只能通过调用 canvas.create 工具创建：把画布 JSON 写进回复正文或代码块不会生成画布面板。",
+        "需要用户确认无法从工作区得到的决定时，调用 ask_user 弹出问答卡片并等待回答。不要只在正文里列出编号问题后结束本轮。",
         ...(discoveredSkills.length === 0
           ? []
           : [
@@ -1077,6 +1150,51 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               emitToolRowStarted(toolCall, activityItemId),
             onToolCompleted: (toolCall, result, activityItemId) =>
               emitToolRowCompleted(toolCall, result, activityItemId),
+            resolveLocalTool: (toolCall) => {
+              if (toolCall.canonicalToolName !== BYOK_ASK_USER_TOOL_NAME) {
+                return Effect.succeed(undefined);
+              }
+              const questions = parseAskUserToolArguments(toolCall.arguments);
+              if (questions === undefined) {
+                return Clock.currentTimeMillis.pipe(
+                  Effect.map((now) => ({
+                    invocationId: `ask-user-${toolCall.toolCallId}`,
+                    taskId: String(ctx.session.threadId),
+                    runId: String(turnId),
+                    toolCallId: toolCall.toolCallId,
+                    canonicalToolName: toolCall.canonicalToolName,
+                    status: "failed" as const,
+                    errorCode: "tool_arguments_invalid",
+                    startedAtUnixMs: now,
+                    finishedAtUnixMs: now,
+                  })),
+                );
+              }
+              return awaitAskUser(ctx, turnId, questions).pipe(
+                Effect.flatMap((userAnswers) =>
+                  Clock.currentTimeMillis.pipe(
+                    Effect.map((now) => ({
+                      invocationId: `ask-user-${toolCall.toolCallId}`,
+                      taskId: String(ctx.session.threadId),
+                      runId: String(turnId),
+                      toolCallId: toolCall.toolCallId,
+                      canonicalToolName: toolCall.canonicalToolName,
+                      status: "succeeded" as const,
+                      result: { answers: userAnswers },
+                      startedAtUnixMs: now,
+                      finishedAtUnixMs: now,
+                    })),
+                  ),
+                ),
+              );
+            },
+            awaitUserAnswers: (assistantText) => {
+              const questions = extractAskUserQuestionsFromText(assistantText);
+              if (questions === undefined) return Effect.succeed(undefined);
+              return awaitAskUser(ctx, turnId, questions).pipe(
+                Effect.map((userAnswers) => formatAskUserAnswers(questions, userAnswers)),
+              );
+            },
             onModelUsage: (usage) =>
               emitThreadTokenUsage(ctx, turnId, adapter, usage).pipe(Effect.orDie),
             // 每轮请求前取走运行中到达的引导；取走即视为已并入本回合上下文。
@@ -1441,12 +1559,28 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
 
     const respondToUserInput: ByokAdapterShape["respondToUserInput"] = Effect.fn(
       "byokRespondToUserInput",
-    )(function* () {
-      return yield* new ProviderAdapterRequestError({
-        provider: PROVIDER,
-        method: "user-input/respond",
-        detail: "The BYOK engine does not expose structured user-input requests.",
-      });
+    )(function* (threadId, requestId, answers) {
+      const ctx = yield* requireSession(threadId);
+      const pending = ctx.pendingUserInputs.get(requestId);
+      if (pending === undefined) {
+        return yield* new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "user-input/respond",
+          detail: `Unknown pending user-input request: ${requestId}`,
+        });
+      }
+      ctx.pendingUserInputs.delete(requestId);
+      yield* Deferred.succeed(pending, answers).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ProviderAdapterRequestError({
+              provider: PROVIDER,
+              method: "user-input/respond",
+              detail: "Pending user-input request is no longer waiting.",
+              cause,
+            }),
+        ),
+      );
     });
 
     const stopSession: ByokAdapterShape["stopSession"] = Effect.fn("byokStopSession")(

@@ -161,6 +161,20 @@ export type ByokAgentLoopInput = {
   readonly onModelUsage?: (
     usage: ByokAgentModelUsage,
   ) => Effect.Effect<void, ByokAgentLoopCheckpointError>;
+  /**
+   * 会话自己处理的工具（例如 ask_user）。返回结果时不再交给 ToolBroker；
+   * 返回 undefined 时照常走 broker。
+   */
+  readonly resolveLocalTool?: (
+    toolCall: ByokAgentToolCall,
+  ) => Effect.Effect<ToolBroker.ToolBrokerResult | undefined, ByokAgentLoopCheckpointError>;
+  /**
+   * 模型以纯文本结束本轮时调用。返回用户回答则把回答并入上下文并继续；
+   * 返回 undefined 表示这段正文不需要等待用户。
+   */
+  readonly awaitUserAnswers?: (
+    assistantText: string,
+  ) => Effect.Effect<string | undefined, ByokAgentLoopCheckpointError>;
 };
 
 export type ByokAgentLoopResult = {
@@ -196,6 +210,8 @@ const DEFAULT_MAX_TOOL_RESULT_CHARS = 12_000;
  * 模型换新终端重放同一条 PowerShell 时，第 4 次不再启动进程，直接结束回合。
  */
 const MAX_IDENTICAL_TERMINAL_EXECUTIONS = 3;
+/** 同一回合里，正文抢救出的问答最多再续写这么多次，避免模型反复提问。 */
+const MAX_ASK_USER_CONTINUATIONS = 2;
 /** 字符预算触发裁剪后把历史压回到预算的这一比例，留出增长空间以摊薄裁剪频率。 */
 const COMPACTION_RETAIN_RATIO = 0.5;
 /**
@@ -464,6 +480,7 @@ export const runByokAgentLoop = (
     const usedActivityItemIds = new Set<string>();
     let text = "";
     let rounds = 0;
+    let userAnswerContinuations = 0;
     let checkpointChunkIndex = 0;
     let cumulativeUtf8Bytes = 0;
     let reasoningChunkIndex = 0;
@@ -734,6 +751,16 @@ export const runByokAgentLoop = (
             if (input.onToolStarted !== undefined) {
               yield* input.onToolStarted(toolCall, activityItemId);
             }
+            const localResult =
+              input.resolveLocalTool === undefined
+                ? undefined
+                : yield* input.resolveLocalTool(toolCall);
+            if (localResult !== undefined) {
+              if (input.onToolCompleted !== undefined) {
+                yield* input.onToolCompleted(toolCall, localResult, activityItemId);
+              }
+              return [toolCall, localResult] as const;
+            }
             const result = yield* broker.invoke({
               taskId: input.taskId,
               runId: input.runId,
@@ -773,6 +800,26 @@ export const runByokAgentLoop = (
         return yield* new ByokAgentLoopTerminalEventMissingError();
       }
       if (roundToolCalls.length === 0) {
+        const roundText = text.slice(turnTextStart);
+        if (
+          input.awaitUserAnswers !== undefined &&
+          userAnswerContinuations < MAX_ASK_USER_CONTINUATIONS
+        ) {
+          const answers = yield* input.awaitUserAnswers(roundText);
+          if (answers !== undefined && answers.trim().length > 0) {
+            userAnswerContinuations += 1;
+            messages.push({
+              role: "assistant",
+              content: roundText,
+              ...(roundReasoning.length > 0 ? { reasoningContent: roundReasoning } : {}),
+              ...(roundReasoning.length > 0 && roundReasoningSignature.length > 0
+                ? { reasoningSignature: roundReasoningSignature }
+                : {}),
+            });
+            messages.push({ role: "user", content: answers });
+            continue;
+          }
+        }
         return { text, messages, rounds };
       }
     }

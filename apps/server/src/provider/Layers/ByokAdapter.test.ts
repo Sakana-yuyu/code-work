@@ -1,5 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { ByokSettings, ProviderInstanceId, ThreadId } from "@codework/contracts";
+import { ApprovalRequestId, ByokSettings, ProviderInstanceId, ThreadId } from "@codework/contracts";
 import { createModelSelection } from "@codework/shared/model";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -277,6 +277,7 @@ describe("ByokAdapter", () => {
             }),
             expect.objectContaining({ function: expect.objectContaining({ name: "git_status" }) }),
             expect.objectContaining({ function: expect.objectContaining({ name: "git_diff" }) }),
+            expect.objectContaining({ function: expect.objectContaining({ name: "ask_user" }) }),
           ]),
         });
         expect(requests[1]).toMatchObject({
@@ -969,6 +970,271 @@ describe("ByokAdapter", () => {
     }).pipe(
       Effect.scoped,
       Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-test-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
+  it.effect("正文里的确认清单会弹出问答，回答后同一回合继续", () => {
+    const askThreadId = ThreadId.make("thread-byok-ask-user-text");
+    const requests: Array<Record<string, unknown>> = [];
+    const confirmation = [
+      "规划已放到右侧面板。",
+      "",
+      "## 开工前需要你确认 4 件事",
+      "",
+      "1. **产品类型**：工具/商城/预约/内容？——决定演示页要模拟哪些核心流程",
+      "2. **是否已有后端 API**：没有的话真实模式先和演示共用 mock，后续再接",
+      "3. **有无现有素材**：产品截图、Logo、品牌色？没有的话需要先出视觉设计",
+      "4. **小程序技术倾向**：uni-app 还是原生微信小程序？如果倾向 uni-app，演示页可以直接对齐",
+      "",
+      "回复这几个问题后，我就可以开始初始化项目了。",
+    ].join("\n");
+    const responses = [
+      sse(
+        { choices: [{ delta: { content: confirmation }, finish_reason: null }] },
+        {
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 20, completion_tokens: 80, total_tokens: 100 },
+        },
+      ),
+      sse(
+        {
+          choices: [{ delta: { content: "按你的选择开始初始化商城演示。" }, finish_reason: null }],
+        },
+        {
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 40, completion_tokens: 12, total_tokens: 52 },
+        },
+      ),
+    ];
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        if (request.body instanceof HttpBody.Uint8Array) {
+          requests.push(decodeJson(decoder.decode(request.body.body)) as Record<string, unknown>);
+        }
+        const body = responses.shift();
+        if (body === undefined) throw new Error("收到未预期的 BYOK 请求");
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(body, { headers: { "content-type": "text/event-stream" } }),
+        );
+      }),
+    );
+    const toolBroker = ToolBroker.ToolBroker.of({
+      invoke: () => Effect.die("正文问答不应走 ToolBroker"),
+      cancel: () => Effect.void,
+    });
+
+    return Effect.gen(function* () {
+      const adapter = yield* makeByokAdapter(settings, { instanceId, toolBroker });
+      let responded = false;
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.tap((event) => {
+          if (event.type !== "user-input.requested" || responded || event.requestId === undefined) {
+            return Effect.void;
+          }
+          responded = true;
+          const answers = Object.fromEntries(
+            event.payload.questions.map((question, index) => [
+              question.id,
+              index === 0 ? "商城" : "没有",
+            ]),
+          );
+          return adapter.respondToUserInput(
+            askThreadId,
+            ApprovalRequestId.make(event.requestId),
+            answers,
+          );
+        }),
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* adapter.startSession({
+        threadId: askThreadId,
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      yield* adapter.sendTurn({
+        threadId: askThreadId,
+        input: "做一个可演示的产品页",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const types = events.map((event) => event.type);
+      const requestedAt = types.indexOf("user-input.requested");
+      const resolvedAt = types.indexOf("user-input.resolved");
+      const completedAt = types.lastIndexOf("turn.completed");
+      expect(requestedAt).toBeGreaterThan(-1);
+      expect(resolvedAt).toBeGreaterThan(requestedAt);
+      expect(completedAt).toBeGreaterThan(resolvedAt);
+      const requested = events[requestedAt];
+      expect(requested).toMatchObject({
+        type: "user-input.requested",
+        payload: {
+          questions: [
+            expect.objectContaining({
+              header: "产品类型",
+              options: expect.arrayContaining([expect.objectContaining({ label: "商城" })]),
+            }),
+            expect.objectContaining({ header: "是否已有后端 API" }),
+            expect.objectContaining({ header: "有无现有素材" }),
+            expect.objectContaining({ header: "小程序技术倾向" }),
+          ],
+        },
+      });
+      expect(events.at(-1)).toMatchObject({
+        type: "turn.completed",
+        payload: { state: "completed" },
+      });
+      expect(requests).toHaveLength(2);
+      expect(JSON.stringify(requests[1]?.messages)).toContain("产品类型：商城");
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "content.delta",
+            payload: expect.objectContaining({ delta: "按你的选择开始初始化商城演示。" }),
+          }),
+        ]),
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-ask-text-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
+  it.effect("ask_user 工具调用会弹出问答并把回答交回模型", () => {
+    const askThreadId = ThreadId.make("thread-byok-ask-user-tool");
+    const requests: Array<Record<string, unknown>> = [];
+    const responses = [
+      sse({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "ask-1",
+                  function: {
+                    name: "ask_user",
+                    arguments: encodeJson({
+                      questions: [
+                        {
+                          header: "产品类型",
+                          question: "演示页要模拟哪一类产品？",
+                          options: [
+                            { label: "商城", description: "完整购物流程" },
+                            { label: "工具", description: "工具类流程" },
+                          ],
+                        },
+                      ],
+                    }),
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+        usage: { prompt_tokens: 30, completion_tokens: 20, total_tokens: 50 },
+      }),
+      sse(
+        { choices: [{ delta: { content: "按商城方案继续。" }, finish_reason: null }] },
+        {
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 60, completion_tokens: 8, total_tokens: 68 },
+        },
+      ),
+    ];
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        if (request.body instanceof HttpBody.Uint8Array) {
+          requests.push(decodeJson(decoder.decode(request.body.body)) as Record<string, unknown>);
+        }
+        const body = responses.shift();
+        if (body === undefined) throw new Error("收到未预期的 BYOK 请求");
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(body, { headers: { "content-type": "text/event-stream" } }),
+        );
+      }),
+    );
+    let brokerCalls = 0;
+    const toolBroker = ToolBroker.ToolBroker.of({
+      invoke: () =>
+        Effect.sync(() => {
+          brokerCalls += 1;
+          return {
+            invocationId: "unexpected",
+            taskId: "unexpected",
+            runId: "unexpected",
+            toolCallId: "unexpected",
+            canonicalToolName: "ask_user",
+            status: "failed" as const,
+            errorCode: "unexpected_broker_call",
+          };
+        }),
+      cancel: () => Effect.void,
+    });
+
+    return Effect.gen(function* () {
+      const adapter = yield* makeByokAdapter(settings, { instanceId, toolBroker });
+      let responded = false;
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.tap((event) => {
+          if (event.type !== "user-input.requested" || responded || event.requestId === undefined) {
+            return Effect.void;
+          }
+          responded = true;
+          return adapter.respondToUserInput(askThreadId, ApprovalRequestId.make(event.requestId), {
+            [event.payload.questions[0]?.id ?? "q1"]: "商城",
+          });
+        }),
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* adapter.startSession({
+        threadId: askThreadId,
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      yield* adapter.sendTurn({
+        threadId: askThreadId,
+        input: "先确认产品类型",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      expect(brokerCalls).toBe(0);
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "user-input.requested",
+            payload: {
+              questions: [
+                expect.objectContaining({
+                  header: "产品类型",
+                  question: "演示页要模拟哪一类产品？",
+                }),
+              ],
+            },
+          }),
+          expect.objectContaining({
+            type: "content.delta",
+            payload: expect.objectContaining({ delta: "按商城方案继续。" }),
+          }),
+          expect.objectContaining({ type: "turn.completed", payload: { state: "completed" } }),
+        ]),
+      );
+      expect(JSON.stringify(requests[1]?.messages)).toContain("商城");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-ask-tool-" })),
       Effect.provideService(HttpClient.HttpClient, httpClient),
       Effect.provide(NodeServices.layer),
     );
