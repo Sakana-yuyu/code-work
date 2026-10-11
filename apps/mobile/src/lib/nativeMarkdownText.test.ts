@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { MarkdownNode } from "react-native-nitro-markdown/headless";
 
 import {
+  nativeMarkdownCodeHighlightAppend,
   nativeMarkdownChunkSpacing,
   nativeMarkdownDocumentChunks,
   nativeMarkdownDocumentRuns,
@@ -9,6 +10,37 @@ import {
   nativeMarkdownTextRuns,
   nativeMarkdownWithPreservedSoftBreaks,
 } from "@codework/mobile-markdown-text/markdown";
+
+describe("流式代码的异步高亮", () => {
+  it("新行尚未着色时显示完整文本并复用已完成行", () => {
+    const first = [{ content: "第一行", color: "#fff", fontStyle: null }];
+    const second = [{ content: "第二行", color: "#ccc", fontStyle: null }];
+    const previous = [first, second];
+    const result = nativeMarkdownCodeHighlightAppend(
+      "第一行\n第二行",
+      "第一行\n第二行\n第三行",
+      previous,
+    );
+    expect(result?.[0]).toBe(first);
+    expect(result?.[1]).toBe(second);
+    expect(result?.flatMap((line) => line.map((token) => token.content).join("")).join("\n")).toBe(
+      "第一行\n第二行\n第三行",
+    );
+    expect(nativeMarkdownCodeHighlightAppend("第一行\n第二行", "第一行\n第二行", previous)).toBe(
+      previous,
+    );
+  });
+
+  it("只修改当前尾行，替换或不一致的旧高亮不得沿用", () => {
+    const first = [{ content: "第一行", color: "#fff", fontStyle: null }];
+    const previous = [first, [{ content: "尾部", color: "#ccc", fontStyle: null }]];
+    const result = nativeMarkdownCodeHighlightAppend("第一行\n尾部", "第一行\n尾部追加", previous);
+    expect(result?.[0]).toBe(first);
+    expect(result?.at(-1)?.at(-1)).toEqual({ content: "追加", color: null, fontStyle: null });
+    expect(nativeMarkdownCodeHighlightAppend("第一行\n尾部", "替换", previous)).toBeNull();
+    expect(nativeMarkdownCodeHighlightAppend("不一致", "不一致追加", previous)).toBeNull();
+  });
+});
 
 describe("nativeMarkdownTextRuns", () => {
   it("preserves inline emphasis and code styles", () => {
@@ -449,6 +481,33 @@ describe("nativeMarkdownListItemBlocks", () => {
 });
 
 describe("nativeMarkdownDocumentChunks", () => {
+  it("追加代码行或普通段落时保留块身份，位置变化才创建新块", () => {
+    const before: MarkdownNode = {
+      type: "document",
+      children: [
+        { type: "paragraph", beg: 0, end: 8, children: [{ type: "text", content: "完成段落" }] },
+        { type: "code_block", beg: 10, end: 30, content: "const value = 1;" },
+        { type: "paragraph", beg: 32, end: 35, children: [{ type: "text", content: "尾部" }] },
+      ],
+    };
+    const after = structuredClone(before);
+    if (after.children?.[1]) {
+      after.children[1].end = 50;
+      after.children[1].content += "\nconsole.log(value);";
+    }
+    if (after.children?.[2]) {
+      after.children[2].end = 60;
+      after.children[2].children?.push({ type: "text", content: "追加" });
+    }
+    expect(nativeMarkdownDocumentChunks(after).map((chunk) => chunk.key)).toEqual(
+      nativeMarkdownDocumentChunks(before).map((chunk) => chunk.key),
+    );
+    const moved = structuredClone(after);
+    if (moved.children?.[1]) moved.children[1].beg = 11;
+    expect(nativeMarkdownDocumentChunks(moved)[1]?.key).not.toBe(
+      nativeMarkdownDocumentChunks(before)[1]?.key,
+    );
+  });
   it("renders plain blockquotes as rich blocks so their marker spans wrapped lines", () => {
     const blockquote: MarkdownNode = {
       type: "blockquote",
@@ -476,7 +535,7 @@ describe("nativeMarkdownDocumentChunks", () => {
     ).toEqual([
       {
         kind: "rich",
-        key: "rich:blockquote:0:120",
+        key: "rich:blockquote:0",
         node: blockquote,
       },
     ]);
@@ -603,7 +662,7 @@ describe("nativeMarkdownDocumentChunks", () => {
     expect(chunks[0]).toMatchObject({ kind: "selectable" });
     expect(chunks[1]).toEqual({
       kind: "rich",
-      key: "rich:code_block:11:35",
+      key: "rich:code_block:11",
       node: document.children?.[1],
     });
     expect(chunks[2]).toMatchObject({ kind: "selectable" });
@@ -640,7 +699,7 @@ describe("nativeMarkdownDocumentChunks", () => {
     expect(nativeMarkdownDocumentChunks(document)).toEqual([
       {
         kind: "rich",
-        key: "rich:list:0:45",
+        key: "rich:list:0",
         node: document.children?.[0],
       },
     ]);
@@ -668,7 +727,7 @@ describe("nativeMarkdownDocumentChunks", () => {
     expect(chunks[0]).toMatchObject({ kind: "selectable" });
     expect(chunks[1]).toEqual({
       kind: "rich",
-      key: "rich:horizontal_rule:1:1",
+      key: "rich:horizontal_rule:1",
       node: document.children?.[1],
     });
     expect(chunks[2]).toMatchObject({ kind: "selectable" });
@@ -714,7 +773,7 @@ describe("nativeMarkdownDocumentChunks", () => {
     expect(chunks[0]).toMatchObject({ kind: "selectable" });
     expect(chunks[1]).toEqual({
       kind: "rich",
-      key: "rich:list:1:1",
+      key: "rich:list:1",
       node: document.children?.[1],
     });
     expect(chunks[2]).toMatchObject({ kind: "selectable" });

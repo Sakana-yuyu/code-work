@@ -1,6 +1,9 @@
 import type { MarkdownNode } from "react-native-nitro-markdown/headless";
 
-import type { SelectableMarkdownSkill } from "./SelectableMarkdownText.types";
+import type {
+  MarkdownHighlightedToken,
+  SelectableMarkdownSkill,
+} from "./SelectableMarkdownText.types";
 import { resolveMarkdownLinkPresentation, type MarkdownFileIcon } from "./markdownLinks";
 
 export interface NativeMarkdownTextRun {
@@ -325,6 +328,36 @@ function appendNode(
 
 export function nativeMarkdownTextRuns(node: MarkdownNode): ReadonlyArray<NativeMarkdownTextRun> {
   return appendChildren([], node, EMPTY_CONTEXT);
+}
+
+export function nativeMarkdownCodeHighlightAppend(
+  previousCode: string,
+  code: string,
+  highlighted: ReadonlyArray<ReadonlyArray<MarkdownHighlightedToken>>,
+): ReadonlyArray<ReadonlyArray<MarkdownHighlightedToken>> | null {
+  if (
+    !code.startsWith(previousCode) ||
+    highlighted.length === 0 ||
+    highlighted.map((line) => line.map((token) => token.content).join("")).join("\n") !==
+      previousCode
+  )
+    return null;
+  const suffix = code.slice(previousCode.length);
+  if (suffix.length === 0) return highlighted;
+  const parts = suffix.split("\n");
+  const last = highlighted.at(-1)!;
+  const text = parts[0] ?? "";
+  const token = (content: string): MarkdownHighlightedToken => ({
+    content,
+    color: null,
+    fontStyle: null,
+  });
+  // 高亮异步计算期间保留完成行，仅把尚未着色的新尾部追加为普通文字。
+  return [
+    ...highlighted.slice(0, -1),
+    text.length === 0 ? last : [...last, token(text)],
+    ...parts.slice(1).map((part) => [token(part)]),
+  ];
 }
 
 export function nativeMarkdownWithPreservedSoftBreaks(node: MarkdownNode): MarkdownNode {
@@ -691,10 +724,9 @@ export function nativeMarkdownDocumentChunks(
       return;
     }
     const first = selectableNodes[0];
-    const last = selectableNodes.at(-1);
     chunks.push({
       kind: "selectable",
-      key: `selectable:${first?.beg ?? "start"}:${last?.end ?? "end"}`,
+      key: `selectable:${first?.beg ?? chunks.length}`,
       node: {
         type: "document",
         children: selectableNodes,
@@ -712,7 +744,7 @@ export function nativeMarkdownDocumentChunks(
     flushSelectable();
     chunks.push({
       kind: "rich",
-      key: `rich:${child.type}:${child.beg ?? index}:${child.end ?? index}`,
+      key: `rich:${child.type}:${child.beg ?? index}`,
       node: child,
     });
   }

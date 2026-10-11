@@ -436,7 +436,7 @@ export function applyThreadDetailEvent(
         thread.session?.status === "running" &&
         thread.session.activeTurnId === event.payload.turnId;
       const settlesTurn = !event.payload.streaming && !turnStillRunning;
-      const latestTurn: OrchestrationThread["latestTurn"] =
+      const nextLatestTurn: OrchestrationThread["latestTurn"] =
         event.payload.role === "assistant" &&
         event.payload.turnId !== null &&
         (thread.latestTurn === null || thread.latestTurn.turnId === event.payload.turnId)
@@ -465,6 +465,20 @@ export function applyThreadDetailEvent(
               assistantMessageId: event.payload.messageId,
             }
           : thread.latestTurn;
+
+      // 文本 delta 不改变回合元数据时沿用引用，避免两端重复派生检查点与时间线。
+      const previousLatestTurn = thread.latestTurn;
+      const latestTurn =
+        previousLatestTurn !== null &&
+        nextLatestTurn !== null &&
+        previousLatestTurn.turnId === nextLatestTurn.turnId &&
+        previousLatestTurn.state === nextLatestTurn.state &&
+        previousLatestTurn.requestedAt === nextLatestTurn.requestedAt &&
+        previousLatestTurn.startedAt === nextLatestTurn.startedAt &&
+        previousLatestTurn.completedAt === nextLatestTurn.completedAt &&
+        previousLatestTurn.assistantMessageId === nextLatestTurn.assistantMessageId
+          ? previousLatestTurn
+          : nextLatestTurn;
 
       // Rebind checkpoint assistant message IDs for assistant messages.
       const checkpoints =
@@ -788,9 +802,16 @@ function rebindCheckpointAssistantMessage(
   checkpoints: ReadonlyArray<OrchestrationCheckpointSummary>,
   turnId: TurnId,
   messageId: MessageId,
-): OrchestrationCheckpointSummary[] {
+): ReadonlyArray<OrchestrationCheckpointSummary> {
+  if (
+    !checkpoints.some((entry) => entry.turnId === turnId && entry.assistantMessageId !== messageId)
+  ) {
+    return checkpoints;
+  }
   return Arr.map(checkpoints, (entry) =>
-    entry.turnId === turnId ? { ...entry, assistantMessageId: messageId } : entry,
+    entry.turnId === turnId && entry.assistantMessageId !== messageId
+      ? { ...entry, assistantMessageId: messageId }
+      : entry,
   );
 }
 

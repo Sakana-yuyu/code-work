@@ -424,6 +424,105 @@ describe("applyThreadDetailEvent", () => {
       }
     });
 
+    it("文本 delta 保留回合和检查点引用，绑定变化及完成状态仍更新", () => {
+      const turnId = TurnId.make("turn-1");
+      const messageId = MessageId.make("stream-message");
+      const createdAt = "2026-04-01T07:00:00.000Z";
+      const initial: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: {
+          turnId,
+          state: "running",
+          requestedAt: createdAt,
+          startedAt: createdAt,
+          completedAt: null,
+          assistantMessageId: messageId,
+        },
+        checkpoints: [
+          {
+            turnId,
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("ref-1"),
+            status: "ready",
+            files: [],
+            assistantMessageId: messageId,
+            completedAt: createdAt,
+          },
+        ],
+      };
+      let thread = initial;
+      for (const [index, text] of ["第一个", "追加文本", "更多文本"].entries()) {
+        const result = applyThreadDetailEvent(thread, {
+          ...baseEventFields,
+          sequence: index + 1,
+          occurredAt: createdAt,
+          aggregateKind: "thread",
+          aggregateId: thread.id,
+          type: "thread.message-sent",
+          payload: {
+            threadId: thread.id,
+            messageId,
+            turnId,
+            role: "assistant",
+            text,
+            streaming: true,
+            createdAt,
+            updatedAt: createdAt,
+          },
+        });
+        expect(result.kind).toBe("updated");
+        if (result.kind !== "updated") throw new Error("流式事件未应用");
+        expect(result.thread.latestTurn).toBe(initial.latestTurn);
+        expect(result.thread.checkpoints).toBe(initial.checkpoints);
+        expect(result.thread.checkpoints[0]).toBe(initial.checkpoints[0]);
+        thread = result.thread;
+      }
+      const terminal = applyThreadDetailEvent(thread, {
+        ...baseEventFields,
+        sequence: 4,
+        occurredAt: createdAt,
+        aggregateKind: "thread",
+        aggregateId: thread.id,
+        type: "thread.message-sent",
+        payload: {
+          threadId: thread.id,
+          messageId,
+          turnId,
+          role: "assistant",
+          text: "最终结果",
+          streaming: false,
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+      if (terminal.kind !== "updated") throw new Error("完成事件未应用");
+      expect(terminal.thread.latestTurn).not.toBe(initial.latestTurn);
+      expect(terminal.thread.latestTurn?.state).toBe("completed");
+      expect(terminal.thread.checkpoints).toBe(initial.checkpoints);
+      const rebound = applyThreadDetailEvent(thread, {
+        ...baseEventFields,
+        sequence: 5,
+        occurredAt: createdAt,
+        aggregateKind: "thread",
+        aggregateId: thread.id,
+        type: "thread.message-sent",
+        payload: {
+          threadId: thread.id,
+          messageId: MessageId.make("new-message"),
+          turnId,
+          role: "assistant",
+          text: "后续评论",
+          streaming: true,
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+      if (rebound.kind !== "updated") throw new Error("消息绑定未更新");
+      expect(rebound.thread.latestTurn).not.toBe(initial.latestTurn);
+      expect(rebound.thread.checkpoints).not.toBe(initial.checkpoints);
+      expect(rebound.thread.checkpoints[0]?.assistantMessageId).toBe("new-message");
+    });
+
     it("appends text for streaming messages", () => {
       const threadWithMessage: OrchestrationThread = {
         ...baseThread,

@@ -4,7 +4,11 @@ import type { MarkdownNode } from "react-native-nitro-markdown/headless";
 
 import { CopyTextButton } from "./CopyTextButton";
 import { MarkdownTextPrimitive } from "./MarkdownTextPrimitive";
-import { nativeMarkdownDocumentRuns, nativeMarkdownListItemBlocks } from "./nativeMarkdownText";
+import {
+  nativeMarkdownCodeHighlightAppend,
+  nativeMarkdownDocumentRuns,
+  nativeMarkdownListItemBlocks,
+} from "./nativeMarkdownText";
 import { NativeMarkdownSelectableText } from "./NativeMarkdownSelectableText.ios";
 import type {
   MarkdownCodeHighlighter,
@@ -24,7 +28,8 @@ const highlightedCodePromiseCache = new Map<string, Promise<HighlightedCode>>();
 const HIGHLIGHTED_CODE_CACHE_LIMIT = 64;
 
 function nodeKey(node: MarkdownNode, index: number): string {
-  return `${node.type}:${node.beg ?? index}:${node.end ?? index}`;
+  // 起始位置是节点身份；尾部追加会改变 end，不能用它触发重新挂载。
+  return `${node.type}:${node.beg ?? index}`;
 }
 
 /** Code inside markdown scales with the base text size (12pt at the default 15pt body). */
@@ -121,11 +126,16 @@ function useHighlightedCode(
   highlightCode: MarkdownCodeHighlighter,
 ): HighlightedCode | null {
   const key = codeHighlightCacheKey(code, language, theme);
+  const context = `${theme}:${language ?? "text"}`;
   const [highlighted, setHighlighted] = useState<{
     readonly key: string;
+    readonly context: string;
+    readonly code: string;
     readonly tokens: HighlightedCode | null;
   }>(() => ({
     key,
+    context,
+    code,
     tokens: highlightedCodeCache.get(key) ?? null,
   }));
 
@@ -134,7 +144,7 @@ function useHighlightedCode(
     const cached = highlightedCodeCache.get(key);
     if (cached) {
       cacheHighlightedCode(key, cached);
-      setHighlighted({ key, tokens: cached });
+      setHighlighted({ key, context, code, tokens: cached });
       return () => {
         active = false;
       };
@@ -143,20 +153,23 @@ function useHighlightedCode(
     void loadHighlightedCode(code, language, theme, highlightCode)
       .then((tokens) => {
         if (active) {
-          setHighlighted({ key, tokens });
+          setHighlighted({ key, context, code, tokens });
         }
       })
       .catch(() => {
         if (active) {
-          setHighlighted({ key, tokens: null });
+          setHighlighted({ key, context, code, tokens: null });
         }
       });
     return () => {
       active = false;
     };
-  }, [code, highlightCode, key, language, theme]);
+  }, [code, context, highlightCode, key, language, theme]);
 
-  return highlighted.key === key ? highlighted.tokens : null;
+  if (highlighted.key === key) return highlighted.tokens;
+  return highlighted.context === context && highlighted.tokens !== null
+    ? nativeMarkdownCodeHighlightAppend(highlighted.code, code, highlighted.tokens)
+    : null;
 }
 
 function HighlightedCodeText(props: {
