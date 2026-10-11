@@ -8,6 +8,7 @@ import type {
   ServerSettingsPatch,
 } from "@codework/contracts";
 import type { ServerUpdateState } from "@codework/client-runtime/state/server";
+import { RESPONSE_STREAMING_MODES, resolveResponseStreamingMode } from "@codework/contracts";
 import { Atom } from "effect/unstable/reactivity";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -36,6 +37,7 @@ import {
   backgroundActivityDurationPatch,
   backgroundActivityPresetPatch,
   normalizeMobileDirectory,
+  responseStreamingModePatch,
   secondsFromDuration,
   type BackgroundActivityBooleanSetting,
   type DurationSetting,
@@ -296,12 +298,29 @@ export function SettingsServerRouteScreen() {
                 disabled={pending}
                 onValueChange={(value) => void persist({ enableAgentBrowserAccess: value })}
               />
-              <SwitchRow
-                label={t("serverSettingsMobile.legacyStreaming")}
-                value={settings.enableLegacyTokenStreaming}
-                disabled={pending}
-                onValueChange={(value) => void persist({ enableLegacyTokenStreaming: value })}
-              />
+              <View className="gap-3 p-4">
+                <Field label={t("serverSettingsMobile.responseStreamingMode")}>
+                  <ChoiceGroup
+                    values={RESPONSE_STREAMING_MODES.map((mode) => ({
+                      id: mode,
+                      label: t(`serverSettingsMobile.responseStreaming.${mode}`),
+                    }))}
+                    selectedId={resolveResponseStreamingMode(settings)}
+                    disabled={pending || serverConfig?.features?.responseStreamingModes !== true}
+                    onSelect={(responseStreamingMode) => {
+                      const patch = responseStreamingModePatch(responseStreamingMode, serverConfig);
+                      if (patch !== undefined) void persist(patch);
+                    }}
+                  />
+                </Field>
+                <Text className="text-sm leading-5 text-foreground-muted">
+                  {t(
+                    serverConfig?.features?.responseStreamingModes === true
+                      ? "serverSettingsMobile.responseStreaming.description"
+                      : "serverSettingsMobile.responseStreaming.unsupported",
+                  )}
+                </Text>
+              </View>
             </SettingsSection>
 
             <ModelSelectionSection
@@ -766,6 +785,7 @@ function ChoiceGroup<T extends string>(props: {
         <Pressable
           key={value.id}
           accessibilityRole="button"
+          accessibilityState={{ selected: props.selectedId === value.id, disabled: props.disabled }}
           disabled={props.disabled}
           onPress={() => props.onSelect(value.id)}
           className={

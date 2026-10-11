@@ -441,6 +441,10 @@ export const ServerConfig = Schema.Struct({
   remoteOpenTargets: Schema.optionalKey(ForwardCompatibleArray(RemoteOpenTarget)),
   observability: ServerObservability,
   settings: ServerSettings,
+  /** 客户端只为声明支持的环境开放对应控制。 */
+  features: Schema.optionalKey(
+    Schema.Struct({ responseStreamingModes: Schema.optionalKey(Schema.Boolean) }),
+  ),
   /** Whether shell subscriptions can emit an opt-in catch-up completion marker. */
   shellResumeCompletionMarker: Schema.optionalKey(Schema.Boolean),
   /** Whether shell.openInEditor honors `LaunchEditorInput.reveal` for the

@@ -1,5 +1,7 @@
 import type {
   BackgroundActivityProfile,
+  ResponseStreamingMode,
+  ServerConfig,
   ServerSettings,
   ServerSettingsPatch,
 } from "@codework/contracts";
@@ -28,6 +30,16 @@ export const BACKGROUND_ACTIVITY_PROFILES: ReadonlyArray<BackgroundActivityProfi
   "performance",
   "battery-saver",
 ];
+
+/** 旧环境未声明能力时不发送新字段，避免客户端与服务端产生不同的设置状态。 */
+export function responseStreamingModePatch(
+  mode: ResponseStreamingMode,
+  config: Pick<ServerConfig, "features"> | null,
+): ServerSettingsPatch | undefined {
+  return config?.features?.responseStreamingModes === true
+    ? { responseStreamingMode: mode }
+    : undefined;
+}
 
 export function secondsFromDuration(duration: Duration.Duration): number {
   return Math.max(0, Math.round(Duration.toMillis(duration) / 1_000));

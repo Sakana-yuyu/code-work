@@ -170,7 +170,23 @@ export function applyServerSettingsPatch(
             },
           }
         : undefined;
-  const next = deepMerge(current, patchForMerge);
+  // 新旧客户端可交替修改；旧开关的明确写入也必须覆盖已经保存的三态选择。
+  const streamingMode =
+    patch.responseStreamingMode ??
+    (patch.enableLegacyTokenStreaming === undefined
+      ? undefined
+      : patch.enableLegacyTokenStreaming
+        ? "token"
+        : "turn");
+  const next = deepMerge(current, {
+    ...patchForMerge,
+    ...(streamingMode === undefined
+      ? {}
+      : {
+          responseStreamingMode: streamingMode,
+          enableLegacyTokenStreaming: streamingMode === "token",
+        }),
+  });
   // settings RPC 回传的本地账号 credentialRef 已脱敏为空串；客户端提交其它设置时，
   // 不能让这份回传快照覆盖服务端仍在使用的 SecretStore 索引。
   // localAccountPool 在契约中是完整替换，不能深合并，否则删除的账号会被当前快照重新带回。

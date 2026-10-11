@@ -233,6 +233,7 @@ describe("ProviderRuntimeIngestion", () => {
     | ProviderRuntimeIngestionService
     | ProjectionSnapshotQuery
     | ThreadGoalStore
+    | ServerSettingsService
     | ServerConfig,
     unknown
   > | null = null;
@@ -383,6 +384,147 @@ describe("ProviderRuntimeIngestion", () => {
       runtime,
     };
   }
+
+  it.each(["turn", "paragraph", "token"] as const)(
+    "%s 模式通过事件入库与投影，完成回显不会重复正文",
+    async (mode) => {
+      const harness = await createHarness({ serverSettings: { responseStreamingMode: mode } });
+      const now = "2026-01-01T00:00:00.000Z";
+      const context = {
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-mode"),
+        itemId: asItemId("item-mode"),
+        createdAt: now,
+      };
+      let sequence = 0;
+      const delta = (text: string) =>
+        harness.emit({
+          ...context,
+          type: "content.delta",
+          eventId: asEventId(`evt-mode-delta-${sequence++}`),
+          payload: { streamKind: "assistant_text", delta: text },
+        });
+      const texts = async () =>
+        (await harness.readModel()).threads[0]!.messages.filter(
+          (message) => message.role === "assistant",
+        );
+
+      harness.emit({ ...context, type: "turn.started", eventId: asEventId("evt-mode-start") });
+      delta("## 结果\n\n");
+      await harness.drain();
+      expect((await texts()).map((message) => message.text).join("")).toBe(
+        mode === "token" ? "## 结果\n\n" : "",
+      );
+
+      delta("首段\n\n```ts\nconst x = 1;\n\n");
+      await harness.drain();
+      const prefix = "## 结果\n\n首段\n\n";
+      const code = "```ts\nconst x = 1;\n\n";
+      expect((await texts()).map((message) => message.text).join("")).toBe(
+        mode === "token" ? prefix + code : mode === "paragraph" ? prefix : "",
+      );
+
+      delta("```\n- 一\n- 二\n尾段");
+      await harness.drain();
+      const fullText = prefix + code + "```\n- 一\n- 二\n尾段";
+      expect((await texts()).map((message) => message.text).join("")).toBe(
+        mode === "token" ? fullText : mode === "paragraph" ? prefix + code + "```\n- 一\n" : "",
+      );
+
+      harness.emit({
+        ...context,
+        type: "item.completed",
+        eventId: asEventId("evt-mode-item-complete"),
+        payload: { itemType: "assistant_message", status: "completed", detail: fullText },
+      });
+      await harness.drain();
+      expect(await texts()).toMatchObject([{ text: fullText, streaming: false }]);
+
+      harness.emit({
+        ...context,
+        type: "turn.completed",
+        eventId: asEventId("evt-mode-turn-complete"),
+        status: "completed",
+      });
+      await harness.drain();
+      const messages = await texts();
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({ text: fullText, streaming: false });
+    },
+  );
+
+  it.each(["failed", "interrupted", "cancelled"] as const)(
+    "paragraph 模式在 %s 终态刷新尾段并终结消息",
+    async (status) => {
+      const harness = await createHarness({
+        serverSettings: { responseStreamingMode: "paragraph" },
+      });
+      const context = {
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-paragraph-terminal"),
+        itemId: asItemId("item-paragraph-terminal"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+      };
+      harness.emit({ ...context, type: "turn.started", eventId: asEventId("evt-paragraph-start") });
+      harness.emit({
+        ...context,
+        type: "content.delta",
+        eventId: asEventId("evt-paragraph-text"),
+        payload: { streamKind: "assistant_text", delta: "已完成\n\n未闭合尾段" },
+      });
+      await harness.drain();
+      harness.emit({
+        ...context,
+        type: "turn.completed",
+        eventId: asEventId("evt-paragraph-terminal"),
+        status,
+      });
+      await harness.drain();
+      const messages = (await harness.readModel()).threads[0]!.messages.filter(
+        (message) => message.role === "assistant",
+      );
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({ text: "已完成\n\n未闭合尾段", streaming: false });
+    },
+  );
+
+  it("回合中从 paragraph 切换 token 不丢失或倒置缓存尾段", async () => {
+    const harness = await createHarness({ serverSettings: { responseStreamingMode: "paragraph" } });
+    const context = {
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-mode-change"),
+      itemId: asItemId("item-mode-change"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    harness.emit({ ...context, type: "turn.started", eventId: asEventId("evt-change-start") });
+    harness.emit({
+      ...context,
+      type: "content.delta",
+      eventId: asEventId("evt-change-before"),
+      payload: { streamKind: "assistant_text", delta: "前半" },
+    });
+    await harness.drain();
+    await harness.runtime.runPromise(
+      Effect.gen(function* () {
+        const settings = yield* ServerSettingsService;
+        yield* settings.updateSettings({ responseStreamingMode: "token" });
+      }),
+    );
+    harness.emit({
+      ...context,
+      type: "content.delta",
+      eventId: asEventId("evt-change-after"),
+      payload: { streamKind: "assistant_text", delta: "后半" },
+    });
+    await harness.drain();
+    const messages = (await harness.readModel()).threads[0]!.messages.filter(
+      (message) => message.role === "assistant",
+    );
+    expect(messages.map((message) => message.text).join("")).toBe("前半后半");
+  });
 
   it("maps turn started/completed events into thread session updates", async () => {
     const harness = await createHarness();
@@ -4599,7 +4741,7 @@ describe("ProviderRuntimeIngestion", () => {
     expect(finalMessage?.streaming).toBe(false);
   });
 
-  it("spills oversized buffered deltas and still finalizes full assistant text", async () => {
+  it("完整保留长回复并在结束时下发", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
     const oversizedText = "x".repeat(40_000);

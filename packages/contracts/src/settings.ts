@@ -1195,10 +1195,29 @@ export const BackgroundActivitySettings = Schema.Struct({
 }).pipe(Schema.withDecodingDefault(Effect.succeed({})));
 export type BackgroundActivitySettings = typeof BackgroundActivitySettings.Type;
 
+export const ResponseStreamingMode = Schema.Literals(["turn", "paragraph", "token"]);
+export type ResponseStreamingMode = typeof ResponseStreamingMode.Type;
+export const RESPONSE_STREAMING_MODES = ["turn", "paragraph", "token"] as const;
+
+/** 新配置优先；保留旧开关的显式选择，未配置的环境默认按段落输出。 */
+export function resolveResponseStreamingMode(settings: {
+  readonly responseStreamingMode?: ResponseStreamingMode;
+  readonly enableLegacyTokenStreaming?: boolean;
+}): ResponseStreamingMode {
+  return (
+    settings.responseStreamingMode ??
+    (settings.enableLegacyTokenStreaming === undefined
+      ? "paragraph"
+      : settings.enableLegacyTokenStreaming
+        ? "token"
+        : "turn")
+  );
+}
+
 export const ServerSettings = Schema.Struct({
-  // Token-by-token assistant output. Streaming is the responsive default;
-  // false keeps the buffered compatibility mode available for slower clients.
-  enableLegacyTokenStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+  // 旧客户端仍可读写；缺省值不再掩盖新环境的 paragraph 默认模式。
+  enableLegacyTokenStreaming: Schema.optionalKey(Schema.Boolean),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /**
    * Whether agents may drive the in-app preview browser. Turning this off
@@ -1487,6 +1506,7 @@ const ByokSettingsPatch = Schema.Struct({
 
 export const ServerSettingsPatch = Schema.Struct({
   // Server settings
+  responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
   enableLegacyTokenStreaming: Schema.optionalKey(Schema.Boolean),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),

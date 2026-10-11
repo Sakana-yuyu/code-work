@@ -256,8 +256,20 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "legacy-token-streaming",
-    title: "settings.streamTokenByTokenLegacy",
+    title: "settings.responseStreamingMode",
     to: "/settings/general",
+    keywords: [
+      "streaming",
+      "paragraph",
+      "turn",
+      "token",
+      "legacy",
+      "段落",
+      "输出",
+      "流式",
+      "遗留",
+      "旧版",
+    ],
   },
   {
     id: "keybindings",

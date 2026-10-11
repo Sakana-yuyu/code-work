@@ -189,9 +189,9 @@ describe("ClientSettings sidebar", () => {
 });
 
 describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
-  it("defaults assistant output to streaming", () => {
-    expect(DEFAULT_SERVER_SETTINGS.enableLegacyTokenStreaming).toBe(true);
-    expect(decodeServerSettings({}).enableLegacyTokenStreaming).toBe(true);
+  it("默认输出不强制开启旧版逐 token 开关", () => {
+    expect(DEFAULT_SERVER_SETTINGS.enableLegacyTokenStreaming).toBeUndefined();
+    expect(decodeServerSettings({}).enableLegacyTokenStreaming).toBeUndefined();
   });
 
   it("defaults CodeGraph integration on and accepts explicit opt-out", () => {

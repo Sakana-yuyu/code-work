@@ -1687,6 +1687,7 @@ const makeWsRpcLayer = (
             otlpMetricsEnabled: config.otlpMetricsUrl !== undefined,
           },
           settings,
+          features: { responseStreamingModes: true },
           shellResumeCompletionMarker: true,
           ...(fileManagerRevealKind === undefined
             ? {}

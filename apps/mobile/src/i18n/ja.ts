@@ -1427,6 +1427,14 @@ export const ja: Record<string, string> = {
   "serverSettingsMobile.providerUpdates": "プロバイダーの更新を確認",
   "serverSettingsMobile.agentBrowser": "エージェントによるブラウザーの使用を許可",
   "serverSettingsMobile.legacyStreaming": "アシスタントの出力をトークン単位でストリーミング",
+  "serverSettingsMobile.responseStreamingMode": "応答の表示方法",
+  "serverSettingsMobile.responseStreaming.turn": "応答全体",
+  "serverSettingsMobile.responseStreaming.paragraph": "段落ごと（既定）",
+  "serverSettingsMobile.responseStreaming.token": "トークンごと（レガシー）",
+  "serverSettingsMobile.responseStreaming.description":
+    "完成した段落、コードブロック、リスト項目を順に表示します。応答全体はメッセージの区切りまで待ち、トークンごとは従来の表示方法を使います。",
+  "serverSettingsMobile.responseStreaming.unsupported":
+    "このサーバーは表示方法に対応していません。設定を変更するにはサーバーを更新してください。",
   "serverSettingsMobile.modelTitle": "モデルのデフォルト",
   "serverSettingsMobile.defaultModel": "新しいエージェントタスクのデフォルトモデル",
   "serverSettingsMobile.useDedicatedSourceControlWriter": "ソース管理ライターに別のモデルを使用",

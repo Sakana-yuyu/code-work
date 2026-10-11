@@ -2581,6 +2581,14 @@ export const ja: Record<string, string> = {
   "settings.sourceControlSetting": "ソース管理",
   "settings.startFromOrigin": "origin から開始",
   "settings.streamTokenByTokenLegacy": "トークンごとのストリーミング（レガシー）",
+  "settings.responseStreamingMode": "応答の表示方法",
+  "settings.responseStreaming.turn": "応答全体",
+  "settings.responseStreaming.paragraph": "段落ごと（既定）",
+  "settings.responseStreaming.token": "トークンごと（レガシー）",
+  "settings.responseStreaming.description":
+    "完成した段落、コードブロック、リスト項目を順に表示します。応答全体はメッセージの区切りまで待ち、トークンごとは従来の表示方法を使います。",
+  "settings.responseStreaming.unsupported":
+    "このサーバーは表示方法に対応していません。設定を変更するにはサーバーを更新してください。",
   "settings.searchSettings": "設定を検索",
   "settings.system": "システム",
   "settings.terminalFont": "ターミナルフォント",

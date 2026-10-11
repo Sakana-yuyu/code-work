@@ -2538,6 +2538,14 @@ export const en: Record<string, string> = {
   "settings.sourceControlSetting": "Source control",
   "settings.startFromOrigin": "Start from origin",
   "settings.streamTokenByTokenLegacy": "Stream token by token (legacy)",
+  "settings.responseStreamingMode": "Assistant output",
+  "settings.responseStreaming.turn": "Complete response",
+  "settings.responseStreaming.paragraph": "Paragraphs (default)",
+  "settings.responseStreaming.token": "Token by token (legacy)",
+  "settings.responseStreaming.description":
+    "Show completed paragraphs, code blocks, and list items as they arrive. Complete response waits for a message boundary; token by token uses the legacy rendering pace.",
+  "settings.responseStreaming.unsupported":
+    "This server does not support output modes. Update the server to change this setting.",
   "settings.searchSettings": "Search settings",
   "settings.system": "System",
   "settings.terminalFont": "Terminal font",
@@ -8643,6 +8651,13 @@ export const zhCN: Record<string, string> = {
   "settings.sourceControlSetting": "源代码管理",
   "settings.startFromOrigin": "从 origin 创建",
   "settings.streamTokenByTokenLegacy": "逐 token 流式输出（旧版）",
+  "settings.responseStreamingMode": "回复输出方式",
+  "settings.responseStreaming.turn": "完整回复",
+  "settings.responseStreaming.paragraph": "按段落（默认）",
+  "settings.responseStreaming.token": "逐 token（遗留模式）",
+  "settings.responseStreaming.description":
+    "段落、代码块及列表项闭合后逐步显示。完整回复等待消息边界；逐 token 使用遗留输出节奏。",
+  "settings.responseStreaming.unsupported": "此服务端尚不支持输出模式，请更新服务端后修改。",
   "settings.searchSettings": "搜索设置",
   "settings.system": "跟随系统",
   "settings.terminalFont": "终端字体",

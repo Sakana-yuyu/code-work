@@ -1,6 +1,7 @@
 import {
   ApprovalRequestId,
-  type AssistantDeliveryMode,
+  resolveResponseStreamingMode,
+  type ResponseStreamingMode,
   CommandId,
   MessageId,
   type OrchestrationEvent,
@@ -25,6 +26,7 @@ import {
   type ProviderSession,
 } from "@codework/contracts";
 import * as Cache from "effect/Cache";
+import { AssistantTextBuffer } from "../AssistantTextBuffer.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
@@ -132,7 +134,6 @@ const BUFFERED_PROPOSED_PLAN_BY_ID_CACHE_CAPACITY = 10_000;
 const BUFFERED_PROPOSED_PLAN_BY_ID_TTL = Duration.minutes(120);
 const TASK_DESCRIPTION_BY_TASK_CACHE_CAPACITY = 10_000;
 const TASK_DESCRIPTION_BY_TASK_TTL = Duration.minutes(120);
-const MAX_BUFFERED_ASSISTANT_CHARS = 24_000;
 const STRICT_PROVIDER_LIFECYCLE_GUARD =
   process.env.CODEWORK_STRICT_PROVIDER_LIFECYCLE_GUARD !== "0";
 
@@ -1132,10 +1133,10 @@ const make = Effect.gen(function* () {
     lookup: () => Effect.succeed(new Set<MessageId>()),
   });
 
-  const bufferedAssistantTextByMessageId = yield* Cache.make<MessageId, string>({
+  const bufferedAssistantTextByMessageId = yield* Cache.make<MessageId, AssistantTextBuffer>({
     capacity: BUFFERED_MESSAGE_TEXT_BY_MESSAGE_ID_CACHE_CAPACITY,
     timeToLive: BUFFERED_MESSAGE_TEXT_BY_MESSAGE_ID_TTL,
-    lookup: () => Effect.succeed(""),
+    lookup: () => Effect.sync(() => new AssistantTextBuffer()),
   });
 
   const assistantSegmentStateByTurnKey = yield* Cache.make<string, AssistantSegmentState>({
@@ -1313,31 +1314,24 @@ const make = Effect.gen(function* () {
       });
     });
 
-  const appendBufferedAssistantText = (messageId: MessageId, delta: string) =>
-    Cache.getOption(bufferedAssistantTextByMessageId, messageId).pipe(
-      Effect.flatMap((existingText) =>
-        Effect.gen(function* () {
-          const nextText = Option.match(existingText, {
-            onNone: () => delta,
-            onSome: (text) => `${text}${delta}`,
-          });
-          if (nextText.length <= MAX_BUFFERED_ASSISTANT_CHARS) {
-            yield* Cache.set(bufferedAssistantTextByMessageId, messageId, nextText);
-            return "";
-          }
-
-          // Safety valve: flush full buffered text as an assistant delta to cap memory.
-          yield* Cache.invalidate(bufferedAssistantTextByMessageId, messageId);
-          return nextText;
-        }),
-      ),
-    );
+  const appendBufferedAssistantText = (
+    messageId: MessageId,
+    delta: string,
+    mode: ResponseStreamingMode,
+  ) =>
+    mode === "token"
+      ? takeBufferedAssistantText(messageId).pipe(Effect.map((pending) => pending + delta))
+      : Cache.get(bufferedAssistantTextByMessageId, messageId).pipe(
+          Effect.map((buffer) => buffer.append(delta, mode)),
+        );
 
   const takeBufferedAssistantText = (messageId: MessageId) =>
     Cache.getOption(bufferedAssistantTextByMessageId, messageId).pipe(
       Effect.flatMap((existingText) =>
         Cache.invalidate(bufferedAssistantTextByMessageId, messageId).pipe(
-          Effect.as(Option.getOrElse(existingText, () => "")),
+          Effect.as(
+            Option.match(existingText, { onNone: () => "", onSome: (buffer) => buffer.take() }),
+          ),
         ),
       ),
     );
@@ -2535,9 +2529,9 @@ const make = Effect.gen(function* () {
           yield* rememberAssistantMessageId(thread.id, turnId, assistantMessageId);
         }
 
-        const assistantDeliveryMode: AssistantDeliveryMode = yield* Effect.map(
+        const responseStreamingMode = yield* Effect.map(
           serverSettingsService.getSettings,
-          (settings) => (settings.enableLegacyTokenStreaming ? "streaming" : "buffered"),
+          resolveResponseStreamingMode,
         );
         const mediaEventKey = `${event.providerInstanceId ?? event.provider}:${event.turnId ?? ""}:${event.eventId}`;
         const mediaResult = assistantImage
@@ -2550,12 +2544,13 @@ const make = Effect.gen(function* () {
         if (mediaResult) {
           const mediaKind = assistantImage ? "image" : assistantAudio ? "audio" : "file";
           if (mediaResult.attachment) {
+            const pendingText = yield* takeBufferedAssistantText(assistantMessageId);
             yield* orchestrationEngine.dispatch({
               type: "thread.message.assistant.delta",
               commandId: yield* providerCommandId(event, `assistant-${mediaKind}`),
               threadId: thread.id,
               messageId: assistantMessageId,
-              delta: assistantDelta ?? "",
+              delta: pendingText + (assistantDelta ?? ""),
               attachments: [mediaResult.attachment],
               ...(turnId ? { turnId } : {}),
               createdAt: now,
@@ -2577,10 +2572,11 @@ const make = Effect.gen(function* () {
               createdAt: now,
             });
           }
-        } else if (assistantDeliveryMode === "buffered") {
+        } else {
           const spillChunk = yield* appendBufferedAssistantText(
             assistantMessageId,
             assistantDelta ?? "",
+            responseStreamingMode,
           );
           if (spillChunk.length > 0) {
             yield* orchestrationEngine.dispatch({
@@ -2593,16 +2589,6 @@ const make = Effect.gen(function* () {
               createdAt: now,
             });
           }
-        } else {
-          yield* orchestrationEngine.dispatch({
-            type: "thread.message.assistant.delta",
-            commandId: yield* providerCommandId(event, "assistant-delta"),
-            threadId: thread.id,
-            messageId: assistantMessageId,
-            delta: assistantDelta ?? "",
-            ...(turnId ? { turnId } : {}),
-            createdAt: now,
-          });
         }
       }
 
@@ -2644,12 +2630,12 @@ const make = Effect.gen(function* () {
           : undefined;
       if (pauseForUserTurnId) {
         const detailedThread = yield* getLoadedThreadDetail();
-        const assistantDeliveryMode: AssistantDeliveryMode = yield* Effect.map(
+        const responseStreamingMode = yield* Effect.map(
           serverSettingsService.getSettings,
-          (settings) => (settings.enableLegacyTokenStreaming ? "streaming" : "buffered"),
+          resolveResponseStreamingMode,
         );
         const flushedMessageIds =
-          assistantDeliveryMode === "buffered"
+          responseStreamingMode !== "token"
             ? yield* flushBufferedAssistantMessagesForTurn({
                 event,
                 threadId: thread.id,

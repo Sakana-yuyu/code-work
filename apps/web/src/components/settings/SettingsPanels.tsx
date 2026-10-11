@@ -1,4 +1,4 @@
-import { ArchiveIcon, ArchiveX, ChevronRightIcon, LoaderIcon, SettingsIcon } from "lucide-react";
+import { ArchiveIcon, ArchiveX, LoaderIcon, SettingsIcon } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -7,6 +7,7 @@ import {
   type BackgroundActivityProfile,
   type DesktopUpdateChannel,
   ProviderDriverKind,
+  resolveResponseStreamingMode,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
 } from "@codework/contracts";
@@ -80,12 +81,15 @@ import {
 } from "../../providerInstances";
 import { ensureLocalApi, readLocalApi } from "../../localApi";
 import { isMacPlatform } from "../../lib/utils";
-import { primaryServerObservabilityAtom, primaryServerProvidersAtom } from "../../state/server";
+import {
+  primaryServerConfigAtom,
+  primaryServerObservabilityAtom,
+  primaryServerProvidersAtom,
+} from "../../state/server";
 import { useProjects } from "../../state/entities";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
-import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import {
   Dialog,
   DialogDescription,
@@ -148,6 +152,7 @@ import {
   useSettingsSearchTargetId,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { ResponseStreamingModeControl } from "./ResponseStreamingModeControl";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { t } from "~/i18n";
 
@@ -498,6 +503,8 @@ export function useSettingsRestore(onRestored?: () => void) {
   } = useTheme();
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
+  const config = useAtomValue(primaryServerConfigAtom);
+  const supportsResponseStreamingModes = config?.features?.responseStreamingModes === true;
 
   const isTextGenerationModelDirty = !Equal.equals(
     settings.textGenerationModelSelection ?? null,
@@ -545,9 +552,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.showSkillsInSlashMenu !== DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu
         ? [t("showSkillsInSlashMenu")]
         : []),
-      ...(settings.enableLegacyTokenStreaming !==
-      DEFAULT_UNIFIED_SETTINGS.enableLegacyTokenStreaming
-        ? [t("settings.streamTokenByTokenLegacy")]
+      ...(supportsResponseStreamingModes && resolveResponseStreamingMode(settings) !== "paragraph"
+        ? [t("settings.responseStreamingMode")]
         : []),
       ...(settings.enableProviderUpdateChecks !==
       DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks
@@ -606,6 +612,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.fontSizeTerminal,
       settings.glassOpacity,
       settings.enableLegacyTokenStreaming,
+      settings.responseStreamingMode,
+      supportsResponseStreamingModes,
       settings.enableProviderUpdateChecks,
       settings.sidebarAutoSettleAfterDays,
       settings.sidebarAutoSettleOnMerge,
@@ -695,7 +703,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
-      enableLegacyTokenStreaming: DEFAULT_UNIFIED_SETTINGS.enableLegacyTokenStreaming,
+      ...(supportsResponseStreamingModes ? { responseStreamingMode: "paragraph" as const } : {}),
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       backgroundActivity: DEFAULT_UNIFIED_SETTINGS.backgroundActivity,
       backgroundActivityProfile: DEFAULT_UNIFIED_SETTINGS.backgroundActivityProfile,
@@ -736,6 +744,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     theme,
     themeHalves,
     updateSettings,
+    supportsResponseStreamingModes,
   ]);
 
   return {
@@ -1837,75 +1846,30 @@ function AutoSettleDaysInput({
 
 // The legacy rows sit behind the fold, so a settings-search jump has to
 // expand the section before its target can mount and scroll.
-const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set(["legacy-token-streaming"]);
-
-/**
- * Retired features kept only for users who still depend on them. Collapsed by
- * default so they stay out of the everyday settings path; a settings-search
- * jump to one of the rows unfolds the section.
- */
-function LegacyFeaturesSection() {
+function ResponseStreamingSection() {
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
-  const [open, setOpen] = useState(false);
-  const searchTargetId = useSettingsSearchTargetId();
-  // Unfold once per search jump; tracking the handled id lets the user fold
-  // the section back up without the still-set target immediately reopening it.
-  const lastExpandedTargetRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (searchTargetId === null) {
-      // A handled jump clears the target; forgetting it here lets a later
-      // jump to the same row expand the section again.
-      lastExpandedTargetRef.current = null;
-      return;
-    }
-    if (!LEGACY_FEATURE_TARGET_IDS.has(searchTargetId)) return;
-    if (lastExpandedTargetRef.current === searchTargetId) return;
-    lastExpandedTargetRef.current = searchTargetId;
-    setOpen(true);
-  }, [searchTargetId]);
+  const config = useAtomValue(primaryServerConfigAtom);
+  const supported = config?.features?.responseStreamingModes === true;
 
   return (
-    <section className="space-y-3">
-      <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger className="group flex min-h-8 w-full items-center gap-2 px-3 sm:px-4">
-          <h2 className="text-lg font-semibold tracking-[-0.025em] text-muted-foreground transition-colors group-hover:text-foreground">
-            {t("legacyFeatures")}
-          </h2>
-          <ChevronRightIcon className="size-4 text-muted-foreground transition-transform duration-200 group-data-panel-open:rotate-90" />
-        </CollapsibleTrigger>
-        <CollapsiblePanel>
-          <div className="relative space-y-1 overflow-visible pt-3 text-foreground">
-            <SettingsRow
-              {...searchableSetting("legacy-token-streaming")}
-              description={t("paintsAssistantOutputTokenByTokenInsteadOfInCompleteChunksNo")}
-              control={
-                <Switch
-                  checked={settings.enableLegacyTokenStreaming}
-                  onCheckedChange={(checked) => {
-                    if (!checked) {
-                      updateSettings({ enableLegacyTokenStreaming: false });
-                      return;
-                    }
-                    void (async () => {
-                      const api = readLocalApi();
-                      const confirmed = await (api ?? ensureLocalApi()).dialogs.confirm(
-                        [
-                          t("turnOnTokenByTokenOutputTitle"),
-                          t("turnOnTokenByTokenOutputBody"),
-                        ].join("\n"),
-                      );
-                      if (confirmed) updateSettings({ enableLegacyTokenStreaming: true });
-                    })();
-                  }}
-                  aria-label={t("settings.streamTokenByTokenLegacy")}
-                />
-              }
-            />
-          </div>
-        </CollapsiblePanel>
-      </Collapsible>
-    </section>
+    <SettingsSection title={t("settings.responseStreamingMode")}>
+      <SettingsRow
+        {...searchableSetting("legacy-token-streaming")}
+        description={t(
+          supported
+            ? "settings.responseStreaming.description"
+            : "settings.responseStreaming.unsupported",
+        )}
+        control={
+          <ResponseStreamingModeControl
+            mode={resolveResponseStreamingMode(settings)}
+            supported={supported}
+            onChange={(responseStreamingMode) => updateSettings({ responseStreamingMode })}
+          />
+        }
+      />
+    </SettingsSection>
   );
 }
 
@@ -2582,7 +2546,7 @@ export function GeneralSettingsPanel() {
         />
       </SettingsSection>
 
-      <LegacyFeaturesSection />
+      <ResponseStreamingSection />
     </SettingsPageContainer>
   );
 }
