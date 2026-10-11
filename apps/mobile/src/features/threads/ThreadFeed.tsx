@@ -101,11 +101,11 @@ import { useAppearanceCodeSurface } from "../settings/appearance/useAppearanceCo
 import { markdownFileIconSource } from "@codework/mobile-markdown-text/file-icons";
 import { resolveMarkdownLinkPresentation } from "@codework/mobile-markdown-text/links";
 import {
-  deriveThreadFeedPresentation,
   reconcileExpandedTurnIdsAfterLatestTurnChange,
   type ThreadFeedEntry,
   type ThreadFeedLatestTurn,
 } from "../../lib/threadActivity";
+import { createThreadFeedPresentationSelector } from "../../lib/threadFeedSelectors";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
 import {
   resolveThreadFeedLiveFollow,
@@ -1907,9 +1907,13 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     }
     return ids;
   }, [expandedWorkGroups]);
+  const selectPresentedFeed = useMemo(
+    () => createThreadFeedPresentationSelector(),
+    [feedThreadKey],
+  );
   const presentedFeed = useMemo(
     () =>
-      deriveThreadFeedPresentation(
+      selectPresentedFeed(
         props.feed,
         props.latestTurn,
         expandedTurnIds,
@@ -1922,6 +1926,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       props.activeWorkStartedAt,
       props.feed,
       props.latestTurn,
+      selectPresentedFeed,
     ],
   );
 

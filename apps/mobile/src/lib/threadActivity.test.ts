@@ -3,6 +3,10 @@ import { setCurrentLanguage } from "../i18n/runtime";
 
 setCurrentLanguage("en");
 import { codexFeedbackMessage } from "@codework/client-runtime/state/threads";
+import {
+  createThreadFeedSelector,
+  createThreadFeedPresentationSelector,
+} from "./threadFeedSelectors";
 
 import {
   EventId,
@@ -237,6 +241,293 @@ function makeThread(
     settledAt: input.settledAt ?? null,
   };
 }
+
+describe("移动端增量 feed", () => {
+  const user = {
+    id: MessageId.make("incremental-user"),
+    role: "user" as const,
+    text: "检查源码",
+    turnId: null,
+    createdAt: "2026-04-01T00:00:00.000Z",
+    updatedAt: "2026-04-01T00:00:00.000Z",
+    streaming: false,
+  };
+  const assistant = {
+    ...user,
+    id: MessageId.make("incremental-assistant"),
+    role: "assistant" as const,
+    turnId: TurnId.make("incremental-turn"),
+    text: "已经收到",
+    streaming: true,
+    createdAt: "2026-04-01T00:00:02.000Z",
+    updatedAt: "2026-04-01T00:00:02.000Z",
+  };
+  const activity = makeActivity({
+    id: EventId.make("incremental-tool"),
+    kind: "tool.completed",
+    summary: "Ran command",
+    tone: "tool",
+    turnId: assistant.turnId,
+    createdAt: "2026-04-01T00:00:01.000Z",
+    payload: {
+      command: "pwd",
+      itemType: "command_execution",
+      status: "completed",
+      detail: "源码目录",
+    },
+  });
+  const thread = () =>
+    makeThread({
+      id: ThreadId.make("incremental-thread"),
+      projectId: ProjectId.make("incremental-project"),
+      title: "增量回复",
+      messages: [user, assistant],
+      activities: [activity],
+    });
+  const content = (feed: ReadonlyArray<ThreadFeedEntry>) =>
+    feed.map((entry) =>
+      entry.type === "activity-group"
+        ? {
+            ...entry,
+            activities: entry.activities.map(({ getCopyText, getFullDetail, ...value }) => ({
+              ...value,
+              copy: getCopyText(),
+              full: getFullDetail(),
+            })),
+          }
+        : entry,
+    );
+
+  it("1200 条历史活动在正文 delta 中零重读，完成行和复制函数保持身份", () => {
+    let activityReads = 0;
+    const activities = Array.from(
+      { length: 1200 },
+      (_, index) =>
+        new Proxy(
+          {
+            ...activity,
+            id: EventId.make(`history-${index}`),
+            sequence: index + 1,
+            payload: { ...(activity.payload as object), toolCallId: `history-tool-${index}` },
+          },
+          {
+            get(target, key, receiver) {
+              activityReads++;
+              return Reflect.get(target, key, receiver);
+            },
+          },
+        ),
+    );
+    const source = { ...thread(), activities };
+    const select = createThreadFeedSelector();
+    const first = select(source);
+    const oldGroup = first.find((entry) => entry.type === "activity-group");
+    expect(oldGroup?.type).toBe("activity-group");
+    expect(activityReads).toBeGreaterThanOrEqual(1200);
+    if (oldGroup?.type === "activity-group") expect(oldGroup.activities).toHaveLength(1200);
+    activityReads = 0;
+    const next = select({
+      ...source,
+      messages: [
+        user,
+        { ...assistant, text: "已经收到更多正文", updatedAt: "2026-04-01T00:00:03.000Z" },
+      ],
+    });
+    expect(activityReads).toBe(0);
+    expect(next[0]).toBe(first[0]);
+    const group = next.find((entry) => entry.type === "activity-group");
+    expect(group).toBe(oldGroup);
+    if (group?.type === "activity-group" && oldGroup?.type === "activity-group") {
+      expect(group.activities).toBe(oldGroup.activities);
+      expect(group.activities[0]?.getCopyText).toBe(oldGroup.activities[0]?.getCopyText);
+      expect(group.activities[0]?.getFullDetail()).toBe("源码目录");
+    }
+    expect(next.at(-1)).toMatchObject({ type: "message", message: { text: "已经收到更多正文" } });
+  });
+
+  it("只更新线程元数据时复用整个 feed，本地反馈的正文仍更新", () => {
+    const source = thread();
+    const select = createThreadFeedSelector();
+    const first = select(source);
+    expect(select({ ...source, title: "新标题" })).toBe(first);
+    const local = {
+      ...assistant,
+      id: MessageId.make("local-feedback"),
+      text: "上传反馈",
+      createdAt: "2026-04-01T00:00:03.000Z",
+    };
+    const localFeed = select(source, { localMessages: [local] });
+    const next = select(source, {
+      localMessages: [{ ...local, text: "反馈已上传", streaming: false }],
+    });
+    expect(next[0]).toBe(localFeed[0]);
+    expect(next.at(-1)).toMatchObject({ message: { text: "反馈已上传" } });
+    expect(content(next)).toEqual(
+      content(
+        buildThreadFeed(source, {
+          localMessages: [{ ...local, text: "反馈已上传", streaming: false }],
+        }),
+      ),
+    );
+  });
+
+  it("空正文出现或消失会重新分组，附件消息继续可见", () => {
+    const select = createThreadFeedSelector();
+    const source = thread();
+    for (const message of [
+      { ...assistant, text: " " },
+      assistant,
+      { ...assistant, text: "" },
+      {
+        ...assistant,
+        text: "",
+        attachments: [{ id: "attachment", name: "图.png", mimeType: "image/png", sizeBytes: 1 }],
+      },
+    ]) {
+      const next = { ...source, messages: [user, message] };
+      expect(content(select(next))).toEqual(content(buildThreadFeed(next)));
+    }
+  });
+
+  it("新增、删除、改时间与本地消息重排保持原有排序", () => {
+    const select = createThreadFeedSelector();
+    const source = thread();
+    select(source);
+    for (const messages of [
+      [assistant],
+      [assistant, user],
+      [user, { ...assistant, createdAt: "2026-03-31T23:59:59.000Z" }],
+      [user, assistant],
+    ]) {
+      const next = { ...source, messages };
+      expect(content(select(next))).toEqual(content(buildThreadFeed(next)));
+    }
+    const duplicate = {
+      ...source,
+      messages: [assistant, { ...assistant, text: "重复身份仍独立显示" }],
+    };
+    select(duplicate);
+    const next = { ...duplicate, messages: [assistant, { ...assistant, text: "第二行更新" }] };
+    expect(content(select(next))).toEqual(content(buildThreadFeed(next)));
+  });
+
+  it("加载窗口、活动更新、语言和线程切换不会沿用旧推导", () => {
+    const select = createThreadFeedSelector();
+    const source = thread();
+    select(source);
+    expect(content(select(source, { loadedMessages: [assistant] }))).toEqual(
+      content(buildThreadFeed(source, { loadedMessages: [assistant] })),
+    );
+    const failed = {
+      ...source,
+      activities: [
+        {
+          ...activity,
+          payload: { ...(activity.payload as object), status: "failed", detail: "命令失败" },
+        },
+      ],
+    };
+    expect(content(select(failed))).toEqual(content(buildThreadFeed(failed)));
+    const other = { ...source, id: ThreadId.make("another-thread") };
+    expect(content(select(other))).toEqual(content(buildThreadFeed(other)));
+    try {
+      setCurrentLanguage("zh-CN");
+      expect(content(select(other))).toEqual(content(buildThreadFeed(other)));
+    } finally {
+      setCurrentLanguage("en");
+    }
+  });
+
+  it("正文 delta 复用可见工具、折叠和工作指示行，终态重新推导", () => {
+    const select = createThreadFeedSelector();
+    const present = createThreadFeedPresentationSelector();
+    const source = thread();
+    const latest: ThreadFeedLatestTurn = {
+      turnId: assistant.turnId,
+      state: "running",
+      startedAt: user.createdAt,
+      completedAt: null,
+    };
+    const expanded = new Set<TurnId>();
+    const groups = new Set<string>();
+    const feed = select(source);
+    const first = present(feed, latest, expanded, groups, user.createdAt);
+    const nextSource = {
+      ...source,
+      messages: [user, { ...assistant, text: "追加正文", updatedAt: "2026-04-01T00:00:04.000Z" }],
+    };
+    const nextFeed = select(nextSource);
+    const next = present(nextFeed, { ...latest }, expanded, groups, user.createdAt);
+    expect(next[0]).toBe(first[0]);
+    expect(next.find((entry) => entry.type === "activity-group")).toBe(
+      first.find((entry) => entry.type === "activity-group"),
+    );
+    expect(next.at(-1)).toBe(first.at(-1));
+    expect(content(next)).toEqual(
+      content(deriveThreadFeedPresentation(nextFeed, latest, expanded, groups, user.createdAt)),
+    );
+    const completedFeed = select({
+      ...nextSource,
+      messages: [user, { ...nextSource.messages[1]!, streaming: false }],
+    });
+    const complete = {
+      ...latest,
+      state: "completed" as const,
+      completedAt: "2026-04-01T00:00:05.000Z",
+    };
+    expect(content(present(completedFeed, complete, expanded, groups))).toEqual(
+      content(deriveThreadFeedPresentation(completedFeed, complete, expanded, groups)),
+    );
+  });
+
+  it("折叠、展开、终态时间与工作指示变化仍更新展示", () => {
+    const source = thread();
+    const messages = [
+      user,
+      { ...assistant, streaming: false },
+      {
+        ...assistant,
+        id: MessageId.make("middle"),
+        streaming: false,
+        createdAt: "2026-04-01T00:00:03.000Z",
+      },
+      {
+        ...assistant,
+        id: MessageId.make("terminal"),
+        streaming: false,
+        createdAt: "2026-04-01T00:00:04.000Z",
+        updatedAt: "2026-04-01T00:00:04.000Z",
+      },
+    ];
+    const select = createThreadFeedSelector();
+    const present = createThreadFeedPresentationSelector();
+    const feed = select({ ...source, messages });
+    const latest: ThreadFeedLatestTurn = {
+      turnId: assistant.turnId,
+      state: "completed",
+      startedAt: user.createdAt,
+      completedAt: "2026-04-01T00:00:04.000Z",
+    };
+    const collapsed = present(feed, latest, new Set());
+    expect(collapsed.some((entry) => entry.type === "turn-fold")).toBe(true);
+    expect(present(feed, { ...latest }, new Set())).toBe(collapsed);
+    for (const expanded of [new Set([assistant.turnId]), new Set<TurnId>()]) {
+      expect(content(present(feed, latest, expanded))).toEqual(
+        content(deriveThreadFeedPresentation(feed, latest, expanded)),
+      );
+    }
+    const changed = select({
+      ...source,
+      messages: [
+        ...messages.slice(0, -1),
+        { ...messages.at(-1)!, updatedAt: "2026-04-01T00:00:08.000Z" },
+      ],
+    });
+    expect(content(present(changed, latest, new Set(), new Set(), user.createdAt))).toEqual(
+      content(deriveThreadFeedPresentation(changed, latest, new Set(), new Set(), user.createdAt)),
+    );
+  });
+});
 
 describe("buildThreadFeed", () => {
   it("ACP 未上报命令时展开内容不重复输出，文件失败原因保留到末尾", () => {

@@ -31,7 +31,7 @@ import {
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { copyTextWithHaptic } from "../lib/copyTextWithHaptic";
-import { buildThreadFeed } from "../lib/threadActivity";
+import { createThreadFeedSelector } from "../lib/threadFeedSelectors";
 import { buildModelOptions } from "../lib/modelOptions";
 import { appAtomRegistry } from "../state/atom-registry";
 import {
@@ -110,21 +110,24 @@ export function useThreadComposerState() {
     () => (selectedThreadKey ? (queuedMessagesByThreadKey[selectedThreadKey] ?? []) : []),
     [queuedMessagesByThreadKey, selectedThreadKey],
   );
-  const selectedThreadFeed = useMemo(() => {
-    if (!selectedThreadDetail) {
-      return [];
-    }
+  const selectThreadFeed = useMemo(() => createThreadFeedSelector(), [selectedThreadKey]);
+  const localFeedbackMessages = useMemo(() => {
     const submissions = selectedThreadKey
       ? (feedbackSubmissionsByThreadKey[selectedThreadKey] ?? [])
       : [];
-    return buildThreadFeed(selectedThreadDetail, {
-      localMessages: submissions.flatMap((submission) =>
-        submission.status === "interrupted"
-          ? []
-          : [codexFeedbackMessage(submission), codexFeedbackMessage(submission, "assistant")],
-      ),
-    });
-  }, [feedbackSubmissionsByThreadKey, selectedThreadDetail, selectedThreadKey]);
+    return submissions.flatMap((submission) =>
+      submission.status === "interrupted"
+        ? []
+        : [codexFeedbackMessage(submission), codexFeedbackMessage(submission, "assistant")],
+    );
+  }, [feedbackSubmissionsByThreadKey, selectedThreadKey]);
+  const selectedThreadFeed = useMemo(
+    () =>
+      selectedThreadDetail
+        ? selectThreadFeed(selectedThreadDetail, { localMessages: localFeedbackMessages })
+        : [],
+    [localFeedbackMessages, selectedThreadDetail, selectThreadFeed],
+  );
 
   const selectedDraft = selectedThreadKey ? composerDrafts[selectedThreadKey] : null;
   const draftMessage = selectedDraft?.text ?? "";
