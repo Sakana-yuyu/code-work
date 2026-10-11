@@ -1,6 +1,7 @@
 import {
   EnvironmentId,
   EventId,
+  MessageId,
   ORCHESTRATION_WS_METHODS,
   ProjectId,
   ProviderInstanceId,
@@ -139,6 +140,7 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
   const latest = yield* Ref.make<EnvironmentThreadState>(EMPTY_ENVIRONMENT_THREAD_STATE);
   const retryCount = yield* Ref.make(0);
   const subscriptionCount = yield* Ref.make(0);
+  const subscriptions = yield* Queue.unbounded<{ readonly afterSequence: number | undefined }>();
   const loaderCalls = yield* Ref.make(0);
   const lastSubscribeAfterSequence = yield* Ref.make<number | undefined>(undefined);
   const lastRequestCompletionMarker = yield* Ref.make<boolean | undefined>(undefined);
@@ -163,6 +165,7 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
         Ref.updateAndGet(subscriptionCount, (count) => count + 1).pipe(
           Effect.andThen(Ref.set(lastSubscribeAfterSequence, input.afterSequence)),
           Effect.andThen(Ref.set(lastRequestCompletionMarker, input.requestCompletionMarker)),
+          Effect.andThen(Queue.offer(subscriptions, { afterSequence: input.afterSequence })),
           Effect.as(streamFrom(inputs)),
         ),
       ),
@@ -243,6 +246,7 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
     latest,
     retryCount,
     subscriptionCount,
+    subscriptions,
     loaderCalls,
     lastSubscribeAfterSequence,
     lastRequestCompletionMarker,
@@ -272,6 +276,36 @@ const snapshot = (thread: OrchestrationThread): OrchestrationThreadStreamItem =>
 });
 
 const synchronized = (): OrchestrationThreadStreamItem => ({ kind: "synchronized" });
+
+const streamedMessage = (
+  text: string,
+  sequence: number,
+  streaming = true,
+): OrchestrationThreadStreamItem => ({
+  kind: "event",
+  event: {
+    eventId: EventId.make(`text-event-${sequence}`),
+    sequence,
+    occurredAt: "2026-04-01T00:02:00.000Z",
+    commandId: null,
+    causationEventId: null,
+    correlationId: null,
+    metadata: {},
+    aggregateKind: "thread",
+    aggregateId: THREAD_ID,
+    type: "thread.message-sent",
+    payload: {
+      threadId: THREAD_ID,
+      messageId: MessageId.make("streamed-message"),
+      role: "assistant",
+      turnId: TurnId.make("turn-1"),
+      text,
+      streaming,
+      createdAt: "2026-04-01T00:01:00.000Z",
+      updatedAt: "2026-04-01T00:02:00.000Z",
+    },
+  },
+});
 
 const titleUpdated = (title: string, sequence = 2): OrchestrationThreadStreamItem => ({
   kind: "event",
@@ -315,6 +349,58 @@ const deleted = (): OrchestrationThreadStreamItem => ({
 });
 
 describe("EnvironmentThreads", () => {
+  for (const completionMarker of [false, true]) {
+    it.effect(`运行中正文替换连接后不重不丢，完成标记能力为 ${completionMarker}`, () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ cached: ACTIVE_THREAD, completionMarker });
+        expect((yield* Queue.take(harness.subscriptions)).afterSequence).toBe(7);
+        const first = streamedMessage("首段🌏\r\n", 8);
+        const second = streamedMessage("重复文字仍需保留", 12);
+        yield* Queue.offerAll(harness.inputs, [first, first, streamedMessage("过期包", 7), second]);
+        const beforeDisconnect = yield* awaitThreadState(
+          harness.observed,
+          (state) =>
+            Option.isSome(state.data) &&
+            state.data.value.messages[0]?.text === "首段🌏\r\n重复文字仍需保留",
+        );
+        const before = Option.getOrThrow(beforeDisconnect.data);
+        expect(before.messages).toHaveLength(1);
+        expect(before.session?.status).toBe("running");
+        yield* Queue.offer(harness.inputs, new Error("连接已中断"));
+        const disconnected = yield* awaitThreadState(harness.observed, (state) =>
+          Option.isSome(state.error),
+        );
+        expect(Option.getOrThrow(disconnected.data)).toBe(before);
+        yield* harness.replaceSession;
+        expect((yield* Queue.take(harness.subscriptions)).afterSequence).toBe(12);
+        expect(Option.getOrThrow((yield* Ref.get(harness.latest)).data)).toBe(before);
+
+        // 序号属于全局日志，其他线程的间隔不能被当作本线程丢包；重叠回放只忽略旧序号。
+        yield* Queue.offerAll(harness.inputs, [
+          second,
+          first,
+          streamedMessage("重复文字仍需保留", 20),
+        ]);
+        const fullText = "首段🌏\r\n重复文字仍需保留重复文字仍需保留";
+        yield* Queue.offer(harness.inputs, streamedMessage(fullText, 21, false));
+        if (completionMarker) yield* Queue.offer(harness.inputs, synchronized());
+        const completed = yield* awaitThreadState(
+          harness.observed,
+          (state) =>
+            state.status === "live" &&
+            Option.isSome(state.data) &&
+            state.data.value.messages[0]?.streaming === false,
+        );
+        expect(Option.getOrThrow(completed.data).messages).toMatchObject([
+          { text: fullText, streaming: false },
+        ]);
+        expect(Option.getOrThrow(completed.data).messages).toHaveLength(1);
+        expect(Option.isNone(completed.error)).toBe(true);
+        expect(yield* Ref.get(harness.loaderCalls)).toBe(0);
+      }),
+    );
+  }
+
   it.effect("publishes cached data immediately from a warm cache", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({ cached: BASE_THREAD });

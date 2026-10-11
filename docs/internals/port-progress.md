@@ -52,7 +52,7 @@
 | 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 合并、按帧发布与三端切片已落地，最终验收开放 | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / 三端渲染 | 节奏开关、首段全文、字素边界、完成吸附及全文复制与几何已覆盖；Native 与最终性能仍开放                                 |
 | 6   | 流式选区与滚动锚点                                          | Web 代码及普通文字已验证，其余继续验收       | 真实 StreamingChatMarkdown 临时交互夹具 / Mobile 原生 Markdown                                 | 未闭合段落追加、终态与清除选区均保持既有节点；滚动锚点与原生设备仍待矩阵验证                                          |
 | 7   | 每个 adapter 终态无 loading                                 | 在途条目已补齐，交互边界继续验收             | 共享 runtimeTurnItems / 全部 canonical 发射入口 / Codex 原生映射                               | 13 份 adapter/driver 文件 311 项通过；终态、Codex 与 ingestion 补充 163 项通过；详细边界见下文                        |
-| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 待核验补齐                                   | state/threads / RPC transport / server 订阅                                                    | B20 为部分底座，验收尚未运行                                                                                          |
+| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 订阅竞态已修复，继续验收完整矩阵             | ws 立即订阅 / state/threads / 运行中正文与缓存游标                                             | 真实 RPC 订阅 6 项、共享同步/挂载/分页/RPC 会话 43 项通过；设备与原始 provider 回放继续核验                           |
 | 9   | 同口径帧间隔性能无回归                                      | 本增量通过，阶段最终仍需复测                 | 1280×720、1202 活动、上下各 20 页 ×4 组                                                        | 2026-10-12 修改前后 p95 均 16.8 ms；滚动窗口最大 66.7→50.0 ms，最高窗口 >50 ms 数 1→0；后续改变渲染仍须重跑           |
 | 10  | Windows argv 三层守卫                                       | 待实施                                       | Antigravity / ZCode / resolveSpawnCommand                                                      | 尚未运行                                                                                                              |
 | 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 待实施                                       | ProviderDriver / provider snapshot 探测                                                        | 尚未运行                                                                                                              |
@@ -312,3 +312,15 @@ Codex、Claude、OpenCode、Cursor、Grok、BYOK、Antigravity 与 Pi/Omp/ZCode 
 - Web/Desktop 的 `session-logic` 与 Mobile 的 `threadActivity` 均使用 canonical 工具 status，完成事件更新相同工具行；所有 provider 与本地/远程/隧道消费相同持久化事件。本批没有新增 UI 入口、设置、RPC 或能力，逆向状态为下一回合或重新启动会话。
 
 第 7 项保留交互边界验收：原生 hook 事件目前不投影为工具 loading 行，仍以 provider 的实际 hooks 为准；审批/补充信息不能通过伪造响应来解除。独立后台任务、原生设备及连接模式的完整可见性矩阵继续验证。此处仅保留最近结束回合的轻量墓碑，不替代第 8 项持久化幂等与跨重连回放验证。回退本主题提交恢复原发射顺序，无数据库迁移；原有 BYOK 用户改动通过精确补丁保留。
+
+### 2026-10-12：线程恢复订阅的同步游标竞态
+
+源码核对发现 `subscribeThread` 虽在读取游标前 fork 实时缓冲，但未立即启动该 fiber；`latestSequence` 是同步读取已提交内存状态，因此同一调度片段中发布的后续事件可能既不在固定回放范围内，也尚未进入实时订阅。线程发射现与既有 shell 路径一致，使用 `startImmediately: true` 在读取回放游标或快照前接入实时总线。保留固定回放上限、超大/超前游标的快照替换、完成标记、原序号防重与订阅作用域清理。
+
+真实 WebSocket RPC 回归在读取游标时同步发布新的 assistant 尾文，并让固定回放为空；旧代码缺少该事件而触发失败，新代码按“尾文 → synchronized”交付。原快照加载测试去掉人为的 25ms 延迟，直接同步发布也通过。运行 `vp test run --config .reconnect-test.config.ts apps/server/src/server.test.ts`，配置仅选择线程订阅相关 6 项，全部通过（其余 133 项未运行）。它们同时覆盖初始快照/完成标记、同步期间事件、超大间隔、超前游标和固定 head 回放；没有以睡眠或轮询让成功路径通过。
+
+共享 `threads-sync` 新增新旧完成标记能力各一项运行中正文恢复测试：重复与过期序号不追加文字，其他线程造成的全局序号间隔仍接受；断线及替换连接期间保留同一完整线程对象，重新订阅使用最新实际应用游标。新的合法 delta 即使文本与前段相同也保留，Unicode/CRLF 与最终全文正确，仅一条规范消息，无冷快照读取。订阅回执用 Queue 等待，不新增轮询。运行 `vp test run --config .candidate-test.config.ts packages/client-runtime/src/state/threads-sync.test.ts packages/client-runtime/src/state/threads-atoms.test.ts packages/client-runtime/src/state/threads-pagination.test.ts packages/client-runtime/src/rpc/session.test.ts`，共 43 项通过；包含既有关闭忙碌详情不调用环境 disconnect、帧内未发布完成仍配对缓存游标、重开立即恢复运行正文、5 分钟缓存及分页竞态。
+
+server/client-runtime 的本批目标 `tsgo --noEmit` 通过，3 份源文件 lint 通过（原 server 测试 2 条未使用标识符提示保留），目标格式检查通过。三端共享相同状态机与 RPC，本地/远程/relay/隧道均使用相同订阅合同；没有新增权限、设置、能力字段或 UI 入口，离开和重开继续沿用已有反向路径。回退本主题提交恢复原订阅启动时序，不改变数据库。
+
+以上验证是本机真实 RPC 与共享客户端测试；独立 Electron/Native 与真实连接中断的全路径观察、原始 provider 事件重新进入 ingestion 的持久化身份继续核验。客户端网络恢复只回放已经持久化的领域事件，不重新执行 provider 命令；现有 `providerCommandId` 含随机后缀，因此不能把 engine 的 command receipt 防重直接等同于原始 provider 包去重。第 8 项继续保留这些边界，最终性能仍按第 9 项验收。

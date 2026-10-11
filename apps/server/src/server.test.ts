@@ -6942,7 +6942,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           projectionSnapshotQuery: {
             getThreadDetailSnapshot: () =>
               Effect.gen(function* () {
-                yield* Effect.sleep("25 millis");
                 yield* PubSub.publish(liveEvents, messageEvent);
                 return Option.some({ snapshotSequence: 1, thread });
               }),
@@ -7046,6 +7045,67 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(Option.getOrThrow(first).kind, "snapshot");
       assert.equal(readEventsCalls, 0);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("线程订阅先接入实时缓冲，再同步读取回放游标", () =>
+    Effect.gen(function* () {
+      const liveEvents = yield* PubSub.unbounded<OrchestrationEvent>();
+      const now = "2026-01-01T00:00:01.000Z";
+      const messageEvent = {
+        sequence: 2,
+        eventId: EventId.make("thread-resume-live-delta"),
+        aggregateKind: "thread",
+        aggregateId: defaultThreadId,
+        occurredAt: now,
+        commandId: null,
+        causationEventId: null,
+        correlationId: null,
+        metadata: {},
+        type: "thread.message-sent",
+        payload: {
+          threadId: defaultThreadId,
+          messageId: MessageId.make("thread-resume-message"),
+          role: "assistant",
+          text: "回放读取期间的新尾文🌏",
+          turnId: null,
+          streaming: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+      } satisfies Extract<OrchestrationEvent, { type: "thread.message-sent" }>;
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            streamDomainEvents: Stream.fromPubSub(liveEvents),
+            // 事件在已捕获的游标之后同步发布，无法从本次固定回放范围读出。
+            latestSequence: PubSub.publish(liveEvents, messageEvent).pipe(Effect.as(1)),
+            readEvents: () => Stream.empty,
+          },
+        },
+      });
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const items = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.subscribeThread]({
+            threadId: defaultThreadId,
+            afterSequence: 1,
+            requestCompletionMarker: true,
+          }).pipe(Stream.take(2), Stream.runCollect, Effect.timeout("3 seconds")),
+        ),
+      );
+      assert.deepEqual(
+        items.map((item) => item.kind),
+        ["event", "synchronized"],
+      );
+      const first = items[0];
+      assert.equal(first?.kind === "event" ? first.event.sequence : null, 2);
+      assert.equal(
+        first?.kind === "event" && first.event.type === "thread.message-sent"
+          ? first.event.payload.text
+          : null,
+        "回放读取期间的新尾文🌏",
+      );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 
   it.effect("subscribeThread bounds catch-up replay to the captured head", () =>
