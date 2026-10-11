@@ -61,6 +61,28 @@ const decodeOrchestrationEvent = Schema.decodeUnknownEffect(OrchestrationEvent);
 const decodeThreadMetaUpdatedPayload = Schema.decodeUnknownEffect(ThreadMetaUpdatedPayload);
 const decodeDispatchCommandError = Schema.decodeUnknownEffect(OrchestrationDispatchCommandError);
 
+it.effect("assistant 收尾兼容旧命令并保留可选完整正文", () =>
+  Effect.gen(function* () {
+    const base = {
+      type: "thread.message.assistant.complete",
+      commandId: "assistant-complete",
+      threadId: "thread-1",
+      messageId: "message-1",
+      createdAt: "2026-10-12T00:00:00.000Z",
+    };
+    for (const text of [undefined, "", "首段🌏\r\n\r\n尾段"]) {
+      const parsed = yield* decodeOrchestrationCommand({
+        ...base,
+        ...(text === undefined ? {} : { text }),
+      });
+      assert.strictEqual(parsed.type, "thread.message.assistant.complete");
+      if (parsed.type === "thread.message.assistant.complete") {
+        assert.strictEqual(parsed.text, text);
+      }
+    }
+  }),
+);
+
 it.effect("decodes a dispatch error after its bootstrap thread was deleted", () =>
   Effect.gen(function* () {
     const error = yield* decodeDispatchCommandError({

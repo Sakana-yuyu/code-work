@@ -454,6 +454,63 @@ describe("ProviderRuntimeIngestion", () => {
     },
   );
 
+  it.each(["completed", "failed", "cancelled"] as const)(
+    "段落前缀与 %s 终态尾文原子入库，没有额外流式 delta",
+    async (state) => {
+      const harness = await createHarness({
+        serverSettings: { responseStreamingMode: "paragraph" },
+      });
+      const startedAt = "2026-10-12T00:00:00.000Z";
+      const completedAt = "2026-10-12T00:00:01.000Z";
+      const context = {
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-atomic-tail"),
+        itemId: asItemId("item-atomic-tail"),
+        createdAt: startedAt,
+      };
+      harness.emit({ ...context, type: "turn.started", eventId: asEventId("atomic-start") });
+      const prefix = "首段🌏\r\n\r\n";
+      const tail = "未闭合尾段";
+      harness.emit({
+        ...context,
+        type: "content.delta",
+        eventId: asEventId("atomic-prefix"),
+        payload: { streamKind: "assistant_text", delta: prefix },
+      });
+      await harness.drain();
+      harness.emit({
+        ...context,
+        type: "content.delta",
+        eventId: asEventId("atomic-tail"),
+        payload: { streamKind: "assistant_text", delta: tail },
+      });
+      harness.emit({
+        ...context,
+        type: "turn.completed",
+        eventId: asEventId("atomic-complete"),
+        createdAt: completedAt,
+        payload: { state },
+      });
+      await harness.drain();
+      const thread = (await harness.readModel()).threads[0]!;
+      expect(thread.messages).toMatchObject([
+        { text: prefix + tail, streaming: false, createdAt: startedAt, updatedAt: completedAt },
+      ]);
+      const events = await harness.runtime.runPromise(
+        Stream.runCollect(harness.engine.readEvents(0)),
+      );
+      const messages = events.filter((event) => event.type === "thread.message-sent");
+      expect(messages).toHaveLength(2);
+      expect(
+        messages.map((event) => (event.type === "thread.message-sent" ? event.payload : undefined)),
+      ).toMatchObject([
+        { text: prefix, streaming: true },
+        { text: prefix + tail, streaming: false },
+      ]);
+    },
+  );
+
   it.each(["failed", "interrupted", "cancelled"] as const)(
     "paragraph 模式在 %s 终态刷新尾段并终结消息",
     async (status) => {
@@ -2238,12 +2295,12 @@ describe("ProviderRuntimeIngestion", () => {
       (activity: { kind: string; payload?: unknown }) =>
         activity.kind === "reasoning.summary.delta",
     );
-    expect(reasoningActivities).toHaveLength(2);
+    expect(reasoningActivities).toHaveLength(1);
     expect(
       reasoningActivities.map(
         (activity: { payload?: unknown }) => (activity.payload as { delta?: string }).delta,
       ),
-    ).toEqual(["thinking about the next step", " more thinking"]);
+    ).toEqual(["thinking about the next step more thinking"]);
   });
 
   it("preserves completed tool metadata on projected tool activities", async () => {
@@ -4518,21 +4575,14 @@ describe("ProviderRuntimeIngestion", () => {
           "assistant:thread-1:turn-buffered-request-append:item-buffered-request-append",
         ),
     );
-    expect(assistantEvents).toHaveLength(4);
-    expect(assistantEvents[0]?.payload.streaming).toBe(true);
+    expect(assistantEvents).toHaveLength(2);
+    expect(assistantEvents[0]?.payload.streaming).toBe(false);
     expect(assistantEvents[0]?.payload.text).toBe("first half");
+    expect(assistantEvents[1]?.payload.messageId).toBe(
+      "assistant:thread-1:turn-buffered-request-append:item-buffered-request-append:segment:1",
+    );
     expect(assistantEvents[1]?.payload.streaming).toBe(false);
-    expect(assistantEvents[1]?.payload.text).toBe("");
-    expect(assistantEvents[2]?.payload.messageId).toBe(
-      "assistant:thread-1:turn-buffered-request-append:item-buffered-request-append:segment:1",
-    );
-    expect(assistantEvents[2]?.payload.streaming).toBe(true);
-    expect(assistantEvents[2]?.payload.text).toBe(" second half");
-    expect(assistantEvents[3]?.payload.messageId).toBe(
-      "assistant:thread-1:turn-buffered-request-append:item-buffered-request-append:segment:1",
-    );
-    expect(assistantEvents[3]?.payload.streaming).toBe(false);
-    expect(assistantEvents[3]?.payload.text).toBe("");
+    expect(assistantEvents[1]?.payload.text).toBe(" second half");
   });
 
   it("starts a new streaming assistant message segment after approval", async () => {

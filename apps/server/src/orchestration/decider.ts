@@ -1379,7 +1379,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(thread.session?.providerInstanceId
             ? { providerInstanceId: thread.session.providerInstanceId }
             : {}),
-          text: "",
+          text: command.text ?? "",
           turnId: command.turnId ?? null,
           streaming: false,
           createdAt: command.createdAt,

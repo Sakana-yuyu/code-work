@@ -1150,6 +1150,8 @@ const ThreadMessageAssistantCompleteCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   messageId: MessageId,
+  // 终态可携带完整正文，原子合并尚未投影的尾文；旧的空正文收尾仍然有效。
+  text: Schema.optional(Schema.String),
   turnId: Schema.optional(TurnId),
   createdAt: IsoDateTime,
 });

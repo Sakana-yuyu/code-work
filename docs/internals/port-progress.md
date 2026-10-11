@@ -49,7 +49,7 @@
 | 2   | 全部需核对条目源码基线                                      | 完成                             | B01—B22                                                                                    | 已读取源码并明确边界；不把静态核对当成实现完成                                                                        |
 | 3   | 三态输出、默认 paragraph、旧键策略、三端设置                | 完成（本主题定向验收）           | settings / AssistantTextBuffer / ProviderRuntimeIngestion / Web/Desktop 设置 / Mobile 设置 | 工作区 10 文件 / 273 项通过；纯暂存候选 35 项与五个目标类型检查通过；当前脏工作区的完整模块诊断仍记录为未通过，见下文 |
 | 4   | 全部客户端增量渲染清单与上游对应提交                        | 部分完成，继续补齐               | 闭合 Markdown 前缀 / 固定 Web 渲染身份 / 逐行高亮 / 共享回合与检查点引用 / Mobile 块键     | 8 文件 / 188 项通过；Web DOM 追加与终态选区保持；完整清单见下文，未完成项保留                                         |
-| 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 待实施                           | ingestion / client-runtime / 三端渲染                                                      | 尚未运行                                                                                                              |
+| 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 服务端合并已落地；客户端待实施   | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / client-runtime / 三端渲染       | 服务端定向测试与候选类型检查见下方记录；每帧提交、切片节奏与最终性能仍开放                                            |
 | 6   | 流式选区与滚动锚点                                          | Web 代码选区已验证，其余继续验收 | 真实 ChatMarkdown 临时交互夹具 / Mobile 原生 Markdown                                      | 追加代码行与 streaming→false 时旧段落、代码行和选区均保留；普通文字选区、滚动锚点与原生设备仍待矩阵验证               |
 | 7   | 每个 adapter 终态无 loading                                 | 待核验补齐                       | 十二类 driver / 各 Adapter 定向测试                                                        | 尚未运行                                                                                                              |
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 待核验补齐                       | state/threads / RPC transport / server 订阅                                                | B20 为部分底座，验收尚未运行                                                                                          |
@@ -257,3 +257,19 @@ Android 聊天代码块使用 `ThreadFeed` 的 `MarkdownCodeBlock` 和 `useMarkd
 纯暂存候选的显示 selector、原生 Markdown 与前缀缓存三份文件共 54 项通过；Mobile 指定的 `tsc --noEmit`、3 源文件 lint 与 6 文件格式检查通过。目标类型配置额外载入真实 `ThreadFeed.tsx` 调用方和现有 `Stack.tsx` 导航增广，没有修改产品编译配置。6 文件候选一致，88 个无关原始文件与 ChatView 原始补丁保持；没有把这些结果算作 Android 原生构建或运行通过。
 
 此改动补 Android 的既有渲染入口，iOS 原生分支保持自己的同等尾部处理；服务器、Web/Desktop、provider 和连接协议不变。SDK 探测确认本机有 Android adb/emulator 及一个现有 AVD，目前没有连接设备；没有启动或改写现有 AVD。React Native Android 的 `ReactTextView.setText` 路径也需要核验原生选区，第 6 项不会仅凭 React 行身份或这些纯函数测试宣称通过。真实 Android 构建、原生设备帧率和最终性能矩阵继续开放。
+
+### Android 独立开发客户端构建与设备边界
+
+随后从提交 `01d67f5bc` 导出独立源码到 `E:/cw-port-01a12bdd`，开发变体 `com.codework.mobile.dev` 的 x86_64 APK 已实际构建成功。命令为 `gradlew.bat :app:assembleDebug -PreactNativeArchitectures=x86_64 --max-workers=3 --console=plain --init-script <工作区外的 native-short-build.gradle>`；结果 `BUILD SUCCESSFUL in 2m 33s`，837 个任务，产物 120900267 字节。CMake 构建目录与 Ninja 选择仅在该次 init script 生效，用已安装的 Ninja 1.13.2 和独立短路径解决 Ninja 1.10.2 的重复 manifest/路径失败；未修改依赖源码、主工作区 Android 工程或全局 Gradle 配置。
+
+只为本次验收创建 `CodeworkPort_01a12bdd` AVD 与独立模拟器目录；原有 `Medium_Phone` 未启动或改写。原 SDK 模拟器 37.1.11 和独立官方稳定版 37.2.12 均未启动到 adb 可连接状态，记录了 DLL 初始化和图形初始化退出/停滞日志；停止了本轮登记且核对身份的进程，没有按名称清扫。稳定版来自 Google [SDK 仓库清单](https://dl.google.com/android/repository/repository2-3.xml)，2026-10-12 以 `emulator windows channel-0` 核对稳定渠道，下载大小及官方 SHA-1 校验通过。独立 Metro 8087 可用，但没有安装到运行设备、没有配对或观察 Native 界面。此处仅通过构建；Android 原生选区、设备帧率和实机验收继续开放，不能用 APK 成功替代。
+
+### 第 5 项服务端 leading/trailing 与原子收尾
+
+`ProviderRuntimeEventCoalescer` 接在 ingestion 入队之前。按线程维护 60ms 窗口，空闲后的首包立即入队，后续相邻且 provider/实例/回合/条目/请求/原生引用/正文索引/摘要索引相同的纯文本合为尾包；正文、思考、媒体的不同流保持顺序，每个窗口最多一组文字。工具、审批和终态不能越过前面的文字，其他线程独立推进。原 provider 总线、日志和 checkpoint 输入保留原包；合并包不冒充原始 checkpoint 摘要。窗口空闲后停止，无持续轮询。非法 delta 继续进入已有 ingestion 错误隔离，不会终止整个订阅。
+
+完成命令新增可选内部 `text`，一次提交完整已投影前缀与缓存尾文；旧的无正文完成命令仍有效，外部 `thread.message-sent` 合同不变。正常完成、失败、取消、工具边界和审批收尾不再额外派发尾部 delta。暂停保留段序号，回答后续接使用新的消息段；部分回复不执行成功结果中的 Goal/Spec 指令。ingestion 的独立顺序作用域先刷新窗口并等待持久化，再关闭 worker，显式 `drain` 同样刷新尾包。
+
+虚拟时钟测试覆盖 leading/trailing、持续突发、不同线程和索引隔离、Unicode/CRLF、媒体、控制顺序、原始 checkpoint 保留、错误包隔离、drain、停机与取消计时，共 12 项通过。旧 ingestion 加载同一实际入库用例时，completed/failed/cancelled 三项均红于预期 2 条消息事件而实际 3 条；新实现对应三项通过，并保留首段时间和完整前缀。合同兼容、SQLite 消息投影及 engine 三份定向文件共 77 项通过。完整 ingestion 文件 109 项通过，包括思考边界、审批/提问后续接、Goal、失败隔离与媒体。纯候选共 198 项通过，命令为 `vp test run --config .candidate-test.config.ts` 加上述 5 份具体文件；server/contracts 目标 `tsgo --noEmit` 与新 helper/相关生产文件 lint 通过。首次完整回归暴露的非法包订阅退出已修复，思考增量断言按合并后的完整文字更新并通过；没有掩盖失败。
+
+此内部路径适用于所有 provider 的标准内容事件，Web/Desktop/Mobile 与本地/远程/隧道继续消费相同持久化事件；没有新增外部权限或 RPC。三态设置仍由已有 `features.responseStreamingModes` 门控。第 5 项整体继续部分完成：客户端每帧提交、完整 store 的节奏切片、节奏开关、复制/选区/滚动一致性和最终性能尚待实施与验收。第 7/8 项 adapter 终态及重连完整矩阵也不能以这些测试替代。回退本主题提交即可恢复原始 ingestion 节奏与独立尾部 delta，不涉及数据库迁移。

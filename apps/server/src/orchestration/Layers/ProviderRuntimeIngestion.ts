@@ -27,6 +27,7 @@ import {
 } from "@codework/contracts";
 import * as Cache from "effect/Cache";
 import { AssistantTextBuffer } from "../AssistantTextBuffer.ts";
+import { makeProviderRuntimeEventCoalescer } from "../ProviderRuntimeEventCoalescer.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
@@ -34,6 +35,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@codework/shared/DrainableWorker";
@@ -1891,65 +1893,6 @@ const make = Effect.gen(function* () {
     }),
   );
 
-  const flushBufferedAssistantMessage = (input: {
-    event: ProviderRuntimeEvent;
-    threadId: ThreadId;
-    messageId: MessageId;
-    turnId?: TurnId;
-    createdAt: string;
-    commandTag: string;
-  }) =>
-    Effect.gen(function* () {
-      const bufferedText = yield* takeBufferedAssistantText(input.messageId);
-      if (!hasRenderableAssistantText(bufferedText)) {
-        return false;
-      }
-
-      yield* orchestrationEngine.dispatch({
-        type: "thread.message.assistant.delta",
-        commandId: yield* providerCommandId(input.event, input.commandTag),
-        threadId: input.threadId,
-        messageId: input.messageId,
-        delta: bufferedText,
-        ...(input.turnId ? { turnId: input.turnId } : {}),
-        createdAt: input.createdAt,
-      });
-      return true;
-    });
-
-  const flushBufferedAssistantMessagesForTurn = (input: {
-    event: ProviderRuntimeEvent;
-    threadId: ThreadId;
-    turnId: TurnId;
-    createdAt: string;
-    commandTag: string;
-  }) =>
-    Effect.gen(function* () {
-      const assistantMessageIds = yield* getAssistantMessageIdsForTurn(
-        input.threadId,
-        input.turnId,
-      );
-      const flushedMessageIds = new Set<MessageId>();
-      yield* Effect.forEach(
-        assistantMessageIds,
-        (messageId) =>
-          flushBufferedAssistantMessage({
-            event: input.event,
-            threadId: input.threadId,
-            messageId,
-            turnId: input.turnId,
-            createdAt: input.createdAt,
-            commandTag: input.commandTag,
-          }).pipe(
-            Effect.tap((flushed) =>
-              flushed ? Effect.sync(() => flushedMessageIds.add(messageId)) : Effect.void,
-            ),
-          ),
-        { concurrency: 1 },
-      ).pipe(Effect.asVoid);
-      return flushedMessageIds;
-    });
-
   const finalizeAssistantMessage = (input: {
     event: ProviderRuntimeEvent;
     threadId: ThreadId;
@@ -1957,9 +1900,9 @@ const make = Effect.gen(function* () {
     turnId?: TurnId;
     createdAt: string;
     commandTag: string;
-    finalDeltaCommandTag: string;
     fallbackText?: string;
     hasProjectedMessage?: boolean;
+    projectedText: string;
     userPrompt?: string;
   }) =>
     Effect.gen(function* () {
@@ -1980,24 +1923,13 @@ const make = Effect.gen(function* () {
         : directive.cleanText;
       const hasRenderableText = hasRenderableAssistantText(text);
 
-      if (hasRenderableText) {
-        yield* orchestrationEngine.dispatch({
-          type: "thread.message.assistant.delta",
-          commandId: yield* providerCommandId(input.event, input.finalDeltaCommandTag),
-          threadId: input.threadId,
-          messageId: input.messageId,
-          delta: text,
-          ...(input.turnId ? { turnId: input.turnId } : {}),
-          createdAt: input.createdAt,
-        });
-      }
-
       if (input.hasProjectedMessage || hasRenderableText) {
         yield* orchestrationEngine.dispatch({
           type: "thread.message.assistant.complete",
           commandId: yield* providerCommandId(input.event, input.commandTag),
           threadId: input.threadId,
           messageId: input.messageId,
+          ...(hasRenderableText ? { text: input.projectedText + text } : {}),
           ...(input.turnId ? { turnId: input.turnId } : {}),
           createdAt: input.createdAt,
         });
@@ -2021,9 +1953,8 @@ const make = Effect.gen(function* () {
     turnId: TurnId;
     createdAt: string;
     commandTag: string;
-    finalDeltaCommandTag: string;
     hasProjectedMessage: boolean;
-    flushedMessageIds?: ReadonlySet<MessageId>;
+    projectedText: string;
   }) =>
     Effect.gen(function* () {
       const activeMessageId = yield* getActiveAssistantMessageIdForTurn(
@@ -2041,10 +1972,8 @@ const make = Effect.gen(function* () {
         turnId: input.turnId,
         createdAt: input.createdAt,
         commandTag: input.commandTag,
-        finalDeltaCommandTag: input.finalDeltaCommandTag,
-        hasProjectedMessage:
-          input.hasProjectedMessage ||
-          (input.flushedMessageIds?.has(activeMessageId.value) ?? false),
+        hasProjectedMessage: input.hasProjectedMessage,
+        projectedText: input.projectedText,
       });
       yield* forgetAssistantMessageId(input.threadId, input.turnId, activeMessageId.value);
 
@@ -2057,13 +1986,14 @@ const make = Effect.gen(function* () {
       }
     });
 
-  // 终止回合只收尾已生成文字，不把部分回复当作成功结果执行目标或 Spec 指令。
-  const settleInterruptedAssistantMessagesForTurn = (input: {
+  // 暂停或终止只收尾已生成文字，不把部分回复当作成功结果执行目标或 Spec 指令。
+  const settleAssistantMessagesForTurn = (input: {
     event: ProviderRuntimeEvent;
     threadId: ThreadId;
     turnId: TurnId;
     messages: ReadonlyArray<OrchestrationMessage>;
     createdAt: string;
+    reason: "paused" | "interrupted";
   }) =>
     Effect.gen(function* () {
       const assistantMessageIds = yield* getAssistantMessageIdsForTurn(
@@ -2076,23 +2006,17 @@ const make = Effect.gen(function* () {
           Effect.gen(function* () {
             const bufferedText = yield* takeBufferedAssistantText(messageId);
             const hasBufferedText = hasRenderableAssistantText(bufferedText);
-            if (hasBufferedText) {
-              yield* orchestrationEngine.dispatch({
-                type: "thread.message.assistant.delta",
-                commandId: yield* providerCommandId(input.event, "assistant-delta-on-interrupt"),
-                threadId: input.threadId,
-                messageId,
-                delta: bufferedText,
-                turnId: input.turnId,
-                createdAt: input.createdAt,
-              });
-            }
-            if (findMessageById(input.messages, messageId) || hasBufferedText) {
+            const existingMessage = findMessageById(input.messages, messageId);
+            if (existingMessage || hasBufferedText) {
               yield* orchestrationEngine.dispatch({
                 type: "thread.message.assistant.complete",
-                commandId: yield* providerCommandId(input.event, "assistant-complete-on-interrupt"),
+                commandId: yield* providerCommandId(
+                  input.event,
+                  `assistant-complete-on-${input.reason}`,
+                ),
                 threadId: input.threadId,
                 messageId,
+                ...(hasBufferedText ? { text: (existingMessage?.text ?? "") + bufferedText } : {}),
                 turnId: input.turnId,
                 createdAt: input.createdAt,
               });
@@ -2102,7 +2026,18 @@ const make = Effect.gen(function* () {
         { concurrency: 1 },
       ).pipe(Effect.asVoid);
       yield* clearAssistantMessageIdsForTurn(input.threadId, input.turnId);
-      yield* clearAssistantSegmentStateForTurn(input.threadId, input.turnId);
+      if (input.reason === "interrupted") {
+        yield* clearAssistantSegmentStateForTurn(input.threadId, input.turnId);
+      } else {
+        // 回答后仍在同一回合续接，保留段序号，避免复用已经收尾的 messageId。
+        const state = yield* getAssistantSegmentStateForTurn(input.threadId, input.turnId);
+        if (Option.isSome(state)) {
+          yield* setAssistantSegmentStateForTurn(input.threadId, input.turnId, {
+            ...state.value,
+            activeMessageId: null,
+          });
+        }
+      }
     });
 
   const upsertProposedPlan = (input: {
@@ -2610,16 +2545,17 @@ const make = Effect.gen(function* () {
         );
         if (Option.isSome(activeBoundaryMessageId)) {
           const detailedThread = yield* getLoadedThreadDetail();
+          const existingMessage = detailedThread
+            ? findMessageById(detailedThread.messages, activeBoundaryMessageId.value)
+            : undefined;
           yield* finalizeActiveAssistantSegmentForTurn({
             event,
             threadId: thread.id,
             turnId: nonAssistantItemBoundaryTurnId,
             createdAt: now,
             commandTag: "assistant-complete-on-item-boundary",
-            finalDeltaCommandTag: "assistant-delta-finalize-on-item-boundary",
-            hasProjectedMessage:
-              detailedThread !== null &&
-              findMessageById(detailedThread.messages, activeBoundaryMessageId.value) !== undefined,
+            hasProjectedMessage: existingMessage !== undefined,
+            projectedText: existingMessage?.text ?? "",
           });
         }
       }
@@ -2630,42 +2566,13 @@ const make = Effect.gen(function* () {
           : undefined;
       if (pauseForUserTurnId) {
         const detailedThread = yield* getLoadedThreadDetail();
-        const responseStreamingMode = yield* Effect.map(
-          serverSettingsService.getSettings,
-          resolveResponseStreamingMode,
-        );
-        const flushedMessageIds =
-          responseStreamingMode !== "token"
-            ? yield* flushBufferedAssistantMessagesForTurn({
-                event,
-                threadId: thread.id,
-                turnId: pauseForUserTurnId,
-                createdAt: now,
-                commandTag:
-                  event.type === "request.opened"
-                    ? "assistant-delta-flush-on-request-opened"
-                    : "assistant-delta-flush-on-user-input-requested",
-              })
-            : new Set<MessageId>();
-        yield* finalizeActiveAssistantSegmentForTurn({
+        yield* settleAssistantMessagesForTurn({
           event,
           threadId: thread.id,
           turnId: pauseForUserTurnId,
           createdAt: now,
-          commandTag:
-            event.type === "request.opened"
-              ? "assistant-complete-on-request-opened"
-              : "assistant-complete-on-user-input-requested",
-          finalDeltaCommandTag:
-            event.type === "request.opened"
-              ? "assistant-delta-finalize-on-request-opened"
-              : "assistant-delta-finalize-on-user-input-requested",
-          hasProjectedMessage:
-            detailedThread !== null &&
-            hasAssistantMessageForTurn(detailedThread.messages, pauseForUserTurnId, {
-              streamingOnly: true,
-            }),
-          flushedMessageIds,
+          messages: detailedThread?.messages ?? [],
+          reason: "paused",
         });
       }
       if (event.type === "request.opened" || event.type === "user-input.requested") {
@@ -2730,8 +2637,8 @@ const make = Effect.gen(function* () {
             ...(turnId ? { turnId } : {}),
             createdAt: now,
             commandTag: "assistant-complete",
-            finalDeltaCommandTag: "assistant-delta-finalize",
             hasProjectedMessage: existingAssistantMessage !== undefined,
+            projectedText: existingAssistantMessage?.text ?? "",
             ...(assistantCompletion.fallbackText !== undefined && shouldApplyFallbackCompletionText
               ? { fallbackText: assistantCompletion.fallbackText }
               : {}),
@@ -2794,8 +2701,8 @@ const make = Effect.gen(function* () {
                   turnId,
                   createdAt: now,
                   commandTag: "assistant-complete-finalize",
-                  finalDeltaCommandTag: "assistant-delta-finalize-fallback",
                   hasProjectedMessage: existingAssistantMessage !== undefined,
+                  projectedText: existingAssistantMessage?.text ?? "",
                   ...(currentUserPrompt === undefined ? {} : { userPrompt: currentUserPrompt }),
                 });
                 // 流式模式下最终文本已经投影，不再重复发送 delta，但仍扫描已投影文本，
@@ -2852,12 +2759,13 @@ const make = Effect.gen(function* () {
                 : undefined;
       if (interruptedTurnId) {
         const detailedThread = yield* getLoadedThreadDetail();
-        yield* settleInterruptedAssistantMessagesForTurn({
+        yield* settleAssistantMessagesForTurn({
           event,
           threadId: thread.id,
           turnId: interruptedTurnId,
           messages: detailedThread?.messages ?? [],
           createdAt: now,
+          reason: "interrupted",
         });
         if (
           event.type === "turn.completed" ||
@@ -3091,15 +2999,22 @@ const make = Effect.gen(function* () {
       }),
     );
 
-  const worker = yield* makeDrainableWorker(processInputSafely);
+  // 顺序关闭自己的后台资源：先刷新尾包并等持久化，再停止 worker。
+  const ingestionScope = yield* Scope.fork(yield* Scope.Scope, "sequential");
+  const worker = yield* makeDrainableWorker(processInputSafely).pipe(
+    Effect.provideService(Scope.Scope, ingestionScope),
+  );
+  const coalescer = yield* makeProviderRuntimeEventCoalescer((events) =>
+    Effect.forEach(events, (event) => worker.enqueue({ source: "runtime", event }), {
+      concurrency: 1,
+    }).pipe(Effect.asVoid),
+  ).pipe(Effect.provideService(Scope.Scope, ingestionScope));
+  const drain = coalescer.flush.pipe(Effect.andThen(worker.drain));
+  yield* Scope.addFinalizer(ingestionScope, drain);
 
   const start: ProviderRuntimeIngestionShape["start"] = () =>
     Effect.gen(function* () {
-      yield* forkParked(
-        Stream.runForEach(providerService.streamEvents, (event) =>
-          worker.enqueue({ source: "runtime", event }),
-        ),
-      );
+      yield* forkParked(Stream.runForEach(providerService.streamEvents, coalescer.offer));
       yield* forkParked(
         Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {
           if (event.type !== "thread.turn-start-requested") {
@@ -3112,7 +3027,7 @@ const make = Effect.gen(function* () {
 
   return {
     start,
-    drain: worker.drain,
+    drain,
   } satisfies ProviderRuntimeIngestionShape;
 });
 
