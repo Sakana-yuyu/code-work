@@ -5,12 +5,24 @@ type ItemEvent = Extract<
   ProviderRuntimeEvent,
   { readonly type: "item.started" | "item.updated" | "item.completed" }
 >;
+type RequestEvent = Extract<
+  ProviderRuntimeEvent,
+  { readonly type: "request.opened" | "user-input.requested" }
+>;
 
 interface ThreadItems {
   activeTurn: TurnId | undefined;
   closedTurn: { readonly turnId: TurnId | undefined } | undefined;
   readonly items: Map<string, ItemEvent>;
+  readonly requests: Map<string, RequestEvent>;
 }
+
+const makeThreadItems = (activeTurn: TurnId | undefined): ThreadItems => ({
+  activeTurn,
+  closedTurn: undefined,
+  items: new Map(),
+  requests: new Map(),
+});
 
 /** Adapter 发射边界的在途条目；只关闭同一回合，不结束可独立运行的 task。 */
 export function createRuntimeTurnItems() {
@@ -24,9 +36,33 @@ export function createRuntimeTurnItems() {
     let state = threads.get(event.threadId);
     if (event.type === "turn.started") {
       if (!state) {
-        state = { activeTurn: event.turnId, closedTurn: undefined, items: new Map() };
+        state = makeThreadItems(event.turnId);
         threads.set(event.threadId, state);
       } else state.activeTurn = event.turnId;
+      return [event];
+    }
+
+    if (
+      event.type === "request.opened" ||
+      event.type === "request.resolved" ||
+      event.type === "user-input.requested" ||
+      event.type === "user-input.resolved"
+    ) {
+      if (!event.requestId) return [event];
+      const open = event.type === "request.opened" || event.type === "user-input.requested";
+      if (!state && !open) return [event];
+      if (!state) {
+        state = makeThreadItems(undefined);
+        threads.set(event.threadId, state);
+      }
+      const turnId = event.turnId ?? state.activeTurn ?? state.closedTurn?.turnId;
+      const kind =
+        event.type === "request.opened" || event.type === "request.resolved" ? "approval" : "input";
+      const key = JSON.stringify([turnId, kind, event.requestId]);
+      if (open && state.closedTurn !== undefined && state.closedTurn.turnId === turnId) return [];
+      if (event.type === "request.opened" || event.type === "user-input.requested") {
+        state.requests.set(key, { ...event, ...(turnId === undefined ? {} : { turnId }) });
+      } else state.requests.delete(key);
       return [event];
     }
 
@@ -39,7 +75,7 @@ export function createRuntimeTurnItems() {
       if (!state && event.type !== "item.started" && event.payload.status !== "inProgress")
         return [event];
       if (!state) {
-        state = { activeTurn: undefined, closedTurn: undefined, items: new Map() };
+        state = makeThreadItems(undefined);
         threads.set(event.threadId, state);
       }
       const turnId = event.turnId ?? state.activeTurn ?? state.closedTurn?.turnId;
@@ -73,7 +109,7 @@ export function createRuntimeTurnItems() {
     if (event.type !== "session.exited" && event.turnId === undefined) return [event];
     if (!state) {
       if (event.type === "session.exited") return [event];
-      state = { activeTurn: undefined, closedTurn: undefined, items: new Map() };
+      state = makeThreadItems(undefined);
       threads.set(event.threadId, state);
     }
     const turnId = event.turnId ?? state.activeTurn;
@@ -98,6 +134,26 @@ export function createRuntimeTurnItems() {
         },
       });
       state.items.delete(key);
+    }
+    for (const [key, request] of state.requests) {
+      if (event.type !== "session.exited" && request.turnId !== turnId) continue;
+      const base = {
+        ...request,
+        eventId: EventId.make(`${event.eventId}:${request.type}:${request.requestId}`),
+        createdAt: event.createdAt,
+        ...(event.raw ? { raw: event.raw } : {}),
+      };
+      // 回合已结束，只关闭 canonical 等待卡片；不调用 provider、不授予权限或填写回答。
+      settled.push(
+        request.type === "request.opened"
+          ? {
+              ...base,
+              type: "request.resolved",
+              payload: { requestType: request.payload.requestType, decision: "cancel" },
+            }
+          : { ...base, type: "user-input.resolved", payload: { answers: {} } },
+      );
+      state.requests.delete(key);
     }
     if (event.type === "session.exited") threads.delete(event.threadId);
     else {

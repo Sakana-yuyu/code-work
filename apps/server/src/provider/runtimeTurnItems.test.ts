@@ -3,6 +3,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   RuntimeItemId,
+  RuntimeRequestId,
   RuntimeTaskId,
   ThreadId,
   TurnId,
@@ -37,7 +38,117 @@ const terminal = (state: "completed" | "failed" | "cancelled" | "interrupted") =
     payload: { state },
   }) as const satisfies ProviderRuntimeEvent;
 
+const approval = {
+  ...base,
+  eventId: EventId.make("approval-open"),
+  type: "request.opened",
+  requestId: RuntimeRequestId.make("approval-1"),
+  payload: { requestType: "exec_command_approval" },
+} as const satisfies ProviderRuntimeEvent;
+const question = {
+  ...base,
+  eventId: EventId.make("question-open"),
+  type: "user-input.requested",
+  requestId: RuntimeRequestId.make("question-1"),
+  payload: {
+    questions: [{ id: "choice", header: "选择", question: "采用哪个方案？", options: [] }],
+  },
+} as const satisfies ProviderRuntimeEvent;
+
 describe("Adapter 的回合条目终态边界", () => {
+  for (const state of ["completed", "failed", "cancelled", "interrupted"] as const) {
+    it(`${state} 前关闭仍待回应的交互，只取消审批、不授予权限或编造回答`, () => {
+      const tracker = createRuntimeTurnItems();
+      tracker.apply(approval);
+      tracker.apply(question);
+      const end = terminal(state);
+      const events = tracker.apply(end);
+      expect(events.map((event) => event.type)).toEqual([
+        "request.resolved",
+        "user-input.resolved",
+        "turn.completed",
+      ]);
+      expect(events[0]).toMatchObject({
+        threadId: base.threadId,
+        turnId: base.turnId,
+        requestId: approval.requestId,
+        createdAt: end.createdAt,
+        payload: { requestType: "exec_command_approval", decision: "cancel" },
+      });
+      expect(events[1]).toMatchObject({ requestId: question.requestId, payload: { answers: {} } });
+      expect(events.at(-1)).toBe(end);
+      expect(tracker.apply(end)).toEqual([end]);
+    });
+  }
+
+  it("真实交互回应解除追踪，保留 provider 的决定与回答", () => {
+    const tracker = createRuntimeTurnItems();
+    tracker.apply(approval);
+    tracker.apply(question);
+    const resolvedApproval = {
+      ...approval,
+      eventId: EventId.make("approval-real-response"),
+      type: "request.resolved",
+      payload: { requestType: approval.payload.requestType, decision: "decline" },
+    } as const;
+    const resolvedQuestion = {
+      ...question,
+      eventId: EventId.make("question-real-response"),
+      type: "user-input.resolved",
+      payload: { answers: { choice: "方案一" } },
+    } as const;
+    expect(tracker.apply(resolvedApproval)).toEqual([resolvedApproval]);
+    expect(tracker.apply(resolvedQuestion)).toEqual([resolvedQuestion]);
+    expect(tracker.apply(terminal("completed"))).toHaveLength(1);
+  });
+
+  it("无回合归属的交互沿用当前回合，迟到请求不能重开，下一回合可复用身份", () => {
+    const tracker = createRuntimeTurnItems();
+    tracker.apply({ ...base, type: "turn.started", eventId: EventId.make("start"), payload: {} });
+    tracker.apply({ ...approval, turnId: undefined });
+    expect(tracker.apply(terminal("cancelled"))[0]).toMatchObject({
+      type: "request.resolved",
+      turnId: base.turnId,
+    });
+    expect(tracker.apply({ ...approval, turnId: undefined })).toEqual([]);
+    const nextTurn = TurnId.make("turn-2");
+    tracker.apply({
+      ...base,
+      type: "turn.started",
+      turnId: nextTurn,
+      eventId: EventId.make("next-start"),
+      payload: {},
+    });
+    tracker.apply({ ...approval, turnId: undefined });
+    expect(tracker.apply({ ...terminal("completed"), turnId: nextTurn })[0]).toMatchObject({
+      type: "request.resolved",
+      turnId: nextTurn,
+    });
+  });
+
+  it("同名请求在不同回合与交互类型中独立，退出会话才统一关闭", () => {
+    const tracker = createRuntimeTurnItems();
+    tracker.apply(approval);
+    tracker.apply({ ...question, requestId: approval.requestId });
+    tracker.apply({ ...approval, turnId: TurnId.make("turn-2") });
+    const first = tracker.apply(terminal("failed"));
+    expect(first.map((event) => event.type)).toEqual([
+      "request.resolved",
+      "user-input.resolved",
+      "turn.completed",
+    ]);
+    const exit = {
+      ...base,
+      eventId: EventId.make("exit"),
+      type: "session.exited",
+      payload: { exitKind: "error" },
+    } as const;
+    expect(tracker.apply(exit)).toMatchObject([
+      { type: "request.resolved", turnId: "turn-2" },
+      { type: "session.exited" },
+    ]);
+  });
+
   for (const state of ["completed", "failed", "cancelled", "interrupted"] as const) {
     it(`${state} 前先完成所有未终结条目，不改动归属`, () => {
       const tracker = createRuntimeTurnItems();

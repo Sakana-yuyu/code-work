@@ -51,7 +51,7 @@
 | 4   | 全部客户端增量渲染清单与上游对应提交                        | 部分完成，继续补齐                           | 闭合 Markdown 前缀 / 固定 Web 渲染身份 / 逐行高亮 / 共享回合与检查点引用 / Mobile 块键         | 8 文件 / 188 项通过；Web DOM 追加与终态选区保持；完整清单见下文，未完成项保留                                         |
 | 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 合并、按帧发布与三端切片已落地，最终验收开放 | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / 三端渲染 | 节奏开关、首段全文、字素边界、完成吸附及全文复制与几何已覆盖；Native 与最终性能仍开放                                 |
 | 6   | 流式选区与滚动锚点                                          | Web 代码及普通文字已验证，其余继续验收       | 真实 StreamingChatMarkdown 临时交互夹具 / Mobile 原生 Markdown                                 | 未闭合段落追加、终态与清除选区均保持既有节点；滚动锚点与原生设备仍待矩阵验证                                          |
-| 7   | 每个 adapter 终态无 loading                                 | 在途条目已补齐，交互边界继续验收             | 共享 runtimeTurnItems / 全部 canonical 发射入口 / Codex 原生映射                               | 13 份 adapter/driver 文件 311 项通过；终态、Codex 与 ingestion 补充 163 项通过；详细边界见下文                        |
+| 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证           | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                        | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 订阅竞态已修复，继续验收完整矩阵             | ws 立即订阅 / state/threads / 运行中正文与缓存游标                                             | 真实 RPC 订阅 6 项、共享同步/挂载/分页/RPC 会话 43 项通过；设备与原始 provider 回放继续核验                           |
 | 9   | 同口径帧间隔性能无回归                                      | 本增量通过，阶段最终仍需复测                 | 1280×720、1202 活动、上下各 20 页 ×4 组                                                        | 2026-10-12 修改前后 p95 均 16.8 ms；滚动窗口最大 66.7→50.0 ms，最高窗口 >50 ms 数 1→0；后续改变渲染仍须重跑           |
 | 10  | Windows argv 三层守卫                                       | 待实施                                       | Antigravity / ZCode / resolveSpawnCommand                                                      | 尚未运行                                                                                                              |
@@ -324,3 +324,13 @@ Codex、Claude、OpenCode、Cursor、Grok、BYOK、Antigravity 与 Pi/Omp/ZCode 
 server/client-runtime 的本批目标 `tsgo --noEmit` 通过，3 份源文件 lint 通过（原 server 测试 2 条未使用标识符提示保留），目标格式检查通过。三端共享相同状态机与 RPC，本地/远程/relay/隧道均使用相同订阅合同；没有新增权限、设置、能力字段或 UI 入口，离开和重开继续沿用已有反向路径。回退本主题提交恢复原订阅启动时序，不改变数据库。
 
 以上验证是本机真实 RPC 与共享客户端测试；独立 Electron/Native 与真实连接中断的全路径观察、原始 provider 事件重新进入 ingestion 的持久化身份继续核验。客户端网络恢复只回放已经持久化的领域事件，不重新执行 provider 命令；现有 `providerCommandId` 含随机后缀，因此不能把 engine 的 command receipt 防重直接等同于原始 provider 包去重。第 8 项继续保留这些边界，最终性能仍按第 9 项验收。
+
+### 2026-10-12：终态前解除失效的审批与提问等待
+
+公共 Adapter 边界继续追踪 `request.opened` 与 `user-input.requested`，按线程、回合、交互类型和请求身份隔离。正常完成、失败、取消、打断和会话退出前，遗漏的 canonical 审批结束通知以 `decision: cancel` 收尾，提问以空答案结束；仅关闭已经不能回应的客户端等待卡片，不调用 provider、不批准工具、不生成用户回答。真实回应解除追踪并保留原决定/答案，迟到的真实回应继续通过；同名审批与提问不混用，下一回合可重用请求身份，无回合归属的已知请求沿用当前回合，结束归属准入保护不变。
+
+四种终态缺少交互收尾的测试在旧代码均红于只发出 `turn.completed`，新实现均绿。共享 helper 现有 22 项，公共 `runtimeEventToActivities` 与公开 payload 投影新增 4 项，分别检查最终工具 status、审批取消和空答案。`vp test run --config .candidate-test.config.ts` 指定这两份文件、`ProviderRuntimeIngestion.approval.test.ts`、Web 的 `session-logic.test.ts` 与 Mobile 的 `threadActivity.test.ts`，5 份文件共 176 项通过。客户端按原有模块配置分别验证；跨 NodeNext/Bundler 直接互引的临时夹具未保留，也未放宽产品类型配置。
+
+其余实际 Adapter/driver 回归分组运行：共享 helper 与 Claude/Cursor/Grok/OpenCode 五份文件 229 项；Codex/BYOK/Antigravity/GenericAcpDriver 与 ProjectionPipeline 五份文件 94 项；Pi/Omp/ZCode 按其实际测试目录补充运行，三份文件 21 项通过。Windows 测试 CLI 的既有 `DEP0190` 提示保留。服务器本批目标 `tsgo --noEmit`、3 源文件 lint 和格式检查通过，没有新增类型或 lint 错误。
+
+至此第 7 项的所有 canonical 在途 item 与交互等待均在 Adapter 终态前补齐，并经原生映射与公共活动投影定向验证。所有 Adapter 沿用上一批的同一发射边界，三端与本地/远程/隧道消费相同公开活动；不改合同、权限、CLI 或 UI 入口。原生 hooks 当前不投影为 loading 行，保持实际 hooks 结果；可独立运行的后台 task 属于持续工作，保持实际生命周期，不能以主回合结束冒充成功。设备选区、真实重连全路径和最终性能仍分别按第 4/6/8/9 项开放。本主题回退恢复仅 item 的追踪，数据结构与迁移不变。
