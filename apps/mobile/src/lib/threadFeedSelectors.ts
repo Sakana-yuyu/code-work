@@ -3,6 +3,7 @@ import type { OrchestrationThread, TurnId } from "@codework/contracts";
 import { getCurrentLanguage } from "../i18n/runtime";
 import {
   buildThreadFeed,
+  createThreadFeedBuilder,
   deriveThreadFeedPresentation,
   type ThreadFeedEntry,
   type ThreadFeedLatestTurn,
@@ -17,6 +18,7 @@ function messageVisible(message: FeedMessage): boolean {
 
 /** 每个作用域线程独享；正文更新不重新解析、排序和分组历史活动。 */
 export function createThreadFeedSelector() {
+  const build = createThreadFeedBuilder();
   let previous: {
     readonly threadId: OrchestrationThread["id"];
     readonly activities: OrchestrationThread["activities"];
@@ -76,7 +78,11 @@ export function createThreadFeedSelector() {
       }
     }
     if (feed === null) {
-      feed = buildThreadFeed(thread, options);
+      const rebuilt = build(thread, options);
+      feed =
+        previous !== null && previous.threadId === thread.id && previous.language === language
+          ? reuseFeedRows(previous.feed, rebuilt)
+          : rebuilt;
       visible = messages.map(messageVisible);
     }
     previous = {
@@ -97,6 +103,47 @@ function sameSet<A>(left: ReadonlySet<A>, right: ReadonlySet<A>): boolean {
   return (
     left === right || (left.size === right.size && [...left].every((value) => right.has(value)))
   );
+}
+
+function sameFeedRow(left: ThreadFeedEntry, right: ThreadFeedEntry): boolean {
+  if (left === right) return true;
+  if (left.id !== right.id || left.createdAt !== right.createdAt) return false;
+  if (left.type === "message" && right.type === "message") return left.message === right.message;
+  if (left.type === "activity-group" && right.type === "activity-group")
+    return (
+      left.turnId === right.turnId &&
+      left.activities.length === right.activities.length &&
+      left.activities.every((activity, index) => activity === right.activities[index])
+    );
+  if (left.type === "working" && right.type === "working") return true;
+  if (left.type === "turn-fold" && right.type === "turn-fold")
+    return (
+      left.turnId === right.turnId && left.label === right.label && left.expanded === right.expanded
+    );
+  if (left.type === "work-toggle" && right.type === "work-toggle")
+    return (
+      left.turnId === right.turnId &&
+      left.groupId === right.groupId &&
+      left.hiddenCount === right.hiddenCount &&
+      left.expanded === right.expanded &&
+      left.onlyToolActivities === right.onlyToolActivities &&
+      left.breakdown === right.breakdown
+    );
+  return false;
+}
+
+function reuseFeedRows(previous: ThreadFeedEntry[], next: ThreadFeedEntry[]): ThreadFeedEntry[] {
+  const rows = new Map(previous.map((entry) => [`${entry.type}:${entry.id}`, entry]));
+  const uniqueKeys = new Set(next.map((entry) => `${entry.type}:${entry.id}`));
+  if (rows.size !== previous.length || uniqueKeys.size !== next.length) return next;
+  let sameArray = previous.length === next.length;
+  const reused = next.map((entry, index) => {
+    const old = rows.get(`${entry.type}:${entry.id}`);
+    const row = old !== undefined && sameFeedRow(old, entry) ? old : entry;
+    if (row !== previous[index]) sameArray = false;
+    return row;
+  });
+  return sameArray ? previous : reused;
 }
 
 function sameLatestTurn(
@@ -173,13 +220,19 @@ export function createThreadFeedPresentationSelector() {
         result = changed ? updated : previous.result;
       }
     }
-    result ??= deriveThreadFeedPresentation(
-      feed,
-      latestTurn,
-      expandedTurns,
-      expandedGroups,
-      activeWorkStartedAt,
-    );
+    if (result === null) {
+      const rebuilt = deriveThreadFeedPresentation(
+        feed,
+        latestTurn,
+        expandedTurns,
+        expandedGroups,
+        activeWorkStartedAt,
+      );
+      result =
+        previous !== null && previous.language === language
+          ? reuseFeedRows(previous.result, rebuilt)
+          : rebuilt;
+    }
     previous = {
       feed,
       latestTurn,

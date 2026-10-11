@@ -23,7 +23,7 @@ import {
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
 import * as Schema from "effect/Schema";
-import { t } from "../i18n/runtime";
+import { getCurrentLanguage, t } from "../i18n/runtime";
 
 export interface PendingApproval {
   readonly requestId: ApprovalRequestId;
@@ -344,31 +344,33 @@ function isAgentInternalActivity(activity: OrchestrationThreadActivity): boolean
 function deriveWorkLogEntries(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): DerivedWorkLogEntry[] {
-  const ordered = Arr.sort(activities, activityOrder);
-  const entries: DerivedWorkLogEntry[] = [];
-  for (const activity of ordered) {
-    if (activity.kind === "task.started") continue;
-    // Terminal bypassed updates pass: Codex children's only terminal signal.
-    if (activity.kind === "task.updated" && !isTerminalBypassUpdate(activity)) continue;
-    if (activity.kind === "tool.progress") continue;
-    if (activity.kind === "context-window.updated") continue;
-    if (activity.kind === "session.commands.updated") continue;
-    if (
-      activity.kind === "session.models.updated" ||
-      activity.kind === "session.mode.updated" ||
-      activity.kind === "session.config-options.updated"
-    )
-      continue;
-    // 思考摘要是逐段流式增量，移动端不展示；逐条进工作日志会刷屏。
-    if (activity.kind === "reasoning.summary.delta") continue;
-    // 订阅额度是「最新态」活动，由输入框额度芯片与用量页呈现，不是工作日志行。
-    if (activity.kind === "account.rate-limits.updated") continue;
-    if (activity.summary === "Checkpoint captured") continue;
-    if (isPlanBoundaryToolActivity(activity)) continue;
-    if (isAgentInternalActivity(activity)) continue;
-    entries.push(toDerivedWorkLogEntry(activity));
-  }
-  return collapseDerivedWorkLogEntries(entries);
+  return collapseDerivedWorkLogEntries(
+    Arr.sort(activities, activityOrder).flatMap((activity) => {
+      const entry = visibleWorkLogEntry(activity);
+      return entry === null ? [] : [entry];
+    }),
+  );
+}
+
+function visibleWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry | null {
+  if (
+    activity.kind === "task.started" ||
+    (activity.kind === "task.updated" && !isTerminalBypassUpdate(activity)) ||
+    activity.kind === "tool.progress" ||
+    activity.kind === "context-window.updated" ||
+    activity.kind === "session.commands.updated" ||
+    activity.kind === "session.models.updated" ||
+    activity.kind === "session.mode.updated" ||
+    activity.kind === "session.config-options.updated" ||
+    activity.kind === "reasoning.summary.delta" ||
+    activity.kind === "account.rate-limits.updated" ||
+    activity.summary === "Checkpoint captured" ||
+    isPlanBoundaryToolActivity(activity) ||
+    isAgentInternalActivity(activity)
+  )
+    return null;
+  // 摘要、额度和模型配置属于独立展示入口，不增加工作日志行。
+  return toDerivedWorkLogEntry(activity);
 }
 
 function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): boolean {
@@ -509,12 +511,17 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
 function collapseDerivedWorkLogEntries(
   entries: ReadonlyArray<DerivedWorkLogEntry>,
 ): DerivedWorkLogEntry[] {
+  const accumulator = createWorkLogAccumulator();
+  for (const entry of entries) accumulator.append(entry);
+  return accumulator.entries;
+}
+
+function createWorkLogAccumulator() {
   const collapsed: DerivedWorkLogEntry[] = [];
-  // Subagent rows collapse by identity, not adjacency (quiet-timeline
-  // guarantee; mirrors web's session-logic).
+  // 子 agent 与工具按身份归并，不依赖它们在日志中相邻。
   const taskRowIndex = new Map<string, number>();
   const toolRowIndex = new Map<string, number>();
-  for (const entry of entries) {
+  const append = (entry: DerivedWorkLogEntry) => {
     const isTaskRow =
       entry.taskId !== undefined &&
       (entry.activityKind === "task.progress" ||
@@ -524,11 +531,11 @@ function collapseDerivedWorkLogEntries(
       const existingIndex = taskRowIndex.get(entry.taskId);
       if (existingIndex !== undefined) {
         collapsed[existingIndex] = mergeDerivedWorkLogEntries(collapsed[existingIndex]!, entry);
-        continue;
+        return;
       }
       taskRowIndex.set(entry.taskId, collapsed.length);
       collapsed.push(entry);
-      continue;
+      return;
     }
     const toolKey = entry.toolCallId
       ? `tool:${entry.turnId ?? "no-turn"}:${entry.toolCallId}`
@@ -539,7 +546,7 @@ function collapseDerivedWorkLogEntries(
       shouldCollapseToolLifecycleEntries(collapsed[matchingIndex]!, entry)
     ) {
       collapsed[matchingIndex] = mergeDerivedWorkLogEntries(collapsed[matchingIndex]!, entry);
-      continue;
+      return;
     }
     const previous = collapsed.at(-1);
     if (previous && shouldCollapseToolLifecycleEntries(previous, entry)) {
@@ -547,14 +554,92 @@ function collapseDerivedWorkLogEntries(
       if (toolKey) {
         toolRowIndex.set(toolKey, collapsed.length - 1);
       }
-      continue;
+      return;
     }
     collapsed.push(entry);
     if (toolKey) {
       toolRowIndex.set(toolKey, collapsed.length - 1);
     }
-  }
-  return collapsed;
+  };
+  return { entries: collapsed, append };
+}
+
+function createWorkLogEntriesSelector() {
+  let previous: ReadonlyArray<OrchestrationThreadActivity> | null = null;
+  let lastOrdered: OrchestrationThreadActivity | null = null;
+  let language = getCurrentLanguage();
+  let derived = new WeakMap<OrchestrationThreadActivity, DerivedWorkLogEntry | null>();
+  let accumulator = createWorkLogAccumulator();
+  return (activities: ReadonlyArray<OrchestrationThreadActivity>) => {
+    const nextLanguage = getCurrentLanguage();
+    const languageChanged = nextLanguage !== language;
+    if (languageChanged) {
+      language = nextLanguage;
+      previous = null;
+      derived = new WeakMap();
+    }
+    if (activities === previous) return accumulator.entries;
+    const prefixUnchanged =
+      previous !== null &&
+      activities.length >= previous.length &&
+      previous.every((activity, index) => activity === activities[index]);
+    const start = prefixUnchanged ? previous!.length : 0;
+    let orderedAppend = prefixUnchanged;
+    let tail = lastOrdered;
+    for (let index = start; orderedAppend && index < activities.length; index++) {
+      const activity = activities[index]!;
+      if (tail !== null && activityOrder(tail, activity) > 0) orderedAppend = false;
+      tail = activity;
+    }
+    const oldEntries = accumulator.entries;
+    let additions: ReadonlyArray<OrchestrationThreadActivity>;
+    if (orderedAppend) additions = activities.slice(start);
+    else {
+      // 迟到、替换或重排重新规范化；只保留当前结果，不缓存整个中间合并链。
+      accumulator = createWorkLogAccumulator();
+      additions = Arr.sort(activities, activityOrder);
+    }
+    for (const activity of additions) {
+      let entry = derived.get(activity);
+      if (entry === undefined) {
+        entry = visibleWorkLogEntry(activity);
+        derived.set(activity, entry);
+      }
+      if (entry !== null) accumulator.append(entry);
+    }
+    if (!orderedAppend && !languageChanged) {
+      const previousById = new Map(oldEntries.map((entry) => [entry.id, entry]));
+      if (previousById.size === oldEntries.length) {
+        for (let index = 0; index < accumulator.entries.length; index++) {
+          const entry = accumulator.entries[index]!;
+          const old = previousById.get(entry.id);
+          if (old !== undefined && sameDerivedWorkLogEntry(old, entry))
+            accumulator.entries[index] = old;
+        }
+      }
+    }
+    lastOrdered = additions.at(-1) ?? (orderedAppend ? lastOrdered : null);
+    previous = activities;
+    return accumulator.entries;
+  };
+}
+
+function sameDerivedWorkLogEntry(left: DerivedWorkLogEntry, right: DerivedWorkLogEntry): boolean {
+  const keys = Object.keys(left) as Array<keyof DerivedWorkLogEntry>;
+  if (keys.length !== Object.keys(right).length) return false;
+  return keys.every((key) => {
+    if (!Object.hasOwn(right, key)) return false;
+    if (key !== "changedFiles") return left[key] === right[key];
+    const a = left.changedFiles;
+    const b = right.changedFiles;
+    return (
+      a === b ||
+      (a !== undefined &&
+        b !== undefined &&
+        a.length === b.length &&
+        a.every((file, index) => file === b[index]))
+    );
+  });
 }
 
 function shouldCollapseToolLifecycleEntries(
@@ -1752,12 +1837,34 @@ export function buildPendingUserInputAnswers(
   return answers;
 }
 
+interface ThreadFeedOptions {
+  readonly loadedMessages?: ReadonlyArray<OrchestrationThread["messages"][number]>;
+  readonly localMessages?: ReadonlyArray<OrchestrationThread["messages"][number]>;
+}
+
 export function buildThreadFeed(
   thread: OrchestrationThread,
-  options?: {
-    readonly loadedMessages?: ReadonlyArray<OrchestrationThread["messages"][number]>;
-    readonly localMessages?: ReadonlyArray<OrchestrationThread["messages"][number]>;
-  },
+  options?: ThreadFeedOptions,
+): ThreadFeedEntry[] {
+  return buildThreadFeedWithEntries(thread, options, deriveWorkLogEntries(thread.activities));
+}
+
+/** 只持有当前线程的派生状态；单调追加只解析新活动，替换/迟到保留完整规范化。 */
+export function createThreadFeedBuilder() {
+  const selectEntries = createWorkLogEntriesSelector();
+  const rows = new WeakMap<
+    DerivedWorkLogEntry,
+    Extract<RawThreadFeedEntry, { type: "activity" }>
+  >();
+  return (thread: OrchestrationThread, options?: ThreadFeedOptions) =>
+    buildThreadFeedWithEntries(thread, options, selectEntries(thread.activities), rows);
+}
+
+function buildThreadFeedWithEntries(
+  thread: OrchestrationThread,
+  options: ThreadFeedOptions | undefined,
+  workLogEntries: ReadonlyArray<DerivedWorkLogEntry>,
+  activityRows?: WeakMap<DerivedWorkLogEntry, Extract<RawThreadFeedEntry, { type: "activity" }>>,
 ): ThreadFeedEntry[] {
   const loadedMessages = options?.loadedMessages ?? thread.messages;
   const messages = options?.localMessages
@@ -1765,7 +1872,6 @@ export function buildThreadFeed(
     : loadedMessages;
   const oldestLoadedMessageCreatedAt =
     options?.loadedMessages !== undefined ? (loadedMessages[0]?.createdAt ?? null) : null;
-  const workLogEntries = deriveWorkLogEntries(thread.activities);
   const entries = Arr.sortWith(
     [
       ...messages.map<RawThreadFeedEntry>((message) => ({
@@ -1784,6 +1890,8 @@ export function buildThreadFeed(
           );
         })
         .map<RawThreadFeedEntry>((entry) => {
+          const cached = activityRows?.get(entry);
+          if (cached !== undefined) return cached;
           const summary = workEntryHeading(entry);
           const detail = workEntryPreview(entry);
           const getFullDetail = memoizeValue(() => buildWorkEntryExpandedBody(entry));
@@ -1794,7 +1902,7 @@ export function buildThreadFeed(
               })
               .join("\n"),
           );
-          return {
+          const row: Extract<RawThreadFeedEntry, { type: "activity" }> = {
             type: "activity",
             id: entry.id,
             createdAt: entry.createdAt,
@@ -1814,6 +1922,8 @@ export function buildThreadFeed(
               status: workEntryStatus(entry),
             },
           };
+          activityRows?.set(entry, row);
+          return row;
         }),
     ],
     (s) => new Date(s.createdAt),

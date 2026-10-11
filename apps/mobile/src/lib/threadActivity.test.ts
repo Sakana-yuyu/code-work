@@ -345,6 +345,229 @@ describe("移动端增量 feed", () => {
     expect(next.at(-1)).toMatchObject({ type: "message", message: { text: "已经收到更多正文" } });
   });
 
+  it("单调追加新工具不重新读写 1200 条历史，已展开行保持身份", () => {
+    let reads = 0;
+    const activities = Array.from(
+      { length: 1200 },
+      (_, index) =>
+        new Proxy(
+          {
+            ...activity,
+            id: EventId.make(`append-${index}`),
+            sequence: index + 1,
+            payload: { ...(activity.payload as object), toolCallId: `append-tool-${index}` },
+          },
+          {
+            get(target, key, receiver) {
+              reads++;
+              return Reflect.get(target, key, receiver);
+            },
+          },
+        ),
+    );
+    const source = { ...thread(), activities };
+    const select = createThreadFeedSelector();
+    const present = createThreadFeedPresentationSelector();
+    const first = select(source);
+    const group = first.find((entry) => entry.type === "activity-group")!;
+    const expanded = new Set([group.id]);
+    const shown = present(first, null, new Set(), expanded);
+    reads = 0;
+    const added = {
+      ...activity,
+      id: EventId.make("append-new"),
+      sequence: 1201,
+      payload: { ...(activity.payload as object), toolCallId: "append-new" },
+    };
+    const next = select({ ...source, activities: [...activities, added] });
+    expect(reads).toBeLessThan(20);
+    if (group.type !== "activity-group") throw new Error("缺少历史活动组");
+    const nextGroup = next.find((entry) => entry.type === "activity-group")!;
+    if (nextGroup.type !== "activity-group") throw new Error("缺少追加活动组");
+    expect(group.activities).toHaveLength(1200);
+    expect(nextGroup.activities).toHaveLength(1201);
+    for (let index = 0; index < 1200; index++)
+      expect(nextGroup.activities[index]).toBe(group.activities[index]);
+    const nextShown = present(next, null, new Set(), expanded);
+    const oldRow = shown.find((entry) => entry.id === "append-600");
+    expect(nextShown.find((entry) => entry.id === "append-600")).toBe(oldRow);
+    expect(content(next)).toEqual(
+      content(buildThreadFeed({ ...source, activities: [...activities, added] })),
+    );
+  });
+
+  it("非工作日志活动追加复用完整 feed，换语言仍重新翻译", () => {
+    const source = { ...thread(), activities: [{ ...activity, sequence: 1 }] };
+    const select = createThreadFeedSelector();
+    const first = select(source);
+    const next = {
+      ...source,
+      activities: [
+        ...source.activities,
+        {
+          ...activity,
+          id: EventId.make("quota-update"),
+          sequence: 2,
+          kind: "context-window.updated" as const,
+        },
+      ],
+    };
+    expect(select(next)).toBe(first);
+    try {
+      setCurrentLanguage("zh-CN");
+      expect(content(select(next))).toEqual(content(buildThreadFeed(next)));
+    } finally {
+      setCurrentLanguage("en");
+    }
+  });
+
+  it("跨相邻行的工具生命周期合并更新结果，旧显示内容保持不可变", () => {
+    const started = {
+      ...activity,
+      id: EventId.make("tool-start"),
+      sequence: 1,
+      kind: "tool.started" as const,
+      payload: {
+        toolCallId: "live-tool",
+        itemType: "command_execution",
+        status: "inProgress",
+        detail: "执行中",
+      },
+    };
+    const other = {
+      ...activity,
+      id: EventId.make("another-tool"),
+      sequence: 2,
+      payload: { ...(activity.payload as object), toolCallId: "other" },
+    };
+    const source = { ...thread(), activities: [started, other] };
+    const select = createThreadFeedSelector();
+    const first = select(source);
+    const oldContent = content(first);
+    const update = {
+      ...started,
+      id: EventId.make("tool-update"),
+      sequence: 3,
+      kind: "tool.updated" as const,
+      payload: { ...started.payload, detail: "输出片段" },
+    };
+    const complete = {
+      ...started,
+      id: EventId.make("tool-complete"),
+      sequence: 4,
+      kind: "tool.completed" as const,
+      payload: { ...started.payload, status: "completed", detail: "完成输出" },
+    };
+    const activities = [started, other, update, complete];
+    expect(content(select({ ...source, activities: activities.slice(0, 3) }))).toEqual(
+      content(buildThreadFeed({ ...source, activities: activities.slice(0, 3) })),
+    );
+    const next = select({ ...source, activities });
+    expect(content(next)).toEqual(content(buildThreadFeed({ ...source, activities })));
+    expect(content(first)).toEqual(oldContent);
+    const oldOther = first
+      .flatMap((entry) => (entry.type === "activity-group" ? entry.activities : []))
+      .find((entry) => entry.id === other.id);
+    expect(
+      next
+        .flatMap((entry) => (entry.type === "activity-group" ? entry.activities : []))
+        .find((entry) => entry.id === other.id),
+    ).toBe(oldOther);
+  });
+
+  it("迟到、替换、重排和空快照与完整推导一致", () => {
+    const first = { ...activity, sequence: 5 };
+    const later = {
+      ...activity,
+      id: EventId.make("late-other"),
+      sequence: 8,
+      payload: { ...(activity.payload as object), toolCallId: "other" },
+    };
+    const source = { ...thread(), activities: [later, first] };
+    const select = createThreadFeedSelector();
+    select(source);
+    const late = {
+      ...activity,
+      id: EventId.make("late"),
+      sequence: 1,
+      payload: { ...(activity.payload as object), toolCallId: "late" },
+    };
+    for (const activities of [
+      [later, first, late],
+      [first, later, late],
+      [{ ...first, payload: { ...(activity.payload as object), detail: "替换输出" } }, later],
+      [],
+      [first, later],
+    ]) {
+      expect(content(select({ ...source, activities }))).toEqual(
+        content(buildThreadFeed({ ...source, activities })),
+      );
+    }
+  });
+
+  it("重复序号、旧空序号及生命周期排名保持规范化排序", () => {
+    const source = thread();
+    const select = createThreadFeedSelector();
+    const old = { ...activity, id: EventId.make("legacy-no-sequence") };
+    const complete = {
+      ...activity,
+      id: EventId.make("same-completed"),
+      sequence: 1,
+      payload: { ...(activity.payload as object), toolCallId: "same" },
+    };
+    const started = {
+      ...complete,
+      id: EventId.make("same-started"),
+      kind: "tool.started" as const,
+      payload: { ...complete.payload, status: "inProgress" },
+    };
+    for (const activities of [
+      [old],
+      [old, complete],
+      [old, complete, started],
+      [complete, started],
+    ]) {
+      expect(content(select({ ...source, activities }))).toEqual(
+        content(buildThreadFeed({ ...source, activities })),
+      );
+    }
+  });
+
+  it("子 agent 非相邻状态合并只改变对应展示行", () => {
+    const task = (
+      id: string,
+      sequence: number,
+      taskId: string,
+      kind: "task.progress" | "task.completed",
+    ) =>
+      makeActivity({
+        id: EventId.make(id),
+        sequence,
+        turnId: assistant.turnId,
+        kind,
+        summary: id,
+        createdAt: activity.createdAt,
+        payload: { taskId, summary: id },
+      });
+    const source = {
+      ...thread(),
+      activities: [
+        task("child-a", 1, "a", "task.progress"),
+        task("child-b", 2, "b", "task.progress"),
+      ],
+    };
+    const select = createThreadFeedSelector();
+    const first = select(source);
+    const activities = [...source.activities, task("child-a-complete", 3, "a", "task.completed")];
+    const next = select({ ...source, activities });
+    expect(content(next)).toEqual(content(buildThreadFeed({ ...source, activities })));
+    const rows = (feed: ThreadFeedEntry[]) =>
+      feed.flatMap((entry) => (entry.type === "activity-group" ? entry.activities : []));
+    expect(rows(next).find((entry) => entry.id === "child-b")).toBe(
+      rows(first).find((entry) => entry.id === "child-b"),
+    );
+  });
+
   it("只更新线程元数据时复用整个 feed，本地反馈的正文仍更新", () => {
     const source = thread();
     const select = createThreadFeedSelector();
