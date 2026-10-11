@@ -4,15 +4,15 @@ import * as Effect from "effect/Effect";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useMemo } from "react";
 
+import { highlightCodeSnippet, type ReviewDiffTheme } from "../review/shikiReviewHighlighter";
 import {
-  highlightCodeSnippet,
-  type ReviewDiffTheme,
-  type ReviewHighlightedToken,
-} from "../review/shikiReviewHighlighter";
+  createMarkdownCodeDisplaySelector,
+  type MarkdownHighlightedCode,
+} from "./markdownCodeDisplay";
+
+export type { MarkdownHighlightedCode } from "./markdownCodeDisplay";
 
 const MARKDOWN_CODE_HIGHLIGHT_IDLE_TTL_MS = 5 * 60_000;
-
-export type MarkdownHighlightedCode = ReadonlyArray<ReadonlyArray<ReviewHighlightedToken>>;
 
 export interface MarkdownCodeHighlightInput {
   readonly code: string;
@@ -68,7 +68,7 @@ export function useMarkdownCodeHighlight(input: {
   readonly enabled: boolean;
   readonly language: string | null | undefined;
   readonly theme: ReviewDiffTheme;
-}): MarkdownHighlightedCode | null {
+}): MarkdownHighlightedCode {
   const normalizedLanguage = input.language?.trim() || "text";
   const enabled = input.enabled && Boolean(input.language?.trim());
   const atomLanguage = enabled ? normalizedLanguage : "text";
@@ -83,5 +83,12 @@ export function useMarkdownCodeHighlight(input: {
     [atomLanguage, enabled, input.code, input.theme],
   );
   const result = useAtomValue(highlightAtom);
-  return AsyncResult.isSuccess(result) ? result.value : null;
+  const display = useMemo(createMarkdownCodeDisplaySelector, []);
+  return display({
+    code: input.code,
+    enabled,
+    language: atomLanguage,
+    theme: input.theme,
+    highlighted: AsyncResult.isSuccess(result) ? result.value : null,
+  });
 }
