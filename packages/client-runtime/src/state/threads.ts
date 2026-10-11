@@ -29,6 +29,7 @@ import { ThreadSnapshotLoader, type ThreadSnapshotWindow } from "./threadSnapsho
 import { parseThreadKey, threadKey } from "./entities.ts";
 import { applyThreadDetailEvent } from "./threadReducer.ts";
 import { THREAD_STATE_IDLE_TTL_MS } from "./threadRetention.ts";
+import { publishLatestByFrame } from "./latestFrame.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
 import {
   EMPTY_ENVIRONMENT_THREAD_STATE,
@@ -778,7 +779,9 @@ export function threadStateChanges(
   return followStreamInEnvironment(
     environmentId,
     Stream.unwrap(
-      makeEnvironmentThreadState(threadId, retention).pipe(Effect.map(SubscriptionRef.changes)),
+      makeEnvironmentThreadState(threadId, retention).pipe(
+        Effect.map((state) => publishLatestByFrame(SubscriptionRef.changes(state))),
+      ),
     ),
   );
 }

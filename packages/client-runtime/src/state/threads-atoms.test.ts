@@ -1,6 +1,7 @@
 import {
   EnvironmentId,
   EventId,
+  MessageId,
   ORCHESTRATION_WS_METHODS,
   ProjectId,
   ProviderInstanceId,
@@ -32,6 +33,7 @@ import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import type { RpcSession } from "../rpc/session.ts";
 import { createEnvironmentThreadDetailAtoms } from "./threadDetail.ts";
 import { THREAD_STATE_IDLE_TTL_MS } from "./threadRetention.ts";
+import { FrameClock } from "./latestFrame.ts";
 import {
   createEnvironmentThreadStateAtoms,
   requestOlderThreadTurns,
@@ -68,6 +70,7 @@ const BASE_THREAD: OrchestrationThread = {
 const makeHarness = Effect.fn("线程订阅测试.makeHarness")(function* (options?: {
   readonly cached?: OrchestrationThreadDetailSnapshot;
   readonly failSave?: boolean;
+  readonly frameClock?: { readonly wait: Effect.Effect<void> };
 }) {
   vi.useFakeTimers();
   const inputs = yield* Queue.unbounded<OrchestrationThreadStreamItem>();
@@ -185,6 +188,7 @@ const makeHarness = Effect.fn("线程订阅测试.makeHarness")(function* (optio
       Layer.succeed(EnvironmentRegistry, environmentRegistry),
       Layer.succeed(EnvironmentCacheStore, cache),
       Layer.succeed(ThreadSnapshotLoader, loader),
+      ...(options?.frameClock ? [Layer.succeed(FrameClock, options.frameClock)] : []),
     ),
   );
   const threads = createEnvironmentThreadStateAtoms(runtime);
@@ -253,6 +257,10 @@ const makeHarness = Effect.fn("线程订阅测试.makeHarness")(function* (optio
     settle,
     snapshot,
     event,
+    emit: async (item: OrchestrationThreadStreamItem) => {
+      Queue.offerUnsafe(inputs, item);
+      await settle();
+    },
     subscriptions,
     closed,
     saved,
@@ -285,6 +293,84 @@ function harness(options?: Parameters<typeof makeHarness>[0]) {
 }
 
 describe("createEnvironmentThreadStateAtoms", () => {
+  it.effect("帧内仅发布一次完整正文，退出前未显示的完成事件仍与游标一起保留", () =>
+    Effect.gen(function* () {
+      const frames: Array<{ run: () => void; cancelled: boolean }> = [];
+      const h = yield* harness({
+        cached: { thread: BASE_THREAD, snapshotSequence: 7 },
+        frameClock: {
+          wait: Effect.callback<void>((resume) => {
+            const frame = { run: () => resume(Effect.void), cancelled: false };
+            frames.push(frame);
+            return Effect.sync(() => {
+              frame.cancelled = true;
+            });
+          }),
+        },
+      });
+      yield* Effect.promise(async () => {
+        const tick = async () => {
+          for (const frame of frames.splice(0)) if (!frame.cancelled) frame.run();
+          await h.settle();
+        };
+        const close = h.registry.mount(h.atom);
+        await h.settle();
+        await tick();
+        const seen: string[] = [];
+        const unsubscribe = h.registry.subscribe(h.atom, (result) => {
+          const value = Option.getOrNull(AsyncResult.value(result));
+          const thread = value ? Option.getOrNull(value.data) : null;
+          if (thread) seen.push(thread.messages.map((message) => message.text).join(""));
+        });
+        const emitMessage = (text: string, sequence: number, streaming: boolean) =>
+          h.emit({
+            kind: "event",
+            event: {
+              eventId: EventId.make(`frame-event-${sequence}`),
+              sequence,
+              aggregateKind: "thread",
+              aggregateId: REF.threadId,
+              type: "thread.message-sent",
+              occurredAt: "2026-04-01T00:01:00.000Z",
+              commandId: null,
+              causationEventId: null,
+              correlationId: null,
+              metadata: {},
+              payload: {
+                threadId: REF.threadId,
+                messageId: MessageId.make("frame-message"),
+                role: "assistant",
+                turnId: TurnId.make("turn-1"),
+                text,
+                streaming,
+                createdAt: "2026-04-01T00:01:00.000Z",
+                updatedAt: "2026-04-01T00:01:00.000Z",
+              },
+            },
+          });
+        await emitMessage("首段🌏", 8, true);
+        await emitMessage("与完整尾文", 9, true);
+        expect(seen).toEqual([]);
+        await tick();
+        expect(seen).toEqual(["首段🌏与完整尾文"]);
+        await emitMessage("首段🌏与完整尾文", 10, false);
+        expect(Option.getOrThrow(h.read().data).messages[0]?.streaming).toBe(true);
+        unsubscribe();
+        close();
+        await h.settle();
+        const reopen = h.registry.mount(h.atom);
+        expect(Option.getOrThrow(h.read().data).messages[0]).toMatchObject({
+          text: "首段🌏与完整尾文",
+          streaming: false,
+        });
+        await h.settle();
+        expect(h.subscriptions[1]?.afterSequence).toBe(10);
+        expect(h.counts().disconnects).toBe(0);
+        reopen();
+      });
+    }),
+  );
+
   it("立即释放实时节点并保留线程 atom 的身份", () => {
     const runtime = Atom.runtime(Layer.empty) as unknown as Atom.AtomRuntime<
       EnvironmentRegistry | EnvironmentCacheStore | ThreadSnapshotLoader,

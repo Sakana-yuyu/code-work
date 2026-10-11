@@ -101,7 +101,7 @@ BaoCode 的速度优势来自原生渲染（启动约 0.18 秒、单窗口约 12
 9. **BYOK 调用链。** 对照 BaoCode 的翻译清单为 `modelGateway` 补兼容测试：流式分块边界、思考块与签名处理、工具调用 id 往返、`count_tokens` 估算、上游无 usage 时的兜底；账号粘滞与额度用尽切换对照 `LocalAccountPool`。
 10. **性能验收口径。** Code Work 在 `agent-provider-product-comparison.md` 中已有 Web 长流的帧间隔验收；落地 §4.2-1 到 §4.2-3 后应重新测量同一口径（1280×720、1200 条活动、四组上滚/下滚各 20 页），并补桌面独立外壳与手机实机。
 
-2026-10-12 服务端已加入 ingestion 前的 60ms leading/trailing 窗口及带可选完整正文的原子收尾，原始总线和 checkpoint 保留原包，工具/审批/终态保持顺序，非法包隔离与顺序停机纳入测试。客户端每帧提交与揭示切片尚未落地，第 5 项保持部分完成；完整证据与 Android 构建/设备验收边界见 [port-progress](./port-progress.md)。独立实现行为，没有复制 Paseo 源码。
+2026-10-12 服务端已加入 ingestion 前的 60ms leading/trailing 窗口及带可选完整正文的原子收尾，原始总线和 checkpoint 保留原包，工具/审批/终态保持顺序，非法包隔离与顺序停机纳入测试。客户端线程与环境的 UI 状态已按主机帧合并发布，原始事件仍全部进入完整状态机，缓存与游标不受显示节奏影响；揭示切片尚未落地，第 5 项保持部分完成。完整证据与 Android 构建/设备验收边界见 [port-progress](./port-progress.md)。独立实现行为，没有复制 Paseo 源码。
 
 ## 5. 与上游 T3 Code 的差距
 

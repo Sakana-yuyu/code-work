@@ -26,6 +26,7 @@ import { ShellSnapshotLoader } from "./shellSnapshotHttp.ts";
 import { applyShellStreamEvent } from "./shellReducer.ts";
 import type { EnvironmentCatalogState } from "./connections.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
+import { publishLatestByFrame } from "./latestFrame.ts";
 
 export type EnvironmentShellStatus = "empty" | "cached" | "synchronizing" | "live";
 
@@ -272,7 +273,11 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
 export function shellStateChanges(environmentId: EnvironmentId) {
   return followStreamInEnvironment(
     environmentId,
-    Stream.unwrap(makeEnvironmentShellState().pipe(Effect.map(SubscriptionRef.changes))),
+    Stream.unwrap(
+      makeEnvironmentShellState().pipe(
+        Effect.map((state) => publishLatestByFrame(SubscriptionRef.changes(state))),
+      ),
+    ),
   );
 }
 
