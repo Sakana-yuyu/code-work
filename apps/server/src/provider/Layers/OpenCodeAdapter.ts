@@ -27,6 +27,7 @@ import type { OpencodeClient, Part, PermissionRequest, QuestionRequest } from "@
 import { getModelSelectionStringOptionValue } from "@codework/shared/model";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import { makeTerminalSafeRuntimeEmitter } from "../runtimeTurnItems.ts";
 import { ServerConfig } from "../../config.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
@@ -666,8 +667,9 @@ export function makeOpenCodeAdapter(
       }).pipe(Effect.ensuring(Queue.shutdown(runtimeEvents))),
     );
 
-    const emit = (event: ProviderRuntimeEvent) =>
-      Queue.offer(runtimeEvents, event).pipe(Effect.asVoid);
+    const emit = makeTerminalSafeRuntimeEmitter((events) =>
+      Queue.offerAll(runtimeEvents, events).pipe(Effect.asVoid),
+    );
     const writeNativeEvent = (
       threadId: ThreadId,
       event: {

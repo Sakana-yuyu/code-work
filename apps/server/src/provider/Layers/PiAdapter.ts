@@ -179,7 +179,7 @@ export const makePiAdapter = (config: PiAgentSettings, options: PiAdapterOptions
       threadId: ctx.threadId,
       currentTurnId: () => ctx.turn?.turnId,
       emit: pifamilyEmitToQueue({
-        queue: eventQueue.queue,
+        emit: eventQueue.emit,
         provider: PROVIDER,
         instanceId: options.instanceId,
         threadId: ctx.threadId,

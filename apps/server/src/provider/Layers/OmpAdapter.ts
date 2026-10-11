@@ -276,7 +276,7 @@ export const makeOmpAdapter = (config: OmpAgentSettings, options: OmpAdapterOpti
       threadId: ctx.threadId,
       currentTurnId: () => ctx.turn?.turnId,
       emit: pifamilyEmitToQueue({
-        queue: eventQueue.queue,
+        emit: eventQueue.emit,
         provider: PROVIDER,
         instanceId: options.instanceId,
         threadId: ctx.threadId,

@@ -61,6 +61,7 @@ const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.
 
 import { ServerConfig } from "../../config.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import { makeTerminalSafeRuntimeEmitter } from "../runtimeTurnItems.ts";
 import { extractRescuableCanvas, normalizeRescuedCanvas } from "../../canvas/CanvasTextRescue.ts";
 import {
   CODEGRAPH_GUIDANCE_PROMPT,
@@ -442,8 +443,9 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         })),
       );
 
-    const emit = (event: ProviderRuntimeEvent) =>
-      Queue.offer(runtimeEvents, event).pipe(Effect.asVoid);
+    const emit = makeTerminalSafeRuntimeEmitter((events) =>
+      Queue.offerAll(runtimeEvents, events).pipe(Effect.asVoid),
+    );
 
     const requestUserAnswers = (
       ctx: ByokSessionContext,

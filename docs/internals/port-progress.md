@@ -51,7 +51,7 @@
 | 4   | 全部客户端增量渲染清单与上游对应提交                        | 部分完成，继续补齐                           | 闭合 Markdown 前缀 / 固定 Web 渲染身份 / 逐行高亮 / 共享回合与检查点引用 / Mobile 块键         | 8 文件 / 188 项通过；Web DOM 追加与终态选区保持；完整清单见下文，未完成项保留                                         |
 | 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 合并、按帧发布与三端切片已落地，最终验收开放 | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / 三端渲染 | 节奏开关、首段全文、字素边界、完成吸附及全文复制与几何已覆盖；Native 与最终性能仍开放                                 |
 | 6   | 流式选区与滚动锚点                                          | Web 代码及普通文字已验证，其余继续验收       | 真实 StreamingChatMarkdown 临时交互夹具 / Mobile 原生 Markdown                                 | 未闭合段落追加、终态与清除选区均保持既有节点；滚动锚点与原生设备仍待矩阵验证                                          |
-| 7   | 每个 adapter 终态无 loading                                 | 待核验补齐                                   | 十二类 driver / 各 Adapter 定向测试                                                            | 尚未运行                                                                                                              |
+| 7   | 每个 adapter 终态无 loading                                 | 在途条目已补齐，交互边界继续验收             | 共享 runtimeTurnItems / 全部 canonical 发射入口 / Codex 原生映射                               | 13 份 adapter/driver 文件 311 项通过；终态、Codex 与 ingestion 补充 163 项通过；详细边界见下文                        |
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 待核验补齐                                   | state/threads / RPC transport / server 订阅                                                    | B20 为部分底座，验收尚未运行                                                                                          |
 | 9   | 同口径帧间隔性能无回归                                      | 本增量通过，阶段最终仍需复测                 | 1280×720、1202 活动、上下各 20 页 ×4 组                                                        | 2026-10-12 修改前后 p95 均 16.8 ms；滚动窗口最大 66.7→50.0 ms，最高窗口 >50 ms 数 1→0；后续改变渲染仍须重跑           |
 | 10  | Windows argv 三层守卫                                       | 待实施                                       | Antigravity / ZCode / resolveSpawnCommand                                                      | 尚未运行                                                                                                              |
@@ -298,3 +298,17 @@ Web/Desktop 的 `StreamingChatMarkdown` 与 Mobile 的 `StreamingMarkdown` 始�
 - 实际设置入口默认开启，关闭后重载仍关闭；恢复默认预览仅列出“平滑显示文字”，确认后恢复开启。搜索“节奏”找到并定位相同行。以上操作仅写入本次隔离环境，临时 `main.tsx` 入口已恢复原始字节；截图与夹具不提交。
 
 Web 实际证据覆盖本地模式；Desktop 复用同一呈现与设置组件，独立 Electron、远程/隧道及 Native 设备仍需补充。全文几何相同不代表完整滚动锚点矩阵或最终第 9 项性能通过；iOS/Android 原生选区也不能由纯函数测试或 APK 构建替代。第 4/5/6/9 项继续保留相应验收边界。回退本主题提交即可恢复原有直接显示；可选持久化设置允许旧客户端忽略，不涉及数据库迁移。
+
+### 2026-10-12：Adapter 在途条目的终态收尾
+
+新增 `runtimeTurnItems`，在 Adapter 的 canonical 发射边界追踪同一线程和回合的在途 item。正常完成、失败、取消、打断和会话退出前，先发布缺失的 `item.completed`，再发布终态；每一批进入同一个 Queue/PubSub，状态只在实际执行发布时改变。明确的 `inProgress` 仍属于在途状态，包括以 `item.completed` 承载进度的 Omp 事件；没有 status 的真正完成通知会解除追踪。成功收尾为 completed，其他结束使用既有 failed 状态，不新增或收窄协议枚举。
+
+Codex、Claude、OpenCode、Cursor、Grok、BYOK、Antigravity 与 Pi/Omp/ZCode 的公共队列均接入此边界；Kimi 和配置型 ACP 沿用 Cursor/GenericAcpDriver 的发射入口。原生日志先保留实际事件，合成通知只补 canonical 生命周期，不改 CLI 参数、权限、原生审批或执行结果。遗漏完成通知的 Codex `contextCompaction` 已有真实适配映射测试：旧实现只出现 started 后直接终态，新实现先关闭该条目。
+
+追踪保留原 item、回合、provider 实例和子 agent 归属；不同线程或回合的相同 item ID 不混用。没有回合 ID 的结束通知不会关闭当前工作，旧回合结束不会误关新回合。文本条目收尾不带开始通知的旧正文，完整文本继续由 ingestion 累积来源完成；工具详情与元数据保留。重复结束不会再补完成行，刚结束回合的迟到运行中通知不能重新点亮，真正的最终结果继续通过；下一回合可复用 item ID，会话重新启动清空追踪。独立后台 task 保持自身生命周期，不能以主回合结束冒充任务成功。
+
+- 纯候选的 13 份 adapter/driver 定向文件共 311 项通过，包含共享边界 14 项、Codex 39 项及其余 adapter/GenericAcpDriver 的原有回归。随后增加无回合归属的结束保护，运行 `vp test run --config .candidate-test.config.ts apps/server/src/provider/runtimeTurnItems.test.ts apps/server/src/provider/Layers/CodexAdapter.test.ts apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.test.ts`，共 163 项通过（15 + 39 + 109）。
+- 服务器本批目标 `tsgo --noEmit` 通过；14 份源文件目标 lint 通过，保留 4 条已有提示（对象/数组 spread 和原 Codex 测试可选链），没有新增错误；目标格式检查通过。只运行上述具体文件，不运行全仓检查。
+- Web/Desktop 的 `session-logic` 与 Mobile 的 `threadActivity` 均使用 canonical 工具 status，完成事件更新相同工具行；所有 provider 与本地/远程/隧道消费相同持久化事件。本批没有新增 UI 入口、设置、RPC 或能力，逆向状态为下一回合或重新启动会话。
+
+第 7 项保留交互边界验收：原生 hook 事件目前不投影为工具 loading 行，仍以 provider 的实际 hooks 为准；审批/补充信息不能通过伪造响应来解除。独立后台任务、原生设备及连接模式的完整可见性矩阵继续验证。此处仅保留最近结束回合的轻量墓碑，不替代第 8 项持久化幂等与跨重连回放验证。回退本主题提交恢复原发射顺序，无数据库迁移；原有 BYOK 用户改动通过精确补丁保留。

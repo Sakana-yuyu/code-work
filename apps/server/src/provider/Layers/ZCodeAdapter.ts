@@ -166,7 +166,7 @@ export const makeZCodeAdapter = (config: ZCodeAgentSettings, options: ZCodeAdapt
       threadId: ctx.threadId,
       currentTurnId: () => ctx.turn?.turnId,
       emit: pifamilyEmitToQueue({
-        queue: eventQueue.queue,
+        emit: eventQueue.emit,
         provider: PROVIDER,
         instanceId: options.instanceId,
         threadId: ctx.threadId,

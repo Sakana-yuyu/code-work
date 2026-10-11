@@ -23,6 +23,7 @@ import { resolveSpawnCommand } from "@codework/shared/shell";
 
 import { ServerConfig } from "../../config.ts";
 import { collectStreamAsString } from "../providerSnapshot.ts";
+import { makeTerminalSafeRuntimeEmitter } from "../runtimeTurnItems.ts";
 import { resolveConfiguredAntigravityModel } from "./AntigravityProvider.ts";
 import {
   ProviderAdapterProcessError,
@@ -107,10 +108,13 @@ export function makeAntigravityAdapter(
     const events = yield* Queue.unbounded<ProviderRuntimeEvent>();
     const now = () => Effect.map(DateTime.now, DateTime.formatIso);
     const uuid = () => crypto.randomUUIDv4.pipe(Effect.map(EventId.make));
+    const publishRuntimeEvent = makeTerminalSafeRuntimeEmitter((items) =>
+      Queue.offerAll(events, items).pipe(Effect.asVoid),
+    );
     const emit = (event: Omit<ProviderRuntimeEvent, "eventId" | "createdAt">) =>
       Effect.all({ eventId: uuid(), createdAt: now() }).pipe(
         Effect.flatMap((stamp) =>
-          Queue.offer(events, { ...event, ...stamp } as ProviderRuntimeEvent),
+          publishRuntimeEvent({ ...event, ...stamp } as ProviderRuntimeEvent),
         ),
       );
     const requireSession = (

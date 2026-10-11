@@ -558,6 +558,61 @@ function startLifecycleRuntime() {
 }
 
 lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
+  for (const status of ["completed", "failed", "interrupted"] as const) {
+    it.effect(`回合 ${status} 前终结省略完成通知的压缩项`, () =>
+      Effect.gen(function* () {
+        const { adapter, runtime } = yield* startLifecycleRuntime();
+        const collected = yield* Stream.runCollect(
+          adapter.streamEvents.pipe(Stream.takeUntil((event) => event.type === "turn.completed")),
+        ).pipe(Effect.forkChild);
+        yield* runtime.emit({
+          id: asEventId(`evt-compaction-start-${status}`),
+          kind: "notification",
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          method: "item/started",
+          threadId: asThreadId("thread-1"),
+          turnId: asTurnId(`turn-compaction-${status}`),
+          itemId: asItemId("compact-1"),
+          payload: {
+            startedAtMs: 1_778_000_000_000,
+            threadId: "thread-1",
+            turnId: `turn-compaction-${status}`,
+            item: { type: "contextCompaction", id: "compact-1" },
+          },
+        });
+        yield* runtime.emit({
+          id: asEventId(`evt-compaction-turn-end-${status}`),
+          kind: "notification",
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: "2026-01-01T00:00:01.000Z",
+          method: "turn/completed",
+          threadId: asThreadId("thread-1"),
+          turnId: asTurnId(`turn-compaction-${status}`),
+          payload: {
+            threadId: "thread-1",
+            turn: { id: `turn-compaction-${status}`, status, error: null, items: [] },
+          },
+        });
+        const events = Array.from(yield* Fiber.join(collected));
+        NodeAssert.deepStrictEqual(
+          events.map((event) => event.type),
+          ["item.started", "item.completed", "turn.completed"],
+        );
+        const openItems = new Set<string>();
+        for (const event of events) {
+          if (event.type === "item.started" && event.itemId) openItems.add(event.itemId);
+          if (event.type === "item.completed" && event.itemId) {
+            openItems.delete(event.itemId);
+            NodeAssert.equal(event.payload.itemType, "context_compaction");
+            NodeAssert.equal(event.payload.status, status === "completed" ? "completed" : "failed");
+          }
+          if (event.type === "turn.completed") NodeAssert.equal(openItems.size, 0);
+        }
+      }),
+    );
+  }
+
   it.effect("只将独立 review 命令转成原生审查目标", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

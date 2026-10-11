@@ -35,6 +35,7 @@ import {
 import { resolveSpawnCommand } from "@codework/shared/shell";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import { makeTerminalSafeRuntimeEmitter } from "../runtimeTurnItems.ts";
 
 import { ProviderAdapterValidationError } from "../Errors.ts";
 import { JsonlRpcProcessError } from "./jsonlRpcProcess.ts";
@@ -208,18 +209,18 @@ export interface PifamilyEmitApi {
 /** emit 的统一实现：剥离 undefined 可选字段并补齐归属标识。 */
 export const pifamilyEmitToQueue =
   (input: {
-    readonly queue: Queue.Queue<ProviderRuntimeEvent>;
+    readonly emit: (event: ProviderRuntimeEvent) => Effect.Effect<void>;
     readonly provider: ProviderDriverKind;
     readonly instanceId: ProviderInstanceId;
     readonly threadId: ThreadId;
   }) =>
   (event: PifamilyEventDraft): Effect.Effect<void> =>
-    Queue.offer(input.queue, {
+    input.emit({
       ...stripUndefinedEventFields(event),
       provider: input.provider,
       providerInstanceId: input.instanceId,
       threadId: input.threadId,
-    }).pipe(Effect.asVoid);
+    });
 
 export interface PifamilyTerminalApi {
   /** 从挂起消息提取 errorMessage 决定 completed/failed。 */
@@ -374,11 +375,15 @@ export const makePifamilyEventStampFactory =
 export interface PifamilyEventQueue {
   readonly queue: Queue.Queue<ProviderRuntimeEvent>;
   readonly stream: Stream.Stream<ProviderRuntimeEvent>;
+  readonly emit: (event: ProviderRuntimeEvent) => Effect.Effect<void>;
 }
 
 export const makePifamilyEventQueue = Effect.fn("pifamily.makePifamilyEventQueue")(function* () {
   const queue = yield* Queue.unbounded<ProviderRuntimeEvent>();
-  return { queue, stream: Stream.fromQueue(queue) } satisfies PifamilyEventQueue;
+  const emit = makeTerminalSafeRuntimeEmitter((events) =>
+    Queue.offerAll(queue, events).pipe(Effect.asVoid),
+  );
+  return { queue, stream: Stream.fromQueue(queue), emit } satisfies PifamilyEventQueue;
 });
 
 const PIFAMILY_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
