@@ -10,7 +10,7 @@ import {
   ThreadId,
   TurnId,
 } from "@codework/contracts";
-import type { OrchestrationThread } from "@codework/contracts";
+import type { OrchestrationThread, OrchestrationThreadActivity } from "@codework/contracts";
 
 import { applyThreadDetailEvent } from "./threadReducer.ts";
 
@@ -1047,6 +1047,100 @@ describe("applyThreadDetailEvent", () => {
   });
 
   describe("thread.activity-appended", () => {
+    const activity = (id: string, sequence?: number): OrchestrationThreadActivity => ({
+      id: EventId.make(id),
+      tone: "tool",
+      kind: "command.completed",
+      summary: id,
+      payload: {},
+      turnId: TurnId.make("turn-1"),
+      ...(sequence === undefined ? {} : { sequence }),
+      createdAt: "2026-04-01T11:00:00.000Z",
+    });
+    const append = (thread: OrchestrationThread, entry: OrchestrationThreadActivity) => {
+      const result = applyThreadDetailEvent(thread, {
+        ...baseEventFields,
+        sequence: 20,
+        occurredAt: entry.createdAt,
+        aggregateKind: "thread",
+        aggregateId: thread.id,
+        type: "thread.activity-appended",
+        payload: { threadId: thread.id, activity: entry },
+      });
+      if (result.kind !== "updated") throw new Error("追加活动未生成新状态");
+      return result.thread;
+    };
+
+    it("旧版空 sequence 快照只规范化一次，后续迟到事件仍按完整顺序插入", () => {
+      const unsequenced = activity("old");
+      const original = Object.freeze([unsequenced, activity("two", 2), activity("one", 1)]);
+      const first = append({ ...baseThread, activities: original }, activity("three", 3));
+      expect(first.activities.map((entry) => entry.id)).toEqual(["one", "two", "three", "old"]);
+      const next = append(first, activity("one-a", 1));
+      expect(next.activities.map((entry) => entry.id)).toEqual([
+        "one",
+        "one-a",
+        "two",
+        "three",
+        "old",
+      ]);
+      expect(original.map((entry) => entry.id)).toEqual(["old", "two", "one"]);
+      for (const entry of first.activities) expect(next.activities).toContain(entry);
+    });
+
+    it("重复 ID 只留下最新一行，并随序号与时间变化重新定位", () => {
+      const first = append(baseThread, activity("a", 1));
+      const second = append(first, activity("b", 2));
+      const replacement = { ...activity("a", 3), summary: "新结果" };
+      const next = append(second, replacement);
+      expect(next.activities.map((entry) => entry.id)).toEqual(["b", "a"]);
+      expect(next.activities[0]).toBe(second.activities[1]);
+      expect(next.activities[1]).toBe(replacement);
+      const earlier = append(next, { ...replacement, sequence: 0 });
+      expect(earlier.activities.map((entry) => entry.id)).toEqual(["a", "b"]);
+      expect(second.activities.map((entry) => entry.id)).toEqual(["a", "b"]);
+    });
+
+    it("同序号按时间和 ID 排序，连续追加保留历史对象与非活动引用", () => {
+      let current = append(baseThread, activity("a", 1));
+      for (const entry of [
+        activity("z", 1),
+        activity("c", 1),
+        {
+          ...activity("b", 1),
+          createdAt: "2026-04-01T10:00:00.000Z",
+        },
+      ])
+        current = append(current, entry);
+      expect(current.activities.map((entry) => entry.id)).toEqual(["b", "a", "c", "z"]);
+      expect(current.messages).toBe(baseThread.messages);
+      expect(current.checkpoints).toBe(baseThread.checkpoints);
+      expect(current.latestTurn).toBe(baseThread.latestTurn);
+    });
+
+    it("大量顺序活动追加不遍历历史排序键，迟到活动仍正确定位", () => {
+      let current = append(baseThread, activity("first", 0));
+      let reads = 0;
+      for (let index = 1; index <= 1_200; index += 1) {
+        const entry = activity(`entry-${index}`, index);
+        Object.defineProperty(entry, "sequence", {
+          get: () => {
+            reads += 1;
+            return index;
+          },
+        });
+        current = append(current, entry);
+      }
+      reads = 0;
+      const next = append(current, activity("last", 1_201));
+      expect(reads).toBeLessThan(20);
+      expect(next.activities.at(-1)?.id).toBe("last");
+      reads = 0;
+      const late = append(next, activity("late", 600));
+      expect(reads).toBeLessThan(30);
+      expect(late.activities.findIndex((entry) => entry.id === "late")).toBe(601);
+    });
+
     it("adds an activity", () => {
       const result = applyThreadDetailEvent(baseThread, {
         ...baseEventFields,

@@ -151,17 +151,17 @@
 
 此增量对应上游行为约束，自主编写实现与测试；只阅读参考提交的变更范围和行为测试，没有复制参考实现。以下子项分别记录，不能据部分完成把第 4 项整体标为完成。
 
-| 子项 / 参考提交                              | 当前结果                                      | 证据与剩余边界                                                                                                                                                                                                                                           |
-| -------------------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 完成 Markdown 前缀 / `a9dabbf100`            | Web/Desktop 渲染层已完成；Mobile 解析缓存待补 | `markdown-prefix-cache.ts` 包装现有解析器，冻结顶层闭合围栏或空行结束的段落/标题/表格；重新定位尾部节点。引用和脚注改写、文本替换、嵌套解析采用完整解析以保持语义。逐字符、CR/LF、迟到定义与列表恢复测试通过。Mobile 的 Nitro 解析器当前仍接收完整文本。 |
-| 完成代码行 DOM / `8078c532ce`                | Web 已完成；iOS 身份与异步高亮已补，设备待测  | Web 由 Shiki tokens 构造 React 行节点，比较文字及颜色/字体而复用完成行，移除整段高亮 HTML 替换。iOS 高亮等待期间沿用已着色行并追加普通尾部；块键不包含不断增长的 `end`。Android 独立回退路径和原生选区尚需验证。                                         |
-| 时间线行复用 / `19c1710a88`、`aefef95ffc`    | Web 已具备基础，Mobile 行级完整矩阵待补       | `MessagesTimeline.logic.ts` 的 `computeStableMessagesTimelineRows` 与性能测试验证折叠、活动更新和助手文本更新的旧行引用。Mobile `threadActivity.ts` 已有尾部组内 O(1) 累积，不能据此认定整条 feed 都增量复用。                                           |
-| 回合/检查点引用 / `6866fd6b5c`               | 共享 reducer 已补齐文本 delta 路径            | `threadReducer.ts` 在字段不变时复用 `latestTurn`；没有需要重绑的 checkpoint 时沿用原数组与条目。测试验证连续 delta、完成状态与新消息绑定更新，不冻结实际元数据变化。Web/Desktop/Mobile 共用该 reducer。                                                  |
-| Markdown 挂载 / `887ece3071`、`355fbd96d5`   | Web 固定身份；Mobile 块身份已补               | Markdown renderer 回调通过 context 更新，供 ReactMarkdown 使用的组件身份固定。真实 ChatMarkdown 交互夹具验证流式追加和 streaming→false 后段落及第一行代码节点相同。Mobile 块及嵌套节点的键保留起始位置，不再使用变化的结束位置。                         |
-| 投影/活动追加 / `c2283ce146`                 | 继续补齐                                      | 共享 `threadReducer.ts` 的 activity append 仍做 filter + sort；服务端投影和 Mobile feed 的完整增量边界待定向审计与实现。                                                                                                                                 |
-| 跳过 checkpoint map / `076d753ae6`           | Web 检查点推导已随稳定输入复用；其他派生待补  | `useTurnDiffSummaries.ts` 直接使用稳定 checkpoint 数组，空线程使用共享空数组；检查点推导 memo 不再随线程对象更新失效。`ChatView` 的用户回退 map 仍依赖整条 timeline，Mobile 的检查点派生仍需核对。                                                       |
-| 无用线程订阅 / `d7cf8aaa8d`                  | 部分底座已具备，生命周期矩阵待验收            | `threadDetail.ts` 使用 atom idle TTL；Web `useThread` 在缺少 shell 的草稿阶段传 null。需要结合第 8 项测试实际取消、忙碌线程关闭与运行线程再打开，不能把 TTL 配置当成已通过连接验收。                                                                     |
-| Mobile 同步核对 / `44dc8ae259`、`7bd7f99e6c` | 持续推进                                      | 共享 reducer、块键与待高亮尾部已覆盖定向测试；原生解析缓存、feed 完整引用稳定、Android 及设备验收仍开放。                                                                                                                                                |
+| 子项 / 参考提交                              | 当前结果                                     | 证据与剩余边界                                                                                                                                                                                                                                                                  |
+| -------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 完成 Markdown 前缀 / `a9dabbf100`            | Web/Desktop 与 Mobile 解析缓存已补；设备待测 | Web 包装现有解析器冻结闭合顶层块。Mobile 的 `nativeMarkdownPrefixCache.ts` 复用闭合段落、标题和围栏，按 UTF-8 字节平移尾部，保留原生位置占位值；引用定义、文本替换和无法可靠定位的空代码采用完整解析。iOS 接原生选区组件，Android 聊天接 `IncrementalMarkdown` 的 `sourceAst`。 |
+| 完成代码行 DOM / `8078c532ce`                | Web 已完成；iOS 身份与异步高亮已补，设备待测 | Web 由 Shiki tokens 构造 React 行节点，比较文字及颜色/字体而复用完成行，移除整段高亮 HTML 替换。iOS 高亮等待期间沿用已着色行并追加普通尾部；块键不包含不断增长的 `end`。Android 独立回退路径和原生选区尚需验证。                                                                |
+| 时间线行复用 / `19c1710a88`、`aefef95ffc`    | Web 已具备基础，Mobile 行级完整矩阵待补      | `MessagesTimeline.logic.ts` 的 `computeStableMessagesTimelineRows` 与性能测试验证折叠、活动更新和助手文本更新的旧行引用。Mobile `threadActivity.ts` 已有尾部组内 O(1) 累积，不能据此认定整条 feed 都增量复用。                                                                  |
+| 回合/检查点引用 / `6866fd6b5c`               | 共享 reducer 已补齐文本 delta 路径           | `threadReducer.ts` 在字段不变时复用 `latestTurn`；没有需要重绑的 checkpoint 时沿用原数组与条目。测试验证连续 delta、完成状态与新消息绑定更新，不冻结实际元数据变化。Web/Desktop/Mobile 共用该 reducer。                                                                         |
+| Markdown 挂载 / `887ece3071`、`355fbd96d5`   | Web 固定身份；Mobile 块身份已补              | Markdown renderer 回调通过 context 更新，供 ReactMarkdown 使用的组件身份固定。真实 ChatMarkdown 交互夹具验证流式追加和 streaming→false 后段落及第一行代码节点相同。Mobile 块及嵌套节点的键保留起始位置，不再使用变化的结束位置。                                                |
+| 投影/活动追加 / `c2283ce146`                 | 共享 reducer 已增量追加；其余链路继续核验    | 共享 reducer 的新快照首次追加保留既有规范化排序，后续只定位新活动插入点；重复 ID 替换、迟到事件和上下文用量淘汰不变。WeakSet 只记录本 reducer 生成的有序集合，不持有历史数据。服务端已有单行 upsert；热路径快照读取和 Mobile 整条 feed 的增量边界仍开放。                       |
+| 跳过 checkpoint map / `076d753ae6`           | Web 检查点推导已随稳定输入复用；其他派生待补 | `useTurnDiffSummaries.ts` 直接使用稳定 checkpoint 数组，空线程使用共享空数组；检查点推导 memo 不再随线程对象更新失效。`ChatView` 的用户回退 map 仍依赖整条 timeline，Mobile 的检查点派生仍需核对。                                                                              |
+| 无用线程订阅 / `d7cf8aaa8d`                  | 部分底座已具备，生命周期矩阵待验收           | `threadDetail.ts` 使用 atom idle TTL；Web `useThread` 在缺少 shell 的草稿阶段传 null。需要结合第 8 项测试实际取消、忙碌线程关闭与运行线程再打开，不能把 TTL 配置当成已通过连接验收。                                                                                            |
+| Mobile 同步核对 / `44dc8ae259`、`7bd7f99e6c` | 持续推进                                     | 共享 reducer、块键、待高亮尾部和双路径解析缓存已覆盖定向测试；feed 完整引用稳定、Android 代码行与原生设备验收仍开放。                                                                                                                                                           |
 
 Web/Desktop 使用相同 Markdown 实现；共享 reducer 适用于所有 provider 的标准消息事件。本地、远程和隧道通过现有消息合同获益，未新增 RPC、设置或能力门控，也未改变 provider 审批。聊天、历史与预览中的共用 Markdown 入口保持原行为；运行模式切换、回复完成、文本替换和迟到引用仍更新实际内容。用户说明更新在 `docs/user/assistant-output.md`。
 
@@ -175,4 +175,13 @@ Web/Desktop 使用相同 Markdown 实现；共享 reducer 适用于所有 provid
 - 另补第 3 项真实 Web 设置操作：初始显示按段落，依次选择完整回复、遗留 token、按段落；每次均检查服务端隔离 `settings.json` 的真实持久值，最后恢复按段落。Desktop 共用该控制；独立 Electron 和原生 Mobile 设置页面仍未实机运行。
 - 当前工作区完整 Web 类型检查仍报告既有 `WorkspaceLayout/useResizableWidth` 和 `AgentToolsSettings` 问题；Mobile 完整检查仍报告既有导航/Stack 类型问题。新增源文件和测试须另由纯候选目标检查证明，不把全模块失败遮掩为通过。
 
-第 4、6 项仍未整体完成；第 9 项仅说明此增量无回归。后续首先完成移动端解析与活动追加等剩余清单，再推进第 5 项节奏合并与第 7/8 项事件状态矩阵。
+### 第 4 项后续增量：移动端前缀解析与共享活动排序
+
+- 本次复用已安装 `react-native-nitro-markdown@0.5.8` 的 MD4C 核心进行 Windows C++ 对照，不更改依赖源码，也不复制参考项目实现。22 组正文在每个 UTF-16 增量边界比较完整 AST，覆盖中文/emoji、LF/CRLF/CR、围栏、列表、表格、HTML、后置定义和空代码行，全部通过。代码块和行内代码的数组方括号不会禁用前缀复用；原生 AST 未保留链接来源类别，实际链接/图片和未解析方括号保守地解析全文。普通 CI 测试使用自行生成的 32 份原生 AST 样本，不要求额外编译器。
+- Web 另发现单个 CRLF 被正则回溯拆成两个换行的错误：新增测试先失败，同一段落被错误分开；限制单独 CR 的匹配后，9 项 Web 前缀测试全部通过。Mobile 同样拒绝这种错误分隔。
+- 当前主目录与纯暂存候选的 7 个定向测试文件共 158 项全部通过。共享 reducer 包含 1200 条活动、旧快照规范化、迟到插入、同序号按时间/ID 排序、重复替换与历史引用保留；正常追加读取历史排序键少于 20 次，迟到插入少于 30 次。原有上下文用量淘汰用例继续通过。
+- 本次 14 文件候选的工作区依赖仍固定到候选源码，10 个 TS/TSX 的 lint 无诊断，源文件与样本格式检查通过。Web/client-runtime 用 `tsgo --noEmit` 通过；Mobile 使用项目声明的 `tsc --noEmit` 通过，临时目标配置还载入现有 `Stack.tsx`，以包含导航参数表的类型增广。`tsgo` 在同一 Mobile 范围出现导航 `never` 诊断，不能计为通过；未改产品编译配置或导航实现。
+- 新模块建立后，使用 `vp install --frozen-lockfile --offline --ignore-scripts --filter '@codework/mobile...'` 刷新现有注入式工作区依赖，没有下载或修改清单/锁文件；没有执行安装生命周期脚本。
+- 同一 1280×720 / 1202 活动 / 上下各 20 页 ×4 组复测：稳态及八窗口最高 p95 仍为 16.8 ms，八窗口最大 50.1 ms，单窗口 >50 ms 的最高数量为 1；与原始 `7ffa6f2b4` 基线的 66.7 ms / 1 对照没有持续帧间隔回归。前一增量为 50.0 ms / 0，本次边界多出一帧，不能宣称完全重复该较小数值。窗口可能重叠，虚拟列表测量后的完整高度由 42445 变为 41905 px；不据此认定行高或滚动锚点已全部验收。原始数据为工作区外 `native-rendering-post.json`，临时入口已恢复原始字节。
+
+此证据不代表实际 Nitro 绑定、UIKit 选区或 Android 设备验收。第 4、6 项仍未整体完成，第 9 项最终门禁仍开放。接下来继续核验 Mobile feed、派生 checkpoint map 和线程订阅，再推进第 5 项节奏合并与第 7/8 项事件状态矩阵。

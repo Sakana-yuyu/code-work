@@ -38,6 +38,14 @@ function render(
 }
 
 describe("已闭合 Markdown 前缀", () => {
+  it("单个 CRLF 后的文字继续同一段落，不冻结为两段", () => {
+    const cache = createMarkdownPrefixCache();
+    const source = "第一行\r\n第二行\r\n\r\n下一段";
+    for (let end = 0; end <= source.length; end++) {
+      const chunk = source.slice(0, end);
+      expect(render(chunk, cache), `字符边界 ${end}`).toEqual(render(chunk));
+    }
+  });
   it("普通段落结束后也只解析未完成尾部", () => {
     const cache = createMarkdownPrefixCache();
     const parses: string[] = [];

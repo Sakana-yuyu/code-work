@@ -1,5 +1,7 @@
 import type { MarkdownNode } from "react-native-nitro-markdown/headless";
 
+export { createNativeMarkdownPrefixCache } from "./nativeMarkdownPrefixCache";
+
 import type {
   MarkdownHighlightedToken,
   SelectableMarkdownSkill,

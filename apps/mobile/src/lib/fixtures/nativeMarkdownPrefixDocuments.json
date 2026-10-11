@@ -1,0 +1,1219 @@
+{
+  "version": "react-native-nitro-markdown@0.5.8",
+  "options": {
+    "gfm": true,
+    "html": true,
+    "math": false
+  },
+  "scenarios": [
+    ["```ts\nconst items = [1, 2];\n```\n", "```ts\nconst items = [1, 2];\n```\n后续"],
+    ["中文🙂\n\n", "中文🙂\n\n尾部", "中文🙂\n\n尾部\n继续"],
+    ["```ts\nx\n```", "```ts\nx\n```\n", "```ts\nx\n```\n后续", "```ts\nx\n```\n后续\n\n最后"],
+    ["intro\n\n", "intro\n\n[late]", "intro\n\n[late]\n\n[late]: https://example.com\n"],
+    ["甲\r\n", "甲\r\n乙", "甲\r\n乙\r\n\r\n", "甲\r\n乙\r\n\r\n尾部"],
+    ["intro\n\n", "intro\n\n```\n\n", "intro\n\n```\n\nx\n```\nnext"],
+    ["intro\n\n", "intro\n\ntail", "new\n\ntail"],
+    ["intro\n\n", "intro\n\n> quote\n> continued", "intro\n\n| A | B |\n| - | - |\n|"]
+  ],
+  "documents": [
+    {
+      "source": "```ts\nconst items = [1, 2];\n```\n",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 32,
+        "children": [
+          {
+            "type": "code_block",
+            "beg": 0,
+            "end": 27,
+            "language": "ts",
+            "children": [
+              {
+                "type": "text",
+                "beg": 6,
+                "end": 28,
+                "content": "const items = [1, 2];\n"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "后续",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 6,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 6,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 6,
+                "content": "后续"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "```ts\nconst items = [1, 2];\n```\n后续",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 38,
+        "children": [
+          {
+            "type": "code_block",
+            "beg": 0,
+            "end": 27,
+            "language": "ts",
+            "children": [
+              {
+                "type": "text",
+                "beg": 6,
+                "end": 28,
+                "content": "const items = [1, 2];\n"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 32,
+            "end": 38,
+            "children": [
+              {
+                "type": "text",
+                "beg": 32,
+                "end": 38,
+                "content": "后续"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "中文🙂\n\n",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 12,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 10,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 10,
+                "content": "中文🙂"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "尾部",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 6,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 6,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 6,
+                "content": "尾部"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "中文🙂\n\n尾部",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 18,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 10,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 10,
+                "content": "中文🙂"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 12,
+            "end": 18,
+            "children": [
+              {
+                "type": "text",
+                "beg": 12,
+                "end": 18,
+                "content": "尾部"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "尾部\n继续",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 13,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 13,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 6,
+                "content": "尾部"
+              },
+              {
+                "type": "soft_break",
+                "beg": 0,
+                "end": 0
+              },
+              {
+                "type": "text",
+                "beg": 7,
+                "end": 13,
+                "content": "继续"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "中文🙂\n\n尾部\n继续",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 25,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 10,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 10,
+                "content": "中文🙂"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 12,
+            "end": 25,
+            "children": [
+              {
+                "type": "text",
+                "beg": 12,
+                "end": 18,
+                "content": "尾部"
+              },
+              {
+                "type": "soft_break",
+                "beg": 0,
+                "end": 0
+              },
+              {
+                "type": "text",
+                "beg": 19,
+                "end": 25,
+                "content": "继续"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "```ts\nx\n```",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 11,
+        "children": [
+          {
+            "type": "code_block",
+            "beg": 0,
+            "end": 7,
+            "language": "ts",
+            "children": [
+              {
+                "type": "text",
+                "beg": 6,
+                "end": 8,
+                "content": "x\n"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "```ts\nx\n```\n",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 12,
+        "children": [
+          {
+            "type": "code_block",
+            "beg": 0,
+            "end": 7,
+            "language": "ts",
+            "children": [
+              {
+                "type": "text",
+                "beg": 6,
+                "end": 8,
+                "content": "x\n"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "```ts\nx\n```\n后续",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 18,
+        "children": [
+          {
+            "type": "code_block",
+            "beg": 0,
+            "end": 7,
+            "language": "ts",
+            "children": [
+              {
+                "type": "text",
+                "beg": 6,
+                "end": 8,
+                "content": "x\n"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 12,
+            "end": 18,
+            "children": [
+              {
+                "type": "text",
+                "beg": 12,
+                "end": 18,
+                "content": "后续"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "后续\n\n最后",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 14,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 6,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 6,
+                "content": "后续"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 8,
+            "end": 14,
+            "children": [
+              {
+                "type": "text",
+                "beg": 8,
+                "end": 14,
+                "content": "最后"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "```ts\nx\n```\n后续\n\n最后",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 26,
+        "children": [
+          {
+            "type": "code_block",
+            "beg": 0,
+            "end": 7,
+            "language": "ts",
+            "children": [
+              {
+                "type": "text",
+                "beg": 6,
+                "end": 8,
+                "content": "x\n"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 12,
+            "end": 18,
+            "children": [
+              {
+                "type": "text",
+                "beg": 12,
+                "end": 18,
+                "content": "后续"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 20,
+            "end": 26,
+            "children": [
+              {
+                "type": "text",
+                "beg": 20,
+                "end": 26,
+                "content": "最后"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "intro\n\n",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 7,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 5,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 5,
+                "content": "intro"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "[late]",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 6,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 6,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 6,
+                "content": "[late]"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "intro\n\n[late]",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 13,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 5,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 5,
+                "content": "intro"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 7,
+            "end": 13,
+            "children": [
+              {
+                "type": "text",
+                "beg": 7,
+                "end": 13,
+                "content": "[late]"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "intro\n\n[late]\n\n[late]: https://example.com\n",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 43,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 5,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 5,
+                "content": "intro"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 7,
+            "end": 13,
+            "children": [
+              {
+                "type": "link",
+                "beg": 7,
+                "end": 13,
+                "href": "https://example.com",
+                "children": [
+                  {
+                    "type": "text",
+                    "beg": 8,
+                    "end": 12,
+                    "content": "late"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "甲\r\n",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 5,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 3,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 3,
+                "content": "甲"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "甲\r\n乙",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 8,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 8,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 3,
+                "content": "甲"
+              },
+              {
+                "type": "soft_break",
+                "beg": 0,
+                "end": 0
+              },
+              {
+                "type": "text",
+                "beg": 5,
+                "end": 8,
+                "content": "乙"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "甲\r\n乙\r\n\r\n",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 12,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 8,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 3,
+                "content": "甲"
+              },
+              {
+                "type": "soft_break",
+                "beg": 0,
+                "end": 0
+              },
+              {
+                "type": "text",
+                "beg": 5,
+                "end": 8,
+                "content": "乙"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "甲\r\n乙\r\n\r\n尾部",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 18,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 8,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 3,
+                "content": "甲"
+              },
+              {
+                "type": "soft_break",
+                "beg": 0,
+                "end": 0
+              },
+              {
+                "type": "text",
+                "beg": 5,
+                "end": 8,
+                "content": "乙"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 12,
+            "end": 18,
+            "children": [
+              {
+                "type": "text",
+                "beg": 12,
+                "end": 18,
+                "content": "尾部"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "```\n\n",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 5,
+        "children": [
+          {
+            "type": "code_block",
+            "beg": 0,
+            "end": 4,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 1,
+                "content": "\n"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "intro\n\n```\n\n",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 12,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 5,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 5,
+                "content": "intro"
+              }
+            ]
+          },
+          {
+            "type": "code_block",
+            "beg": 7,
+            "end": 11,
+            "children": [
+              {
+                "type": "text",
+                "beg": 5,
+                "end": 6,
+                "content": "\n"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "```\n\nx\n```\nnext",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 15,
+        "children": [
+          {
+            "type": "code_block",
+            "beg": 0,
+            "end": 6,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 7,
+                "content": "\nx\n"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 11,
+            "end": 15,
+            "children": [
+              {
+                "type": "text",
+                "beg": 11,
+                "end": 15,
+                "content": "next"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "intro\n\n```\n\nx\n```\nnext",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 22,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 5,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 5,
+                "content": "intro"
+              }
+            ]
+          },
+          {
+            "type": "code_block",
+            "beg": 7,
+            "end": 13,
+            "children": [
+              {
+                "type": "text",
+                "beg": 5,
+                "end": 14,
+                "content": "\nx\n"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 18,
+            "end": 22,
+            "children": [
+              {
+                "type": "text",
+                "beg": 18,
+                "end": 22,
+                "content": "next"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "tail",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 4,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 4,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 4,
+                "content": "tail"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "intro\n\ntail",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 11,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 5,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 5,
+                "content": "intro"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 7,
+            "end": 11,
+            "children": [
+              {
+                "type": "text",
+                "beg": 7,
+                "end": 11,
+                "content": "tail"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "new\n\ntail",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 9,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 3,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 3,
+                "content": "new"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "beg": 5,
+            "end": 9,
+            "children": [
+              {
+                "type": "text",
+                "beg": 5,
+                "end": 9,
+                "content": "tail"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "> quote\n> continued",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 19,
+        "children": [
+          {
+            "type": "blockquote",
+            "beg": 1,
+            "end": 19,
+            "children": [
+              {
+                "type": "paragraph",
+                "beg": 2,
+                "end": 19,
+                "children": [
+                  {
+                    "type": "text",
+                    "beg": 2,
+                    "end": 7,
+                    "content": "quote"
+                  },
+                  {
+                    "type": "soft_break",
+                    "beg": 0,
+                    "end": 0
+                  },
+                  {
+                    "type": "text",
+                    "beg": 10,
+                    "end": 19,
+                    "content": "continued"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "intro\n\n> quote\n> continued",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 26,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 5,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 5,
+                "content": "intro"
+              }
+            ]
+          },
+          {
+            "type": "blockquote",
+            "beg": 8,
+            "end": 26,
+            "children": [
+              {
+                "type": "paragraph",
+                "beg": 9,
+                "end": 26,
+                "children": [
+                  {
+                    "type": "text",
+                    "beg": 9,
+                    "end": 14,
+                    "content": "quote"
+                  },
+                  {
+                    "type": "soft_break",
+                    "beg": 0,
+                    "end": 0
+                  },
+                  {
+                    "type": "text",
+                    "beg": 17,
+                    "end": 26,
+                    "content": "continued"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "| A | B |\n| - | - |\n|",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 21,
+        "children": [
+          {
+            "type": "table",
+            "beg": 0,
+            "end": 21,
+            "children": [
+              {
+                "type": "table_head",
+                "beg": 0,
+                "end": 19,
+                "children": [
+                  {
+                    "type": "table_row",
+                    "beg": 0,
+                    "end": 9,
+                    "children": [
+                      {
+                        "type": "table_cell",
+                        "beg": 2,
+                        "end": 3,
+                        "isHeader": true,
+                        "children": [
+                          {
+                            "type": "text",
+                            "beg": 2,
+                            "end": 3,
+                            "content": "A"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "table_cell",
+                        "beg": 6,
+                        "end": 7,
+                        "isHeader": true,
+                        "children": [
+                          {
+                            "type": "text",
+                            "beg": 6,
+                            "end": 7,
+                            "content": "B"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "table_body",
+                "beg": 20,
+                "end": 21,
+                "children": [
+                  {
+                    "type": "table_row",
+                    "beg": 20,
+                    "end": 21,
+                    "children": [
+                      {
+                        "type": "table_cell",
+                        "beg": 0,
+                        "end": 0,
+                        "isHeader": false
+                      },
+                      {
+                        "type": "table_cell",
+                        "beg": 0,
+                        "end": 0,
+                        "isHeader": false
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "source": "intro\n\n| A | B |\n| - | - |\n|",
+      "ast": {
+        "type": "document",
+        "beg": 0,
+        "end": 28,
+        "children": [
+          {
+            "type": "paragraph",
+            "beg": 0,
+            "end": 5,
+            "children": [
+              {
+                "type": "text",
+                "beg": 0,
+                "end": 5,
+                "content": "intro"
+              }
+            ]
+          },
+          {
+            "type": "table",
+            "beg": 7,
+            "end": 28,
+            "children": [
+              {
+                "type": "table_head",
+                "beg": 7,
+                "end": 26,
+                "children": [
+                  {
+                    "type": "table_row",
+                    "beg": 7,
+                    "end": 16,
+                    "children": [
+                      {
+                        "type": "table_cell",
+                        "beg": 9,
+                        "end": 10,
+                        "isHeader": true,
+                        "children": [
+                          {
+                            "type": "text",
+                            "beg": 9,
+                            "end": 10,
+                            "content": "A"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "table_cell",
+                        "beg": 13,
+                        "end": 14,
+                        "isHeader": true,
+                        "children": [
+                          {
+                            "type": "text",
+                            "beg": 13,
+                            "end": 14,
+                            "content": "B"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "table_body",
+                "beg": 27,
+                "end": 28,
+                "children": [
+                  {
+                    "type": "table_row",
+                    "beg": 27,
+                    "end": 28,
+                    "children": [
+                      {
+                        "type": "table_cell",
+                        "beg": 0,
+                        "end": 0,
+                        "isHeader": false
+                      },
+                      {
+                        "type": "table_cell",
+                        "beg": 0,
+                        "end": 0,
+                        "isHeader": false
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

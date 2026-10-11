@@ -36,6 +36,9 @@ const activityOrder = O.combineAll<OrchestrationThreadActivity>([
   O.mapInput(O.String, (a) => a.id),
 ]);
 
+// 只记录本 reducer 生成的有序集合；新快照仍按原规则规范化一次，不持有历史数据。
+const orderedActivityCollections = new WeakSet<ReadonlyArray<OrchestrationThreadActivity>>();
+
 /**
  * The thread's durable queued turn starts, whether the loaded `queuedMessages`
  * field was decoded (new servers) or defaulted (older servers). Every mutation
@@ -708,20 +711,35 @@ export function applyThreadDetailEvent(
       // thread.reverted that discards turns can still resolve a value from
       // the turns that survive.
       const supersedesContextWindow = isResolvableContextWindowActivity(activity);
-      const activities = pipe(
-        thread.activities,
-        Arr.filter(
-          (entry) =>
-            entry.id !== activity.id &&
-            !(
-              supersedesContextWindow &&
-              entry.turnId === activity.turnId &&
-              isResolvableContextWindowActivity(entry)
-            ),
-        ),
-        Arr.append(activity),
-        Arr.sort(activityOrder),
+      const retained = thread.activities.filter(
+        (entry) =>
+          entry.id !== activity.id &&
+          !(
+            supersedesContextWindow &&
+            entry.turnId === activity.turnId &&
+            isResolvableContextWindowActivity(entry)
+          ),
       );
+      // 新快照可能使用不同的旧版空 sequence 排序；首次追加保持原来的规范化行为。
+      let start = 0;
+      let end = retained.length;
+      if (!orderedActivityCollections.has(thread.activities)) {
+        retained.push(activity);
+        retained.sort(activityOrder);
+      } else if (end > 0 && activityOrder(retained[end - 1]!, activity) <= 0) {
+        start = end;
+        retained.push(activity);
+      } else {
+        // 迟到或替换的事件只定位插入点，不重排历史。
+        while (start < end) {
+          const middle = Math.floor((start + end) / 2);
+          if (activityOrder(retained[middle]!, activity) <= 0) start = middle + 1;
+          else end = middle;
+        }
+        retained.splice(start, 0, activity);
+      }
+      orderedActivityCollections.add(retained);
+      const activities = retained;
 
       // A failed turn start settles its queue entry without a terminal
       // session-set (e.g. a provider switch rejected while running): the

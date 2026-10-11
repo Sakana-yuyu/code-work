@@ -30,11 +30,11 @@ import {
   type RefObject,
 } from "react";
 import {
-  Markdown,
   type CustomRenderers,
   type NodeStyleOverrides,
   type PartialMarkdownTheme,
 } from "react-native-nitro-markdown";
+import { IncrementalMarkdown } from "../../components/IncrementalMarkdown";
 import {
   ActivityIndicator,
   Image,
@@ -1261,14 +1261,14 @@ function renderFeedEntry(
               renderImage={props.renderMarkdownImage}
             />
           ) : (
-            <Markdown
+            <IncrementalMarkdown
               options={{ gfm: true }}
               renderers={styles.renderers}
               styles={styles.styles}
               theme={styles.theme}
             >
               {message.text}
-            </Markdown>
+            </IncrementalMarkdown>
           )
         ) : null}
         {attachments.map((attachment) => {
@@ -1363,14 +1363,14 @@ function UserMessageContent(props: {
       );
     }
     return (
-      <Markdown
+      <IncrementalMarkdown
         options={{ gfm: true }}
         renderers={props.markdownStyles.renderers}
         styles={props.markdownStyles.styles}
         theme={props.markdownStyles.theme}
       >
         {props.text}
-      </Markdown>
+      </IncrementalMarkdown>
     );
   }
 
@@ -1403,7 +1403,7 @@ function UserMessageContent(props: {
             renderImage={props.renderImage}
           />
         ) : (
-          <Markdown
+          <IncrementalMarkdown
             key={segment.id}
             options={{ gfm: true }}
             renderers={props.markdownStyles.renderers}
@@ -1411,7 +1411,7 @@ function UserMessageContent(props: {
             theme={props.markdownStyles.theme}
           >
             {text}
-          </Markdown>
+          </IncrementalMarkdown>
         );
       })}
     </View>

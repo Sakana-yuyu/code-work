@@ -52,7 +52,7 @@ function completedBlockEnd(node: MarkdownNode, source: string): number {
   const end = node.position?.end.offset;
   if (end === undefined || !["paragraph", "heading", "thematicBreak", "table"].includes(node.type))
     return 0;
-  const separator = /^(?:[ \t]*(?:\r\n|\r|\n)){2}/.exec(source.slice(end))?.[0];
+  const separator = /^(?:[ \t]*(?:\r\n|\r(?!\n)|\n)){2}/.exec(source.slice(end))?.[0];
   return separator === undefined ? 0 : end + separator.length;
 }
 
