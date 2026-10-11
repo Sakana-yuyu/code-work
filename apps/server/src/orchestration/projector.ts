@@ -38,6 +38,9 @@ import {
 type ThreadPatch = Partial<Omit<OrchestrationThread, "id" | "projectId">>;
 const MAX_THREAD_MESSAGES = 2_000;
 const MAX_THREAD_CHECKPOINTS = 500;
+const MAX_THREAD_ACTIVITIES = 500;
+// 只标记本投影器产出的有序集合；外部快照在首次追加时仍完整规范化。
+const orderedActivityCollections = new WeakSet<OrchestrationThread["activities"]>();
 
 function checkpointStatusToLatestTurnState(status: "ready" | "missing" | "error") {
   if (status === "error") return "error" as const;
@@ -183,6 +186,33 @@ function compareThreadActivities(
   }
 
   return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id);
+}
+
+function appendThreadActivity(
+  current: OrchestrationThread["activities"],
+  activity: OrchestrationThread["activities"][number],
+): OrchestrationThread["activities"] {
+  const retained = current.filter((entry) => entry.id !== activity.id);
+  if (!orderedActivityCollections.has(current)) {
+    retained.push(activity);
+    retained.sort(compareThreadActivities);
+  } else if (retained.length === 0 || compareThreadActivities(retained.at(-1)!, activity) <= 0) {
+    retained.push(activity);
+  } else {
+    // 重复身份先替换，迟到事件只定位插入点；保留服务器的旧版空序号排序。
+    let start = 0;
+    let end = retained.length;
+    while (start < end) {
+      const middle = Math.floor((start + end) / 2);
+      if (compareThreadActivities(retained[middle]!, activity) <= 0) start = middle + 1;
+      else end = middle;
+    }
+    retained.splice(start, 0, activity);
+  }
+  const capped =
+    retained.length > MAX_THREAD_ACTIVITIES ? retained.slice(-MAX_THREAD_ACTIVITIES) : retained;
+  orderedActivityCollections.add(capped);
+  return capped;
 }
 
 export function createEmptyReadModel(nowIso: string): OrchestrationReadModel {
@@ -805,12 +835,7 @@ export function projectEvent(
             return nextBase;
           }
 
-          const activities = [
-            ...thread.activities.filter((entry) => entry.id !== payload.activity.id),
-            payload.activity,
-          ]
-            .toSorted(compareThreadActivities)
-            .slice(-500);
+          const activities = appendThreadActivity(thread.activities, payload.activity);
 
           return {
             ...nextBase,

@@ -5,12 +5,66 @@ import {
   ProviderDriverKind,
   ThreadId,
   type OrchestrationEvent,
+  type OrchestrationThreadActivity,
 } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createEmptyReadModel, projectEvent } from "./projector.ts";
+
+const activityCreatedAt = "2026-03-01T10:00:00.000Z";
+
+function makeActivity(
+  sequence: number | undefined,
+  id = `activity-${sequence}`,
+): OrchestrationThreadActivity {
+  return {
+    id: EventId.make(id),
+    ...(sequence === undefined ? {} : { sequence }),
+    createdAt: activityCreatedAt,
+    tone: "tool",
+    kind: "tool.updated",
+    summary: id,
+    payload: {},
+    turnId: null,
+  };
+}
+
+function makeActivityEvent(activity: OrchestrationThreadActivity, sequence: number) {
+  return makeEvent({
+    sequence,
+    type: "thread.activity-appended",
+    occurredAt: activityCreatedAt,
+    aggregateKind: "thread",
+    aggregateId: "thread-incremental-activities",
+    commandId: `activity-command-${sequence}`,
+    payload: { threadId: "thread-incremental-activities", activity },
+  });
+}
+
+const activityModel = projectEvent(
+  createEmptyReadModel(activityCreatedAt),
+  makeEvent({
+    sequence: 1,
+    type: "thread.created",
+    occurredAt: activityCreatedAt,
+    aggregateKind: "thread",
+    aggregateId: "thread-incremental-activities",
+    commandId: "create-incremental-activities",
+    payload: {
+      threadId: "thread-incremental-activities",
+      projectId: "activity-project",
+      title: "活动夹具",
+      modelSelection: { instanceId: "codex", model: "gpt-5-codex" },
+      runtimeMode: "full-access",
+      branch: null,
+      worktreePath: null,
+      createdAt: activityCreatedAt,
+      updatedAt: activityCreatedAt,
+    },
+  }),
+);
 
 function makeEvent(input: {
   sequence: number;
@@ -40,6 +94,131 @@ function makeEvent(input: {
 }
 
 describe("orchestration projector", () => {
+  effectIt.effect("服务器单调追加不重排 500 条历史，并保留其他线程与回合引用", () =>
+    Effect.gen(function* () {
+      const base = yield* activityModel;
+      let reads = 0;
+      const activities = Array.from(
+        { length: 500 },
+        (_, index) =>
+          new Proxy(makeActivity(index), {
+            get(target, property, receiver) {
+              if (property === "sequence") reads += 1;
+              return Reflect.get(target, property, receiver);
+            },
+          }),
+      );
+      const other = {
+        ...base.threads[0]!,
+        id: ThreadId.make("other-incremental-thread"),
+        activities,
+      };
+      const seeded = { ...base, threads: [{ ...base.threads[0]!, activities }, other] };
+      const normalized = yield* projectEvent(seeded, makeActivityEvent(makeActivity(500), 2));
+      const before = normalized.threads[0]!;
+      const oldIds = before.activities.map((row) => row.id);
+      reads = 0;
+      const next = yield* projectEvent(normalized, makeActivityEvent(makeActivity(501), 3));
+      expect(reads).toBeLessThan(25);
+      expect(before.activities.map((row) => row.id)).toEqual(oldIds);
+      expect(next.threads[0]?.activities).toHaveLength(500);
+      expect(next.threads[0]?.activities[0]?.id).toBe("activity-2");
+      expect(next.threads[0]?.activities.at(-1)?.id).toBe("activity-501");
+      expect(next.threads[0]?.activities[200]).toBe(before.activities[201]);
+      expect(next.threads[0]?.latestTurn).toBe(before.latestTurn);
+      expect(next.threads[0]?.checkpoints).toBe(before.checkpoints);
+      expect(next.threads[0]?.messages).toBe(before.messages);
+      expect(next.threads[1]).toBe(other);
+    }),
+  );
+
+  effectIt.effect("服务器规范化旧快照，缺省序号在前，迟到与替换仍按原顺序", () =>
+    Effect.gen(function* () {
+      const base = yield* activityModel;
+      const legacyA = makeActivity(undefined, "legacy-a");
+      const legacyZ = makeActivity(undefined, "legacy-z");
+      const initial = [makeActivity(8), legacyZ, makeActivity(1), legacyA];
+      const seeded = { ...base, threads: [{ ...base.threads[0]!, activities: initial }] };
+      const normalized = yield* projectEvent(seeded, makeActivityEvent(makeActivity(4), 2));
+      expect(normalized.threads[0]?.activities.map((row) => row.id)).toEqual([
+        "legacy-a",
+        "legacy-z",
+        "activity-1",
+        "activity-4",
+        "activity-8",
+      ]);
+      const late = yield* projectEvent(normalized, makeActivityEvent(makeActivity(2), 3));
+      const replacement = { ...makeActivity(9, "activity-1"), summary: "更新身份" };
+      const replaced = yield* projectEvent(late, makeActivityEvent(replacement, 4));
+      expect(replaced.threads[0]?.activities.map((row) => row.id)).toEqual([
+        "legacy-a",
+        "legacy-z",
+        "activity-2",
+        "activity-4",
+        "activity-8",
+        "activity-1",
+      ]);
+      expect(replaced.threads[0]?.activities.at(-1)?.summary).toBe("更新身份");
+      expect(late.threads[0]?.activities.find((row) => row.id === "activity-1")?.summary).toBe(
+        "activity-1",
+      );
+      expect(initial.map((row) => row.id)).toEqual([
+        "activity-8",
+        "legacy-z",
+        "activity-1",
+        "legacy-a",
+      ]);
+    }),
+  );
+
+  effectIt.effect("重复序号按时间与身份定位，重载数组不会继承错误的有序标记", () =>
+    Effect.gen(function* () {
+      const base = yield* activityModel;
+      const a = makeActivity(7, "a");
+      const b = makeActivity(7, "b");
+      const c = { ...makeActivity(7, "c"), createdAt: "2026-03-01T10:00:01.000Z" };
+      const seeded = { ...base, threads: [{ ...base.threads[0]!, activities: [b, c, a] }] };
+      const normalized = yield* projectEvent(seeded, makeActivityEvent(makeActivity(7, "d"), 2));
+      expect(normalized.threads[0]?.activities.map((row) => row.id)).toEqual(["a", "b", "d", "c"]);
+      const reloaded = {
+        ...normalized,
+        threads: [
+          {
+            ...normalized.threads[0]!,
+            activities: normalized.threads[0]!.activities.toReversed(),
+          },
+        ],
+      };
+      const next = yield* projectEvent(reloaded, makeActivityEvent(makeActivity(7, "e"), 3));
+      expect(next.threads[0]?.activities.map((row) => row.id)).toEqual(["a", "b", "d", "e", "c"]);
+    }),
+  );
+
+  effectIt.effect("追加、迟到与已淘汰身份重现均保留原有 500 条上限", () =>
+    Effect.gen(function* () {
+      let model = yield* activityModel;
+      for (let index = 0; index <= 600; index++) {
+        model = yield* projectEvent(model, makeActivityEvent(makeActivity(index), index + 2));
+      }
+      const expected = Array.from({ length: 500 }, (_, index) => `activity-${index + 101}`);
+      expect(model.threads[0]?.activities.map((row) => row.id)).toEqual(expected);
+      const late = yield* projectEvent(
+        model,
+        makeActivityEvent(makeActivity(0, "late-evicted"), 603),
+      );
+      expect(late.threads[0]?.activities.map((row) => row.id)).toEqual(expected);
+      const revived = yield* projectEvent(
+        late,
+        makeActivityEvent(makeActivity(601, "activity-0"), 604),
+      );
+      expect(revived.threads[0]?.activities.map((row) => row.id)).toEqual([
+        ...expected.slice(1),
+        "activity-0",
+      ]);
+      expect(model.threads[0]?.activities.map((row) => row.id)).toEqual(expected);
+    }),
+  );
+
   it("applies thread.created events", async () => {
     const now = "2026-01-01T00:00:00.000Z";
     const model = createEmptyReadModel(now);
