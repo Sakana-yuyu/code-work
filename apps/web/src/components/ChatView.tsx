@@ -136,6 +136,7 @@ import {
 import { useTheme } from "../hooks/useTheme";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
+import { createRevertTargetsSelector } from "./chat/revertTargets";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { buildTemporaryWorktreeBranchName } from "@codework/shared/git";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -2979,58 +2980,13 @@ function ChatViewContent(props: ChatViewProps) {
     }
     return byMessageId;
   }, [turnDiffSummaries]);
-  const revertTurnCountByUserMessageId = useMemo(() => {
-    const byUserMessageId = new Map<MessageId, number | null>();
-    for (let index = 0; index < timelineEntries.length; index += 1) {
-      const entry = timelineEntries[index];
-      if (!entry || entry.kind !== "message" || entry.message.role !== "user") {
-        continue;
-      }
-
-      for (let nextIndex = index + 1; nextIndex < timelineEntries.length; nextIndex += 1) {
-        const nextEntry = timelineEntries[nextIndex];
-        if (!nextEntry || nextEntry.kind !== "message") {
-          continue;
-        }
-        if (nextEntry.message.role === "user") {
-          break;
-        }
-        const summary = turnDiffSummaryByAssistantMessageId.get(nextEntry.message.id);
-        if (!summary) {
-          continue;
-        }
-        const turnCount =
-          summary.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[summary.turnId];
-        if (typeof turnCount !== "number") {
-          break;
-        }
-        byUserMessageId.set(entry.message.id, Math.max(0, turnCount - 1));
-        break;
-      }
-    }
-
-    const latestUserEntry = timelineEntries.findLast(
-      (entry) => entry.kind === "message" && entry.message.role === "user",
-    );
-    if (
-      threadError !== null &&
-      (activeThread?.session?.status === "error" || !isServerThread) &&
-      latestUserEntry?.kind === "message" &&
-      latestUserEntry.message.role === "user" &&
-      !byUserMessageId.has(latestUserEntry.message.id)
-    ) {
-      byUserMessageId.set(latestUserEntry.message.id, null);
-    }
-
-    return byUserMessageId;
-  }, [
-    activeThread?.session?.status,
-    inferredCheckpointTurnCountByTurnId,
-    isServerThread,
-    threadError,
+  const selectRevertTargets = useMemo(() => createRevertTargetsSelector(), [activeThreadKey]);
+  const revertTurnCountByUserMessageId = selectRevertTargets(
     timelineEntries,
     turnDiffSummaryByAssistantMessageId,
-  ]);
+    inferredCheckpointTurnCountByTurnId,
+    threadError !== null && (activeThread?.session?.status === "error" || !isServerThread),
+  );
 
   const gitCwd = activeProject
     ? projectScriptCwd({
