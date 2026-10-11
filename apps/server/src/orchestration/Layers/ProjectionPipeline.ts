@@ -989,29 +989,14 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     )(function* (event, attachmentSideEffects) {
       switch (event.type) {
         case "thread.message-sent": {
-          const existingMessage = yield* projectionThreadMessageRepository.getByMessageId({
-            messageId: event.payload.messageId,
-          });
-          const previousMessage = Option.getOrUndefined(existingMessage);
-          const nextText = Option.match(existingMessage, {
-            onNone: () => event.payload.text,
-            onSome: (message) => {
-              if (event.payload.streaming) {
-                return `${message.text}${event.payload.text}`;
-              }
-              if (event.payload.text.length === 0) {
-                return message.text;
-              }
-              return event.payload.text;
-            },
-          });
           const nextAttachments =
             event.payload.attachments !== undefined
               ? yield* materializeAttachmentsForProjection({
                   attachments: event.payload.attachments,
                 })
-              : previousMessage?.attachments;
-          yield* projectionThreadMessageRepository.upsert({
+              : undefined;
+          // 数据库原子追加/替换正文；流式更新不把已积累的长回复读回进程再复制。
+          yield* projectionThreadMessageRepository.applyMessage({
             messageId: event.payload.messageId,
             threadId: event.payload.threadId,
             turnId: event.payload.turnId,
@@ -1020,10 +1005,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             ...(event.payload.providerInstanceId !== undefined
               ? { providerInstanceId: event.payload.providerInstanceId }
               : {}),
-            text: nextText,
+            text: event.payload.text,
             ...(nextAttachments !== undefined ? { attachments: [...nextAttachments] } : {}),
             isStreaming: event.payload.streaming,
-            createdAt: previousMessage?.createdAt ?? event.payload.createdAt,
+            createdAt: event.payload.createdAt,
             updatedAt: event.payload.updatedAt,
           });
           return;

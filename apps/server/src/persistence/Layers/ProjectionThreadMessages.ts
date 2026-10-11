@@ -48,7 +48,9 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
   const upsertProjectionThreadMessageRow = SqlSchema.void({
-    Request: ProjectionThreadMessage,
+    Request: ProjectionThreadMessage.mapFields(
+      Struct.assign({ applyMessageEvent: Schema.Boolean }),
+    ),
     execute: (row) => {
       const nextAttachmentsJson =
         row.attachments !== undefined ? JSON.stringify(row.attachments) : null;
@@ -74,14 +76,7 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           ${row.firstSequence ?? null},
           ${row.providerInstanceId ?? null},
           ${row.text},
-          COALESCE(
-            ${nextAttachmentsJson},
-            (
-              SELECT attachments_json
-              FROM projection_thread_messages
-              WHERE message_id = ${row.messageId}
-            )
-          ),
+          ${nextAttachmentsJson},
           ${row.isStreaming ? 1 : 0},
           ${row.createdAt},
           ${row.updatedAt}
@@ -99,13 +94,23 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
             excluded.provider_instance_id,
             projection_thread_messages.provider_instance_id
           ),
-          text = excluded.text,
+          text = CASE
+            WHEN ${row.applyMessageEvent ? 1 : 0} = 0 THEN excluded.text
+            WHEN excluded.is_streaming = 1
+              THEN projection_thread_messages.text || excluded.text
+            WHEN excluded.text = '' THEN projection_thread_messages.text
+            ELSE excluded.text
+          END,
           attachments_json = COALESCE(
             excluded.attachments_json,
             projection_thread_messages.attachments_json
           ),
           is_streaming = excluded.is_streaming,
-          created_at = excluded.created_at,
+          created_at = CASE
+            WHEN ${row.applyMessageEvent ? 1 : 0} = 1
+              THEN projection_thread_messages.created_at
+            ELSE excluded.created_at
+          END,
           updated_at = excluded.updated_at
       `;
     },
@@ -167,8 +172,15 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
   });
 
   const upsert: ProjectionThreadMessageRepositoryShape["upsert"] = (row) =>
-    upsertProjectionThreadMessageRow(row).pipe(
+    upsertProjectionThreadMessageRow({ ...row, applyMessageEvent: false }).pipe(
       Effect.mapError(toPersistenceSqlError("ProjectionThreadMessageRepository.upsert:query")),
+    );
+
+  const applyMessage: ProjectionThreadMessageRepositoryShape["applyMessage"] = (row) =>
+    upsertProjectionThreadMessageRow({ ...row, applyMessageEvent: true }).pipe(
+      Effect.mapError(
+        toPersistenceSqlError("ProjectionThreadMessageRepository.applyMessage:query"),
+      ),
     );
 
   const getByMessageId: ProjectionThreadMessageRepositoryShape["getByMessageId"] = (input) =>
@@ -196,6 +208,7 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
 
   return {
     upsert,
+    applyMessage,
     getByMessageId,
     listByThreadId,
     deleteByThreadId,

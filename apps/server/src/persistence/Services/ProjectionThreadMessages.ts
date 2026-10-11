@@ -65,6 +65,11 @@ export interface ProjectionThreadMessageRepositoryShape {
     message: ProjectionThreadMessage,
   ) => Effect.Effect<void, ProjectionRepositoryError>;
 
+  /** 在数据库中应用消息增量或终态，保留首次位置与缺省附件，不读取历史正文。 */
+  readonly applyMessage: (
+    message: ProjectionThreadMessage,
+  ) => Effect.Effect<void, ProjectionRepositoryError>;
+
   /**
    * Read a projected thread message by id.
    */

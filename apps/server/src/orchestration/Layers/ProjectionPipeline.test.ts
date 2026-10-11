@@ -16,6 +16,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { vi } from "vite-plus/test";
 
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
@@ -24,6 +25,7 @@ import {
   SqlitePersistenceMemory,
 } from "../../persistence/Layers/Sqlite.ts";
 import { OrchestrationEventStore } from "../../persistence/Services/OrchestrationEventStore.ts";
+import { ProjectionThreadMessageRepository } from "../../persistence/Services/ProjectionThreadMessages.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import * as WorkspaceOperationLock from "../WorkspaceOperationLock.ts";
@@ -54,6 +56,133 @@ const exists = (filePath: string) =>
   });
 
 const BaseTestLayer = makeProjectionPipelinePrefixedTestLayer("codework-projection-pipeline-test-");
+
+it.layer(makeProjectionPipelinePrefixedTestLayer("codework-message-stream-test-"))(
+  "流式消息投影",
+  (it) => {
+    it.effect("长回复的增量、空完成与重放不回读已有消息正文", () =>
+      Effect.gen(function* () {
+        const pipeline = yield* OrchestrationProjectionPipeline;
+        const eventStore = yield* OrchestrationEventStore;
+        const repository = yield* ProjectionThreadMessageRepository;
+        const threadId = ThreadId.make("thread-no-body-hydration");
+        const projectId = ProjectId.make("project-no-body-hydration");
+        const createdAt = "2026-02-28T19:00:00.000Z";
+        const common = {
+          occurredAt: createdAt,
+          commandId: null,
+          causationEventId: null,
+          correlationId: null,
+          metadata: {},
+        };
+        yield* pipeline.projectEvent(
+          yield* eventStore.append({
+            ...common,
+            type: "project.created",
+            eventId: EventId.make("no-body-project"),
+            aggregateKind: "project",
+            aggregateId: projectId,
+            payload: {
+              projectId,
+              title: "正文读取夹具",
+              workspaceRoot: "/tmp/no-body",
+              defaultModelSelection: null,
+              scripts: [],
+              createdAt,
+              updatedAt: createdAt,
+            },
+          }),
+        );
+        yield* pipeline.projectEvent(
+          yield* eventStore.append({
+            ...common,
+            type: "thread.created",
+            eventId: EventId.make("no-body-thread"),
+            aggregateKind: "thread",
+            aggregateId: threadId,
+            payload: {
+              threadId,
+              projectId,
+              title: "正文读取夹具",
+              modelSelection: {
+                instanceId: ProviderInstanceId.make("codex"),
+                model: "gpt-5-codex",
+              },
+              runtimeMode: "full-access",
+              branch: null,
+              worktreePath: null,
+              createdAt,
+              updatedAt: createdAt,
+            },
+          }),
+        );
+        const messageId = MessageId.make("no-body-assistant");
+        const prefix = "中文😀旧代码\n".repeat(5_000);
+        yield* repository.upsert({
+          messageId,
+          threadId,
+          turnId: null,
+          role: "assistant",
+          text: prefix,
+          isStreaming: true,
+          createdAt,
+          updatedAt: createdAt,
+          firstSequence: 1,
+        });
+        const bodyReads = vi.spyOn(repository, "getByMessageId");
+        const historyReads = vi.spyOn(repository, "listByThreadId");
+        try {
+          for (const [index, text] of ["第一段", "第二段", ""].entries()) {
+            const updatedAt = `2026-02-28T19:00:0${index + 1}.000Z`;
+            yield* pipeline.projectEvent(
+              yield* eventStore.append({
+                ...common,
+                occurredAt: updatedAt,
+                type: "thread.message-sent",
+                eventId: EventId.make(`no-body-delta-${index}`),
+                aggregateKind: "thread",
+                aggregateId: threadId,
+                payload: {
+                  threadId,
+                  messageId,
+                  role: "assistant",
+                  text,
+                  turnId: null,
+                  streaming: index < 2,
+                  createdAt: updatedAt,
+                  updatedAt,
+                },
+              }),
+            );
+          }
+          assert.equal(bodyReads.mock.calls.length, 0);
+          assert.equal(historyReads.mock.calls.length, 0);
+          // 已投影的消息游标不会再次追加同一片段。
+          yield* pipeline.bootstrap;
+          assert.equal(bodyReads.mock.calls.length, 0);
+          assert.equal(historyReads.mock.calls.length, 0);
+        } finally {
+          bodyReads.mockRestore();
+          historyReads.mockRestore();
+        }
+        const rows = yield* repository.listByThreadId({ threadId });
+        assert.deepEqual(rows, [
+          {
+            messageId,
+            threadId,
+            turnId: null,
+            role: "assistant",
+            text: prefix + "第一段第二段",
+            isStreaming: false,
+            createdAt,
+            updatedAt: "2026-02-28T19:00:03.000Z",
+            firstSequence: 1,
+          },
+        ]);
+      }),
+    );
+  },
+);
 
 it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
   it.effect("bootstraps all projection states and writes projection rows", () =>
