@@ -3,6 +3,7 @@ import { Image, ScrollView, Text, useColorScheme, View } from "react-native";
 import type { MarkdownNode } from "react-native-nitro-markdown/headless";
 
 import { CopyTextButton } from "./CopyTextButton";
+import { MarkdownCodeCopyContext } from "./MarkdownCodeCopyContext";
 import { MarkdownTextPrimitive } from "./MarkdownTextPrimitive";
 import {
   nativeMarkdownCodeHighlightAppend,
@@ -253,7 +254,10 @@ function NativeCodeBlock(props: {
   readonly highlightCode: MarkdownCodeHighlighter;
   readonly compact?: boolean;
 }) {
+  const copySources = useContext(MarkdownCodeCopyContext);
   const content = nodeText(props.node).replace(/\n$/, "");
+  const copyText =
+    props.node.beg === undefined ? content : (copySources?.get(props.node.beg) ?? content);
   const colorScheme = useColorScheme();
   const theme = colorScheme === "dark" ? "dark" : "light";
   const highlighted = useHighlightedCode(content, props.node.language, theme, props.highlightCode);
@@ -295,7 +299,7 @@ function NativeCodeBlock(props: {
         </Text>
         <CopyTextButton
           accessibilityLabel={`Copy ${languageLabel.toLowerCase()} code`}
-          text={content}
+          text={copyText}
           tintColor={props.textStyle.mutedColor}
           copiedTintColor={props.textStyle.linkColor}
           backgroundColor={props.textStyle.codeBackgroundColor}

@@ -2583,6 +2583,9 @@ export const ja: Record<string, string> = {
   "settings.streamTokenByTokenLegacy": "トークンごとのストリーミング（レガシー）",
   "settings.responseStreamingMode": "応答の表示方法",
   "settings.responseStreaming.turn": "応答全体",
+  "settings.responseTextPacing": "文字を滑らかに表示",
+  "settings.responseTextPacing.description":
+    "追加された文字を徐々に表示します。応答を開く、文字を選択する、応答が完了すると全文を表示します。",
   "settings.responseStreaming.paragraph": "段落ごと（既定）",
   "settings.responseStreaming.token": "トークンごと（レガシー）",
   "settings.responseStreaming.description":

@@ -1402,6 +1402,9 @@ export const en: Record<string, string> = {
   "serverSettingsMobile.legacyStreaming": "Stream assistant output token by token",
   "serverSettingsMobile.responseStreamingMode": "Assistant output",
   "serverSettingsMobile.responseStreaming.turn": "Complete response",
+  "serverSettingsMobile.responseTextPacing": "Smooth text updates",
+  "serverSettingsMobile.responseTextPacing.description":
+    "Reveal new text gradually. Opening a response, selecting text, or finishing it shows the complete text immediately.",
   "serverSettingsMobile.responseStreaming.paragraph": "Paragraphs (default)",
   "serverSettingsMobile.responseStreaming.token": "Token by token (legacy)",
   "serverSettingsMobile.responseStreaming.description":
@@ -4070,6 +4073,9 @@ export const zhCN: Record<string, string> = {
   "serverSettingsMobile.legacyStreaming": "逐 Token 流式显示 Agent 输出",
   "serverSettingsMobile.responseStreamingMode": "回复输出方式",
   "serverSettingsMobile.responseStreaming.turn": "完整回复",
+  "serverSettingsMobile.responseTextPacing": "平滑显示文字",
+  "serverSettingsMobile.responseTextPacing.description":
+    "逐步显示新增文字。打开回复、开始选择或回复完成时立即显示全文。",
   "serverSettingsMobile.responseStreaming.paragraph": "按段落（默认）",
   "serverSettingsMobile.responseStreaming.token": "逐 token（遗留模式）",
   "serverSettingsMobile.responseStreaming.description":

@@ -9,6 +9,12 @@ import type {
   TurnId,
 } from "@codework/contracts";
 import { classifyMarkdownImageSource } from "@codework/client-runtime/markdown-images";
+import { isTextRevealEnabled } from "@codework/client-runtime/text-reveal";
+import { useAtomValue } from "@effect/atom-react";
+import { serverEnvironment } from "../../state/server";
+import { StreamingMarkdown } from "./StreamingMarkdown";
+import { MarkdownCodeCopyContext } from "@codework/mobile-markdown-text/copy-source";
+import type { MarkdownNode } from "react-native-nitro-markdown/headless";
 import {
   CHAT_LIST_ANCHOR_OFFSET,
   resolveChatListAnchoredEndSpace,
@@ -431,6 +437,7 @@ const MarkdownExternalLink = memo(function MarkdownExternalLink(props: {
 });
 
 function MarkdownCodeBlock(props: {
+  readonly node: MarkdownNode;
   readonly backgroundColor: string;
   readonly borderColor: string;
   readonly content: string;
@@ -443,7 +450,10 @@ function MarkdownCodeBlock(props: {
   readonly textColor: string;
   readonly theme: ReviewDiffTheme;
 }) {
+  const copySources = useContext(MarkdownCodeCopyContext);
   const content = props.content.replace(/\n$/, "");
+  const copyText =
+    props.node.beg === undefined ? content : (copySources?.get(props.node.beg) ?? content);
   const languageLabel = props.language?.trim() || "text";
   const highlighted = useMarkdownCodeHighlight({
     code: content,
@@ -475,7 +485,7 @@ function MarkdownCodeBlock(props: {
         </NativeText>
         <CopyTextButton
           accessibilityLabel={t("copyCode")}
-          text={content}
+          text={copyText}
           tintColor={props.copyTintColor}
           buttonSize={32}
           iconSize={16}
@@ -803,8 +813,9 @@ function useMarkdownStyles(
             soft_break: () => <NativeText>{"\n"}</NativeText>,
           }
         : {}),
-      code_block: ({ content = "", language }) => (
+      code_block: ({ content = "", language, node }) => (
         <MarkdownCodeBlock
+          node={node}
           backgroundColor={blockBackgroundColor}
           borderColor={markdownHrColor}
           content={content}
@@ -1096,6 +1107,7 @@ function renderFeedEntry(
     | "isRevertingCheckpoint"
     | "onEditUserMessage"
   > & {
+    readonly responseTextPacing: boolean;
     readonly copiedRowId: string | null;
     readonly expandedWorkRows: Record<string, boolean>;
     readonly terminalAssistantMessageIds: ReadonlySet<string>;
@@ -1252,24 +1264,24 @@ function renderFeedEntry(
         {...(enterAnimated ? { entering: FadeIn.duration(220) } : {})}
       >
         {message.text.trim().length > 0 ? (
-          hasNativeSelectableMarkdownText() ? (
-            <SelectableMarkdownText
-              markdown={message.text}
-              skills={props.skills}
-              textStyle={styles.nativeTextStyle}
-              onLinkPress={props.onMarkdownLinkPress}
-              renderImage={props.renderMarkdownImage}
-            />
-          ) : (
-            <IncrementalMarkdown
-              options={{ gfm: true }}
-              renderers={styles.renderers}
-              styles={styles.styles}
-              theme={styles.theme}
-            >
-              {message.text}
-            </IncrementalMarkdown>
-          )
+          <StreamingMarkdown
+            key={message.id}
+            text={message.text}
+            streaming={message.streaming}
+            pacing={props.responseTextPacing}
+            native={{
+              skills: props.skills,
+              textStyle: styles.nativeTextStyle,
+              onLinkPress: props.onMarkdownLinkPress,
+              renderImage: props.renderMarkdownImage,
+            }}
+            fallback={{
+              options: { gfm: true },
+              renderers: styles.renderers,
+              styles: styles.styles,
+              theme: styles.theme,
+            }}
+          />
         ) : null}
         {attachments.map((attachment) => {
           return (
@@ -1611,6 +1623,9 @@ function ThreadFeedPlaceholder(props: {
 }
 
 export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
+  const responseTextPacing = isTextRevealEnabled(
+    useAtomValue(serverEnvironment.configValueAtom(props.environmentId)),
+  );
   const navigation = useNavigation();
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const foldSettleFrameRef = useRef<number | null>(null);
@@ -2137,6 +2152,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const renderItem = useCallback(
     (info: { item: ThreadFeedEntry; index: number }) =>
       renderFeedEntry(info, {
+        responseTextPacing,
         environmentId: props.environmentId,
         copiedRowId,
         expandedWorkRows,
@@ -2163,6 +2179,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         skills: props.skills,
       }),
     [
+      responseTextPacing,
       copiedRowId,
       expandedWorkRows,
       terminalAssistantMessageIds,

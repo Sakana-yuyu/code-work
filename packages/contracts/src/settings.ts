@@ -1216,6 +1216,8 @@ export function resolveResponseStreamingMode(settings: {
 
 export const ServerSettings = Schema.Struct({
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+  /** 在支持的客户端平滑显示新增文字；缺省启用，存储与复制始终保留全文。 */
+  responseTextPacing: Schema.optionalKey(Schema.Boolean),
   // 旧客户端仍可读写；缺省值不再掩盖新环境的 paragraph 默认模式。
   enableLegacyTokenStreaming: Schema.optionalKey(Schema.Boolean),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -1507,6 +1509,7 @@ const ByokSettingsPatch = Schema.Struct({
 export const ServerSettingsPatch = Schema.Struct({
   // Server settings
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+  responseTextPacing: Schema.optionalKey(Schema.Boolean),
   enableLegacyTokenStreaming: Schema.optionalKey(Schema.Boolean),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),

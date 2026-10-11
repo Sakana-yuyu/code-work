@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./text-reveal": {
+      "types": "./src/useTextReveal.ts",
+      "default": "./src/useTextReveal.ts"
+    },
     "./connection": {
       "types": "./src/connection/index.ts",
       "default": "./src/connection/index.ts"

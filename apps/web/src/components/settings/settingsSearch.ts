@@ -272,6 +272,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "response-text-pacing",
+    title: "settings.responseTextPacing",
+    to: "/settings/general",
+    keywords: ["smooth", "pacing", "reveal", "平滑", "文字", "节奏"],
+  },
+  {
     id: "keybindings",
     title: "settings.keybindings",
     to: "/settings/keybindings",

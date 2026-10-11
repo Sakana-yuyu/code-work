@@ -2540,6 +2540,9 @@ export const en: Record<string, string> = {
   "settings.streamTokenByTokenLegacy": "Stream token by token (legacy)",
   "settings.responseStreamingMode": "Assistant output",
   "settings.responseStreaming.turn": "Complete response",
+  "settings.responseTextPacing": "Smooth text updates",
+  "settings.responseTextPacing.description":
+    "Reveal new text gradually. Opening a response, selecting text, or finishing it shows the complete text immediately.",
   "settings.responseStreaming.paragraph": "Paragraphs (default)",
   "settings.responseStreaming.token": "Token by token (legacy)",
   "settings.responseStreaming.description":
@@ -8653,6 +8656,9 @@ export const zhCN: Record<string, string> = {
   "settings.streamTokenByTokenLegacy": "逐 token 流式输出（旧版）",
   "settings.responseStreamingMode": "回复输出方式",
   "settings.responseStreaming.turn": "完整回复",
+  "settings.responseTextPacing": "平滑显示文字",
+  "settings.responseTextPacing.description":
+    "逐步显示新增文字。打开回复、开始选择或回复完成时立即显示全文。",
   "settings.responseStreaming.paragraph": "按段落（默认）",
   "settings.responseStreaming.token": "逐 token（遗留模式）",
   "settings.responseStreaming.description":

@@ -1429,6 +1429,9 @@ export const ja: Record<string, string> = {
   "serverSettingsMobile.legacyStreaming": "アシスタントの出力をトークン単位でストリーミング",
   "serverSettingsMobile.responseStreamingMode": "応答の表示方法",
   "serverSettingsMobile.responseStreaming.turn": "応答全体",
+  "serverSettingsMobile.responseTextPacing": "文字を滑らかに表示",
+  "serverSettingsMobile.responseTextPacing.description":
+    "追加された文字を徐々に表示します。応答を開く、文字を選択する、応答が完了すると全文を表示します。",
   "serverSettingsMobile.responseStreaming.paragraph": "段落ごと（既定）",
   "serverSettingsMobile.responseStreaming.token": "トークンごと（レガシー）",
   "serverSettingsMobile.responseStreaming.description":

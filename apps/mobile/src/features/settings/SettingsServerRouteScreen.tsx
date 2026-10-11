@@ -321,6 +321,19 @@ export function SettingsServerRouteScreen() {
                   )}
                 </Text>
               </View>
+              {serverConfig?.features?.responseTextReveal === true ? (
+                <>
+                  <SwitchRow
+                    label={t("serverSettingsMobile.responseTextPacing")}
+                    value={settings.responseTextPacing !== false}
+                    disabled={pending}
+                    onValueChange={(responseTextPacing) => void persist({ responseTextPacing })}
+                  />
+                  <Text className="px-4 pb-4 text-sm leading-5 text-foreground-muted">
+                    {t("serverSettingsMobile.responseTextPacing.description")}
+                  </Text>
+                </>
+              ) : null}
             </SettingsSection>
 
             <ModelSelectionSection

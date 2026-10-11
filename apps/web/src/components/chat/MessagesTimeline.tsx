@@ -53,6 +53,10 @@ import {
   resolveFileDiffPath,
 } from "../../lib/diffRendering";
 import ChatMarkdown from "../ChatMarkdown";
+import { StreamingChatMarkdown } from "./StreamingChatMarkdown";
+import { isTextRevealEnabled } from "@codework/client-runtime/text-reveal";
+import { useAtomValue } from "@effect/atom-react";
+import { serverEnvironment } from "../../state/server";
 import {
   BotIcon,
   CheckIcon,
@@ -154,6 +158,7 @@ import {
 // ---------------------------------------------------------------------------
 
 interface TimelineRowSharedState {
+  responseTextPacing: boolean;
   timestampFormat: TimestampFormat;
   providers: ReadonlyMap<string, { displayName: string; driverKind: ProviderDriverKind }>;
   routeThreadKey: string;
@@ -321,6 +326,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   topFadeEnabled = false,
   loadEarlier = null,
 }: MessagesTimelineProps) {
+  const responseTextPacing = isTextRevealEnabled(
+    useAtomValue(serverEnvironment.configValueAtom(activeThreadEnvironmentId)),
+  );
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(new Set());
   const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(new Set());
   const [expandedNarrationGroupIds, setExpandedNarrationGroupIds] = useState<ReadonlySet<string>>(
@@ -578,6 +586,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
+      responseTextPacing,
       timestampFormat,
       providers,
       routeThreadKey,
@@ -602,6 +611,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       canvasReferencesByTurnId,
     }),
     [
+      responseTextPacing,
       timestampFormat,
       providers,
       routeThreadKey,
@@ -1544,7 +1554,8 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
             <span>{providerName}</span>
           </div>
         ) : null}
-        <ChatMarkdown
+        <StreamingChatMarkdown
+          pacing={ctx.responseTextPacing}
           text={messageText}
           cwd={ctx.markdownCwd}
           threadRef={ctx.threadRef ?? undefined}

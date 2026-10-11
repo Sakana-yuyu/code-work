@@ -19,6 +19,7 @@
   "exports": {
     ".": "./index.ts",
     "./file-icons": "./src/markdownFileIcons.ts",
+    "./copy-source": "./src/MarkdownCodeCopyContext.tsx",
     "./links": "./src/markdownLinks.ts",
     "./markdown": "./src/nativeMarkdownText.ts",
     "./primitive": "./src/MarkdownTextPrimitive.tsx",

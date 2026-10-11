@@ -505,6 +505,7 @@ export function useSettingsRestore(onRestored?: () => void) {
   const updateSettings = useUpdatePrimarySettings();
   const config = useAtomValue(primaryServerConfigAtom);
   const supportsResponseStreamingModes = config?.features?.responseStreamingModes === true;
+  const supportsResponseTextReveal = config?.features?.responseTextReveal === true;
 
   const isTextGenerationModelDirty = !Equal.equals(
     settings.textGenerationModelSelection ?? null,
@@ -554,6 +555,9 @@ export function useSettingsRestore(onRestored?: () => void) {
         : []),
       ...(supportsResponseStreamingModes && resolveResponseStreamingMode(settings) !== "paragraph"
         ? [t("settings.responseStreamingMode")]
+        : []),
+      ...(supportsResponseTextReveal && settings.responseTextPacing === false
+        ? [t("settings.responseTextPacing")]
         : []),
       ...(settings.enableProviderUpdateChecks !==
       DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks
@@ -614,6 +618,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.enableLegacyTokenStreaming,
       settings.responseStreamingMode,
       supportsResponseStreamingModes,
+      supportsResponseTextReveal,
+      settings.responseTextPacing,
       settings.enableProviderUpdateChecks,
       settings.sidebarAutoSettleAfterDays,
       settings.sidebarAutoSettleOnMerge,
@@ -704,6 +710,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
       ...(supportsResponseStreamingModes ? { responseStreamingMode: "paragraph" as const } : {}),
+      ...(supportsResponseTextReveal ? { responseTextPacing: true } : {}),
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       backgroundActivity: DEFAULT_UNIFIED_SETTINGS.backgroundActivity,
       backgroundActivityProfile: DEFAULT_UNIFIED_SETTINGS.backgroundActivityProfile,
@@ -1869,6 +1876,21 @@ function ResponseStreamingSection() {
           />
         }
       />
+      {config?.features?.responseTextReveal === true ? (
+        <SettingsRow
+          {...searchableSetting("response-text-pacing")}
+          description={t("settings.responseTextPacing.description")}
+          control={
+            <Switch
+              checked={settings.responseTextPacing !== false}
+              onCheckedChange={(checked) =>
+                updateSettings({ responseTextPacing: Boolean(checked) })
+              }
+              aria-label={t("settings.responseTextPacing")}
+            />
+          }
+        />
+      ) : null}
     </SettingsSection>
   );
 }
