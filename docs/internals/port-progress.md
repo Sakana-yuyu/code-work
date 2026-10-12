@@ -358,3 +358,19 @@ server/client-runtime 的本批目标 `tsgo --noEmit` 通过，3 份源文件 li
 所有 Adapter 的 canonical 事件经过公共 ingestion；原始日志继续保留真实投递，不删日志或改 provider 结果。Web/Desktop/Mobile 与本地/远程/relay/隧道读取同一持久化领域事件；不增加合同、设置、权限或 UI 入口，离开与重开沿用既有反向路径。回退本主题提交恢复原合并前准入，无数据库迁移。
 
 此处是有界内存防护，不是永久原始事件账本：已淘汰身份、服务器重启以及 Adapter 重新生成的 eventId 不属于该窗口。客户端断线恢复只重放持久化领域序号，已有序号防重继续负责网络回放，不重新执行 provider 命令。第 8 项真实设备/连接中断、忙碌线程关闭与重开的完整观察仍开放，不能据此宣称跨重启 raw provider ledger 已实现。
+
+### 2026-10-12：Android 原生启动依赖配套与本机隔离设备
+
+本机独立 AVD 已通过 WHPX 启动，adb 状态为 device、sys.boot_completed=1，实际页大小 16384；用户原有 AVD 配置哈希保持不变。官方稳定版 37.2.12 的直接 QEMU 启动在独立运行目录补齐同包图形 DLL 搜索路径后成功，所有复制库哈希与官方包一致；未更改系统 SDK、用户 AVD 或依赖源码。
+
+第一次正常安装的 x86_64 APK 启动即退出，真实 NativeLoader 错误为 libfbjni.so 引用的 \_\_cxa_init_primary_exception 不存在。Gradle dependencyInsight 证实 react-native-shiki-engine 的 fbjni:+ 将 RN/Hermes 所需的 0.7.0 提升到 0.8.1；APK 中 libc++\_shared.so 与 RN 0.85.3 / NDK 27 的库哈希相同，缺少新版 fbjni 所需符号。临时替换 C++ 库只作诊断，没有作为产品修复或最终验收产物。
+
+新增 withAndroidFbjniVersion Expo 插件，在 project build.gradle 的专属生成块中将 fbjni 约束到当前 RN 的 gradle/libs.versions.toml 声明。RN 升级会更新约束，重复 prebuild 不重复追加；版本未知或已有块不完整时停止生成，保留原文件。真实 Expo prebuild 成功，正常 assembleDebug 没有诊断 C++ 覆盖脚本，2 分 6 秒完成，838 个任务中 61 个执行；最终 dependencyInsight 为 0.7.0 forced。正常 APK 的 zipalign -c -P 16 -v 4 通过，37 份 ELF 库 LOAD 均为 2\*\*14；实际安装成功，fbjni 不再引用缺失符号，Code Work 首页已显示。
+
+隔离导出目录用只读 junction 复用依赖，Metro 初期无法解析 Expo/RN/共享包的依赖；已在工作区外将每个包的依赖真实目录纳入文件映射并保留源码别名。完整 bundle 返回 200。开发版懒加载在该跨目录夹具下导致 SQLite 与分享缓存无法加载，因此本次 Metro 使用官方现有 EXPO_NO_METRO_LAZY=1；实际数据库文件和 WAL 已创建，首页无缓存错误。产品 Metro 与数据库源码没有修改。这是开发夹具路径处理，不能替代生产构建或真实远程/隧道验收。
+
+纯候选 vp test run --config .candidate-test.config.ts 指定 app.config.test.ts 和 plugins/withAndroidFbjniVersion.test.ts，共 10 项通过；新增 5 项经真实 Expo mod 流水线覆盖版本读取、重复生成、升级、未知版本和破损块。三份源码目标 lint 与格式检查通过，插件测试目标 tsc --noEmit 通过。将 Node 类型载入应用配置检查后，app.config.ts:187 的既有 MOBILE_VERSION_POLICY 字符串宽类型错误在本批与原始 HEAD 都能复现；不把该检查记为通过，另行跟踪修复。没有放宽产品类型设置或运行全仓检查。
+
+公开交叉依据：2026-10-12 检索 fbjni / \_\_cxa_init_primary_exception / React Native 0.85，采用官方上游仓库 [t3code #13710](https://github.com/pingdotgg/t3code/issues/13710) 的问题记录作为本地依赖图与符号检查的佐证；实现独立按本项目配置编写，没有复制参考源码。16KB 检查口径采用 [Android 官方页大小文档](https://developer.android.com/guide/practices/page-sizes)。
+
+本主题只影响 Android 构建依赖选择；iOS/Web/Desktop 与所有 provider、连接合同、权限、UI 入口及反向状态不变。已有 APK 必须原生重建，不能以 OTA 装入此修复。回退本主题提交并重新 prebuild/构建即可恢复原约束，无数据库迁移。本机 Native 已用新单次凭据经 adb reverse 连接相同隔离后端，真实首页显示 1202 条活动验收线程；10.0.2.2 直连曾超时，不能把转发连接等同于该路径或远程/隧道通过。流式选区与性能验收继续推进，第 4/6/8/9 项保持开放。
