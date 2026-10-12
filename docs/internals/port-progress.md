@@ -52,7 +52,7 @@
 | 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 合并、按帧发布与三端切片已落地，最终验收开放                           | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / 三端渲染 | 节奏开关、首段全文、字素边界、完成吸附及全文复制与几何已覆盖；Native 与最终性能仍开放                                 |
 | 6   | 流式选区与滚动锚点                                          | Web 与 Android 选区已验证，其余继续验收                                | 真实 StreamingChatMarkdown / Android 原生选区页及增量夹具                                      | Android 范围与全文复制、追加和终态选区保持已验证；完整滚动锚点及 iOS 设备矩阵仍开放                                   |
 | 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证                                     | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                        | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
-| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 会话流合并与 Windows 后台检查已修复，继续验收矩阵                      | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份                            | 共享/Web 实体 18 项、主机进程 23 项及三端受控忙碌回合通过；6 既有连接保持、8 消息对账，连续帧/真实 provider/隧道开放  |
+| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 会话合并与后台检查已修复，Native 视口复用已落地；无闪烁验收开放        | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份 / Mobile ThreadFeed        | 三端受控正文与连接通过；连续录像发现 Native 初始空白，视口复用后缩短至约 0.25 秒；82 项与纯候选类型通过，矩阵开放     |
 | 9   | 同口径帧间隔性能无回归                                      | Android JS 响应改善、UI 补充交叉未通过；Web/Desktop 生产静态无持续回归 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                           | 生产 Web 三轮与 Desktop 两组共 72 窗口全部零长帧；开发态失败、显示条件与几何差异保留；Android 空闲及连接矩阵仍开放    |
 | 10  | Windows argv 三层守卫                                       | 待实施                                                                 | Antigravity / ZCode / resolveSpawnCommand                                                      | 尚未运行                                                                                                              |
 | 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 待实施                                                                 | ProviderDriver / provider snapshot 探测                                                        | 尚未运行                                                                                                              |
@@ -611,3 +611,15 @@ Android manifest 后续返回 200，预热后显式重新打开开发客户端�
 本轮用主目录冻结安装的 SDK 按恢复后的普通隔离构建配置打包，版本入口与服务启动通过，不再依靠 SDK 或 peer 临时别名，也没有 NODE_OPTIONS 预加载。夹具回合/原事件 ID 增加本次进程 UUID，避免测试后端重启时重用旧编号；它不进入产品源码。当前回合 159 字符与只读数据库完全一致、streaming=0/session=ready，历史六条消息逐字段不变，总计八条。`verify-current-busy-clients.cjs` 核对六份 Web 记录、五份新鲜原生层级、两份真实 Electron 记录、原历史与连接收据通过，汇总为 `busy-current-clients-accepted.json`。
 
 虚拟列表的物理 DOM 顺序与可见顺序不同。最初按最后一个 DOM assistant 推断即时重开缺消息，已通过规范 messageId 与两张实际截图纠正：即时记录已经包含当前全文，位置与稳定记录一致。原始记录和初始判断仍保留，不把错误诊断写成产品故障；未录制连续帧，也未完成滚动锚点、隧道或外部真实 provider 矩阵，因此第 8 项继续开放，第 9 项 UI 交叉仍未通过。本主题仅补充两份证据文档，回退对应提交即可恢复，无产品数据迁移。
+
+### 第 8 项：移动端重开视口与连续帧补充（2026-10-13）
+
+随后录制了实际关闭与重开的连续过程。Desktop v2 的 151 张 SDK 帧中，Home 返回聊天后正文与代码可见；Android v2 原始视频为 1280×720、45.889922 秒、191 个编码帧，重开后的多个帧正文为空，最后恢复。此前静态截图没有捕捉到这个区间，不能沿用静态记录声称无闪烁通过。录屏与提取原帧均保留，不重采样、不作为第 9 项 UI 帧率。
+
+隔离诊断显示空白时仍有 14 条缓存输入、15 条展示行，freeze=false；首轮视口约 900×519，估计总高度 5673px，稳定后为 900×624、2993px。`ThreadFeed` 原来每次挂载把分栏宽度与高度设为零，需要先修正排版与列表末尾。现在只保存上一轮非零实测视口，窗口宽高和布局相同才复用，实际 onLayout 继续修正；只存一条数字记录，不保留消息、选区、列表实例或订阅。Web/Desktop、provider 契约及远程/隧道协议不变，iOS 使用相同尺寸提示但未在本机运行。
+
+诊断原版录像检测到 129 个正文空白编码帧，区间 1.042489—4.687100 秒；视口实验为 9 帧、0.554067—0.721833 秒。去掉探针、重新生产打包并冷启动后，真实候选为 14 帧、0.681111—0.935289 秒，之后回复和代码保持可见。像素检查只在固定正文区域辨识空白，并用原帧人工核对；它不测量显示帧率。初次挂载仍有约 0.25 秒空白，第 8 项无闪烁与完整连接矩阵继续开放，第 9 项 Native UI 回归仍未通过。
+
+`vp test run` 定向运行 `thread-feed-recycling`、`thread-feed-live-follow`、`threadContentPresentation`、`threadActivity`，4 文件 82 项通过；`ThreadFeed.tsx` 的 lint、fmt 与 diff 检查通过。单文件目标 tsc 缺少应用导航声明会报告 navigate 的 never；加入实际 Stack 后，只剩用户原有 `SettingsByokRouteScreen` 两处导航参数错误。纯 HEAD 加本次源码候选使用实际导航声明与依赖路径进行 `tsc --noEmit`，无诊断通过，没有改用户文件或放宽类型。生产 JS 包 27225246 字节，源码 SHA 与 Main 相同，所有采样探针已从候选移除。
+
+原始 `native-busy-reopen-{v2,diag,viewport,candidate}.mp4`、对应编码时间与原帧、像素记录、SDK 层级和候选类型日志在工作区外。受控第六回合已完成，115 字符、19 个夹具事件，实际 Native 红色停止方块恢复发送箭头；本轮 C003 在可见页到达，没有将其记作关闭期间事件。回退本主题即可恢复原视口初始化，无数据迁移。

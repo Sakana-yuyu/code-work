@@ -1640,6 +1640,17 @@ function ThreadFeedPlaceholder(props: {
   );
 }
 
+// 只保留上一轮有效几何，不保存线程内容；窗口或布局改变时重新测量。
+let previousFeedViewport:
+  | {
+      readonly windowWidth: number;
+      readonly windowHeight: number;
+      readonly variant: LayoutVariant | undefined;
+      readonly width: number;
+      readonly height: number;
+    }
+  | undefined;
+
 export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   // 截止时刻固定于挂载，时间推进不会把现有消息或可选详情切换到另一个父节点。
   const [historicalCutoffMs] = useState(() => Date.now() - 3_000);
@@ -1654,12 +1665,18 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const headerMaterialVisibleRef = useRef(false);
   const previousLatestTurnRef = useRef(props.latestTurn);
   const userScrollSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const cachedViewport =
+    previousFeedViewport?.windowWidth === windowWidth &&
+    previousFeedViewport.windowHeight === windowHeight &&
+    previousFeedViewport.variant === props.layoutVariant
+      ? previousFeedViewport
+      : undefined;
   const { appearance } = useAppearancePreferences();
-  const [viewportWidth, setViewportWidth] = useState(() =>
-    props.layoutVariant === "split" ? 0 : windowWidth,
+  const [viewportWidth, setViewportWidth] = useState(
+    () => cachedViewport?.width ?? (props.layoutVariant === "split" ? 0 : windowWidth),
   );
-  const [viewportHeight, setViewportHeight] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(cachedViewport?.height ?? 0);
   const [disclosureToggleSettling, setDisclosureToggleSettling] = useState(false);
   // Live-follow latch. LegendList's maintainScrollAtEnd alone re-pins the feed
   // whenever the viewport drifts back inside its geometric threshold, which
@@ -1901,12 +1918,24 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
 
   useEffect(() => clearUserScrollSettle, [clearUserScrollSettle]);
 
-  const handleViewportLayout = useCallback((event: LayoutChangeEvent) => {
-    const nextWidth = Math.round(event.nativeEvent.layout.width);
-    const nextHeight = Math.round(event.nativeEvent.layout.height);
-    setViewportWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
-    setViewportHeight((current) => (Math.abs(current - nextHeight) > 1 ? nextHeight : current));
-  }, []);
+  const handleViewportLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const nextWidth = Math.round(event.nativeEvent.layout.width);
+      const nextHeight = Math.round(event.nativeEvent.layout.height);
+      if (nextWidth > 0 && nextHeight > 0) {
+        previousFeedViewport = {
+          windowWidth,
+          windowHeight,
+          variant: props.layoutVariant,
+          width: nextWidth,
+          height: nextHeight,
+        };
+      }
+      setViewportWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+      setViewportHeight((current) => (Math.abs(current - nextHeight) > 1 ? nextHeight : current));
+    },
+    [windowWidth, windowHeight, props.layoutVariant],
+  );
 
   // Thread identity is env-scoped: two environments can hold the same
   // ThreadId, and keying resets (or the list mount) on the bare id would
