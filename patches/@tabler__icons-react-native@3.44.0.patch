@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index ec6b60d03..5f4b2b9d6 100644
+--- a/package.json
++++ b/package.json
+@@ -40,7 +40,7 @@
+         "default": "./dist/cjs/icons/*.cjs"
+       },
+       "import": {
+-        "types": "./dist/icons/*.d.ts",
++        "types": "./dist/icons/icons/*.d.ts",
+         "default": "./dist/esm/icons/*.mjs"
+       }
+     }

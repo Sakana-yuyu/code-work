@@ -98,3 +98,15 @@ Android 代码块等待新高亮时保留旧完成行，首次也使用完整行
 - `apps/server/src/provider/byok/modelGateway.test.ts`、`apps/server/src/provider/byok/ByokBalanceService.test.ts`、`apps/server/src/provider/byok/ByokBalanceDashboardCore.test.ts`
 - `apps/web/src/components/settings/ByokModelAdaptersSection.test.ts`、`apps/web/src/components/usage/UsagePlanView.test.tsx`、`apps/web/src/components/chat/MessagesTimeline.performance.test.ts`
 - `apps/mobile/src/features/settings/SettingsByokRouteScreen.logic.test.ts`、`apps/mobile/src/lib/threadActivity.test.ts`
+
+## 2026-10-12：Native 图标按需加载后的完整复测
+
+为减少原生包与内存开销，Mobile AppSymbol 从 Tabler 根索引改为同版本的 79 个公开单图标入口；公开 ESM 类型出口由版本限定依赖补丁修正。生产包 38,821,377 → 27,221,472 字节，实际 SDK 图标、选择和复制仍显示；目标 tsc、4 项图标用例、lint/fmt 与冻结锁文件校验通过。完整 1202 活动 / 605 展示行，1280×720、160dpi，同一 APK 生产 JS 模式；20 页上/下 ×4，每页 12 帧、窗口 120 rAF，全部移动 12480px，无边界空操作。
+
+| 版本         | 最高窗口 p95（ms） | 8 窗口 p95 中位数（ms） | 最大间隔（ms） | 单窗口 >50ms 最高个数 |
+| ------------ | ------------------ | ----------------------- | -------------- | --------------------- |
+| 按需图标首轮 | 116.7475           | 85.3863                 | 215.0552       | 17                    |
+| 原始基线重测 | 141.1475           | 108.3572                | 344.6282       | 19                    |
+| 按需图标交叉 | 137.6201           | 112.8331                | 274.5196       | 19                    |
+
+原始三轮记录及先前未通过的三轮记录均保留。Native Heap 重测基线约 946.8MiB，优化两轮为 726.5 / 722.1MiB；包体、内存改善已证实。交叉中位数仍高于本轮基线，最高 p95 也高于最初 119.4708ms 基线，不能据首轮较低值宣布无回归。原生第 9 项仍待修复，独立 Desktop、iOS 实机与 Android 合成器未被此 JS 采样替代。两个导出列表和完整活动夹具已恢复，测量连接与 reverse 端口已关闭；证据与实现范围详见 [移植跟踪](./port-progress.md)。

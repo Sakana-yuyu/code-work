@@ -386,7 +386,7 @@ server/client-runtime 的本批目标 `tsgo --noEmit` 通过，3 份源文件 li
 
 新增入口仅用于 Android 聊天消息，包含用户与 assistant、历史与运行中回复；完成或系统返回为反向操作。Web/Desktop 保留已验证的 DOM 选区冻结；iOS 保留已有原生正文路径，本机没有 iOS 运行工具，不能声称 UIKit 设备通过。所有 provider 和本地/远程/隧道使用同一消息全文，此处没有新增协议、权限或服务端能力门控。中/英/日翻译与[用户说明](../user/assistant-output.md)已同步；已有翻译文件的用户改动通过精确补丁保留。回退本主题提交即可移除等价入口，无持久化数据迁移。
 
-随后截图核对发现 `select_all` 未加入 AppSymbol 的 Android 映射，入口曾有辅助标签和点击区域，但没有可见图标。现补齐既有 Tabler `IconSelectAll`，保留 14pt 尺寸、颜色、点击区域与完整正文选择行为。新回归直接调用实际选择按钮和 AppSymbol，并比较已安装 SDK 的组件：旧源码 1 项失败 / 3 项通过，修复后图标 4 项与原选区 8 项通过；目标 Mobile tsc、两源文件 lint/fmt 通过。候选测试以 SDK 的公开 ESM 入口内联运行，仅替换 NativeSvg 叶子，避免 Node 直接加载 RN Flow；测试中的非法 SDK 名称改为合法但未映射的 `wifi`，没有放宽产品类型。生产 JS 模式的原生截图已确认用户和 assistant 消息旁均有虚线选择图标；点击回复旁图标打开 71 字符完整来源，完成后返回原线程。证据为工作区外 `native-selection-icon-visible/opened/returned.png`，Native 性能探针不存在。该修复不改变 iOS 原生符号分支、provider 或连接协议。
+随后截图核对发现 `select_all` 未加入 AppSymbol 的 Android 映射，入口曾有辅助标签和点击区域，但没有可见图标。现补齐既有 Tabler `IconSelectAll`，保留原有尺寸、颜色、点击区域与完整正文选择行为。新回归直接调用实际选择按钮和 AppSymbol，并比较已安装 SDK 的组件：旧源码 1 项失败 / 3 项通过，修复后图标 4 项与原选区 8 项通过；目标 Mobile tsc、两源文件 lint/fmt 通过。候选测试以 SDK 的公开 ESM 入口内联运行，仅替换 NativeSvg 叶子，避免 Node 直接加载 RN Flow；测试中的非法 SDK 名称改为合法但未映射的 `wifi`，没有放宽产品类型。生产 JS 模式的原生截图已确认用户和 assistant 消息旁均有虚线选择图标；点击回复旁图标打开 71 字符完整来源，完成后返回原线程。证据为工作区外 `native-selection-icon-visible/opened/returned.png`，Native 性能探针不存在。该修复不改变 iOS 原生符号分支、provider 或连接协议。
 
 原生性能仍开放：曾在多次开发包重载并展开活动后发生 LOW_MEMORY 退出，Native Heap 约 0.9GB、RSS 约 1.4GB；重建 JNI 配套只修复启动依赖。生产模式 JS 包也观察到较高原生内存，不能声称内存问题已解决。两次启动堆追踪分别发生缓冲溢出和 INVALID_STACK_BOUNDS，不据此定因；错误含义核对于 2026-10-12 的 [Perfetto 官方协议](https://raw.githubusercontent.com/google/perfetto/main/protos/perfetto/trace/profiling/profile_packet.proto)，检索词 heapprofd / client_error / stack bounds。较小采样记录不替代完整内存或帧率验收。本次仅调整专用模拟器的显示覆盖值，原尺寸/密度/旋转设置已留存，用户原 AVD 未修改。第 4/5/6/8/9 项继续保留各自尚未完成的设备、连接与性能边界。
 
@@ -407,3 +407,23 @@ server/client-runtime 的本批目标 `tsgo --noEmit` 通过，3 份源文件 li
 交叉复测第三组上滚的 p95 与长帧数量超过基线，Native 性能验收保持未通过，不用中位数或较低的一轮替代结果。原始记录为工作区外的 `native-feed-current-perf.json`、`native-feed-baseline-perf.json`、`native-feed-crossover-perf.json`；`summarize-native-feed-perf.cjs current baseline crossover` 同时检查八窗口样本数、行数、高度、页数与移动距离。500 活动轮次单独保存为 `native-feed-current-window500-perf.json`。两个 ThreadFeed 备份 SHA-256 已精确恢复，完整活动临时模块已移除；回执 WebSocket 已关闭，测量的 ADB reverse 端口已清理。主目录没有临时采样入口。
 
 Native Heap / RSS 的较高占用仍需归因；Hermes 的 `Profiler.enable` 返回 Unsupported method，记录工具边界，不编造 CPU profile。正在核对按需图标导入：本地安装的 `@tabler/icons-react-native@3.44.0` 有 6147 个图标模块，AppSymbol 是唯一运行时聚合导入，38,824,759 字节生产包中包含未使用的 BrandTiktok / BrandWhatsapp 等名称；该事实说明包体有可验证的优化候选，尚不能证明它造成这次长帧。第 9 项继续修复和复测，Desktop 独立外壳、iOS、真实运行回合及连接/锚点矩阵仍开放。回退本文档增量可恢复原记录，无数据库迁移或产品配置变化。
+
+### 2026-10-12：Native 图标按需加载与交叉复测
+
+AppSymbol 原先从 Tabler 根入口导入 79 个图标；实际 Metro 生产包包含未使用的 BrandTiktok / BrandWhatsapp 等整套索引。现改为已安装 SDK 3.44.0 的公开单图标入口，根入口仅用于擦除后的 Icon 类型；图标几何、颜色、尺寸、Material/SF 名称映射和回退规则保持一致。生产包从 38,821,377 字节降至 27,221,472 字节，未使用的上述品牌图标已移出。完整活动临时夹具包为 27,224,909 字节，依赖类型补丁安装前后均相同。没有升级 SDK、替换图标设计或引入额外运行时依赖。
+
+SDK 的公开 import.types 误指 dist/icons/_.d.ts，发行文件实际位于 dist/icons/icons/_.d.ts。按项目现有 pnpm patchedDependencies 增加版本限定的单行 package.json 补丁，只修正 ESM 声明路径；require 分支保持原状。未打补丁的纯候选目标 tsc 复现 82 个 TS7016，补丁后目标 tsc 通过；主目录安装补丁后实际 AppSymbol 与测试也通过定向 tsc。4 项实际图标/按钮用例、两源文件 lint 与格式检查通过；SDK 源映射一并复制到隔离测试依赖后不再有缺失 map 的噪声。锁文件仅新增补丁哈希、Mobile 引用与对应快照键，vp install --lockfile-only --frozen-lockfile --offline --ignore-scripts 通过；主目录仅按 Mobile 范围安装冻结锁文件，生命周期脚本未执行。
+
+相同 debug APK / 生产 JS 模式 / Android 17 API 37.1 / x86_64 / 16KB / 1280×720 / 160dpi，继续使用两个版本各自 buildThreadFeed 生成相同 1202 活动输入。所有 24 新窗口均为 605 行、624px 视口、22133px 内容，20 页实际移动 12480px，没有边界空操作；每页等待 12 rAF、最近 120 间隔，上/下各 20 页 ×4 组。采样期间没有并行安装、测试或类型检查。原始记录为工作区外 native-feed-icons-perf.json、native-feed-baseline-icons-perf.json、native-feed-icons-crossover-perf.json，全部保留。
+
+| 版本         | 最高窗口 p95（ms） | 8 窗口 p95 中位数（ms） | 最大间隔（ms） | 单窗口 >50ms 最高个数 |
+| ------------ | ------------------ | ----------------------- | -------------- | --------------------- |
+| 按需图标首轮 | 116.7475           | 85.3863                 | 215.0552       | 17                    |
+| 原始基线重测 | 141.1475           | 108.3572                | 344.6282       | 19                    |
+| 按需图标交叉 | 137.6201           | 112.8331                | 274.5196       | 19                    |
+
+Native Heap PSS 的重测基线为 969,508KiB（946.8MiB），按需首轮与交叉为 743,892 / 739,460KiB（726.5 / 722.1MiB）；两轮优化的总 PSS 为约 1.03GiB。真实截图仍显示工具、状态、选择与复制图标和已完成代码高亮。按需加载改善包体与内存，但交叉窗口中位数 112.8331ms 仍高于本轮基线 108.3572ms，且最高 p95 高于最初基线 119.4708ms；第 9 项继续未通过，不选择首轮较低结果或提高既定门槛。JS rAF 证据不能代替 Android 合成器 FrameTimeline、iOS 实机或独立 Desktop。
+
+安装补丁产生新的 pnpm 物理目录后，隔离 Metro 一次返回模块解析 500；仅为两个导出目录补充只读 SDK watch 路径，主目录 Metro 配置未改。交叉采样前曾观察到后端开发进程重启导致重新连接，已等待实际界面恢复在线后才开始采样；这只能证明当前静态历史的恢复，不能代替运行中正文重连验收。两个导出 ThreadFeed 已按原始 SHA-256 恢复，完整活动模块和临时 WebSocket reverse 端口已移除，原生采样 PID 已核对身份后主动停止；探针没有进入提交。
+
+本主题影响 Mobile 的共享 AppSymbol 导入；Android 已有原生像素与交互证据，iOS 继续走 ExpoSymbolView，实际 iOS 设备未测。Web/Desktop 使用各自图标实现；provider、设置入口、连接模式及协议没有新增能力或权限门控。依据为本机安装包 exports、实际发行声明与官方 [Tabler React Native SDK 说明](https://github.com/tabler/tabler-icons/blob/main/packages/icons-react-native/README.md)，2026-10-12 检索 tabler icons react native / individual icon exports，并优先采用已安装版本元数据。补丁只对 3.44.0 生效，升级该 SDK 时须核对或移除；回退本主题提交并按冻结锁文件安装即可恢复，无数据迁移。

@@ -135,6 +135,7 @@ packageExtensions:
       vite: "catalog:"
 
 patchedDependencies:
+  "@tabler/icons-react-native@3.44.0": patches/@tabler__icons-react-native@3.44.0.patch
   "@clerk/electron@0.0.37": patches/@clerk__electron@0.0.37.patch
   "@clerk/expo@4.2.0": patches/@clerk__expo@4.2.0.patch
   "@codingame/monaco-vscode-api@33.0.9": patches/@codingame__monaco-vscode-api@33.0.9.patch

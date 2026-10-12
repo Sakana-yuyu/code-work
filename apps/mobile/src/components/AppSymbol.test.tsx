@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { IconCheck, IconEye, IconSelectAll } from "@tabler/icons-react-native";
+import IconCheck from "@tabler/icons-react-native/IconCheck";
+import IconEye from "@tabler/icons-react-native/IconEye";
+import IconSelectAll from "@tabler/icons-react-native/IconSelectAll";
 import { isValidElement } from "react";
 import type { SymbolViewProps } from "expo-symbols";
 
