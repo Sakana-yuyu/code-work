@@ -11,6 +11,7 @@ import {
   mobileBackgroundActivityReporterLayer,
 } from "./background-activity";
 import { connectionPlatformLayer } from "./platform";
+import { nativeFrameClockLayer } from "./native-frame-clock";
 
 const providedConnectionPlatformLayer = connectionPlatformLayer.pipe(
   Layer.provide(runtimeContextLayer),
@@ -25,6 +26,7 @@ type ConnectionLayerSource =
   | typeof connectionPlatformLayer
   | typeof mobileBackgroundActivityObserverLayer
   | typeof mobileBackgroundActivityReporterLayer
+  | typeof nativeFrameClockLayer
   | typeof pullRequestDiffLoaderLayer;
 
 const providedClientConnectionLayer = Layer.merge(Connection.layer, snapshotLoaderLayer).pipe(
@@ -33,6 +35,7 @@ const providedClientConnectionLayer = Layer.merge(Connection.layer, snapshotLoad
       runtimeContextLayer,
       providedConnectionPlatformLayer,
       mobileBackgroundActivityObserverLayer,
+      nativeFrameClockLayer,
     ),
   ),
 );

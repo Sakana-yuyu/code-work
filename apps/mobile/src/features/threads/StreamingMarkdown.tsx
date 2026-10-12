@@ -3,6 +3,7 @@ import { View } from "react-native";
 import { useTextReveal } from "@codework/client-runtime/text-reveal";
 import { MarkdownCodeCopyProvider } from "@codework/mobile-markdown-text/copy-source";
 import { IncrementalMarkdown } from "../../components/IncrementalMarkdown";
+import { nativeTextRevealClock } from "../../connection/native-frame-clock";
 import {
   SelectableMarkdownText,
   hasNativeSelectableMarkdownText,
@@ -26,7 +27,11 @@ const MarkdownContent = memo(function MarkdownContent(props: Omit<Props, "stream
 
 /** 测量完整正文，不把显示节奏写回消息；触摸选择前先追上全文。 */
 export const StreamingMarkdown = memo(function StreamingMarkdown(props: Props) {
-  const reveal = useTextReveal(props.text, { enabled: props.pacing, streaming: props.streaming });
+  const reveal = useTextReveal(
+    props.text,
+    { enabled: props.pacing, streaming: props.streaming },
+    nativeTextRevealClock,
+  );
   return (
     <MarkdownCodeCopyProvider
       markdown={reveal.pending ? reveal.fullText : null}

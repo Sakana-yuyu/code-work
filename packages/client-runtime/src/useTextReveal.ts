@@ -1,11 +1,16 @@
 import { useLayoutEffect, useState, useSyncExternalStore } from "react";
-import { createTextReveal, type TextRevealInput } from "./textReveal.ts";
+import { createTextReveal, type TextRevealClock, type TextRevealInput } from "./textReveal.ts";
 
 export { isTextRevealEnabled } from "./textReveal.ts";
+export type { TextRevealClock } from "./textReveal.ts";
 
 /** 仅限显示；调用方的复制、选区与尺寸测量继续使用返回的 fullText。 */
-export function useTextReveal(text: string, options: Omit<TextRevealInput, "text">) {
-  const [reveal] = useState(() => createTextReveal({ text, ...options }));
+export function useTextReveal(
+  text: string,
+  options: Omit<TextRevealInput, "text">,
+  clock?: TextRevealClock,
+) {
+  const [reveal] = useState(() => createTextReveal({ text, ...options }, clock));
   useLayoutEffect(() => {
     reveal.activate();
     return () => reveal.dispose();

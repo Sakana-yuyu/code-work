@@ -1,4 +1,5 @@
 import { EnvironmentId, type EnvironmentId as EnvironmentIdType } from "@codework/contracts";
+export { FrameClock } from "./latestFrame.ts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";

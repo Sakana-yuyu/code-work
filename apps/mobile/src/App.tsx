@@ -11,6 +11,7 @@ import { createStaticNavigation } from "@react-navigation/native";
 import { RegistryContext } from "@effect/atom-react";
 import { MOBILE_LINK_PREFIXES } from "./features/connection/pairing";
 import { ConfirmDialogHost } from "./components/ConfirmDialogHost";
+import { NativeFrameScheduler } from "./components/NativeFrameScheduler";
 import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
 import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
 import { IncomingShareProvider } from "./features/sharing/IncomingShareProvider";
@@ -82,6 +83,7 @@ function AppContent() {
   return (
     <>
       <SplashScreenCoordinator />
+      <NativeFrameScheduler />
       <GestureHandlerRootView className="flex-1">
         <KeyboardProvider statusBarTranslucent>
           <SafeAreaProvider>
