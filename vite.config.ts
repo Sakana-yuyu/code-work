@@ -10,6 +10,12 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // 原生加载会绕过 node:child_process 的测试替身；仅内联目标 SDK。
+    server: {
+      deps: {
+        inline: ["@effect/platform-node", "@effect/platform-node-shared"],
+      },
+    },
     exclude: [
       "**/.repos/**",
       "**/node_modules/**",

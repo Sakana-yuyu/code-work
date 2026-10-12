@@ -251,6 +251,8 @@ controls remain in **Settings** → **Connections** on web and desktop or **Sett
 
 线程列表和对话详情可能先后收到状态更新。对话使用较新的会话状态：运行中的回合显示停止操作，回合结束后恢复发送操作。工作区、分支等信息继续采用线程列表中的当前值。
 
+在 Windows 主机上，版本控制与 Agent 的后台检查隐藏控制台窗口，线程列表和回复页继续在应用内更新。
+
 ## Security Notes
 
 - Treat pairing URLs and pairing tokens like passwords.

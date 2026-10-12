@@ -583,3 +583,23 @@ Desktop 共用实际 Electron 41.5.0 / Node 24.15.0 二进制、13779 专用后�
 候选 Web 首次配对后仍出现空项目列表，保存为 `busy-web-fixed-initial-empty`，重载也未解决；不能宣称初次远程环境展示已修复。Android 候选冷加载遇到 Metro manifest 加载失败，保留错误页与新启动记录，尚未作为此修复的设备通过证据。原 Electron 首次新增远程环境也曾因 HTTP shell 6 秒超时未显示项目，后来重载显示；直接 HTTP 同期 200、Git 直接执行约 58–68ms，与服务端 GitVcsDriver 5 秒超时并存，根因尚未解决。
 
 原始忙碌动作、代理连接收据、DOM/SDK 层级、截图、只读数据库快照及 `busy-runtime-fixed-verified.json` 保留在工作区外。隔离 fixture 只控制 Codex `makeRuntime` 的事件，之后走真实 ingestion/engine/projector，不修改主产品入口、不调用外部 CLI。其余 adapter 的第 7 项终态定向测试仍适用，但本轮不证明各真实 provider、隧道、多环境切换或完整滚动锚点矩阵；第 8 项继续开放，第 9 项原生 UI 交叉仍未通过。回退此提交即可恢复合并与文档，无数据迁移。
+
+### 第 8 项：Windows SDK 后台控制台路径（2026-10-13）
+
+上述首次空列表问题继续定位到 Windows 主机的后台进程启动。直连 13809、代理 13811、候选 Web 5763 的同一 shell 接口均曾在 20 秒超时；直接 Node spawn 与独立 ProcessRunner 则约 55–65ms 成功。仅重启原 SDK 后端，服务内诊断仍在 12 秒超时。SDK 4.0.0-beta.103 没有给 `spawn` 和 Windows `taskkill` 传入 `windowsHide`；[Node 官方说明](https://nodejs.org/api/child_process.html)该选项默认 false。
+
+隔离预加载试验仅设置隐藏选项，实际服务 ProcessRunner 约 90ms 成功，三个 shell 请求 125–166ms 返回 200，真实 Web 恢复项目与线程。随后收敛为 `@effect/platform-node-shared@4.0.0-beta.103` 的固定版本补丁：只在 SDK 的启动与两个既有 Windows 清理调用补充隐藏选项，src/dist 同步；不升级依赖、不修改 argv、stdio、终态或权限。它保留既有 MIT 依赖许可，不移植参考项目源码。
+
+| 验证层次               | 结果与边界                                                                                                                                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SDK 原包与候选定向对照 | 3 项原包失败，补丁通过；真实子进程核对引号/Unicode argv、stdin/stdout/stderr 与退出码，清理调用使用替身，未向已退出 PID 执行真实 taskkill                                                               |
+| 默认仓库定向入口       | `vp test run apps/server/src/windowsProcessSpawner.test.ts apps/server/src/processRunner.test.ts apps/server/src/project/RepositoryIdentityResolver.test.ts`，3 文件 23 项通过；目标类型、lint/fmt 通过 |
+| 冻结安装               | 隔离目录与主工作区均按 `--frozen-lockfile --offline --ignore-scripts --filter 'codework...'` 成功；安装后 SDK 运行时 SHA 与候选一致；锁文件仅新增补丁及四处对应引用，无版本升级                         |
+| 实际 SDK 后端产物      | 不使用临时 NODE_OPTIONS 预加载；实际 ProcessRunner 约 86ms、退出码 0；直连/代理/候选 Web shell 均 200，409–427ms，1 项目/1 线程                                                                         |
+| 首次配对的真实 Web     | 新 localhost origin 的独立浏览器存储，首次配对后无需重载即显示项目与既有线程；原先空列表的 origin 与失败记录保留                                                                                        |
+
+测试 runner 原生加载 SDK 时会绕过 builtin 替身，最初默认入口的三项观察断言因此失败，并未调用对应替身。按 [Vitest 官方依赖内联说明](https://vitest.dev/config/server.html)仅内联两个 Node SDK 包后，默认入口的实际已安装补丁通过；没有跳过或放宽断言。SDK 的非零退出后 PID 清理身份问题仍归第 16 项，不把隐藏选项补丁当作进程 registry 的实现。
+
+隔离 SDK 副本的初次构建缺少 hoisted `ws` peer，启动被拒绝；补齐仅在隔离 pack 配置中的既有 peer 映射后，产物的版本入口与后端均启动成功。临时 pack 配置已按 SHA 恢复，主产品没有预加载探针。`busy-shell-http-{fixed,hidden,sdk-corrected}-diagnostic.json`、服务进程诊断、23 项结果、冻结安装及 `busy-sdk-fresh-web-initial` DOM/截图均在工作区外。对照支持控制台创建路径导致等待的解释，没有把当时主机内存压力认定为已证实根因。
+
+适用面为 Windows 主机的 SDK 进程，不改变 Web/Desktop/Mobile 协议或连接模式；Node 在其他平台忽略隐藏控制台选项。真实 provider、隧道及完整锚点矩阵继续开放，Android 候选 manifest 加载和第 9 项 UI 交叉仍未完成。官方资料于 2026-10-13 检索 `Node child_process windowsHide`、`Vitest external dependencies mocking`，采用 Node/Vitest 原始说明及本机已安装 SDK 源码。回退本主题并按锁文件重新安装可恢复原 SDK；升级该 SDK 时需核对并重建补丁，无数据迁移。

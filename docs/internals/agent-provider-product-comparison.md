@@ -207,3 +207,5 @@ Desktop 使用同一实际 Electron 41.5.0 二进制、独立后端/状态与 de
 共享实体合并改为保留会话时刻更新的一侧，同时保留 shell 的工作区元数据与详情的集合引用。旧实现四种较新详情状态用例失败，修复后共享/Web 实体 18 项通过，目标类型与源码 lint/fmt 通过。实际 Electron 41.5 生产构建验证运行中重开、连接中断与恢复均保持停止生成，结束后恢复发送消息；同一规范 assistant 消息，159 字符与只读数据库一致，无重复或乱序，旧 4 条历史消息保留。
 
 修复前 Web 与 Android 已通过受控运行中的关闭、重开、断线原事件重投与自动恢复正文观察；该证据使用隔离 Codex runtime 事件经过真实 ingestion/engine/projector，不能替代外部 provider。Android 使用官方 SDK UiAutomation 新鲜层级，失败后残留的旧 XML 不计入。候选 Web 首次配对的空列表与 Android 候选 Metro manifest 加载失败均保留，尚未作为修复通过证据；Electron 开发态终态失败和首次远程列表/Git 超时也未关闭。此轮为功能验证，不能替代上述帧间隔、选区或完整滚动锚点验收。连接与设备矩阵继续见 [移植跟踪](./port-progress.md)。
+
+后续 Windows 主机对照把 shell 接口的 20 秒等待收敛到 SDK 默认控制台路径：重启原 SDK 仍超时，仅隐藏启动选项的试验恢复；固定 SDK 4.0.0-beta.103 补丁产物不使用预加载脚本，实际服务 ProcessRunner 约 86ms，直连/代理/Web 三条 shell 均 200、409–427ms。新 Web origin 的首次配对无需重载即显示项目和既有线程。原包 3 项红灯、默认入口 3 文件 23 项通过，隔离/主目录冻结安装及 SDK SHA 核对通过，锁文件仅补丁引用变化。此补丁只隐藏启动与既有 Windows 清理控制台，argv、stdio、版本、权限与协议不变；没有完成第 16 项 PID 身份 registry，也没有关闭 Android manifest、真实 provider、隧道和 Native UI 性能矩阵。完整证据与回退说明见 [移植跟踪](./port-progress.md)。
