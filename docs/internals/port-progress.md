@@ -52,7 +52,7 @@
 | 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 合并、按帧发布与三端切片已落地，最终验收开放 | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / 三端渲染 | 节奏开关、首段全文、字素边界、完成吸附及全文复制与几何已覆盖；Native 与最终性能仍开放                                 |
 | 6   | 流式选区与滚动锚点                                          | Web 代码及普通文字已验证，其余继续验收       | 真实 StreamingChatMarkdown 临时交互夹具 / Mobile 原生 Markdown                                 | 未闭合段落追加、终态与清除选区均保持既有节点；滚动锚点与原生设备仍待矩阵验证                                          |
 | 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证           | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                        | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
-| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 订阅竞态已修复，继续验收完整矩阵             | ws 立即订阅 / state/threads / 运行中正文与缓存游标                                             | 真实 RPC 订阅 6 项、共享同步/挂载/分页/RPC 会话 43 项通过；设备与原始 provider 回放继续核验                           |
+| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 订阅竞态与近期原包重投已修复，继续验收矩阵   | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份                            | 真实 RPC 订阅 6 项、共享同步/挂载/分页/RPC 会话 43 项通过；近期防重与三态持久化回归见下方，设备/连接观察仍开放        |
 | 9   | 同口径帧间隔性能无回归                                      | Web 本轮对照通过；Desktop/Native 仍开放      | 1280×720、1202 活动、上下各 20 页 ×4 组                                                        | 最新版本与同期原始版本最高 p95 均 18.1 ms，交叉复测最大 53.0 / 53.7 ms；首次最新测量最大 53.9 ms 也保留，详见下方记录 |
 | 10  | Windows argv 三层守卫                                       | 待实施                                       | Antigravity / ZCode / resolveSpawnCommand                                                      | 尚未运行                                                                                                              |
 | 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 待实施                                       | ProviderDriver / provider snapshot 探测                                                        | 尚未运行                                                                                                              |
@@ -344,3 +344,17 @@ server/client-runtime 的本批目标 `tsgo --noEmit` 通过，3 份源文件 li
 滚动容器 668 px，实际滚动端点 0 / 14400 px；首次最新版本虚拟列表高度从 42445 变为 41905 px，同期对照与交叉复测保持 42445 px，不据此认定完整锚点矩阵通过。隔离验证环境曾出现 React 编译器运行时预构建互操作错误与跨目录采样器加载失败，已在工作区外配置和入口中解决；未改产品配置或主目录旧版本。测试结束恢复 `main.tsx` 的原始字节并确认其 Git diff 为空，页面采样面板为 0，停止登记的基线前端会话并恢复默认视口，没有提交采样器或截图。
 
 本记录仅覆盖 Web 开发构建的已完成长历史滚动。Desktop 独立外壳、Native 设备、真实运行回合和连接模式矩阵仍按各自条目验收；第 9 项整体保持开放。此提交仅更新两份内部证据文档，无运行时行为或迁移，回退本主题提交即可撤销记录。
+
+### 2026-10-12：合并前过滤近期 canonical 原包重投
+
+同一个 canonical `content.delta` 再次进入合并层时，原实现会再次拼接正文；随机后缀的 provider command identity 不能阻止它再次持久化。现于 `ProviderRuntimeEventCoalescer.offer` 的既有锁内、建立窗口与拼接之前过滤近期复合身份。身份包括 provider/实例、线程、eventId、事件类型、回合、item、request、task 及文本 stream/content/summary 索引，既不使用正文比较，也不把同一原生通知展开的多个 canonical 类型、任务或请求相互吞掉。
+
+最近 10000 个身份按插入顺序保留；显式 flush 只清空窗口，身份随 ingestion 作用域结束释放。重投不能改变 60ms 窗口、首包/尾包或控制事件的顺序，终态后的近期重投不再产生领域事件。缺失 eventId 的非法包继续沿用下游隔离路径，不污染后续合法包。没有新增全局正文去重；不同身份的相同 Unicode/CRLF 文本完整保留。
+
+新增最初 6 项回归在旧代码均失败于重复文字或重复控制事件，新代码通过。随后补充原生通知展开的不同 task/request、缺失与非法身份、容量淘汰边界；合并层共 18 项，真实 SQLite ingestion 在 turn/paragraph/token 三态分别验证跨 flush 重投、相同文字的新身份、终态后重投不再入库。首次整组运行 129/130 通过，既有“提问时收束正文”用例触发投影轮询的 2 秒墙钟超时；该用例单独复测通过。并行启动模拟器期间另有四个既有用例出现同类墙钟超时；五项均改用已有 ingestion drain 收据等待并保留完整正文、流式状态、审批类型及错误回合断言，没有放宽超时或修改业务分支。最终 `vp test run --config .candidate-test.config.ts apps/server/src/orchestration/ProviderRuntimeEventCoalescer.test.ts apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.test.ts` 两份文件 130 项全部通过（18 + 112），耗时约 202 秒。
+
+本批服务器目标类型检查与 3 份源文件 lint 通过。最初新增夹具误用旧 `ProviderItemId` 品牌，已改为实际 canonical `RuntimeItemId` 并重新通过类型检查；没有断言强转或放宽产品配置。Windows 临时测试配置曾错误导入不存在的根 vitest 包，改为沿用既有 vite-plus 配置对象；这些验证配置均在工作区外，不提交。
+
+所有 Adapter 的 canonical 事件经过公共 ingestion；原始日志继续保留真实投递，不删日志或改 provider 结果。Web/Desktop/Mobile 与本地/远程/relay/隧道读取同一持久化领域事件；不增加合同、设置、权限或 UI 入口，离开与重开沿用既有反向路径。回退本主题提交恢复原合并前准入，无数据库迁移。
+
+此处是有界内存防护，不是永久原始事件账本：已淘汰身份、服务器重启以及 Adapter 重新生成的 eventId 不属于该窗口。客户端断线恢复只重放持久化领域序号，已有序号防重继续负责网络回放，不重新执行 provider 命令。第 8 项真实设备/连接中断、忙碌线程关闭与重开的完整观察仍开放，不能据此宣称跨重启 raw provider ledger 已实现。

@@ -5,6 +5,29 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 
 export const PROVIDER_TEXT_DELTA_WINDOW_MS = 60;
+const RECENT_RUNTIME_EVENT_CAPACITY = 10_000;
+
+function runtimeEventIdentity(event: ProviderRuntimeEvent): string | null {
+  // 缺失身份的非法包仍由下游隔离；不能误把后续合法事件当成同一个包。
+  if (typeof event.eventId !== "string" || event.eventId.length === 0) return null;
+  const payload = event.payload;
+  return JSON.stringify([
+    event.provider,
+    event.providerInstanceId,
+    event.threadId,
+    event.eventId,
+    event.type,
+    event.turnId,
+    event.itemId,
+    event.requestId,
+    typeof payload === "object" && payload !== null && "taskId" in payload
+      ? payload.taskId
+      : undefined,
+    event.type === "content.delta" ? event.payload?.streamKind : undefined,
+    event.type === "content.delta" ? event.payload?.contentIndex : undefined,
+    event.type === "content.delta" ? event.payload?.summaryIndex : undefined,
+  ]);
+}
 
 interface PendingRuntimeEvent {
   event: ProviderRuntimeEvent;
@@ -78,12 +101,14 @@ export const makeProviderRuntimeEventCoalescer = Effect.fn("makeProviderRuntimeE
     const scope = yield* Scope.Scope;
     const lock = yield* Semaphore.make(1);
     const windows = new Map<string, ThreadEventWindow>();
+    const recentEventIdentities = new Set<string>();
     let closed = false;
     yield* Scope.addFinalizer(
       scope,
       Effect.sync(() => {
         closed = true;
         windows.clear();
+        recentEventIdentities.clear();
       }),
     );
 
@@ -129,6 +154,15 @@ export const makeProviderRuntimeEventCoalescer = Effect.fn("makeProviderRuntimeE
       event: ProviderRuntimeEvent,
     ) {
       if (closed) return;
+      const identity = runtimeEventIdentity(event);
+      if (identity !== null) {
+        if (recentEventIdentities.has(identity)) return;
+        // 在锁内且合并前过滤，重投不能改变积压文字或依赖合并窗口的分组方式。
+        recentEventIdentities.add(identity);
+        if (recentEventIdentities.size > RECENT_RUNTIME_EVENT_CAPACITY) {
+          recentEventIdentities.delete(recentEventIdentities.values().next().value!);
+        }
+      }
       const key = String(event.threadId);
       const incoming = pendingEvent(event);
       const now = yield* Clock.currentTimeMillis;

@@ -1,7 +1,10 @@
 import {
   EventId,
   ProviderDriverKind,
+  ProviderInstanceId,
   RuntimeItemId,
+  RuntimeRequestId,
+  RuntimeTaskId,
   ThreadId,
   TurnId,
   type ProviderRuntimeEvent,
@@ -51,6 +54,144 @@ const makeHarness = Effect.gen(function* () {
 });
 
 describe("provider 文字 leading/trailing 合并窗口", () => {
+  it.effect("原包在不同合并窗口重投只应用一次，合法的相同文字仍保留", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      const first = textEvent("first", "首🌏\r\n");
+      const second = textEvent("second", "首🌏\r\n");
+      const tail = textEvent("tail", "尾");
+      yield* harness.offer(first);
+      yield* harness.flush;
+      yield* harness.offer(first);
+      yield* harness.offer(second);
+      yield* harness.offer(second);
+      yield* harness.offer(tail);
+      yield* harness.offer(tail);
+      yield* harness.flush;
+      const text = harness.emitted
+        .map(({ event }) => (event.type === "content.delta" ? event.payload.delta : ""))
+        .join("");
+      expect(text).toBe("首🌏\r\n首🌏\r\n尾");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("重投控制和终态不新增通知，同一原包的不同 canonical 类型仍通过", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      const started = controlEvent("native-packet");
+      const state: ProviderRuntimeEvent = {
+        ...started,
+        type: "session.state.changed",
+        payload: { state: "running" },
+      };
+      const terminal: ProviderRuntimeEvent = {
+        ...controlEvent("terminal"),
+        type: "turn.completed",
+        payload: { state: "completed" },
+      };
+      for (const event of [started, state, started, state, terminal, terminal]) {
+        yield* harness.offer(event);
+      }
+      expect(harness.emitted.map(({ event }) => event.type)).toEqual([
+        "turn.started",
+        "session.state.changed",
+        "turn.completed",
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("事件身份按 provider 实例、线程、回合、条目及流内索引隔离", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      const base = textEvent("shared-native-id", "x", {
+        providerInstanceId: ProviderInstanceId.make("one"),
+      });
+      const events: TextEvent[] = [
+        base,
+        { ...base, provider: ProviderDriverKind.make("claude-code") },
+        { ...base, providerInstanceId: ProviderInstanceId.make("two") },
+        { ...base, threadId: ThreadId.make("thread-two") },
+        { ...base, turnId: TurnId.make("turn-two") },
+        { ...base, itemId: RuntimeItemId.make("item-two") },
+        { ...base, payload: { ...base.payload, streamKind: "reasoning_text" } },
+        { ...base, payload: { ...base.payload, contentIndex: 1 } },
+        { ...base, payload: { ...base.payload, summaryIndex: 1 } },
+      ];
+      for (const event of [...events, ...events]) yield* harness.offer(event);
+      yield* harness.flush;
+      expect(
+        harness.emitted
+          .map(({ event }) => (event.type === "content.delta" ? event.payload.delta : ""))
+          .join(""),
+      ).toBe("x".repeat(events.length));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("同一原生通知展开的不同任务与请求不互相去重", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      const base = controlEvent("native-task-packet");
+      const events: ProviderRuntimeEvent[] = [
+        { ...base, type: "task.started", payload: { taskId: RuntimeTaskId.make("one") } },
+        { ...base, type: "task.started", payload: { taskId: RuntimeTaskId.make("two") } },
+        {
+          ...base,
+          type: "request.opened",
+          requestId: RuntimeRequestId.make("one"),
+          payload: { requestType: "command_execution_approval" },
+        },
+        {
+          ...base,
+          type: "request.opened",
+          requestId: RuntimeRequestId.make("two"),
+          payload: { requestType: "command_execution_approval" },
+        },
+      ];
+      for (const event of [...events, ...events]) yield* harness.offer(event);
+      expect(harness.emitted.map(({ event }) => event)).toEqual(events);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("缺失事件身份及非法 payload 不阻塞后续合法通知", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      const anonymous = {
+        ...controlEvent("anonymous"),
+        eventId: undefined,
+      } as unknown as ProviderRuntimeEvent;
+      const malformed = {
+        ...controlEvent("malformed"),
+        payload: "非法 payload",
+      } as unknown as ProviderRuntimeEvent;
+      yield* harness.offer(anonymous);
+      yield* harness.offer(anonymous);
+      yield* harness.offer(malformed);
+      yield* harness.offer(controlEvent("valid-after-malformed"));
+      expect(harness.emitted.map(({ event }) => event.eventId)).toEqual([
+        undefined,
+        undefined,
+        "malformed",
+        "valid-after-malformed",
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("近期身份记录有容量上限，持续工作不会无限保留原包", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      const oldest = controlEvent("bounded-0");
+      yield* harness.offer(oldest);
+      for (let index = 1; index <= 10_000; index++) {
+        yield* harness.offer(controlEvent(`bounded-${index}`));
+      }
+      yield* harness.offer(controlEvent("bounded-10000"));
+      expect(harness.emitted).toHaveLength(10_001);
+      yield* harness.offer(oldest);
+      expect(harness.emitted).toHaveLength(10_002);
+      expect(harness.emitted.at(-1)!.event).toBe(oldest);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("非法 delta 交给下游隔离，后续控制事件仍继续投递", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness;

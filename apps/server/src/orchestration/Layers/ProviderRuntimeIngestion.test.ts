@@ -19,6 +19,7 @@ import {
   type OrchestrationCommand,
   ProjectId,
   ProviderItemId,
+  RuntimeItemId,
   type ServerSettings,
   ThreadId,
   type ThreadGoal,
@@ -384,6 +385,66 @@ describe("ProviderRuntimeIngestion", () => {
       runtime,
     };
   }
+
+  it.each(["turn", "paragraph", "token"] as const)(
+    "%s 模式在原包重投后持久化一次正文，保留不同身份的相同文字",
+    async (mode) => {
+      const harness = await createHarness({ serverSettings: { responseStreamingMode: mode } });
+      const context = {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: ProviderInstanceId.make("codex"),
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-retransmit"),
+        itemId: RuntimeItemId.make("item-retransmit"),
+        createdAt: "2026-10-12T00:00:00.000Z",
+      };
+      harness.emit({
+        ...context,
+        type: "turn.started",
+        eventId: asEventId("retransmit-start"),
+        payload: {},
+      });
+      const first: ProviderRuntimeEvent = {
+        ...context,
+        type: "content.delta",
+        eventId: asEventId("retransmit-first"),
+        payload: { streamKind: "assistant_text", delta: "首段🌏\r\n\r\n" },
+      };
+      const sameText = { ...first, eventId: asEventId("retransmit-legitimate-same-text") };
+      const tail: ProviderRuntimeEvent = {
+        ...context,
+        type: "content.delta",
+        eventId: asEventId("retransmit-tail"),
+        payload: { streamKind: "assistant_text", delta: "尾段" },
+      };
+      harness.emit(first);
+      await harness.drain();
+      for (const event of [first, sameText, sameText, tail, tail]) harness.emit(event);
+      await harness.drain();
+      const terminal: ProviderRuntimeEvent = {
+        ...context,
+        type: "turn.completed",
+        eventId: asEventId("retransmit-end"),
+        payload: { state: "completed" },
+      };
+      harness.emit(terminal);
+      await harness.drain();
+      const eventsBeforeReplay = await harness.runtime.runPromise(
+        Stream.runCollect(harness.engine.readEvents(0)),
+      );
+      for (const event of [first, sameText, tail, terminal]) harness.emit(event);
+      await harness.drain();
+      const eventsAfterReplay = await harness.runtime.runPromise(
+        Stream.runCollect(harness.engine.readEvents(0)),
+      );
+      const thread = (await harness.readModel()).threads[0]!;
+      expect(thread.messages).toMatchObject([
+        { text: "首段🌏\r\n\r\n首段🌏\r\n\r\n尾段", streaming: false },
+      ]);
+      expect(thread.messages).toHaveLength(1);
+      expect(eventsAfterReplay).toEqual(eventsBeforeReplay);
+    },
+  );
 
   it.each(["turn", "paragraph", "token"] as const)(
     "%s 模式通过事件入库与投影，完成回显不会重复正文",
@@ -4336,12 +4397,11 @@ describe("ProviderRuntimeIngestion", () => {
       threadId: asThreadId("thread-1"),
       turnId: asTurnId("turn-buffered-user-input-flush"),
     });
-    await waitForThread(
-      harness.readModel,
-      (thread) =>
-        thread.session?.status === "running" &&
-        thread.session?.activeTurnId === "turn-buffered-user-input-flush",
-    );
+    await harness.drain();
+    expect((await harness.readModel()).threads[0]?.session).toMatchObject({
+      status: "running",
+      activeTurnId: "turn-buffered-user-input-flush",
+    });
 
     harness.emit({
       type: "content.delta",
@@ -4376,21 +4436,15 @@ describe("ProviderRuntimeIngestion", () => {
       },
     });
 
-    const thread = await waitForThread(harness.readModel, (entry) =>
-      entry.messages.some(
-        (message: ProviderRuntimeTestMessage) =>
-          message.id ===
-            "assistant:thread-1:turn-buffered-user-input-flush:item-buffered-user-input-flush" &&
-          !message.streaming &&
-          message.text === "visible before user input",
-      ),
-    );
+    // 等待 ingestion 收据排空，避免大量迁移日志下轮询投影的墙钟超时。
+    await harness.drain();
+    const thread = (await harness.readModel()).threads[0]!;
     const message = thread.messages.find(
       (entry: ProviderRuntimeTestMessage) =>
         entry.id ===
         "assistant:thread-1:turn-buffered-user-input-flush:item-buffered-user-input-flush",
     );
-    expect(message?.streaming).toBe(false);
+    expect(message).toMatchObject({ streaming: false, text: "visible before user input" });
   });
 
   it("does not create assistant segments for whitespace-only buffered text at approval boundaries", async () => {
@@ -4726,12 +4780,11 @@ describe("ProviderRuntimeIngestion", () => {
       threadId: asThreadId("thread-1"),
       turnId: asTurnId("turn-streaming-mode"),
     });
-    await waitForThread(
-      harness.readModel,
-      (thread) =>
-        thread.session?.status === "running" &&
-        thread.session?.activeTurnId === "turn-streaming-mode",
-    );
+    await harness.drain();
+    expect((await harness.readModel()).threads[0]?.session).toMatchObject({
+      status: "running",
+      activeTurnId: "turn-streaming-mode",
+    });
 
     harness.emit({
       type: "content.delta",
@@ -4747,19 +4800,13 @@ describe("ProviderRuntimeIngestion", () => {
       },
     });
 
-    const liveThread = await waitForThread(harness.readModel, (entry) =>
-      entry.messages.some(
-        (message: ProviderRuntimeTestMessage) =>
-          message.id === "assistant:thread-1:turn-streaming-mode:item-streaming-mode" &&
-          message.streaming &&
-          message.text === "hello live",
-      ),
-    );
+    await harness.drain();
+    const liveThread = (await harness.readModel()).threads[0]!;
     const liveMessage = liveThread.messages.find(
       (entry: ProviderRuntimeTestMessage) =>
         entry.id === "assistant:thread-1:turn-streaming-mode:item-streaming-mode",
     );
-    expect(liveMessage?.streaming).toBe(true);
+    expect(liveMessage).toMatchObject({ streaming: true, text: "hello live" });
 
     harness.emit({
       type: "item.completed",
@@ -4776,13 +4823,8 @@ describe("ProviderRuntimeIngestion", () => {
       },
     });
 
-    const finalThread = await waitForThread(harness.readModel, (entry) =>
-      entry.messages.some(
-        (message: ProviderRuntimeTestMessage) =>
-          message.id === "assistant:thread-1:turn-streaming-mode:item-streaming-mode" &&
-          !message.streaming,
-      ),
-    );
+    await harness.drain();
+    const finalThread = (await harness.readModel()).threads[0]!;
     const finalMessage = finalThread.messages.find(
       (entry: ProviderRuntimeTestMessage) =>
         entry.id === "assistant:thread-1:turn-streaming-mode:item-streaming-mode",
@@ -4804,12 +4846,11 @@ describe("ProviderRuntimeIngestion", () => {
       threadId: asThreadId("thread-1"),
       turnId: asTurnId("turn-buffer-spill"),
     });
-    await waitForThread(
-      harness.readModel,
-      (thread) =>
-        thread.session?.status === "running" &&
-        thread.session?.activeTurnId === "turn-buffer-spill",
-    );
+    await harness.drain();
+    expect((await harness.readModel()).threads[0]?.session).toMatchObject({
+      status: "running",
+      activeTurnId: "turn-buffer-spill",
+    });
 
     harness.emit({
       type: "content.delta",
@@ -4838,13 +4879,8 @@ describe("ProviderRuntimeIngestion", () => {
       },
     });
 
-    const thread = await waitForThread(harness.readModel, (entry) =>
-      entry.messages.some(
-        (message: ProviderRuntimeTestMessage) =>
-          message.id === "assistant:thread-1:turn-buffer-spill:item-buffer-spill" &&
-          !message.streaming,
-      ),
-    );
+    await harness.drain();
+    const thread = (await harness.readModel()).threads[0]!;
     const message = thread.messages.find(
       (entry: ProviderRuntimeTestMessage) =>
         entry.id === "assistant:thread-1:turn-buffer-spill:item-buffer-spill",
@@ -4971,16 +5007,7 @@ describe("ProviderRuntimeIngestion", () => {
       },
     });
 
-    await waitForThread(
-      harness.readModel,
-      (entry) =>
-        entry.activities.some(
-          (activity: ProviderRuntimeTestActivity) => activity.kind === "approval.requested",
-        ) &&
-        entry.activities.some(
-          (activity: ProviderRuntimeTestActivity) => activity.kind === "approval.resolved",
-        ),
-    );
+    await harness.drain();
 
     const readModel = await harness.readModel();
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
@@ -4989,6 +5016,7 @@ describe("ProviderRuntimeIngestion", () => {
     const requested = thread?.activities.find(
       (activity: ProviderRuntimeTestActivity) => activity.id === "evt-request-opened",
     );
+    expect(requested?.kind).toBe("approval.requested");
     const requestedPayload =
       requested?.payload && typeof requested.payload === "object"
         ? (requested.payload as Record<string, unknown>)
@@ -4999,6 +5027,7 @@ describe("ProviderRuntimeIngestion", () => {
     const resolved = thread?.activities.find(
       (activity: ProviderRuntimeTestActivity) => activity.id === "evt-request-resolved",
     );
+    expect(resolved?.kind).toBe("approval.resolved");
     const resolvedPayload =
       resolved?.payload && typeof resolved.payload === "object"
         ? (resolved.payload as Record<string, unknown>)
@@ -5023,13 +5052,9 @@ describe("ProviderRuntimeIngestion", () => {
       },
     });
 
-    const thread = await waitForThread(
-      harness.readModel,
-      (entry) =>
-        entry.session?.status === "error" &&
-        entry.session?.activeTurnId === "turn-3" &&
-        entry.session?.lastError === "runtime exploded",
-    );
+    await harness.drain();
+    const thread = (await harness.readModel()).threads[0]!;
+    expect(thread.session?.activeTurnId).toBe("turn-3");
     expect(thread.session?.status).toBe("error");
     expect(thread.session?.lastError).toBe("runtime exploded");
   });
