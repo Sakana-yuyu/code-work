@@ -386,6 +386,8 @@ server/client-runtime 的本批目标 `tsgo --noEmit` 通过，3 份源文件 li
 
 新增入口仅用于 Android 聊天消息，包含用户与 assistant、历史与运行中回复；完成或系统返回为反向操作。Web/Desktop 保留已验证的 DOM 选区冻结；iOS 保留已有原生正文路径，本机没有 iOS 运行工具，不能声称 UIKit 设备通过。所有 provider 和本地/远程/隧道使用同一消息全文，此处没有新增协议、权限或服务端能力门控。中/英/日翻译与[用户说明](../user/assistant-output.md)已同步；已有翻译文件的用户改动通过精确补丁保留。回退本主题提交即可移除等价入口，无持久化数据迁移。
 
+随后截图核对发现 `select_all` 未加入 AppSymbol 的 Android 映射，入口曾有辅助标签和点击区域，但没有可见图标。现补齐既有 Tabler `IconSelectAll`，保留 14pt 尺寸、颜色、点击区域与完整正文选择行为。新回归直接调用实际选择按钮和 AppSymbol，并比较已安装 SDK 的组件：旧源码 1 项失败 / 3 项通过，修复后图标 4 项与原选区 8 项通过；目标 Mobile tsc、两源文件 lint/fmt 通过。候选测试以 SDK 的公开 ESM 入口内联运行，仅替换 NativeSvg 叶子，避免 Node 直接加载 RN Flow；测试中的非法 SDK 名称改为合法但未映射的 `wifi`，没有放宽产品类型。生产 JS 模式的原生截图已确认用户和 assistant 消息旁均有虚线选择图标；点击回复旁图标打开 71 字符完整来源，完成后返回原线程。证据为工作区外 `native-selection-icon-visible/opened/returned.png`，Native 性能探针不存在。该修复不改变 iOS 原生符号分支、provider 或连接协议。
+
 原生性能仍开放：曾在多次开发包重载并展开活动后发生 LOW_MEMORY 退出，Native Heap 约 0.9GB、RSS 约 1.4GB；重建 JNI 配套只修复启动依赖。生产模式 JS 包也观察到较高原生内存，不能声称内存问题已解决。两次启动堆追踪分别发生缓冲溢出和 INVALID_STACK_BOUNDS，不据此定因；错误含义核对于 2026-10-12 的 [Perfetto 官方协议](https://raw.githubusercontent.com/google/perfetto/main/protos/perfetto/trace/profiling/profile_packet.proto)，检索词 heapprofd / client_error / stack bounds。较小采样记录不替代完整内存或帧率验收。本次仅调整专用模拟器的显示覆盖值，原尺寸/密度/旋转设置已留存，用户原 AVD 未修改。第 4/5/6/8/9 项继续保留各自尚未完成的设备、连接与性能边界。
 
 ### 2026-10-12：Native 同口径长历史采样与未通过项

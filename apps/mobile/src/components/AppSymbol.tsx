@@ -62,6 +62,7 @@ import {
   IconQrcode,
   IconRefresh,
   IconSearch,
+  IconSelectAll,
   IconServer,
   IconSettings,
   IconSparkles,
@@ -183,6 +184,7 @@ const ANDROID_ICON_BY_MATERIAL_NAME: Record<string, Icon> = {
   keyboard_hide: IconKeyboardHide,
   public: IconWorld,
   remove: IconMinus,
+  select_all: IconSelectAll,
   terminal: IconTerminal2,
   visibility: IconEye,
 };
