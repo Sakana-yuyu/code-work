@@ -53,7 +53,7 @@
 | 6   | 流式选区与滚动锚点                                          | Web 与 Android 选区已验证，其余继续验收      | 真实 StreamingChatMarkdown / Android 原生选区页及增量夹具                                      | Android 范围与全文复制、追加和终态选区保持已验证；完整滚动锚点及 iOS 设备矩阵仍开放                                   |
 | 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证           | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                        | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 订阅竞态与近期原包重投已修复，继续验收矩阵   | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份                            | 真实 RPC 订阅 6 项、共享同步/挂载/分页/RPC 会话 43 项通过；近期防重与三态持久化回归见下方，设备/连接观察仍开放        |
-| 9   | 同口径帧间隔性能无回归                                      | Web 本轮对照通过；Desktop/Native 仍开放      | 1280×720、1202 活动、上下各 20 页 ×4 组                                                        | 最新版本与同期原始版本最高 p95 均 18.1 ms，交叉复测最大 53.0 / 53.7 ms；首次最新测量最大 53.9 ms 也保留，详见下方记录 |
+| 9   | 同口径帧间隔性能无回归                                      | Web 对照通过；Native 长帧待修复              | 1280×720、1202 活动、上下各 20 页 ×4 组                                                        | Web 最高 p95 18.1 ms；Native 交叉复测 138.2 ms 高于同期基线 119.5 ms，不宣称无回归；Desktop 独立外壳仍待测            |
 | 10  | Windows argv 三层守卫                                       | 待实施                                       | Antigravity / ZCode / resolveSpawnCommand                                                      | 尚未运行                                                                                                              |
 | 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 待实施                                       | ProviderDriver / provider snapshot 探测                                                        | 尚未运行                                                                                                              |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                    | 尚未运行                                                                                                              |
@@ -387,3 +387,21 @@ server/client-runtime 的本批目标 `tsgo --noEmit` 通过，3 份源文件 li
 新增入口仅用于 Android 聊天消息，包含用户与 assistant、历史与运行中回复；完成或系统返回为反向操作。Web/Desktop 保留已验证的 DOM 选区冻结；iOS 保留已有原生正文路径，本机没有 iOS 运行工具，不能声称 UIKit 设备通过。所有 provider 和本地/远程/隧道使用同一消息全文，此处没有新增协议、权限或服务端能力门控。中/英/日翻译与[用户说明](../user/assistant-output.md)已同步；已有翻译文件的用户改动通过精确补丁保留。回退本主题提交即可移除等价入口，无持久化数据迁移。
 
 原生性能仍开放：曾在多次开发包重载并展开活动后发生 LOW_MEMORY 退出，Native Heap 约 0.9GB、RSS 约 1.4GB；重建 JNI 配套只修复启动依赖。生产模式 JS 包也观察到较高原生内存，不能声称内存问题已解决。两次启动堆追踪分别发生缓冲溢出和 INVALID_STACK_BOUNDS，不据此定因；错误含义核对于 2026-10-12 的 [Perfetto 官方协议](https://raw.githubusercontent.com/google/perfetto/main/protos/perfetto/trace/profiling/profile_packet.proto)，检索词 heapprofd / client_error / stack bounds。较小采样记录不替代完整内存或帧率验收。本次仅调整专用模拟器的显示覆盖值，原尺寸/密度/旋转设置已留存，用户原 AVD 未修改。第 4/5/6/8/9 项继续保留各自尚未完成的设备、连接与性能边界。
+
+### 2026-10-12：Native 同口径长历史采样与未通过项
+
+同一调试 APK、生产 JS 模式、专用 Android 17 / 16KB / 约 4GB 模拟器和 1280×720 / 160dpi，对照当前 `7014505e8`、同期 `7ffa6f2b4` 加最初 9 份 Mobile 用户改动，再返回当前版本交叉复测。此次 JS/TS 改动未改变原生模块二进制；已修复的 fbjni 依赖配套在两版本中一致。
+
+真实配对路径只加载服务器保留的最近 500 活动，展开为 254 行，不能代替 1202 规模。因此两个隔离副本的实际 ThreadFeed 都通过各自 `buildThreadFeed` 载入相同 1202 合成活动，全部展开为 605 行；没有改服务器快照上限、生产持久化或主目录源码。初始 scroll=21509、总高 22133、视口高 624，上/下各 20 页 ×4，24 个窗口均实际移动 12480 且无边界空操作。滚动等待真实列表回执和每页 12 个绘制帧，以最近 120 rAF 间隔比较。
+
+| 指标                     | 首次当前           | 同期基线           | 当前交叉复测       |
+| ------------------------ | ------------------ | ------------------ | ------------------ |
+| 稳态 p95 / 最大 / >50 ms | 17.6 / 19.2 ms / 0 | 18.1 / 19.3 ms / 0 | 18.2 / 18.6 ms / 0 |
+| 八窗口最高 p95           | 106.1 ms           | 119.5 ms           | 138.2 ms           |
+| 八窗口 p95 中位数        | 88.1 ms            | 102.8 ms           | 95.2 ms            |
+| 八窗口最大间隔           | 369.3 ms           | 280.4 ms           | 264.8 ms           |
+| 单窗口 >50 ms 的最高数量 | 17                 | 17                 | 23                 |
+
+交叉复测第三组上滚的 p95 与长帧数量超过基线，Native 性能验收保持未通过，不用中位数或较低的一轮替代结果。原始记录为工作区外的 `native-feed-current-perf.json`、`native-feed-baseline-perf.json`、`native-feed-crossover-perf.json`；`summarize-native-feed-perf.cjs current baseline crossover` 同时检查八窗口样本数、行数、高度、页数与移动距离。500 活动轮次单独保存为 `native-feed-current-window500-perf.json`。两个 ThreadFeed 备份 SHA-256 已精确恢复，完整活动临时模块已移除；回执 WebSocket 已关闭，测量的 ADB reverse 端口已清理。主目录没有临时采样入口。
+
+Native Heap / RSS 的较高占用仍需归因；Hermes 的 `Profiler.enable` 返回 Unsupported method，记录工具边界，不编造 CPU profile。正在核对按需图标导入：本地安装的 `@tabler/icons-react-native@3.44.0` 有 6147 个图标模块，AppSymbol 是唯一运行时聚合导入，38,824,759 字节生产包中包含未使用的 BrandTiktok / BrandWhatsapp 等名称；该事实说明包体有可验证的优化候选，尚不能证明它造成这次长帧。第 9 项继续修复和复测，Desktop 独立外壳、iOS、真实运行回合及连接/锚点矩阵仍开放。回退本文档增量可恢复原记录，无数据库迁移或产品配置变化。
