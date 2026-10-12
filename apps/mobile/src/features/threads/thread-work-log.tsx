@@ -1,6 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { type AppSymbolName, SymbolView } from "../../components/AppSymbol";
 import { LayoutAnimation, Pressable, ScrollView, View } from "react-native";
+import { useState, type ReactNode } from "react";
 
 import { AppText as Text } from "../../components/AppText";
 import { scaledTypographyLineHeight } from "../../lib/appearancePreferences";
@@ -83,6 +84,19 @@ function isFreshRow(createdAt: string): boolean {
   return Number.isFinite(timestamp) && Date.now() - timestamp < FRESH_ROW_WINDOW_MS;
 }
 
+export function ThreadWorkLogEntryFrame(props: {
+  readonly createdAt: string;
+  readonly children: ReactNode;
+}) {
+  // 只在挂载时决定容器；时间推进或详情更新不替换已选文本的父节点。
+  const [entering] = useState(() => (isFreshRow(props.createdAt) ? FadeIn.duration(200) : null));
+  return entering === null ? (
+    <View>{props.children}</View>
+  ) : (
+    <Animated.View entering={entering}>{props.children}</Animated.View>
+  );
+}
+
 // Tool-like activities with a neutral status carry no signal worth a row.
 export function visibleWorkLogActivities(
   activities: ReadonlyArray<ThreadFeedActivity>,
@@ -125,6 +139,7 @@ export function collapsedWorkLogHeight(
 
 export function ThreadWorkLog(props: {
   readonly activities: ReadonlyArray<ThreadFeedActivity>;
+  readonly reuseHistoricalRow?: boolean;
   readonly copiedRowId: string | null;
   readonly expandedRows: Readonly<Record<string, boolean>>;
   readonly iconSubtleColor: import("react-native").ColorValue;
@@ -162,9 +177,9 @@ export function ThreadWorkLog(props: {
           const iconIsDestructive = row.icon === "alert" || row.icon === "warning";
 
           return (
-            <Animated.View
-              key={row.id}
-              {...(isFreshRow(row.createdAt) ? { entering: FadeIn.duration(200) } : {})}
+            <ThreadWorkLogEntryFrame
+              key={props.reuseHistoricalRow && rows.length === 1 ? "historical-row" : row.id}
+              createdAt={row.createdAt}
             >
               <Pressable
                 accessibilityRole={canExpand || canOpenCanvas ? "button" : undefined}
@@ -285,7 +300,7 @@ export function ThreadWorkLog(props: {
                   </ScrollView>
                 </View>
               ) : null}
-            </Animated.View>
+            </ThreadWorkLogEntryFrame>
           );
         })}
       </View>

@@ -29,6 +29,7 @@ import { SymbolView } from "../../components/AppSymbol";
 import { HeaderHeightContext } from "@react-navigation/elements";
 import { useNavigation } from "@react-navigation/native";
 import {
+  Fragment,
   memo,
   useCallback,
   useContext,
@@ -129,6 +130,7 @@ import {
   WORK_GROUP_TOGGLE_HEIGHT,
 } from "./thread-work-log";
 import { useMarkdownCodeHighlight } from "./markdownCodeHighlightState";
+import { resolveThreadFeedCellIdentity } from "./thread-feed-recycling";
 import { useAssetUrlState } from "../../state/assets";
 import { MessageAttachmentMedia } from "./MessageAttachmentMedia";
 import { resolveWorkspaceRelativeFilePath } from "../files/filePath";
@@ -1115,6 +1117,7 @@ function renderFeedEntry(
     | "onEditUserMessage"
   > & {
     readonly responseTextPacing: boolean;
+    readonly reuseHistoricalRow: boolean;
     readonly onSelectText: (text: string) => void;
     readonly copiedRowId: string | null;
     readonly expandedWorkRows: Record<string, boolean>;
@@ -1329,6 +1332,7 @@ function renderFeedEntry(
   return (
     <ThreadWorkLog
       activities={entry.activities}
+      reuseHistoricalRow={props.reuseHistoricalRow}
       copiedRowId={props.copiedRowId}
       expandedRows={props.expandedWorkRows}
       iconSubtleColor={iconSubtleColor}
@@ -1637,6 +1641,8 @@ function ThreadFeedPlaceholder(props: {
 }
 
 export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
+  // 截止时刻固定于挂载，时间推进不会把现有消息或可选详情切换到另一个父节点。
+  const [historicalCutoffMs] = useState(() => Date.now() - 3_000);
   const responseTextPacing = isTextRevealEnabled(
     useAtomValue(serverEnvironment.configValueAtom(props.environmentId)),
   );
@@ -2165,36 +2171,49 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   );
 
   const renderItem = useCallback(
-    (info: { item: ThreadFeedEntry; index: number }) =>
-      renderFeedEntry(info, {
-        responseTextPacing,
-        onSelectText: textSelection.selectText,
-        environmentId: props.environmentId,
-        copiedRowId,
+    (info: { item: ThreadFeedEntry; index: number }) => {
+      const identity = resolveThreadFeedCellIdentity(
+        info.item,
         expandedWorkRows,
-        terminalAssistantMessageIds,
-        unsettledTurnId,
-        onCopyWorkRow,
-        onToggleWorkGroup,
-        onToggleWorkRow,
-        onOpenCanvas: props.onOpenCanvas,
-        revertTurnCountByUserMessageId: props.revertTurnCountByUserMessageId,
-        onRevertToTurnCount: props.onRevertToTurnCount,
-        isRevertingCheckpoint: props.isRevertingCheckpoint,
-        onEditUserMessage: props.onEditUserMessage,
-        onToggleTurnFold,
-        onPressImage,
-        onMarkdownLinkPress,
-        renderMarkdownImage,
-        iconSubtleColor,
-        userBubbleColor,
-        markdownStyles,
-        reviewCommentColors,
-        reviewCommentBubbleWidth,
-        userBubbleMaxWidth,
-        skills: props.skills,
-      }),
+        historicalCutoffMs,
+        Platform.OS,
+      );
+      return (
+        <Fragment key={identity.key}>
+          {renderFeedEntry(info, {
+            responseTextPacing,
+            reuseHistoricalRow: identity.reuseHistoricalRow,
+            onSelectText: textSelection.selectText,
+            environmentId: props.environmentId,
+            copiedRowId,
+            expandedWorkRows,
+            terminalAssistantMessageIds,
+            unsettledTurnId,
+            onCopyWorkRow,
+            onToggleWorkGroup,
+            onToggleWorkRow,
+            onOpenCanvas: props.onOpenCanvas,
+            revertTurnCountByUserMessageId: props.revertTurnCountByUserMessageId,
+            onRevertToTurnCount: props.onRevertToTurnCount,
+            isRevertingCheckpoint: props.isRevertingCheckpoint,
+            onEditUserMessage: props.onEditUserMessage,
+            onToggleTurnFold,
+            onPressImage,
+            onMarkdownLinkPress,
+            renderMarkdownImage,
+            iconSubtleColor,
+            userBubbleColor,
+            markdownStyles,
+            reviewCommentColors,
+            reviewCommentBubbleWidth,
+            userBubbleMaxWidth,
+            skills: props.skills,
+          })}
+        </Fragment>
+      );
+    },
     [
+      historicalCutoffMs,
       responseTextPacing,
       textSelection.selectText,
       copiedRowId,
@@ -2242,6 +2261,8 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         <View className="flex-1">
           <KeyboardAwareLegendList
             ref={props.listRef}
+            // 消息与展开详情的子树仍按身份重建，仅历史单行共享无编辑状态的展示节点。
+            recycleItems={Platform.OS === "android"}
             // The empty↔filled key remounts the list when messages first
             // arrive. LegendList's maintainScrollAtEnd calls scrollToEnd(),
             // which is blind to UIKit's adjustedContentInset — inserting into
