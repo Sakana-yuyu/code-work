@@ -53,7 +53,7 @@
 | 6   | 流式选区与滚动锚点                                          | Web 与 Android 选区已验证，其余继续验收                                | 真实 StreamingChatMarkdown / Android 原生选区页及增量夹具                                      | Android 范围与全文复制、追加和终态选区保持已验证；完整滚动锚点及 iOS 设备矩阵仍开放                                   |
 | 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证                                     | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                        | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 订阅竞态与近期原包重投已修复，继续验收矩阵                             | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份                            | 真实 RPC 订阅 6 项、共享同步/挂载/分页/RPC 会话 43 项通过；近期防重与三态持久化回归见下方，设备/连接观察仍开放        |
-| 9   | 同口径帧间隔性能无回归                                      | Android 滚动通过；Web/Desktop 生产静态无持续回归，继续空闲与运行中验收 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                           | 生产 Web 三轮与 Desktop 两组共 72 窗口全部零长帧；开发态失败、显示条件与几何差异保留；Android 空闲及连接矩阵仍开放    |
+| 9   | 同口径帧间隔性能无回归                                      | Android JS 响应改善、UI 补充交叉未通过；Web/Desktop 生产静态无持续回归 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                           | 生产 Web 三轮与 Desktop 两组共 72 窗口全部零长帧；开发态失败、显示条件与几何差异保留；Android 空闲及连接矩阵仍开放    |
 | 10  | Windows argv 三层守卫                                       | 待实施                                                                 | Antigravity / ZCode / resolveSpawnCommand                                                      | 尚未运行                                                                                                              |
 | 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 待实施                                                                 | ProviderDriver / provider snapshot 探测                                                        | 尚未运行                                                                                                              |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                                 | ProviderAdapter / ProviderService / reactor / 三端 composer                                    | 尚未运行                                                                                                              |
@@ -445,7 +445,7 @@ Native Heap PSS 的重测基线为 969,508KiB（946.8MiB），按需首轮与交
 | 受控复用同期基线   | 93.4326            | 84.3110                 | 320.0122       | 15                    | 18.0484        |
 | 受控复用交叉       | 65.0821            | 55.3055                 | 93.4425        | 8                     | 17.9247        |
 
-受控复用两轮所有滚动窗口的 p95、最大间隔与单窗口长帧数均低于同期基线，Android 静态长历史的滚动无回归对照通过。首轮受控复用和轻量容器交叉的空闲采样约为 30Hz；最后一轮受控复用空闲 p95 17.9247ms / 最大 18.5451ms，与基线 18.0484ms / 18.8500ms 相近，均零 >50ms。首次空闲采样差异尚未归因，不能把最后一轮值替换所有首轮记录或宣称完整稳态矩阵通过。当前显示查询为 60.000004Hz、无 UID 帧率覆盖，不能反推先前采样时的状态；第 9 项仍进行中，需继续空闲节奏核对和独立 Desktop。JS rAF 不等于 Android 合成器帧时间；iOS、真实忙碌回合和连接矩阵继续独立验收。
+受控复用两轮所有滚动窗口的 JS 回调间隔 p95、最大间隔与单窗口 >50ms 数均低于同期基线，该口径对照通过。首轮受控复用和轻量容器交叉的空闲回调间隔约为 34ms；最后一轮受控复用空闲 p95 17.9247ms / 最大 18.5451ms，与基线 18.0484ms / 18.8500ms 相近，均零 >50ms。这些值不能转换为 Android 屏幕 FPS，后续已核对实际新架构实现并补充 UI 帧时钟，见末节。首次回调节奏差异没有以末轮数据覆盖；显示查询 60.000004Hz、无 UID 帧率覆盖，不能反推先前采样状态。第 9 项保持开放，iOS、真实忙碌回合、连接和完整滚动锚点矩阵继续独立验收。
 
 原生操作覆盖滚动后复制相邻工具 601 和 600：各得到正确 18 字符全文；展开工具 601 后，详情的实际系统选区与菜单可见，复制选中单字“实”得到正确 1 字符。对应 native-recycling-copy-tool-601.json、native-recycling-copy-tool-600.json、native-recycling-copy-tool-detail.json 均 matches=true，像素证据 native-recycling-detail-selection.png。展开后收起的内容高度修正为 22128px、末端 21504px；原始基线出现相同 5px 修正且均保持末端，未观察到本主题新增偏移，不扩大为所有滚动锚点已通过。消息全文选区仍使用列表外快照，未复用消息子树。
 
@@ -536,3 +536,32 @@ Desktop 共用实际 Electron 41.5.0 / Node 24.15.0 二进制、13779 专用后�
 `summarize-production-full-perf.cjs` 验证上述 9 份记录、72 窗口、原始基线版本、生产模式、实际输入/逻辑项、同组 DPR、桌面二进制 SHA、20 滚动回执 / 120 间隔、零边界、稳定距离与统一等待组几何全部通过。原始记录为工作区外 `web-production-current-full / baseline-full / current-crossover-perf.json`、`desktop-feed-production-current / baseline / crossover-perf.json`、`desktop-feed-production-settled-current / baseline / crossover-perf.json`。6 个前端服务与全部专用 Electron 会话已按本次登记身份关闭；5 份原始入口/ChatView 文件按 SHA 恢复，19 份清单内临时探针文件已移除，主目录源码哈希保持不变，生产产物与原始采样继续留存。
 
 此增量仅补两份证据文档，无新增产品动画、设置、provider 能力、合同、权限、持久化或数据迁移。第 9 项继续保留 Android 首轮空闲差异，以及真实忙碌回合、完整连接/滚动锚点和 iOS 设备边界；本次 JS rAF 不替代原生合成器帧时间。回退本主题提交可恢复此前文档记录。
+
+### 2026-10-13：Android 回调时钟纠正与 UI 帧补充交叉
+
+测量发生于 2026-10-12，实际 React Native 0.85.3 的 `RN$Bridgeless=true`。本机对应 `TimerManager.cpp:358` 将 `requestAnimationFrame` 排入零延时计时器；旧 Native rAF 记录全部保留为 JS 响应间隔，不能据其约 18/35ms 推断屏幕运行于 60/30FPS。匹配版本的 [官方实现](https://github.com/react/react-native/blob/v0.85.3/packages/react-native/ReactCommon/react/runtime/TimerManager.cpp) 与 [React Native 性能说明](https://reactnative.dev/docs/performance) 是采用依据。检索日期 2026-10-12，关键词 RN Android requestAnimationFrame / TimerManager / UI frame clock；优先使用安装版本和官方源码，旧版本 issue 不作为本机原因证明。
+
+四份额外空闲记录仍采用原 JS 回调口径。每轮滚动前后各四个窗口，每窗等待 130 回调、取最近 120 间隔；中间上/下各 20 页，实际移动 12480px。实际输入 1202、605 行、624px 视口、22133px 内容且 AppState active。
+
+| JS 空闲回调对照                     | 滚动前最高 p95 / 最大（ms） | 滚动后最高 p95 / 最大（ms） | 前 / 后单窗口 >50ms 最高数 |
+| ----------------------------------- | --------------------------- | --------------------------- | -------------------------- |
+| 当前                                | 19.5548 / 20.7209           | 34.7767 / 36.4152           | 0 / 0                      |
+| 基线                                | 18.0810 / 18.9104           | 18.6577 / 20.2206           | 0 / 0                      |
+| 当前交叉                            | 35.4142 / 51.5067           | 35.4648 / 37.4929           | 1 / 0                      |
+| 仅恢复历史 Animated.View 的拒绝实验 | 35.1091 / 36.9661           | 34.9150 / 40.9292           | 0 / 0                      |
+
+实验保留受控回收，仅改变历史容器；没有消除回调差异，已按 SHA 恢复，未修改主目录。同期 SurfaceFlinger 查询仍为约 60Hz、无 UID 覆盖，轮次内 missed-frame 计数未变；没有证明 Android 自动空闲策略是原因。
+
+补充 UI 口径使用已安装 Reanimated 4.3.1 的 [useFrameCallback](https://docs.swmansion.com/react-native-reanimated/docs/advanced/useFrameCallback/) 读取 `FrameInfo.timeSincePreviousFrame`。观察器仅在测量期间启停，不驱动 React 状态或动画样式。每轮滚动前后等待 130 UI 帧、八窗口上/下各 20 页、每页等待 12 个 UI 帧及实际滚动回执、最近 120 个 UI 间隔；全部实际输入 1202、605 行、624/22133px、每窗口移动 12480px、零边界空操作。三轮同一 APK、生产 JS、1280×720/160dpi，当前接受的 Mobile 源码已与提交逐一校验。
+
+| Native UI 帧时钟 | 最高窗口 p95（ms） | 窗口 p95 中位数（ms） | 最大间隔（ms） | 单窗口 >50ms 最高数 | 前 / 后空闲 p95（ms） |
+| ---------------- | ------------------ | --------------------- | -------------- | ------------------- | --------------------- |
+| 当前             | 34.096696          | 16.666666             | 49.999998      | 0                   | 16.666666 / 16.666666 |
+| 基线             | 49.999998          | 35.674750             | 766.666636     | 5                   | 16.666666 / 16.666666 |
+| 当前交叉         | 50.011098          | 34.025381             | 116.666662     | 7                   | 16.677768 / 16.666666 |
+
+首轮当前各对应窗口均改善；交叉不满足全部对应指标无回归：首窗最高 p95 比基线约多 0.0111ms，>50ms 数 7 高于 5；第二窗最大 100ms 高于基线约 83.33ms；第二组上滚 p95 35.383782ms 高于 34.007632ms。七个首窗长间隔包含约 66.67、83.33ms，不能全部解释为浮点精度。未调整 >50ms 门槛，未筛掉首窗，补充 UI 交叉保持未通过。
+
+三轮同步保存独立 Perfetto [FrameTimeline](https://perfetto.dev/docs/data-sources/frametimeline) 与 process_stats 跟踪，采用本机官方 Trace Processor v58.2。实际/预期帧为 326/326、662/662、381/381，完整帧均为 buffer；最大持续时间 83.677/772.6305/503.3213ms、均值 16.983104/46.457366/50.850724ms。交叉均值高于基线，不能宣称合成器全部改善。无 data_loss 严重级别记录，但 info 级 `frame_timeline_event_parser_errors` 为 325/285/304，分类解释保留该限制。BufferStuffing 和 Non-perceivableJank 单独保留，不能把 `jank_type != None` 一概计作用户掉帧。
+
+原始 `native-idle-{current,baseline,crossover,animated-history}-perf.json`、`native-ui-frames-{current,baseline,crossover}.json/.pftrace`、逐帧及分类 CSV 均留在工作区外；汇总校验 24 窗口、输入、源码 SHA、UI 回执、样本、距离和 trace SHA 通过。两个导出的探针与夹具已恢复/移除，`native-ui-frame-probes-restored.json` 的源码恢复、主目录不变与当前提交一致全部为 true；原生采样进程与 Metro 按登记身份停止。第 9 项的完整无回归结论仍开放。此主题仅纠正两份证据文档，回退提交即可恢复文档，没有产品动画、协议、权限或数据迁移。
