@@ -52,7 +52,7 @@
 | 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 合并、按帧发布与三端切片已落地，最终验收开放                           | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / 三端渲染 | 节奏开关、首段全文、字素边界、完成吸附及全文复制与几何已覆盖；Native 与最终性能仍开放                                 |
 | 6   | 流式选区与滚动锚点                                          | Web 与 Android 选区已验证，其余继续验收                                | 真实 StreamingChatMarkdown / Android 原生选区页及增量夹具                                      | Android 范围与全文复制、追加和终态选区保持已验证；完整滚动锚点及 iOS 设备矩阵仍开放                                   |
 | 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证                                     | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                        | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
-| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 订阅竞态与近期原包重投已修复，继续验收矩阵                             | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份                            | 真实 RPC 订阅 6 项、共享同步/挂载/分页/RPC 会话 43 项通过；近期防重与三态持久化回归见下方，设备/连接观察仍开放        |
+| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 会话流新旧合并已修复，继续验收矩阵                                     | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份                            | 共享/Web 实体 18 项及实际 Electron 生产回合通过；三端受控忙碌连接记录见下文，首次环境列表、真实 provider 与隧道仍开放 |
 | 9   | 同口径帧间隔性能无回归                                      | Android JS 响应改善、UI 补充交叉未通过；Web/Desktop 生产静态无持续回归 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                           | 生产 Web 三轮与 Desktop 两组共 72 窗口全部零长帧；开发态失败、显示条件与几何差异保留；Android 空闲及连接矩阵仍开放    |
 | 10  | Windows argv 三层守卫                                       | 待实施                                                                 | Antigravity / ZCode / resolveSpawnCommand                                                      | 尚未运行                                                                                                              |
 | 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 待实施                                                                 | ProviderDriver / provider snapshot 探测                                                        | 尚未运行                                                                                                              |
@@ -565,3 +565,21 @@ Desktop 共用实际 Electron 41.5.0 / Node 24.15.0 二进制、13779 专用后�
 三轮同步保存独立 Perfetto [FrameTimeline](https://perfetto.dev/docs/data-sources/frametimeline) 与 process_stats 跟踪，采用本机官方 Trace Processor v58.2。实际/预期帧为 326/326、662/662、381/381，完整帧均为 buffer；最大持续时间 83.677/772.6305/503.3213ms、均值 16.983104/46.457366/50.850724ms。交叉均值高于基线，不能宣称合成器全部改善。无 data_loss 严重级别记录，但 info 级 `frame_timeline_event_parser_errors` 为 325/285/304，分类解释保留该限制。BufferStuffing 和 Non-perceivableJank 单独保留，不能把 `jank_type != None` 一概计作用户掉帧。
 
 原始 `native-idle-{current,baseline,crossover,animated-history}-perf.json`、`native-ui-frames-{current,baseline,crossover}.json/.pftrace`、逐帧及分类 CSV 均留在工作区外；汇总校验 24 窗口、输入、源码 SHA、UI 回执、样本、距离和 trace SHA 通过。两个导出的探针与夹具已恢复/移除，`native-ui-frame-probes-restored.json` 的源码恢复、主目录不变与当前提交一致全部为 true；原生采样进程与 Metro 按登记身份停止。第 9 项的完整无回归结论仍开放。此主题仅纠正两份证据文档，回退提交即可恢复文档，没有产品动画、协议、权限或数据迁移。
+
+### 第 8 项：独立状态流合并与实际忙碌连接（2026-10-13）
+
+`mergeEnvironmentThread` 原来始终用 shell 会话覆盖详情会话。两条流独立到达时，较旧的 shell 可使运行中线程重开显示发送，或使已结束回合继续显示停止。现在按 `session.updatedAt` 比较时刻；较新的详情会话和 `latestTurn` 一同保留，相同时刻仍采用 shell。普通 shell 元数据更新时间不代替会话时刻；工作区、分支、权限等元数据继续采用 shell，详情消息集合保持原引用。该合并由 Web、Desktop 和 Mobile 共用，不增加协议字段、刷新循环或 provider 分支。
+
+原实现的四种较新详情会话用例均失败，修复后运行 `vp test run packages/client-runtime/src/state/entities.test.ts apps/web/src/state/entities.test.ts` 共 18 项通过；覆盖 ready/running/interrupted/error、相同/较新 shell 时刻及等价时区。client-runtime 目标 `tsgo --noEmit --project packages/client-runtime/tsconfig.json`、触及源码 lint/fmt 与 diff 检查通过。
+
+| 客户端与版本                  | 实际观察                                                                                                                 | 验收边界                                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| Web 开发构建，修复前          | 离开线程时 transport 保留；重新打开接收关闭期间 C003；断线保留正文/代码，恢复 D004/E005 各一次；终态恢复发送             | 实际 ingestion/engine/projector，受控 Codex runtime，没有外部 provider 调用                               |
+| Android 生产 JS，修复前       | 离开 Home 时连接保留；重新打开 F006，断线 G007 与同原事件 ID 重投，恢复 H008 各一次；终态去除运行标记                    | SDK 新鲜层级与实际截图；旧 `uiautomator dump` 失败后复用的 XML 已排除；不是 iOS 设备证据                  |
+| Electron 开发构建，修复前     | I009/J010/K011 正文保持；终态仍显示停止                                                                                  | 保留失败，HMR 模块身份诊断不能作为运行时根因结论                                                          |
+| Electron 生产构建，修复前     | 断线恢复与终态发送通过；运行中重开曾显示发送                                                                             | 保留运行标记错误与 Git 超时，不扩大为整个第 8 项通过                                                      |
+| Electron 候选生产构建，修复后 | 有效运行/重开/断线/恢复均显示停止生成；终态显示发送消息；同一规范 assistant ID，A001/C003/D004/E005 一次且按序，代码保留 | 159 字符与数据库全文相同，streaming=0/session=ready，历史共 6 消息；provider 尚未启动的前三份记录明确排除 |
+
+候选 Web 首次配对后仍出现空项目列表，保存为 `busy-web-fixed-initial-empty`，重载也未解决；不能宣称初次远程环境展示已修复。Android 候选冷加载遇到 Metro manifest 加载失败，保留错误页与新启动记录，尚未作为此修复的设备通过证据。原 Electron 首次新增远程环境也曾因 HTTP shell 6 秒超时未显示项目，后来重载显示；直接 HTTP 同期 200、Git 直接执行约 58–68ms，与服务端 GitVcsDriver 5 秒超时并存，根因尚未解决。
+
+原始忙碌动作、代理连接收据、DOM/SDK 层级、截图、只读数据库快照及 `busy-runtime-fixed-verified.json` 保留在工作区外。隔离 fixture 只控制 Codex `makeRuntime` 的事件，之后走真实 ingestion/engine/projector，不修改主产品入口、不调用外部 CLI。其余 adapter 的第 7 项终态定向测试仍适用，但本轮不证明各真实 provider、隧道、多环境切换或完整滚动锚点矩阵；第 8 项继续开放，第 9 项原生 UI 交叉仍未通过。回退此提交即可恢复合并与文档，无数据迁移。

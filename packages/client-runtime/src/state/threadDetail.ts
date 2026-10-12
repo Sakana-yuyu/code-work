@@ -41,6 +41,14 @@ export function mergeEnvironmentThread(
     return detail;
   }
 
+  // 两条流独立到达，较旧 shell 不能覆盖详情流的新回合或终态。
+  // 工作区元数据仍由 shell 决定；单独比较会话时刻，避免普通编辑误判新旧。
+  const runtime =
+    detail.session !== null &&
+    Date.parse(detail.session.updatedAt) > Date.parse(shell.session?.updatedAt ?? shell.updatedAt)
+      ? detail
+      : shell;
+
   return {
     ...detail,
     environmentId: shell.environmentId,
@@ -52,7 +60,7 @@ export function mergeEnvironmentThread(
     interactionMode: shell.interactionMode,
     branch: shell.branch,
     worktreePath: shell.worktreePath,
-    latestTurn: shell.latestTurn,
+    latestTurn: runtime.latestTurn,
     createdAt: shell.createdAt,
     updatedAt: shell.updatedAt,
     archivedAt: shell.archivedAt,
@@ -62,7 +70,7 @@ export function mergeEnvironmentThread(
     snoozedAt: shell.snoozedAt,
     pinnedAt: shell.pinnedAt,
     pinOrderKey: shell.pinOrderKey,
-    session: shell.session,
+    session: runtime.session,
   };
 }
 

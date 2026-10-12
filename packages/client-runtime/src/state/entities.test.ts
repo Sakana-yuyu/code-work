@@ -3,6 +3,7 @@ import {
   ProjectId,
   ProviderInstanceId,
   ThreadId,
+  TurnId,
   type OrchestrationShellSnapshot,
   type OrchestrationThread,
 } from "@codework/contracts";
@@ -197,6 +198,98 @@ function makeHarness() {
 }
 
 describe("environment entity projections", () => {
+  it.each([
+    "2026-06-01T00:00:02.000Z",
+    "2026-06-01T00:00:03.000Z",
+    "2026-06-01T08:00:02.000+08:00",
+  ])("会话时刻相同或 shell 更新时保留其权威状态：%s", (updatedAt) => {
+    const session = {
+      threadId: THREAD_ID,
+      status: "ready" as const,
+      providerName: "codex",
+      runtimeMode: "full-access" as const,
+      activeTurnId: null,
+      lastError: null,
+      updatedAt: "2026-06-01T00:00:02.000Z",
+    };
+    const detail = {
+      ...THREAD_SHELL,
+      environmentId: ENVIRONMENT_ID,
+      session,
+      // 消息追加使详情更新，不应覆盖更新的 shell 会话。
+      updatedAt: "2026-06-01T00:00:04.000Z",
+      deletedAt: null,
+      messages: [],
+      proposedPlans: [],
+      activities: [],
+      checkpoints: [],
+    } satisfies OrchestrationThread & { readonly environmentId: EnvironmentId };
+    const shell = {
+      ...THREAD_SHELL,
+      environmentId: ENVIRONMENT_ID,
+      session: {
+        ...session,
+        status: "running" as const,
+        activeTurnId: TurnId.make("新回合"),
+        updatedAt,
+      },
+    };
+    expect(mergeEnvironmentThread(detail, shell)?.session).toBe(shell.session);
+  });
+
+  it.each(["ready", "running", "interrupted", "error"] as const)(
+    "保留详情流中更新的 %s 会话，同时继续采用 shell 工作区",
+    (status) => {
+      const oldSession = {
+        threadId: THREAD_ID,
+        status: status === "running" ? ("ready" as const) : ("running" as const),
+        providerName: "codex",
+        runtimeMode: "full-access" as const,
+        activeTurnId: status === "running" ? null : TurnId.make("旧回合"),
+        lastError: null,
+        updatedAt: "2026-06-01T00:00:00.000Z",
+      };
+      const session = {
+        ...oldSession,
+        status,
+        activeTurnId: status === "running" ? TurnId.make("新回合") : null,
+        updatedAt: "2026-06-01T00:00:02.000Z",
+      };
+      const latestTurn = {
+        turnId: TurnId.make("新回合"),
+        state: status === "running" ? ("running" as const) : ("completed" as const),
+        requestedAt: "2026-06-01T00:00:01.000Z",
+        startedAt: "2026-06-01T00:00:01.000Z",
+        completedAt: status === "running" ? null : session.updatedAt,
+        assistantMessageId: null,
+      };
+      const detail = {
+        ...THREAD_SHELL,
+        environmentId: ENVIRONMENT_ID,
+        session,
+        latestTurn,
+        deletedAt: null,
+        messages: [],
+        proposedPlans: [],
+        activities: [],
+        checkpoints: [],
+      } satisfies OrchestrationThread & { readonly environmentId: EnvironmentId };
+      const shell = {
+        ...THREAD_SHELL,
+        environmentId: ENVIRONMENT_ID,
+        session: oldSession,
+        branch: "当前工作区",
+        // 普通元数据较新不代表会话状态较新。
+        updatedAt: "2026-06-01T00:00:03.000Z",
+      };
+      const merged = mergeEnvironmentThread(detail, shell);
+      expect(merged?.session).toBe(session);
+      expect(merged?.latestTurn).toBe(latestTurn);
+      expect(merged?.branch).toBe(shell.branch);
+      expect(merged?.messages).toBe(detail.messages);
+    },
+  );
+
   it("composes detail collections with authoritative shell workspace metadata", () => {
     const messages: OrchestrationThread["messages"] = [];
     const detail = {

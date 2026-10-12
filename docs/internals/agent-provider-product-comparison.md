@@ -201,3 +201,9 @@ Desktop 使用同一实际 Electron 41.5.0 二进制、独立后端/状态与 de
 同步 [Perfetto FrameTimeline](https://perfetto.dev/docs/data-sources/frametimeline) 实际/预期帧 326/326、662/662、381/381，均为完整 buffer 帧；最大持续时间 83.677/772.6305/503.3213ms，均值 16.983104/46.457366/50.850724ms。交叉均值上升；info 级解析错误 325/285/304，无 data_loss 记录，分类不能扩大为完整掉帧计数。BufferStuffing 与 Non-perceivableJank 独立记录。官方匹配版本与 SDK 文档访问于 2026-10-12，检索 RN requestAnimationFrame / UI frame clock / FrameTimeline，采用源码及官方说明。
 
 全部原始 JSON/trace/逐帧 CSV 保留，24 窗口及源码、输入、回执、样本、几何、trace SHA 校验通过；两个导出的临时源码/模块已按 SHA 恢复，当前 Mobile 源与接受提交一致，主目录未改变。第 9 项总体仍开放，详见 [移植跟踪](./port-progress.md)；此主题仅纠正文档，回退对应提交即可恢复。
+
+### 忙碌连接与会话状态合并（2026-10-13）
+
+共享实体合并改为保留会话时刻更新的一侧，同时保留 shell 的工作区元数据与详情的集合引用。旧实现四种较新详情状态用例失败，修复后共享/Web 实体 18 项通过，目标类型与源码 lint/fmt 通过。实际 Electron 41.5 生产构建验证运行中重开、连接中断与恢复均保持停止生成，结束后恢复发送消息；同一规范 assistant 消息，159 字符与只读数据库一致，无重复或乱序，旧 4 条历史消息保留。
+
+修复前 Web 与 Android 已通过受控运行中的关闭、重开、断线原事件重投与自动恢复正文观察；该证据使用隔离 Codex runtime 事件经过真实 ingestion/engine/projector，不能替代外部 provider。Android 使用官方 SDK UiAutomation 新鲜层级，失败后残留的旧 XML 不计入。候选 Web 首次配对的空列表与 Android 候选 Metro manifest 加载失败均保留，尚未作为修复通过证据；Electron 开发态终态失败和首次远程列表/Git 超时也未关闭。此轮为功能验证，不能替代上述帧间隔、选区或完整滚动锚点验收。连接与设备矩阵继续见 [移植跟踪](./port-progress.md)。

@@ -245,6 +245,12 @@ works for a server that was wiped or is no longer reachable. Device-local connec
 controls remain in **Settings** → **Connections** on web and desktop or **Settings** →
 **Environments** on mobile.
 
+## 运行中线程与连接恢复
+
+离开线程页面后，环境连接继续保留，回到运行中线程时可以继续查看回复。网络暂时中断时，已收到的正文保持可见；恢复连接后继续接收后续内容。
+
+线程列表和对话详情可能先后收到状态更新。对话使用较新的会话状态：运行中的回合显示停止操作，回合结束后恢复发送操作。工作区、分支等信息继续采用线程列表中的当前值。
+
 ## Security Notes
 
 - Treat pairing URLs and pairing tokens like passwords.
