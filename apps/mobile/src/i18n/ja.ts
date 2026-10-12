@@ -575,6 +575,10 @@ export const ja: Record<string, string> = {
   copiesTheTraceId: "トレース ID をコピーします",
   copyCode: "コードをコピー",
   copyMessage: "メッセージをコピー",
+  "messageTextSelection.action": "テキストを選択",
+  "messageTextSelection.close": "テキスト選択を閉じる",
+  "messageTextSelection.hint":
+    "長押しして、開いた時点で受信済みのメッセージ全体から選択できます。Markdown も含みます。新しい内容は会話に届き続けます。閉じて再度開くと最新のテキストを選択できます。",
   copyPath: "パスをコピー",
   revert: "元に戻す",
   revertToThisMessage: "このメッセージに戻す",

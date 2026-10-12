@@ -50,7 +50,7 @@
 | 3   | 三态输出、默认 paragraph、旧键策略、三端设置                | 完成（本主题定向验收）                       | settings / AssistantTextBuffer / ProviderRuntimeIngestion / Web/Desktop 设置 / Mobile 设置     | 工作区 10 文件 / 273 项通过；纯暂存候选 35 项与五个目标类型检查通过；当前脏工作区的完整模块诊断仍记录为未通过，见下文 |
 | 4   | 全部客户端增量渲染清单与上游对应提交                        | 部分完成，继续补齐                           | 闭合 Markdown 前缀 / 固定 Web 渲染身份 / 逐行高亮 / 共享回合与检查点引用 / Mobile 块键         | 8 文件 / 188 项通过；Web DOM 追加与终态选区保持；完整清单见下文，未完成项保留                                         |
 | 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 合并、按帧发布与三端切片已落地，最终验收开放 | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / 三端渲染 | 节奏开关、首段全文、字素边界、完成吸附及全文复制与几何已覆盖；Native 与最终性能仍开放                                 |
-| 6   | 流式选区与滚动锚点                                          | Web 代码及普通文字已验证，其余继续验收       | 真实 StreamingChatMarkdown 临时交互夹具 / Mobile 原生 Markdown                                 | 未闭合段落追加、终态与清除选区均保持既有节点；滚动锚点与原生设备仍待矩阵验证                                          |
+| 6   | 流式选区与滚动锚点                                          | Web 与 Android 选区已验证，其余继续验收      | 真实 StreamingChatMarkdown / Android 原生选区页及增量夹具                                      | Android 范围与全文复制、追加和终态选区保持已验证；完整滚动锚点及 iOS 设备矩阵仍开放                                   |
 | 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证           | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                        | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 订阅竞态与近期原包重投已修复，继续验收矩阵   | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份                            | 真实 RPC 订阅 6 项、共享同步/挂载/分页/RPC 会话 43 项通过；近期防重与三态持久化回归见下方，设备/连接观察仍开放        |
 | 9   | 同口径帧间隔性能无回归                                      | Web 本轮对照通过；Desktop/Native 仍开放      | 1280×720、1202 活动、上下各 20 页 ×4 组                                                        | 最新版本与同期原始版本最高 p95 均 18.1 ms，交叉复测最大 53.0 / 53.7 ms；首次最新测量最大 53.9 ms 也保留，详见下方记录 |
@@ -374,3 +374,16 @@ server/client-runtime 的本批目标 `tsgo --noEmit` 通过，3 份源文件 li
 公开交叉依据：2026-10-12 检索 fbjni / \_\_cxa_init_primary_exception / React Native 0.85，采用官方上游仓库 [t3code #13710](https://github.com/pingdotgg/t3code/issues/13710) 的问题记录作为本地依赖图与符号检查的佐证；实现独立按本项目配置编写，没有复制参考源码。16KB 检查口径采用 [Android 官方页大小文档](https://developer.android.com/guide/practices/page-sizes)。
 
 本主题只影响 Android 构建依赖选择；iOS/Web/Desktop 与所有 provider、连接合同、权限、UI 入口及反向状态不变。已有 APK 必须原生重建，不能以 OTA 装入此修复。回退本主题提交并重新 prebuild/构建即可恢复原约束，无数据库迁移。本机 Native 已用新单次凭据经 adb reverse 连接相同隔离后端，真实首页显示 1202 条活动验收线程；10.0.2.2 直连曾超时，不能把转发连接等同于该路径或远程/隧道通过。流式选区与性能验收继续推进，第 4/6/8/9 项保持开放。
+
+### 2026-10-12：Android 正文选区的等价实现与设备验证
+
+实际设备长按 Nitro 普通段落时没有选区入口，现于用户消息和 assistant 回复旁加入“选择文本”，运行中的回复也显示此入口。`MessageTextSelection` 的原生 TextView 在虚拟列表之外，`useMessageTextSelection` 只在用户打开时保存完整消息字符串；揭示切片、后续正文和回合终态不替换该来源。选择与页内全文复制使用同一份文字，包括 Markdown、代码围栏、CRLF 和组合字素。会话 store 与几何继续使用最新全文，关闭后重开选择最新文本；切换环境或线程立即关闭旧选区，不会恢复过期正文。
+
+- 纯候选定向测试：`vp test run --config .candidate-test.config.ts apps/mobile/src/features/threads/MessageTextSelection.test.tsx apps/mobile/src/i18n/runtime.test.ts apps/mobile/src/lib/threadActivity.test.ts`，3 文件 66 项通过，其中新选区 8 项、翻译运行时 4 项、既有 Mobile 活动与展示选择器 54 项。覆盖打开时全文、跨环境同名线程、关闭/重开、Android 入口、其他平台沿用既有入口、原生系统返回及同来源复制。
+- Mobile 目标 `tsc --noEmit --project apps/mobile/.streaming-typecheck.json` 通过；定向配置显式包含已有 `Stack.tsx` 的 React Navigation 全局声明。最初未纳入该声明时，既有 `ThreadFile` 导航被推断为 never；没有通过断言或放宽产品配置解决。5 源文件/测试的 lint 和格式检查通过。
+- 实际配对会话：本次专用 Android 17 / API 37.1 / x86_64 / 16KB 模拟器，1280×720、160dpi，连接本次隔离后端。点击真实回复的入口、长按“601”，看到系统选区手柄与菜单；系统复制读回 3 字符，页内全文复制逐字符匹配 71 字符及代码原文，关闭后回到原会话。凭据没有写入截图或提交。
+- 原生增量夹具复用实际 `StreamingMarkdown`、选区控制器和选择页：打开时 58 字符，选中“601”；追加 50 段后全文 1008 字符，完成后 1018 字符，选区页仍为原 58 字符，手柄位置保持。完成后系统范围复制仍读回“601”；关闭后重开取 1018 字符，全文复制逐字符匹配，含 emoji 和完成尾文；系统返回关闭。此证据覆盖真实 Android View 与组件更新，不等同于真实 provider 发出该流。夹具只放在专用导出目录，入口已按原始字节恢复，临时文件已移除，4 份被测产品源码哈希仍匹配纯候选。
+
+新增入口仅用于 Android 聊天消息，包含用户与 assistant、历史与运行中回复；完成或系统返回为反向操作。Web/Desktop 保留已验证的 DOM 选区冻结；iOS 保留已有原生正文路径，本机没有 iOS 运行工具，不能声称 UIKit 设备通过。所有 provider 和本地/远程/隧道使用同一消息全文，此处没有新增协议、权限或服务端能力门控。中/英/日翻译与[用户说明](../user/assistant-output.md)已同步；已有翻译文件的用户改动通过精确补丁保留。回退本主题提交即可移除等价入口，无持久化数据迁移。
+
+原生性能仍开放：曾在多次开发包重载并展开活动后发生 LOW_MEMORY 退出，Native Heap 约 0.9GB、RSS 约 1.4GB；重建 JNI 配套只修复启动依赖。生产模式 JS 包也观察到较高原生内存，不能声称内存问题已解决。两次启动堆追踪分别发生缓冲溢出和 INVALID_STACK_BOUNDS，不据此定因；错误含义核对于 2026-10-12 的 [Perfetto 官方协议](https://raw.githubusercontent.com/google/perfetto/main/protos/perfetto/trace/profiling/profile_packet.proto)，检索词 heapprofd / client_error / stack bounds。较小采样记录不替代完整内存或帧率验收。本次仅调整专用模拟器的显示覆盖值，原尺寸/密度/旋转设置已留存，用户原 AVD 未修改。第 4/5/6/8/9 项继续保留各自尚未完成的设备、连接与性能边界。

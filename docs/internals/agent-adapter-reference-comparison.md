@@ -12,17 +12,17 @@
 
 ## 1. 各项目的接入模型对照
 
-| 维度 | open-design | Paseo | BaoCode | Code Work |
-| --- | --- | --- | --- | --- |
-| 定位 | 设计产物生成，CLI 是执行引擎 | 手机/CLI 远程监控本机 agent | Claude Code 的原生桌面 UI（Flutter），自带 IDE | 通用编码 agent GUI（web / desktop / mobile） |
-| agent 数量 | 约二十余个 CLI | Claude、Codex、Copilot、OpenCode、Pi、OMP、Cursor、Kimi、Kiro、通用 ACP，插件 provider（Antigravity、Muse Code） | `claude_code`、`codex`（`AgentKernel` 接口，另有 mock） | 多 Provider + ACP 家族 + BYOK |
-| 适配器形态 | 声明式数据 `RuntimeAgentDef`，无方法 | `AgentClient` + `AgentSession` 命令式接口 | `AgentKernel` 小接口 + **能力接口**（`SelectsModel`、`SelectsMode`、`ConfirmsModelSwitch`…），UI 只显示内核声明了的能力 | `ProviderAdapterShape` + `ProviderDriver` 生成多实例 `ProviderInstance` |
-| 输出归一 | 扁平 SSE 事件 | `AgentStreamEvent` + 结构化 timeline 项 | `KernelEvent`（带 `seq`），经 `Transcript` 幂等应用 | `ProviderRuntimeEvent` → 事件溯源读模型 |
-| 权限 | 全部免交互放权 | 保留交互，ACP 原样回传 `optionId` | 保留交互（`answer(requestId, …)`，`interaction_panel`） | 保留交互（`respondToRequest` / `respondToUserInput`） |
-| 会话续接 | 各 CLI 原生 resume | `resumeSession`、`listImportableSessions` / `importSession` | `KernelContext.resume`（会话目录记录）、`prepare()` / `release()` 管理内核生命周期 | `readThread`、`externalSessions` |
-| 模型/供应商 | 每 CLI 自己发现；BYOK 走 OpenCode | `fetchCatalog` 统一发现，`config.json` 的 provider/profile/`extends` | 本机代理把 Anthropic Messages 翻译到 OpenAI Chat/Responses，密钥在系统钥匙串 | 服务端 BYOK 网关 + `CliProxy` + `LocalAccountPool` |
-| 回滚/审查 | 无 | `revertConversation` / `revertFiles` / `revertBoth` | 逐文件 Keep/Undo，检查点放在 BaoCode 自己的数据目录，不污染仓库 `.git` | git 隐藏 ref 检查点 + `rollbackThread` |
-| 远程 | 无 | 中继 + E2E 加密 | SSH：界面在本机，文件/Git/搜索/终端/LSP/Claude Code 都在远端 | Connect/中继/隧道 |
+| 维度        | open-design                          | Paseo                                                                                                            | BaoCode                                                                                                                 | Code Work                                                               |
+| ----------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| 定位        | 设计产物生成，CLI 是执行引擎         | 手机/CLI 远程监控本机 agent                                                                                      | Claude Code 的原生桌面 UI（Flutter），自带 IDE                                                                          | 通用编码 agent GUI（web / desktop / mobile）                            |
+| agent 数量  | 约二十余个 CLI                       | Claude、Codex、Copilot、OpenCode、Pi、OMP、Cursor、Kimi、Kiro、通用 ACP，插件 provider（Antigravity、Muse Code） | `claude_code`、`codex`（`AgentKernel` 接口，另有 mock）                                                                 | 多 Provider + ACP 家族 + BYOK                                           |
+| 适配器形态  | 声明式数据 `RuntimeAgentDef`，无方法 | `AgentClient` + `AgentSession` 命令式接口                                                                        | `AgentKernel` 小接口 + **能力接口**（`SelectsModel`、`SelectsMode`、`ConfirmsModelSwitch`…），UI 只显示内核声明了的能力 | `ProviderAdapterShape` + `ProviderDriver` 生成多实例 `ProviderInstance` |
+| 输出归一    | 扁平 SSE 事件                        | `AgentStreamEvent` + 结构化 timeline 项                                                                          | `KernelEvent`（带 `seq`），经 `Transcript` 幂等应用                                                                     | `ProviderRuntimeEvent` → 事件溯源读模型                                 |
+| 权限        | 全部免交互放权                       | 保留交互，ACP 原样回传 `optionId`                                                                                | 保留交互（`answer(requestId, …)`，`interaction_panel`）                                                                 | 保留交互（`respondToRequest` / `respondToUserInput`）                   |
+| 会话续接    | 各 CLI 原生 resume                   | `resumeSession`、`listImportableSessions` / `importSession`                                                      | `KernelContext.resume`（会话目录记录）、`prepare()` / `release()` 管理内核生命周期                                      | `readThread`、`externalSessions`                                        |
+| 模型/供应商 | 每 CLI 自己发现；BYOK 走 OpenCode    | `fetchCatalog` 统一发现，`config.json` 的 provider/profile/`extends`                                             | 本机代理把 Anthropic Messages 翻译到 OpenAI Chat/Responses，密钥在系统钥匙串                                            | 服务端 BYOK 网关 + `CliProxy` + `LocalAccountPool`                      |
+| 回滚/审查   | 无                                   | `revertConversation` / `revertFiles` / `revertBoth`                                                              | 逐文件 Keep/Undo，检查点放在 BaoCode 自己的数据目录，不污染仓库 `.git`                                                  | git 隐藏 ref 检查点 + `rollbackThread`                                  |
+| 远程        | 无                                   | 中继 + E2E 加密                                                                                                  | SSH：界面在本机，文件/Git/搜索/终端/LSP/Claude Code 都在远端                                                            | Connect/中继/隧道                                                       |
 
 输出适配的核心差异：open-design 把所有协议拍平成一套事件；Paseo 在适配器边界翻译成带类型的 timeline 并由 manager 统一合并、持久化；BaoCode 让每个内核自己翻译，并要求事件带单调 `seq`、按 id 与偏移幂等应用；Code Work 的事件进入 decider/projector。
 
@@ -67,18 +67,18 @@
 
 Code Work 的 IDE 是内嵌 VS Code 工作台（`@codingame/monaco-vscode-api` + 服务端 VSCodium REH），与 BaoCode 的“原生 Flutter 自绘 IDE”路线不同，**不建议照搬实现**，只吸收体验和约束。
 
-| 编号 | BaoCode 做法 | 对 Code Work 的启发 |
-| --- | --- | --- |
-| IDE-1 | 读/搜/命令折叠成单行，一轮结束后的工作折叠成一行（`StepFolds`，“Worked for 4m 32s”）；编辑、子 agent、agent 的话打断折叠；计划卡片永不折叠 | 长任务时间线更易读。上游 T3 Code 也有 turn fold 与时间戳（§5）。对照 `MessagesTimeline` 的折叠规则 |
-| IDE-2 | 逐文件 Keep/Undo，检查点存放在应用数据目录而不是仓库 `.git` | Code Work 用仓库内隐藏 git ref。可评估对只读仓库、worktree 与远程项目的影响；先不迁移，仅作取舍记录 |
-| IDE-3 | 输入框是富文本：从编辑器复制的代码以“文件+行号引用”形式进入；粘贴图片、拖入文件落在句子中的位置 | 对照 Code Work 的 composer。上游已默认启用 rich text composer、折叠大段粘贴为文本附件 |
-| IDE-4 | 目标面板、队列面板、待办面板、上下文用量面板、MCP 面板、健康横幅、活动条，都位于输入框上方，状态来自内核 | 把“agent 在忙什么”集中到输入框上方，减少滚动时间线找状态。对照现有 composer 上方区域 |
-| IDE-5 | 源代码管理含提交图，用 Claude 起草提交信息；Git 变更、提交框在侧边面板 | 对照现有 diff 面板与提交流程 |
-| IDE-6 | 复用 VS Code 主题，编辑器、对话、侧栏同时跟随；VS Code/IntelliJ/Sublime/Atom 键位 | Code Work 已用 VS Code 工作台并有 `themeSync`。键位方案是否暴露给用户需核对 |
-| IDE-7 | 调试适配器（DAP）UI、LSP、终端（自研 xterm 与 pty 子包） | 工作台已有这些通用能力，不重复造轮子 |
-| IDE-8 | SSH 远程项目：侧栏按“环境”切换，主机是一级概念，状态圆点绿/黄/红/空心；别的环境有待确认对话时在切换器上显示徽标；移除主机只隐藏项目不删对话 | Code Work 已有多环境模型。这些细节（跨环境徽标、移除不删数据、新对话默认落在当前环境）可作为检查表 |
-| IDE-9 | 通知：agent 需要你或完成时发系统通知、声音与角标；关闭窗口后 agent 在托盘继续跑 | 上游 T3 Code 已加线程通知、声音与桌面角标（§5） |
-| IDE-10 | 自动更新、托盘常驻、Windows 安装器带 SSH 远程服务端 | 对照桌面发布流程 |
+| 编号   | BaoCode 做法                                                                                                                                | 对 Code Work 的启发                                                                                 |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| IDE-1  | 读/搜/命令折叠成单行，一轮结束后的工作折叠成一行（`StepFolds`，“Worked for 4m 32s”）；编辑、子 agent、agent 的话打断折叠；计划卡片永不折叠  | 长任务时间线更易读。上游 T3 Code 也有 turn fold 与时间戳（§5）。对照 `MessagesTimeline` 的折叠规则  |
+| IDE-2  | 逐文件 Keep/Undo，检查点存放在应用数据目录而不是仓库 `.git`                                                                                 | Code Work 用仓库内隐藏 git ref。可评估对只读仓库、worktree 与远程项目的影响；先不迁移，仅作取舍记录 |
+| IDE-3  | 输入框是富文本：从编辑器复制的代码以“文件+行号引用”形式进入；粘贴图片、拖入文件落在句子中的位置                                             | 对照 Code Work 的 composer。上游已默认启用 rich text composer、折叠大段粘贴为文本附件               |
+| IDE-4  | 目标面板、队列面板、待办面板、上下文用量面板、MCP 面板、健康横幅、活动条，都位于输入框上方，状态来自内核                                    | 把“agent 在忙什么”集中到输入框上方，减少滚动时间线找状态。对照现有 composer 上方区域                |
+| IDE-5  | 源代码管理含提交图，用 Claude 起草提交信息；Git 变更、提交框在侧边面板                                                                      | 对照现有 diff 面板与提交流程                                                                        |
+| IDE-6  | 复用 VS Code 主题，编辑器、对话、侧栏同时跟随；VS Code/IntelliJ/Sublime/Atom 键位                                                           | Code Work 已用 VS Code 工作台并有 `themeSync`。键位方案是否暴露给用户需核对                         |
+| IDE-7  | 调试适配器（DAP）UI、LSP、终端（自研 xterm 与 pty 子包）                                                                                    | 工作台已有这些通用能力，不重复造轮子                                                                |
+| IDE-8  | SSH 远程项目：侧栏按“环境”切换，主机是一级概念，状态圆点绿/黄/红/空心；别的环境有待确认对话时在切换器上显示徽标；移除主机只隐藏项目不删对话 | Code Work 已有多环境模型。这些细节（跨环境徽标、移除不删数据、新对话默认落在当前环境）可作为检查表  |
+| IDE-9  | 通知：agent 需要你或完成时发系统通知、声音与角标；关闭窗口后 agent 在托盘继续跑                                                             | 上游 T3 Code 已加线程通知、声音与桌面角标（§5）                                                     |
+| IDE-10 | 自动更新、托盘常驻、Windows 安装器带 SSH 远程服务端                                                                                         | 对照桌面发布流程                                                                                    |
 
 BaoCode 的速度优势来自原生渲染（启动约 0.18 秒、单窗口约 120 MB），这是 Flutter 与 Electron 的架构差异，Code Work 无法靠局部修改获得；能做的是减少渲染进程负担，见 §4。
 
@@ -94,6 +94,9 @@ BaoCode 的速度优势来自原生渲染（启动约 0.18 秒、单窗口约 12
 2. **客户端增量渲染。** 上游一系列性能提交：复用已完成的 Markdown 前缀（`a9dabbf100`）、保留已完成代码行的 DOM（`8078c532ce`）、流式期间复用时间线行（`19c1710a88`、`aefef95ffc`）、保持 Markdown 挂载不重建（`887ece3071`、`355fbd96d5`）、投影与活动追加改为增量（`c2283ce146`）、流式期间保持 turn 与检查点引用稳定（`6866fd6b5c`）、流式期间跳过检查点 map 重建（`076d753ae6`）、不用的线程流停止订阅（`d7cf8aaa8d`）；移动端同理（`44dc8ae259`、`7bd7f99e6c`）。应逐项核对 Code Work 是否包含这些修复，缺的优先补。
 3. **服务端合并 + 客户端节奏揭示（Paseo 做法）。** 合并窗口是 leading + trailing：空闲后第一个 delta 立即发出，其余等尾部计时；每个 agent 每 60ms 至多一条；客户端每帧只提交一次 reducer；渲染层按积压量调节揭示速度，store 保存完整文本，只对渲染切片限速；首次看到的文本整体显示，完成后立即吸附，保证复制、选择、滚动几何读到同一份文本。缩短窗口只会让波动变小变频繁，不能解决问题。与 §4.2-1 互补：段落级降低条数，节奏揭示消除到达的块状感。
 4. **流式期间选择不跳。** BaoCode 的 `LiveSelectableText` 为流入文本保持选区落在相同字符上，因为 Flutter 的 `Text` 每次变更都会重建选区，导致高亮闪烁和滑动。浏览器里对应的问题是流式重渲染破坏用户选区；Code Work 若在 Markdown 重建时丢选区，可参考其“只追加不替换节点”的思路（与 §4.2-2 一致）。
+
+   2026-10-12，Android 的 Nitro 普通段落没有原生选区入口，新增消息旁的“选择文本”作为等价方案。独立于虚拟列表的原生 TextView 固定打开时收到的完整正文，保留 Markdown 与代码原文；流式 store 与会话几何继续更新，选择页不随尾文或终态替换。关闭并重新打开取最新全文，环境或线程切换关闭旧选区。实际配对 Android 会话已验证系统选区菜单、选中范围复制和全文复制，流式更新与最终性能的设备矩阵继续记录于 [port-progress](./port-progress.md)。Web/Desktop 保留既有 DOM 选区冻结，iOS 保留既有原生正文路径；无新增协议、权限或 provider 分支，没有复制参考源码。
+
 5. **减少不必要的持久化与重复拷贝。** 上游：ACP 工具更新不再每个流式块都持久化快照（`10e29a26c2`）；Codex 流式文本只保留一份拷贝、外壳刷新更便宜、MCP 等待不再轮询（`c138163c8c`）；服务端读取不再在流式期间全量读消息（`e86604d337`）。对照 `ProviderRuntimeIngestion` 与 ACP 适配层。
 6. **事件幂等与重连。** BaoCode 的 `seq` + 按 id/偏移应用，使重连重放安全；上游同时修了“关闭忙碌流不再断开连接”（`eac52f0087`）、“打开运行中线程时同步状态不再闪烁”（`ab70c8943f`）。2026-10-12 已修复线程订阅未立即接入实时总线、导致同步游标读取期间尾文可能丢失的竞态，旧行为红/新行为绿；线程真实 RPC 6 项与共享同步/挂载/分页/RPC 会话 43 项通过。运行正文在替换连接时保持身份和最新游标，重叠与过期序号忽略，不按文本全局去重。公共 ingestion 现按复合身份在合并前过滤最近 10000 个 canonical 事件的重投，跨窗口和终态后重投不重复入库，新的身份即使文字相同仍保留。该有界内存防护不跨服务重启；客户端网络恢复继续回放按持久化序号应用的领域事件，不重新执行 provider 命令。设备/连接全路径继续核验，见 [port-progress](./port-progress.md)。
 7. **思考内容可见。** 上游 `feat(chat): show provider thinking traces`（2026-09-16）与 `feat(clients): live row shows the agent's latest thought`（2026-10-07）：运行中那一行显示 agent 最新的思考片段，减少“没反应”的感觉。Code Work 未探测到对应实现（需核对）。
@@ -113,30 +116,30 @@ BaoCode 的速度优势来自原生渲染（启动约 0.18 秒、单窗口约 12
 
 ### 5.2 候选移植（按主题）
 
-| 主题 | 上游新增（日期 / 说明） | Code Work 现状（探测） | 建议 |
-| --- | --- | --- | --- |
-| 输出模式 | `responseStreamingMode` 三态，默认段落级（09-13） | 仍是 `enableLegacyTokenStreaming` 布尔，默认开 | P0，见 §4 |
-| 回合控制 | 排队或 steer 的后续消息、客户端排队、发送快捷键、上箭头召回已发送 prompt（09-04～09-16） | 未探测到 steer 选择与后续消息行为设置（`steer` 一词有出现，需核对） | P1 |
-| 回滚 | 回滚对话但保留文件改动（09-12） | `rewind` 相关代码已有 | 需核对是否含“保留文件”变体 |
-| 上下文 | provider 上下文压缩命令、跨 harness 压缩、发送前压缩芯片显示 token 数、旧 Claude 线程发送时自动压缩（09-02～10-08） | 有 compaction 相关代码 | 需核对发送前提示与自动压缩 |
-| 斜杠命令 | 跨客户端暴露原生斜杠命令（09-16） | 有 slash commands 相关代码，含 `ByokSlashCommands` | 需核对是否覆盖各 provider |
-| 目标 | 原生 `/goal`（Codex 与 Claude），UI 显示目标状态（10-05） | 有 `/goal` 出现的文件，需核对 | 需核对 |
-| 问题 | agent 异步提问、可不回复直接关闭、回答可附文件、通过私密卡片请求 secret（09-03～10-05） | 未探测到 | P1 |
-| 配额 | 订阅额度与 Limits 页、`/usage-limits`、按 provider 跨账号与环境汇总、显示剩余额度（09-03～10-11） | 未探测到订阅额度；已有 BYOK 余额看板 | P2，需区分订阅额度与 BYOK 余额，见 `agent-provider-product-comparison.md` |
-| 设置 | 项目级设置覆盖（`PROJECT_SCOPED_SERVER_SETTING_KEYS`）、设置按环境/项目两个选择器、默认权限、`t3.json` 限制子模块初始化 | 未探测到项目级覆盖 | P1 |
-| 线程管理 | 撤销结案/贪睡/归档（Mod+Z）、手动排序持久化、紧凑线程列表、侧栏紧凑栏、在另一台机器上的项目标记 | 有 snooze 相关代码；其余需核对 | P2 |
-| 通知 | 线程通知与声音、桌面与 Web 角标、应用内通知 | 需核对 | P1，与 BaoCode 通知一致 |
-| 多模型 | 一次用多个模型在各自 worktree 里开线程 | 未探测到 | P2 |
-| worktree | 选择新 worktree 的位置、异步初始化脚本与逐步进度、可取消、`t3/` 短分支前缀、结案后运行项目动作 | 未探测到“选择位置” | P2 |
-| 文件与附件 | PDF/ZIP 等任意文件上传（50MB）、内联文件预览与附件芯片、HTML/PDF 查看、大段粘贴折叠为附件 | 需核对 | P1 |
-| MCP | MCP 应用在线程内渲染与运行、MCP 工具声明调用者权限、外部 agent 通过 OAuth 登录、可复制环境 MCP URL | 有 MCP OAuth 相关代码；其余需核对 | P1，注意权限边界 |
-| 认证权限 | 把终端观察、文件读写、源码控制写入、环境管理、浏览器预览控制等拆成独立语义权限 | 有 `RpcAuthorization` | 需核对粒度 |
-| 源码托管 | 用 GitHub API 而非 `gh`、多账号路由、Forgejo/Gitea（`fj`/`tea`）、GitCafe、PR 引导式评审（10-11）、评审指南 MCP 工具 | 未探测到 GitCafe 与评审指南 | P2，是否需要取决于用户群 |
-| 模型目录 | 从远程清单发现 Claude 模型、CLI 更新解锁新模型时提示、模型收藏与可见性跨客户端同步 | 有模型清单 `ModelManifest` | 需核对远程清单 |
-| 设备 | 模拟器与设备流、3D 设备工作区、远程 Mac 更新 | 未探测到 | P3，非核心 |
-| 可观测 | 通过 OTLP 导出日志与主进程遥测、尊重 OTel 开关、诊断页配置导出 | 有 OpenTelemetry 相关文件 | 需核对 |
-| 协议兼容 | 客户端容忍未知联合成员（09-05）、provider 远程兼容范围检查 | 有 `tolerate`/未知成员相关代码 | 需核对覆盖面 |
-| 其他 | 安装 `t3` 命令、`t3 update`/`restart`、WSL 后端用 Linux CLI 归档运行、服务器更新后继续活动线程、自动存储清理 | 未探测到“更新后继续线程”与存储清理 | P2 |
+| 主题       | 上游新增（日期 / 说明）                                                                                                 | Code Work 现状（探测）                                              | 建议                                                                      |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| 输出模式   | `responseStreamingMode` 三态，默认段落级（09-13）                                                                       | 仍是 `enableLegacyTokenStreaming` 布尔，默认开                      | P0，见 §4                                                                 |
+| 回合控制   | 排队或 steer 的后续消息、客户端排队、发送快捷键、上箭头召回已发送 prompt（09-04～09-16）                                | 未探测到 steer 选择与后续消息行为设置（`steer` 一词有出现，需核对） | P1                                                                        |
+| 回滚       | 回滚对话但保留文件改动（09-12）                                                                                         | `rewind` 相关代码已有                                               | 需核对是否含“保留文件”变体                                                |
+| 上下文     | provider 上下文压缩命令、跨 harness 压缩、发送前压缩芯片显示 token 数、旧 Claude 线程发送时自动压缩（09-02～10-08）     | 有 compaction 相关代码                                              | 需核对发送前提示与自动压缩                                                |
+| 斜杠命令   | 跨客户端暴露原生斜杠命令（09-16）                                                                                       | 有 slash commands 相关代码，含 `ByokSlashCommands`                  | 需核对是否覆盖各 provider                                                 |
+| 目标       | 原生 `/goal`（Codex 与 Claude），UI 显示目标状态（10-05）                                                               | 有 `/goal` 出现的文件，需核对                                       | 需核对                                                                    |
+| 问题       | agent 异步提问、可不回复直接关闭、回答可附文件、通过私密卡片请求 secret（09-03～10-05）                                 | 未探测到                                                            | P1                                                                        |
+| 配额       | 订阅额度与 Limits 页、`/usage-limits`、按 provider 跨账号与环境汇总、显示剩余额度（09-03～10-11）                       | 未探测到订阅额度；已有 BYOK 余额看板                                | P2，需区分订阅额度与 BYOK 余额，见 `agent-provider-product-comparison.md` |
+| 设置       | 项目级设置覆盖（`PROJECT_SCOPED_SERVER_SETTING_KEYS`）、设置按环境/项目两个选择器、默认权限、`t3.json` 限制子模块初始化 | 未探测到项目级覆盖                                                  | P1                                                                        |
+| 线程管理   | 撤销结案/贪睡/归档（Mod+Z）、手动排序持久化、紧凑线程列表、侧栏紧凑栏、在另一台机器上的项目标记                         | 有 snooze 相关代码；其余需核对                                      | P2                                                                        |
+| 通知       | 线程通知与声音、桌面与 Web 角标、应用内通知                                                                             | 需核对                                                              | P1，与 BaoCode 通知一致                                                   |
+| 多模型     | 一次用多个模型在各自 worktree 里开线程                                                                                  | 未探测到                                                            | P2                                                                        |
+| worktree   | 选择新 worktree 的位置、异步初始化脚本与逐步进度、可取消、`t3/` 短分支前缀、结案后运行项目动作                          | 未探测到“选择位置”                                                  | P2                                                                        |
+| 文件与附件 | PDF/ZIP 等任意文件上传（50MB）、内联文件预览与附件芯片、HTML/PDF 查看、大段粘贴折叠为附件                               | 需核对                                                              | P1                                                                        |
+| MCP        | MCP 应用在线程内渲染与运行、MCP 工具声明调用者权限、外部 agent 通过 OAuth 登录、可复制环境 MCP URL                      | 有 MCP OAuth 相关代码；其余需核对                                   | P1，注意权限边界                                                          |
+| 认证权限   | 把终端观察、文件读写、源码控制写入、环境管理、浏览器预览控制等拆成独立语义权限                                          | 有 `RpcAuthorization`                                               | 需核对粒度                                                                |
+| 源码托管   | 用 GitHub API 而非 `gh`、多账号路由、Forgejo/Gitea（`fj`/`tea`）、GitCafe、PR 引导式评审（10-11）、评审指南 MCP 工具    | 未探测到 GitCafe 与评审指南                                         | P2，是否需要取决于用户群                                                  |
+| 模型目录   | 从远程清单发现 Claude 模型、CLI 更新解锁新模型时提示、模型收藏与可见性跨客户端同步                                      | 有模型清单 `ModelManifest`                                          | 需核对远程清单                                                            |
+| 设备       | 模拟器与设备流、3D 设备工作区、远程 Mac 更新                                                                            | 未探测到                                                            | P3，非核心                                                                |
+| 可观测     | 通过 OTLP 导出日志与主进程遥测、尊重 OTel 开关、诊断页配置导出                                                          | 有 OpenTelemetry 相关文件                                           | 需核对                                                                    |
+| 协议兼容   | 客户端容忍未知联合成员（09-05）、provider 远程兼容范围检查                                                              | 有 `tolerate`/未知成员相关代码                                      | 需核对覆盖面                                                              |
+| 其他       | 安装 `t3` 命令、`t3 update`/`restart`、WSL 后端用 Linux CLI 归档运行、服务器更新后继续活动线程、自动存储清理            | 未探测到“更新后继续线程”与存储清理                                  | P2                                                                        |
 
 ### 5.3 同步方式建议
 
@@ -147,20 +150,20 @@ BaoCode 的速度优势来自原生渲染（启动约 0.18 秒、单窗口约 12
 
 ## 6. 综合优先级建议
 
-| 优先级 | 事项 | 理由 |
-| --- | --- | --- |
-| P0 | 输出模式改三态 + 核对客户端增量渲染修复（§4.2-1、§4.2-2） | 直接决定“输出是否丝滑”，且上游已有成熟方案与回归测试可参考 |
-| P0 | Windows argv 长度守卫（§2.1-2）；需核对哪些 provider 走 argv | 用户在 Windows 上，错误是确定性的 |
-| P0 | 各 Adapter 的“终态前清理瞬态行”断言（§2.2-4） | 成本低，防止卡住的 spinner |
-| P1 | 统一 `fetchCatalog` 与缓存键、共享 deadline（§2.2-1） | 收敛分散探测，降低启动与刷新抖动 |
-| P1 | steer 契约与后续消息“排队/steer”选择（§2.2-2、§5.2） | 与 UI 行为配套 |
-| P1 | 服务端合并 + 客户端节奏揭示（§4.2-3） | 在段落级之上进一步消除块状感 |
-| P1 | 项目级设置覆盖、通知、文件附件、异步提问 | 日常使用价值高 |
-| P1 | 事件幂等与重连测试（§2.3-5、§4.2-6） | 稳健性 |
-| P2 | 能力接口细化、`prepare/release` 空闲回收、`ConfirmsModelSwitch` 第三态（§2.3） | 架构整洁与资源占用 |
-| P2 | BYOK 导入链接与安全边界、协议翻译测试清单（§2.3-9、§2.3-11） | 提升 BYOK 可用性 |
-| P2 | 配额页、多模型开线程、worktree 位置 | 体验增强 |
-| P3 | 插件化 provider、设备工作区、更多托管平台 | 成本高或非核心 |
+| 优先级 | 事项                                                                           | 理由                                                       |
+| ------ | ------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| P0     | 输出模式改三态 + 核对客户端增量渲染修复（§4.2-1、§4.2-2）                      | 直接决定“输出是否丝滑”，且上游已有成熟方案与回归测试可参考 |
+| P0     | Windows argv 长度守卫（§2.1-2）；需核对哪些 provider 走 argv                   | 用户在 Windows 上，错误是确定性的                          |
+| P0     | 各 Adapter 的“终态前清理瞬态行”断言（§2.2-4）                                  | 成本低，防止卡住的 spinner                                 |
+| P1     | 统一 `fetchCatalog` 与缓存键、共享 deadline（§2.2-1）                          | 收敛分散探测，降低启动与刷新抖动                           |
+| P1     | steer 契约与后续消息“排队/steer”选择（§2.2-2、§5.2）                           | 与 UI 行为配套                                             |
+| P1     | 服务端合并 + 客户端节奏揭示（§4.2-3）                                          | 在段落级之上进一步消除块状感                               |
+| P1     | 项目级设置覆盖、通知、文件附件、异步提问                                       | 日常使用价值高                                             |
+| P1     | 事件幂等与重连测试（§2.3-5、§4.2-6）                                           | 稳健性                                                     |
+| P2     | 能力接口细化、`prepare/release` 空闲回收、`ConfirmsModelSwitch` 第三态（§2.3） | 架构整洁与资源占用                                         |
+| P2     | BYOK 导入链接与安全边界、协议翻译测试清单（§2.3-9、§2.3-11）                   | 提升 BYOK 可用性                                           |
+| P2     | 配额页、多模型开线程、worktree 位置                                            | 体验增强                                                   |
+| P3     | 插件化 provider、设备工作区、更多托管平台                                      | 成本高或非核心                                             |
 
 ## 7. 落地约束
 

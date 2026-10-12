@@ -544,6 +544,10 @@ export const en: Record<string, string> = {
   copiesTheTraceId: "Copies the trace ID",
   copyCode: "Copy code",
   copyMessage: "Copy message",
+  "messageTextSelection.action": "Select text",
+  "messageTextSelection.close": "Close text selection",
+  "messageTextSelection.hint":
+    "Long-press to select from the full message received when opened, including Markdown. New text keeps arriving in the conversation. Close and reopen to select the latest text.",
   copyPath: "Copy path",
   revert: "Revert",
   revertToThisMessage: "Revert to this message",
@@ -3246,6 +3250,10 @@ export const zhCN: Record<string, string> = {
   copiesTheTraceId: "复制跟踪 ID",
   copyCode: "复制代码",
   copyMessage: "复制消息",
+  "messageTextSelection.action": "选择文本",
+  "messageTextSelection.close": "关闭文本选择",
+  "messageTextSelection.hint":
+    "长按选择打开时已收到的完整消息，包含 Markdown。新内容会继续进入会话；关闭后重新打开可选择最新文本。",
   copyPath: "复制路径",
   revert: "回退",
   revertToThisMessage: "回退到此消息",

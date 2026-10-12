@@ -13,6 +13,11 @@ import { isTextRevealEnabled } from "@codework/client-runtime/text-reveal";
 import { useAtomValue } from "@effect/atom-react";
 import { serverEnvironment } from "../../state/server";
 import { StreamingMarkdown } from "./StreamingMarkdown";
+import {
+  MessageTextSelection,
+  MessageTextSelectionButton,
+  useMessageTextSelection,
+} from "./MessageTextSelection";
 import { MarkdownCodeCopyContext } from "@codework/mobile-markdown-text/copy-source";
 import type { MarkdownNode } from "react-native-nitro-markdown/headless";
 import {
@@ -984,6 +989,7 @@ function UserMessageActions(props: {
   readonly isRevertingCheckpoint: boolean;
   readonly onRevertToTurnCount?: (turnCount: number) => void;
   readonly onEditUserMessage?: (messageId: MessageId, text: string) => void;
+  readonly onSelectText: (text: string) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(props.text);
@@ -1057,6 +1063,7 @@ function UserMessageActions(props: {
           iconSize={13}
         />
       ) : null}
+      <MessageTextSelectionButton text={props.text} onSelect={props.onSelectText} />
       {canEdit ? (
         <Pressable
           accessibilityRole="button"
@@ -1108,6 +1115,7 @@ function renderFeedEntry(
     | "onEditUserMessage"
   > & {
     readonly responseTextPacing: boolean;
+    readonly onSelectText: (text: string) => void;
     readonly copiedRowId: string | null;
     readonly expandedWorkRows: Record<string, boolean>;
     readonly terminalAssistantMessageIds: ReadonlySet<string>;
@@ -1246,6 +1254,7 @@ function renderFeedEntry(
             isRevertingCheckpoint={props.isRevertingCheckpoint === true}
             onRevertToTurnCount={props.onRevertToTurnCount}
             onEditUserMessage={props.onEditUserMessage}
+            onSelectText={props.onSelectText}
           />
         </Animated.View>
       );
@@ -1294,18 +1303,23 @@ function renderFeedEntry(
             />
           );
         })}
-        {showAssistantMeta ? (
+        {showAssistantMeta || (Platform.OS === "android" && message.text.length > 0) ? (
           <View className="mt-1 flex-row items-center gap-1">
-            <CopyTextButton
-              accessibilityLabel={t("copyMessage")}
-              text={message.text}
-              tintColor={iconSubtleColor}
-              buttonSize={28}
-              iconSize={13}
-            />
-            <Text className="font-codework-medium text-xs tabular-nums text-neutral-600 dark:text-neutral-400">
-              {timestampLabel}
-            </Text>
+            <MessageTextSelectionButton text={message.text} onSelect={props.onSelectText} />
+            {showAssistantMeta ? (
+              <>
+                <CopyTextButton
+                  accessibilityLabel={t("copyMessage")}
+                  text={message.text}
+                  tintColor={iconSubtleColor}
+                  buttonSize={28}
+                  iconSize={13}
+                />
+                <Text className="font-codework-medium text-xs tabular-nums text-neutral-600 dark:text-neutral-400">
+                  {timestampLabel}
+                </Text>
+              </>
+            ) : null}
           </View>
         ) : null}
       </Animated.View>
@@ -1892,6 +1906,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   // ThreadId, and keying resets (or the list mount) on the bare id would
   // carry stale scroll/follow state across an environment switch.
   const feedThreadKey = scopedThreadKey(props.environmentId, props.threadId);
+  const textSelection = useMessageTextSelection(feedThreadKey);
 
   useEffect(() => {
     reportHeaderMaterialVisibility(false);
@@ -2153,6 +2168,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     (info: { item: ThreadFeedEntry; index: number }) =>
       renderFeedEntry(info, {
         responseTextPacing,
+        onSelectText: textSelection.selectText,
         environmentId: props.environmentId,
         copiedRowId,
         expandedWorkRows,
@@ -2180,6 +2196,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       }),
     [
       responseTextPacing,
+      textSelection.selectText,
       copiedRowId,
       expandedWorkRows,
       terminalAssistantMessageIds,
@@ -2378,6 +2395,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         ) : null}
       </View>
 
+      <MessageTextSelection text={textSelection.text} onClose={textSelection.close} />
       <ImageViewing
         images={
           expandedImage
