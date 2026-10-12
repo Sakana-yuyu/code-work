@@ -52,7 +52,7 @@
 | 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 合并、按帧发布与三端切片已落地，最终验收开放                           | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / 三端渲染 | 节奏开关、首段全文、字素边界、完成吸附及全文复制与几何已覆盖；Native 与最终性能仍开放                                 |
 | 6   | 流式选区与滚动锚点                                          | Web 与 Android 选区已验证，其余继续验收                                | 真实 StreamingChatMarkdown / Android 原生选区页及增量夹具                                      | Android 范围与全文复制、追加和终态选区保持已验证；完整滚动锚点及 iOS 设备矩阵仍开放                                   |
 | 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证                                     | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                        | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
-| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 会话流新旧合并已修复，继续验收矩阵                                     | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份                            | 共享/Web 实体 18 项及实际 Electron 生产回合通过；三端受控忙碌连接记录见下文，首次环境列表、真实 provider 与隧道仍开放 |
+| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 会话流合并与 Windows 后台检查已修复，继续验收矩阵                      | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份                            | 共享/Web 实体 18 项、主机进程 23 项及三端受控忙碌回合通过；6 既有连接保持、8 消息对账，连续帧/真实 provider/隧道开放  |
 | 9   | 同口径帧间隔性能无回归                                      | Android JS 响应改善、UI 补充交叉未通过；Web/Desktop 生产静态无持续回归 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                           | 生产 Web 三轮与 Desktop 两组共 72 窗口全部零长帧；开发态失败、显示条件与几何差异保留；Android 空闲及连接矩阵仍开放    |
 | 10  | Windows argv 三层守卫                                       | 待实施                                                                 | Antigravity / ZCode / resolveSpawnCommand                                                      | 尚未运行                                                                                                              |
 | 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 待实施                                                                 | ProviderDriver / provider snapshot 探测                                                        | 尚未运行                                                                                                              |
@@ -603,3 +603,11 @@ Desktop 共用实际 Electron 41.5.0 / Node 24.15.0 二进制、13779 专用后�
 隔离 SDK 副本的初次构建缺少 hoisted `ws` peer，启动被拒绝；补齐仅在隔离 pack 配置中的既有 peer 映射后，产物的版本入口与后端均启动成功。临时 pack 配置已按 SHA 恢复，主产品没有预加载探针。`busy-shell-http-{fixed,hidden,sdk-corrected}-diagnostic.json`、服务进程诊断、23 项结果、冻结安装及 `busy-sdk-fresh-web-initial` DOM/截图均在工作区外。对照支持控制台创建路径导致等待的解释，没有把当时主机内存压力认定为已证实根因。
 
 适用面为 Windows 主机的 SDK 进程，不改变 Web/Desktop/Mobile 协议或连接模式；Node 在其他平台忽略隐藏控制台选项。真实 provider、隧道及完整锚点矩阵继续开放，Android 候选 manifest 加载和第 9 项 UI 交叉仍未完成。官方资料于 2026-10-13 检索 `Node child_process windowsHide`、`Vitest external dependencies mocking`，采用 Node/Vitest 原始说明及本机已安装 SDK 源码。回退本主题并按锁文件重新安装可恢复原 SDK；升级该 SDK 时需核对并重建补丁，无数据迁移。
+
+### 第 8 项：当前候选的三端正文与终态复验（2026-10-13）
+
+Android manifest 后续返回 200，预热后显式重新打开开发客户端进入真实应用，候选 `threadDetail` 已加载；之前的 EOF、SocketTimeout、错误页与重载到开发器 Home 的记录保留。没有证明 Expo runtime-version 子进程是失败原因，没有为此增加 SDK 补丁。Web/Android 从真实入口重开同一忙碌线程，关闭期间六个既有代理 TCP 连接均保持；断线时正文/代码保持、连接提示可见，原事件 ID 重投后恢复 C003/D004/E005 各一次且按序。实际 Electron 同期观察到同一规范消息，运行中停止生成、终态发送消息；Android 原生截图的红色停止方块转为发送箭头，工作计时与运行标记消失，SDK 层级未暴露图标按钮名称，不用空名称推断状态。
+
+本轮用主目录冻结安装的 SDK 按恢复后的普通隔离构建配置打包，版本入口与服务启动通过，不再依靠 SDK 或 peer 临时别名，也没有 NODE_OPTIONS 预加载。夹具回合/原事件 ID 增加本次进程 UUID，避免测试后端重启时重用旧编号；它不进入产品源码。当前回合 159 字符与只读数据库完全一致、streaming=0/session=ready，历史六条消息逐字段不变，总计八条。`verify-current-busy-clients.cjs` 核对六份 Web 记录、五份新鲜原生层级、两份真实 Electron 记录、原历史与连接收据通过，汇总为 `busy-current-clients-accepted.json`。
+
+虚拟列表的物理 DOM 顺序与可见顺序不同。最初按最后一个 DOM assistant 推断即时重开缺消息，已通过规范 messageId 与两张实际截图纠正：即时记录已经包含当前全文，位置与稳定记录一致。原始记录和初始判断仍保留，不把错误诊断写成产品故障；未录制连续帧，也未完成滚动锚点、隧道或外部真实 provider 矩阵，因此第 8 项继续开放，第 9 项 UI 交叉仍未通过。本主题仅补充两份证据文档，回退对应提交即可恢复，无产品数据迁移。
