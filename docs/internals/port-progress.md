@@ -49,7 +49,7 @@
 | 2   | 全部需核对条目源码基线                                      | 完成                                                            | B01—B22                                                                                                    | 已读取源码并明确边界；不把静态核对当成实现完成                                                                        |
 | 3   | 三态输出、默认 paragraph、旧键策略、三端设置                | 完成（本主题定向验收）                                          | settings / AssistantTextBuffer / ProviderRuntimeIngestion / Web/Desktop 设置 / Mobile 设置                 | 工作区 10 文件 / 273 项通过；纯暂存候选 35 项与五个目标类型检查通过；当前脏工作区的完整模块诊断仍记录为未通过，见下文 |
 | 4   | 全部客户端增量渲染清单与上游对应提交                        | 部分完成，继续补齐                                              | 闭合 Markdown 前缀 / 固定 Web 渲染身份 / 逐行高亮 / 共享回合与检查点引用 / Mobile 块键                     | 8 文件 / 188 项通过；Web DOM 追加与终态选区保持；完整清单见下文，未完成项保留                                         |
-| 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 服务端合并与三端帧发布已落地，Native 字素兼容与最终验收开放     | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / NativeFrameScheduler | Android 24 次后续发布对应 24 个真实 UI 帧、空闲停止与返回前台通过；Hermes 缺少 Segmenter 时的文字节奏待补             |
+| 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 完成；增量清单、重开与滚动锚点继续随第4/8项验收                 | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / NativeFrameScheduler | 定向与三端受控管线通过；Android 24 帧发布、43 帧字素揭示、全文/选区/终态通过，详见第34/35主题                         |
 | 6   | 流式选区与滚动锚点                                          | Web 与 Android 选区已验证，其余继续验收                         | 真实 StreamingChatMarkdown / Android 原生选区页及增量夹具                                                  | Android 范围与全文复制、追加和终态选区保持已验证；完整滚动锚点及 iOS 设备矩阵仍开放                                   |
 | 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证                              | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                                    | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 会话合并与后台检查已修复，Native 视口复用已落地；无闪烁验收开放 | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份 / Mobile ThreadFeed                    | 三端受控正文与连接通过；连续录像发现 Native 初始空白，视口复用后缩短至约 0.25 秒；82 项与纯候选类型通过，矩阵开放     |
@@ -657,3 +657,20 @@ React Native 0.85.3 bridgeless 的 rAF 是零延时计时器；此前仅纠正�
 适用所有 provider 的客户端完整快照，无 adapter/RPC/权限/协议变化。本地、远程和隧道沿用同一客户端连接层；实际覆盖本机隔离 Android 的连接与前后台恢复，iOS/真实隧道没有设备证据。既有 Web/Desktop 时钟保持默认；不新增产品动画或持久化。回退本主题提交即可恢复旧时钟，无数据迁移。
 
 调试稳定性补记：探针运行期间出现一次 Hermes 原生 SIGSEGV（PID 31674，2026-10-12 22:50:50 UTC，fault address 0，`mqt_v_js` / `performMicrotaskCheckpoint`）。原始 crash buffer 已保存，没有将失败抹去。检索日期 2026-10-13，关键词 Hermes SIGSEGV RuntimeScheduler_Modern inspector 0.85；采用 [Hermes 官方仓库 #2118](https://github.com/facebook/hermes/issues/2118)，其中同版 RN 0.85.3 的 CDP attach/evaluate/disconnect 可在断开后延迟崩溃的报告与本次调试方式吻合，因此怀疑为调试器缺陷，尚无符号化根因证明。移除探针、冷启动相同产品 bundle（27234974 字节，SHA `6f10659b59a8e8a6bf0aad0df025b974640cf7017549434ec882c8755602ace0`）后停止 CDP 接入，使用 Android SDK 实际界面检查线程进入/返回与前后台恢复；后续 Native 验收改用 SDK 回执及应用私有文件，避免反复接入此调试器。未改 SDK/依赖或对该原生崩溃宣称已修复。
+
+### 2026-10-13：Hermes 缺少 Intl.Segmenter 时仍按字素揭示
+
+上一主题在真实 Android 发现 `Intl.Segmenter` 不存在，旧 `createTextReveal` 因此直接显示新增全文。新增回归测试先在旧版失败：期望保留首段并安排一帧，实际已显示全部 951 字符。修复保留支持客户端的原生分段器，缺少时使用固定版本 `unicode-segmenter 0.17.3` 的局部 `graphemeSegments`；不写全局 Intl、不维护自写 Unicode 表。稳定前缀仍保留，仅重分末个字素及新增尾文。
+
+检索日期 2026-10-13，关键词 unicode-segmenter graphemeSegments Hermes React Native。采用 [库的官方文档](https://github.com/cometkim/unicode-segmenter) 与 npm 官方 registry 的 0.17.3 元数据：提供 UAX #29 字素分段、明确支持 Hermes、无传递依赖、MIT。只引入字素入口，避免完整词句分段 polyfill；未采用官方性能倍数作为本机验收数据。client-runtime manifest 加一项精确依赖，锁文件仅增加本库的 importer/packages/snapshot 共 8 行；安装后原 Windows Node SDK 修补与已验证冻结安装的 SHA 一致。
+
+`vp test run packages/client-runtime/src/textReveal.test.ts apps/mobile/src/connection/native-frame-queue.test.ts apps/mobile/src/connection/native-frame-clock.test.ts` 47 项通过；缺少 Intl、家庭 emoji、国旗、重音、CRLF、肤色、印地语连字、分包代理对/ZWJ/国旗、选择前追上全文及终态停止均覆盖。两源文件 lint/format、共享及 Mobile 纯候选类型检查通过。既有完整正文、节奏开关、首段与终态语义保持不变。
+
+同一隔离 Android、production JS、1280×720、RN 0.85.3，在无 CDP 连接下自动执行实际 Effect publisher、Native UI clock 和真实 `createTextReveal`，通过 Expo 文件 API 写应用私有 JSON，再由 Android SDK `run-as` 读取。回执确认原生 Segmenter 为 undefined；首段全文立即显示，24 组完整状态合并对应 24 个不同 UI 帧，1249 字符完整正文产生 43 次字素完整的前缀揭示，各对应不同 UI 帧；保存全文、终态附加段立即吸附、取消回调 0 与末态 driver 关闭均通过。`native-segmenter-private-receipt-initial.json`、`native-segmenter-device-accepted.json` 和原始 bundle 记录保存在工作区外。
+
+首轮校验曾将冷启动后 200ms 的全应用事件数组当作静止窗口，292→300 的两次环境状态发布令断言失败。原始数据、首次校验脚本及失败记录保留；该窗口不能证明全应用空闲，后续只对本主题的文字揭示、完成和取消作结论。第34主题稳定空闲采样保持原记录，不将冷启动测量改写成空闲通过。
+
+字素库仅作为安装依赖使用，没有复制参考项目源码。所有 provider 与本地/远程/隧道使用相同完整文本来源；Web/Desktop 保留原生 Intl 分段行为，缺少该 API 的客户端也获得兼容实现。没有新增协议、设置、权限或数据迁移，iOS 与真实外部 provider 仍无设备/调用证据。隔离自动探针按 SHA 移除；纯产品 bundle 为 27262015 字节，SHA `7d639a0e063dc2cc48913d6bf48b9bae3a506f3ed8de36f4e0b3f4139ba97536`。回退本主题并按原锁安装即可恢复旧降级行为。
+纯产品端到端补记：Android 客户端实际发送 `native-segmenter-acceptance-08`，受控 Codex adapter 生成第8回合 `fixture-turn-3fb5a9ae-20cb-48d4-bdc6-bfcffe653277-29`。真实正文包含 4800 字符（代码、家庭 emoji、国旗、组合字符、肤色、印地语连字）。选择页打开后追加 33 字符尾文并完成，选择页原文始终保持 4800 字符；长按得到原生高亮，完成后的高亮区域原始像素 SHA 与选择后完全一致，系统 Copy/Share/Select all 菜单仍可见。关闭、滚动到尾部并重新打开选择页，4833 字符与实际 provider、SQLite 的唯一 assistant 正文逐字一致，`is_streaming=0`、session ready、active turn null。源流回执等待期间一次过早读取得到 closed，动作守卫拒绝注入；确认真实 running 回执后才注入，没有重复发首段。瞬时窗口层级为空的失败记录保留，后续只使用新鲜 SDK 层级。`native-segmenter-real-flow-accepted.json` 与截图/像素核验保存在工作区外；无 CDP、真实外部 provider、iOS 或隧道调用。
+
+第5项的服务端 leading/trailing 合并、三端按帧完整快照、首段/终态/设置、按积压揭示、完整复制/选区/几何来源均已有源码、定向与受控实际客户端证据，可独立验收完成。第4项增量渲染完整清单及第8项 Native 重开初始空白和滚动锚点矩阵仍开放，不以第5项通过替代。

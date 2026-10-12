@@ -41,6 +41,74 @@ function harness(text = "首次全文🌏") {
 }
 
 describe("完整正文的显示节奏", () => {
+  it("缺少 Intl.Segmenter 时仍按帧揭示，保存全文并在终态立即吸附", () => {
+    vi.stubGlobal("Intl", { Segmenter: undefined });
+    try {
+      const h = harness("首");
+      const full = "首" + "👨‍👩‍👧‍👦🇨🇳e\u0301尾文".repeat(50);
+      h.update(full);
+      expect(h.reveal.getSnapshot().fullText).toBe(full);
+      expect(h.reveal.getSnapshot().visibleText).toBe("首");
+      expect(h.callbacks.size).toBe(1);
+      h.frame();
+      expect(h.reveal.getSnapshot().visibleText.length).toBeGreaterThan(1);
+      expect(h.reveal.getSnapshot().visibleText.length).toBeLessThan(full.length);
+      h.update(full + "完成", { streaming: false });
+      expect(h.reveal.getSnapshot().visibleText).toBe(full + "完成");
+      expect(h.callbacks.size).toBe(0);
+      h.reveal.dispose();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(["🌏", "👨‍👩‍👧‍👦", "🇨🇳", "e\u0301", "\r\n", "👍🏽", "क्ष"])(
+    "Hermes 兼容分段不会切开 %s，结束后停止请求帧",
+    (grapheme) => {
+      vi.stubGlobal("Intl", { Segmenter: undefined });
+      try {
+        const h = harness("前");
+        const full = "前" + grapheme.repeat(50);
+        h.update(full);
+        for (let frame = 0; frame < 100 && h.callbacks.size; frame++) {
+          h.frame(7);
+          const shown = h.reveal.getSnapshot().visibleText.slice(1);
+          expect(shown.length % grapheme.length).toBe(0);
+          expect(full.startsWith(h.reveal.getSnapshot().visibleText)).toBe(true);
+        }
+        h.update(full, { streaming: false });
+        expect(h.reveal.getSnapshot().visibleText).toBe(full);
+        expect(h.callbacks.size).toBe(0);
+        h.reveal.dispose();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it("Hermes 分包的代理对、ZWJ 和国旗等待闭合，选择时可追上完整原文", () => {
+    vi.stubGlobal("Intl", { Segmenter: undefined });
+    try {
+      const h = harness("前");
+      h.update("前\ud83c");
+      expect(h.reveal.getSnapshot().visibleText).toBe("前");
+      expect(h.callbacks.size).toBe(0);
+      h.update("前🌏👨\u200d");
+      for (let frame = 0; frame < 100 && h.callbacks.size; frame++) h.frame();
+      expect(h.reveal.getSnapshot().visibleText).toBe("前🌏");
+      h.update("前🌏👨‍👩‍👧‍👦🇨");
+      for (let frame = 0; frame < 100 && h.callbacks.size; frame++) h.frame();
+      expect(h.reveal.getSnapshot().visibleText).toBe("前🌏👨‍👩‍👧‍👦");
+      h.update("前🌏👨‍👩‍👧‍👦🇨🇳" + "尾".repeat(1_000));
+      expect(h.reveal.getSnapshot().pending).toBe(true);
+      h.reveal.catchUp();
+      expect(h.reveal.getSnapshot().visibleText).toBe(h.reveal.getSnapshot().fullText);
+      expect(h.callbacks.size).toBe(0);
+      h.reveal.dispose();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it.each([null, undefined, {}, { features: {} }, { features: { responseTextReveal: false } }])(
     "旧环境不开放揭示控制 %j",
     (config) => expect(isTextRevealEnabled(config)).toBe(false),

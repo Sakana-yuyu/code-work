@@ -1,5 +1,13 @@
 import * as Effect from "effect/Effect";
+import { graphemeSegments } from "unicode-segmenter/grapheme";
 import { FrameClock } from "./state/latestFrame.ts";
+
+const fallbackSegmenter = { segment: graphemeSegments };
+type GraphemeSegmenter = {
+  readonly segment: (
+    text: string,
+  ) => Iterable<{ readonly segment: string; readonly index: number }>;
+};
 
 export interface TextRevealInput {
   readonly text: string;
@@ -66,9 +74,9 @@ function isIncompleteGrapheme(text: string) {
 export function createTextReveal(
   initial: TextRevealInput,
   clock: TextRevealClock = hostTextRevealClock,
-  segmenter = typeof Intl.Segmenter === "function"
+  segmenter: GraphemeSegmenter = typeof Intl.Segmenter === "function"
     ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
-    : undefined,
+    : fallbackSegmenter,
 ) {
   const listeners = new Set<() => void>();
   let input = initial;
@@ -85,11 +93,6 @@ export function createTextReveal(
   let credit = 0;
 
   const buildBoundaries = (text: string, append: boolean) => {
-    if (!segmenter) {
-      boundaries = [text.length];
-      safeEnd = text.length;
-      return;
-    }
     // 新片段可能延长上一字素；只重分最后一个字素及新增尾文。
     const start = append && boundaries.length > 1 ? boundaries.at(-2)! : 0;
     if (append) {
@@ -153,8 +156,8 @@ export function createTextReveal(
     });
   };
 
-  if (initial.streaming && initial.enabled && segmenter) buildBoundaries(initial.text, false);
-  visible = initial.streaming && initial.enabled && segmenter ? safeEnd : initial.text.length;
+  if (initial.streaming && initial.enabled) buildBoundaries(initial.text, false);
+  visible = initial.streaming && initial.enabled ? safeEnd : initial.text.length;
   publish();
 
   const update = (next: TextRevealInput) => {
@@ -162,11 +165,11 @@ export function createTextReveal(
     const previous = input;
     const append = next.text.startsWith(previous.text);
     const firstContent = previous.text.length === 0;
-    if (next.streaming && next.enabled && segmenter && next.text !== segmentedText) {
+    if (next.streaming && next.enabled && next.text !== segmentedText) {
       buildBoundaries(next.text, next.text.startsWith(segmentedText));
     }
     input = next;
-    if (!next.streaming || !next.enabled || !segmenter) {
+    if (!next.streaming || !next.enabled) {
       cancelFrame();
       visible = next.text.length;
       credit = 0;

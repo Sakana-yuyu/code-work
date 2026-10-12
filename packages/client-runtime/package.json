@@ -249,7 +249,8 @@
     "@codework/shared": "workspace:*",
     "@effect/atom-react": "catalog:",
     "effect": "catalog:",
-    "react": "19.2.6"
+    "react": "19.2.6",
+    "unicode-segmenter": "0.17.3"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
