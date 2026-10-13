@@ -26,7 +26,12 @@ import {
 } from "./ModelCatalog.ts";
 import { SUPPLIER_TEMPLATES, supplierTemplate } from "./SupplierCatalog.ts";
 import { catalogCapabilitiesForModel } from "./ContextWindowCatalog.ts";
-import { BYOK_HTTP_TIMEOUT_MS, fetchByokCatalog, type ByokHttpError } from "./byokHttp.ts";
+import {
+  BYOK_HTTP_TIMEOUT_MS,
+  fetchByokCatalog,
+  withByokCatalogHttpScope,
+  type ByokHttpError,
+} from "./byokHttp.ts";
 
 const knownTemplateCatalogURLs = new Set(
   SUPPLIER_TEMPLATES.flatMap((template) => template.modelCatalog.urls),
@@ -246,6 +251,7 @@ const discoverTarget = (target: ByokCatalogTarget) =>
     }
     return lastError ?? byokCatalogFailure("catalog", "no_models");
   }).pipe(
+    withByokCatalogHttpScope,
     // 整轮预算包含候选、重定向和正文读取；子请求不能各自重置十五秒。
     Effect.timeoutOption(BYOK_HTTP_TIMEOUT_MS),
     Effect.map(Option.getOrElse(() => byokCatalogFailure("catalog", "timeout"))),

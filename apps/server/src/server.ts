@@ -130,6 +130,7 @@ import * as SshServerServiceModule from "./ssh/SshServerService.ts";
 import * as SshTerminalServiceModule from "./ssh/SshTerminalService.ts";
 import * as ByokDelegationService from "./provider/byok/ByokDelegationService.ts";
 import * as ByokCatalog from "./provider/byok/ByokCatalog.ts";
+import { fetchHttpClientLayer as ByokCatalogHttpClientLayer } from "./provider/byok/ByokHttpClient.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as CodeworkProjectFileLoader from "./project/CodeworkProjectFileLoader.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
@@ -510,7 +511,7 @@ const CompositionToolBrokerLayerLive = CompositionToolBroker.persistentLayer.pip
 
 const ProviderInstanceRegistryHydrationWithToolBrokerLive =
   ProviderInstanceRegistryHydrationLive.pipe(
-    Layer.provideMerge(ByokCatalog.layer),
+    Layer.provideMerge(ByokCatalog.layer.pipe(Layer.provide(ByokCatalogHttpClientLayer))),
     Layer.provideMerge(CompositionToolBrokerLayerLive),
   );
 

@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题                    |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归                       |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                          |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类目录统一；OpenCode 完整刷新共用预算/信号）    | ProviderCatalogCache / ByokCatalog / CliProviderCatalog / OpenCodeCatalog / makeManagedServerProvider / ACP 准备 | 第43—50主题完成无会话、十二类目录共享及同设置刷新合并；OpenCode 只共享在途并即时读取认证，其他 driver 总 deadline/同一 signal 与模型模式剩余边界仍开放 |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类目录统一；OpenCode/BYOK共享加载统一信号）   | ProviderCatalogCache / ByokCatalog / ByokHttpClient / CliProviderCatalog / OpenCodeCatalog / makeManagedServerProvider / ACP 准备 | 第43—51主题完成无会话、十二类目录共享及同设置刷新合并；其他 driver 总 deadline/同一 signal、跨目标取消所有权与模型模式剩余边界仍开放 |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                                        |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                                    |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 待实施                                                       | ProviderAdapterCapabilities / server config / 三端控制                                                     | 尚未运行                                                                                                                        |
@@ -896,3 +896,23 @@ OpenCode 的版本检查、模型、variants、agent 模式和技能统一经过
 接口研究访问日期2026-10-13，关键词 `OpenCode provider.list/auth/connected`、`auth list`、最低版本SDK。采用官方固定版本 [v1.14.19生成SDK](https://raw.githubusercontent.com/anomalyco/opencode/v1.14.19/packages/sdk/js/src/v2/gen/sdk.gen.ts) 和 [models命令](https://raw.githubusercontent.com/anomalyco/opencode/v1.14.19/packages/opencode/src/cli/cmd/models.ts) 确认最低版本没有新 `/api/provider` 独立接口；当前本库SDK为1.15.13，不能仅因其存在新方法就提高运行时前提。旧组合语义另由官方 [v1.2.21 provider路由](https://raw.githubusercontent.com/anomalyco/opencode/v1.2.21/packages/opencode/src/server/routes/provider.ts) 与 [auth命令](https://raw.githubusercontent.com/anomalyco/opencode/v1.2.21/packages/opencode/src/cli/cmd/auth.ts) 辅助核对，明确它们不代表当前最低版本源码。未以凭据清单伪造独立可用性查询，未复制参考项目实现。
 
 本主题影响三端共用的服务端设置刷新与模型选择，本地/远程/隧道沿用既有快照接口；没有新增UI、wire字段、权限、快捷键、持久结构或持续动画。其他provider沿用此前目录入口并接受公共缓存清理修复；各自总预算与同一signal仍需继续实施。没有真实供应商账号、外部服务、三端新运行或Linux/macOS进程验收，现存服务未加载本主题。回退本主题11源可恢复此前目录行为，无数据迁移。第11项保留其他provider总deadline/同一AbortSignal及模型/模式剩余边界；全部39项与comparison额外范围继续，不能把本主题完成视作总目标完成。
+
+## 51. BYOK 目录候选与跳转共享实际 Fetch 信号
+
+BYOK 的共享 `discoverTarget` 现在拥有整轮 HTTP Scope 和 AbortController；各候选、跳转及正文处理复用该 Scope，保留既有十五秒总预算。成功、全部失败、超时或最后等待者取消都会 abort 并释放请求。首调用者取消、某个短等待预算到期及单个候选正常失败，均不能取消其他等待者仍需要的加载。缓存命中无需建立传输，新一轮强制刷新使用新信号；身份、成功TTL、失败旧值和实例路由规则不变。
+
+实际安装 Effect `4.0.0-beta.103` 的 `FetchHttpClient` 最后覆盖 `RequestInit.signal`，`HttpClient.withScope` 又为每个请求创建独立controller，因此仅传 RequestInit 或统一 Effect Scope 都不能证明实际 Fetch 收到同一对象。新增 `ByokHttpClient.fetchHttpClientLayer`，构造时保存实际 Fetch，在 `transformResponse` 内读取私有 Context.Reference，并向原响应 Effect 提供固定的 Fetch 包装。只替换实际调用的 signal，其余最终传输参数保留；未向 RequestInit 或请求头添加内部标记，也未使用 Effect 私有API、全局 Fetch替换、伪请求或额外取消监听器。
+
+服务器只为 `ByokCatalog.layer` 绑定此工厂；构造时注入的 custom Fetch 被保留，执行期 ambient Fetch 不能绕过包装。直接注入未包装的通用 HttpClient 仍可正常使用，严格同对象 signal 的契约属于生产专用工厂路径。余额与独立 `fetchByokCatalog` 保留自有Scope及默认预算；不同目录目标分别拥有共享加载，不能将某一实例的等待controller连接到全部目标而破坏其他客户端。跨目标统一等待与取消所有权以及其他provider剩余契约仍属第11项后续。
+
+独立审核在实施中指出两处具体风险并促成修正：合并默认 RequestInit.headers 会在跨源跳转后补回已剥离凭据；仅在 HTTP layer 构造时包装 Fetch 又可能被执行期上下文覆盖。最终 helper 保持旧 manual-only options，工厂在响应执行内部固定实际传输；测试覆盖 ambient 默认 authorization/cookie/x-api-key 不回填、仅 layer 构造注入的 Fetch 保留及执行期替代 Fetch 不执行。三次跳转与4 MiB正文上限沿用原有验证。
+
+纯候选为 HEAD 第50主题加5源，运行 `vp test run --config .candidate-test.config.ts` 指定 provider 下的 `byok/ByokCatalog.signal.test.ts`、`byok/ByokCatalog.test.ts`、`byok/ByokModelDiscoveryService.deadline.test.ts`、`byok/ByokModelDiscoveryService.test.ts`、`byok/byokHttp.test.ts`、`byok/ByokBalanceService.test.ts`、`ProviderCatalogCache.test.ts`、`Layers/ByokProvider.catalog.test.ts`，全部位于 `apps/server/src/`，8文件109项通过，8.90秒。新增9项使用真实 FetchHttpClient 配合注入 Fetch，严格比较各候选/跳转signal对象，覆盖前候选耗时后的请求与正文超时、等待者隔离、全失败恢复、独立调用及注入兼容。
+
+服务入口的目标 `tsgo --noEmit -p apps/server/.streaming-typecheck.json` 初次发现 Bun 全局 Fetch 声明要求静态 `preconnect`；仅修正生产包装与测试替身的调用函数类型边界，没有伪造静态方法或改变运行逻辑。最终检查退出0，保留 CliProxy、ByokAdapter、localAccountUsage 中4条已有 `Effect.succeed(undefined)` 建议，三文件与HEAD源码一致；不将其写成零诊断。5源 `vp fmt --check`、`vp lint` 通过，lint无诊断。没有运行全仓检查。
+
+有效旧版对照仅在候选恢复 HEAD 第50主题的 `ByokCatalog.ts`，新多候选/跳转用例在signal对象身份断言明确失败（false而非true），日志为 `catalog-byok-signal-old-red.log`；finally 按SHA恢复。恢复后新信号测试与既有HTTP测试2文件17项通过，1.18秒，属于109项子集。主工作区没有恢复为旧版，也没有跳过失败用例。
+
+独立审核另执行3项真实本机 HTTP/Fetch 组合，初次及最终类型修正后均3/3通过；最终769毫秒、退出0。第一个候选404、第二个跨源302、最终正文挂起，共三次实际Fetch使用同一signal；首Scope取消与另一等待者1秒超时后，剩余等待者仍取得结果。缓存命中不请求，强刷新建信号；第一候选6秒加后续正文9秒在整轮15秒结束并观察到真实连接关闭，最后等待者取消也关闭未完成正文。跨源目标没有认证头，普通自定义头保留。测试时钟只控制预算，连接关闭来自真实HTTP事件。最终5源执行前后与工作区SHA一致，独立测试不提交；日志 `catalog-byok-signal-review.log` 保留两轮输出及审核发现。主矩阵加独立组合共112个不同用例，范围内没有尚未修复的阻塞缺陷。
+
+三端既有设置、模型发现与选择入口，以及本地/远程/隧道连接，继续使用同一服务端目录。没有新增UI、协议字段、权限、持续动画或持久结构；草稿发现仍不创建会话。其他provider及余额调用保持原入口，本轮未操作真实账号、外部供应商、产品运行服务或三端UI。回退本主题5源可恢复此前传输行为，无数据迁移。第11项仍在进行，全部39项和comparison额外范围没有缩减。

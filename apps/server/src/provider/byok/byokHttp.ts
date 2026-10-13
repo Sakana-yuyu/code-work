@@ -1,13 +1,30 @@
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import type * as Scope from "effect/Scope";
+import * as Scope from "effect/Scope";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import { collectUint8StreamText } from "../../stream/collectUint8StreamText.ts";
+import { withByokCatalogSignal } from "./ByokHttpClient.ts";
 
 export const BYOK_HTTP_TIMEOUT_MS = 15_000;
 export const BYOK_HTTP_MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 export const BYOK_HTTP_MAX_REDIRECTS = 3;
+
+class CatalogHttpScope extends Context.Reference<
+  { readonly scope: Scope.Scope; readonly signal: AbortSignal } | undefined
+>("codework/provider/byok/CatalogHttpScope", { defaultValue: () => undefined }) {}
+
+/** 目录的所有候选与跳转属于同一次共享加载，不能在单个候选结束时取消传输。 */
+export const withByokCatalogHttpScope = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.Scope;
+    const controller = new AbortController();
+    yield* Effect.addFinalizer(() => Effect.sync(() => controller.abort()));
+    return yield* effect.pipe(
+      Effect.provideService(CatalogHttpScope, { scope, signal: controller.signal }),
+    );
+  }).pipe(Effect.scoped);
 
 export type ByokHttpErrorCode =
   | "invalid_endpoint"
@@ -140,12 +157,20 @@ export const fetchByokCatalog = (input: {
       catch: (cause) => cause as ByokHttpError,
     });
     const client = yield* HttpClient.HttpClient;
-    const result = yield* follow(HttpClient.withScope(client), url, input.headers ?? {}, 0).pipe(
-      // 手工跳转才能执行次数限制和跨源凭据剥离；整段结束时释放未读取的跳转响应。
-      Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }),
-      Effect.scoped,
-      Effect.timeoutOption(input.timeoutMs ?? BYOK_HTTP_TIMEOUT_MS),
+    const catalogScope = yield* CatalogHttpScope;
+    // 请求头仅来自此处的显式输入，避免默认 headers 在跨源剥离后被 HTTP 层重新补回。
+    const options = { redirect: "manual" as const };
+    const request = follow(HttpClient.withScope(client), url, input.headers ?? {}, 0).pipe(
+      Effect.provideService(FetchHttpClient.RequestInit, options),
     );
+    const result = yield* (
+      catalogScope
+        ? request.pipe(
+            Effect.provideService(Scope.Scope, catalogScope.scope),
+            withByokCatalogSignal(catalogScope.signal),
+          )
+        : request.pipe(Effect.scoped)
+    ).pipe(Effect.timeoutOption(input.timeoutMs ?? BYOK_HTTP_TIMEOUT_MS));
     if (Option.isNone(result))
       return yield* Effect.fail(error("timeout", "The model catalog request timed out."));
     return result.value;
