@@ -10,11 +10,14 @@ import * as Result from "effect/Result";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import { resolveSpawnCommand } from "@codework/shared/shell";
+import { HostProcessEnvironment, HostProcessWorkingDirectory } from "@codework/shared/hostProcess";
 import {
   cliProviderCatalogIdentity,
   makeCliProviderCatalog,
   type CliProviderCatalog,
+  withCatalogAbortSignal,
 } from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog, type NativeProviderCatalog } from "../NativeProviderCatalog.ts";
 
 import {
   buildServerProvider,
@@ -81,9 +84,10 @@ export const buildInitialKimiProviderSnapshot = Effect.fn("buildInitialKimiProvi
   },
 );
 
-export const checkKimiProviderStatus = Effect.fn("checkKimiProviderStatus")(function* (
+const runKimiProviderProbe = Effect.fn("runKimiProviderProbe")(function* (
   settings: KimiSettings,
-  environment?: NodeJS.ProcessEnv,
+  environment: NodeJS.ProcessEnv,
+  cwd: string,
   catalog?: CliProviderCatalog,
 ): Effect.fn.Return<ServerProviderDraft, never, ChildProcessSpawner.ChildProcessSpawner> {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
@@ -93,12 +97,17 @@ export const checkKimiProviderStatus = Effect.fn("checkKimiProviderStatus")(func
   const probe = yield* Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const resolved = yield* resolveSpawnCommand(settings.binaryPath, ["--version"], {
-      ...(environment ? { env: environment } : {}),
+      cwd,
+      env: environment,
+      extendEnv: false,
     });
     const child = yield* spawner.spawn(
       ChildProcess.make(resolved.command, resolved.args, {
-        ...(environment ? { env: environment } : { extendEnv: true }),
+        cwd,
+        env: environment,
+        extendEnv: false,
         shell: resolved.shell,
+        forceKillAfter: "2 seconds",
       }),
     );
     const [stdout, stderr, code] = yield* Effect.all(
@@ -159,6 +168,92 @@ export const checkKimiProviderStatus = Effect.fn("checkKimiProviderStatus")(func
     },
   });
 });
+
+/** 路由准备、配置目录和版本探针由一次完整加载持有，不在发布前追加异步尾读。 */
+export const fetchKimiProviderCatalog = Effect.fn("fetchKimiProviderCatalog")(function* (request: {
+  readonly settings: KimiSettings;
+  readonly environment?: NodeJS.ProcessEnv;
+  readonly catalog?: CliProviderCatalog;
+  readonly nativeCatalog?: NativeProviderCatalog;
+  readonly preparationIdentity?: Readonly<Record<string, string | boolean | undefined>>;
+  readonly prepare?: (
+    signal: AbortSignal,
+  ) => Effect.Effect<(snapshot: ServerProviderDraft) => ServerProviderDraft>;
+}): Effect.fn.Return<ServerProviderDraft, never, ChildProcessSpawner.ChildProcessSpawner> {
+  const settings = { ...request.settings, customModels: [...request.settings.customModels] };
+  const explicitEnvironment = request.environment ? { ...request.environment } : undefined;
+  const preparationIdentity = request.preparationIdentity
+    ? { ...request.preparationIdentity }
+    : undefined;
+  const prepare = request.prepare;
+  const catalog = request.catalog;
+  const suppliedNative = request.nativeCatalog;
+  const environment = { ...(yield* HostProcessEnvironment), ...explicitEnvironment };
+  const cwd = yield* HostProcessWorkingDirectory;
+  const checkedAt = DateTime.formatIso(yield* DateTime.now);
+  const native = suppliedNative ?? (yield* makeNativeProviderCatalog());
+  let mapSnapshot: ((snapshot: ServerProviderDraft) => ServerProviderDraft) | undefined;
+  const snapshot = yield* native.fetchCatalog({
+    key: cliProviderCatalogIdentity({
+      driver: ProviderDriverKind.make("kimi"),
+      operation: "kimi/provider-refresh",
+      config: {
+        binaryPath: settings.binaryPath,
+        enabled: settings.enabled,
+        customModels: providerCustomModelSlugs(EMPTY_MODELS, settings.customModels),
+        preparationIdentity,
+        hasPreparation: prepare !== undefined,
+      },
+      cwd,
+      environment,
+    }),
+    timeoutMs: 15_000,
+    onTimeout: () => {
+      const draft = buildServerProvider({
+        presentation: PRESENTATION,
+        enabled: settings.enabled,
+        checkedAt,
+        models: providerModelsFromSettings(
+          EMPTY_MODELS,
+          settings.customModels,
+          CUSTOM_MODEL_CAPABILITIES,
+        ),
+        probe: {
+          installed: false,
+          version: null,
+          status: "error",
+          auth: { status: "unknown" },
+          message: "Kimi CLI 目录刷新在15000ms工作预算内未完成。",
+        },
+      });
+      return mapSnapshot ? mapSnapshot(draft) : draft;
+    },
+    load: (controller) =>
+      withCatalogAbortSignal(
+        Effect.gen(function* () {
+          if (prepare) mapSnapshot = yield* prepare(controller.signal);
+          const draft = yield* runKimiProviderProbe(settings, environment, cwd, catalog);
+          return mapSnapshot ? mapSnapshot(draft) : draft;
+        }),
+        controller.signal,
+      ),
+  });
+  return { ...snapshot, checkedAt: DateTime.formatIso(yield* DateTime.now) };
+});
+
+/** 旧状态调用保持参数兼容，完整加载所有权可以由注册表注入。 */
+export const checkKimiProviderStatus = (
+  settings: KimiSettings,
+  environment?: NodeJS.ProcessEnv,
+  catalog?: CliProviderCatalog,
+  nativeCatalog?: NativeProviderCatalog,
+) =>
+  fetchKimiProviderCatalog({
+    settings,
+    ...(environment === undefined ? {} : { environment }),
+    ...(catalog === undefined ? {} : { catalog }),
+    ...(nativeCatalog === undefined ? {} : { nativeCatalog }),
+  });
 
 export function enrichKimiSnapshot(input: {
   readonly snapshot: ServerProvider;

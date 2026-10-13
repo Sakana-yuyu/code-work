@@ -15,14 +15,17 @@ import {
   gatewayOrigin,
   kimiGatewayEnv,
   prepareRoutedProviderSnapshot,
+  applyRoutedProviderAvailability,
+  routedServerProviderModels,
 } from "../byok/modelGateway.ts";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import { makeCursorAdapter } from "../Layers/CursorAdapter.ts";
 import {
   buildInitialKimiProviderSnapshot,
-  checkKimiProviderStatus,
+  fetchKimiProviderCatalog,
   enrichKimiSnapshot,
 } from "../Layers/KimiProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
@@ -102,9 +105,19 @@ export const KimiDriver: ProviderDriver<KimiSettings, KimiDriverEnv> = {
   metadata: { displayName: "Kimi", supportsMultipleInstances: true },
   configSchema: KimiSettings,
   defaultConfig: (): KimiSettings => decodeKimiSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config, catalog }) =>
+  create: ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config: suppliedConfig,
+    catalog,
+    nativeCatalog,
+    catalogRevision,
+  }) =>
     Effect.gen(function* () {
-      const crypto = yield* Crypto.Crypto;
+      const config = { ...suppliedConfig, customModels: [...suppliedConfig.customModels] };
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -113,6 +126,7 @@ export const KimiDriver: ProviderDriver<KimiSettings, KimiDriverEnv> = {
       const secretStore = yield* ServerSecretStore;
       const eventLoggers = yield* ProviderEventLoggers;
       const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
+      const nativeProviderCatalog = nativeCatalog ?? (yield* makeNativeProviderCatalog());
       const baseProcessEnv = mergeProviderInstanceEnvironment(environment);
       // BYOK 网关路由替换 CLI 自身的模型端点：开启时注入变量覆盖同名实例环境。
       const processEnv =
@@ -165,11 +179,51 @@ export const KimiDriver: ProviderDriver<KimiSettings, KimiDriverEnv> = {
         clientName: "code-work-kimi-text",
         supportsModelSelection: false,
       });
-      const checkProvider = checkKimiProviderStatus(
-        effectiveConfig,
-        processEnv,
-        providerCatalog,
-      ).pipe(
+      const checkProvider = fetchKimiProviderCatalog({
+        settings: effectiveConfig,
+        environment: processEnv,
+        catalog: providerCatalog,
+        nativeCatalog: nativeProviderCatalog,
+        preparationIdentity: {
+          routed: config.routeThroughByok,
+          source: config.byokSourceInstanceId,
+          catalogRevision,
+        },
+        ...(config.routeThroughByok
+          ? {
+              prepare: () =>
+                serverSettings.getSettings.pipe(
+                  Effect.orElseSucceed(() => undefined),
+                  Effect.map((settings) => (draft: ServerProviderDraft): ServerProviderDraft => {
+                    const mapped = applyRoutedProviderAvailability({
+                      ...stampIdentity(draft),
+                      models: settings
+                        ? routedServerProviderModels(
+                            settings,
+                            "openai",
+                            config.byokSourceInstanceId,
+                            draft.models,
+                          )
+                        : [],
+                      auth: {
+                        status: "authenticated" as const,
+                        type: "byok",
+                        label: "BYOK Gateway",
+                      },
+                    });
+                    const { message: _oldMessage, ...base } = draft;
+                    return {
+                      ...base,
+                      models: mapped.models,
+                      auth: mapped.auth,
+                      status: mapped.status,
+                      ...(mapped.message === undefined ? {} : { message: mapped.message }),
+                    };
+                  }),
+                ),
+            }
+          : {}),
+      }).pipe(
         Effect.map(stampIdentity),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       );
@@ -182,9 +236,10 @@ export const KimiDriver: ProviderDriver<KimiSettings, KimiDriverEnv> = {
         initialSnapshot: (settings) =>
           buildInitialKimiProviderSnapshot(settings.provider, providerCatalog).pipe(
             Effect.map(stampIdentity),
+            Effect.flatMap((snapshot) =>
+              prepareRoutedProviderSnapshot(snapshot, config, serverSettings.getSettings),
+            ),
           ),
-        prepareSnapshot: (snapshot) =>
-          prepareRoutedProviderSnapshot(snapshot, config, serverSettings.getSettings),
         checkProvider,
         usesCatalogCache: true,
         enrichSnapshot: ({ snapshot: currentSnapshot, publishSnapshot }) =>

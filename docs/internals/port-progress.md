@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题                    |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归                       |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                          |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类目录；六类共享加载统一预算/资源/信号）      | ProviderCatalogCache / ByokCatalog / ByokHttpClient / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—54主题完成无会话、十二类目录共享及同设置刷新；Codex/Claude/Cursor/Grok完整原生刷新统一，六家配置CLI总预算/信号、跨目标取消、显式共享可写home及模型模式边界仍开放 |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类目录；七类共享加载统一预算/资源/信号）      | ProviderCatalogCache / ByokCatalog / ByokHttpClient / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—55主题完成无会话、十二类目录共享及同设置刷新；Codex/Claude/Cursor/Grok/Kimi完整原生刷新统一，五家配置CLI总预算/信号、跨目标取消、显式共享可写home及模型模式边界仍开放 |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                                        |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                                    |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 待实施                                                       | ProviderAdapterCapabilities / server config / 三端控制                                                     | 尚未运行                                                                                                                        |
@@ -980,3 +980,17 @@ CursorDriver 接入 registry 持有的 `NativeProviderCatalog`，等价配置完
 创建实例的初始路由协调、managed 前后设置读取和 OS 清理不属于十五秒工作预算。目录缓存的代次保护不等于文件事务隔离：多个实例显式指定同一可写 GROK_HOME 时，并发文件写入顺序仍需独立验收；默认实例 home 独立，个人默认 home 只读。该边界保留在第11项后续，未声称已关闭。
 
 本主题影响三端共用的服务端设置刷新、模型选择与本地/远程/隧道请求，未新增入口、权限或持续动画。其余 provider 保持既有实现，并通过受公共接口影响的定向回归。本轮没有真实供应商、三端产品操作或新服务启动，保留服务未加载新主题。回退15源与4文档可恢复前一主题行为，无数据迁移。只独立提交本主题，原84个无关文件及混合 BYOK/ChatView 改动继续保留。第11项仍开放六家配置CLI整轮预算/信号、跨目录目标取消、共享可写home和模型/模式边界；完整39项与comparison额外范围不缩减。
+
+## 55. Kimi 完整刷新与版本探针工作预算
+
+`KimiDriver` 接入 registry 的 `NativeProviderCatalog`，统一 `fetchKimiProviderCatalog` 入口在十五秒 owner 内执行路由准备、配置模型目录与版本探针。纯配置模型继续复用既有 `fetchKimiCatalog` 成功缓存；安装/版本/认证状态只共享正在执行的检查，完成后重新读取版本。版本解析和 spawn 使用冻结的同一实际 cwd/env，关闭环境二次继承，设置两秒强制退出宽限。禁用实例仍探测实际安装状态，保持原来的安装按钮语义；不创建 ACP 会话或发送 prompt。
+
+完整键覆盖实际命令、启用状态、规范化模型配置、工作目录、完整环境及路由来源/代次。配置和环境在异步等待前复制，checkedAt 使用每个调用者的完成时间。准备与版本共享同一 controller/总预算；晚加入者不续时，首取消保留其他等待者、末取消终结共同加载，强刷新不加入普通旧执行。路由准备只读一次设置，纯覆盖函数保留既有失败关闭语义（读取设置失败时路由模型为空），模型覆盖没有预算外异步尾读；各实例身份在共享结果外补齐。初始路由映射保持原行为，实例重建复用第54主题的内存 catalogRevision。
+
+第54主题 HEAD 导出的纯候选叠加4源，`vp test run --config .candidate-test.config.ts` 指定 `Layers/KimiProvider.refresh.test.ts`、`Layers/KimiProvider.test.ts`、`Layers/ConfiguredCliProvider.catalog.test.ts`、`Drivers/KimiDriver.catalog.test.ts`（均位于 apps/server/src/provider），4文件20项通过，最终清理后6.08秒。六项新整轮测试覆盖准备6秒+版本剩余9秒、晚加入、首/末取消、配置环境冻结、实时禁用安装、强刷新/路由代次、版本失败与取消；实际 Driver 用例证明跨实例共享路由准备、各自身份和新代模型。旧纯目录缓存以及 Antigravity 对照未改，全部通过。4源最终目标类型无诊断，格式/lint退出0；首次类型检查的同步 Schema 解码位置问题已修正为模块级 Effect 解码器，lint 的内联编译提示和 Driver 无用旧变量也已清理，没有全仓检查。
+
+真实 Windows `.cmd → Node` 版本命令1项通过，2.84秒，`catalog-kimi-native-windows-initial.log`。版本阻塞时第6秒加入第二caller、关闭首Scope，仍由同一个owner在第15秒结束，TCP关闭收据确认实际子进程终结，后续版本恢复。两次假 CLI 启动、两个真实 handle 终结后 running/osAlive 均 false；4个捕获的外壳/Node PID 后续核对不存在，scoped 临时目录已删除，没有额外 kill、sleep/轮询或保留目录规避失败。测试只使用本机端口与虚构 CLI，不能称真实供应商认证或绝对墙钟上限。
+
+另1项公开状态入口的有效旧版对照只替换隔离候选 KimiProvider 为第54主题版本：版本探针一直挂起，旧路径到16秒观察时限仍未完成，结果为 `observer reached`，与十五秒工作预算消息的断言直接失败。恢复新版后通过，finally 按SHA校验恢复；`catalog-kimi-native-deadline-proof.json` 两轮 valid/restored 均 true。该观察时限仅用于红灯证明，不是生产计时或 sleep 验收。主矩阵加实际 Windows/公开入口各1项共22个不同用例，复验不重复计数。
+
+三端既有模型选择/设置入口、本地/远程/隧道继续使用同一服务端快照，没有 wire、持久结构、权限或动画改动。本轮未运行三端产品、真实账户或新服务，现存服务未加载此增量。初始路由映射、managed 前后设置与 OS 清理不属于十五秒工作预算。回退4源与4文档可恢复第54主题行为，无数据迁移。原84个无关文件及 BYOK/ChatView 混合改动保持。第11项仍开放 Antigravity、通用ACP、Pi、OhMyPi、ZCode 整轮预算/信号，跨目标取消、显式共享可写 home、模型/模式边界及对应完整连接/客户端验收；原39项与comparison额外范围保持不变。
