@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题                    |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归                       |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                          |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类刷新、BYOK跨目标与Grok共享home配置/多入口验收通过） | ProviderCatalogCache / ByokCatalog / GrokHomeAccess / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—61主题完成无会话、共享刷新、跨目标取消和Grok配置所有权；模型/模式及完整入口/三端/连接矩阵仍开放 |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类刷新、BYOK完整技能预算与跨目标、Grok共享home配置/多入口验收通过） | ProviderCatalogCache / ByokCatalog / ByokProviderCatalog / GrokHomeAccess / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—62主题完成无会话、共享刷新、跨目标取消、技能预算和Grok配置所有权；模型/模式及完整入口/三端/连接矩阵仍开放 |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                                        |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                                    |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 待实施                                                       | ProviderAdapterCapabilities / server config / 三端控制                                                     | 尚未运行                                                                                                                        |
@@ -1102,3 +1102,21 @@ Web/Desktop/Mobile的设置发现与状态快照继续消费同一服务端入�
 资源记录`catalog-grok-home-configuration-windows-resources.json`包含9个Node PID及13个handle PID（含外壳与taskkill清理进程），所有handle终结，22个捕获PID逐个OS核对为ESRCH，scoped目录确认不存在。Scope关闭造成的4个TCP ECONNRESET在夹具中显式计为取消回执，其他错误继续失败；最终没有未处理错误。首轮嵌套模板夹具语法错误改为独立UTF8脚本生成，之后虽业务断言通过但4个未处理ECONNRESET使Vitest退出1，未计为通过；修复夹具取消观察后以完整退出0为验收。保留既有Windows shell DEP0190提示，没有sleep/轮询、按名称kill或保留目录掩盖泄漏。123主矩阵加Windows1共124个不同用例，复验不重复计数。
 
 用户可见变化写回model-catalog-refresh说明，架构与comparison状态同步。Web/Desktop/Mobile消费同一服务端unavailable原因及目录快照，本地/远程/隧道规则一致，无新UI、wire、权限或持久结构；本轮未新启动产品三端或真实账号，现存服务未加载本主题。其他provider行为保留，全部入口/三端/连接及模型/模式验收继续。配置所有权仅约束同一服务进程的Code Work实例，不是跨进程文件锁，不隔离共享原生账号/会话文件或外部编辑器修改；等价共享的真实供应商行为仍需按适用范围验证。回退2生产、2测试及4文档可恢复第60主题，无数据迁移。原84个无关文件、BYOK与ChatView hunk保持保护；第11项及整体39项仍在进行中。
+
+## 62. BYOK 本地技能与模型共用完整刷新预算
+
+入口核对发现，BYOK Driver 在模型检查完成后另做无预算的技能扫描，初始快照也等待同一扫描。因此第59主题的实际 HTTP 目录预算仍有效，但不能据此证明 BYOK 的整个实例刷新和初始化有界。本主题新增 `ByokProviderCatalog.ts`，由 `fetchByokProviderCatalog` 并行读取模型与用户/服务器 cwd 技能，复用 registry 的 NativeProviderCatalog 在途所有者和十五秒预算。初始化只发布已有配置快照，后台异步补技能；不创建 provider session，不启动 CLI 或调用推理接口。
+
+完整检查身份只包含影响模型快照的启用、adapter标识/展示/模型/实际目录身份以及技能 cwd，实例名称、颜色、余额凭据和执行参数不参与共享。配置和候选数组在异步等待前复制；等价检查晚加入不延长原预算。顺序刷新重新扫描技能，不把技能文件长期缓存。HTTP 请求仍由各 ByokCatalog 实际加载拥有共享信号；整轮取消只释放自己的等待，不能把外层 controller 覆盖到 HTTP 传输而破坏部分重叠目标复用。
+
+汇总增加可选内部 `onModels` 完成回执，逐目录保留已完成结果，既有调用签名保持兼容；回执只更新完整检查内部草稿，不新增客户端半轮发布。新增边界测试先直接失败：前目录完成、后目录挂起，整轮预算抢先取消后汇总丢失 `first/finished`；实际 `['first','second']` 不等于包含该模型的期望。修复完成回执后通过。超时保留配置模型、已发现模型及已完成技能，说明超时；返回时写本调用者完成时间，取消/失败/恢复和实例关闭分别验证。
+
+最终纯候选由第61主题 HEAD 构建，只叠加6源（3生产、3测试），移除原 BYOK 混合 hunk 后验收。`vp test run --config .candidate-test.config.ts` 分两组：核心8文件为 `provider/ByokProviderCatalog.test.ts`、`provider/Drivers/ByokDriver.catalog.test.ts`、`provider/Layers/ByokProvider.catalog.test.ts`、`provider/Layers/ByokProvider.refresh.test.ts`、`provider/NativeProviderCatalog.test.ts`、`provider/byok/ByokCatalog.test.ts`、`provider/byok/ByokModelDiscoveryService.deadline.test.ts`、`provider/makeManagedServerProvider.test.ts`，70项通过，10.27秒；运行3文件为 `provider/Layers/ByokAdapter.test.ts`、`provider/Layers/ByokProvider.test.ts`、`provider/Layers/ProviderInstanceRegistryLive.test.ts`，28项通过，11.38秒。上述路径位于 apps/server/src。合计11文件98个不同用例，其中本主题新增13项；复验和旧版对照不重复计数。日志 `catalog-byok-skills-core.log` 与 `catalog-byok-skills-runtime.log`，捕获子进程均正常 close，源码前后 stable=true。
+
+新增两项真实本机 HTTP 用例将第59主题的 TCP/Fetch 夹具扩展到完整模型技能入口：第一目标在第8秒完成，第二目标正文挂起；第15秒返回已完成模型，不启动冷目标。没有其他等待者时观察正文连接 close 与 signal abort；仍有等待者时保持连接/信号，其他调用者获得结果后才关闭。读取使用虚构凭据、loopback临时端口，所有资源由 Scope 释放；文件系统测试显式 mock 技能读取，不写真实技能或账号目录。Driver 用例断言初始化返回、空会话列表、独立身份、下一轮技能变化和实例 Scope 关闭等待挂起读取终结。
+
+六源目标 `tsgo --noEmit -p apps/server/.streaming-typecheck.json`、`vp fmt --check`、`vp lint` 均退出0；类型检查仅保留既有 ByokAdapter 中两处 Effect.void 风格 suggestion，没有 owned 源错误或 lint 警告。首轮测试夹具错误引用不存在的 Path.posix，导致8项失败与目标类型错误；改为既有 Path.layer 后通过，没有把该失败计为验收。之后多目标部分结果的直接失败促成回执修复；最终源码和目标检查一致。
+
+有效旧版对照在所有检查停止后串行执行，仅恢复候选内第61主题 ByokDriver，选择“技能目录挂起仍发布初始配置”实际 Driver 用例。旧 Driver 的 created=false 与期望 true 直接 AssertionError 失败，退出1；不是导入错误或超时。finally按 SHA 恢复后相同用例通过，`catalog-byok-skills-red-proof.json` 的 oldExit=1、newExit=0、restored/directAssertion/valid 均符合预期。旧版重复扫描和未受限初始化没有通过新增入口测试。
+
+用户说明、providers架构和 comparison 状态同步；Web/Desktop/Mobile既有设置刷新、模型选择和技能菜单使用同一服务端快照，本地/远程/隧道走相同规则。没有新增UI、wire、权限、持久结构、动画或快捷键；聊天回合按线程 cwd 加载技能正文的运行入口保留，不能用目录菜单证明执行已验收。其余十一类driver保持既有实现。未新启动三端产品或真实供应商，现存保留服务未加载本主题；模型/模式及完整入口/三端/连接矩阵仍开放。回退3生产、3测试和4文档恢复第61主题，无数据迁移。精确暂存仅本主题，原84个无关文件和 BYOK/ChatView 混合 hunk保持保护。第11项和完整39项及comparison额外范围继续进行。

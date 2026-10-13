@@ -155,7 +155,12 @@ export function buildInitialByokProviderSnapshot(
 
 export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(function* (
   suppliedSettings: ByokSettings,
+  options?: {
+    /** 完整刷新超时前保留各目标已完成的模型，不向客户端单独发布半轮快照。 */
+    readonly onModels?: (models: ReadonlyArray<ServerProviderModel>) => void;
+  },
 ): Effect.fn.Return<ServerProviderDraft, never, ByokCatalog> {
+  const onModels = options?.onModels;
   // 多目标检查只使用开始时的配置，后续编辑应由下一次刷新读取。
   const byokSettings = {
     ...suppliedSettings,
@@ -219,6 +224,9 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
           capabilities: byokModelCapabilities(normalizedModelId),
         });
       }
+    }
+    if (onModels !== undefined) {
+      yield* Effect.sync(() => onModels(byokModelsFromSettings(byokSettings, discoveredModels)));
     }
   }
   const models = byokModelsFromSettings(byokSettings, discoveredModels);

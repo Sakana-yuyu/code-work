@@ -5,6 +5,8 @@ import { ByokSettings } from "@codework/contracts";
 import * as NodeHttp from "node:http";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { TestClock } from "effect/testing";
@@ -14,6 +16,7 @@ import { ProviderCatalogForceRefresh } from "../ProviderCatalogCache.ts";
 import { ByokCatalog, byokCatalogTargetFromAdapter, make } from "../byok/ByokCatalog.ts";
 import { fetchHttpClientLayer } from "../byok/ByokHttpClient.ts";
 import { checkByokProviderStatus } from "./ByokProvider.ts";
+import { fetchByokProviderCatalog } from "../ByokProviderCatalog.ts";
 
 const decodeSettings = Schema.decodeSync(ByokSettings);
 const adapter = (id: string) => {
@@ -79,79 +82,89 @@ const localServer = (handler: NodeHttp.RequestListener) =>
   );
 
 describe("BYOK 多目录刷新资源边界", () => {
-  for (const keepOtherClient of [false, true]) {
-    it.effect(
-      `本机 HTTP 挂起正文在实例预算结束后${keepOtherClient ? "保留另一等待者" : "关闭连接"}`,
-      () =>
-        Effect.gen(function* () {
-          const firstEntered = Promise.withResolvers<NodeHttp.ServerResponse>();
-          const sharedEntered = Promise.withResolvers<NodeHttp.ServerResponse>();
-          const sharedClosed = Promise.withResolvers<void>();
-          const urls: string[] = [];
-          let closed = false;
-          const server = yield* localServer((request, response) => {
-            urls.push(request.url!);
-            if (request.url === "/a") {
-              firstEntered.resolve(response);
-            } else {
-              response.once("close", () => {
-                closed = true;
-                sharedClosed.resolve();
-              });
-              response.writeHead(200, { "content-type": "application/json" });
-              response.write('{"data":[');
-              sharedEntered.resolve(response);
+  for (const includeSkills of [false, true]) {
+    for (const keepOtherClient of [false, true]) {
+      it.effect(
+        `${includeSkills ? "模型与技能完整刷新" : "模型刷新"}本机 HTTP 挂起正文在实例预算结束后${keepOtherClient ? "保留另一等待者" : "关闭连接"}`,
+        () =>
+          Effect.gen(function* () {
+            const firstEntered = Promise.withResolvers<NodeHttp.ServerResponse>();
+            const sharedEntered = Promise.withResolvers<NodeHttp.ServerResponse>();
+            const sharedClosed = Promise.withResolvers<void>();
+            const urls: string[] = [];
+            let closed = false;
+            const server = yield* localServer((request, response) => {
+              urls.push(request.url!);
+              if (request.url === "/a") {
+                firstEntered.resolve(response);
+              } else {
+                response.once("close", () => {
+                  closed = true;
+                  sharedClosed.resolve();
+                });
+                response.writeHead(200, { "content-type": "application/json" });
+                response.write('{"data":[');
+                sharedEntered.resolve(response);
+              }
+            });
+            const address = server.address();
+            assert.isNotNull(address);
+            assert.notTypeOf(address, "string");
+            if (address === null || typeof address === "string") return;
+            const origin = `http://127.0.0.1:${address.port}`;
+            const config = {
+              ...settings("a", "b", "c"),
+              adapters: ["a", "b", "c"].map((id) => ({
+                ...adapter(id),
+                baseURL: `${origin}/${id}/v1`,
+                modelCatalogURLs: [`${origin}/${id}`],
+              })),
+            };
+            const signals: AbortSignal[] = [];
+            const catalog = yield* makeCatalog((input, init) => {
+              signals.push(signalOf(init));
+              return globalThis.fetch(input, init);
+            });
+            const check = includeSkills
+              ? fetchByokProviderCatalog({ settings: config, cwd: "/fixture/project" })
+              : checkByokProviderStatus(config);
+            const pending = yield* check.pipe(
+              Effect.provideService(ByokCatalog, catalog),
+              Effect.provideService(
+                FileSystem.FileSystem,
+                FileSystem.makeNoop({ readDirectory: () => Effect.succeed([]) }),
+              ),
+              Effect.provide(Path.layer),
+              Effect.forkChild({ startImmediately: true }),
+            );
+            const firstResponse = yield* Effect.promise(() => firstEntered.promise);
+            yield* TestClock.adjust("8 seconds");
+            firstResponse.end('{"data":[{"id":"finished"}]}');
+            const sharedResponse = yield* Effect.promise(() => sharedEntered.promise);
+            const other = keepOtherClient
+              ? yield* catalog
+                  .fetchCatalog(byokCatalogTargetFromAdapter(config.adapters[1]!))
+                  .pipe(Effect.forkChild({ startImmediately: true }))
+              : undefined;
+            yield* TestClock.adjust("7 seconds");
+            const result = yield* Fiber.join(pending);
+            assert.deepStrictEqual(urls, ["/a", "/b"]);
+            assert.deepStrictEqual(
+              result.models.map((model) => model.slug),
+              ["a", "b", "c", "a/finished"],
+            );
+            if (other !== undefined) {
+              assert.isFalse(signals[1]!.aborted);
+              assert.isFalse(closed);
+              sharedResponse.end('{"id":"network-shared"}]}');
+              assert.strictEqual((yield* Fiber.join(other)).value.models[0]?.id, "network-shared");
             }
-          });
-          const address = server.address();
-          assert.isNotNull(address);
-          assert.notTypeOf(address, "string");
-          if (address === null || typeof address === "string") return;
-          const origin = `http://127.0.0.1:${address.port}`;
-          const config = {
-            ...settings("a", "b", "c"),
-            adapters: ["a", "b", "c"].map((id) => ({
-              ...adapter(id),
-              baseURL: `${origin}/${id}/v1`,
-              modelCatalogURLs: [`${origin}/${id}`],
-            })),
-          };
-          const signals: AbortSignal[] = [];
-          const catalog = yield* makeCatalog((input, init) => {
-            signals.push(signalOf(init));
-            return globalThis.fetch(input, init);
-          });
-          const pending = yield* checkByokProviderStatus(config).pipe(
-            Effect.provideService(ByokCatalog, catalog),
-            Effect.forkChild({ startImmediately: true }),
-          );
-          const firstResponse = yield* Effect.promise(() => firstEntered.promise);
-          yield* TestClock.adjust("8 seconds");
-          firstResponse.end('{"data":[{"id":"finished"}]}');
-          const sharedResponse = yield* Effect.promise(() => sharedEntered.promise);
-          const other = keepOtherClient
-            ? yield* catalog
-                .fetchCatalog(byokCatalogTargetFromAdapter(config.adapters[1]!))
-                .pipe(Effect.forkChild({ startImmediately: true }))
-            : undefined;
-          yield* TestClock.adjust("7 seconds");
-          const result = yield* Fiber.join(pending);
-          assert.deepStrictEqual(urls, ["/a", "/b"]);
-          assert.deepStrictEqual(
-            result.models.map((model) => model.slug),
-            ["a", "b", "c", "a/finished"],
-          );
-          if (other !== undefined) {
-            assert.isFalse(signals[1]!.aborted);
-            assert.isFalse(closed);
-            sharedResponse.end('{"id":"network-shared"}]}');
-            assert.strictEqual((yield* Fiber.join(other)).value.models[0]?.id, "network-shared");
-          }
-          yield* Effect.promise(() => sharedClosed.promise);
-          assert.isTrue(signals[1]!.aborted);
-          assert.isTrue(closed);
-        }).pipe(Effect.scoped),
-    );
+            yield* Effect.promise(() => sharedClosed.promise);
+            assert.isTrue(signals[1]!.aborted);
+            assert.isTrue(closed);
+          }).pipe(Effect.scoped),
+      );
+    }
   }
 
   for (const phase of ["request", "body"] as const) {

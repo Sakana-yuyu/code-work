@@ -72,6 +72,10 @@ BYOK 每个目录加载最多十五秒，每次实例状态检查另有同一个
 
 `ByokCatalog.fetchCatalog` 在第一次异步等待前复制目标、候选数组及等待选项，让缓存键与执行始终使用同一输入。实例检查也先复制适配器列表与候选数组，后续配置编辑由下一轮刷新读取；发布的模型标识和展示名称使用当前检查的快照，`checkedAt` 记录完成时间。十二类 provider 的共享刷新已覆盖工作预算与资源边界；显式共享可写 home、会话内模型/模式和完整入口/客户端/连接矩阵仍需继续验收。
 
+BYOK Driver 的完整刷新由 `fetchByokProviderCatalog` 统一发现模型和本地技能，复用注册表的 `NativeProviderCatalog` 在途所有者。十五秒预算同时覆盖模型等待与文件扫描，两者并行执行；初始化只发布配置快照，随后异步刷新技能，不因挂起的文件系统阻塞实例创建。整轮键只取启用、模型路由与展示字段、各实际目录身份和技能 cwd；实例名称与余额凭据不影响共享。完成的技能扫描不长期缓存，下一轮重新读取文件。
+
+`checkByokProviderStatus` 保留兼容入口，并以可选的内部 `onModels` 回执保留每个目标已完成的模型；回执只更新完整刷新内部状态，不逐目标发布半轮客户端快照。整轮超时后返回配置模型、已完成目录和已完成技能，并说明超时；检查时间在调用者返回前更新。取消依然逐层释放等待者，各实际 HTTP 加载继续持有自己的共享信号，部分重叠目标仍可复用；不能把外层 controller 强制覆盖到各目录传输。真实本机 HTTP 及 Driver 初始化/关闭证据见 [移植进度](./port-progress.md) 第62主题。
+
 > For maintainers. Using Code Work? See [docs/user](../user/).
 
 A provider is the agent runtime that does the actual work. Code Work supports several, and the
