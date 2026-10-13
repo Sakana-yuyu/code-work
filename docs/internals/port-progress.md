@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题                    |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归                       |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                          |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类目录；八类共享加载统一预算/资源/信号）      | ProviderCatalogCache / ByokCatalog / ByokHttpClient / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—56主题完成无会话、十二类目录共享及同设置刷新；Codex/Claude/Cursor/Grok/Kimi/Antigravity完整原生刷新统一，其余四家CLI总预算/信号、跨目标取消、显式共享可写home及模型模式边界仍开放 |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类目录；九类共享加载统一预算/资源/信号）      | ProviderCatalogCache / ByokCatalog / ByokHttpClient / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—57主题完成无会话、十二类目录共享及同设置刷新；通用ACP与六家原生CLI完整刷新统一，Pi/OhMyPi/ZCode总预算/信号、跨目标取消、显式共享可写home及模型模式边界仍开放 |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                                        |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                                    |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 待实施                                                       | ProviderAdapterCapabilities / server config / 三端控制                                                     | 尚未运行                                                                                                                        |
@@ -1010,3 +1010,21 @@ CursorDriver 接入 registry 持有的 `NativeProviderCatalog`，等价配置完
 公开旧入口预算对照另1项：仅替换隔离候选 AntigravityProvider 为第55主题版本，挂起版本命令到16秒观察时限仍未完成，得到 `observer reached`，与十五秒预算消息的断言直接失败。finally 按SHA恢复后同一用例通过；`catalog-antigravity-native-deadline-proof.json` 两轮 valid/restored 均 true，红灯日志有直接 AssertionError。主矩阵加 Windows/公开预算各1项，共23个不同用例，复验不重复计数。
 
 三端既有设置/模型选择及本地/远程/隧道继续使用服务端快照，没有新 UI、wire、权限、持久结构或动画。其余provider保持此前实现；本轮未启动产品服务、操作真实供应商或运行三端产品，现存服务未加载该增量。初始快照、managed 前后设置与 OS 清理不属于十五秒预算。回退4源和4文档可恢复第55主题行为，无数据迁移。原84个无关文件及混合 BYOK/ChatView 改动保留。第11项继续开放通用ACP、Pi、OhMyPi、ZCode 整轮预算/信号、跨目标取消、共享可写home与模型/模式及完整连接/客户端验收；完整39项和comparison额外范围保持不变。
+
+## 57. 通用 ACP 完整目录与八秒预算
+
+`GenericAcpDriver` 接入 registry 的 `NativeProviderCatalog`，私有完整 `fetchCatalog` 将配置模型目录和实际命令探针统一到既有八秒工作预算。纯配置目录保留原来的成功缓存，初始快照仍不建会话；模型包含明确的 CLI 默认入口与配置模型。命令/参数/模型在实例创建前复制，环境也不再保留 process.env 的可变引用。每轮检查捕获实际宿主 cwd 和最终环境，同时用于键、解析与 spawn，关闭二次继承并设置两秒强制退出宽限。
+
+完整身份包含实际拆分命令、原生参数加 --version、启用状态、规范化模型与真实 cwd/env，显示名与实例ID不参与共享。返回时才补各自身份和 checkedAt。晚加入不续时，首实例 Scope 关闭保留另一实例等待，末 Scope 关闭中断实际 owner；managed 公开调用者取消仍只结束自身等待，必须区分实例 Scope 和外部等待 Scope。手动强刷新不加入另一实例的自动普通加载，普通检查仍可加入强加载。不同环境不共享探针，顺序检查重新读取输出。
+
+保留非零退出分类：包仓库错误仍显示可操作错误，不支持 --version 的命令仍允许进入实际会话握手，成功输出继续有界展示。整轮超时时，仅实际取得子进程句柄才表示 installed，目录阶段超时不假称启动成功；认证仍 unknown。没有会话、认证写入、session/new 或 prompt，真实适配器、MCP和模型选择能力未改。
+
+从第56主题 HEAD 导出纯候选，仅叠加 Driver 与新目录测试两源。`vp test run --config .candidate-test.config.ts` 指定 `Drivers/GenericAcpDriver.test.ts`、`Drivers/GenericAcpDriver.settings.test.ts`、`Drivers/GenericAcpDriver.catalog.test.ts`（均在 apps/server/src/provider），3文件18项通过，43.46秒，日志 `catalog-generic-native-tests-final.log`。新7项覆盖目录3秒+探针剩余5秒、跨实例晚加入、首/末实例Scope关闭、配置和带空格参数冻结、实际 cwd/env、失败/不支持版本兼容、实时输出、环境隔离与强普通意图。既有真实命令、Windows批处理参数、认证、MCP、新建/恢复和Kiro专有执行回归通过；其中会话用例是原本的会话验收，不能与目录不建会话的断言混为一谈。
+
+两源目标类型检查退出0、无诊断，`vp fmt --check`、`vp lint` 退出0、lint无诊断。旧版恢复后7项再次通过，3.28秒，是18项子集；没有全仓检查。既有 Windows shell DEP0190 提示保留。
+
+额外真实 Windows GenericAcpDriver `.cmd → Node` 组合1项通过，4.29秒，日志 `catalog-generic-native-windows-initial.log`。预热后阻塞版本，第3秒第二实例加入、关闭首实例Scope仍由同一个owner在第8秒结束，TCP关闭收据确认实际进程终结；第二实例随后恢复就绪。含预热共4次假 CLI 启动、8个捕获外壳/Node PID 均已退出，scoped临时目录已删除，协议日志只有版本命令，没有ACP会话请求。真实 cwd 与目录键一致，无按名称 kill、sleep/轮询或保留目录规避清理。只用本机端口和虚构 CLI，不是云端认证或硬墙钟退出上限验收。
+
+旧版有效对照另1项：仅替换隔离候选 GenericAcpDriver 为第56主题版本，目录先耗3秒后，旧版本阶段重新取得8秒，到第9秒观察时限仍未完成，结果 `observer reached` 与整轮8000ms消息断言直接失败。恢复新版后同一用例通过，finally按SHA恢复；`catalog-generic-native-deadline-proof.json` 两轮 valid/restored 均 true。观察时限仅用于红灯证据，不是生产轮询。主矩阵加实际Windows/公开预算各1项共20个不同用例，复验不重复计数。
+
+三端现有设置/模型选择和本地/远程/隧道继续取服务端快照；没有新增UI、协议、权限、持久结构或动画。本轮没有产品运行、真实供应商或新服务启动，现存服务未加载此主题。实例初始目录、managed前后设置与OS清理不属于八秒工作预算。回退两源与四文档可恢复第56主题行为，无迁移。原84个无关文件及混合 BYOK/ChatView 改动保留。第11项继续开放 Pi、OhMyPi、ZCode 整轮预算/信号，跨目标取消、共享可写home、模型/模式及全连接/客户端验收；完整39项及comparison额外范围不缩减。

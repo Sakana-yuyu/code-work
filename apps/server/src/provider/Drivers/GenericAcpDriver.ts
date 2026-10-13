@@ -31,6 +31,7 @@ import {
   type ServerProviderModel,
 } from "@codework/contracts";
 import { resolveSpawnCommand } from "@codework/shared/shell";
+import { HostProcessWorkingDirectory } from "@codework/shared/hostProcess";
 
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
@@ -38,7 +39,12 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeCursorTextGeneration } from "../../textGeneration/CursorTextGeneration.ts";
 import { ProviderDriverError } from "../Errors.ts";
-import { cliProviderCatalogIdentity, makeCliProviderCatalog } from "../CliProviderCatalog.ts";
+import {
+  cliProviderCatalogIdentity,
+  makeCliProviderCatalog,
+  withCatalogAbortSignal,
+} from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import { makeCursorAdapter } from "../Layers/CursorAdapter.ts";
 import {
   buildServerProvider,
@@ -168,9 +174,20 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
   metadata: { displayName: "ACP Agent", supportsMultipleInstances: true },
   configSchema: AcpAgentSettings,
   defaultConfig: (): AcpAgentSettings => decodeAcpSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config, catalog }) =>
+  create: ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config: suppliedConfig,
+    catalog,
+    nativeCatalog,
+  }) =>
     Effect.gen(function* () {
+      const config = { ...suppliedConfig, customModels: [...suppliedConfig.customModels] };
       const sharedCatalog = catalog ?? (yield* makeCliProviderCatalog());
+      const nativeProviderCatalog = nativeCatalog ?? (yield* makeNativeProviderCatalog());
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -178,7 +195,7 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
       const serverSettings = yield* ServerSettingsService;
       const secretStore = yield* ServerSecretStore;
       const eventLoggers = yield* ProviderEventLoggers;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const processEnv = { ...mergeProviderInstanceEnvironment(environment) };
 
       const commandParts = splitPifamilyLaunchArgs(config.command);
       const acpCommand = commandParts[0];
@@ -225,7 +242,7 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
         CLI_DEFAULT_MODELS,
         effectiveConfig.customModels,
       );
-      const fetchCatalog = sharedCatalog
+      const fetchConfiguredCatalog = sharedCatalog
         .fetchCatalog({
           key: cliProviderCatalogIdentity({
             driver: DRIVER_KIND,
@@ -277,65 +294,116 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
       });
 
       // 探测：命令可执行且不抛 ENOENT 即视为 installed；模型目录来自 customModels。
-      const checkProvider = Effect.gen(function* () {
+      // 配置目录和探针共享既有八秒预算；共享结果在 owner 外补各实例身份。
+      const fetchCatalog = Effect.gen(function* () {
         const checkedAt = DateTime.formatIso(yield* DateTime.now);
-        const { models } = yield* fetchCatalog;
-        const probe = yield* Effect.gen(function* () {
-          const spawnCommand = yield* resolveSpawnCommand(acpCommand, [...acpArgs, "--version"], {
-            env: injectedEnv,
-            extendEnv: true,
-          });
-          const child = yield* spawner.spawn(
-            ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-              env: injectedEnv,
-              extendEnv: true,
-              shell: spawnCommand.shell,
-            }),
-          );
-          return yield* Effect.all(
-            [
-              collectStreamAsString(child.stdout),
-              collectStreamAsString(child.stderr),
-              child.exitCode,
-            ],
-            { concurrency: "unbounded" },
-          );
-        }).pipe(Effect.timeout("8 seconds"), Effect.result, Effect.scoped);
-        if (Result.isFailure(probe)) {
-          const missing = isCommandMissingCause(probe.failure);
-          return buildServerProvider({
-            presentation: PRESENTATION,
-            enabled: effectiveConfig.enabled,
-            checkedAt,
-            models,
-            probe: {
-              installed: !missing,
-              version: null,
-              status: "error",
-              auth: { status: "unknown" },
-              message: missing
-                ? `启动命令 ${acpCommand} 未找到。`
-                : "ACP Agent 启动命令探测失败或超时。",
+        const cwd = yield* HostProcessWorkingDirectory;
+        const probeEnvironment = { ...injectedEnv };
+        let probeStarted = false;
+        const snapshot = yield* nativeProviderCatalog.fetchCatalog({
+          key: cliProviderCatalogIdentity({
+            driver: DRIVER_KIND,
+            operation: "acpAgent/provider-refresh",
+            config: {
+              command: acpCommand,
+              args: [...acpArgs, "--version"],
+              enabled: effectiveConfig.enabled,
+              customModels,
             },
-          });
-        }
-        const [stdout, stderr, exitCode] = probe.success;
-        const outcome = classifyAcpCommandProbe({ stdout, stderr, exitCode });
-        return buildServerProvider({
-          presentation: PRESENTATION,
-          enabled: effectiveConfig.enabled,
-          checkedAt,
-          models,
-          probe: {
-            installed: true,
-            version: null,
-            // 认证在 ACP 会话握手时确认；探测退出码必须成功，不能仅凭进程启动就标为可用。
-            status: outcome.status,
-            auth: { status: "unknown" },
-            message: outcome.message,
-          },
+            cwd,
+            environment: probeEnvironment,
+          }),
+          timeoutMs: 8_000,
+          onTimeout: () =>
+            buildServerProvider({
+              presentation: PRESENTATION,
+              enabled: effectiveConfig.enabled,
+              checkedAt,
+              models: providerModelsFromSettings(CLI_DEFAULT_MODELS, customModels, {
+                optionDescriptors: [],
+              }),
+              probe: {
+                installed: probeStarted,
+                version: null,
+                status: "error",
+                auth: { status: "unknown" },
+                message: "ACP Agent 目录刷新在8000ms工作预算内未完成。",
+              },
+            }),
+          load: (controller) =>
+            withCatalogAbortSignal(
+              Effect.gen(function* () {
+                const { models } = yield* fetchConfiguredCatalog;
+                const probe = yield* Effect.gen(function* () {
+                  const spawnCommand = yield* resolveSpawnCommand(
+                    acpCommand,
+                    [...acpArgs, "--version"],
+                    {
+                      cwd,
+                      env: probeEnvironment,
+                      extendEnv: false,
+                    },
+                  );
+                  const child = yield* spawner.spawn(
+                    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+                      cwd,
+                      env: probeEnvironment,
+                      extendEnv: false,
+                      shell: spawnCommand.shell,
+                      forceKillAfter: "2 seconds",
+                    }),
+                  );
+                  probeStarted = true;
+                  return yield* Effect.all(
+                    [
+                      collectStreamAsString(child.stdout),
+                      collectStreamAsString(child.stderr),
+                      child.exitCode,
+                    ],
+                    { concurrency: "unbounded" },
+                  );
+                }).pipe(Effect.result, Effect.scoped);
+                if (Result.isFailure(probe)) {
+                  const missing = isCommandMissingCause(probe.failure);
+                  return buildServerProvider({
+                    presentation: PRESENTATION,
+                    enabled: effectiveConfig.enabled,
+                    checkedAt,
+                    models,
+                    probe: {
+                      installed: !missing,
+                      version: null,
+                      status: "error",
+                      auth: { status: "unknown" },
+                      message: missing
+                        ? `启动命令 ${acpCommand} 未找到。`
+                        : "ACP Agent 启动命令探测失败或超时。",
+                    },
+                  });
+                }
+                const [stdout, stderr, exitCode] = probe.success;
+                const outcome = classifyAcpCommandProbe({ stdout, stderr, exitCode });
+                return buildServerProvider({
+                  presentation: PRESENTATION,
+                  enabled: effectiveConfig.enabled,
+                  checkedAt,
+                  models,
+                  probe: {
+                    installed: true,
+                    version: null,
+                    // 认证在 ACP 会话握手时确认；探测退出码必须成功，不能仅凭进程启动就标为可用。
+                    status: outcome.status,
+                    auth: { status: "unknown" },
+                    message: outcome.message,
+                  },
+                });
+              }),
+              controller.signal,
+            ),
         });
-      }).pipe(Effect.map(stampIdentity));
+        return { ...snapshot, checkedAt: DateTime.formatIso(yield* DateTime.now) };
+      });
+      const checkProvider = fetchCatalog.pipe(Effect.map(stampIdentity));
 
       const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, serverSettings);
       const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<AcpAgentSettings>>(
@@ -348,7 +416,7 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
           initialSnapshot: () =>
             Effect.gen(function* () {
               const checkedAt = DateTime.formatIso(yield* DateTime.now);
-              const { models } = yield* fetchCatalog;
+              const { models } = yield* fetchConfiguredCatalog;
               return stampIdentity(
                 buildServerProvider({
                   presentation: PRESENTATION,
