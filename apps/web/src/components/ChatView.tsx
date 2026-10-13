@@ -1457,6 +1457,9 @@ function ChatViewContent(props: ChatViewProps) {
   const composerActiveProvider = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
   );
+  const composerModelSelections = useComposerDraftStore(
+    (store) => store.getComposerDraft(composerDraftTarget)?.modelSelectionByProvider ?? null,
+  );
   const composerHasUnsentContent = useComposerDraftStore((store) =>
     composerDraftHasUserContent(store.getComposerDraft(composerDraftTarget)),
   );
@@ -1735,8 +1738,6 @@ function ChatViewContent(props: ChatViewProps) {
   // the branch mismatch banner.
   const [, setThreadErrorBannerDismissTick] = useState(0);
   const runtimeMode = composerRuntimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
-  const interactionMode =
-    composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE;
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const activeThreadId = activeThread?.id ?? null;
@@ -2450,6 +2451,24 @@ function ChatViewContent(props: ChatViewProps) {
       ),
     [serverConfig?.providers, activeThread?.activities],
   );
+  // 原生选项也决定当前界面模式；旧的两态草稿不能压住重新选择的 Plan。
+  const modeInstanceId = composerActiveProvider ?? activeThread?.modelSelection.instanceId;
+  const modeModelSelection =
+    (modeInstanceId ? composerModelSelections?.[modeInstanceId] : undefined) ??
+    activeThread?.modelSelection;
+  const requestedInteractionMode =
+    composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE;
+  const interactionMode = modeModelSelection
+    ? resolveProviderInteractionMode({
+        providers: providerStatuses,
+        instanceId: modeModelSelection.instanceId,
+        capabilities: providerStatuses
+          .find((provider) => provider.instanceId === modeModelSelection.instanceId)
+          ?.models.find((model) => model.slug === modeModelSelection.model)?.capabilities,
+        modelSelection: modeModelSelection,
+        interactionMode: requestedInteractionMode,
+      })
+    : requestedInteractionMode;
   const timelineProviders = useMemo(
     () =>
       new Map(

@@ -335,6 +335,8 @@ Codex 的 `fetchCodexCatalog` 在同一个无会话 client 上并行读取 `mode
 
 三端复用已有选项界面；Codex 旧两态控件撤回。共享发送归一化同步选项与规范 `interactionMode`，Adapter 只从绑定实例读取 default/plan 原生选项并传给既有 `turn/start` 协作模式字段，运行权限和审批不变。Web 原线程续接及新线程“实施计划”显式选择广告的 default；没有相应模式时拒绝，不沿用旧 plan。目录撤回会清除失效选项。旧客户端的两态发送字段仍兼容，目录刷新没有另建线程或会话。
 
+第65主题实际 Web 验证发现：实施后留下的两态 default 草稿会压住重新选择的原生 Plan，导致规范模式已持久化为 plan、计划卡片存在而就绪入口未显示。ChatView 现在只订阅当前草稿模型选项并采用同一共享归一化函数派生界面模式，不订阅提示词正文，不通过 effect 回写草稿。相同线程和计划数据在加载修复后立即恢复就绪入口；原线程实施、新线程实施及受监督权限的实际 RPC/SQLite 证据见移植进度第65主题。
+
 2026-10-14 检索 `Codex collaborationMode/list` 并读取官方 [模式目录协议](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/src/protocol/v2/collaboration_mode.rs)、[ModeKind](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/config_types.rs) 及 [TUI 消费方式](https://github.com/openai/codex/blob/main/codex-rs/tui/src/collaboration_modes.rs)。采用原始协议确认空请求、可空预设、目前可执行的 default/plan 和可选发现边界；自主实现解码与测试，没有复制参考代码，也没有增加 TUI 的单请求超时。原生服务端会继续提供模式指令；Code Work 既有开发者指令、MCP 访问约束与运行权限保持原绑定。定向测试、实际 Windows 子进程与完整验收边界见 [移植进度](./port-progress.md) 第64主题。
 
 官方协议要求按真实会话广告传递模式标识，配置选项语义由类别声明。2026-10-14 检索 `ACP session modes session new config options`，采用 [ACP Session Modes](https://agentclientprotocol.com/protocol/v1/session-modes) 与 [Session Config Options](https://agentclientprotocol.com/protocol/v1/session-config-options) 原始规范；本主题复用既有回执合并，仅修复消费入口，没有复制参考代码。实际 Web/Android、本机推理 fixture 和能力声明回归见 [移植进度](./port-progress.md) 第63主题。

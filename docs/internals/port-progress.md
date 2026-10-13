@@ -1152,3 +1152,19 @@ Codex 两态控件撤回，三端复用现有通用选项消费。普通发送�
 实际 Windows 协议验收使用工作区外合成账户和受控 `.cmd`/Node fixture，由真实平台 spawner 启动。请求严格为 initialize、initialized、account/read、skills/list、model/list、collaborationMode/list，响应为 ready，返回两项真实 fixture 广告，旧两态声明 false；没有会话调用。worker 捕获 PID80860，Scope 关闭后 PID 已停止，追加的一项真实进程测试通过。临时验证入口最初放在候选根而无法解析平台依赖，迁至 server 依赖边界后通过；未修改依赖或产品源码。该证据是本机进程/RPC联调，不是官方 Codex 账户或外部推理验证。
 
 原始证据为工作区外 `catalog-codex-modes-{core,typecheck-*,format,lint,old-red,restored-green}.log`、red-proof、Windows fixture/result.json 与请求记录。官方原始来源、检索词、2026-10-14访问日期及采用理由写入 providers。未复制参考代码。第63主题实际 Web/Android证据不用于证明本主题新控件已实测；保留服务未加载本候选，本轮没有新产品客户端、Electron、iOS、外部供应商或公网 relay/tunnel运行。共享渲染器、通用选项及发送有定向覆盖，设置/聊天/命令/快捷键、全部实例/客户端/连接的最终矩阵仍开放。其他十一类 driver 沿用此前实现；第14项的完整能力分拆继续实施。回退17源及4文档恢复第63主题，无迁移。原83个无关基线文件、BYOK/ChatView/ChatComposer混合hunk继续保护，只提交本主题。第11项及完整39项与comparison额外范围保持进行中。
+
+## 65. Codex 实际 Web 模式与计划实施入口
+
+核对当前 `c58dd9c5e` 与保留服务实际进程后，复用独立 home、端口13774/5734和已配对浏览器。第64主题17源按SHA同步至隔离候选，使用正式供应商设置保存受控 `.cmd` 程序、独立 Codex home 后启用；未改 live userdata，未用SQL写入业务状态，未读取真实账号。连续编辑时 home 未保留的现象已记录，单独保存并核对后才启用；设置保存问题留待下一主题定位，不计为已修复。
+
+实际设置页发现受控模型，草稿模型菜单展示原生 default/plan 名称及预设说明；选择 Plan 后摘要为“Medium · 原生计划”，预设 high 没有覆盖已选 medium。草稿发送前12条请求仅为 initialize/initialized/account/read/skills/list/model/list/collaborationMode/list，thread/turn调用为0。选择受监督权限后，实际 turn/start为plan、approvalPolicy=untrusted、sandboxPolicy=readOnly；SQLite 同步 interaction_mode=plan 与原生选项plan。
+
+最初 fixture 的 item 生命周期通知缺少必填 startedAtMs/completedAtMs，助手文字已显示但没有计划卡片；该失败不计为计划完成证据。修正 fixture 并通过实例停用释放实际 PID71016，再启用后恢复会话，合规计划通知形成真实持久化计划和可操作卡片。另补 fixture 的 exec 标题读取，避免将 CLI 文本输入误当JSON。均为工作区外测试实现修正，没有调整产品协议来适配错误fixture。
+
+原线程点击“实现”，同一真实进程收到default；SQLite同时保存default选项、default规范模式和approval-required。随后重新选择Plan，下一回合RPC与持久化均为plan、生成第二张计划卡片，但计划就绪入口未显示。真实问题是ChatView只读取旧两态draft=default，未读取当前模型选项。修复只增加当前草稿 modelSelectionByProvider 的细粒度订阅，复用 resolveProviderInteractionMode 派生界面模式；不订阅提示词、不新增effect或回写链。既有流式列表、缓存和协议不改。
+
+前后验证使用同一线程、同一计划与同一持久化数据：旧界面模式摘要为原生Plan、卡片存在、expectedPlanReady=true而actual=false；加载已测试单源候选后就绪入口立即出现。点击“在新的线程中实现”，新线程 `5cfc4134-634b-44de-8a29-dc449a29e5ef` 的实际RPC、规范模式和原生选项全部default，仍是untrusted/readOnly与approval-required，页面显示完整默认模式回复。原线程 `d953cce2-9925-4734-abdf-116666bf6700` 保留自身plan状态，两份有效计划保留；完成的旧回复和计划历史可查看。总请求中的首个不合规fixture回合与后续有效回合分别记录，不把最初计划缺失改写为通过。
+
+纯候选从第64主题提交构建，仅1生产源并剥离原ChatView四组hunk。client-runtime/providerModels、Web composerProviderState、composerDraftStore三个文件107项回归通过，Web目标tsgo、单源fmt/lint通过，检查前后SHA稳定。没有为纯状态派生新增镜像测试；实际红绿界面、模型菜单/实施操作、RPC与只读SQLite构成行为证据。原始材料为工作区外 catalog-codex-mode-ui-{core,typecheck-web,format,lint}.log、loaded-source/runtime-proof.json，以及可视化目录中的 codex-native-{mode-menu,plan-ready,implemented,ui-old-no-ready,ui-fixed-ready,new-thread-implemented}.png 和前后DOM证明。
+
+本主题适用于Web及Desktop共用ChatView、现有聊天/模型菜单/计划操作入口；Mobile保留第64主题发送绑定和自身界面，本轮没有新原生客户端运行。旧两态快捷键和斜杠菜单按第63/64主题能力决定，不新增第二套模式探测。模式刷新及本地/远程/隧道仍取同一服务端快照，本轮实际网络为本机配对连接，不宣称公网relay/tunnel、外部Codex或真实订阅账号通过。没有新帧率测量或Electron窗口证据。单源修复与4文档可独立回退，无迁移；精确暂存继续保护83个无关基线文件及BYOK/ChatView/ChatComposer混合改动。保留隔离服务和测试状态供后续完整矩阵使用。第11项、完整能力第14项及全部39项/comparison范围保持进行中。
