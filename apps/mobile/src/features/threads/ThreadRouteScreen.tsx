@@ -89,7 +89,7 @@ import {
   type ThreadInspectorMode,
 } from "./thread-inspector-content-stack";
 import { t } from "../../i18n";
-import { deriveRevertTurnCountByUserMessageId } from "./threadMessageActions";
+import { createRevertTurnCountByUserMessageIdSelector } from "./threadMessageActions";
 import { waitForThreadRewound } from "./waitForThreadRewound";
 
 interface ThreadInspectorSelection {
@@ -210,12 +210,13 @@ function ThreadRouteContent(
     useThreadSelection();
   const selectedThreadDetailState = props.selectedThreadDetailState;
   const selectedThreadDetail = Option.getOrNull(selectedThreadDetailState.data);
+  const selectRevertTurnCountByUserMessageId = useMemo(
+    () => createRevertTurnCountByUserMessageIdSelector(),
+    [selectedThread?.environmentId, selectedThread?.id],
+  );
   const revertTurnCountByUserMessageId = useMemo(
-    () =>
-      selectedThreadDetail === null
-        ? new Map()
-        : deriveRevertTurnCountByUserMessageId(selectedThreadDetail),
-    [selectedThreadDetail],
+    () => selectRevertTurnCountByUserMessageId(selectedThreadDetail),
+    [selectRevertTurnCountByUserMessageId, selectedThreadDetail],
   );
   // "Load earlier turns" header state for windowed (paginated) thread loads.
   const loadEarlierTurns = useMemo(() => {
@@ -526,17 +527,48 @@ function ThreadRouteContent(
       threadId: String(selectedThread.id),
     });
   }, [navigation, selectedThread]);
+  const messageActionThreadId = selectedThread?.id;
+  const messageActionEnvironmentId = selectedThread?.environmentId;
+  const messageActionRuntimeMode = selectedThread?.runtimeMode;
+  const messageActionInteractionMode = selectedThread?.interactionMode;
+  const messageActionWorking =
+    selectedThread?.session?.status === "running" ||
+    selectedThread?.session?.status === "starting" ||
+    selectedThread?.latestTurn?.state === "running";
+  // 只因动作所需字段更换回调，正文更新不触发整张列表的 extraData。
+  const messageActionThread = useMemo(
+    () =>
+      messageActionThreadId !== undefined &&
+      messageActionEnvironmentId !== undefined &&
+      messageActionRuntimeMode !== undefined &&
+      messageActionInteractionMode !== undefined
+        ? {
+            id: messageActionThreadId,
+            environmentId: messageActionEnvironmentId,
+            runtimeMode: messageActionRuntimeMode,
+            interactionMode: messageActionInteractionMode,
+            working: messageActionWorking,
+          }
+        : null,
+    [
+      messageActionThreadId,
+      messageActionEnvironmentId,
+      messageActionRuntimeMode,
+      messageActionInteractionMode,
+      messageActionWorking,
+    ],
+  );
   const performRevertToTurnCount = useCallback(
     async (turnCount: number) => {
-      if (selectedThread === null || isRevertingCheckpoint) {
+      if (messageActionThread === null || isRevertingCheckpoint) {
         return;
       }
 
       setIsRevertingCheckpoint(true);
       const result = await revertThreadCheckpoint({
-        environmentId: selectedThread.environmentId,
+        environmentId: messageActionThread.environmentId,
         input: {
-          threadId: selectedThread.id,
+          threadId: messageActionThread.id,
           turnCount,
         },
       });
@@ -550,22 +582,18 @@ function ThreadRouteContent(
         );
       }
     },
-    [isRevertingCheckpoint, revertThreadCheckpoint, selectedThread],
+    [isRevertingCheckpoint, revertThreadCheckpoint, messageActionThread],
   );
   const handleRevertToTurnCount = useCallback(
     (turnCount: number) => {
-      if (selectedThread === null || isRevertingCheckpoint) {
+      if (messageActionThread === null || isRevertingCheckpoint) {
         return;
       }
       if (routeConnectionState !== "available" && routeConnectionState !== "connected") {
         Alert.alert(t("checkpointRevert.reconnectFirst"));
         return;
       }
-      if (
-        selectedThread.session?.status === "running" ||
-        selectedThread.session?.status === "starting" ||
-        selectedThread.latestTurn?.state === "running"
-      ) {
+      if (messageActionThread.working) {
         Alert.alert(t("checkpointRevert.interruptFirst"));
         return;
       }
@@ -585,11 +613,11 @@ function ThreadRouteContent(
         ],
       );
     },
-    [isRevertingCheckpoint, performRevertToTurnCount, routeConnectionState, selectedThread],
+    [isRevertingCheckpoint, performRevertToTurnCount, routeConnectionState, messageActionThread],
   );
   const performEditUserMessage = useCallback(
     async (text: string, turnCount: number | null) => {
-      if (selectedThread === null || isRevertingCheckpoint) {
+      if (messageActionThread === null || isRevertingCheckpoint) {
         return;
       }
 
@@ -598,9 +626,9 @@ function ThreadRouteContent(
         if (turnCount !== null) {
           const startedAt = new Date().toISOString();
           const revertResult = await revertThreadCheckpoint({
-            environmentId: selectedThread.environmentId,
+            environmentId: messageActionThread.environmentId,
             input: {
-              threadId: selectedThread.id,
+              threadId: messageActionThread.id,
               turnCount,
             },
           });
@@ -616,8 +644,8 @@ function ThreadRouteContent(
           }
 
           const rewindOutcome = await waitForThreadRewound({
-            environmentId: selectedThread.environmentId,
-            threadId: selectedThread.id,
+            environmentId: messageActionThread.environmentId,
+            threadId: messageActionThread.id,
             targetTurnCount: turnCount,
             startedAt,
           });
@@ -636,18 +664,18 @@ function ThreadRouteContent(
 
         const metadata = makeTurnCommandMetadata();
         const startResult = await startThreadTurn({
-          environmentId: selectedThread.environmentId,
+          environmentId: messageActionThread.environmentId,
           input: {
             commandId: CommandId.make(metadata.commandId),
-            threadId: selectedThread.id,
+            threadId: messageActionThread.id,
             message: {
               messageId: MessageId.make(metadata.messageId),
               role: "user",
               text,
               attachments: [],
             },
-            runtimeMode: selectedThread.runtimeMode,
-            interactionMode: selectedThread.interactionMode,
+            runtimeMode: messageActionThread.runtimeMode,
+            interactionMode: messageActionThread.interactionMode,
             createdAt: metadata.createdAt,
           },
         });
@@ -662,11 +690,11 @@ function ThreadRouteContent(
         setIsRevertingCheckpoint(false);
       }
     },
-    [isRevertingCheckpoint, revertThreadCheckpoint, selectedThread, startThreadTurn],
+    [isRevertingCheckpoint, revertThreadCheckpoint, messageActionThread, startThreadTurn],
   );
   const handleEditUserMessage = useCallback(
     (messageId: MessageId, text: string) => {
-      if (selectedThread === null || isRevertingCheckpoint) {
+      if (messageActionThread === null || isRevertingCheckpoint) {
         return;
       }
       const turnCount = revertTurnCountByUserMessageId.get(messageId);
@@ -677,11 +705,7 @@ function ThreadRouteContent(
         Alert.alert(t("checkpointRevert.reconnectFirst"));
         return;
       }
-      if (
-        selectedThread.session?.status === "running" ||
-        selectedThread.session?.status === "starting" ||
-        selectedThread.latestTurn?.state === "running"
-      ) {
+      if (messageActionThread.working) {
         Alert.alert(t("checkpointRevert.interruptFirst"));
         return;
       }
@@ -711,7 +735,7 @@ function ThreadRouteContent(
       performEditUserMessage,
       revertTurnCountByUserMessageId,
       routeConnectionState,
-      selectedThread,
+      messageActionThread,
     ],
   );
   const handleStopThread = useCallback(() => {

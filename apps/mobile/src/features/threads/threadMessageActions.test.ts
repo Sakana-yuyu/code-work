@@ -6,7 +6,10 @@ import {
 } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { deriveRevertTurnCountByUserMessageId } from "./threadMessageActions";
+import {
+  createRevertTurnCountByUserMessageIdSelector,
+  deriveRevertTurnCountByUserMessageId,
+} from "./threadMessageActions";
 
 const message = (
   id: string,
@@ -89,5 +92,133 @@ describe("deriveRevertTurnCountByUserMessageId", () => {
     });
 
     expect(result.get(user)).toBeNull();
+  });
+});
+
+describe("线程私有回退目标复用", () => {
+  it("1200 消息的连续正文更新保留 map，且不重读 600 个历史检查点", () => {
+    let checkpointReads = 0;
+    const checkpoints = Array.from({ length: 600 }, (_, index) => {
+      const item = checkpoint(
+        TurnIdSchema.make(`turn-${index}`),
+        index + 1,
+        MessageIdSchema.make(`assistant-${index}`),
+        "ready",
+      );
+      Object.defineProperty(item, "status", {
+        get: () => {
+          checkpointReads += 1;
+          return "ready";
+        },
+      });
+      return item;
+    });
+    const messages = checkpoints.flatMap((item, index) => [
+      message(`user-${index}`, "user", item.turnId),
+      message(`assistant-${index}`, "assistant", item.turnId),
+    ]);
+    const select = createRevertTurnCountByUserMessageIdSelector();
+    const first = select({ messages, checkpoints, latestTurn: null });
+    expect(first.size).toBe(600);
+    expect(checkpointReads).toBe(600);
+    checkpointReads = 0;
+    for (let frame = 0; frame < 20; frame++) {
+      const updated = [
+        ...messages.slice(0, -1),
+        { ...messages.at(-1)!, text: `正文增量-${frame}`, streaming: true },
+      ];
+      expect(select({ messages: updated, checkpoints, latestTurn: null })).toBe(first);
+    }
+    expect(checkpointReads).toBe(0);
+    expect(first.get(MessageIdSchema.make("user-599"))).toBe(599);
+  });
+
+  it("检查点 ready、计数和绑定改变时即时更新，不改旧结果", () => {
+    const turn = TurnIdSchema.make("turn");
+    const user = message("user", "user", turn);
+    const assistant = message("assistant", "assistant", turn);
+    const select = createRevertTurnCountByUserMessageIdSelector();
+    const input = { messages: [user, assistant], latestTurn: null };
+    const missing = select({
+      ...input,
+      checkpoints: [checkpoint(turn, 3, assistant.id, "missing")],
+    });
+    const ready = select({ ...input, checkpoints: [checkpoint(turn, 3, assistant.id, "ready")] });
+    const changed = select({ ...input, checkpoints: [checkpoint(turn, 5, assistant.id, "ready")] });
+    const rebound = select({ ...input, checkpoints: [checkpoint(turn, 5, user.id, "ready")] });
+    expect(missing.size).toBe(0);
+    expect(ready.get(user.id)).toBe(2);
+    expect(changed.get(user.id)).toBe(4);
+    expect(rebound.size).toBe(0);
+    expect(ready.get(user.id)).toBe(2);
+  });
+
+  it("消息新增、移除、顺序、身份和角色变化保持原映射语义", () => {
+    const turn = TurnIdSchema.make("turn");
+    const user = message("user", "user", turn);
+    const assistant = message("assistant", "assistant", turn);
+    const checkpoints = [checkpoint(turn, 2, assistant.id, "ready")];
+    const select = createRevertTurnCountByUserMessageIdSelector();
+    const input = { messages: [user, assistant], checkpoints, latestTurn: null };
+    expect(select(input).get(user.id)).toBe(1);
+    expect(select({ ...input, messages: [assistant, user] }).size).toBe(0);
+    expect(select({ ...input, messages: [user] }).size).toBe(0);
+    expect(
+      select({ ...input, messages: [user, { ...assistant, id: MessageIdSchema.make("renamed") }] })
+        .size,
+    ).toBe(0);
+    expect(select({ ...input, messages: [user, { ...assistant, role: "user" }] }).size).toBe(0);
+    const inserted = message("inserted", "user", turn);
+    const result = select({ ...input, messages: [user, inserted, assistant] });
+    expect(result.has(user.id)).toBe(false);
+    expect(result.get(inserted.id)).toBe(1);
+  });
+
+  it("失败与恢复切换更新直接重发入口，无关回合字段不改变目标", () => {
+    const turn = TurnIdSchema.make("turn");
+    const user = message("user", "user", turn);
+    const input: Parameters<typeof deriveRevertTurnCountByUserMessageId>[0] = {
+      messages: [user],
+      checkpoints: [],
+      latestTurn: {
+        turnId: turn,
+        state: "error",
+        requestedAt: "2026-09-03T00:00:00.000Z",
+        startedAt: null,
+        completedAt: null,
+        assistantMessageId: null,
+      },
+    };
+    const select = createRevertTurnCountByUserMessageIdSelector();
+    const failed = select(input);
+    expect(failed.get(user.id)).toBeNull();
+    expect(
+      select({
+        ...input,
+        latestTurn: { ...input.latestTurn!, completedAt: "2026-09-03T00:00:01.000Z" },
+      }),
+    ).toBe(failed);
+    expect(
+      select({ ...input, latestTurn: { ...input.latestTurn!, state: "completed" } }).has(user.id),
+    ).toBe(false);
+  });
+
+  it("空数据释放旧缓存，实例不在不同线程或环境之间共享结果", () => {
+    const turn = TurnIdSchema.make("turn");
+    const input = {
+      messages: [message("user", "user", turn), message("assistant", "assistant", turn)],
+      checkpoints: [checkpoint(turn, 2, MessageIdSchema.make("assistant"), "ready")],
+      latestTurn: null,
+    };
+    const first = createRevertTurnCountByUserMessageIdSelector();
+    const second = createRevertTurnCountByUserMessageIdSelector();
+    const original = first(input);
+    expect(second(input)).toEqual(original);
+    expect(second(input)).not.toBe(original);
+    const absent = first(null);
+    expect(absent.size).toBe(0);
+    expect(first(null)).toBe(absent);
+    expect(first(input)).toEqual(original);
+    expect(first(input)).not.toBe(original);
   });
 });

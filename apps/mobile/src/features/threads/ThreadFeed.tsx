@@ -1812,14 +1812,17 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   );
   const markdownStyles = useMarkdownStyles(onMarkdownLinkPress, renderMarkdownImage);
   const reviewCommentColors = useReviewCommentColors();
-  // LegendList does not invalidate visible rows when only the renderItem closure changes.
-  // Keep row-local interaction props in extraData so disclosures and copy feedback repaint.
+  // 列表不会仅因 renderItem 闭包变化刷新行；检查点与交互状态必须显式通知。
   const listAppearanceData = useMemo(
     () => ({
       copiedRowId,
       expandedWorkRows,
       iconSubtleColor,
       markdownStyles,
+      isRevertingCheckpoint: props.isRevertingCheckpoint,
+      onEditUserMessage: props.onEditUserMessage,
+      onRevertToTurnCount: props.onRevertToTurnCount,
+      revertTurnCountByUserMessageId: props.revertTurnCountByUserMessageId,
       reviewCommentColors,
       userBubbleColor,
       viewportWidth,
@@ -1829,6 +1832,10 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       expandedWorkRows,
       iconSubtleColor,
       markdownStyles,
+      props.isRevertingCheckpoint,
+      props.onEditUserMessage,
+      props.onRevertToTurnCount,
+      props.revertTurnCountByUserMessageId,
       reviewCommentColors,
       userBubbleColor,
       viewportWidth,

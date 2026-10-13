@@ -159,7 +159,7 @@
 | 回合/检查点引用 / `6866fd6b5c`               | 共享 reducer 已补齐文本 delta 路径           | `threadReducer.ts` 在字段不变时复用 `latestTurn`；没有需要重绑的 checkpoint 时沿用原数组与条目。测试验证连续 delta、完成状态与新消息绑定更新，不冻结实际元数据变化。Web/Desktop/Mobile 共用该 reducer。                                                                         |
 | Markdown 挂载 / `887ece3071`、`355fbd96d5`   | Web 固定身份；Mobile 块身份已补              | Markdown renderer 回调通过 context 更新，供 ReactMarkdown 使用的组件身份固定。真实 ChatMarkdown 交互夹具验证流式追加和 streaming→false 后段落及第一行代码节点相同。Mobile 块及嵌套节点的键保留起始位置，不再使用变化的结束位置。                                                |
 | 投影/活动追加 / `c2283ce146`                 | 客户端、服务端消息与活动已增量；摘要继续核验 | 共享 reducer 保留首次快照规范化、迟到插入、重复替换和用量淘汰；Mobile 仅派生新事件并复用历史行。服务端消息在 SQLite 原子追加/替换；内存活动尾追加/二分插入保留缺省序号在前和 500 条上限。用户/计划/生命周期摘要读取继续核验。                                                   |
-| 跳过 checkpoint map / `076d753ae6`           | Web 检查点与用户回退 map 已补；Mobile 待核对 | 检查点推导使用稳定数组；`revertTargets.ts` 的线程私有 selector 只在可见消息身份/角色/顺序、检查点元数据或失败回退状态变化时重建。正文与活动 delta 保留 map 引用，不再次读取历史检查点；新检查点、回退和错误恢复仍即时更新。Mobile 派生仍需核对。                                |
+| 跳过 checkpoint map / `076d753ae6`           | Web/Desktop 与 Mobile 私有 map 缓存完成      | 检查点与消息身份/角色/顺序或失败状态变化时更新，正文保留引用。Mobile 1200 消息/600 检查点/20 更新零历史重读；真实 Android ready 后同页更新编辑/回退按钮。动作回调只依赖所需身份、模式与忙碌状态，见第36主题。                                                                   |
 | 无用线程订阅 / `d7cf8aaa8d`                  | 共享运行时生命周期已实现，真实连接矩阵待验收 | 实时详情与所有派生 atom 在最后一个消费者退出后释放；内容、分页边界与重放游标由 registry 内的纯数据节点成对保留 5 分钟。定向挂载测试覆盖共享、取消、忙碌缓存、重放去重、到期、分页取消、持久化补写和旧作用域；真实 provider、relay/tunnel 和移动设备仍待验收。                   |
 | Mobile 同步核对 / `44dc8ae259`、`7bd7f99e6c` | 渲染与活动目标用例已落地；原生验收继续       | 共享 reducer、块键、双路径解析缓存、正文和活动 feed/展示复用已覆盖定向测试；iOS/Android 异步高亮复用完成行，全文与当前尾部保留。Android 原生 TextView 选区和设备帧率仍须实际验证。                                                                                              |
 
@@ -674,3 +674,19 @@ React Native 0.85.3 bridgeless 的 rAF 是零延时计时器；此前仅纠正�
 纯产品端到端补记：Android 客户端实际发送 `native-segmenter-acceptance-08`，受控 Codex adapter 生成第8回合 `fixture-turn-3fb5a9ae-20cb-48d4-bdc6-bfcffe653277-29`。真实正文包含 4800 字符（代码、家庭 emoji、国旗、组合字符、肤色、印地语连字）。选择页打开后追加 33 字符尾文并完成，选择页原文始终保持 4800 字符；长按得到原生高亮，完成后的高亮区域原始像素 SHA 与选择后完全一致，系统 Copy/Share/Select all 菜单仍可见。关闭、滚动到尾部并重新打开选择页，4833 字符与实际 provider、SQLite 的唯一 assistant 正文逐字一致，`is_streaming=0`、session ready、active turn null。源流回执等待期间一次过早读取得到 closed，动作守卫拒绝注入；确认真实 running 回执后才注入，没有重复发首段。瞬时窗口层级为空的失败记录保留，后续只使用新鲜 SDK 层级。`native-segmenter-real-flow-accepted.json` 与截图/像素核验保存在工作区外；无 CDP、真实外部 provider、iOS 或隧道调用。
 
 第5项的服务端 leading/trailing 合并、三端按帧完整快照、首段/终态/设置、按积压揭示、完整复制/选区/几何来源均已有源码、定向与受控实际客户端证据，可独立验收完成。第4项增量渲染完整清单及第8项 Native 重开初始空白和滚动锚点矩阵仍开放，不以第5项通过替代。
+
+### 第4项补齐：Mobile 用户回退目标缓存与检查点入口即时刷新
+
+源码核对发现 `ThreadRouteScreen` 的旧 useMemo 依赖完整详情，每个正文状态都会重建历史 checkpoint 索引。复用 Web 的线程私有缓存模式，新增 `createRevertTurnCountByUserMessageIdSelector`，保留 Mobile 原有 ready checkpoint、assistant 绑定与失败直接重发语义；仅消息身份/角色/顺序、检查点数组或失败状态变化时派生。每个环境/线程一个选择器，空数据释放旧缓存，没有全局索引。
+
+19 项定向测试（`threadMessageActions.test.ts` 与 `thread-feed-live-follow.test.ts`）通过。1200 消息、600 检查点的初次派生读取 600 次状态，20 次后续正文更新读取旧检查点 0 次并保留 map；ready/计数/绑定、身份/顺序/角色/增删、失败/恢复、空数据与实例隔离覆盖。4 源文件 lint/format 与包含真实 Stack 的纯候选 Mobile 类型检查通过，原工作区无关 BYOK 导航类型问题保持原边界。
+
+实际 Android 对照另发现既有可见行刷新遗漏：第9受控回合 `fixture-turn-3fb5a9ae-20cb-48d4-bdc6-bfcffe653277-37` 的 SQLite checkpoint 已 ready（count=8），当前可见用户行没有编辑/回退按钮；关闭重开后两按钮出现。LegendList 已有注释明确闭包改变不会刷新行，但 extraData 只有样式/展开/复制。现加入回退目标、处理中与两项回调，真实 checkpoint 变化会更新入口。相关回调只依赖动作所需的线程身份、模式和忙碌布尔状态，正文和无关外壳字段不触发整张列表刷新。
+
+补刷新依赖的实际产品包为 27263686 字节、SHA `327232e79644c016bcd40e997e9eef14f0bc97ed1620d230a95745f289e87738`。第10回合由 Native 实际发送 `native-fix-10`，受控 Codex adapter 的 turn44 完成后，SQLite checkpoint ready/count=9；保持同一页面，编辑与回退按钮出现。原始红对照、数据库回执、新鲜 Android SDK 层级与截图在工作区外。C003 是夹具固定文案，该两次测试期间线程始终可见，不作为关闭流证明；没有执行文件回退或重发。最终回调稳定化版本继续复核。
+
+一次输入使用尚在过渡中的输入框坐标，开发客户端进入悬浮窗权限页；未更改该权限，未产生新回合，夹具守卫拒绝注入。随后返回实际应用，刷新坐标并确认展开的输入控件再输入。层级为空与错误包的失败记录保留，不算产品通过。
+
+适用 Mobile 的全部标准 provider 消息与现有回退入口；Web/Desktop 已有对应 map 缓存，本主题无变动。沿用本地/远程/隧道 RPC、交互审批与 runtimeMode，无协议或权限修改；实际覆盖本机隔离 Android，iOS 与外部 provider 无设备/调用证据。正常、失败、恢复与切换线程可反向更新；回退本主题恢复旧派生与行刷新，无数据迁移。第4项完整清单中的服务端摘要热路径仍继续核验，第8项首绘/锚点仍开放。
+
+最终包补记：回调稳定化后的 Native product 为 27264665 字节、SHA `a8c41e6ba08b773cc7675d77ddac56fe0eb41f1897dc9613601824e2af48469b`，主目录与隔离导出的3个生产源文件按 SHA 一致，没有临时探针。Native 实际发送 `stable11`，受控 turn51 的新检查点 ready/count=10 后，保持同一页面，编辑与回退按钮出现；115 字正文与持久化/fixture 一致，session ready、assistant streaming=0。该结果再次覆盖最终版本的入口刷新，未执行文件回退。纯候选4源逐字匹配、19项定向与最终 Mobile 类型/lint通过。第8项首绘口径尚无用户回复，继续保持开放；没有改变完整39项范围。
