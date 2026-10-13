@@ -68,6 +68,8 @@
 
    第67主题补齐Android实际原生模式选项与发送绑定：加载提交一致开发包，菜单发现default/plan，真实Windows受控进程分别收到对应模式，RPC/SQLite/原生界面一致且保留Medium与受监督权限。本次测试连接及Metro按捕获PID清理，原有连接保留。未验收Mobile计划卡片/实施、Electron/iOS或外部供应商，完整矩阵仍开放；证据与全部39项边界见 [移植进度](./port-progress.md)。
 
+   第68主题核对当前十二类driver的刷新预算与模式来源，并在当前提交纯副本运行40文件361项目录/刷新/缓存及客户端消费回归，363相关源哈希稳定。模式只按无会话广告或真实会话回执提供，不为草稿创建会话；完整合同表见 [providers](./providers.md)。本轮没有新的Electron或外部网络实测，完整入口/三端/连接矩阵及第11项、全部39项继续，证据见 [移植进度](./port-progress.md)。
+
 2. **`steerActiveTurn` 契约。** 回合进行中追加指令：适配器声明是否支持，不支持则由 manager 回退为“打断后替换”；适配器出错时不得自动重试（结果不明确）；打断时必须丢弃尚未被 provider 读取的 steer。上游 T3 Code 已有“排队或 steer”的 UI（见 §5），后端契约可参考 Paseo。
 3. **用户消息的规范身份。** manager 为前台 prompt 记录唯一规范 timeline 行，`messageId` 与 `clientMessageId` 一致，provider 回显只用于对账，不做全局文本去重。
 4. **终态前清理瞬态行。** 适配器在发出 `turn_completed/failed/canceled` 前，必须终结所有仍在 loading 的行（例如 Codex 的 `contextCompaction`）。2026-10-12 全部 canonical 发射入口已接入同一 item 与交互边界，终态前整批补齐完成通知；Codex 原生遗漏完成通知的三种终态回归已通过。遗漏的审批以 cancel、提问以空答案关闭客户端等待，真实回应保持原结果，不调用 provider 或扩大授权。原生 adapter、公共活动投影及两端状态定向验证通过，第 7 项完成；独立后台 task 保持实际生命周期，hook 没有 loading 投影且保留原生结果。真实连接/设备与性能按相应条目继续验收，证据及回退范围见 [port-progress](./port-progress.md)。

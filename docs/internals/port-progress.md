@@ -1196,3 +1196,15 @@ Codex 两态控件撤回，三端复用现有通用选项消费。普通发送�
 完成后通过客户端正常移除仅10.0.2.2:13774连接，保留原有13773/13811连接；移除本次adb reverse8088并停止捕获Metro1776，模拟器与Web/backend继续保留供全目标验收。实际回执确认原有两个连接仍在，服务端线程与计划数据保留。原始材料为工作区外catalog-codex-native-mobile-{source,mobile-bundle-result,default-state,runtime-proof,cleanup-proof}.json、即时层级/静态XML与PNG；可视化目录android-codex-native-{plan-settings,default-completed,plan-completed}.png可查看。
 
 本主题只更新验收记录，Android为真实本机客户端、Windows为真实受控进程，供应商/账户/推理仍是合成fixture，不是外部Codex账号或网络服务验收。没有新Electron、iOS、公网relay/tunnel、帧率或其他十一类provider实测；其既有决定不变。目录广告仍来自第64主题统一无会话入口，Mobile使用第64主题规范发送及自己的模型设置入口，不引入新探测。第11项完整入口/客户端/连接矩阵、第14项完整能力及全部39项/comparison额外范围继续开放。三份文档可独立回退，没有产品行为或数据迁移；原83个无关基线与原有混合hunk继续保护。
+
+## 68. 当前十二类目录合同与联合回归
+
+上一轮第66/67主题两次提交及Android实际发送属于有效进展。本轮核对HEAD为5fe0fe34f，原92项未提交状态仍在；捕获的Web dev runner156576及fixture124388实际存活，继续保留独立13774/5734测试环境。当前Desktop源码自既有桌面验收基线1b76a57c1至HEAD没有变更；既有Electron148676实际存活，其登记的启动配置指向旧生产渲染，仅凭进程存活不能宣称当前原生模式通过。CUA当前禁用Windows原生控制且没有Electron控制表面，本轮未执行替代UI自动化或修改其窗口；Electron实际模式验收继续开放。
+
+为了核对当前累计目录改动与客户端消费，构建catalog-client-matrix-candidate纯副本：暂存区为空时用checkout-index导出当前提交，不复制主工作区未提交内容，不使用live userdata。临时内联脚本首次解析错误，没有运行检查；改为工作区外保存脚本后成功。153个工作区依赖别名按最长键优先，测试入口固定到副本源码；只运行provider目录/刷新相关35个测试及共享/Mobile模型选项、Web设置入口/helper共5个文件，未运行全仓测试或检查。
+
+命令为 `vp test run --config .candidate-test.config.ts <catalog-client-matrix-tests.json中的40文件> --testTimeout 10000`，40文件361项全部通过，耗时38.71秒，退出0；363个相关provider/contract/客户端源检查前后SHA一致。原始命令列表、输出和code/pid/stable回执分别为工作区外catalog-client-matrix-{tests,check-files}.json、core.log及core-result.json，捕获测试PID139460已退出。Node提示测试中的shell参数弃用告警，未把告警隐去或将其当成新的产品缺陷；本主题没有产品源码变更，之前各主题的目标类型/lint结果仍按原范围保留，不宣称本轮重跑。
+
+源码和定向用例核对十二类driver实际预算：Codex10秒、Claude30秒、Cursor/Grok/Kimi/Antigravity/OpenCode/Pi/OhMyPi/ZCode15秒、通用ACP8秒，BYOK实例与每个实际HTTP目录15秒且部分重叠目标仍共享。版本/准备/目录/技能各阶段消耗剩余预算，等价实例晚加入不续时；实际共享owner拥有取消信号。强/普通刷新、账号正反变化、输入冻结、缓存只作索引、等待者取消与无草稿会话的联合回归通过。具体十二行合同及对应测试入口写入providers，不能将静态声明误当原生目录广告：Codex和OpenCode由目录发现，ACP仅提供实际会话广告，Claude/ZCode保留真实运行绑定，BYOK/Antigravity/Pi/OhMyPi明确撤回未绑定的两态控制。
+
+本轮仅完善三份架构/验收文档，无新UI、协议、权限、缓存或会话实现；没有新三端产品、Windows CLI、外部供应商、iOS或公网relay/tunnel实际运行，也没有重新测帧率。Web/Desktop共用客户端控制，Mobile消费同一服务端快照；设置/聊天/命令/快捷键、本地/远程/隧道与反向状态的完整最终矩阵仍需逐项证明。第11项及第14项、完整39项/comparison额外范围继续进行。三文档可独立回退，无迁移；精确提交继续保护83个无关基线文件与原BYOK/ChatView/ChatComposer混合hunk。

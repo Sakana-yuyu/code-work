@@ -325,6 +325,29 @@ rollbacks live in `docs/internals/*-acp-provider.md` and [paseo-provider-catalog
 
 ## 接入范围与验证方法
 
+### 统一目录的刷新与模式边界
+
+以下是当前十二类 driver 的目录合同。工作预算只在实际共享加载建立时开始，晚加入者不重新取得一份预算；资源退出与初始化外的设置协调保持前文说明的边界。模式不能通过创建草稿会话来补造：支持无会话目录方法的 provider 在同一入口发现；仅在真实会话中广告模式的 ACP provider 继续消费该会话回执。
+
+| Driver      | 一次实际刷新工作预算                   | 模式来源与草稿边界                                                 | 主要定向证据                                                               |
+| ----------- | -------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| Codex       | 10 秒                                  | 与模型/技能共用 `collaborationMode/list`，按广告展示；错误撤回控制 | `CodexProvider.catalog/refresh`、`CodexCollaborationModes`                 |
+| Claude      | 30 秒                                  | 使用实际绑定的两态运行控制；SDK模型/命令/技能查询不发送用户消息    | `ClaudeProvider.catalog/refresh`                                           |
+| Cursor      | 15 秒                                  | 无会话模型目录；原生ACP模式来自实际会话广告                        | `CursorProvider.refresh`、`CliProviderCatalog`                             |
+| Grok        | 15 秒                                  | 路由准备、版本、技能和无会话模型目录；原生ACP模式来自实际会话      | `GrokDriver.catalog`、`GrokProvider.refresh`、`GrokHomeAccess`             |
+| Kimi        | 15 秒                                  | 配置模型目录；原生ACP模式来自实际会话                              | `KimiDriver.catalog`、`KimiProvider.refresh`                               |
+| Antigravity | 15 秒                                  | 配置模型目录；实际发送不绑定两态，明确不展示                       | `AntigravityDriver.catalog`、`AntigravityProvider.refresh`                 |
+| 通用ACP     | 8 秒                                   | 配置模型与版本统一刷新；原生模式来自实际会话，不为草稿握手建会话   | `GenericAcpDriver.catalog`、`ConfiguredCliProvider.catalog`                |
+| OpenCode    | 15 秒                                  | 同批模型、variants、agent模式和技能；远端目录不启动本地CLI         | `OpenCodeCatalog`、`opencodeRuntime.catalog`                               |
+| Pi          | 15 秒                                  | 路由模型目录；实际RPC发送未绑定两态，明确不展示                    | `PifamilyDrivers.catalog`、`PifamilyProvider.catalog/refresh`              |
+| OhMyPi      | 15 秒                                  | 路由模型目录；实际RPC发送未绑定两态，明确不展示                    | `PifamilyDrivers.catalog`、`PifamilyProvider.catalog/refresh`              |
+| ZCode       | 15 秒                                  | 路由模型与账号检查；保留实际绑定的 `--mode plan` 控制              | `PifamilyDrivers.catalog`、`PifamilyProvider.catalog/refresh`              |
+| BYOK        | 实例15秒；每个实际HTTP目录也受15秒预算 | 不提供两态；模型与本地技能共用实例刷新，不创建草稿会话             | `ByokProvider.catalog/refresh`、`ByokDriver.catalog`、`ByokCatalog.signal` |
+
+完整刷新的认证结果仅共享在途执行，后续检查重新读账号。纯配置及具有稳定身份的成功目录按各入口既有规则复用完成缓存；未知身份不以旧认证结果替代当前查询。所有加载仍执行调用时冻结的配置，缓存键只作索引；取出后补实例身份、自定义模型等非共享字段。手动强刷新不加入已开始的普通检查，最后等待者退出才释放共享加载。BYOK保留部分重叠HTTP目标复用；Grok等价共享home仍按配置所有权约束。
+
+当前提交的40文件361项目录/刷新/缓存与客户端消费联合回归通过，测试副本不含主工作区无关改动，363个相关源检查前后SHA一致。测试包含当前账号正反变化、迟到/强制刷新、共享信号及退出、剩余预算、缓存身份和无会话边界；这不是十二家外部服务、三端产品或公网网络的实际运行证据。Web和Android已有受控实际证据分别见第65—67主题，Electron及剩余入口/连接矩阵继续开放。命令清单和证据范围见 [移植进度](./port-progress.md) 第68主题。
+
 ### 连续保存实例设置
 
 Web/Desktop 的供应商卡片仍提交完整 `providerInstances` 映射，服务端保持替换语义。表单连续失焦可能从同一个旧渲染快照构造三个实例，直接并发发送会让后来的名称保存覆盖之前的 home 或程序路径。`providerInstanceEdits` 将卡片更新按所选环境串行提交，以验证过的 `server.updateSettings` 成功回执作为下一次基础，只重放相对卡片旧实例实际改变的字段。对象递归重放；删除键、数组、标量与 null 保持替换，未改字段保留最新值。等待中的设置推送按相对上一推送的变化合入，失败不推进回执、不自动重试，之后的编辑仍可执行。
