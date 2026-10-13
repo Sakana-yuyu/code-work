@@ -4,6 +4,12 @@
 
 消息投影保存首次 `thread.message-sent` 事件序号；同一时间戳的消息从数据库快照恢复时按该序号排序。迁移会从事件日志回填旧投影，流式更新继续保留首次序号，使重启前后的交接顺序一致。
 
+## 供应商状态刷新
+
+内置 driver 的快照均通过 `makeManagedServerProvider` 管理。同一实例且快照设置等价时，初次、手动和定时刷新共享在途检查；设置不同则分别排队，实际检查仍由原 semaphore 串行执行。检查前后都核对设置，过期结果不发布；异步补充快照同时受设置和 generation 约束。这里的快照设置不代替 provider 配置：driver 的 `checkProvider` 仍捕获创建时配置，配置热更新由 registry 关闭旧 Scope、重建实例。
+
+共享检查属于 provider Scope，调用者取消只结束自身等待。Scope 关闭时终止检查并唤醒全部等待者；失败清理登记后允许下一次刷新。短暂登记和退出清理不可中断，独立检查主体明确可中断，不继承父调用者的不可中断状态。完成结果以 `Deferred<Exit>` 共享，然后由各等待者重放，避免中断传播破坏共享唤醒。本机制不增加刷新缓存或统一超时，无等待者的检查仍会执行至完成或 Scope 关闭。
+
 > For maintainers. Using Code Work? See [docs/user](../user/).
 
 A provider is the agent runtime that does the actual work. Code Work supports several, and the

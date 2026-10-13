@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题          |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归             |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                  |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（无草稿会话与 BYOK 整轮目录预算）                     | ProviderDriver / provider snapshot / ACP 准备 / ByokModelDiscoveryService                                  | 第43—44主题完成两处目录无会话及 BYOK 总预算；统一入口、等价配置缓存、全 driver deadline 与同一 AbortSignal 仍开放      |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（无会话、BYOK 预算及同实例刷新合并）                  | ProviderDriver / makeManagedServerProvider / ACP 准备 / ByokModelDiscoveryService                           | 第43—45主题完成目录无会话、BYOK 总预算与同设置在途合并；统一入口、跨实例等价缓存、全 driver deadline/同一 signal 仍开放 |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                              |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                          |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 待实施                                                       | ProviderAdapterCapabilities / server config / 三端控制                                                     | 尚未运行                                                                                                              |
@@ -794,3 +794,17 @@ Cursor 使用准备后的 `cursor/list_available_models`，受控请求日志严
 最终纯候选目标 `tsgo --noEmit -p apps/server/.streaming-typecheck.json`、四源 `vp fmt --check` 通过；目标 `vp lint` 退出0，仅保留 ModelDiscoveryService 原有未使用 catch 参数与空 fallback spread 两条告警。测试夹具的 Node 导入、Error.code 类型及 Effect JSON 诊断已修复；未运行全仓检查。独立源码复查指出的未读跳转响应验收缺口已补定向断言。
 
 本主题改变服务端目录与共用 HTTP 行为，Web/Desktop/Mobile 和本地/远程/隧道均沿原 RPC；没有新 UI、wire 字段、权限、动画或持久结构。[用户说明](../user/model-catalog-refresh.md)已补充。其他 CLI provider 本主题不变；实际外部供应商、真实客户端和公网连接没有新增验收。回退四源即可恢复旧预算与 HTTP 行为，无数据迁移。Effect 当前仍为各请求创建独立 signal，不能将共用 Scope 写成同一 AbortSignal。统一 fetchCatalog、等价配置共享缓存、全 provider deadline 与底层共享 signal 仍需完成，第11项继续进行，全部39项及 comparison 附加范围保持。
+
+### 第45主题：同一实例的并发刷新共享一次检查
+
+`makeManagedServerProvider` 在同实例、等价快照设置的范围内合并正在进行的初次、手动和周期检查。不同设置分别排队，继续使用原 semaphore 保证最多一个实际检查。开始与结束时核对当前设置，旧结果不发布；异步 enrichment 同时核对设置及 generation，新设置尚未发布时也拒绝旧补充回调。实际 provider 配置仍由 registry 重建实例，未把已捕获配置的 `checkProvider` 改造成可重配置对象。
+
+检查归 provider Scope 所有，调用者取消只结束自身等待，包括全部等待者取消后仍允许其他请求加入。成功、失败或关闭都删除登记并完成共享 `Deferred<Exit>`，各等待者独立重放结果。开发测试发现直接用 Deferred.done 传播 interruption 可能让后续等待者悬挂，已改为先成功保存 Exit 再逐个重放。独立审查进一步发现父调用者本来不可中断时，复用其 restore 会让独立检查同样不可中断；改为不可中断启动以安装 onExit，实际 semaphore 等待和检查明确使用 Effect.interruptible。新增 uninterruptible 和 acquireRelease acquire 两种 owner 用例，均保证初次轮完成后才发起待关闭的新检查，验证 Scope 关闭后两名等待者结束。
+
+主线程在第44主题代码加最终两源的纯候选运行 `vp test run --config .candidate-test.config.ts`，指定 `makeManagedServerProvider.test.ts`、`Layers/ProviderRegistry.test.ts`、`Layers/ProviderInstanceRegistryLive.test.ts`、`Layers/ProviderInstanceRegistryHydration.test.ts`，4文件84项通过，20.94秒；包含新增共享、取消、失败重试、设置/enrichment隔离及关闭回归，目标文件自身17项。纯候选 `tsgo --noEmit -p apps/server/.streaming-typecheck.json`、两源 `vp fmt --check`、`vp lint` 和本主题 diff check 全部通过，无目标lint告警；未运行全仓检查。
+
+旧实现的独立对照只替换候选生产文件：初次检查加三个重叠手动请求执行4次而非1次；设置变化后仍发布旧结果，两用例均失败，结束后按字节恢复。独立只读复查确认上述中断性问题已修，未发现剩余确定缺陷；测试通过与源码审查分别记录，不将只读判断充作运行证据。
+
+全部十二个内置 driver 均使用这一状态快照管理器，因此 Codex、Claude、Cursor、Grok、Kimi、Antigravity、OpenCode、Pi、OhMyPi、ZCode、通用ACP及BYOK适用。Web/Desktop/Mobile 的设置、模型选择及本地/远程/隧道沿原刷新RPC共享此行为；未增加聊天、快捷键或命令面板入口，没有 wire、权限和持久化变化，也不触及实际会话审批。修改配置后的取消/重建由原registry承担，失败后可再刷新。用户说明与 [providers](./providers.md) 已同步。回退两源恢复旧串行多轮行为，无数据迁移。
+
+本轮没有新增真实供应商或三端UI验收，当前保留的运行服务没有加载这两个新主题。无等待者的检查仍执行至完成或 Scope 关闭，本主题未添加统一 deadline，也未实现跨实例共享缓存。第11项仍在进行，全部39项及 comparison 额外范围不缩减。

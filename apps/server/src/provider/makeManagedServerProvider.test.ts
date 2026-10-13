@@ -3,6 +3,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   ProviderDriverKind,
   ProviderInstanceId,
+  ServerSettingsError,
   type ServerProvider,
 } from "@codework/contracts";
 import { createModelCapabilities } from "@codework/shared/model";
@@ -10,10 +11,12 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { TestClock } from "effect/testing";
 
@@ -161,6 +164,342 @@ const enrichedSnapshotSecond: ServerProvider = {
 };
 
 describe("makeManagedServerProvider", () => {
+  it.effect("相同设置的并发手动刷新共享正在进行的初次检查", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const checkEntered = yield* Deferred.make<void>();
+        const releaseCheck = yield* Deferred.make<void>();
+        let checkCalls = 0;
+        const provider = yield* makeManagedServerProvider<TestSettings>({
+          maintenanceCapabilities,
+          getSettings: Effect.succeed({ enabled: true }),
+          streamSettings: Stream.empty,
+          haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+          initialSnapshot: () => Effect.succeed(initialSnapshot),
+          checkProvider: Effect.gen(function* () {
+            checkCalls += 1;
+            yield* Deferred.succeed(checkEntered, undefined);
+            yield* Deferred.await(releaseCheck);
+            return refreshedSnapshot;
+          }),
+          refreshInterval: 0,
+        });
+        yield* Deferred.await(checkEntered);
+        const refreshes = yield* Effect.forEach([1, 2, 3], () =>
+          provider.refresh.pipe(Effect.forkChild({ startImmediately: true })),
+        );
+        yield* Deferred.succeed(releaseCheck, undefined);
+        const snapshots = yield* Effect.forEach(refreshes, Fiber.join);
+        assert.deepStrictEqual(snapshots, [
+          refreshedSnapshot,
+          refreshedSnapshot,
+          refreshedSnapshot,
+        ]);
+        assert.strictEqual(checkCalls, 1);
+      }),
+    ).pipe(Effect.provide(AlwaysRunTestLayer)),
+  );
+
+  it.effect("设置变化排队独立检查并丢弃旧设置的检查结果", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const settingsRef = yield* Ref.make<TestSettings>({ enabled: true });
+        const settingsChanges = yield* PubSub.unbounded<TestSettings>();
+        const firstEntered = yield* Deferred.make<void>();
+        const nextEntered = yield* Deferred.make<void>();
+        const releaseFirst = yield* Deferred.make<void>();
+        const releaseNext = yield* Deferred.make<void>();
+        const published: ServerProvider[] = [];
+        let checkCalls = 0;
+        const provider = yield* makeManagedServerProvider<TestSettings>({
+          maintenanceCapabilities,
+          getSettings: Ref.get(settingsRef),
+          streamSettings: Stream.fromPubSub(settingsChanges),
+          haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+          initialSnapshot: () => Effect.succeed(initialSnapshot),
+          checkProvider: Effect.gen(function* () {
+            checkCalls += 1;
+            if (checkCalls === 1) {
+              yield* Deferred.succeed(firstEntered, undefined);
+              yield* Deferred.await(releaseFirst);
+              return refreshedSnapshot;
+            }
+            yield* Deferred.succeed(nextEntered, undefined);
+            yield* Deferred.await(releaseNext);
+            return refreshedSnapshotSecond;
+          }),
+          refreshInterval: 0,
+        });
+        yield* provider.streamChanges.pipe(
+          Stream.runForEach((snapshot) =>
+            Effect.sync(() => {
+              published.push(snapshot);
+            }),
+          ),
+          Effect.forkChild({ startImmediately: true }),
+        );
+        yield* Deferred.await(firstEntered);
+        yield* Ref.set(settingsRef, { enabled: false });
+        yield* PubSub.publish(settingsChanges, { enabled: false });
+        const refresh = yield* provider.refresh.pipe(Effect.forkChild({ startImmediately: true }));
+        yield* Deferred.succeed(releaseFirst, undefined);
+        yield* Deferred.await(nextEntered);
+        assert.deepStrictEqual(yield* provider.getSnapshot, initialSnapshot);
+        assert.deepStrictEqual(published, []);
+        yield* Deferred.succeed(releaseNext, undefined);
+        assert.deepStrictEqual(yield* Fiber.join(refresh), refreshedSnapshotSecond);
+        assert.strictEqual(checkCalls, 2);
+      }),
+    ).pipe(Effect.provide(AlwaysRunTestLayer)),
+  );
+
+  for (const periodic of [false, true]) {
+    it.effect(
+      `手动刷新${periodic ? "与周期刷新共享检查" : "的全部等待者取消后仍可重新加入检查"}`,
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const initialEntered = yield* Deferred.make<void>();
+            const releaseInitial = yield* Deferred.make<void>();
+            const nextEntered = yield* Deferred.make<void>();
+            const releaseNext = yield* Deferred.make<void>();
+            let checkCalls = 0;
+            const provider = yield* makeManagedServerProvider<TestSettings>({
+              maintenanceCapabilities,
+              getSettings: Effect.succeed({ enabled: true }),
+              streamSettings: Stream.empty,
+              haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+              initialSnapshot: () => Effect.succeed(initialSnapshot),
+              checkProvider: Effect.gen(function* () {
+                checkCalls += 1;
+                if (checkCalls === 1) {
+                  yield* Deferred.succeed(initialEntered, undefined);
+                  yield* Deferred.await(releaseInitial);
+                  return refreshedSnapshot;
+                }
+                yield* Deferred.succeed(nextEntered, undefined);
+                yield* Deferred.await(releaseNext);
+                return refreshedSnapshotSecond;
+              }),
+              refreshInterval: periodic ? "1 second" : 0,
+            });
+            yield* Deferred.await(initialEntered);
+            const initial = yield* provider.refresh.pipe(
+              Effect.forkChild({ startImmediately: true }),
+            );
+            yield* Deferred.succeed(releaseInitial, undefined);
+            yield* Fiber.join(initial);
+            const first = yield* provider.refresh.pipe(
+              Effect.forkChild({ startImmediately: true }),
+            );
+            yield* Deferred.await(nextEntered);
+            const second = yield* provider.refresh.pipe(
+              Effect.forkChild({ startImmediately: true }),
+            );
+            yield* Fiber.interrupt(first);
+            if (periodic) yield* TestClock.adjust("1 second");
+            else yield* Fiber.interrupt(second);
+            const third = yield* provider.refresh.pipe(
+              Effect.forkChild({ startImmediately: true }),
+            );
+            yield* Deferred.succeed(releaseNext, undefined);
+            assert.deepStrictEqual(yield* Fiber.join(third), refreshedSnapshotSecond);
+            if (periodic)
+              assert.deepStrictEqual(yield* Fiber.join(second), refreshedSnapshotSecond);
+            assert.strictEqual(checkCalls, 2);
+          }),
+        ).pipe(Effect.provide(Layer.merge(AlwaysRunTestLayer, TestClock.layer()))),
+    );
+  }
+
+  it.effect("检查失败完成共享等待者，下一次刷新可重新检查", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const checkEntered = yield* Deferred.make<void>();
+        const releaseCheck = yield* Deferred.make<void>();
+        const failure = new ServerSettingsError({
+          settingsPath: "/test/settings.json",
+          operation: "read-file",
+          cause: "受控刷新失败",
+        });
+        let checkCalls = 0;
+        const provider = yield* makeManagedServerProvider<TestSettings>({
+          maintenanceCapabilities,
+          getSettings: Effect.succeed({ enabled: true }),
+          streamSettings: Stream.empty,
+          haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+          initialSnapshot: () => Effect.succeed(initialSnapshot),
+          checkProvider: Effect.gen(function* () {
+            checkCalls += 1;
+            if (checkCalls === 1) {
+              yield* Deferred.succeed(checkEntered, undefined);
+              yield* Deferred.await(releaseCheck);
+              return yield* failure;
+            }
+            return refreshedSnapshot;
+          }),
+          refreshInterval: 0,
+        });
+        yield* Deferred.await(checkEntered);
+        const first = yield* provider.refresh.pipe(
+          Effect.exit,
+          Effect.forkChild({ startImmediately: true }),
+        );
+        const second = yield* provider.refresh.pipe(
+          Effect.exit,
+          Effect.forkChild({ startImmediately: true }),
+        );
+        yield* Deferred.succeed(releaseCheck, undefined);
+        const firstExit = yield* Fiber.join(first);
+        const secondExit = yield* Fiber.join(second);
+        assert.strictEqual(firstExit._tag, "Failure");
+        assert.deepStrictEqual(secondExit, firstExit);
+        assert.strictEqual(checkCalls, 1);
+        assert.deepStrictEqual(yield* provider.getSnapshot, initialSnapshot);
+        assert.deepStrictEqual(yield* provider.refresh, refreshedSnapshot);
+        assert.strictEqual(checkCalls, 2);
+      }),
+    ).pipe(Effect.provide(AlwaysRunTestLayer)),
+  );
+
+  it.effect("关闭provider作用域中断检查并完成所有共享等待者", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const providerScope = yield* Scope.make();
+        yield* Effect.addFinalizer(() => Scope.close(providerScope, Exit.void));
+        const checkEntered = yield* Deferred.make<void>();
+        const checkInterrupted = yield* Deferred.make<void>();
+        const provider = yield* makeManagedServerProvider<TestSettings>({
+          maintenanceCapabilities,
+          getSettings: Effect.succeed({ enabled: true }),
+          streamSettings: Stream.empty,
+          haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+          initialSnapshot: () => Effect.succeed(initialSnapshot),
+          checkProvider: Deferred.succeed(checkEntered, undefined).pipe(
+            Effect.andThen(Effect.never),
+            Effect.onInterrupt(() => Deferred.succeed(checkInterrupted, undefined)),
+          ),
+          refreshInterval: 0,
+        }).pipe(Effect.provideService(Scope.Scope, providerScope));
+        yield* Deferred.await(checkEntered);
+        const first = yield* provider.refresh.pipe(Effect.forkChild({ startImmediately: true }));
+        const second = yield* provider.refresh.pipe(Effect.forkChild({ startImmediately: true }));
+        yield* Scope.close(providerScope, Exit.void);
+        yield* Deferred.await(checkInterrupted);
+        assert.strictEqual((yield* Fiber.await(first))._tag, "Failure");
+        assert.strictEqual((yield* Fiber.await(second))._tag, "Failure");
+        assert.deepStrictEqual(yield* provider.getSnapshot, initialSnapshot);
+      }),
+    ).pipe(Effect.provide(AlwaysRunTestLayer)),
+  );
+
+  for (const viaAcquireRelease of [false, true]) {
+    it.effect(
+      `${viaAcquireRelease ? "资源获取" : "不可中断调用者"}发起的共享检查仍能随provider作用域关闭`,
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const providerScope = yield* Scope.make();
+            yield* Effect.addFinalizer(() => Scope.close(providerScope, Exit.void));
+            const initialEntered = yield* Deferred.make<void>();
+            const releaseInitial = yield* Deferred.make<void>();
+            const checkEntered = yield* Deferred.make<void>();
+            const checkInterrupted = yield* Deferred.make<void>();
+            let checkCalls = 0;
+            const provider = yield* makeManagedServerProvider<TestSettings>({
+              maintenanceCapabilities,
+              getSettings: Effect.succeed({ enabled: true }),
+              streamSettings: Stream.empty,
+              haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+              initialSnapshot: () => Effect.succeed(initialSnapshot),
+              checkProvider: Effect.gen(function* () {
+                checkCalls += 1;
+                if (checkCalls === 1) {
+                  yield* Deferred.succeed(initialEntered, undefined);
+                  yield* Deferred.await(releaseInitial);
+                  return refreshedSnapshot;
+                }
+                return yield* Deferred.succeed(checkEntered, undefined).pipe(
+                  Effect.andThen(Effect.never),
+                  Effect.onInterrupt(() => Deferred.succeed(checkInterrupted, undefined)),
+                );
+              }),
+              refreshInterval: 0,
+            }).pipe(Effect.provideService(Scope.Scope, providerScope));
+            yield* Deferred.await(initialEntered);
+            const initial = yield* provider.refresh.pipe(
+              Effect.forkChild({ startImmediately: true }),
+            );
+            yield* Deferred.succeed(releaseInitial, undefined);
+            yield* Fiber.join(initial);
+            const refresh = viaAcquireRelease
+              ? Effect.scoped(Effect.acquireRelease(provider.refresh, () => Effect.void))
+              : Effect.uninterruptible(provider.refresh);
+            const first = yield* refresh.pipe(Effect.forkChild({ startImmediately: true }));
+            yield* Deferred.await(checkEntered);
+            const second = yield* provider.refresh.pipe(
+              Effect.forkChild({ startImmediately: true }),
+            );
+            yield* Scope.close(providerScope, Exit.void);
+            yield* Deferred.await(checkInterrupted);
+            assert.strictEqual((yield* Fiber.await(first))._tag, "Failure");
+            assert.strictEqual((yield* Fiber.await(second))._tag, "Failure");
+            assert.strictEqual(checkCalls, 2);
+            assert.deepStrictEqual(yield* provider.getSnapshot, refreshedSnapshot);
+          }),
+        ).pipe(Effect.provide(AlwaysRunTestLayer)),
+    );
+  }
+
+  it.effect("新设置检查尚未发布时也拒绝旧设置的补充回调", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const settingsRef = yield* Ref.make<TestSettings>({ enabled: true });
+        const initialEntered = yield* Deferred.make<void>();
+        const releaseInitial = yield* Deferred.make<void>();
+        const nextEntered = yield* Deferred.make<void>();
+        const releaseNext = yield* Deferred.make<void>();
+        const callbackReady =
+          yield* Deferred.make<(snapshot: ServerProvider) => Effect.Effect<void>>();
+        let checkCalls = 0;
+        const provider = yield* makeManagedServerProvider<TestSettings>({
+          maintenanceCapabilities,
+          getSettings: Ref.get(settingsRef),
+          streamSettings: Stream.empty,
+          haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+          initialSnapshot: () => Effect.succeed(initialSnapshot),
+          checkProvider: Effect.gen(function* () {
+            checkCalls += 1;
+            if (checkCalls === 1) {
+              yield* Deferred.succeed(initialEntered, undefined);
+              yield* Deferred.await(releaseInitial);
+              return refreshedSnapshot;
+            }
+            yield* Deferred.succeed(nextEntered, undefined);
+            yield* Deferred.await(releaseNext);
+            return refreshedSnapshotSecond;
+          }),
+          enrichSnapshot: ({ publishSnapshot }) =>
+            Deferred.succeed(callbackReady, publishSnapshot).pipe(Effect.asVoid),
+          refreshInterval: 0,
+        });
+        yield* Deferred.await(initialEntered);
+        const first = yield* provider.refresh.pipe(Effect.forkChild({ startImmediately: true }));
+        yield* Deferred.succeed(releaseInitial, undefined);
+        yield* Fiber.join(first);
+        const publishOld = yield* Deferred.await(callbackReady);
+        yield* Ref.set(settingsRef, { enabled: false });
+        const next = yield* provider.refresh.pipe(Effect.forkChild({ startImmediately: true }));
+        yield* Deferred.await(nextEntered);
+        yield* publishOld(enrichedSnapshot);
+        assert.deepStrictEqual(yield* provider.getSnapshot, refreshedSnapshot);
+        yield* Deferred.succeed(releaseNext, undefined);
+        assert.deepStrictEqual(yield* Fiber.join(next), refreshedSnapshotSecond);
+        assert.strictEqual(checkCalls, 2);
+      }),
+    ).pipe(Effect.provide(AlwaysRunTestLayer)),
+  );
+
   it.effect("发布前统一处理初始、刷新及异步补充的模型目录", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -366,6 +705,7 @@ describe("makeManagedServerProvider", () => {
         const checkCalls = yield* Ref.make(0);
         const releaseInitialCheck = yield* Deferred.make<void>();
         const releaseSettingsCheck = yield* Deferred.make<void>();
+        const initialPublished = yield* Deferred.make<void>();
         const provider = yield* makeManagedServerProvider<TestSettings>({
           maintenanceCapabilities,
           getSettings: Ref.get(settingsRef),
@@ -383,12 +723,14 @@ describe("makeManagedServerProvider", () => {
         });
 
         const updatesFiber = yield* Stream.take(provider.streamChanges, 2).pipe(
+          Stream.tap(() => Deferred.succeed(initialPublished, undefined)),
           Stream.runCollect,
           Effect.forkChild,
         );
         yield* Effect.yieldNow;
 
         yield* Deferred.succeed(releaseInitialCheck, undefined);
+        yield* Deferred.await(initialPublished);
         yield* Ref.set(settingsRef, { enabled: false });
         yield* PubSub.publish(settingsChanges, { enabled: false });
         yield* Deferred.succeed(releaseSettingsCheck, undefined);

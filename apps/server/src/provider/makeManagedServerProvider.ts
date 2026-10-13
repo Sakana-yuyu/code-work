@@ -4,9 +4,11 @@ import {
   ServerSettingsError,
 } from "@codework/contracts";
 import { resolveServerBackgroundActivitySettings } from "@codework/shared/backgroundActivitySettings";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
+import type * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -66,12 +68,23 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
   const settingsRef = yield* Ref.make(initialSettings);
   const enrichmentFiberRef = yield* Ref.make<Fiber.Fiber<void, unknown> | null>(null);
   const scope = yield* Effect.scope;
+  const refreshes = new Set<{
+    readonly settings: Settings;
+    readonly deferred: Deferred.Deferred<Exit.Exit<ServerProvider, ServerSettingsError>>;
+  }>();
 
   const publishEnrichedSnapshot = Effect.fn("publishEnrichedSnapshot")(function* (
     generation: number,
+    settings: Settings,
     enrichedSnapshot: ServerProvider,
   ) {
     const nextSnapshot = yield* prepareSnapshot(enrichedSnapshot);
+    const currentSettings = yield* input.getSettings.pipe(Effect.result);
+    if (
+      currentSettings._tag === "Failure" ||
+      input.haveSettingsChanged(settings, currentSettings.success)
+    )
+      return;
     const snapshotToPublish = yield* Ref.modify(snapshotStateRef, (state) => {
       if (state.enrichmentGeneration !== generation || Equal.equals(state.snapshot, nextSnapshot)) {
         return [null, state] as const;
@@ -109,25 +122,24 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
         settings,
         snapshot,
         getSnapshot: Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot)),
-        publishSnapshot: (nextSnapshot) => publishEnrichedSnapshot(generation, nextSnapshot),
+        publishSnapshot: (nextSnapshot) =>
+          publishEnrichedSnapshot(generation, settings, nextSnapshot),
       })
       .pipe(Effect.ignoreCause({ log: true }), Effect.forkIn(scope));
 
     yield* Ref.set(enrichmentFiberRef, fiber);
   });
 
-  const applySnapshotBase = Effect.fn("applySnapshot")(function* (
-    nextSettings: Settings,
-    options?: { readonly forceRefresh?: boolean },
-  ) {
-    const forceRefresh = options?.forceRefresh === true;
-    const previousSettings = yield* Ref.get(settingsRef);
-    if (!forceRefresh && !input.haveSettingsChanged(previousSettings, nextSettings)) {
-      yield* Ref.set(settingsRef, nextSettings);
+  const applySnapshotBase = Effect.fn("applySnapshotBase")(function* (nextSettings: Settings) {
+    // 排队期间及探测期间都可能更新快照设置；过期检查不能发布或启动补充探测。
+    if (input.haveSettingsChanged(nextSettings, yield* input.getSettings)) {
       return yield* Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot));
     }
 
     const nextSnapshot = yield* input.checkProvider.pipe(Effect.flatMap(prepareSnapshot));
+    if (input.haveSettingsChanged(nextSettings, yield* input.getSettings)) {
+      return yield* Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot));
+    }
     const nextGeneration = yield* Ref.modify(snapshotStateRef, (state) => {
       const generation = input.enrichSnapshot
         ? state.enrichmentGeneration + 1
@@ -145,8 +157,53 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     yield* restartSnapshotEnrichment(nextSettings, nextSnapshot, nextGeneration);
     return nextSnapshot;
   });
-  const applySnapshot = (nextSettings: Settings, options?: { readonly forceRefresh?: boolean }) =>
-    refreshSemaphore.withPermits(1)(applySnapshotBase(nextSettings, options));
+  const applySnapshot = Effect.fn("applySnapshot")(function* (
+    nextSettings: Settings,
+    options?: { readonly forceRefresh?: boolean },
+  ) {
+    return yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        if (scope.state._tag === "Closed") return yield* Effect.interrupt;
+        const previousSettings = yield* Ref.get(settingsRef);
+        const deferred = yield* Deferred.make<Exit.Exit<ServerProvider, ServerSettingsError>>();
+        const refresh = { settings: nextSettings, deferred };
+        // 查找与登记在同一个同步步骤完成，自动让出不会创建重复的排队检查。
+        const pending = yield* Effect.sync(() => {
+          const existing = [...refreshes].find(
+            (active) => !input.haveSettingsChanged(active.settings, nextSettings),
+          );
+          if (existing) return existing;
+          if (
+            options?.forceRefresh !== true &&
+            !input.haveSettingsChanged(previousSettings, nextSettings)
+          )
+            return null;
+          refreshes.add(refresh);
+          return refresh;
+        });
+        if (pending === null) {
+          yield* Ref.set(settingsRef, nextSettings);
+          return yield* Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot));
+        }
+        if (pending !== refresh)
+          return yield* restore(Deferred.await(pending.deferred).pipe(Effect.flatten));
+        // 探测属于 provider 生命周期，其可中断性不继承调用者，取消只结束自身等待。
+        yield* refreshSemaphore
+          .withPermits(1)(applySnapshotBase(nextSettings))
+          .pipe(
+            Effect.interruptible,
+            Effect.onExit((exit) =>
+              Effect.sync(() => refreshes.delete(refresh)).pipe(
+                // 先唤醒全部等待者，再各自重放退出值，避免中断清理打断共享唤醒。
+                Effect.andThen(Deferred.succeed(deferred, exit)),
+              ),
+            ),
+            Effect.forkIn(scope, { startImmediately: true, uninterruptible: true }),
+          );
+        return yield* restore(Deferred.await(deferred).pipe(Effect.flatten));
+      }),
+    );
+  });
 
   const refreshSnapshot = Effect.fn("refreshSnapshot")(function* () {
     const nextSettings = yield* input.getSettings;
