@@ -4,6 +4,7 @@ import {
   CorrelationId,
   EventId,
   MessageId,
+  OrchestrationProposedPlanId,
   ProjectId,
   ThreadId,
   TurnId,
@@ -65,6 +66,7 @@ it.layer(makeProjectionPipelinePrefixedTestLayer("codework-message-stream-test-"
         const pipeline = yield* OrchestrationProjectionPipeline;
         const eventStore = yield* OrchestrationEventStore;
         const repository = yield* ProjectionThreadMessageRepository;
+        const sql = yield* SqlClient.SqlClient;
         const threadId = ThreadId.make("thread-no-body-hydration");
         const projectId = ProjectId.make("project-no-body-hydration");
         const createdAt = "2026-02-28T19:00:00.000Z";
@@ -131,6 +133,7 @@ it.layer(makeProjectionPipelinePrefixedTestLayer("codework-message-stream-test-"
         });
         const bodyReads = vi.spyOn(repository, "getByMessageId");
         const historyReads = vi.spyOn(repository, "listByThreadId");
+        const summaryTimeReads = vi.spyOn(repository, "getLatestUserMessageAt");
         try {
           for (const [index, text] of ["第一段", "第二段", ""].entries()) {
             const updatedAt = `2026-02-28T19:00:0${index + 1}.000Z`;
@@ -155,8 +158,86 @@ it.layer(makeProjectionPipelinePrefixedTestLayer("codework-message-stream-test-"
               }),
             );
           }
+          for (const [index, userCreatedAt] of [
+            "2026-02-28T19:00:04.000Z",
+            "2026-02-28T19:00:02.000Z",
+          ].entries()) {
+            yield* pipeline.projectEvent(
+              yield* eventStore.append({
+                ...common,
+                occurredAt: userCreatedAt,
+                type: "thread.message-sent",
+                eventId: EventId.make(`no-body-user-${index}`),
+                aggregateKind: "thread",
+                aggregateId: threadId,
+                payload: {
+                  threadId,
+                  messageId: MessageId.make(`no-body-user-${index}`),
+                  role: "user",
+                  text: "历史用户正文".repeat(5_000),
+                  turnId: null,
+                  streaming: false,
+                  createdAt: userCreatedAt,
+                  updatedAt: "2026-02-28T19:00:05.000Z",
+                },
+              }),
+            );
+          }
           assert.equal(bodyReads.mock.calls.length, 0);
           assert.equal(historyReads.mock.calls.length, 0);
+          assert.equal(summaryTimeReads.mock.calls.length, 2);
+          yield* pipeline.projectEvent(
+            yield* eventStore.append({
+              ...common,
+              occurredAt: "2026-02-28T19:00:06.000Z",
+              type: "thread.session-set",
+              eventId: EventId.make("no-body-session"),
+              aggregateKind: "thread",
+              aggregateId: threadId,
+              payload: {
+                threadId,
+                session: {
+                  threadId,
+                  status: "ready",
+                  providerName: "codex",
+                  runtimeMode: "approval-required",
+                  activeTurnId: null,
+                  lastError: null,
+                  updatedAt: "2026-02-28T19:00:06.000Z",
+                },
+              },
+            }),
+          );
+          yield* pipeline.projectEvent(
+            yield* eventStore.append({
+              ...common,
+              occurredAt: "2026-02-28T19:00:07.000Z",
+              type: "thread.proposed-plan-upserted",
+              eventId: EventId.make("no-body-plan"),
+              aggregateKind: "thread",
+              aggregateId: threadId,
+              payload: {
+                threadId,
+                proposedPlan: {
+                  id: OrchestrationProposedPlanId.make("no-body-plan"),
+                  turnId: null,
+                  planMarkdown: "计划正文",
+                  implementedAt: null,
+                  implementationThreadId: null,
+                  createdAt: "2026-02-28T19:00:07.000Z",
+                  updatedAt: "2026-02-28T19:00:07.000Z",
+                },
+              },
+            }),
+          );
+          assert.equal(bodyReads.mock.calls.length, 0);
+          assert.equal(historyReads.mock.calls.length, 0);
+          assert.equal(summaryTimeReads.mock.calls.length, 4);
+          const summary = yield* sql<{ readonly latest: string | null }>`
+            SELECT latest_user_message_at AS "latest"
+            FROM projection_threads WHERE thread_id = ${threadId}
+          `;
+          assert.deepEqual(summary, [{ latest: "2026-02-28T19:00:04.000Z" }]);
           // 已投影的消息游标不会再次追加同一片段。
           yield* pipeline.bootstrap;
           assert.equal(bodyReads.mock.calls.length, 0);
@@ -164,21 +245,26 @@ it.layer(makeProjectionPipelinePrefixedTestLayer("codework-message-stream-test-"
         } finally {
           bodyReads.mockRestore();
           historyReads.mockRestore();
+          summaryTimeReads.mockRestore();
         }
         const rows = yield* repository.listByThreadId({ threadId });
-        assert.deepEqual(rows, [
-          {
-            messageId,
-            threadId,
-            turnId: null,
-            role: "assistant",
-            text: prefix + "第一段第二段",
-            isStreaming: false,
-            createdAt,
-            updatedAt: "2026-02-28T19:00:03.000Z",
-            firstSequence: 1,
-          },
-        ]);
+        assert.equal(rows.filter((row) => row.role === "user").length, 2);
+        assert.deepEqual(
+          rows.filter((row) => row.role === "assistant"),
+          [
+            {
+              messageId,
+              threadId,
+              turnId: null,
+              role: "assistant",
+              text: prefix + "第一段第二段",
+              isStreaming: false,
+              createdAt,
+              updatedAt: "2026-02-28T19:00:03.000Z",
+              firstSequence: 1,
+            },
+          ],
+        );
       }),
     );
   },

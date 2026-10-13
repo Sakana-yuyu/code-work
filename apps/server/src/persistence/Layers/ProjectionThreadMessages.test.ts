@@ -13,6 +13,90 @@ const layer = it.layer(
 );
 
 layer("ProjectionThreadMessageRepository", (it) => {
+  it.effect("摘要时间在空线程或只有 assistant 时为 null，并隔离线程", () =>
+    Effect.gen(function* () {
+      const repository = yield* ProjectionThreadMessageRepository;
+      const threadId = ThreadId.make("summary-empty");
+      assert.equal(yield* repository.getLatestUserMessageAt({ threadId }), null);
+      yield* repository.upsert({
+        messageId: MessageId.make("summary-assistant"),
+        threadId,
+        turnId: null,
+        role: "assistant",
+        text: "较新的长正文".repeat(10_000),
+        isStreaming: false,
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      });
+      yield* repository.upsert({
+        messageId: MessageId.make("summary-other-user"),
+        threadId: ThreadId.make("summary-other"),
+        turnId: null,
+        role: "user",
+        text: "其他线程",
+        isStreaming: false,
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      });
+      assert.equal(yield* repository.getLatestUserMessageAt({ threadId }), null);
+      assert.equal(
+        yield* repository.getLatestUserMessageAt({ threadId: ThreadId.make("summary-other") }),
+        "2026-03-01T00:00:00.000Z",
+      );
+    }),
+  );
+
+  it.effect("摘要按用户 createdAt 最大值处理迟到消息，不受更新时间和序号影响", () =>
+    Effect.gen(function* () {
+      const repository = yield* ProjectionThreadMessageRepository;
+      const threadId = ThreadId.make("summary-order");
+      for (const [index, createdAt] of [
+        "2026-03-01T00:00:02.000Z",
+        "2026-03-01T00:00:01.000Z",
+        "2026-03-01T00:00:03.000Z",
+      ].entries()) {
+        yield* repository.upsert({
+          messageId: MessageId.make(`summary-user-${index}`),
+          threadId,
+          turnId: null,
+          role: "user",
+          text: "历史正文".repeat(1_000),
+          isStreaming: false,
+          createdAt,
+          updatedAt: "2026-03-02T00:00:00.000Z",
+          firstSequence: 100 - index,
+        });
+      }
+      assert.equal(
+        yield* repository.getLatestUserMessageAt({ threadId }),
+        "2026-03-01T00:00:03.000Z",
+      );
+    }),
+  );
+
+  it.effect("覆盖用户消息角色与删除后摘要即时更新", () =>
+    Effect.gen(function* () {
+      const repository = yield* ProjectionThreadMessageRepository;
+      const input = {
+        messageId: MessageId.make("summary-replace"),
+        threadId: ThreadId.make("summary-replace"),
+        turnId: null,
+        role: "user" as const,
+        text: "用户",
+        isStreaming: false,
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      };
+      yield* repository.upsert(input);
+      assert.equal(yield* repository.getLatestUserMessageAt(input), input.createdAt);
+      yield* repository.upsert({ ...input, role: "assistant", text: "替换为 assistant" });
+      assert.equal(yield* repository.getLatestUserMessageAt(input), null);
+      yield* repository.upsert(input);
+      yield* repository.deleteByThreadId(input);
+      assert.equal(yield* repository.getLatestUserMessageAt(input), null);
+    }),
+  );
+
   it.effect("流式消息原子追加并保留首次位置、附件与来源", () =>
     Effect.gen(function* () {
       const repository = yield* ProjectionThreadMessageRepository;

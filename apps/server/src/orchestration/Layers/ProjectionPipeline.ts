@@ -586,22 +586,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         return;
       }
 
-      const [messages, proposedPlans, activities, pendingApprovals] = yield* Effect.all([
-        projectionThreadMessageRepository.listByThreadId({ threadId }),
+      const [latestUserMessageAt, proposedPlans, activities, pendingApprovals] = yield* Effect.all([
+        projectionThreadMessageRepository.getLatestUserMessageAt({ threadId }),
         projectionThreadProposedPlanRepository.listByThreadId({ threadId }),
         projectionThreadActivityRepository.listByThreadId({ threadId }),
         projectionPendingApprovalRepository.listByThreadId({ threadId }),
       ]);
-
-      let latestUserMessageAt: string | null = null;
-      for (const message of messages) {
-        if (
-          message.role === "user" &&
-          (latestUserMessageAt === null || message.createdAt > latestUserMessageAt)
-        ) {
-          latestUserMessageAt = message.createdAt;
-        }
-      }
 
       const pendingApprovalCount = pendingApprovals.filter(
         (approval) => approval.status === "pending",

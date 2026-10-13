@@ -86,6 +86,11 @@ export interface ProjectionThreadMessageRepositoryShape {
     input: ListProjectionThreadMessagesInput,
   ) => Effect.Effect<ReadonlyArray<ProjectionThreadMessage>, ProjectionRepositoryError>;
 
+  /** 摘要只查询最近用户消息的创建时间，不加载历史正文与附件。 */
+  readonly getLatestUserMessageAt: (
+    input: ListProjectionThreadMessagesInput,
+  ) => Effect.Effect<IsoDateTime | null, ProjectionRepositoryError>;
+
   /**
    * Delete projected thread messages by thread.
    */
