@@ -52,7 +52,7 @@
 | 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 完成；增量清单、重开与滚动锚点继续随第4/8项验收              | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / NativeFrameScheduler | 定向与三端受控管线通过；Android 24 帧发布、43 帧字素揭示、全文/选区/终态通过，详见第34/35主题                         |
 | 6   | 流式选区与滚动锚点                                          | Web 与 Android 选区已验证，其余继续验收                      | 真实 StreamingChatMarkdown / Android 原生选区页及增量夹具                                                  | Android 范围与全文复制、追加和终态选区保持已验证；完整滚动锚点及 iOS 设备矩阵仍开放                                   |
 | 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证                           | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                                    | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
-| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 三端受控正文、历史锚点与回尾跟随通过；连接方式矩阵继续       | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份 / Mobile ThreadFeed                    | 首绘采用用户确认标准；Web/Android/Electron 的追加、断线重投、恢复、终态锚点与手动回尾通过，见第38主题                 |
+| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题          |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归             |
 | 10  | Windows argv 三层守卫                                       | 待实施                                                       | Antigravity / ZCode / resolveSpawnCommand                                                                  | 尚未运行                                                                                                              |
 | 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 待实施                                                       | ProviderDriver / provider snapshot 探测                                                                    | 尚未运行                                                                                                              |
@@ -712,3 +712,21 @@ React Native 0.85.3 bridgeless 的 rAF 是零延时计时器；此前仅纠正�
 第14回合由实际 Electron 输入发送。唯一桌面段落 `DESKTOP_ANCHOR_007` 在追加、断线、原事件重投和恢复六个阶段保持 y=373.359375。显式回尾后12个新尾段继续跟随，末段可见、回尾按钮消失；再次滚到历史处，完成前后8个可见段落位置相同。终态当前 assistant 只出现一个规范 ID，45个标记各一次且按序；3471字 provider/SQLite 全文一致，原26条持久化消息逐字段不变。`anchor-desktop-accepted.json` 与实际外壳截图保留；未把揭示期间不可访问的全文几何层算为重复的规范消息。
 
 `vp test run apps/mobile/src/features/threads/thread-feed-live-follow.test.ts apps/web/src/components/chat/MessagesTimeline.logic.test.ts` 两文件75项通过。连接准备/主管/注册与线程同步/挂载/分页六文件96项通过，覆盖直接、bearer、relay 与 SSH 的准备路径和共享重放生命周期；连接方式与实际网络覆盖仍须分开记录。本主题实际使用本机隔离 proxy 远程环境配置，无真实外部 provider、SSH 主机或公开 relay/tunnel 调用，iOS 无设备运行。没有增加设置、权限、合同、持续动画或持久化，全部 provider 继续使用标准消息事件；回退仅恢复本证据文档，无产品数据迁移。
+
+### 第39主题：显式连接目标的线程重放矩阵
+
+既有 resolver/registry/主管分别验证连接准备、授权与重连，正文续订测试此前只使用 Primary 目标。扩展原线程测试夹具的可选 `PreparedConnection`，对以下五种形状运行相同真实 Effect 线程状态机，每种同时测试旧环境无 completionMarker 与新环境有 completionMarker。复用原始事件用例，不新增产品条件分支、设置或权限。
+
+| 连接入口        | 准备/授权证据                                    | 正文重放证据                                     | 实际网络边界                                                    |
+| --------------- | ------------------------------------------------ | ------------------------------------------------ | --------------------------------------------------------------- |
+| Primary 主环境  | resolver 主环境/桌面平台 bearer 用例             | 两态：缓存、断线引用、游标续订、重投、完成       | 既有本地客户端与静态运行证据；本主题状态机模拟，不新增网络服务  |
+| Bearer 远程环境 | 注册 profile、现有 bearer 授权                   | 两态同上，显式 Bearer 目标/授权                  | 三端实际隔离 proxy 配对和断线恢复；主机仍为本机，不宣称公网测试 |
+| Bearer 隧道入口 | 隧道沿用远程 bearer 准备与标准 socket URL        | 两态同上，显式 Cloudflare URL 形状               | URL仅测试数据，没有访问公开隧道                                 |
+| Relay DPoP      | 当前云会话/设备身份 broker、凭据更换与超时       | 两态同上，显式 Relay 目标/DPoP 元数据            | broker/主管替身测试，没有公开 relay 账号或网络调用              |
+| SSH             | 平台 gateway 启动后再授权，显式删除与 owner 保留 | 两态同上，显式 SSH 目标/已准备的 loopback socket | gateway 替身测试，没有连接外部 SSH 主机                         |
+
+十个重放用例均验证：忙碌缓存立即可用，序号7订阅；旧事件、过期包与回放忽略，断线时正文对象保持；替换连接从12续订，非连续全局序号合法；不同事件中的相同文字保留；完整终态只有一条消息，错误清除、HTTP快照读取为0。所有目标在连接层收敛为 `PreparedConnection` 和同一 `RpcSession`，客户端渲染不增加按连接方式区分的实现。
+
+六文件定向命令（resolver/supervisor/registry、threads-sync/threads-atoms/threads-pagination）104项通过；单测试文件 lint/format 与 HEAD 第38主题加本测试导出的纯候选 client-runtime 类型检查通过。结合第31/38主题三端实际关闭忙碌线程连接保持、重开、断线原事件重投、唯一全文、锚点与用户确认的首绘标准，第8项功能与共享协议验收完成。外部 provider、公网 relay/tunnel、SSH 和 iOS 设备覆盖仍按本表明确为未实测，不能把模拟元数据写成真实网络成功；完整39项目标仍继续。
+
+此主题只有测试与验收文档，无协议、产品设置、数据迁移或权限变化。全部 adapter 继续提供标准领域事件，聊天退出/重开与手动回尾的反向行为已覆盖；回退本主题仅恢复测试和记录。

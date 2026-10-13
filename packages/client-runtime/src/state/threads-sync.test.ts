@@ -23,7 +23,10 @@ import * as TestClock from "effect/testing/TestClock";
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import {
   AVAILABLE_CONNECTION_STATE,
+  BearerConnectionTarget,
   PrimaryConnectionTarget,
+  RelayConnectionTarget,
+  SshConnectionTarget,
   type PreparedConnection,
   type SupervisorConnectionState,
 } from "../connection/model.ts";
@@ -54,6 +57,53 @@ const PREPARED: PreparedConnection = {
   httpAuthorization: null,
   target: TARGET,
 };
+// 此矩阵检查已经准备好的连接进入同一线程状态机；网络与授权由连接层用例覆盖。
+const REPLAY_CONNECTIONS = [
+  { ...PREPARED, label: "主环境" },
+  {
+    ...PREPARED,
+    label: "远程 Bearer",
+    httpAuthorization: { _tag: "Bearer", token: "test-bearer" },
+    target: new BearerConnectionTarget({
+      environmentId: TARGET.environmentId,
+      label: "远程 Bearer",
+      connectionId: "remote-bearer",
+    }),
+  },
+  {
+    ...PREPARED,
+    label: "隧道 Bearer",
+    httpBaseUrl: "https://fixture.trycloudflare.com",
+    socketUrl: "wss://fixture.trycloudflare.com/ws?wsTicket=test-ticket",
+    httpAuthorization: { _tag: "Bearer", token: "test-tunnel-bearer" },
+    target: new BearerConnectionTarget({
+      environmentId: TARGET.environmentId,
+      label: "隧道 Bearer",
+      connectionId: "tunnel-bearer",
+    }),
+  },
+  {
+    ...PREPARED,
+    label: "Relay DPoP",
+    httpAuthorization: { _tag: "Dpop", accessToken: "test-relay-access" },
+    target: new RelayConnectionTarget({
+      environmentId: TARGET.environmentId,
+      label: "Relay DPoP",
+    }),
+  },
+  {
+    ...PREPARED,
+    label: "SSH",
+    httpBaseUrl: "http://127.0.0.1:13377",
+    socketUrl: "ws://127.0.0.1:13377/ws?wsTicket=test-ssh-ticket",
+    httpAuthorization: { _tag: "Bearer", token: "test-ssh-bearer" },
+    target: new SshConnectionTarget({
+      environmentId: TARGET.environmentId,
+      label: "SSH",
+      connectionId: "ssh-connection",
+    }),
+  },
+] satisfies ReadonlyArray<PreparedConnection>;
 const BASE_THREAD: OrchestrationThread = {
   id: THREAD_ID,
   projectId: ProjectId.make("project-1"),
@@ -134,6 +184,7 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
   readonly cached?: OrchestrationThread;
   readonly httpSnapshot?: Option.Option<OrchestrationThreadDetailSnapshot>;
   readonly completionMarker?: boolean;
+  readonly preparedConnection?: PreparedConnection;
 }) {
   const inputs = yield* Queue.unbounded<TestThreadInput>();
   const observed = yield* Queue.unbounded<EnvironmentThreadState>();
@@ -179,7 +230,7 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
     ),
   );
   const prepared = yield* SubscriptionRef.make<Option.Option<PreparedConnection>>(
-    Option.some(PREPARED),
+    Option.some(options?.preparedConnection ?? PREPARED),
   );
   const snapshotLoader = ThreadSnapshotLoader.of({
     load: (_prepared, threadId) =>
@@ -192,7 +243,7 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
       ),
   });
   const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
-    target: TARGET,
+    target: options?.preparedConnection?.target ?? TARGET,
     state: supervisorState,
     session: supervisorSession,
     prepared,
@@ -349,56 +400,69 @@ const deleted = (): OrchestrationThreadStreamItem => ({
 });
 
 describe("EnvironmentThreads", () => {
-  for (const completionMarker of [false, true]) {
-    it.effect(`运行中正文替换连接后不重不丢，完成标记能力为 ${completionMarker}`, () =>
-      Effect.gen(function* () {
-        const harness = yield* makeHarness({ cached: ACTIVE_THREAD, completionMarker });
-        expect((yield* Queue.take(harness.subscriptions)).afterSequence).toBe(7);
-        const first = streamedMessage("首段🌏\r\n", 8);
-        const second = streamedMessage("重复文字仍需保留", 12);
-        yield* Queue.offerAll(harness.inputs, [first, first, streamedMessage("过期包", 7), second]);
-        const beforeDisconnect = yield* awaitThreadState(
-          harness.observed,
-          (state) =>
-            Option.isSome(state.data) &&
-            state.data.value.messages[0]?.text === "首段🌏\r\n重复文字仍需保留",
-        );
-        const before = Option.getOrThrow(beforeDisconnect.data);
-        expect(before.messages).toHaveLength(1);
-        expect(before.session?.status).toBe("running");
-        yield* Queue.offer(harness.inputs, new Error("连接已中断"));
-        const disconnected = yield* awaitThreadState(harness.observed, (state) =>
-          Option.isSome(state.error),
-        );
-        expect(Option.getOrThrow(disconnected.data)).toBe(before);
-        yield* harness.replaceSession;
-        expect((yield* Queue.take(harness.subscriptions)).afterSequence).toBe(12);
-        expect(Option.getOrThrow((yield* Ref.get(harness.latest)).data)).toBe(before);
+  for (const preparedConnection of REPLAY_CONNECTIONS) {
+    for (const completionMarker of [false, true]) {
+      it.effect(
+        `${preparedConnection.label}：运行中正文替换连接后不重不丢，完成标记能力为 ${completionMarker}`,
+        () =>
+          Effect.gen(function* () {
+            const harness = yield* makeHarness({
+              cached: ACTIVE_THREAD,
+              completionMarker,
+              preparedConnection,
+            });
+            expect((yield* Queue.take(harness.subscriptions)).afterSequence).toBe(7);
+            const first = streamedMessage("首段🌏\r\n", 8);
+            const second = streamedMessage("重复文字仍需保留", 12);
+            yield* Queue.offerAll(harness.inputs, [
+              first,
+              first,
+              streamedMessage("过期包", 7),
+              second,
+            ]);
+            const beforeDisconnect = yield* awaitThreadState(
+              harness.observed,
+              (state) =>
+                Option.isSome(state.data) &&
+                state.data.value.messages[0]?.text === "首段🌏\r\n重复文字仍需保留",
+            );
+            const before = Option.getOrThrow(beforeDisconnect.data);
+            expect(before.messages).toHaveLength(1);
+            expect(before.session?.status).toBe("running");
+            yield* Queue.offer(harness.inputs, new Error("连接已中断"));
+            const disconnected = yield* awaitThreadState(harness.observed, (state) =>
+              Option.isSome(state.error),
+            );
+            expect(Option.getOrThrow(disconnected.data)).toBe(before);
+            yield* harness.replaceSession;
+            expect((yield* Queue.take(harness.subscriptions)).afterSequence).toBe(12);
+            expect(Option.getOrThrow((yield* Ref.get(harness.latest)).data)).toBe(before);
 
-        // 序号属于全局日志，其他线程的间隔不能被当作本线程丢包；重叠回放只忽略旧序号。
-        yield* Queue.offerAll(harness.inputs, [
-          second,
-          first,
-          streamedMessage("重复文字仍需保留", 20),
-        ]);
-        const fullText = "首段🌏\r\n重复文字仍需保留重复文字仍需保留";
-        yield* Queue.offer(harness.inputs, streamedMessage(fullText, 21, false));
-        if (completionMarker) yield* Queue.offer(harness.inputs, synchronized());
-        const completed = yield* awaitThreadState(
-          harness.observed,
-          (state) =>
-            state.status === "live" &&
-            Option.isSome(state.data) &&
-            state.data.value.messages[0]?.streaming === false,
-        );
-        expect(Option.getOrThrow(completed.data).messages).toMatchObject([
-          { text: fullText, streaming: false },
-        ]);
-        expect(Option.getOrThrow(completed.data).messages).toHaveLength(1);
-        expect(Option.isNone(completed.error)).toBe(true);
-        expect(yield* Ref.get(harness.loaderCalls)).toBe(0);
-      }),
-    );
+            // 序号属于全局日志，其他线程的间隔不能被当作本线程丢包；重叠回放只忽略旧序号。
+            yield* Queue.offerAll(harness.inputs, [
+              second,
+              first,
+              streamedMessage("重复文字仍需保留", 20),
+            ]);
+            const fullText = "首段🌏\r\n重复文字仍需保留重复文字仍需保留";
+            yield* Queue.offer(harness.inputs, streamedMessage(fullText, 21, false));
+            if (completionMarker) yield* Queue.offer(harness.inputs, synchronized());
+            const completed = yield* awaitThreadState(
+              harness.observed,
+              (state) =>
+                state.status === "live" &&
+                Option.isSome(state.data) &&
+                state.data.value.messages[0]?.streaming === false,
+            );
+            expect(Option.getOrThrow(completed.data).messages).toMatchObject([
+              { text: fullText, streaming: false },
+            ]);
+            expect(Option.getOrThrow(completed.data).messages).toHaveLength(1);
+            expect(Option.isNone(completed.error)).toBe(true);
+            expect(yield* Ref.get(harness.loaderCalls)).toBe(0);
+          }),
+      );
+    }
   }
 
   it.effect("publishes cached data immediately from a warm cache", () =>
