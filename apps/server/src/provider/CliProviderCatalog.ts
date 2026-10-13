@@ -35,6 +35,23 @@ export const cliProviderCatalogIdentity = (input: {
   readonly environment?: NodeJS.ProcessEnv;
 }): string => NodeCrypto.createHash("sha256").update(stableStringify(input)).digest("hex");
 
+/** 将同一刷新信号桥接到可中断工作，资源终结仍由工作自己的 Scope 负责。 */
+export const withCatalogAbortSignal = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  signal: AbortSignal,
+): Effect.Effect<A, E, R> =>
+  Effect.suspend(() => {
+    if (signal.aborted) return Effect.interrupt;
+    const aborted = Effect.callback<never>((resume) => {
+      const onAbort = () => resume(Effect.interrupt);
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) onAbort();
+      return Effect.sync(() => signal.removeEventListener("abort", onAbort));
+    });
+    // 先登记 race 的两分支，防止同步工作回执重入 abort 时漏掉工作 fiber。
+    return Effect.raceFirst(aborted, Effect.yieldNow.pipe(Effect.andThen(effect)));
+  });
+
 export interface CliProviderCatalog {
   readonly fetchCatalog: <E, R>(input: {
     readonly key: string;

@@ -35,6 +35,7 @@ import {
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
@@ -120,9 +121,19 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
   },
   configSchema: CursorSettings,
   defaultConfig: (): CursorSettings => decodeCursorSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config, catalog }) =>
+  create: ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config,
+    catalog,
+    nativeCatalog,
+  }) =>
     Effect.gen(function* () {
       const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
+      const nativeProviderCatalog = nativeCatalog ?? (yield* makeNativeProviderCatalog());
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
@@ -185,6 +196,7 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
         effectiveConfig,
         processEnv,
         providerCatalog,
+        nativeProviderCatalog,
       ).pipe(
         Effect.map(stampIdentity),
         Effect.provideService(Crypto.Crypto, crypto),

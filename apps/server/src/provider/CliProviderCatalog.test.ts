@@ -1,8 +1,10 @@
 import { ProviderDriverKind } from "@codework/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Context from "effect/Context";
+import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
@@ -11,12 +13,115 @@ import { TestClock } from "effect/testing";
 import {
   cliProviderCatalogIdentity,
   makeCliProviderCatalog,
+  withCatalogAbortSignal,
   type CliProviderCatalogData,
 } from "./CliProviderCatalog.ts";
 import { ProviderCatalogForceRefresh } from "./ProviderCatalogCache.ts";
 
 const directory = (slug: string): CliProviderCatalogData => ({
   models: [{ slug, name: slug, isCustom: false, capabilities: null }],
+});
+
+describe("withCatalogAbortSignal", () => {
+  it.effect("预取消不启动加载", () =>
+    Effect.gen(function* () {
+      const controller = new AbortController();
+      controller.abort();
+      let started = false;
+      const exit = yield* withCatalogAbortSignal(
+        Effect.sync(() => (started = true)),
+        controller.signal,
+      ).pipe(Effect.exit);
+      assert.isFalse(started);
+      assert.isTrue(Exit.isFailure(exit));
+      if (Exit.isFailure(exit)) assert.isTrue(Cause.hasInterrupts(exit.cause));
+    }),
+  );
+
+  it.effect("同步工作回执触发取消也等待实际资源终结", () =>
+    Effect.gen(function* () {
+      const controller = new AbortController();
+      const closed = yield* Deferred.make<void>();
+      let started = 0;
+      const work = Effect.scoped(
+        Effect.gen(function* () {
+          yield* Effect.acquireRelease(
+            Effect.sync(() => started++),
+            () => Deferred.succeed(closed, undefined),
+          );
+          yield* Effect.sync(() => controller.abort());
+          return yield* Effect.never;
+        }),
+      );
+      const fiber = yield* withCatalogAbortSignal(work, controller.signal).pipe(Effect.forkChild());
+      yield* Deferred.await(closed);
+      const exit = yield* Fiber.await(fiber);
+      assert.strictEqual(started, 1);
+      assert.isTrue(Exit.isFailure(exit));
+      if (Exit.isFailure(exit)) assert.isTrue(Cause.hasInterrupts(exit.cause));
+    }),
+  );
+
+  it.effect("外部调用者取消保留中断并终结资源", () =>
+    Effect.gen(function* () {
+      const controller = new AbortController();
+      const entered = yield* Deferred.make<void>();
+      let closed = 0;
+      const work = Effect.scoped(
+        Effect.gen(function* () {
+          yield* Effect.acquireRelease(Deferred.succeed(entered, undefined), () =>
+            Effect.sync(() => closed++),
+          );
+          return yield* Effect.never;
+        }),
+      );
+      const fiber = yield* withCatalogAbortSignal(work, controller.signal).pipe(Effect.forkChild());
+      yield* Deferred.await(entered);
+      yield* Fiber.interrupt(fiber);
+      const exit = yield* Fiber.await(fiber);
+      assert.strictEqual(closed, 1);
+      assert.isFalse(controller.signal.aborted);
+      assert.isTrue(Exit.isFailure(exit));
+      if (Exit.isFailure(exit)) assert.isTrue(Cause.hasInterrupts(exit.cause));
+    }),
+  );
+
+  it.effect("成功移除监听器，仍使用当前服务与原返回值", () =>
+    Effect.gen(function* () {
+      const controller = new AbortController();
+      const signal = controller.signal;
+      const originalAdd = signal.addEventListener.bind(signal);
+      const originalRemove = signal.removeEventListener.bind(signal);
+      let added = 0;
+      let removed = 0;
+      signal.addEventListener = (...args) => {
+        added++;
+        originalAdd(...args);
+      };
+      signal.removeEventListener = (...args) => {
+        removed++;
+        originalRemove(...args);
+      };
+      const value = yield* withCatalogAbortSignal(LoaderValue, signal).pipe(
+        Effect.provideService(LoaderValue, "actual"),
+      );
+      assert.strictEqual(value, "actual");
+      assert.strictEqual(added, 1);
+      assert.strictEqual(removed, 1);
+      controller.abort();
+    }),
+  );
+
+  it.effect("预期错误原样返回而不降级为取消", () =>
+    Effect.gen(function* () {
+      const result = yield* withCatalogAbortSignal(
+        Effect.fail("expected"),
+        new AbortController().signal,
+      ).pipe(Effect.result);
+      assert.isTrue(Result.isFailure(result));
+      if (Result.isFailure(result)) assert.strictEqual(result.failure, "expected");
+    }),
+  );
 });
 
 const target = {

@@ -540,12 +540,16 @@ describe("discoverCursorModelsViaAcp", () => {
           "initialize",
           "authenticate",
           "cursor/list_available_models",
+          "initialize",
+          "authenticate",
+          "cursor/list_available_models",
         ]);
         const executionText = yield* fixture.fs.readFileString(fixture.executionLogPath);
         const executions = yield* Effect.forEach(executionText.trim().split("\n"), (line) =>
           decodeProbeExecution(line),
         );
         expect(executions).toEqual([
+          { args: ["acp"], cwd: fixture.firstCwd, marker: "inherited", path: inheritedPath },
           { args: ["acp"], cwd: fixture.firstCwd, marker: "inherited", path: inheritedPath },
         ]);
       }).pipe(Effect.scoped),
@@ -612,7 +616,7 @@ describe("discoverCursorModelsViaAcp", () => {
         );
         const methods = yield* readCatalogMethods(fixture.requestLogPath);
         expect(methods).toEqual(
-          Array.from({ length: 5 }, () => [
+          Array.from({ length: 6 }, () => [
             "initialize",
             "authenticate",
             "cursor/list_available_models",
@@ -623,6 +627,7 @@ describe("discoverCursorModelsViaAcp", () => {
           decodeProbeExecution(line),
         );
         expect(executions).toMatchObject([
+          { args: ["acp"], cwd: fixture.firstCwd, marker: "first" },
           { args: ["acp"], cwd: fixture.firstCwd, marker: "first" },
           { args: ["acp"], cwd: fixture.firstCwd, marker: "first" },
           { args: ["acp"], cwd: fixture.firstCwd, marker: "second" },
@@ -641,7 +646,7 @@ describe("discoverCursorModelsViaAcp", () => {
     );
   });
 
-  it("缓存命中仍实时读取版本、认证和渠道，并按各自设置合并自定义模型", async () => {
+  it("实时版本和账号变化刷新目录，并按各自设置合并自定义模型", async () => {
     await runNode(
       Effect.gen(function* () {
         const fixture = yield* makeCatalogFixture();
@@ -686,6 +691,9 @@ describe("discoverCursorModelsViaAcp", () => {
         channel = "stable";
         expect((yield* check(["custom-second"])).message).toContain("lab channel");
         expect(yield* readCatalogMethods(fixture.requestLogPath)).toEqual([
+          "initialize",
+          "authenticate",
+          "cursor/list_available_models",
           "initialize",
           "authenticate",
           "cursor/list_available_models",
