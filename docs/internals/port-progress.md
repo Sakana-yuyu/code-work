@@ -52,7 +52,7 @@
 | 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 完成；增量清单、重开与滚动锚点继续随第4/8项验收              | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / NativeFrameScheduler | 定向与三端受控管线通过；Android 24 帧发布、43 帧字素揭示、全文/选区/终态通过，详见第34/35主题                         |
 | 6   | 流式选区与滚动锚点                                          | Web 与 Android 选区已验证，其余继续验收                      | 真实 StreamingChatMarkdown / Android 原生选区页及增量夹具                                                  | Android 范围与全文复制、追加和终态选区保持已验证；完整滚动锚点及 iOS 设备矩阵仍开放                                   |
 | 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证                           | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                                    | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
-| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 会话合并与后台检查已修复；首绘标准已确认，锚点与连接矩阵继续 | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份 / Mobile ThreadFeed                    | 三端受控正文与连接通过；用户允许约 0.25 秒首绘等待，正文出现后须稳定；完整锚点与连接矩阵继续验收                      |
+| 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 三端受控正文、历史锚点与回尾跟随通过；连接方式矩阵继续       | ws 立即订阅 / state/threads / 运行中正文与缓存游标 / 合并前复合身份 / Mobile ThreadFeed                    | 首绘采用用户确认标准；Web/Android/Electron 的追加、断线重投、恢复、终态锚点与手动回尾通过，见第38主题                 |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归             |
 | 10  | Windows argv 三层守卫                                       | 待实施                                                       | Antigravity / ZCode / resolveSpawnCommand                                                                  | 尚未运行                                                                                                              |
 | 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 待实施                                                       | ProviderDriver / provider snapshot 探测                                                                    | 尚未运行                                                                                                              |
@@ -700,3 +700,15 @@ React Native 0.85.3 bridgeless 的 rAF 是零延时计时器；此前仅纠正�
 五个源文件目标 lint/format 和以 HEAD 第36主题加本主题源码导出的纯候选 server 类型检查通过；无关工作区内容不进入候选。适用所有 provider 的标准持久化消息与 Web/Desktop/Mobile、本地/远程/隧道摘要，不新增客户端入口、权限或设置。删除与角色变更后的元数据立即反映当前表内容。回退本主题即可恢复旧摘要读取，无数据迁移。
 
 本主题只关闭用户时间这条摘要路径的正文读取；计划、活动和审批摘要的其余查询继续核验。第4项完整清单以及第8项滚动锚点、连接矩阵保持进行中。首绘采用用户确认的约 0.25 秒等待、正文出现后稳定标准，不能用静态帧率或选区结果替代锚点验收。
+
+### 第38主题：三端历史锚点、断线恢复与回尾跟随
+
+复用已有隔离 server、TCP proxy、受控 Codex adapter 和实际客户端，不新增产品代码或临时渲染探针。Web 使用当前 production 页面，Android 使用第36主题 production JS/真实 SDK UiAutomation，Electron 使用实际 41.5 外壳、1280×720 与相同 production 页面。用户允许约 0.25 秒首次绘制等待；既有连续录像中的正文出现后稳定现象按这一标准保留，滚动与连接另逐项验证。
+
+第12受控回合：先追加40个段落和未闭合代码，手动滚到历史位置，再闭合代码与追加15个尾段。Web 内容高度增加601px，可见 `ANCHOR_007` 仍为 y=438。Android 手势后的首次层级为 null，守卫拒绝保存，不把这次即时读取当通过；稳定快照取得后，再追加代码和8个段落，`ANCHOR_024` 的 bounds 仍为 `404 289 914 315`。两端在 proxy 切断、离线追加、原事件重投、自动恢复与完成后均保留历史锚点；Web 完成时 scrollTop 因上方布局变化减少42px，可见段落位置不变，不能把 scrollTop 变化误判成视图跳动。数据库只有一条当前 assistant，2417字与实际夹具全文逐字一致。
+
+两端通过各自“滚动到底部”入口看到离线/恢复段落各一次。第13回合验证运行中反向路径：30段正文自动跟随，用户滚动后暂停，显式回尾恢复，再追加12段，最新 `FOLLOW_MORE_012` 可见且回尾按钮消失；1353字全文完成、streaming=0、session ready。验证汇总 `anchor-web-native-accepted.json`，原始层级、截图、proxy 连接身份与只读数据库在工作区外保存。一次终态即时 Native 快照仍有重连提示，后续新鲜稳定快照清除提示并保留相同锚点；原始过渡快照不删除。
+
+第14回合由实际 Electron 输入发送。唯一桌面段落 `DESKTOP_ANCHOR_007` 在追加、断线、原事件重投和恢复六个阶段保持 y=373.359375。显式回尾后12个新尾段继续跟随，末段可见、回尾按钮消失；再次滚到历史处，完成前后8个可见段落位置相同。终态当前 assistant 只出现一个规范 ID，45个标记各一次且按序；3471字 provider/SQLite 全文一致，原26条持久化消息逐字段不变。`anchor-desktop-accepted.json` 与实际外壳截图保留；未把揭示期间不可访问的全文几何层算为重复的规范消息。
+
+`vp test run apps/mobile/src/features/threads/thread-feed-live-follow.test.ts apps/web/src/components/chat/MessagesTimeline.logic.test.ts` 两文件75项通过。连接准备/主管/注册与线程同步/挂载/分页六文件96项通过，覆盖直接、bearer、relay 与 SSH 的准备路径和共享重放生命周期；连接方式与实际网络覆盖仍须分开记录。本主题实际使用本机隔离 proxy 远程环境配置，无真实外部 provider、SSH 主机或公开 relay/tunnel 调用，iOS 无设备运行。没有增加设置、权限、合同、持续动画或持久化，全部 provider 继续使用标准消息事件；回退仅恢复本证据文档，无产品数据迁移。
