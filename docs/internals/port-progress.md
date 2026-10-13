@@ -1266,3 +1266,23 @@ Android在线新任务实际选原生Plan、Medium和受监督，通过开始任
 本主题未改fixture，原文件SHA与第70主题备份一致。通过Web实例停用释放worker95636/7660后重新启用/刷新，Web确认恢复已认证；仅忘记手机13774临时连接，保留13773/13811已连接；移除reverse8088、停止捕获Metro70456，飞行模式disabled。模拟器、Web/backend及服务端验收线程保留，不写SQL业务状态或读取认证文件。原始工作区外catalog-newtask-mode-state-{old,queue,online,offline}-proof.json、native-source、bundle-result、cleanup-proof及导航层级/日志；可视化目录android-newtask-{online,offline}-plan.png与对应proof.json可查看。
 
 本次实际为Android在线新任务、离线新任务和Windows受控协议进程，不是外部供应商账号。待发编辑复用同一已测试设置解析函数，本轮未做编辑设备操作；非Codex的实际声明沿用共享解析，BYOK关闭/Claude保留两态有定向断言，其余driver目录合同不变。Web/Desktop入口不修改，Electron、iOS、ACP实际动态目录、公网relay/tunnel、未知配置编辑与帧率未新增验收。另确认新任务旧版两态按钮的显示目前只看planModeEnabled偏好，未按实例广告门控；原生模式优先时该按钮不能改变原生选项，后续单独修复并验证开启偏好的入口，不能将本轮关闭偏好下的设备证据用于证明其可用。第11项剩余矩阵、完整第14/19项与原39项/comparison继续进行。四源与四文档可独立回退，无数据迁移；仍保护原83个无关基线文件、BYOK/ChatView/ChatComposer混合hunk，精确提交不得包含截图或工作区外脚本。
+
+## 72. 手机新任务旧版两态入口按实例能力门控
+
+第71主题是有效进展，本轮基线1a7aefdae。继续第11/14项并处理上轮明确记录的入口缺陷：NewTaskDraftScreen旧版按钮仅看设备planModeEnabled，原生模式优先时可出现不能切换的Build/Plan按钮。已有ThreadComposer和Web均采用共享canUseProviderInteractionModes；CodexProvider声明showInteractionModeToggle=false，GenericAcpDriver声明true，BYOK与原生模式按既有能力决定。先核对当前源码、92项未提交状态与原生环境；没有新供应商能力推断或全局放权。
+
+仅修改NewTaskDraftScreen一处入口，新增共享判断：设备偏好开启、所选模型存在且当前实例/能力允许两态才展示按钮。原生模式菜单、发送快照、运行权限、项目与消息身份、目录入口和缓存不变，无新协议/订阅/动画。原有共享判断负责实例隔离、未知实例、ACP原始模式、OpenCode agent与明确关闭声明；其他实例保持既有兼容行为。本轮按仓库React性能原则使用派生布尔值，不增加effect或独立偏好状态。
+
+纯HEAD候选仅带入这一生产源，相关三文件33项通过：Mobile modelOptions、legacy-plan-mode及共享providerModels；Mobile目标tsgo、单源fmt/lint通过，前后SHA稳定。捕获PID82368/32192/80152/90788均退出0。没有新增镜像断言测试，也没有重复上一主题七文件83项、服务器类型或全仓检查；本轮实际前端路径补充如下。命令和code/pid/stable回执位于工作区外catalog-newtask-toggle-checks.cjs及相应日志/result.json。
+
+按test-codework-mobile继续复用隔离emulator-5562及兼容com.codework.mobile.dev，无原生重建。旧客户端使用上轮已经真实Reload的同一源码，Native Screen SHA为b59dd3a36157ed90c3b9daae3c7d089e0e4a445b2c6db7679ce5d7b4aef1a8c2；捕获旧Metro27852，Android包HTTP200、31,404,243字节、SHA-256 5b64ffa6c1c7f6761a63559e134fd297f9543e455194baa664bbb66c0854d604，与上轮实际加载包一致。通过实际设置页确认本地旧版Plan偏好checked=false，开启后checked=true。一次滚动触发Android最近任务，返回已观察的Code Work卡片后改从内容中部滚动，没有启动其他应用或重启模拟器。没有通过私有存储/隐藏RPC写偏好。
+
+实际旧版新任务选择Codex模式验收模型，菜单原生默认可见；草稿仍显示“交互模式：Build”。点击后继续Build，再打开模型菜单确认原生默认未改变，old-proof记录直接无效入口，未发送测试任务。随后仅停止捕获旧Metro27852，将已测试单源按SHA同步原生副本；修复源SHA cf4c7b7787d8380ae30fc59551fa27ccb15eeb4944ea9445d28fbdd70684b31e。捕获修复Metro52628，Android包HTTP200、31,404,760字节、SHA-256 e2f0482de91f2d08d0477a0b5a8928a1f171c9ef1c40379205f6169ae9201ccd，通过真实Tools→Reload加载。两次编译完成，同一进程在加载期间仍存活，没有据观察延迟重启。
+
+同一客户端及保持开启的设备偏好下，新版Codex草稿不再显示旧两态按钮，模型菜单的原生默认与推理选项保留。切到“可用两态测试”的fixture-acp-model后入口显示Plan，实际点击Plan→Build→Plan；切到“隔离模式验收”的BYOK模型后入口再次隐藏。只读隔离配置核对两实例分别为driver=acpAgent/id=byok和driver=byok/id=byok-fixture，不按显示名称判断类型。ui-proof.valid=true覆盖旧版可见且无效、新版Codex隐藏/原生菜单保留、正向与反向切换、BYOK隐藏及源码SHA。Codex fixture thread/start前后均5、turn/start均16，证明本轮这些草稿动作未新增Codex会话/回合，不扩展为所有provider运行证明。
+
+通过实际设置页再次确认旧版偏好仍checked=true，然后恢复原checked=false；保留旧版线程列表等其他偏好。仅忘记手机13774临时连接，原13773/13811均实际已连接；移除reverse8088，停止捕获修复Metro52628，旧Metro27852也已退出。未改fixture，其SHA与第70主题备份一致；本轮没有新增供应商回合、SQL业务写入或真实账号操作。测试模型选择保留在隔离空草稿，未声称恢复所有草稿字段；模拟器、保留Web/backend与先前验收线程数据不删除。cleanup-proof记录偏好原值/恢复值/恢复核验以及进程和连接边界。
+
+工作区外catalog-newtask-toggle-{old,ui,preference,cleanup}-proof.json、before-counts、native-source、bundle-result及导航XML/PNG保留。可视化目录android-newtask-toggle-{before,after,allowed,byok}.png及android-newtask-toggle-proof.json可查看，截图/脚本不提交。更新providers、comparison及用户模型目录说明；单源加四文档可独立回退，无迁移。
+
+本轮新增Android新任务入口、设备本地设置及实例切换的直接证据，不是通用ACP供应商回合或外部账号验收。Web/Desktop沿用既有共享门控未修改；其余provider按当前实例声明决定，未增加支持能力；设置入口只是偏好开关，实际控制仍在模型/草稿入口。Electron替代自动化授权仍待答复；iOS、ACP实际动态模式、全部入口、远程/relay/tunnel、未知配置编辑、首绘/队列对账及帧率未新增验收。第11项剩余矩阵、完整14/19项及全39项/comparison继续进行。精确提交仍保护原83个无关基线文件、原BYOK/ChatView/ChatComposer混合hunk及92项未提交状态。

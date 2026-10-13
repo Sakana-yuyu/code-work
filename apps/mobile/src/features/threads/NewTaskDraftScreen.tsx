@@ -21,6 +21,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@codework/client-runtime/state/runtime";
+import { canUseProviderInteractionModes } from "@codework/client-runtime/providerModels";
 
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
 import {
@@ -813,6 +814,15 @@ export function NewTaskDraftScreen(props: {
 
   const isAndroid = Platform.OS === "android";
   const isDarkMode = colorScheme === "dark";
+  // 旧版偏好只启用入口；当前实例还必须支持两态，不能与原生模式重复。
+  const showInteractionModeToggle =
+    flow.planModeEnabled &&
+    flow.selectedModel !== null &&
+    canUseProviderInteractionModes(
+      selectedEnvironmentServerConfig?.providers ?? [],
+      flow.selectedModel.instanceId,
+      flow.selectedModelOption?.capabilities,
+    );
   const canStart =
     Boolean(flow.selectedProject) &&
     Boolean(flow.selectedModel) &&
@@ -1028,7 +1038,7 @@ export function NewTaskDraftScreen(props: {
               maxWidth={152}
               onPress={settingsSheetPresentation.open}
             />
-            {flow.planModeEnabled ? (
+            {showInteractionModeToggle ? (
               <ComposerInlineControl
                 accessibilityHint={t("switchesToMode", {
                   value1: flow.interactionMode === "plan" ? "Build" : "Plan",
