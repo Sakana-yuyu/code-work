@@ -275,9 +275,17 @@ export const make = Effect.gen(function* () {
     shouldCache: (value) => value.status !== "failed",
   });
   const fetchCatalog = Effect.fn("ByokCatalog.fetchCatalog")(function* (
-    target: ByokCatalogTarget,
-    options?: { readonly forceRefresh?: boolean; readonly timeoutMs?: number },
+    suppliedTarget: ByokCatalogTarget,
+    suppliedOptions?: { readonly forceRefresh?: boolean; readonly timeoutMs?: number },
   ) {
+    // 键与加载器持有同一份输入，等待中的设置编辑不能把新凭据写入旧配置缓存。
+    const target = {
+      ...suppliedTarget,
+      ...(suppliedTarget.modelCatalogURLs === undefined
+        ? {}
+        : { modelCatalogURLs: [...suppliedTarget.modelCatalogURLs] }),
+    };
+    const options = suppliedOptions === undefined ? undefined : { ...suppliedOptions };
     const forceRefresh = options?.forceRefresh ?? (yield* ProviderCatalogForceRefresh);
     return yield* cache.fetchCatalog({
       key: byokCatalogIdentity(target),

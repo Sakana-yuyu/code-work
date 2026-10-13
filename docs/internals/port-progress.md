@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题                    |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归                       |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                          |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类共享刷新均有预算/资源/信号；横切验收继续）      | ProviderCatalogCache / ByokCatalog / ByokHttpClient / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—58主题完成无会话、十二类目录共享及整轮刷新预算；跨目标取消、共享可写home、模型/模式和完整入口/三端/连接矩阵仍开放 |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类预算/资源/信号及BYOK跨目标验收通过；横切验收继续） | ProviderCatalogCache / ByokCatalog / ByokHttpClient / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—59主题完成无会话、十二类共享刷新及BYOK跨目标取消；共享可写home、模型/模式和完整入口/三端/连接矩阵仍开放 |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                                        |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                                    |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 待实施                                                       | ProviderAdapterCapabilities / server config / 三端控制                                                     | 尚未运行                                                                                                                        |
@@ -1048,3 +1048,19 @@ CursorDriver 接入 registry 持有的 `NativeProviderCatalog`，等价配置完
 旧版公开入口预算对照三类各1项，共3项直接失败：仅在隔离候选恢复第57主题 PifamilyProvider，挂起探针到16秒观察时限仍未完成，`observer reached` 与15000ms消息断言失败。finally 按SHA恢复后同三个用例通过，`catalog-pifamily-native-deadline-proof.json` valid/restored 两轮均 true。主矩阵加 Windows3项和公开预算3项共67个不同用例，诊断及复验不重复计数。
 
 三端既有设置/模型选择、本地/远程/隧道继续使用服务端快照，没有新UI、wire、权限、持久结构或动画。其余provider保持此前增量。本轮没有真实供应商、产品三端或新服务启动，现存服务未加载本主题。回退5源及4文档可恢复第57主题行为，无迁移。原84个无关文件及混合 BYOK/ChatView 改动保留。十二类共享刷新现在均有完整预算和取消资源边界；第11项仍开放跨目录目标取消、Grok显式共享可写home、模型/模式及全部入口/客户端/连接验收，不能据此把第11项或全部39项标为完成。
+
+## 第59主题：BYOK跨目标等待、取消与输入快照
+
+2026-10-13，第58主题提交后继续第11项。用户明确选择“每个实际目录加载共享信号，实例共用15秒等待预算，保留部分重叠目标的在途复用”。该决定澄清取消边界，不缩小原39项及comparison全部清单。现有单目录Scope/controller与引用计数保留，不引入整批独占目录加载。实例预算耗尽只取消自身等待；另一个客户端仍等待同一目录时保留请求，最后等待者离开才取消，跨实例部分重叠目录继续复用。
+
+修复两处输入别名：`ByokCatalog.fetchCatalog` 在第一处异步等待前复制目标、候选地址数组与选项，防止缓存键登记后加载使用编辑过的凭据；`checkByokProviderStatus` 同样冻结适配器列表和候选数组，让后续目标、模型路由和展示使用一轮配置。`checkedAt` 从检查开始改为完成时间。只涉及两个生产文件及一个定向测试文件，不改变schema、会话、权限、余额或持久化结构。原混合ByokProvider的斜杠命令改动从候选与提交中精确排除。
+
+从第58主题HEAD导出纯候选，叠加3源。`vp test run --config .candidate-test.config.ts` 指定 `Layers/ByokProvider.refresh.test.ts`、`Layers/ByokProvider.catalog.test.ts`、`Layers/ByokProvider.test.ts`、`byok/ByokCatalog.signal.test.ts`、`byok/ByokCatalog.test.ts`、`byok/ByokModelDiscoveryService.test.ts`、`byok/byokHttp.test.ts`、`ProviderCatalogCache.test.ts`（均在apps/server/src/provider）：8文件93项通过，6.84秒；日志 `catalog-byok-cross-target-tests-final.log`。其中9项新用例覆盖跨目标15秒、请求与正文取消、短等待者/其他客户端、部分重叠实例、末等待者退出和恢复、配置与键执行冻结、完成时间。既有同键旧值、预算耗尽不启动冷请求、强刷新、草稿入口与凭据隔离测试保持通过。
+
+两个新用例使用本机随机端口的真实Node HTTP服务器、专用HttpClient工厂和实际Fetch。A目录耗时8秒后B正文挂起，剩余7秒到期时：无其他等待者的B收到服务端close收据；有另一个等待者时信号及连接继续有效，实例先返回、另一客户端随后得到完整模型，再释放信号。C冷目录没有收到请求。所有服务器由测试Scope关闭并等待close回执，没有新CLI、后台服务、真实账户、sleep或轮询。测试夹具用Node HTTP观察传输close、注入原生Fetch，因此仅该测试文件按仓库既有格式说明两个Effect诊断例外；生产查询仍走专用HttpClient。
+
+三源目标 `tsgo --noEmit -p apps/server/.streaming-typecheck.json` 退出0无诊断，`vp fmt --check` 与 `vp lint` 退出0无诊断。首次类型检查修正了夹具缺少Schema默认字段和只读数组；`.cmd`直接spawnSync的EINVAL改用已安装tsgo Node入口。真实HTTP初次使用已弃用的it.scoped触发Vitest夹具解析错误，改为现有it.effect+Effect.scoped后通过，生产代码未为这些夹具问题修改；没有全仓检查。
+
+有效旧版对照只在隔离候选恢复第58主题两个生产文件：9项中4项直接断言失败、5项通过，失败分别为request/body的完成时间仍是开始时刻、跨目标加载使用编辑后的地址/密钥/请求头、旧键执行编辑后的地址和密钥。Vitest将两个同断言用例合并输出为一个失败块，因此证据以4个失败用例和3个直接AssertionError块共同校验；不把测试导入或包装器失败当红证据。finally按SHA恢复后9项通过，`catalog-byok-cross-target-red-proof.json` valid/restored均true。此复验属于93项子集，不重复计数。
+
+Web/Desktop/Mobile的设置发现与状态快照继续消费同一服务端入口，本地/远程/隧道规则相同；本主题没有UI、wire或动画变更，也未启动新产品客户端或真实供应商调用，保留实际三端/全部入口/连接验收。其他provider保持前主题行为。回退2生产源、1测试及4文档可恢复第58主题，无迁移。原84个无关文件、ChatView及混合BYOK改动继续保护。第11项仍开放Grok显式共享可写home写入顺序、模型/模式与完整入口/三端/连接矩阵，整个39项及comparison其余要求继续执行，未宣告完成。

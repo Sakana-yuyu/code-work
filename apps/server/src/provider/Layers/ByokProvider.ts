@@ -154,10 +154,19 @@ export function buildInitialByokProviderSnapshot(
 // ── health check ───────────────────────────────────────────────────
 
 export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(function* (
-  byokSettings: ByokSettings,
+  suppliedSettings: ByokSettings,
 ): Effect.fn.Return<ServerProviderDraft, never, ByokCatalog> {
+  // 多目标检查只使用开始时的配置，后续编辑应由下一次刷新读取。
+  const byokSettings = {
+    ...suppliedSettings,
+    adapters: suppliedSettings.adapters.map((adapter) => ({
+      ...adapter,
+      ...(adapter.modelCatalogURLs === undefined
+        ? {}
+        : { modelCatalogURLs: [...adapter.modelCatalogURLs] }),
+    })),
+  };
   const catalog = yield* ByokCatalog;
-  const checkedAt = DateTime.formatIso(yield* DateTime.now);
 
   if (!byokSettings.enabled) {
     return yield* buildInitialByokProviderSnapshot(byokSettings);
@@ -216,7 +225,7 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
   return buildServerProvider({
     presentation: BYOK_PRESENTATION,
     enabled: true,
-    checkedAt,
+    checkedAt: DateTime.formatIso(yield* DateTime.now),
     models,
     probe: {
       installed: true,
