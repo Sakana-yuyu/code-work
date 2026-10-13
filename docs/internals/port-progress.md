@@ -1168,3 +1168,17 @@ Codex 两态控件撤回，三端复用现有通用选项消费。普通发送�
 纯候选从第64主题提交构建，仅1生产源并剥离原ChatView四组hunk。client-runtime/providerModels、Web composerProviderState、composerDraftStore三个文件107项回归通过，Web目标tsgo、单源fmt/lint通过，检查前后SHA稳定。没有为纯状态派生新增镜像测试；实际红绿界面、模型菜单/实施操作、RPC与只读SQLite构成行为证据。原始材料为工作区外 catalog-codex-mode-ui-{core,typecheck-web,format,lint}.log、loaded-source/runtime-proof.json，以及可视化目录中的 codex-native-{mode-menu,plan-ready,implemented,ui-old-no-ready,ui-fixed-ready,new-thread-implemented}.png 和前后DOM证明。
 
 本主题适用于Web及Desktop共用ChatView、现有聊天/模型菜单/计划操作入口；Mobile保留第64主题发送绑定和自身界面，本轮没有新原生客户端运行。旧两态快捷键和斜杠菜单按第63/64主题能力决定，不新增第二套模式探测。模式刷新及本地/远程/隧道仍取同一服务端快照，本轮实际网络为本机配对连接，不宣称公网relay/tunnel、外部Codex或真实订阅账号通过。没有新帧率测量或Electron窗口证据。单源修复与4文档可独立回退，无迁移；精确暂存继续保护83个无关基线文件及BYOK/ChatView/ChatComposer混合改动。保留隔离服务和测试状态供后续完整矩阵使用。第11项、完整能力第14项及全部39项/comparison范围保持进行中。
+
+## 66. 供应商设置连续保存保留编辑意图
+
+第65主题记录的设置丢失已定位：DraftInput 和实例卡片从旧渲染快照构造完整实例，ProviderSettingsPanel 将它与旧 settings 合成完整 providerInstances 映射；服务端明确替换该映射。因此仅由服务端串行写入不能避免后一次名称保存覆盖先前 home 或程序路径。沿用现有 updateSettings 成功回执，不改变 wire 或服务端替换规则。
+
+新增 providerInstanceEdits 小模块，队列只保存 providers/providerInstances 快照。卡片更新串行发送，相对原卡片只重放用户实际改变的字段，采用最新成功回执构造下一映射；对象递归，数组/标量/null和删除键仍替换，未改字段保留最新值。已收到的其他客户端推送在等待中按变化合入，避免较早推送撤销较晚回执；失败不推进、不重试，后续独立编辑仍运行。队列与回调捕获所选环境，不把旧环境的等待编辑送到新环境。添加/删除/重置入口保持原行为，跨客户端未收到推送的同时保存不由本主题宣称完全解决。
+
+纯候选从第65主题 0648bd1ad 构建，仅2生产源、2测试源。执行 `vp test run --config .candidate-test.config.ts` 的 ProviderSettingsPanel.environment、ProviderSettingsPanel.logic、ProviderSettingsForm、providerInstanceEdits、SettingsPanels.logic 五文件，68项通过；Web目标tsgo、4源fmt/lint通过，检查前后SHA稳定。新增5项行为断言覆盖连续三项意图、选定环境、等待中推送、失败不重试及替换/删除语义。首次脚本误用 Form 的 .tsx 扩展只运行53项；修正为实际 .ts 后完成68项。沙箱写工作区外既有隔离目录被拒，使用已授权隔离范围的受审提升完成；失败不计通过。
+
+在所有检查停止后，仅将候选 Panel 恢复为第65主题版本，运行同一“连续home、程序与名称保存”入口测试。旧版收到3次即时写入、期望按队列仅1次，直接 AssertionError、退出1；finally恢复SHA一致，再运行同例退出0。没有以导入错误、等待超时或人为throw充当失败证据。
+
+实际保留 Web 页面在旧源码下连续修改 home、程序路径和名称，最终名称与 home 保留但程序路径回到旧 codex-fixture.cmd，独立 userdata/settings.json 与页面一致。加载经测试且SHA一致的 helper和Panel后，用同样连续失焦步骤改为测试 home、codex-fixture-alt.cmd及“Codex 连续保存修复”，页面与只读设置文件三项均保留；点击状态刷新从新路径获得受控模型/模式目录，重开页面三项仍在。只使用工作区外合成账号、受控 .cmd/Node与既有配对测试环境，无真实凭据或外部推理。截图显示的订阅标签是fixture响应，不能视为真实订阅验收。
+
+原始证据为工作区外 catalog-provider-edit-intent-{core,typecheck-web,format,lint,old,green}.log、old-proof、ui-{old,fixed,source}.json及可视化目录 provider-edit-{old,fixed}.png。Web/Desktop共用设置卡片适用十二类driver，聊天模式菜单/快捷键/斜杠不增加入口；Mobile独立设置未改变，本轮没有Electron、Android、iOS或公网relay/tunnel实际运行。既有本地/远程/隧道设置RPC规则不变，没有动画、全局订阅、新会话、额外刷新或数据迁移；未重新测帧率。回退2生产、2测试及4文档恢复第65主题。精确提交继续保护83个无关基线文件及BYOK/ChatView/ChatComposer混合hunk。第11项、完整能力第14项和全部39项/comparison继续进行，剩余客户端/入口/连接矩阵保留。

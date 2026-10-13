@@ -6,6 +6,7 @@ import {
   ProviderInstanceId,
   type ServerProvider,
   type UnifiedSettings,
+  type ProviderInstanceConfig,
 } from "@codework/contracts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -179,6 +180,45 @@ describe("EnvironmentProviderSettings routing", () => {
     commands.refresh.mockReset().mockResolvedValue({ _tag: "Success" });
     commands.updateProvider.mockReset().mockResolvedValue({ _tag: "Success" });
     commands.updateSettings.mockReset().mockResolvedValue({ _tag: "Success" });
+  });
+
+  it("连续home、程序与名称保存保留三项意图，并使用选定环境", async () => {
+    const original: ProviderInstanceConfig = {
+      driver: ProviderDriverKind.make("codex"),
+      enabled: false,
+      config: { homePath: "old", binaryPath: "old" },
+    };
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: { [codexId]: original },
+    };
+    let release!: (value: unknown) => void;
+    const firstReceipt = new Promise<unknown>((resolve) => (release = resolve));
+    settingsState.updateSettings.mockImplementation(async (patch) => {
+      if (settingsState.updateSettings.mock.calls.length === 1) return firstReceipt;
+      return { _tag: "Success", value: { ...DEFAULT_UNIFIED_SETTINGS, ...patch } };
+    });
+    const panel = renderPanel();
+    const card = visitElements(
+      panel,
+      (element) => element.props.instanceId === codexId && element.props.mode === "editor",
+    );
+    expect(card).not.toBeNull();
+    const update = card!.props.onUpdate as (next: ProviderInstanceConfig) => Promise<unknown>;
+    const first = update({ ...original, config: { homePath: "new-home", binaryPath: "old" } });
+    const second = update({ ...original, config: { homePath: "old", binaryPath: "fixture.cmd" } });
+    const third = update({ ...original, displayName: "测试名称" });
+    expect(settingsState.updateSettings).toHaveBeenCalledTimes(1);
+    release({
+      _tag: "Success",
+      value: { ...DEFAULT_UNIFIED_SETTINGS, ...settingsState.updateSettings.mock.calls[0]![0] },
+    });
+    await Promise.all([first, second, third]);
+    expect(settingsState.updateSettings).toHaveBeenCalledTimes(3);
+    expect(settingsState.updateSettings.mock.calls[2]![0].providerInstances[codexId]).toMatchObject(
+      { displayName: "测试名称", config: { homePath: "new-home", binaryPath: "fixture.cmd" } },
+    );
+    expect(settingsState.updateEnvironmentIds).toEqual([environmentId]);
   });
 
   it("coalesces a nullable provider snapshot before rendering array-backed UI", () => {

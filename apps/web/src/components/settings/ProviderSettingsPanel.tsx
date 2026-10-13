@@ -14,6 +14,7 @@ import {
   type ProviderInstanceConfig,
   ProviderInstanceId,
   resolveProviderInstanceEnabled,
+  ServerSettings,
 } from "@codework/contracts";
 import { DEFAULT_UNIFIED_SETTINGS } from "@codework/contracts/settings";
 import {
@@ -24,6 +25,7 @@ import * as Arr from "effect/Array";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
 import * as Result from "effect/Result";
+import * as Schema from "effect/Schema";
 import {
   ChevronDownIcon,
   CloudIcon,
@@ -80,6 +82,7 @@ import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 import { FacilitiesPageHeader } from "./FacilitiesPageHeader";
 import { FacilitiesQuickGuide } from "./FacilitiesQuickGuide";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
+import { makeProviderInstanceEditQueue } from "./providerInstanceEdits";
 import { ByokModelAdaptersSection, readByokModelAdapters } from "./ByokModelAdaptersSection";
 import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
 import { providerSettingsTabClassName } from "./providerSettingsTabs";
@@ -131,6 +134,7 @@ function withoutProviderInstanceFavorites(
 const PROVIDER_SETTINGS = DRIVER_OPTIONS.map((definition) => ({
   provider: definition.value,
 }));
+const isServerSettings = Schema.is(ServerSettings);
 
 function ProviderLastChecked({ lastCheckedAt }: { lastCheckedAt: string | null }) {
   useRelativeTimeTick();
@@ -488,6 +492,18 @@ export function EnvironmentProviderSettings({
     );
   }, []);
   const updateSettings = useUpdateEnvironmentSettings(environmentId, reportSettingsUpdateFailure);
+  const providerEditOwner = useRef<{
+    environmentId: EnvironmentId;
+    queue: ReturnType<typeof makeProviderInstanceEditQueue>;
+  } | null>(null);
+  if (
+    providerEditOwner.current === null ||
+    providerEditOwner.current.environmentId !== environmentId
+  ) {
+    providerEditOwner.current = { environmentId, queue: makeProviderInstanceEditQueue(settings) };
+  }
+  const providerEdits = providerEditOwner.current.queue;
+  providerEdits.sync(settings);
   const serverProviders =
     useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
   const refreshServerProviders = useAtomCommand(serverEnvironment.refreshProviders, {
@@ -770,15 +786,18 @@ export function EnvironmentProviderSettings({
       >[0]["textGenerationModelSelection"];
     },
   ) => {
-    return updateSettings(
-      buildProviderInstanceUpdatePatch({
-        settings,
+    return providerEdits.edit(
+      {
         instanceId: row.instanceId,
         instance: next,
+        previous: row.instance,
         driver: row.driver,
         isDefault: row.isDefault,
         textGenerationModelSelection: options?.textGenerationModelSelection,
-      }),
+      },
+      updateSettings,
+      (result) =>
+        result?._tag === "Success" && isServerSettings(result.value) ? result.value : undefined,
     );
   };
 

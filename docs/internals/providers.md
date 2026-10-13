@@ -325,6 +325,12 @@ rollbacks live in `docs/internals/*-acp-provider.md` and [paseo-provider-catalog
 
 ## 接入范围与验证方法
 
+### 连续保存实例设置
+
+Web/Desktop 的供应商卡片仍提交完整 `providerInstances` 映射，服务端保持替换语义。表单连续失焦可能从同一个旧渲染快照构造三个实例，直接并发发送会让后来的名称保存覆盖之前的 home 或程序路径。`providerInstanceEdits` 将卡片更新按所选环境串行提交，以验证过的 `server.updateSettings` 成功回执作为下一次基础，只重放相对卡片旧实例实际改变的字段。对象递归重放；删除键、数组、标量与 null 保持替换，未改字段保留最新值。等待中的设置推送按相对上一推送的变化合入，失败不推进回执、不自动重试，之后的编辑仍可执行。
+
+每次渲染捕获所属环境的队列和已有写入入口，切换环境不会将旧回调改送到新环境。该队列只覆盖既有卡片更新入口，没有新增协议、目录探测、权限或服务端设置合并方式；添加、删除、重置仍走原入口。十二类 driver 共用此卡片规则，不改变其目录与运行绑定。第66主题的旧版直接失败、实际隔离 Web 连续编辑与目录刷新证据见 [移植进度](./port-progress.md)；Mobile 独立设置路径及最终多客户端并发矩阵继续验收，单客户端队列不能保证未收到推送的跨客户端同时写入无冲突。
+
 ### 当前实例的模式入口
 
 `client-runtime/providerModels` 的 `canUseProviderInteractionModes` 只读取当前 `instanceId` 的声明及当前模型能力，不按 driver 借用默认实例。已提供 `acpMode` 的模型使用原生选项；OpenCode 的 `agent` 选项同样替代旧两态控件。Web 的 Add 菜单、斜杠与 Shift+Tab 共用判断，Mobile 的斜杠菜单使用同一共享函数。普通发送、编辑重发、计划续接与 Mobile outbox 通过 `resolveProviderInteractionMode` 清除明确不支持实例的旧 plan 参数；离线且没有实例快照时保留请求模式。
