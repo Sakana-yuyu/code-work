@@ -1,4 +1,9 @@
-import { GrokSettings, ProviderDriverKind, type ServerProvider } from "@codework/contracts";
+import {
+  GrokSettings,
+  ProviderDriverKind,
+  type ServerProvider,
+  ServerSettingsError,
+} from "@codework/contracts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -14,6 +19,7 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeGrokTextGeneration } from "../../textGeneration/GrokTextGeneration.ts";
 import { ProviderDriverError } from "../Errors.ts";
+import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
 import {
   BYOK_GATEWAY_TOKEN_ENV,
   prepareRoutedProviderSnapshot,
@@ -111,7 +117,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
   },
   configSchema: GrokSettings,
   defaultConfig: (): GrokSettings => decodeGrokSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
+  create: ({ instanceId, displayName, accentColor, environment, enabled, config, catalog }) =>
     Effect.gen(function* () {
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -123,6 +129,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
       const secretStore = yield* ServerSecretStore;
       const fileSystem = yield* FileSystem.FileSystem;
       const pathService = yield* Path.Path;
+      const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
       const inheritedEnv = mergeProviderInstanceEnvironment(environment);
       const routed = config.routeThroughByok === true;
       const grokHome = resolveGrokHome({
@@ -165,7 +172,6 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
 
       // 官方 GROK_HOME 同时隔离配置、认证和会话；只维护隔离目录中的模型块。
       const reconcileGrokRoutedConfigFile = Effect.gen(function* () {
-        if (isDefaultGrokHome(grokHome)) return;
         const configFilePath = pathService.join(grokHome, "config.toml");
         const existing = yield* fileSystem
           .readFileString(configFilePath)
@@ -176,6 +182,8 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
                 : Effect.fail(error),
             ),
           );
+        // 个人目录只读；内容参与目录身份，手工修改配置也不会误命中旧结果。
+        if (isDefaultGrokHome(grokHome)) return existing;
         if (existing === undefined && config.routeThroughByok !== true) return;
         let managedBlock: string | null = null;
         if (config.routeThroughByok === true) {
@@ -187,11 +195,12 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
           );
         }
         const merged = mergeGrokManagedConfig(existing, managedBlock);
-        if (merged === (existing ?? "")) return;
+        if (merged === (existing ?? "")) return merged;
         yield* writeFileStringAtomically({ filePath: configFilePath, contents: merged }).pipe(
           Effect.provideService(FileSystem.FileSystem, fileSystem),
           Effect.provideService(Path.Path, pathService),
         );
+        return merged;
       }).pipe(
         Effect.mapError(
           (cause) =>
@@ -202,7 +211,6 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
               cause,
             }),
         ),
-        Effect.asVoid,
       );
       yield* reconcileGrokRoutedConfigFile;
 
@@ -213,7 +221,26 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
       });
       const textGeneration = yield* makeGrokTextGeneration(effectiveConfig, processEnv);
 
-      const checkProvider = checkGrokProviderStatus(effectiveConfig, processEnv, cwd).pipe(
+      // 先更新实际模型路由，再用写入后的配置读取目录；键不选择执行环境。
+      const checkProvider = reconcileGrokRoutedConfigFile.pipe(
+        Effect.mapError(
+          (cause) =>
+            new ServerSettingsError({
+              settingsPath: pathService.join(grokHome, "config.toml"),
+              operation: "normalize",
+              providerInstanceId: instanceId,
+              cause,
+            }),
+        ),
+        Effect.flatMap((configFileContents) =>
+          checkGrokProviderStatus(
+            effectiveConfig,
+            processEnv,
+            cwd,
+            providerCatalog,
+            configFileContents,
+          ),
+        ),
         Effect.map(stampIdentity),
         Effect.provideService(Crypto.Crypto, crypto),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -228,23 +255,17 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
         initialSnapshot: (settings) =>
           buildInitialGrokProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
         checkProvider,
+        usesCatalogCache: true,
         prepareSnapshot: (snapshot) =>
           prepareRoutedProviderSnapshot(snapshot, config, serverSettings.getSettings),
         enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
-          reconcileGrokRoutedConfigFile.pipe(
-            Effect.andThen(
-              Effect.suspend(() =>
-                enrichGrokSnapshot({
-                  snapshot,
-                  maintenanceCapabilities,
-                  enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
-                  publishSnapshot,
-                  httpClient,
-                }),
-              ),
-            ),
-            Effect.orDie,
-          ),
+          enrichGrokSnapshot({
+            snapshot,
+            maintenanceCapabilities,
+            enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+            publishSnapshot,
+            httpClient,
+          }),
       }).pipe(
         Effect.mapError(
           (cause) =>

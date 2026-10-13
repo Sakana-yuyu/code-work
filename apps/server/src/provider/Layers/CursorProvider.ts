@@ -1,12 +1,13 @@
 import * as NodeOS from "node:os";
-import type {
-  CursorSettings,
-  ModelCapabilities,
-  ProviderOptionSelection,
-  ServerProvider,
-  ServerProviderAuth,
-  ServerProviderModel,
-  ServerProviderState,
+import {
+  ProviderDriverKind,
+  type CursorSettings,
+  type ModelCapabilities,
+  type ProviderOptionSelection,
+  type ServerProvider,
+  type ServerProviderAuth,
+  type ServerProviderModel,
+  type ServerProviderState,
 } from "@codework/contracts";
 import type * as EffectAcpSchema from "effect-acp/schema";
 import { causeErrorTag } from "@codework/shared/observability";
@@ -29,6 +30,7 @@ import {
   getProviderOptionStringSelectionValue,
 } from "@codework/shared/model";
 import { resolveSpawnCommand } from "@codework/shared/shell";
+import { HostProcessEnvironment, HostProcessWorkingDirectory } from "@codework/shared/hostProcess";
 
 import {
   buildBooleanOptionDescriptor,
@@ -46,6 +48,11 @@ import {
 } from "../providerMaintenance.ts";
 import * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import { CursorListAvailableModelsResponse } from "../acp/CursorAcpExtension.ts";
+import {
+  cliProviderCatalogIdentity,
+  makeCliProviderCatalog,
+  type CliProviderCatalog,
+} from "../CliProviderCatalog.ts";
 
 const decodeCursorListAvailableModelsResponse = Schema.decodeUnknownEffect(
   CursorListAvailableModelsResponse,
@@ -401,8 +408,9 @@ function buildCursorDiscoveredModelsFromAvailableModelsResponse(
 }
 
 const makeCursorAcpProbeRuntime = (
-  cursorSettings: CursorSettings,
-  environment?: NodeJS.ProcessEnv,
+  cursorSettings: Pick<CursorSettings, "binaryPath" | "apiEndpoint">,
+  environment: NodeJS.ProcessEnv,
+  cwd: string,
 ) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -414,10 +422,11 @@ const makeCursorAcpProbeRuntime = (
             ...(cursorSettings.apiEndpoint ? (["-e", cursorSettings.apiEndpoint] as const) : []),
             "acp",
           ],
-          cwd: process.cwd(),
-          ...(environment ? { env: environment } : {}),
+          cwd,
+          env: environment,
+          extendEnv: false,
         },
-        cwd: process.cwd(),
+        cwd,
         clientInfo: { name: "code-work-provider-probe", version: "0.0.0" },
         authMethodId: "cursor_login",
         clientCapabilities: CURSOR_PARAMETERIZED_MODEL_PICKER_CAPABILITIES,
@@ -429,11 +438,12 @@ const makeCursorAcpProbeRuntime = (
   });
 
 const withCursorAcpProbeRuntime = <A, E, R>(
-  cursorSettings: CursorSettings,
+  cursorSettings: Pick<CursorSettings, "binaryPath" | "apiEndpoint">,
   useRuntime: (acp: AcpSessionRuntime.AcpSessionRuntime["Service"]) => Effect.Effect<A, E, R>,
-  environment?: NodeJS.ProcessEnv,
+  environment: NodeJS.ProcessEnv,
+  cwd: string,
 ) =>
-  makeCursorAcpProbeRuntime(cursorSettings, environment).pipe(
+  makeCursorAcpProbeRuntime(cursorSettings, environment, cwd).pipe(
     Effect.flatMap(useRuntime),
     Effect.scoped,
   );
@@ -551,8 +561,9 @@ export function resolveCursorAcpConfigUpdates(
 }
 
 const discoverCursorModelsViaListAvailableModels = (
-  cursorSettings: CursorSettings,
-  environment?: NodeJS.ProcessEnv,
+  cursorSettings: Pick<CursorSettings, "binaryPath" | "apiEndpoint">,
+  environment: NodeJS.ProcessEnv,
+  cwd: string,
 ) =>
   withCursorAcpProbeRuntime(
     cursorSettings,
@@ -564,12 +575,52 @@ const discoverCursorModelsViaListAvailableModels = (
         return buildCursorDiscoveredModelsFromAvailableModelsResponse(decoded);
       }),
     environment,
+    cwd,
   );
 
-export const discoverCursorModelsViaAcp = (
+const snapshotCursorEnvironment = Effect.fn("snapshotCursorEnvironment")(function* (
+  environment?: NodeJS.ProcessEnv,
+) {
+  const snapshot = { ...(yield* HostProcessEnvironment) };
+  if (environment) {
+    // 保留 ACP 原有夹具隔离：显式环境没有声明的测试开关不能从宿主泄漏。
+    for (const key of Object.keys(snapshot)) {
+      if (key.startsWith("CODEWORK_ACP_") && !Object.hasOwn(environment, key)) delete snapshot[key];
+    }
+    Object.assign(snapshot, environment);
+  }
+  return snapshot;
+});
+
+export const discoverCursorModelsViaAcp = Effect.fn("discoverCursorModelsViaAcp")(function* (
   cursorSettings: CursorSettings,
   environment?: NodeJS.ProcessEnv,
-) => discoverCursorModelsViaListAvailableModels(cursorSettings, environment);
+  sharedCatalog?: CliProviderCatalog,
+) {
+  const cwd = yield* HostProcessWorkingDirectory;
+  const resolvedEnvironment = yield* snapshotCursorEnvironment(environment);
+  const probeSettings = {
+    binaryPath: cursorSettings.binaryPath,
+    apiEndpoint: cursorSettings.apiEndpoint,
+  };
+  const catalog = sharedCatalog ?? (yield* makeCliProviderCatalog());
+  const result = yield* catalog.fetchCatalog({
+    key: cliProviderCatalogIdentity({
+      driver: ProviderDriverKind.make("cursor"),
+      operation: "cursor/list_available_models",
+      config: {
+        ...probeSettings,
+        clientCapabilities: CURSOR_PARAMETERIZED_MODEL_PICKER_CAPABILITIES,
+      },
+      cwd,
+      environment: resolvedEnvironment,
+    }),
+    load: discoverCursorModelsViaListAvailableModels(probeSettings, resolvedEnvironment, cwd).pipe(
+      Effect.map((models) => ({ models })),
+    ),
+  });
+  return result.models;
+});
 
 export function getCursorFallbackModels(
   cursorSettings: Pick<CursorSettings, "customModels">,
@@ -944,17 +995,20 @@ export function parseCursorAboutOutput(result: CommandResult): CursorAboutResult
 const runCursorCommand = (
   cursorSettings: CursorSettings,
   args: ReadonlyArray<string>,
-  environment?: NodeJS.ProcessEnv,
+  environment: NodeJS.ProcessEnv,
+  cwd: string,
 ) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const spawnCommand = yield* resolveSpawnCommand(
-      cursorSettings.binaryPath,
-      args,
-      environment ? { env: environment } : {},
-    );
+    const spawnCommand = yield* resolveSpawnCommand(cursorSettings.binaryPath, args, {
+      env: environment,
+      extendEnv: false,
+      cwd,
+    });
     const command = ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-      ...(environment ? { env: environment } : { extendEnv: true }),
+      env: environment,
+      extendEnv: false,
+      cwd,
       shell: spawnCommand.shell,
     });
 
@@ -971,22 +1025,28 @@ const runCursorCommand = (
     return { stdout, stderr, code: exitCode } satisfies CommandResult;
   }).pipe(Effect.scoped);
 
-const runCursorAboutCommand = (cursorSettings: CursorSettings, environment?: NodeJS.ProcessEnv) =>
+const runCursorAboutCommand = (
+  cursorSettings: CursorSettings,
+  environment: NodeJS.ProcessEnv,
+  cwd: string,
+) =>
   Effect.gen(function* () {
     const jsonResult = yield* runCursorCommand(
       cursorSettings,
       ["about", "--format", "json"],
       environment,
+      cwd,
     );
     if (!isCursorAboutJsonFormatUnsupported(jsonResult)) {
       return jsonResult;
     }
-    return yield* runCursorCommand(cursorSettings, ["about"], environment);
+    return yield* runCursorCommand(cursorSettings, ["about"], environment, cwd);
   });
 
 export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(function* (
   cursorSettings: CursorSettings,
   environment?: NodeJS.ProcessEnv,
+  catalog?: CliProviderCatalog,
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
@@ -994,6 +1054,8 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
 > {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const fallbackModels = getCursorFallbackModels(cursorSettings);
+  const cwd = yield* HostProcessWorkingDirectory;
+  const resolvedEnvironment = yield* snapshotCursorEnvironment(environment);
 
   if (!cursorSettings.enabled) {
     return buildServerProvider({
@@ -1012,7 +1074,7 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
   }
 
   // Single `agent about` probe: returns version + auth status in one call.
-  const aboutProbe = yield* runCursorAboutCommand(cursorSettings, environment).pipe(
+  const aboutProbe = yield* runCursorAboutCommand(cursorSettings, resolvedEnvironment, cwd).pipe(
     Effect.timeoutOption(ABOUT_TIMEOUT_MS),
     Effect.result,
   );
@@ -1084,7 +1146,9 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
   let discoveryWarning: string | undefined;
   if (parsed.auth.status !== "unauthenticated") {
     const discoveryExit = yield* Effect.exit(
-      discoverCursorModelsViaAcp(cursorSettings, environment).pipe(
+      discoverCursorModelsViaAcp(cursorSettings, resolvedEnvironment, catalog).pipe(
+        Effect.provideService(HostProcessEnvironment, resolvedEnvironment),
+        Effect.provideService(HostProcessWorkingDirectory, cwd),
         Effect.timeoutOption(CURSOR_ACP_MODEL_DISCOVERY_TIMEOUT_MS),
       ),
     );

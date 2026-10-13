@@ -33,6 +33,7 @@ import type * as Scope from "effect/Scope";
 import type * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import type { ByokAgentModelDriver } from "../composition/ByokAgentLoop.ts";
 import type { CompositionAgentServiceError } from "../composition/CompositionAgentService.ts";
+import type { CliProviderCatalog } from "./CliProviderCatalog.ts";
 import type { ProviderAdapterError, ProviderDriverError } from "./Errors.ts";
 import type { ProviderAdapterShape } from "./Services/ProviderAdapter.ts";
 import type { ServerProviderShape } from "./Services/ServerProvider.ts";
@@ -67,10 +68,8 @@ export interface ProviderCompositionModelDescriptor {
  * One materialized provider instance. Held by the registry, looked up by
  * `instanceId`, torn down by closing the scope it was created in.
  *
- * The three "shape" fields are captured closures owned by this instance —
- * stopping one instance cannot affect another, and starting a second
- * instance of the same driver does not reach into the first instance's
- * state.
+ * 三个 shape 的会话与运行时状态由各自实例持有，停止一个实例不能影响另一个。
+ * 目录查询可通过注册表复用只读结果和在途加载，不共享 adapter 或会话状态。
  */
 export interface ProviderInstance {
   readonly instanceId: ProviderInstanceId;
@@ -122,6 +121,8 @@ export interface ProviderDriverCreateInput<Config> {
   readonly environment: ProviderInstanceEnvironment;
   readonly enabled: boolean;
   readonly config: Config;
+  /** 注册表内共享只读目录结果；直接创建 driver 时可省略并使用独立缓存。 */
+  readonly catalog?: CliProviderCatalog;
 }
 
 /**
@@ -132,10 +133,9 @@ export interface ProviderDriverCreateInput<Config> {
  * services the driver depends on; the registry layer aggregates `R` across
  * all registered drivers and the runtime supplies them.
  *
- * `create` is responsible for *all* per-instance state — process handles,
- * pubsub topics, refs, file watchers — and must release them when its
- * scope closes. Two calls to `create` with different `instanceId` /
- * `config` MUST yield instances with no shared mutable state.
+ * `create` 负责各实例的进程、PubSub、Ref 与文件监听，并在自己的 Scope 关闭时释放。
+ * 不同实例的 adapter、会话及运行时状态必须隔离；只有目录只读值和目录加载可通过
+ * 输入中的 catalog 共享，不能把实例执行上下文存入完成缓存。
  */
 export interface ProviderDriver<Config, R = never> {
   readonly driverKind: ProviderDriverKind;

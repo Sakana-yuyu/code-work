@@ -1,6 +1,7 @@
 import {
   type GrokSettings,
   type ModelCapabilities,
+  ProviderDriverKind,
   type ServerProvider,
   type ServerProviderModel,
 } from "@codework/contracts";
@@ -19,6 +20,7 @@ import { HttpClient } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { createModelCapabilities } from "@codework/shared/model";
 import { resolveSpawnCommand } from "@codework/shared/shell";
+import { HostProcessEnvironment, HostProcessWorkingDirectory } from "@codework/shared/hostProcess";
 
 import {
   buildServerProvider,
@@ -39,6 +41,11 @@ import {
 } from "../acp/GrokAcpSupport.ts";
 import * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import { discoverGrokSkills } from "../Drivers/GrokSkills.ts";
+import {
+  cliProviderCatalogIdentity,
+  makeCliProviderCatalog,
+  type CliProviderCatalog,
+} from "../CliProviderCatalog.ts";
 
 const GROK_PRESENTATION = {
   displayName: "Grok",
@@ -240,14 +247,14 @@ function buildGrokDiscoveredModelsFromSessionModelState(
 
 const discoverGrokModelsViaAcp = (
   grokSettings: GrokSettings,
-  environment: NodeJS.ProcessEnv = process.env,
+  environment: NodeJS.ProcessEnv,
+  cwd: string,
 ) =>
   Effect.gen(function* () {
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const cwd = process.cwd();
     const context = yield* Layer.build(
       AcpSessionRuntime.layer({
-        spawn: buildGrokAcpSpawnInput(grokSettings, cwd, environment),
+        spawn: { ...buildGrokAcpSpawnInput(grokSettings, cwd, environment), extendEnv: false },
         cwd,
         // 与 CLI 的目录命令一致：读目录只握手，不触发认证写入或创建会话。
         authMethodId: "",
@@ -280,17 +287,22 @@ const discoverGrokModelsViaAcp = (
 
 const runGrokVersionCommand = (
   grokSettings: GrokSettings,
-  environment: NodeJS.ProcessEnv = process.env,
+  environment: NodeJS.ProcessEnv,
+  cwd: string,
 ) =>
   Effect.gen(function* () {
     const command = grokSettings.binaryPath || "grok";
     const spawnCommand = yield* resolveSpawnCommand(command, ["--version"], {
+      cwd,
       env: environment,
+      extendEnv: false,
     });
     return yield* spawnAndCollect(
       command,
       ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+        cwd,
         env: environment,
+        extendEnv: false,
         shell: spawnCommand.shell,
       }),
     );
@@ -298,8 +310,11 @@ const runGrokVersionCommand = (
 
 export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(function* (
   grokSettings: GrokSettings,
-  environment: NodeJS.ProcessEnv = process.env,
+  environment?: NodeJS.ProcessEnv,
   cwd?: string,
+  catalog?: CliProviderCatalog,
+  // 共享缓存的生产调用由 Driver 在路由协调后提供实际文件快照。
+  configFileContents?: string,
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
@@ -307,6 +322,21 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
 > {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const fallbackModels = grokModelsFromSettings(grokSettings.customModels);
+  const inheritedEnvironment = { ...(yield* HostProcessEnvironment) };
+  if (environment) {
+    // 与 ACP 原有隔离规则一致：仅显式传入的模拟协议开关才能传给子进程。
+    for (const key of Object.keys(inheritedEnvironment)) {
+      if (key.startsWith("CODEWORK_ACP_") && !Object.hasOwn(environment, key)) {
+        delete inheritedEnvironment[key];
+      }
+    }
+  }
+  const processEnvironment = { ...inheritedEnvironment, ...environment };
+  const modelWorkingDirectory = yield* HostProcessWorkingDirectory;
+  const workingDirectory = cwd ?? modelWorkingDirectory;
+  const modelEnvironment =
+    buildGrokAcpSpawnInput(grokSettings, modelWorkingDirectory, processEnvironment).env ??
+    processEnvironment;
 
   if (!grokSettings.enabled) {
     return buildServerProvider({
@@ -324,10 +354,11 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
     });
   }
 
-  const versionResult = yield* runGrokVersionCommand(grokSettings, environment).pipe(
-    Effect.timeoutOption(VERSION_PROBE_TIMEOUT_MS),
-    Effect.result,
-  );
+  const versionResult = yield* runGrokVersionCommand(
+    grokSettings,
+    processEnvironment,
+    modelWorkingDirectory,
+  ).pipe(Effect.timeoutOption(VERSION_PROBE_TIMEOUT_MS), Effect.result);
 
   if (Result.isFailure(versionResult)) {
     const error = versionResult.failure;
@@ -390,9 +421,28 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
     });
   }
 
-  const skills = yield* discoverGrokSkills(grokSettings, environment, cwd);
+  const skills = yield* discoverGrokSkills(grokSettings, processEnvironment, workingDirectory);
 
-  const discoveryExit = yield* discoverGrokModelsViaAcp(grokSettings, environment).pipe(
+  const discoverModels = discoverGrokModelsViaAcp(
+    grokSettings,
+    modelEnvironment,
+    modelWorkingDirectory,
+  );
+  const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
+  const modelCatalog = providerCatalog
+    .fetchCatalog({
+      key: cliProviderCatalogIdentity({
+        driver: ProviderDriverKind.make("grok"),
+        operation: GROK_MODELS_LIST_METHOD,
+        config: { binaryPath: grokSettings.binaryPath || "grok", version, configFileContents },
+        cwd: modelWorkingDirectory,
+        environment: modelEnvironment,
+      }),
+      // 自定义模型属于实例设置，只在共享原生目录返回后合并。
+      load: discoverModels.pipe(Effect.map((models) => ({ models }))),
+    })
+    .pipe(Effect.map((result) => result.models));
+  const discoveryExit = yield* modelCatalog.pipe(
     Effect.timeoutOption(GROK_ACP_MODEL_DISCOVERY_TIMEOUT_MS),
     Effect.exit,
   );

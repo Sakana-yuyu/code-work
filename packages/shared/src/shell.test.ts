@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off
+// 同步启动解析器直接调用 node:fs，此处替换其边界以隔离宿主文件系统。
+import * as NodeFS from "node:fs";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it as effectIt } from "@effect/vitest";
 import { HostProcessEnvironment, HostProcessPlatform } from "@codework/shared/hostProcess";
@@ -21,9 +24,32 @@ import {
   resolveSpawnCommand,
   resolveWindowsEnvironment,
   SpawnExecutableResolution,
+  type SpawnExecutableResolver,
   WindowsShellEnvironment,
   type WindowsShellEnvironmentReader,
 } from "./shell.ts";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, statSync: vi.fn(actual.statSync) };
+});
+
+const withSpawnExecutableFiles = Effect.fn("withSpawnExecutableFiles")(function* <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  files: ReadonlyArray<string>,
+) {
+  const executableStat = NodeFS.statSync(process.execPath);
+  return yield* Effect.acquireUseRelease(
+    Effect.sync(() =>
+      vi.mocked(NodeFS.statSync).mockImplementation((candidate) => {
+        if (files.includes(String(candidate))) return executableStat;
+        throw new Error("测试路径不存在");
+      }),
+    ),
+    () => effect,
+    (stat) => Effect.sync(() => stat.mockRestore()),
+  );
+});
 
 const withWindowsEnvironmentMocks = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
@@ -370,6 +396,105 @@ effectIt.layer(NodeServices.layer)("resolveCommandPath", (it) => {
 });
 
 effectIt.layer(NodeServices.layer)("resolveSpawnCommand", (it) => {
+  it.effect("向可执行文件解析器传递子进程cwd及实际环境", () =>
+    Effect.gen(function* () {
+      const resolver = vi.fn<SpawnExecutableResolver>(() => undefined);
+      const env = { PATH: "bin", PATHEXT: ".CMD" };
+      yield* resolveSpawnCommand("agent", [], { cwd: "D:\\chosen", env }).pipe(
+        Effect.provideService(HostProcessPlatform, "win32"),
+        Effect.provideService(SpawnExecutableResolution, resolver),
+      );
+      expect(resolver).toHaveBeenCalledWith("agent", "win32", env, "D:\\chosen");
+      yield* resolveSpawnCommand("agent", [], { env }).pipe(
+        Effect.provideService(HostProcessPlatform, "win32"),
+        Effect.provideService(SpawnExecutableResolution, resolver),
+      );
+      expect(resolver).toHaveBeenLastCalledWith("agent", "win32", env, undefined);
+    }),
+  );
+
+  for (const cwd of [undefined, "D:\\chosen"]) {
+    it.effect(`${cwd ? "指定cwd" : "默认cwd"}解析无扩展名相对cmd入口`, () =>
+      Effect.gen(function* () {
+        const resolved = yield* withSpawnExecutableFiles(
+          resolveSpawnCommand(".\\bin\\agent", ["hello"], {
+            ...(cwd === undefined ? {} : { cwd }),
+            env: { PATH: "", PATHEXT: ".CMD" },
+          }).pipe(Effect.provideService(HostProcessPlatform, "win32")),
+          [".\\bin\\agent.CMD", "D:\\chosen\\bin\\agent.CMD"],
+        );
+        expect(resolved).toEqual({
+          command: cwd ? '^"D:\\chosen\\bin\\agent.CMD^"' : '^".\\bin\\agent.CMD^"',
+          args: ['^"hello^"'],
+          shell: true,
+        });
+      }),
+    );
+
+    it.effect(`${cwd ? "指定cwd" : "默认cwd"}解析相对PATH条目`, () =>
+      Effect.gen(function* () {
+        const resolved = yield* withSpawnExecutableFiles(
+          resolveSpawnCommand("agent", [], {
+            ...(cwd === undefined ? {} : { cwd }),
+            env: { PATH: '"bin";E:\\fallback', PATHEXT: ".CMD" },
+          }).pipe(Effect.provideService(HostProcessPlatform, "win32")),
+          ["bin\\agent.CMD", "D:\\chosen\\bin\\agent.CMD", "E:\\fallback\\agent.CMD"],
+        );
+        expect(resolved.command).toBe(
+          cwd ? '^"D:\\chosen\\bin\\agent.CMD^"' : '^"bin\\agent.CMD^"',
+        );
+        expect(resolved.shell).toBe(true);
+      }),
+    );
+  }
+
+  it.effect("指定cwd不改写绝对命令或绝对PATH条目", () =>
+    Effect.gen(function* () {
+      for (const command of ["E:\\absolute\\agent", "agent"]) {
+        const resolved = yield* withSpawnExecutableFiles(
+          resolveSpawnCommand(command, [], {
+            cwd: "D:\\chosen",
+            env: { PATH: "E:\\absolute", PATHEXT: ".CMD" },
+          }).pipe(Effect.provideService(HostProcessPlatform, "win32")),
+          ["E:\\absolute\\agent.CMD"],
+        );
+        expect(resolved.command).toBe('^"E:\\absolute\\agent.CMD^"');
+        expect(resolved.shell).toBe(true);
+      }
+    }),
+  );
+
+  it.effect("指定cwd未找到命令时保留原输入供子进程解析", () =>
+    Effect.gen(function* () {
+      const resolved = yield* withSpawnExecutableFiles(
+        resolveSpawnCommand(".\\bin\\agent", ["hello & world"], {
+          cwd: "D:\\chosen",
+          env: { PATH: "", PATHEXT: ".CMD" },
+        }).pipe(Effect.provideService(HostProcessPlatform, "win32")),
+        [".\\bin\\agent.CMD"],
+      );
+      expect(resolved).toEqual({
+        command: ".\\bin\\agent",
+        args: ["hello & world"],
+        shell: false,
+      });
+    }),
+  );
+
+  it.effect("非Windows仍把原命令和cwd解析留给子进程", () =>
+    Effect.gen(function* () {
+      const resolver = vi.fn<SpawnExecutableResolver>(() => "/unexpected/agent");
+      const resolved = yield* resolveSpawnCommand("./agent", ["hello & world"], {
+        cwd: "/chosen",
+      }).pipe(
+        Effect.provideService(HostProcessPlatform, "linux"),
+        Effect.provideService(SpawnExecutableResolution, resolver),
+      );
+      expect(resolved).toEqual({ command: "./agent", args: ["hello & world"], shell: false });
+      expect(resolver).not.toHaveBeenCalled();
+    }),
+  );
+
   it.effect("runs Windows executables directly without a shell", () =>
     Effect.gen(function* () {
       const command = yield* resolveSpawnCommand("node.exe", ["script.js", "hello & goodbye"], {

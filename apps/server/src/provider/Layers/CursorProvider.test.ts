@@ -11,6 +11,10 @@ import { describe, expect, it } from "vite-plus/test";
 import type * as EffectAcpSchema from "effect-acp/schema";
 import type { CursorSettings } from "@codework/contracts";
 import { createModelCapabilities } from "@codework/shared/model";
+import { HostProcessEnvironment, HostProcessWorkingDirectory } from "@codework/shared/hostProcess";
+
+import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
+import { ProviderCatalogForceRefresh } from "../ProviderCatalogCache.ts";
 
 import {
   buildCursorProviderSnapshot,
@@ -43,6 +47,16 @@ const decodeRequestMethod = Schema.decodeEffect(
   Schema.fromJsonString(Schema.Struct({ method: Schema.String })),
 );
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const decodeProbeExecution = Schema.decodeEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      args: Schema.Array(Schema.String),
+      cwd: Schema.String,
+      marker: Schema.optionalKey(Schema.String),
+      path: Schema.optionalKey(Schema.String),
+    }),
+  ),
+);
 
 function selectDescriptor(
   id: string,
@@ -83,41 +97,30 @@ const makeMockAgentWrapper = Effect.fn("makeMockAgentWrapper")(function* (
   // oxlint-disable-next-line codework/no-global-process-runtime -- 测试启动器必须匹配实际宿主 shell。
   const isWindows = process.platform === "win32";
   const wrapperPath = path.join(dir, isWindows ? "fake-agent.cmd" : "fake-agent.sh");
-  if (isWindows) {
-    const bootstrapPath = path.join(dir, "fake-agent-bootstrap.mjs");
-    yield* fileSystem.writeFileString(
-      bootstrapPath,
-      [
-        `Object.assign(process.env, ${encodeJson(extraEnv ?? {})});`,
-        ...(withAbout
-          ? [
-              `if (process.argv[2] === "about") {`,
-              `  console.log("CLI Version         2026.04.09-f2b0fcd\\nUser Email          cursor@example.com");`,
-              `  process.exit(0);`,
-              `}`,
-            ]
-          : []),
-        `await import(${encodeJson((yield* path.toFileUrl(mockAgentPath)).href)});`,
-        "",
-      ].join("\n"),
-    );
-    yield* fileSystem.writeFileString(
-      wrapperPath,
-      `@echo off\n"${process.execPath}" "${bootstrapPath}" %*\nexit /b %ERRORLEVEL%\n`,
-    );
-    return wrapperPath;
-  }
-  const mockAgentCommand = ["node", mockAgentPath].map((arg) => JSON.stringify(arg)).join(" ");
-  const envExports = Object.entries(extraEnv ?? {})
-    .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
-    .join("\n");
-  const script = `#!/bin/sh
-${envExports}
-${withAbout ? 'if [ "$1" = "about" ]; then\n  printf \'CLI Version         2026.04.09-f2b0fcd\\nUser Email          cursor@example.com\\n\'\n  exit 0\nfi' : ""}
-exec ${mockAgentCommand} "$@"
-`;
+  const bootstrapPath = path.join(dir, "fake-agent-bootstrap.mjs");
+  yield* fileSystem.writeFileString(
+    bootstrapPath,
+    [
+      'import { appendFileSync, readFileSync } from "node:fs";',
+      `Object.assign(process.env, ${encodeJson(extraEnv ?? {})});`,
+      'if (process.env.CODEWORK_CURSOR_PROBE_LOG_PATH) appendFileSync(process.env.CODEWORK_CURSOR_PROBE_LOG_PATH, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd(), marker: process.env.CODEWORK_CURSOR_PROBE_MARKER, path: process.env.PATH ?? process.env.Path }) + "\\n");',
+      ...(withAbout
+        ? [
+            `if (process.argv[2] === "about") {`,
+            `  console.log(process.env.CODEWORK_CURSOR_ABOUT_PATH ? readFileSync(process.env.CODEWORK_CURSOR_ABOUT_PATH, "utf8") : "CLI Version         2026.04.09-f2b0fcd\\nUser Email          cursor@example.com");`,
+            `  process.exit(0);`,
+            `}`,
+          ]
+        : []),
+      `await import(${encodeJson((yield* path.toFileUrl(mockAgentPath)).href)});`,
+      "",
+    ].join("\n"),
+  );
+  const script = isWindows
+    ? `@echo off\n"${process.execPath}" "${bootstrapPath}" %*\nexit /b %ERRORLEVEL%\n`
+    : `#!/bin/sh\nexec ${encodeJson(process.execPath)} ${encodeJson(bootstrapPath)} "$@"\n`;
   yield* fileSystem.writeFileString(wrapperPath, script);
-  yield* fileSystem.chmod(wrapperPath, 0o755);
+  if (!isWindows) yield* fileSystem.chmod(wrapperPath, 0o755);
   return wrapperPath;
 });
 
@@ -132,6 +135,56 @@ const makeProviderStatusEnvFixture = Effect.fn("makeProviderStatusEnvFixture")(f
     requestLogPath: path.join(tempDir, "requests.ndjson"),
     wrapperPath: yield* makeMockAgentWrapper(undefined, true),
   };
+});
+
+const makeCatalogFixture = Effect.fn("makeCatalogFixture")(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const dir = yield* fs.makeTempDirectoryScoped({ prefix: "cursor-catalog-cache-" });
+  const firstCwd = path.join(dir, "first");
+  const secondCwd = path.join(dir, "second");
+  yield* fs.makeDirectory(firstCwd);
+  yield* fs.makeDirectory(secondCwd);
+  const requestLogPath = path.join(dir, "requests.ndjson");
+  const executionLogPath = path.join(dir, "executions.ndjson");
+  const aboutPath = path.join(dir, "about.json");
+  yield* fs.writeFileString(requestLogPath, "");
+  yield* fs.writeFileString(executionLogPath, "");
+  yield* fs.writeFileString(
+    aboutPath,
+    encodeJson({ cliVersion: "2026.04.09-first", userEmail: "first@example.com" }),
+  );
+  const environment = {
+    ...(yield* HostProcessEnvironment),
+    CODEWORK_ACP_REQUEST_LOG_PATH: requestLogPath,
+    CODEWORK_CURSOR_PROBE_LOG_PATH: executionLogPath,
+    CODEWORK_CURSOR_ABOUT_PATH: aboutPath,
+    CODEWORK_CURSOR_PROBE_MARKER: "first",
+  };
+  const settings: CursorSettings = {
+    enabled: true,
+    binaryPath: yield* makeMockAgentWrapper(undefined, true),
+    apiEndpoint: "",
+    customModels: [],
+  };
+  return {
+    fs,
+    firstCwd,
+    secondCwd,
+    requestLogPath,
+    executionLogPath,
+    aboutPath,
+    environment,
+    settings,
+  };
+});
+
+const readCatalogMethods = Effect.fn("readCatalogMethods")(function* (filePath: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const text = yield* fs.readFileString(filePath);
+  return yield* Effect.forEach(text.trim().split("\n").filter(Boolean), (line) =>
+    decodeRequestMethod(line).pipe(Effect.map((request) => request.method)),
+  );
 });
 
 const parameterizedGpt54ConfigOptions = [
@@ -453,6 +506,199 @@ describe("checkCursorProviderStatus", () => {
 });
 
 describe("discoverCursorModelsViaAcp", () => {
+  it("部分显式环境覆盖宿主快照，继承的 PATH 和标记同时用于缓存与执行", async () => {
+    await runNode(
+      Effect.gen(function* () {
+        const fixture = yield* makeCatalogFixture();
+        const catalog = yield* makeCliProviderCatalog();
+        const host = yield* HostProcessEnvironment;
+        const inheritedPath = host.PATH ?? host.Path ?? "";
+        const baseEnvironment = {
+          ...Object.fromEntries(
+            Object.entries(host).filter(([key]) => !key.startsWith("CODEWORK_ACP_")),
+          ),
+          PATH: inheritedPath,
+          CODEWORK_CURSOR_PROBE_MARKER: "inherited",
+        };
+        const override = {
+          CODEWORK_ACP_REQUEST_LOG_PATH: fixture.requestLogPath,
+          CODEWORK_CURSOR_PROBE_LOG_PATH: fixture.executionLogPath,
+        };
+        yield* discoverCursorModelsViaAcp(fixture.settings, override, catalog).pipe(
+          Effect.provideService(HostProcessEnvironment, baseEnvironment),
+          Effect.provideService(HostProcessWorkingDirectory, fixture.firstCwd),
+        );
+        yield* discoverCursorModelsViaAcp(
+          fixture.settings,
+          { ...baseEnvironment, ...override },
+          catalog,
+        ).pipe(
+          Effect.provideService(HostProcessEnvironment, baseEnvironment),
+          Effect.provideService(HostProcessWorkingDirectory, fixture.firstCwd),
+        );
+        expect(yield* readCatalogMethods(fixture.requestLogPath)).toEqual([
+          "initialize",
+          "authenticate",
+          "cursor/list_available_models",
+        ]);
+        const executionText = yield* fixture.fs.readFileString(fixture.executionLogPath);
+        const executions = yield* Effect.forEach(executionText.trim().split("\n"), (line) =>
+          decodeProbeExecution(line),
+        );
+        expect(executions).toEqual([
+          { args: ["acp"], cwd: fixture.firstCwd, marker: "inherited", path: inheritedPath },
+        ]);
+      }).pipe(Effect.scoped),
+    );
+  });
+
+  it("公开目录入口让等价配置共享同一探测，自定义模型不进入目录缓存", async () => {
+    await runNode(
+      Effect.gen(function* () {
+        const fixture = yield* makeCatalogFixture();
+        const catalog = yield* makeCliProviderCatalog();
+        const [first, second] = yield* Effect.all(
+          [
+            discoverCursorModelsViaAcp(fixture.settings, undefined, catalog),
+            discoverCursorModelsViaAcp(
+              { ...fixture.settings, customModels: ["custom-second"] },
+              { ...fixture.environment },
+              catalog,
+            ),
+          ],
+          { concurrency: "unbounded" },
+        ).pipe(
+          Effect.provideService(HostProcessEnvironment, fixture.environment),
+          Effect.provideService(HostProcessWorkingDirectory, fixture.firstCwd),
+        );
+        expect(second).toBe(first);
+        expect(first.map((model) => model.slug)).toEqual([
+          "default",
+          "composer-2",
+          "gpt-5.4",
+          "claude-opus-4-6",
+        ]);
+        expect(yield* readCatalogMethods(fixture.requestLogPath)).toEqual([
+          "initialize",
+          "authenticate",
+          "cursor/list_available_models",
+        ]);
+      }).pipe(Effect.scoped),
+    );
+  });
+
+  it("强制刷新和环境、端点、目录变更使用本次参数重新探测", async () => {
+    await runNode(
+      Effect.gen(function* () {
+        const fixture = yield* makeCatalogFixture();
+        const catalog = yield* makeCliProviderCatalog();
+        const first = discoverCursorModelsViaAcp(fixture.settings, fixture.environment, catalog);
+        yield* first.pipe(Effect.provideService(HostProcessWorkingDirectory, fixture.firstCwd));
+        yield* first.pipe(Effect.provideService(HostProcessWorkingDirectory, fixture.firstCwd));
+        yield* first.pipe(
+          Effect.provideService(HostProcessWorkingDirectory, fixture.firstCwd),
+          Effect.provideService(ProviderCatalogForceRefresh, true),
+        );
+        const nextEnvironment = { ...fixture.environment, CODEWORK_CURSOR_PROBE_MARKER: "second" };
+        yield* discoverCursorModelsViaAcp(fixture.settings, nextEnvironment, catalog).pipe(
+          Effect.provideService(HostProcessWorkingDirectory, fixture.firstCwd),
+        );
+        const nextSettings = { ...fixture.settings, apiEndpoint: "https://catalog.invalid" };
+        yield* discoverCursorModelsViaAcp(nextSettings, nextEnvironment, catalog).pipe(
+          Effect.provideService(HostProcessWorkingDirectory, fixture.firstCwd),
+        );
+        yield* discoverCursorModelsViaAcp(nextSettings, nextEnvironment, catalog).pipe(
+          Effect.provideService(HostProcessWorkingDirectory, fixture.secondCwd),
+        );
+        const methods = yield* readCatalogMethods(fixture.requestLogPath);
+        expect(methods).toEqual(
+          Array.from({ length: 5 }, () => [
+            "initialize",
+            "authenticate",
+            "cursor/list_available_models",
+          ]).flat(),
+        );
+        const executionText = yield* fixture.fs.readFileString(fixture.executionLogPath);
+        const executions = yield* Effect.forEach(executionText.trim().split("\n"), (line) =>
+          decodeProbeExecution(line),
+        );
+        expect(executions).toMatchObject([
+          { args: ["acp"], cwd: fixture.firstCwd, marker: "first" },
+          { args: ["acp"], cwd: fixture.firstCwd, marker: "first" },
+          { args: ["acp"], cwd: fixture.firstCwd, marker: "second" },
+          {
+            args: ["-e", "https://catalog.invalid", "acp"],
+            cwd: fixture.firstCwd,
+            marker: "second",
+          },
+          {
+            args: ["-e", "https://catalog.invalid", "acp"],
+            cwd: fixture.secondCwd,
+            marker: "second",
+          },
+        ]);
+      }).pipe(Effect.scoped),
+    );
+  });
+
+  it("缓存命中仍实时读取版本、认证和渠道，并按各自设置合并自定义模型", async () => {
+    await runNode(
+      Effect.gen(function* () {
+        const fixture = yield* makeCatalogFixture();
+        const catalog = yield* makeCliProviderCatalog();
+        let channel = "lab";
+        const check = (customModels: string[]) =>
+          checkCursorProviderStatus(
+            { ...fixture.settings, customModels },
+            fixture.environment,
+            catalog,
+          ).pipe(
+            Effect.provideService(HostProcessWorkingDirectory, fixture.firstCwd),
+            Effect.provideService(FileSystem.FileSystem, {
+              ...fixture.fs,
+              readFileString: (...args) =>
+                args[0].endsWith("cli-config.json")
+                  ? Effect.succeed(encodeJson({ channel }))
+                  : fixture.fs.readFileString(...args),
+            }),
+          );
+        const first = yield* check(["custom-first"]);
+        yield* fixture.fs.writeFileString(
+          fixture.aboutPath,
+          encodeJson({ cliVersion: "2026.04.10-second", userEmail: "second@example.com" }),
+        );
+        const second = yield* check(["custom-second"]);
+        expect(first.version).toBe("2026.04.09-first");
+        expect(second.version).toBe("2026.04.10-second");
+        expect(first.auth).toMatchObject({ status: "authenticated", email: "first@example.com" });
+        expect(second.auth).toMatchObject({ status: "authenticated", email: "second@example.com" });
+        expect(first.models.filter((model) => model.isCustom).map((model) => model.slug)).toEqual([
+          "custom-first",
+        ]);
+        expect(second.models.filter((model) => model.isCustom).map((model) => model.slug)).toEqual([
+          "custom-second",
+        ]);
+        yield* fixture.fs.writeFileString(
+          fixture.aboutPath,
+          encodeJson({ cliVersion: "2026.04.10-second", userEmail: "Not logged in" }),
+        );
+        expect((yield* check(["custom-second"])).auth.status).toBe("unauthenticated");
+        channel = "stable";
+        expect((yield* check(["custom-second"])).message).toContain("lab channel");
+        expect(yield* readCatalogMethods(fixture.requestLogPath)).toEqual([
+          "initialize",
+          "authenticate",
+          "cursor/list_available_models",
+        ]);
+        const executionText = yield* fixture.fs.readFileString(fixture.executionLogPath);
+        const executions = yield* Effect.forEach(executionText.trim().split("\n"), (line) =>
+          decodeProbeExecution(line),
+        );
+        expect(executions.filter((entry) => entry.args[0] === "about")).toHaveLength(4);
+      }).pipe(Effect.scoped),
+    );
+  });
+
   it("草稿模型目录只握手、认证并查询扩展，不创建原生会话", async () => {
     const { requestLogPath, wrapperPath } = await runNode(makeProviderStatusEnvFixture());
     const models = await runNode(

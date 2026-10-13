@@ -64,6 +64,7 @@ import {
 } from "../Services/ProviderInstanceRegistryMutator.ts";
 import type { AnyProviderDriver, ProviderInstance } from "../ProviderDriver.ts";
 import { ProviderAdapterRequestError } from "../Errors.ts";
+import { makeCliProviderCatalog, type CliProviderCatalog } from "../CliProviderCatalog.ts";
 
 /**
  * Live registry entry: the materialized `ProviderInstance` + the fresh
@@ -121,6 +122,7 @@ const resolveEntryEnabled = (entry: ProviderInstanceConfig, typedConfig: unknown
  */
 const buildEntry = <R>(input: {
   readonly driversById: ReadonlyMap<ProviderDriverKind, AnyProviderDriver<R>>;
+  readonly catalog: CliProviderCatalog;
   readonly parentScope: Scope.Scope;
   readonly instanceId: ProviderInstanceId;
   readonly rawInstanceId: string;
@@ -132,7 +134,7 @@ const buildEntry = <R>(input: {
   R
 > =>
   Effect.gen(function* () {
-    const { driversById, parentScope, instanceId, rawInstanceId, entry } = input;
+    const { driversById, catalog, parentScope, instanceId, rawInstanceId, entry } = input;
     const driver = driversById.get(entry.driver);
     if (!driver) {
       return {
@@ -186,6 +188,7 @@ const buildEntry = <R>(input: {
         environment: entry.environment ?? [],
         enabled: resolveEntryEnabled(entry, typedConfig),
         config: typedConfig,
+        catalog,
       })
       .pipe(Effect.provideService(Scope.Scope, childScope), Effect.result);
     if (createResult._tag === "Failure") {
@@ -224,10 +227,11 @@ const buildEntry = <R>(input: {
 const makeReconcile = <R>(input: {
   readonly state: RegistryState;
   readonly driversById: ReadonlyMap<ProviderDriverKind, AnyProviderDriver<R>>;
+  readonly catalog: CliProviderCatalog;
   readonly parentScope: Scope.Scope;
   readonly decorate: (live: LiveEntry) => Effect.Effect<LiveEntry>;
 }): ((configMap: ProviderInstanceConfigMap) => Effect.Effect<void, never, R>) => {
-  const { state, driversById, parentScope, decorate } = input;
+  const { state, driversById, catalog, parentScope, decorate } = input;
   return (configMap: ProviderInstanceConfigMap) =>
     Effect.gen(function* () {
       const previousEntries = yield* Ref.get(state.entries);
@@ -302,6 +306,7 @@ const makeReconcile = <R>(input: {
 
         const result = yield* buildEntry({
           driversById,
+          catalog,
           parentScope,
           instanceId,
           rawInstanceId,
@@ -381,6 +386,8 @@ export const makeProviderInstanceRegistry = <R>(input: {
     const driversById = new Map<ProviderDriverKind, AnyProviderDriver<R>>(
       input.drivers.map((driver) => [driver.driverKind, driver]),
     );
+    // 缓存属于本注册表；实例重建沿用目录，其他注册表创建自己的缓存。
+    const catalog = yield* makeCliProviderCatalog();
 
     // Capture the enclosing scope so per-instance child scopes can be
     // attached to it at `reconcile` time. Without this, `reconcile`
@@ -478,7 +485,7 @@ export const makeProviderInstanceRegistry = <R>(input: {
           },
         };
       });
-    const reconcileWithR = makeReconcile({ state, driversById, parentScope, decorate });
+    const reconcileWithR = makeReconcile({ state, driversById, catalog, parentScope, decorate });
     const reconcile: ProviderInstanceRegistryMutatorShape["reconcile"] = (configMap) =>
       gate.withPermits(1)(
         Effect.suspend(() => {

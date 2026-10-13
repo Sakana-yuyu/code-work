@@ -107,6 +107,8 @@ export interface AcpSpawnInput {
   readonly args: ReadonlyArray<string>;
   readonly cwd?: string;
   readonly env?: NodeJS.ProcessEnv;
+  /** 目录探针传入完整环境快照时关闭再次继承，保证缓存身份与执行一致。 */
+  readonly extendEnv?: boolean;
 }
 
 export interface AcpSessionRuntimeOptions {
@@ -493,22 +495,24 @@ export const make = (
 
     // Fixture flags (CODEWORK_ACP_*) must not leak across tests via the parent
     // process env. Keep only keys the spawn config sets explicitly.
-    const spawnEnv = options.spawn.env
-      ? (() => {
-          const env: Record<string, string | undefined> = { ...process.env };
-          for (const key of Object.keys(env)) {
-            if (key.startsWith("CODEWORK_ACP_") && !Object.hasOwn(options.spawn.env!, key)) {
-              delete env[key];
-            }
-          }
-          return { ...env, ...options.spawn.env };
-        })()
-      : undefined;
-    const spawnCommand = yield* resolveSpawnCommand(
-      options.spawn.command,
-      options.spawn.args,
-      spawnEnv ? { env: spawnEnv, extendEnv: false } : {},
-    );
+    const spawnEnv =
+      options.spawn.extendEnv === false
+        ? { ...options.spawn.env }
+        : options.spawn.env
+          ? (() => {
+              const env: Record<string, string | undefined> = { ...process.env };
+              for (const key of Object.keys(env)) {
+                if (key.startsWith("CODEWORK_ACP_") && !Object.hasOwn(options.spawn.env!, key)) {
+                  delete env[key];
+                }
+              }
+              return { ...env, ...options.spawn.env };
+            })()
+          : undefined;
+    const spawnCommand = yield* resolveSpawnCommand(options.spawn.command, options.spawn.args, {
+      ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
+      ...(spawnEnv ? { env: spawnEnv, extendEnv: false } : {}),
+    });
     const child = yield* spawner
       .spawn(
         ChildProcess.make(spawnCommand.command, spawnCommand.args, {
