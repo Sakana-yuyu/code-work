@@ -228,6 +228,11 @@ export class AcpSessionRuntime extends Context.Service<
      * @see https://agentclientprotocol.com/protocol/extensibility
      */
     readonly handleExtNotification: EffectAcpClient.AcpClient["Service"]["handleExtNotification"];
+    /** 只完成连接握手与认证；目录探测不会创建、加载或恢复原生会话。 */
+    readonly prepareClient: () => Effect.Effect<
+      EffectAcpSchema.InitializeResponse,
+      EffectAcpErrors.AcpError
+    >;
     /**
      * Initializes the ACP connection, authenticates, and loads, resumes, or creates the session.
      * Concurrent calls share the same in-flight startup and a failed startup may be retried.
@@ -317,6 +322,17 @@ type AcpStartState =
       readonly deferred: Deferred.Deferred<AcpSessionRuntimeStartResult, EffectAcpErrors.AcpError>;
     }
   | { readonly _tag: "Started"; readonly result: AcpStartedState };
+
+type AcpClientPreparationState =
+  | { readonly _tag: "NotPrepared" }
+  | {
+      readonly _tag: "Preparing";
+      readonly deferred: Deferred.Deferred<
+        EffectAcpSchema.InitializeResponse,
+        EffectAcpErrors.AcpError
+      >;
+    }
+  | { readonly _tag: "Prepared"; readonly result: EffectAcpSchema.InitializeResponse };
 
 interface AcpAssistantSegmentState {
   readonly nextSegmentIndex: number;
@@ -421,6 +437,9 @@ export const make = (
         }
       });
     const startStateRef = yield* Ref.make<AcpStartState>({ _tag: "NotStarted" });
+    const clientPreparationStateRef = yield* Ref.make<AcpClientPreparationState>({
+      _tag: "NotPrepared",
+    });
     const promptSerializationSemaphore = yield* Semaphore.make(1);
     const cancelSerializationSemaphore = yield* Semaphore.make(1);
     const activePromptRef = yield* Ref.make<
@@ -829,13 +848,7 @@ export const make = (
         return response;
       });
 
-    const startOnce = Effect.gen(function* () {
-      pendingMetadata.clear();
-      yield* Ref.set(configOptionsRef, []);
-      yield* Ref.set(modelsRef, null);
-      yield* Ref.set(modeStateRef, undefined);
-      yield* Ref.set(commandsRef, []);
-      yield* Ref.set(kiroCommandNamesRef, new Set());
+    const prepareClientOnce = Effect.gen(function* () {
       const initializePayload = {
         protocolVersion: 1,
         clientCapabilities: initializeClientCapabilities,
@@ -859,6 +872,54 @@ export const make = (
           acp.agent.authenticate(authenticatePayload),
         );
       }
+      return initializeResult;
+    });
+
+    const prepareClient = Effect.fn("AcpSessionRuntime.prepareClient")(function* () {
+      // 发布共享 Deferred 与安装清理不可被中断；只有实际 RPC 和等待者可取消。
+      return yield* Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const deferred = yield* Deferred.make<
+            EffectAcpSchema.InitializeResponse,
+            EffectAcpErrors.AcpError
+          >();
+          const effect = yield* Ref.modify(clientPreparationStateRef, (state) => {
+            switch (state._tag) {
+              case "Prepared":
+                return [Effect.succeed(state.result), state] as const;
+              case "Preparing":
+                return [restore(Deferred.await(state.deferred)), state] as const;
+              case "NotPrepared":
+                return [
+                  restore(prepareClientOnce).pipe(
+                    Effect.tap((result) =>
+                      Ref.set(clientPreparationStateRef, { _tag: "Prepared", result }).pipe(
+                        Effect.andThen(Deferred.succeed(deferred, result)),
+                      ),
+                    ),
+                    Effect.onError((cause) =>
+                      Ref.set(clientPreparationStateRef, { _tag: "NotPrepared" }).pipe(
+                        Effect.andThen(Deferred.failCause(deferred, cause)),
+                      ),
+                    ),
+                  ),
+                  { _tag: "Preparing", deferred } satisfies AcpClientPreparationState,
+                ] as const;
+            }
+          });
+          return yield* effect;
+        }),
+      );
+    });
+
+    const startOnce = Effect.gen(function* () {
+      pendingMetadata.clear();
+      yield* Ref.set(configOptionsRef, []);
+      yield* Ref.set(modelsRef, null);
+      yield* Ref.set(modeStateRef, undefined);
+      yield* Ref.set(commandsRef, []);
+      yield* Ref.set(kiroCommandNamesRef, new Set());
+      const initializeResult = yield* prepareClient();
 
       let sessionId: string;
       let sessionSetupResult:
@@ -1004,37 +1065,39 @@ export const make = (
       return nextState;
     });
 
-    const start = Effect.gen(function* () {
-      const deferred = yield* Deferred.make<
-        AcpSessionRuntimeStartResult,
-        EffectAcpErrors.AcpError
-      >();
-      const effect = yield* Ref.modify(startStateRef, (state) => {
-        switch (state._tag) {
-          case "Started":
-            return [Effect.succeed(state.result), state] as const;
-          case "Starting":
-            return [Deferred.await(state.deferred), state] as const;
-          case "NotStarted":
-            return [
-              startOnce.pipe(
-                Effect.tap((result) =>
-                  Ref.set(startStateRef, { _tag: "Started", result }).pipe(
-                    Effect.andThen(Deferred.succeed(deferred, result)),
+    const start = Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const deferred = yield* Deferred.make<
+          AcpSessionRuntimeStartResult,
+          EffectAcpErrors.AcpError
+        >();
+        const effect = yield* Ref.modify(startStateRef, (state) => {
+          switch (state._tag) {
+            case "Started":
+              return [Effect.succeed(state.result), state] as const;
+            case "Starting":
+              return [restore(Deferred.await(state.deferred)), state] as const;
+            case "NotStarted":
+              return [
+                restore(startOnce).pipe(
+                  Effect.tap((result) =>
+                    Ref.set(startStateRef, { _tag: "Started", result }).pipe(
+                      Effect.andThen(Deferred.succeed(deferred, result)),
+                    ),
+                  ),
+                  Effect.onError((cause) =>
+                    Ref.set(startStateRef, { _tag: "NotStarted" }).pipe(
+                      Effect.andThen(Deferred.failCause(deferred, cause)),
+                    ),
                   ),
                 ),
-                Effect.onError((cause) =>
-                  Deferred.failCause(deferred, cause).pipe(
-                    Effect.andThen(Ref.set(startStateRef, { _tag: "NotStarted" })),
-                  ),
-                ),
-              ),
-              { _tag: "Starting", deferred } satisfies AcpStartState,
-            ] as const;
-        }
-      });
-      return yield* effect;
-    });
+                { _tag: "Starting", deferred } satisfies AcpStartState,
+              ] as const;
+          }
+        });
+        return yield* effect;
+      }),
+    );
 
     return {
       handleRequestPermission: (handler) =>
@@ -1099,6 +1162,7 @@ export const make = (
       handleUnknownExtNotification: acp.handleUnknownExtNotification,
       handleExtRequest: acp.handleExtRequest,
       handleExtNotification: acp.handleExtNotification,
+      prepareClient,
       start: () => start,
       getEvents: () => Stream.fromQueue(eventQueue),
       drainEvents: Effect.gen(function* () {

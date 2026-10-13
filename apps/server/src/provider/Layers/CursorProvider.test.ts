@@ -5,7 +5,8 @@ import type * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
-import type * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import * as Schema from "effect/Schema";
+import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import { describe, expect, it } from "vite-plus/test";
 import type * as EffectAcpSchema from "effect-acp/schema";
 import type { CursorSettings } from "@codework/contracts";
@@ -38,6 +39,11 @@ const resolveMockAgentPath = Effect.fn("resolveMockAgentPath")(function* () {
   return yield* path.fromFileUrl(new URL("../../../scripts/acp-mock-agent.ts", import.meta.url));
 });
 
+const decodeRequestMethod = Schema.decodeEffect(
+  Schema.fromJsonString(Schema.Struct({ method: Schema.String })),
+);
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+
 function selectDescriptor(
   id: string,
   label: string,
@@ -65,6 +71,7 @@ function booleanDescriptor(id: string, label: string, currentValue?: boolean) {
 
 const makeMockAgentWrapper = Effect.fn("makeMockAgentWrapper")(function* (
   extraEnv?: Record<string, string>,
+  withAbout = false,
 ) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -73,60 +80,45 @@ const makeMockAgentWrapper = Effect.fn("makeMockAgentWrapper")(function* (
     directory: NodeOS.tmpdir(),
     prefix: "cursor-provider-mock-",
   });
-  const wrapperPath = path.join(dir, "fake-agent.sh");
+  // oxlint-disable-next-line codework/no-global-process-runtime -- 测试启动器必须匹配实际宿主 shell。
+  const isWindows = process.platform === "win32";
+  const wrapperPath = path.join(dir, isWindows ? "fake-agent.cmd" : "fake-agent.sh");
+  if (isWindows) {
+    const bootstrapPath = path.join(dir, "fake-agent-bootstrap.mjs");
+    yield* fileSystem.writeFileString(
+      bootstrapPath,
+      [
+        `Object.assign(process.env, ${encodeJson(extraEnv ?? {})});`,
+        ...(withAbout
+          ? [
+              `if (process.argv[2] === "about") {`,
+              `  console.log("CLI Version         2026.04.09-f2b0fcd\\nUser Email          cursor@example.com");`,
+              `  process.exit(0);`,
+              `}`,
+            ]
+          : []),
+        `await import(${encodeJson((yield* path.toFileUrl(mockAgentPath)).href)});`,
+        "",
+      ].join("\n"),
+    );
+    yield* fileSystem.writeFileString(
+      wrapperPath,
+      `@echo off\n"${process.execPath}" "${bootstrapPath}" %*\nexit /b %ERRORLEVEL%\n`,
+    );
+    return wrapperPath;
+  }
   const mockAgentCommand = ["node", mockAgentPath].map((arg) => JSON.stringify(arg)).join(" ");
   const envExports = Object.entries(extraEnv ?? {})
     .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
     .join("\n");
   const script = `#!/bin/sh
 ${envExports}
+${withAbout ? 'if [ "$1" = "about" ]; then\n  printf \'CLI Version         2026.04.09-f2b0fcd\\nUser Email          cursor@example.com\\n\'\n  exit 0\nfi' : ""}
 exec ${mockAgentCommand} "$@"
 `;
   yield* fileSystem.writeFileString(wrapperPath, script);
   yield* fileSystem.chmod(wrapperPath, 0o755);
   return wrapperPath;
-});
-
-const makeMockAgentWithAboutWrapper = Effect.fn("makeMockAgentWithAboutWrapper")(function* () {
-  const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const mockAgentPath = yield* resolveMockAgentPath();
-  const dir = yield* fileSystem.makeTempDirectory({
-    directory: NodeOS.tmpdir(),
-    prefix: "cursor-provider-about-mock-",
-  });
-  const wrapperPath = path.join(dir, "fake-agent.sh");
-  const mockAgentCommand = ["node", mockAgentPath].map((arg) => JSON.stringify(arg)).join(" ");
-  const script = `#!/bin/sh
-if [ "$1" = "about" ]; then
-  printf 'CLI Version         2026.04.09-f2b0fcd\\n'
-  printf 'User Email          cursor@example.com\\n'
-  exit 0
-fi
-exec ${mockAgentCommand} "$@"
-`;
-  yield* fileSystem.writeFileString(wrapperPath, script);
-  yield* fileSystem.chmod(wrapperPath, 0o755);
-  return wrapperPath;
-});
-
-const waitForFileContent = Effect.fn("waitForFileContent")(function* (
-  filePath: string,
-  attempts = 40,
-) {
-  const fileSystem = yield* FileSystem.FileSystem;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const content = yield* fileSystem
-      .readFileString(filePath)
-      .pipe(Effect.catch(() => Effect.void));
-    if (content !== undefined) {
-      if (content.trim().length > 0) {
-        return content;
-      }
-    }
-    yield* Effect.sleep("50 millis");
-  }
-  return yield* Effect.die(`Timed out waiting for file content at ${filePath}`);
 });
 
 const makeProviderStatusEnvFixture = Effect.fn("makeProviderStatusEnvFixture")(function* () {
@@ -138,23 +130,7 @@ const makeProviderStatusEnvFixture = Effect.fn("makeProviderStatusEnvFixture")(f
   });
   return {
     requestLogPath: path.join(tempDir, "requests.ndjson"),
-    wrapperPath: yield* makeMockAgentWithAboutWrapper(),
-  };
-});
-
-const makeExitLogFixture = Effect.fn("makeExitLogFixture")(function* (prefix: string) {
-  const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const tempDir = yield* fileSystem.makeTempDirectory({
-    directory: NodeOS.tmpdir(),
-    prefix,
-  });
-  const exitLogPath = path.join(tempDir, "exit.log");
-  return {
-    exitLogPath,
-    wrapperPath: yield* makeMockAgentWrapper({
-      CODEWORK_ACP_EXIT_LOG_PATH: exitLogPath,
-    }),
+    wrapperPath: yield* makeMockAgentWrapper(undefined, true),
   };
 });
 
@@ -470,11 +446,44 @@ describe("checkCursorProviderStatus", () => {
       "gpt-5.4",
       "claude-opus-4-6",
     ]);
-    await expect(runNode(waitForFileContent(requestLogPath))).resolves.toContain("initialize");
+    await expect(
+      runNode(FileSystem.FileSystem.use((fs) => fs.readFileString(requestLogPath))),
+    ).resolves.toContain("initialize");
   });
 });
 
 describe("discoverCursorModelsViaAcp", () => {
+  it("草稿模型目录只握手、认证并查询扩展，不创建原生会话", async () => {
+    const { requestLogPath, wrapperPath } = await runNode(makeProviderStatusEnvFixture());
+    const models = await runNode(
+      discoverCursorModelsViaAcp(
+        {
+          enabled: true,
+          binaryPath: wrapperPath,
+          apiEndpoint: "",
+          customModels: [],
+        },
+        { ...process.env, CODEWORK_ACP_REQUEST_LOG_PATH: requestLogPath },
+      ),
+    );
+    const methods = await runNode(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const requests = yield* fs.readFileString(requestLogPath);
+        return yield* Effect.forEach(requests.trim().split("\n"), (line) =>
+          decodeRequestMethod(line).pipe(Effect.map((request) => request.method)),
+        );
+      }),
+    );
+    expect(methods).toEqual(["initialize", "authenticate", "cursor/list_available_models"]);
+    expect(models.map((model) => model.slug)).toEqual([
+      "default",
+      "composer-2",
+      "gpt-5.4",
+      "claude-opus-4-6",
+    ]);
+  });
+
   it("keeps the ACP probe runtime alive long enough to discover models", async () => {
     const wrapperPath = await runNode(makeMockAgentWrapper());
 
@@ -496,21 +505,36 @@ describe("discoverCursorModelsViaAcp", () => {
   });
 
   it("closes the ACP probe runtime after discovery completes", async () => {
-    const { exitLogPath, wrapperPath } = await runNode(
-      makeExitLogFixture("cursor-provider-exit-log-"),
-    );
-
-    await runNode(
-      discoverCursorModelsViaAcp({
-        enabled: true,
-        binaryPath: wrapperPath,
-        apiEndpoint: "",
-        customModels: [],
+    const stillRunning = await runNode(
+      Effect.gen(function* () {
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const handles: ChildProcessSpawner.ChildProcessHandle[] = [];
+        const wrapperPath = yield* makeMockAgentWrapper();
+        yield* discoverCursorModelsViaAcp({
+          enabled: true,
+          binaryPath: wrapperPath,
+          apiEndpoint: "",
+          customModels: [],
+        }).pipe(
+          Effect.provideService(
+            ChildProcessSpawner.ChildProcessSpawner,
+            ChildProcessSpawner.make((command) =>
+              spawner.spawn(command).pipe(
+                Effect.tap((handle) =>
+                  Effect.sync(() => {
+                    handles.push(handle);
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
+        // Windows 的可执行文件解析也会创建短进程；所有捕获句柄都必须结束。
+        expect(handles.length).toBeGreaterThan(0);
+        return yield* Effect.forEach(handles, (handle) => handle.isRunning);
       }),
     );
-
-    const exitLog = await runNode(waitForFileContent(exitLogPath));
-    expect(exitLog).toContain("SIGTERM");
+    expect(stillRunning.every((running) => !running)).toBe(true);
   });
 });
 

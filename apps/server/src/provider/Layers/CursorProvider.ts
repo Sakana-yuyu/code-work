@@ -558,7 +558,7 @@ const discoverCursorModelsViaListAvailableModels = (
     cursorSettings,
     (acp) =>
       Effect.gen(function* () {
-        yield* acp.start();
+        yield* acp.prepareClient();
         const response = yield* acp.request("cursor/list_available_models", {});
         const decoded = yield* decodeCursorListAvailableModelsResponse(response);
         return buildCursorDiscoveredModelsFromAvailableModelsResponse(decoded);

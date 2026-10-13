@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题          |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归             |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                  |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 待实施                                                       | ProviderDriver / provider snapshot 探测                                                                    | 尚未运行                                                                                                              |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（Cursor/Grok 目录无会话增量）                        | ProviderDriver / provider snapshot / ACP 客户端准备                                                       | 第43主题只关闭已证实的两处目录会话副作用；统一入口、等价配置缓存与全程超时仍开放                                       |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                              |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                          |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 待实施                                                       | ProviderAdapterCapabilities / server config / 三端控制                                                     | 尚未运行                                                                                                              |
@@ -766,3 +766,17 @@ React Native 0.85.3 bridgeless 的 rAF 是零延时计时器；此前仅纠正�
 独立只读入口审查没有发现遗漏或确定缺陷。本机 Node v24.18.1 使用项目相同的完整命令与参数转义，通过真实 `shell:true` 启动无副作用 Node 子进程：完整 cmd 字符串8189/8190/8191成功且参数长度正确，8192返回命令行过长。未转义 echo 的初步8191失败结论被完整转义实验推翻，未据此修改限额。此实验没有新增实际批处理文件，不证明任意批处理内部二次展开。直接 exe 接近32767的实测探针未进入脚本，按原工具句柄停止并确认两个自有PID退出；不算通过，也不据此归因守卫。直接进程的序列化上限以官方约束、运行时源码与确定性测试为证据。
 
 本主题适用 Web/Desktop/Mobile 连接的 Windows 服务器以及本地/远程/隧道入口；界面沿用既有失败消息与重发操作，无新控制项、wire 协议、权限或数据迁移。没有请求真实外部 provider，未把当前保留的旧验收服务写成已加载新守卫。回退本主题恢复旧 spawn 行为。第10项完成，全部39项与 comparison 额外范围继续；第11项目录统一、缓存、共享截止时间和草稿无会话进入下一主题。
+
+### 第43主题：Cursor/Grok 查询目录不创建原生会话
+
+源码证实两处目录发现原先调用 `AcpSessionRuntime.start()`，会执行 `session/new`。新增通用 `prepareClient()`，只初始化及按配置认证；成功结果与正在进行的请求共享，真正 `start()` 再沿原流程创建/加载会话。准备失败和中断结束全部等待者，后续可以重试；会话创建失败不重复已成功的握手。独立状态机审查发现共享状态发布与清理安装之间的中断窗口，使用 `uninterruptibleMask` 保护短暂状态更新，并对实际 RPC/等待者使用 `restore` 保留取消能力；既有 start 同构窗口一并修复。
+
+Cursor 使用准备后的 `cursor/list_available_models`，受控请求日志严格为初始化、认证、模型扩展。Grok 官方提供初始化后调用 `x.ai/models/list` 的完整动态目录；按官方读取流程不发送 authenticate，避免该路径可能保存认证信息的副作用。测试带假 API key，仍严格只有 initialize/list。解码优先处理包装 error，再验证模型状态，保留动态模型、reasoning 选项/说明/当前值/默认值及 customModels；未知方法和畸形数据保持错误与升级建议，不回退为创建临时会话。该扩展不表示已发现全部会话 configOptions 或模式，版本与官方固定源码链接见 [providers](./providers.md)。
+
+旧行为对照只替换隔离候选中的一个 Provider 生产文件：Cursor 用例因额外的 `session/new` 请求失败，Grok 用例因目录变成 error 而非 ready 失败；两份原始记录保存为 `cursor-catalog-cursor-red-proof.txt` 与 `cursor-catalog-grok-red-proof.txt`，结束后源文件按 SHA 恢复。主工作区没有恢复为旧实现。
+
+最终六源与 HEAD 第42主题组成纯候选，`tsgo --noEmit -p apps/server/.streaming-typecheck.json` 通过；六源 `vp fmt --check`、`vp lint` 及本主题 `git diff --check` 通过，无目标 lint 告警。`vp test run --config .candidate-test.config.ts` 指定 `acp/AcpJsonRpcConnection.test.ts`、`Layers/CursorProvider.test.ts`、`Layers/GrokProvider.test.ts`、`Layers/CursorAdapter.test.ts`、`Layers/GrokAdapter.test.ts`、`Drivers/GenericAcpDriver.test.ts`，共6文件220项全部通过，331.92秒。该矩阵同时验证目录和既有真实会话模拟路径的审批、失败、恢复、配置及事件行为；没有运行全仓检查。
+
+测试夹具修正为 Windows cmd 加 Node 启动方式，探测退出改为作用域结束后检查捕获的真实进程句柄，替代原文件轮询。初轮四项旧 sh 夹具失败、受限运行下崩溃审批用例超时均保留；同一崩溃用例在隔离授权运行通过，尚不能将先前超时明确归因。一次 `MaxOpsBeforeYield=1` 的无效测试配置使调度无法推进，测试进程堆耗尽退出；改为16后准备与启动中断用例通过，不能将该实验写成产品内存问题。该两用例覆盖 RPC 开始后的中断与恢复，发布窗口由源码临界区与独立复查支持，不扩大为旧窗口已得到确定性红对照。
+
+本主题在服务器目录探测执行，Web/Desktop/Mobile 的模型选择、设置刷新以及本地/远程/隧道共用既有快照入口，没有新增 UI 控制、wire 字段、权限或持续动画。真正 Cursor/Grok 对话继续采用原认证、审批、runtimeMode 与会话恢复；其余 ACP provider 只复用生命周期修复，原模型/模式数据路径保留。无真实外部 Cursor/Grok 或原生客户端操作，本地 Node 假 ACP 子进程属于协议集成证据；不宣称真实供应商已验证。回退本主题恢复旧目录与生命周期行为，无数据迁移。第11项仍在进行，统一 fetchCatalog、等价配置共享缓存、单一 deadline/AbortSignal 与 BYOK 两路发现收敛仍必须完成；完整39项及 comparison 额外范围不缩减。

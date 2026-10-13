@@ -8,6 +8,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as Scheduler from "effect/Scheduler";
 import * as AcpSchema from "effect-acp/schema";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
@@ -24,8 +25,232 @@ const mockAgentPath = NodePath.join(__dirname, "../../../scripts/acp-mock-agent.
 const mockAgentCommand = "node";
 const mockAgentArgs = [mockAgentPath];
 const decodeHostCapabilities = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 describe("AcpSessionRuntime", () => {
+  for (const authMethodId of ["", "test"]) {
+    it.effect(`仅准备客户端${authMethodId ? "并认证" : "复用已有凭据"}不建立会话`, () => {
+      const methods: string[] = [];
+      return Effect.gen(function* () {
+        const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+        const prepared = yield* runtime.prepareClient();
+        expect(yield* runtime.prepareClient()).toBe(prepared);
+        yield* runtime.request("cursor/list_available_models", {});
+        yield* runtime.close;
+        expect(methods).toEqual([
+          "initialize",
+          ...(authMethodId ? ["authenticate"] : []),
+          "cursor/list_available_models",
+        ]);
+        expect(yield* runtime.getAvailableModels).toBeNull();
+        expect(yield* runtime.getModeState).toBeUndefined();
+      }).pipe(
+        Effect.provide(
+          AcpSessionRuntime.layer({
+            spawn: { command: mockAgentCommand, args: mockAgentArgs },
+            cwd: process.cwd(),
+            authMethodId,
+            clientInfo: { name: "codework-test", version: "0.0.0" },
+            requestLogger: (event) =>
+              Effect.sync(() => {
+                if (event.status === "started") methods.push(event.method);
+              }),
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+      );
+    });
+  }
+
+  for (const resume of [false, true]) {
+    it.effect(`并发准备与${resume ? "恢复" : "新建"}共用握手且只建立一次会话`, () =>
+      Effect.gen(function* () {
+        const initializeEntered = yield* Deferred.make<void>();
+        const releaseInitialize = yield* Deferred.make<void>();
+        const methods: string[] = [];
+        yield* Effect.gen(function* () {
+          const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+          const firstPrepare = yield* runtime.prepareClient().pipe(Effect.forkScoped);
+          yield* Deferred.await(initializeEntered);
+          const secondPrepare = yield* runtime
+            .prepareClient()
+            .pipe(Effect.forkChild({ startImmediately: true }));
+          const cancelledWaiter = yield* runtime
+            .prepareClient()
+            .pipe(Effect.forkChild({ startImmediately: true }));
+          yield* Fiber.interrupt(cancelledWaiter);
+          const firstStart = yield* runtime
+            .start()
+            .pipe(Effect.forkChild({ startImmediately: true }));
+          const secondStart = yield* runtime
+            .start()
+            .pipe(Effect.forkChild({ startImmediately: true }));
+          expect(methods).toEqual(["initialize"]);
+          yield* Deferred.succeed(releaseInitialize, undefined);
+          const prepared = yield* Fiber.join(firstPrepare);
+          expect(yield* Fiber.join(secondPrepare)).toBe(prepared);
+          const started = yield* Fiber.join(firstStart);
+          expect(yield* Fiber.join(secondStart)).toBe(started);
+          expect(yield* runtime.start()).toBe(started);
+          expect(yield* runtime.prepareClient()).toBe(prepared);
+          expect(started.initializeResult).toBe(prepared);
+          expect(started.sessionId).toBe("mock-session-1");
+          expect((yield* runtime.getAvailableModels)?.length).toBeGreaterThan(0);
+          expect((yield* runtime.getModeState)?.availableModes.length).toBeGreaterThan(0);
+          expect(methods).toEqual([
+            "initialize",
+            "authenticate",
+            resume ? "session/load" : "session/new",
+          ]);
+          expect(
+            yield* runtime.prompt({ prompt: [{ type: "text", text: "prepared then started" }] }),
+          ).toMatchObject({ stopReason: "end_turn" });
+        }).pipe(
+          Effect.provide(
+            AcpSessionRuntime.layer({
+              spawn: { command: mockAgentCommand, args: mockAgentArgs },
+              cwd: process.cwd(),
+              authMethodId: "test",
+              clientInfo: { name: "codework-test", version: "0.0.0" },
+              ...(resume ? { resumeSessionId: "mock-session-1" } : {}),
+              requestLogger: (event) =>
+                Effect.gen(function* () {
+                  if (event.status !== "started") return;
+                  methods.push(event.method);
+                  if (event.method === "initialize") {
+                    yield* Deferred.succeed(initializeEntered, undefined);
+                    yield* Deferred.await(releaseInitialize);
+                  }
+                }),
+            }),
+          ),
+          Effect.scoped,
+        );
+      }).pipe(Effect.provide(NodeServices.layer)),
+    );
+  }
+
+  for (const failedMethod of ["initialize", "authenticate"]) {
+    it.effect(`准备阶段 ${failedMethod} 失败共享错误，重试后仍可建立会话`, () =>
+      Effect.gen(function* () {
+        const requestEntered = yield* Deferred.make<void>();
+        const releaseRequest = yield* Deferred.make<void>();
+        const requests: AcpSessionRuntime.AcpSessionRequestLogEvent[] = [];
+        let shouldHold = true;
+        // 独立测试进程只实现握手与建会话，首次指定 RPC 返回明确错误。
+        const script = `
+const readline = require('node:readline');
+let failed = false;
+readline.createInterface({ input: process.stdin }).on('line', (line) => {
+  const request = JSON.parse(line);
+  if (request.id === undefined) return;
+  const shouldFail = request.method === ${encodeJson(failedMethod)} && !failed;
+  if (shouldFail) failed = true;
+  const result = request.method === 'initialize' ? { protocolVersion: 1 }
+    : request.method === 'session/new' ? { sessionId: 'prepared-session' } : {};
+  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id,
+    ...(shouldFail ? { error: { code: -32000, message: 'prepare failed once' } } : { result })
+  }) + '\\n');
+});`;
+        yield* Effect.gen(function* () {
+          const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+          const first = yield* runtime.prepareClient().pipe(Effect.result, Effect.forkScoped);
+          yield* Deferred.await(requestEntered);
+          const second = yield* runtime
+            .prepareClient()
+            .pipe(Effect.result, Effect.forkChild({ startImmediately: true }));
+          yield* Deferred.succeed(releaseRequest, undefined);
+          const failed = yield* Fiber.join(first);
+          expect(failed).toMatchObject({
+            _tag: "Failure",
+            failure: { _tag: "AcpRequestError", code: -32000, errorMessage: "prepare failed once" },
+          });
+          expect(yield* Fiber.join(second)).toEqual(failed);
+          expect(requests.some((event) => event.method.startsWith("session/"))).toBe(false);
+          const prepared = yield* runtime.prepareClient();
+          expect((yield* runtime.start()).initializeResult).toBe(prepared);
+          expect(
+            requests.filter((event) => event.status === "started").map((event) => event.method),
+          ).toEqual([
+            "initialize",
+            ...(failedMethod === "authenticate" ? ["authenticate"] : []),
+            "initialize",
+            "authenticate",
+            "session/new",
+          ]);
+        }).pipe(
+          Effect.provide(
+            AcpSessionRuntime.layer({
+              spawn: { command: mockAgentCommand, args: ["-e", script] },
+              cwd: process.cwd(),
+              authMethodId: "test",
+              clientInfo: { name: "codework-test", version: "0.0.0" },
+              requestLogger: (event) =>
+                Effect.gen(function* () {
+                  requests.push(event);
+                  if (event.status === "started" && event.method === failedMethod && shouldHold) {
+                    shouldHold = false;
+                    yield* Deferred.succeed(requestEntered, undefined);
+                    yield* Deferred.await(releaseRequest);
+                  }
+                }),
+            }),
+          ),
+          Effect.scoped,
+        );
+      }).pipe(Effect.provide(NodeServices.layer)),
+    );
+  }
+
+  for (const operation of ["prepareClient", "start"] as const) {
+    it.effect(`低操作预算调度下中断 ${operation} 会释放等待者，随后可重新握手`, () =>
+      Effect.gen(function* () {
+        const initializeEntered = yield* Deferred.make<void>();
+        const releaseInitialize = yield* Deferred.make<void>();
+        const methods: string[] = [];
+        yield* Effect.gen(function* () {
+          const runtime = yield* AcpSessionRuntime.AcpSessionRuntime;
+          const prepare =
+            operation === "prepareClient"
+              ? runtime.prepareClient().pipe(Effect.asVoid)
+              : runtime.start().pipe(Effect.asVoid);
+          const first = yield* prepare.pipe(
+            Effect.provideService(Scheduler.MaxOpsBeforeYield, 16),
+            Effect.forkScoped,
+          );
+          yield* Deferred.await(initializeEntered);
+          const second = yield* prepare.pipe(Effect.forkChild({ startImmediately: true }));
+          yield* Fiber.interrupt(first);
+          expect((yield* Fiber.await(second))._tag).toBe("Failure");
+          yield* Deferred.succeed(releaseInitialize, undefined);
+          yield* runtime.prepareClient();
+          yield* runtime.start();
+          expect(methods).toEqual(["initialize", "initialize", "authenticate", "session/new"]);
+        }).pipe(
+          Effect.provide(
+            AcpSessionRuntime.layer({
+              spawn: { command: mockAgentCommand, args: mockAgentArgs },
+              cwd: process.cwd(),
+              authMethodId: "test",
+              clientInfo: { name: "codework-test", version: "0.0.0" },
+              requestLogger: (event) =>
+                Effect.gen(function* () {
+                  if (event.status !== "started") return;
+                  methods.push(event.method);
+                  if (event.method === "initialize") {
+                    yield* Deferred.succeed(initializeEntered, undefined);
+                    yield* Deferred.await(releaseInitialize);
+                  }
+                }),
+            }),
+          ),
+          Effect.scoped,
+        );
+      }).pipe(Effect.provide(NodeServices.layer)),
+    );
+  }
+
   it.effect("关闭不会启动会话，上游不回应时有界失败", () =>
     Effect.gen(function* () {
       const closeStarted = yield* Deferred.make<void>();
@@ -290,6 +515,16 @@ describe("AcpSessionRuntime", () => {
           if (response === "retry")
             expect((yield* runtime.start().pipe(Effect.result))._tag).toBe("Failure");
           const started = yield* runtime.start();
+          if (response === "retry") {
+            expect(
+              requests.filter((event) => event.status === "started").map((event) => event.method),
+            ).toEqual([
+              "initialize",
+              "authenticate",
+              resume ? "session/load" : "session/new",
+              resume ? "session/load" : "session/new",
+            ]);
+          }
           expect(yield* runtime.getAvailableCommands).toEqual(
             response === "retry" ? [] : [{ name: "startup" }],
           );

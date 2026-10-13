@@ -4,14 +4,17 @@ import {
   type ServerProvider,
   type ServerProviderModel,
 } from "@codework/contracts";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import * as EffectAcpErrors from "effect-acp/errors";
+import * as EffectAcpSchema from "effect-acp/schema";
 import { causeErrorTag } from "@codework/shared/observability";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
+import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { createModelCapabilities } from "@codework/shared/model";
@@ -31,9 +34,10 @@ import {
 } from "../providerMaintenance.ts";
 import {
   isValidGrokReasoningEffortToken,
-  makeGrokAcpRuntime,
+  buildGrokAcpSpawnInput,
   resolveGrokAcpBaseModelId,
 } from "../acp/GrokAcpSupport.ts";
+import * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import { discoverGrokSkills } from "../Drivers/GrokSkills.ts";
 
 const GROK_PRESENTATION = {
@@ -48,6 +52,14 @@ const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({
 
 const VERSION_PROBE_TIMEOUT_MS = 4_000;
 const GROK_ACP_MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
+const GROK_MODELS_LIST_METHOD = "x.ai/models/list";
+const decodeGrokModelsEnvelope = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    result: Schema.optional(Schema.Unknown),
+    error: Schema.optional(Schema.Unknown),
+  }),
+);
+const decodeGrokModelState = Schema.decodeUnknownEffect(EffectAcpSchema.SessionModelState);
 
 const GROK_BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
   {
@@ -232,15 +244,38 @@ const discoverGrokModelsViaAcp = (
 ) =>
   Effect.gen(function* () {
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const acp = yield* makeGrokAcpRuntime({
-      grokSettings,
-      environment,
-      childProcessSpawner,
-      cwd: process.cwd(),
-      clientInfo: { name: "code-work-provider-probe", version: "0.0.0" },
-    });
-    const started = yield* acp.start();
-    return buildGrokDiscoveredModelsFromSessionModelState(started.sessionSetupResult.models);
+    const cwd = process.cwd();
+    const context = yield* Layer.build(
+      AcpSessionRuntime.layer({
+        spawn: buildGrokAcpSpawnInput(grokSettings, cwd, environment),
+        cwd,
+        // 与 CLI 的目录命令一致：读目录只握手，不触发认证写入或创建会话。
+        authMethodId: "",
+        clientInfo: { name: "code-work-provider-probe", version: "0.0.0" },
+      }).pipe(
+        Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner)),
+      ),
+    );
+    const acp = yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(
+      Effect.provide(context),
+    );
+    yield* acp.prepareClient();
+    const response = yield* acp.request(GROK_MODELS_LIST_METHOD, {});
+    const envelope = yield* decodeGrokModelsEnvelope(response).pipe(
+      Effect.mapError(() =>
+        EffectAcpErrors.AcpRequestError.internalError("Grok 模型目录响应格式无效。"),
+      ),
+    );
+    // 上游扩展在 JSON-RPC 结果中再包装 result/error；即使同时有模型也以错误为准。
+    if (envelope.error !== undefined && envelope.error !== null) {
+      return yield* EffectAcpErrors.AcpRequestError.internalError("Grok 模型目录请求失败。");
+    }
+    const modelState = yield* decodeGrokModelState(envelope.result).pipe(
+      Effect.mapError(() =>
+        EffectAcpErrors.AcpRequestError.internalError("Grok 模型目录数据无效。"),
+      ),
+    );
+    return buildGrokDiscoveredModelsFromSessionModelState(modelState);
   }).pipe(Effect.scoped);
 
 const runGrokVersionCommand = (
@@ -376,7 +411,8 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
         version,
         status: "error",
         auth: { status: "unknown" },
-        message: "Grok CLI is installed but ACP startup failed. Check server logs for details.",
+        message:
+          "Grok CLI is installed but ACP model discovery failed. Update Grok CLI to a version supporting x.ai/models/list and check server logs for details.",
       },
     });
   }

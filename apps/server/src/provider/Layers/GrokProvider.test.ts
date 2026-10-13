@@ -14,6 +14,88 @@ import {
 } from "./GrokProvider.ts";
 
 const decodeGrokSettings = Schema.decodeSync(GrokSettings);
+const encodeJsonFixture = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const decodeAcpRequestLog = Schema.decodeSync(
+  Schema.fromJsonString(Schema.Struct({ method: Schema.String, params: Schema.Unknown })),
+);
+
+const catalogModelState = {
+  currentModelId: "grok-current",
+  availableModels: [
+    {
+      modelId: "grok-current",
+      name: "Grok Current",
+      description: "动态目录中的推理模型",
+      _meta: {
+        supportsReasoningEffort: true,
+        reasoningEffort: "high",
+        reasoningEfforts: [
+          { value: "high", label: "High", description: "深度推理", default: true },
+          { value: "low", label: "Low" },
+        ],
+      },
+    },
+    { modelId: "grok-new-mode", name: "Grok New Mode" },
+  ],
+};
+
+// 使用真实本地子进程与 ACP 管道；请求落盘后才返回回执，不轮询或等待固定时间。
+const probeMockGrokCatalog = Effect.fn("probeMockGrokCatalog")(function* (
+  response: { readonly result: unknown } | { readonly error: { code: number; message: string } },
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const dir = yield* fs.makeTempDirectoryScoped({ prefix: "codework-grok-catalog-" });
+  const isWindows = (yield* HostProcessPlatform) === "win32";
+  const binaryPath = path.join(dir, isWindows ? "grok.cmd" : "grok");
+  const scriptPath = path.join(dir, "agent.cjs");
+  const requestLogPath = path.join(dir, "requests.ndjson");
+  yield* fs.writeFileString(
+    scriptPath,
+    `const fs = require("node:fs");
+const readline = require("node:readline");
+if (process.argv.includes("--version")) {
+  process.stdout.write("grok-cli 0.1.300\\n");
+} else if (process.argv.includes("inspect")) {
+  process.stdout.write('{"skills":[]}\\n');
+} else {
+  const lines = readline.createInterface({ input: process.stdin });
+  lines.on("line", (line) => {
+    const request = JSON.parse(line);
+    fs.appendFileSync(${encodeJsonFixture(requestLogPath)}, JSON.stringify(request) + "\\n");
+    let response;
+    if (request.method === "initialize") {
+      response = { result: { protocolVersion: 1, agentCapabilities: {}, authMethods: [] } };
+    } else if (request.method === "x.ai/models/list") {
+      response = ${encodeJsonFixture(response)};
+    } else {
+      response = { error: { code: -32601, message: "禁止在目录探测中创建或操作会话" } };
+    }
+    process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, ...response }) + "\\n");
+  });
+}
+`,
+  );
+  const quoteSh = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+  yield* fs.writeFileString(
+    binaryPath,
+    isWindows
+      ? `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`
+      : `#!/bin/sh\nexec ${quoteSh(process.execPath)} ${quoteSh(scriptPath)} "$@"\n`,
+  );
+  if (!isWindows) {
+    yield* fs.chmod(binaryPath, 0o755);
+  }
+  const snapshot = yield* checkGrokProviderStatus(
+    decodeGrokSettings({ enabled: true, binaryPath, customModels: ["grok-custom"] }),
+    { ...process.env, XAI_API_KEY: "mock-catalog-key-must-not-authenticate" },
+  );
+  const requests = (yield* fs.readFileString(requestLogPath))
+    .trim()
+    .split("\n")
+    .map((line) => decodeAcpRequestLog(line));
+  return { snapshot, requests };
+}, Effect.scoped);
 
 describe("buildGrokModelCapabilities", () => {
   it("preserves ACP-provided reasoning labels and the active default", () => {
@@ -221,6 +303,62 @@ describe("buildInitialGrokProviderSnapshot", () => {
 });
 
 it.layer(NodeServices.layer)("checkGrokProviderStatus", (it) => {
+  it.effect("目录发现只握手，并保留动态模型及推理参数", () =>
+    Effect.gen(function* () {
+      const { snapshot, requests } = yield* probeMockGrokCatalog({
+        result: { result: catalogModelState },
+      });
+
+      expect(snapshot.status).toBe("ready");
+      expect(snapshot.models.map((model) => model.slug)).toEqual([
+        "grok-current",
+        "grok-new-mode",
+        "grok-custom",
+      ]);
+      expect(snapshot.models[0]?.capabilities?.optionDescriptors).toEqual([
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select",
+          currentValue: "high",
+          options: [
+            { id: "high", label: "High", description: "深度推理", isDefault: true },
+            { id: "low", label: "Low" },
+          ],
+        },
+      ]);
+      expect(snapshot.models[1]?.capabilities?.optionDescriptors).toEqual([]);
+      expect(requests.map((request) => request.method)).toEqual(["initialize", "x.ai/models/list"]);
+      expect(requests[1]?.params).toEqual({});
+    }),
+  );
+
+  for (const [name, response] of [
+    [
+      "包装错误优先于同时返回的有效模型",
+      { result: { result: catalogModelState, error: { message: "secret-catalog-error" } } },
+    ],
+    ["旧 CLI 未提供目录扩展", { error: { code: -32601, message: "secret-catalog-error" } }],
+    ["模型清单畸形", { result: { result: { currentModelId: "model", availableModels: [{}] } } }],
+    ["响应缺少结果", { result: {} }],
+    ["响应结果为空", { result: { result: null } }],
+  ] as const) {
+    it.effect(`${name}时保留错误和配置模型且不创建会话`, () =>
+      Effect.gen(function* () {
+        const { snapshot, requests } = yield* probeMockGrokCatalog(response);
+        expect(snapshot.status).toBe("error");
+        expect(snapshot.installed).toBe(true);
+        expect(snapshot.models.map((model) => model.slug)).toEqual(["grok-build", "grok-custom"]);
+        expect(snapshot.message).toContain("x.ai/models/list");
+        expect(snapshot.message).not.toContain("secret-catalog-error");
+        expect(requests.map((request) => request.method)).toEqual([
+          "initialize",
+          "x.ai/models/list",
+        ]);
+      }),
+    );
+  }
+
   it.effect("reports the binary as missing when the binary path does not resolve", () =>
     Effect.gen(function* () {
       const snapshot = yield* checkGrokProviderStatus(
@@ -298,7 +436,7 @@ it.layer(NodeServices.layer)("checkGrokProviderStatus", (it) => {
       expect(snapshot.status).toBe("error");
       expect(snapshot.installed).toBe(true);
       expect(snapshot.models.map((model) => model.slug)).toEqual(["grok-build"]);
-      expect(snapshot.message).toContain("ACP startup failed");
+      expect(snapshot.message).toContain("ACP model discovery failed");
     }),
   );
 });

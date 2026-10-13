@@ -42,7 +42,7 @@
 2. **`steerActiveTurn` 契约。** 回合进行中追加指令：适配器声明是否支持，不支持则由 manager 回退为“打断后替换”；适配器出错时不得自动重试（结果不明确）；打断时必须丢弃尚未被 provider 读取的 steer。上游 T3 Code 已有“排队或 steer”的 UI（见 §5），后端契约可参考 Paseo。
 3. **用户消息的规范身份。** manager 为前台 prompt 记录唯一规范 timeline 行，`messageId` 与 `clientMessageId` 一致，provider 回显只用于对账，不做全局文本去重。
 4. **终态前清理瞬态行。** 适配器在发出 `turn_completed/failed/canceled` 前，必须终结所有仍在 loading 的行（例如 Codex 的 `contextCompaction`）。2026-10-12 全部 canonical 发射入口已接入同一 item 与交互边界，终态前整批补齐完成通知；Codex 原生遗漏完成通知的三种终态回归已通过。遗漏的审批以 cancel、提问以空答案关闭客户端等待，真实回应保持原结果，不调用 provider 或扩大授权。原生 adapter、公共活动投影及两端状态定向验证通过，第 7 项完成；独立后台 task 保持实际生命周期，hook 没有 loading 投影且保留原生结果。真实连接/设备与性能按相应条目继续验收，证据及回退范围见 [port-progress](./port-progress.md)。
-5. **草稿阶段不创建 provider session。** 查模型/命令/feature 用 client 级 API，避免产生空的原生会话污染 provider 自己的历史界面。
+5. **草稿阶段不创建 provider session。** 查模型/命令/feature 用 client 级 API，避免产生空的原生会话污染 provider 自己的历史界面。2026-10-13 已将 Cursor 目录改为客户端准备加 `cursor/list_available_models`，Grok 改为官方无认证的初始化加 `x.ai/models/list`；不创建临时 session，不删除动态模型或推理参数，旧 CLI 不支持扩展时保留错误与升级建议。真实对话继续走会话建立/恢复。生命周期、协议模拟及版本边界见 [providers](./providers.md) 和 [port-progress](./port-progress.md) 第43主题；第11项的统一 fetchCatalog、等价缓存和共享 deadline 仍需继续完成。
 6. **更细的能力声明。** rewind 拆成 conversation / files / both，另有 streaming、reasoning stream、MCP、persistence 等标志；设置页只展示真实可用控制。
 7. **managed-process registry。** provider 衍生的长寿命 helper 进程登记 PID、命令与平台进程身份，启动后后台对账；身份不匹配只删记录不杀进程。与仓库“不要按名称杀进程”规则同向。
 8. **provider 配置的深度合并。** `options` 对象递归合并，数组/标量/`null` 替换，只持久化 agent 自己的部分，provider 默认值改动在下次启动生效，profile 继承基础 provider。

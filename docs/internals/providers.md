@@ -53,6 +53,16 @@ directory to route session and turn operations for a thread, so callers name a t
 Adding a driver means writing the driver plus adapter and adding it to `BUILT_IN_DRIVERS`. No
 orchestration, contract, or client change is required for the common case.
 
+## ACP 目录查询与会话准备
+
+`AcpSessionRuntime.prepareClient()` 只完成客户端初始化和配置要求的认证，共享成功结果与正在进行的请求，不创建、加载或恢复会话。真正的 `start()` 复用这个准备结果，再执行原有 session 建立流程；准备失败或被中断后可以重试。已经完成握手但会话创建失败时，只重试会话建立。
+
+Cursor 的模型目录先准备客户端，再调用 `cursor/list_available_models`；Grok 的目录使用不认证的客户端初始化与 `x.ai/models/list`，沿用官方目录流程。Grok 的真实会话仍采用既有认证与会话扩展；目录查询不会进入可能保存认证信息的 authenticate 路径。两者均保留动态模型及现有 reasoning 能力映射，不通过创建临时会话补救目录失败。
+
+Grok 扩展的 JSON-RPC result 还包含一层 `result` / `error` 包装，error 优先；缺少或无效的模型状态会使目录查询失败，并提示升级支持该接口的 CLI。配置的自定义模型仍保留。该接口提供模型元数据，不能据此宣称已经发现全部会话 configOptions 或模式。
+
+2026-10-13 以 `xai-org grok-build cli_models`、`grok models ACP` 检索官方源代码，采用固定 SHA `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8`（1.0.45）的[目录客户端](https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-shell/src/cli_models.rs#L49-L93)、[目录 handler](https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-shell/src/agent/handlers/models.rs#L8-L25)及[认证实现](https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-shell/src/agent/mvp_agent/acp_agent.rs#L679-L686)核对请求与副作用。公开1.0.0源码已有该扩展，但更早公开alpha采用不同合同；不推断全部旧版本可用。实现只移植协议行为，不复制上游源码。本机没有已安装Grok CLI的运行证据，验收范围见[移植记录](./port-progress.md)。
+
 ## Model manifest
 
 The model picker's legacy section is driven by `apps/server/src/provider/model-manifest.json`, which
