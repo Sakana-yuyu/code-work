@@ -12,10 +12,11 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeAntigravityTextGeneration } from "../../textGeneration/AntigravityTextGeneration.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import { makeAntigravityAdapter } from "../Layers/AntigravityAdapter.ts";
 import {
   buildInitialAntigravityProviderSnapshot,
-  checkAntigravityProviderStatus,
+  fetchAntigravityProviderCatalog,
   enrichAntigravitySnapshot,
 } from "../Layers/AntigravityProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
@@ -94,16 +95,24 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
   metadata: { displayName: "Antigravity", supportsMultipleInstances: true },
   configSchema: AntigravitySettings,
   defaultConfig: (): AntigravitySettings => decodeAntigravitySettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config, catalog }) =>
+  create: ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config: suppliedConfig,
+    catalog,
+    nativeCatalog,
+  }) =>
     Effect.gen(function* () {
-      const crypto = yield* Crypto.Crypto;
+      const config = { ...suppliedConfig, customModels: [...suppliedConfig.customModels] };
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const serverConfig = yield* ServerConfig;
       const serverSettings = yield* ServerSettingsService;
-      const eventLoggers = yield* ProviderEventLoggers;
       const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
+      const nativeProviderCatalog = nativeCatalog ?? (yield* makeNativeProviderCatalog());
       const processEnv = mergeProviderInstanceEnvironment(environment);
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
@@ -133,11 +142,12 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
         effectiveConfig,
         processEnv,
       ) as unknown as Effect.Effect<ProviderInstance["textGeneration"]>;
-      const checkProvider = checkAntigravityProviderStatus(
-        effectiveConfig,
-        processEnv,
-        providerCatalog,
-      ).pipe(
+      const checkProvider = fetchAntigravityProviderCatalog({
+        settings: effectiveConfig,
+        environment: processEnv,
+        catalog: providerCatalog,
+        nativeCatalog: nativeProviderCatalog,
+      }).pipe(
         Effect.map(stampIdentity),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       );

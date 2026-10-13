@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题                    |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归                       |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                          |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类目录；七类共享加载统一预算/资源/信号）      | ProviderCatalogCache / ByokCatalog / ByokHttpClient / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—55主题完成无会话、十二类目录共享及同设置刷新；Codex/Claude/Cursor/Grok/Kimi完整原生刷新统一，五家配置CLI总预算/信号、跨目标取消、显式共享可写home及模型模式边界仍开放 |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类目录；八类共享加载统一预算/资源/信号）      | ProviderCatalogCache / ByokCatalog / ByokHttpClient / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—56主题完成无会话、十二类目录共享及同设置刷新；Codex/Claude/Cursor/Grok/Kimi/Antigravity完整原生刷新统一，其余四家CLI总预算/信号、跨目标取消、显式共享可写home及模型模式边界仍开放 |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                                        |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                                    |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 待实施                                                       | ProviderAdapterCapabilities / server config / 三端控制                                                     | 尚未运行                                                                                                                        |
@@ -994,3 +994,19 @@ CursorDriver 接入 registry 持有的 `NativeProviderCatalog`，等价配置完
 另1项公开状态入口的有效旧版对照只替换隔离候选 KimiProvider 为第54主题版本：版本探针一直挂起，旧路径到16秒观察时限仍未完成，结果为 `observer reached`，与十五秒工作预算消息的断言直接失败。恢复新版后通过，finally 按SHA校验恢复；`catalog-kimi-native-deadline-proof.json` 两轮 valid/restored 均 true。该观察时限仅用于红灯证明，不是生产计时或 sleep 验收。主矩阵加实际 Windows/公开入口各1项共22个不同用例，复验不重复计数。
 
 三端既有模型选择/设置入口、本地/远程/隧道继续使用同一服务端快照，没有 wire、持久结构、权限或动画改动。本轮未运行三端产品、真实账户或新服务，现存服务未加载此增量。初始路由映射、managed 前后设置与 OS 清理不属于十五秒工作预算。回退4源与4文档可恢复第54主题行为，无数据迁移。原84个无关文件及 BYOK/ChatView 混合改动保持。第11项仍开放 Antigravity、通用ACP、Pi、OhMyPi、ZCode 整轮预算/信号，跨目标取消、显式共享可写 home、模型/模式边界及对应完整连接/客户端验收；原39项与comparison额外范围保持不变。
+
+## 56. Antigravity 完整刷新与版本进程预算
+
+`AntigravityDriver` 接入注册表共享的 `NativeProviderCatalog`，统一 `fetchAntigravityProviderCatalog` 入口把纯配置目录和版本探针纳入同一个十五秒 Scope/controller。纯配置完成缓存仍由已有 `fetchAntigravityCatalog` 提供；版本、安装与未知认证不读整轮完成缓存。禁用实例继续探测实际安装。入口复制配置与显式环境，完整身份包含实际命令、启用状态、规范化模型配置、宿主 cwd 和最终环境；解析和 spawn 使用同一冻结 cwd/env，关闭二次继承并设置两秒强制退出宽限。checkedAt 为每个调用者的完成时间。目录不执行 ACP 会话、认证写入或 prompt。
+
+晚加入不重置截止时间，首等待者取消保留其他等待者，末取消才终结共同加载。强刷新不加入普通旧执行，不同配置独立执行；只影响实例身份的字段不进入键，规范化后等价的自定义模型配置仍只启动一次版本探针。Driver 在共享结果外补各自身份，adapter 保持独立；创建时复制配置，避免后续编辑改变捕获的探针参数。移除该 Driver 中未使用的旧服务读取，没有改动既有 adapter/textGeneration 的类型转换或会话路径。
+
+从第55主题 HEAD 导出纯候选，仅叠加4源。`vp test run --config .candidate-test.config.ts` 指定 `Layers/AntigravityProvider.refresh.test.ts`、`Layers/AntigravityProvider.test.ts`、`Layers/ConfiguredCliProvider.catalog.test.ts`、`Drivers/AntigravityDriver.catalog.test.ts`（均在 apps/server/src/provider），4文件21项通过，5.79秒，日志 `catalog-antigravity-native-tests-final.log`。七项新整轮用例覆盖目录6秒+版本剩余9秒、晚加入、首/末取消、输入冻结、禁用安装、实时版本、强刷新、规范配置合并、不同配置、失败与取消；实际 Driver 用例证明等价配置跨实例共享且身份/adapter 独立。旧 Kimi/Antigravity 配置缓存及安装语义保持通过。
+
+目标 `tsgo --noEmit -p apps/server/.streaming-typecheck.json` 退出0、无诊断，4源 `vp fmt --check` 和 `vp lint` 退出0、lint无诊断。初次类型检查发现测试缺少 Driver 声明的 ProviderEventLoggers，补无操作测试服务后通过，未用强转掩盖。最终 Driver 1项复验通过，2.67秒，是21项子集；没有全仓检查。
+
+额外真实 Windows `.cmd → Node` 版本命令1项通过，2.83秒，日志 `catalog-antigravity-native-windows-initial.log`。版本阻塞时第6秒加入第二caller并关闭首Scope，仍在原第15秒结束；TCP关闭收据证明实际子进程终结，随后新检查恢复。两次假 CLI 启动，两个 handle 终结后 running/osAlive 均 false；四个捕获的外壳/Node PID 后续核对不存在，真实 scoped 临时目录已删除。CLI 与解析器使用相同实际 cwd，命令只有 --version，没有 session 或 prompt。只用本机端口和虚构 CLI，不是供应商云端认证或硬墙钟上限验收。既有 Windows shell DEP0190 提示保留，没有 sleep/轮询、按名称 kill 或保留目录规避失败。
+
+公开旧入口预算对照另1项：仅替换隔离候选 AntigravityProvider 为第55主题版本，挂起版本命令到16秒观察时限仍未完成，得到 `observer reached`，与十五秒预算消息的断言直接失败。finally 按SHA恢复后同一用例通过；`catalog-antigravity-native-deadline-proof.json` 两轮 valid/restored 均 true，红灯日志有直接 AssertionError。主矩阵加 Windows/公开预算各1项，共23个不同用例，复验不重复计数。
+
+三端既有设置/模型选择及本地/远程/隧道继续使用服务端快照，没有新 UI、wire、权限、持久结构或动画。其余provider保持此前实现；本轮未启动产品服务、操作真实供应商或运行三端产品，现存服务未加载该增量。初始快照、managed 前后设置与 OS 清理不属于十五秒预算。回退4源和4文档可恢复第55主题行为，无数据迁移。原84个无关文件及混合 BYOK/ChatView 改动保留。第11项继续开放通用ACP、Pi、OhMyPi、ZCode 整轮预算/信号、跨目标取消、共享可写home与模型/模式及完整连接/客户端验收；完整39项和comparison额外范围保持不变。
