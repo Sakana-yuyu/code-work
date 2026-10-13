@@ -1,10 +1,15 @@
 import type {
   ModelCapabilities,
   ModelSelection,
+  ProviderInteractionMode,
   OrchestrationThreadActivity,
   ServerConfig as CodeworkServerConfig,
 } from "@codework/contracts";
-import { applySessionModelCatalogs } from "@codework/client-runtime/providerModels";
+import { CODEX_COLLABORATION_MODE_OPTION_ID } from "@codework/contracts";
+import {
+  applySessionModelCatalogs,
+  resolveProviderInteractionMode,
+} from "@codework/client-runtime/providerModels";
 import {
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionDescriptors,
@@ -210,6 +215,49 @@ export function buildModelOptions(
   }
 
   return [...options.values()];
+}
+
+/** 新任务快照与菜单采用同一目录；原生模式优先于旧版两态偏好。 */
+export function resolveModelInteractionSettings(
+  config: CodeworkServerConfig | null | undefined,
+  selection: ModelSelection,
+  interactionMode: ProviderInteractionMode,
+): { modelSelection: ModelSelection; interactionMode: ProviderInteractionMode } {
+  if (!config) return { modelSelection: selection, interactionMode };
+  const option = buildModelOptions(config, selection).find(
+    (candidate) =>
+      candidate.selection.instanceId === selection.instanceId &&
+      candidate.selection.model === selection.model,
+  );
+  let modelSelection = option?.selection ?? selection;
+  const provider = config.providers.find(
+    (candidate) => candidate.instanceId === selection.instanceId,
+  );
+  // 旧模型缺少描述时，也不能向在线Codex发送已经撤回的原生模式。
+  if (
+    provider?.driver === "codex" &&
+    !option?.capabilities?.optionDescriptors?.some(
+      (descriptor) => descriptor.id === CODEX_COLLABORATION_MODE_OPTION_ID,
+    ) &&
+    modelSelection.options?.some((value) => value.id === CODEX_COLLABORATION_MODE_OPTION_ID)
+  ) {
+    modelSelection = {
+      ...modelSelection,
+      options: modelSelection.options.filter(
+        (value) => value.id !== CODEX_COLLABORATION_MODE_OPTION_ID,
+      ),
+    };
+  }
+  return {
+    modelSelection,
+    interactionMode: resolveProviderInteractionMode({
+      providers: config.providers,
+      instanceId: modelSelection.instanceId,
+      capabilities: option?.capabilities,
+      modelSelection,
+      interactionMode,
+    }),
+  };
 }
 
 export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyArray<ProviderGroup> {

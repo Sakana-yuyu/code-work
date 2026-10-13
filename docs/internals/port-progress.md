@@ -1246,3 +1246,23 @@ Codex 两态控件撤回，三端复用现有通用选项消费。普通发送�
 原始工作区外catalog-newtask-native-{queue-proof,runtime-proof,metro,bundle-result,cleanup-proof}.json、Metro日志和各导航层级/PNG保留。可视化目录android-newtask-catalog-completed.png、android-newtask-catalog-proof.json、newtask-default-only.png及newtask-provider-restored.png可查看。恢复fixture原字节SHA、移除本主题newtask-modes.json，通过实例停用释放worker78776后重新启用/刷新，Web确认已认证；仅忘记手机13774测试连接，保留13773/13811已连接；移除reverse8088，停止捕获Metro120540，飞行模式disabled。保留模拟器、Web/backend、服务端新线程和验收数据。
 
 本轮新增Android新任务实际离线入队/目录撤回/自动创建/一次发送/完整回复/文件移除证据，无新源码、协议、权限、会话生命周期或用户行为变更。因此未重复第69主题71项测试/目标类型/lint或第68主题361项，也未重做旧版对照；对应源码证据按原范围保留。Web为目录撤回入口，Windows为受控CLI子进程；Electron、iOS、ACP实际动态目录、外部供应商、公网relay/tunnel和帧率未新增验收。第11项剩余完整矩阵、第14/19项及全39项/comparison继续进行。三份架构/进度文档可独立回退，无迁移，原有92项未提交状态与受保护混合hunk继续保留。
+
+## 71. 手机新任务原生模式与规范模式同时对齐
+
+第70主题是有效进展，本轮基线0c5db4e86。继续第11项，并处理上一轮明确保留的第14/19项表示矛盾：真实离线新任务文件的原生选项为plan，规范interactionMode却是default。源码确认新任务显示、在线handleStart和buildPendingTaskMessage三个入口各自受旧版Plan偏好覆盖；模型菜单独立保存原生选项，运行适配器又优先采用它，导致实际Plan与规范记录不一致。没有据菜单或RPC成功掩盖规范状态。原39项/comparison范围保持完整，Electron替代UI自动化授权仍待答复。
+
+四源修改：modelOptions新增resolveModelInteractionSettings，复用既有菜单归一化与共享resolveProviderInteractionMode；明确原生模式优先于旧两态偏好，已撤回选项与规范模式同步校正，在线旧Codex模型缺少模式广告时移除历史原生字段，未知/离线无配置保留输入，不借用其他实例。new-task-flow-provider按当前模型能力计算显示模式；离线入队与待发任务编辑采用同一快照解析；NewTaskDraftScreen在线创建读取刚保存的草稿并同时对齐模型与规范模式。保留项目/工作区/消息身份、推理和runtimeMode，不新增协议、目录探测、全局订阅、effect修正或动画。参考仓库React性能技能采用派生状态，目录只在快照构建时归一化。
+
+纯HEAD候选仅带入本主题四源，无主工作区未提交修改。新增八项覆盖旧开关关闭时原生Plan、旧开关开启时原生默认、撤回/旧模型、推理与草稿不变、实例隔离、离线及BYOK/Claude真实两态声明。七文件83项全部通过：Mobile modelOptions/providerOptions/legacy-plan-mode、thread-outbox/drain，以及共享providerModels/state/server；Mobile目标tsgo、四源fmt/lint通过，检查前后SHA稳定，捕获PID106708/62840/61240/101956均退出0。首次测试文件类型断言换行导致格式解析失败，修正后正式检查通过，不把解析失败计为通过。没有全仓检查、Web类型或服务器类型重跑。运行命令与code/pid/stable回执在工作区外catalog-newtask-mode-state-checks.cjs及对应日志/result.json。
+
+旧版对照采用第70主题已保留的实际Android入队文件，并核对当前基线两处生产源仍为旧偏好分支：old-proof保存0c5db4e86完整SHA、flow与screen源SHA以及nativeMode=plan/interactionMode=default的直接矛盾。没有在本轮重新运行旧包，也没有将新增函数在旧源码中的导入失败当作旧行为证明。新版实际文件则原生与规范均plan。旧原生文件、原有失败和本轮入口证据各自保留。
+
+继续按test-codework-mobile复用隔离emulator-5562、兼容开发客户端与保留的13774后端/5734 Web。三生产源从本主题测试候选同步到原生副本且SHA一致，无原生重建。捕获Metro70456、8088，development/dev-client/codework-dev、CI=1/EXPO_OFFLINE=1；Android包HTTP200、31,404,243字节，SHA-256 `5b64ffa6c1c7f6761a63559e134fd297f9543e455194baa664bbb66c0854d604`，通过真实Tools→Reload重载。加载帧只有Tools时确认同一Metro仍存活并完成编译，没有据延迟重启。合成未知Codex模型通过现有旧版筛选显式选择；没有改变目录以绕过筛选。输入/键盘切换期间一次模型按钮未打开，刷新布局后按当前按钮进入；实际在线文本由IME首字母改为Newtask-online-plan-71，按实际文本对账，未修改历史数据。
+
+Android在线新任务实际选原生Plan、Medium和受监督，通过开始任务创建线程6dbf4990-a32f-4f60-ba3c-1406b95fd432；真实Windows worker95636只收到一次turn/start，mode=plan、untrusted/readOnly。只读SQL中规范interaction_mode和原生选项均plan，Medium与approval-required保留，指定项目9bd1fd3c-05b0-4b52-93a7-aac7f0bf2c69不变，用户/助手仅两条完整消息，会话ready/无active_turn_id/无last_error。手机最终显示完整“原生计划模式已确认。”。提交后第一帧出现“线程不可用”，随后加载成功；该首绘现象继续归第8项，不将模式修复推成首绘无闪烁证明。
+
+第二条新任务newtask-offline-plan-71沿用已选模型设置，临时飞行模式由disabled改enable，实际确认“您离线”和队列按钮后入队。只读指定无附件文件20de5041-6b04-4eb1-be5f-fcc2a9404c63.json：schemaVersion3，原生mode=plan、规范interactionMode=plan、Medium/approval-required、创建项目与local工作区信息完整，当时尚未派发。恢复disabled后自动创建预分配线程ac8d0c42-80de-4c02-8d00-c5bba1a64e10，worker7660仅收到一次Plan回合；SQL保存相同user messageId20de5041-6b04-4eb1-be5f-fcc2a9404c63，原生/规范均plan、权限与推理保留，回复完整、会话ready且无错误；手机打开新线程后全文可见，物理outbox为空。online/offline-proof.valid均true。
+
+本主题未改fixture，原文件SHA与第70主题备份一致。通过Web实例停用释放worker95636/7660后重新启用/刷新，Web确认恢复已认证；仅忘记手机13774临时连接，保留13773/13811已连接；移除reverse8088、停止捕获Metro70456，飞行模式disabled。模拟器、Web/backend及服务端验收线程保留，不写SQL业务状态或读取认证文件。原始工作区外catalog-newtask-mode-state-{old,queue,online,offline}-proof.json、native-source、bundle-result、cleanup-proof及导航层级/日志；可视化目录android-newtask-{online,offline}-plan.png与对应proof.json可查看。
+
+本次实际为Android在线新任务、离线新任务和Windows受控协议进程，不是外部供应商账号。待发编辑复用同一已测试设置解析函数，本轮未做编辑设备操作；非Codex的实际声明沿用共享解析，BYOK关闭/Claude保留两态有定向断言，其余driver目录合同不变。Web/Desktop入口不修改，Electron、iOS、ACP实际动态目录、公网relay/tunnel、未知配置编辑与帧率未新增验收。另确认新任务旧版两态按钮的显示目前只看planModeEnabled偏好，未按实例广告门控；原生模式优先时该按钮不能改变原生选项，后续单独修复并验证开启偏好的入口，不能将本轮关闭偏好下的设备证据用于证明其可用。第11项剩余矩阵、完整第14/19项与原39项/comparison继续进行。四源与四文档可独立回退，无数据迁移；仍保护原83个无关基线文件、BYOK/ChatView/ChatComposer混合hunk，精确提交不得包含截图或工作区外脚本。

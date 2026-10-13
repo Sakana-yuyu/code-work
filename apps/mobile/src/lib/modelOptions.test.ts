@@ -13,7 +13,133 @@ import {
   getThreadProviderGroups,
   resolveDefaultableModelSelection,
   resolveSelectableModelSelection,
+  resolveModelInteractionSettings,
 } from "./modelOptions";
+
+describe("新任务模型与规范模式", () => {
+  const instanceId = ProviderInstanceId.make("codex");
+  const selection = {
+    instanceId,
+    model: "fixture-model",
+    options: [
+      { id: "reasoningEffort", value: "medium" },
+      { id: "codexCollaborationMode", value: "plan" },
+    ],
+  };
+  const config = (modes: ReadonlyArray<string> | null): ServerConfig =>
+    ({
+      providers: [
+        {
+          instanceId,
+          driver: "codex",
+          enabled: true,
+          installed: true,
+          showInteractionModeToggle: false,
+          auth: { status: "authenticated" },
+          models: [
+            {
+              slug: "fixture-model",
+              name: "测试模型",
+              capabilities:
+                modes === null
+                  ? null
+                  : {
+                      optionDescriptors: [
+                        {
+                          id: "reasoningEffort",
+                          label: "思考",
+                          type: "select",
+                          currentValue: "medium",
+                          options: [{ id: "medium", label: "Medium" }],
+                        },
+                        {
+                          id: "codexCollaborationMode",
+                          label: "模式",
+                          type: "select",
+                          currentValue: "default",
+                          options: modes.map((id) => ({ id, label: id })),
+                        },
+                      ],
+                    },
+            },
+          ],
+        },
+      ],
+    }) as unknown as ServerConfig;
+
+  it("旧版Plan关闭时，明确原生Plan仍同时写入原生与规范模式", () => {
+    const result = resolveModelInteractionSettings(
+      config(["default", "plan"]),
+      selection,
+      "default",
+    );
+    expect(result).toEqual({ modelSelection: selection, interactionMode: "plan" });
+  });
+
+  it("旧版Plan开启时，明确原生默认仍使用规范default", () => {
+    const requested = {
+      ...selection,
+      options: [
+        { id: "reasoningEffort", value: "medium" },
+        { id: "codexCollaborationMode", value: "default" },
+      ],
+    };
+    expect(resolveModelInteractionSettings(config(["default", "plan"]), requested, "plan")).toEqual(
+      { modelSelection: requested, interactionMode: "default" },
+    );
+  });
+
+  it("目录撤回Plan时同时清理原生选择，保留推理且不修改草稿", () => {
+    const before = structuredClone(selection);
+    expect(resolveModelInteractionSettings(config(["default"]), selection, "plan")).toEqual({
+      modelSelection: {
+        ...selection,
+        options: [
+          { id: "reasoningEffort", value: "medium" },
+          { id: "codexCollaborationMode", value: "default" },
+        ],
+      },
+      interactionMode: "default",
+    });
+    expect(selection).toEqual(before);
+  });
+
+  it("在线旧模型没有能力广告时清除原生Plan", () => {
+    expect(resolveModelInteractionSettings(config(null), selection, "plan")).toEqual({
+      modelSelection: { ...selection, options: [{ id: "reasoningEffort", value: "medium" }] },
+      interactionMode: "default",
+    });
+  });
+
+  it("不借用另一实例的原生广告", () => {
+    const requested = { ...selection, instanceId: ProviderInstanceId.make("another") };
+    expect(
+      resolveModelInteractionSettings(config(["default", "plan"]), requested, "default"),
+    ).toEqual({ modelSelection: requested, interactionMode: "default" });
+  });
+
+  it("离线无配置保留已有模式和选项", () => {
+    expect(resolveModelInteractionSettings(null, selection, "plan")).toEqual({
+      modelSelection: selection,
+      interactionMode: "plan",
+    });
+  });
+
+  it.each([
+    ["byok", false, "default"],
+    ["claudeAgent", true, "plan"],
+  ] as const)("%s沿用真实两态声明，不受Codex原生广告影响", (driver, enabled, expected) => {
+    const provider = config(null).providers[0]!;
+    const current = {
+      providers: [{ ...provider, driver, showInteractionModeToggle: enabled }],
+    } as unknown as ServerConfig;
+    const requested = { instanceId, model: "fixture-model" };
+    expect(resolveModelInteractionSettings(current, requested, "plan")).toEqual({
+      modelSelection: requested,
+      interactionMode: expected,
+    });
+  });
+});
 
 describe("mobile model options", () => {
   it("会话模式进入手机选项并保留 URI 默认值，撤回后清除历史选项", () => {

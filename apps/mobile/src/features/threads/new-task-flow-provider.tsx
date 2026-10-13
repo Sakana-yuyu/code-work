@@ -18,6 +18,7 @@ import {
   ThreadId,
 } from "@codework/contracts";
 import { parseCodeworkProjectFile } from "@codework/shared/codeworkProjectFile";
+import { resolveProviderInteractionMode } from "@codework/client-runtime/providerModels";
 import {
   isDefaultThreadEnvModeSettled,
   resolveDefaultThreadEnvMode,
@@ -35,6 +36,7 @@ import {
   groupByProvider,
   resolveDefaultableModelSelection,
   resolveSelectableModelSelection,
+  resolveModelInteractionSettings,
 } from "../../lib/modelOptions";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { appAtomRegistry } from "../../state/atom-registry";
@@ -407,7 +409,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     selectedEnvironmentServerConfig?.settings.newWorktreesStartFromOrigin ??
     true;
   const runtimeMode = selectedProjectDraft.runtimeMode ?? DEFAULT_RUNTIME_MODE;
-  const interactionMode = planModeEnabled
+  const legacyInteractionMode = planModeEnabled
     ? (selectedProjectDraft.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE)
     : DEFAULT_PROVIDER_INTERACTION_MODE;
 
@@ -450,6 +452,15 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
         option.selection.instanceId === selectedModel.instanceId &&
         option.selection.model === selectedModel.model,
     ) ?? null;
+  const interactionMode = selectedModel
+    ? resolveProviderInteractionMode({
+        providers: selectedEnvironmentServerConfig?.providers ?? [],
+        instanceId: selectedModel.instanceId,
+        capabilities: selectedModelOption?.capabilities,
+        modelSelection: selectedModelOption?.selection ?? selectedModel,
+        interactionMode: legacyInteractionMode,
+      })
+    : legacyInteractionMode;
   const selectedProviderSkills = useMemo(
     () =>
       selectedEnvironmentServerConfig?.providers.find(
@@ -870,6 +881,16 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       if (text.length === 0 || !draftModelSelection) {
         return null;
       }
+      const modelSettings = resolveModelInteractionSettings(
+        selectedEnvironmentServerConfig,
+        draftModelSelection,
+        resolvePendingTaskInteractionMode({
+          preferenceLoaded: planModePreferenceLoaded,
+          planModeEnabled,
+          draftInteractionMode: draft.interactionMode,
+          queuedInteractionMode: editingPendingTask?.interactionMode,
+        }),
+      );
       const workspaceSelection = draft.workspaceSelection;
       // Fall back to the resolved mode (server default) so queued tasks drain
       // with the same mode the composer displayed.
@@ -892,14 +913,9 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
         commandId: CommandId.make(metadata.commandId),
         text,
         attachments: draft.attachments,
-        modelSelection: draftModelSelection,
+        modelSelection: modelSettings.modelSelection,
         runtimeMode: draft.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-        interactionMode: resolvePendingTaskInteractionMode({
-          preferenceLoaded: planModePreferenceLoaded,
-          planModeEnabled,
-          draftInteractionMode: draft.interactionMode,
-          queuedInteractionMode: editingPendingTask?.interactionMode,
-        }),
+        interactionMode: modelSettings.interactionMode,
         creation: {
           projectId: selectedProject.id,
           ...(projectTitle !== undefined ? { projectTitle } : {}),
