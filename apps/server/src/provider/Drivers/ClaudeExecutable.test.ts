@@ -30,6 +30,18 @@ describe("Claude npm installation checks", () => {
     expect(isClaudeNpmPackageEntryDamaged(NPM_PACKAGE_EXE, () => 217_000_000)).toBe(false);
     expect(isClaudeNpmPackageEntryDamaged(NPM_PACKAGE_CLI, () => 500)).toBe(false);
   });
+
+  it("相对 PATH 的安装检查使用目标工作目录", () => {
+    const entry = "D:\\workspace\\tools\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe";
+    expect(
+      findClaudeNpmPackageEntry(
+        { PATH: "tools" },
+        "win32",
+        (candidate) => candidate === entry,
+        "D:\\workspace",
+      ),
+    ).toBe(entry);
+  });
 });
 
 function withWindowsResolution(input: {
@@ -46,6 +58,33 @@ function withWindowsResolution(input: {
 }
 
 describe("resolveClaudeSdkExecutablePath", () => {
+  it.effect("相对命令和相对 PATH 向解析器传递 SDK 的实际 cwd", () =>
+    Effect.gen(function* () {
+      const cwd = "D:\\workspace";
+      const environment = { PATH: ".\\tools", PATHEXT: ".CMD;.EXE" };
+      const resolvedExe = `${cwd}\\tools\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe`;
+      for (const binaryPath of ["claude", ".\\tools\\claude.cmd"]) {
+        const result = yield* resolveClaudeSdkExecutablePath(binaryPath, environment, cwd).pipe(
+          Effect.provideService(HostProcessPlatform, "win32"),
+          Effect.provideService(
+            SpawnExecutableResolution,
+            (command, platform, env, workingDirectory) => {
+              expect(command).toBe(binaryPath);
+              expect(platform).toBe("win32");
+              expect(env).toBe(environment);
+              expect(workingDirectory).toBe(cwd);
+              return `${cwd}\\tools\\claude.cmd`;
+            },
+          ),
+          Effect.provideService(
+            ClaudeExecutableFileCheck,
+            (candidate) => candidate === resolvedExe,
+          ),
+        );
+        expect(result).toBe(resolvedExe);
+      }
+    }),
+  );
   it.effect("returns the configured path unchanged on non-Windows platforms", () =>
     Effect.gen(function* () {
       expect(

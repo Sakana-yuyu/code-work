@@ -2,12 +2,18 @@ import {
   type ClaudeSettings,
   type ModelCapabilities,
   type ModelSelection,
+  ProviderDriverKind,
   type ServerProviderModel,
+  type ServerProviderSkill,
   type ServerProviderSlashCommand,
 } from "@codework/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
-import { HostProcessPlatform } from "@codework/shared/hostProcess";
+import {
+  HostProcessEnvironment,
+  HostProcessPlatform,
+  HostProcessWorkingDirectory,
+} from "@codework/shared/hostProcess";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -36,6 +42,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   isCommandMissingCause,
   parseGenericCliVersion,
+  providerCustomModelSlugs,
   providerModelsFromSettings,
   spawnAndCollect,
   type ServerProviderDraft,
@@ -47,6 +54,11 @@ import {
 } from "../Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
+import {
+  cliProviderCatalogIdentity,
+  makeCliProviderCatalog,
+  type CliProviderCatalog,
+} from "../CliProviderCatalog.ts";
 
 const DEFAULT_CLAUDE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
   optionDescriptors: [],
@@ -759,50 +771,60 @@ function waitForAbortSignal(signal: AbortSignal): Promise<void> {
  * This is used as a fallback when `claude auth status` does not include
  * subscription type information.
  */
-const probeClaudeCapabilities = (
+const probeResolvedClaudeCapabilities = Effect.fn("probeResolvedClaudeCapabilities")(function* (
   claudeSettings: ClaudeSettings,
-  environment?: NodeJS.ProcessEnv,
-  cwd?: string,
-) => {
+  environment: NodeJS.ProcessEnv,
+  cwd: string,
+) {
+  // 同一个 Effect 可以重复执行；每次初始化都必须拥有独立的取消信号。
   const abort = new AbortController();
-  return Effect.gen(function* () {
-    const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, environment);
+  return yield* Effect.gen(function* () {
     const executablePath = yield* resolveClaudeSdkExecutablePath(
       claudeSettings.binaryPath,
-      claudeEnvironment,
+      environment,
+      cwd,
     );
-    return yield* Effect.tryPromise(async () => {
-      const q = claudeQuery({
-        // Never yield — we only need initialization data, not a conversation.
-        // This prevents any prompt from reaching the Anthropic API.
-        // oxlint-disable-next-line require-yield
-        prompt: (async function* (): AsyncGenerator<SDKUserMessage> {
-          await waitForAbortSignal(abort.signal);
-        })(),
-        options: buildClaudeCapabilitiesProbeQueryOptions({
-          executablePath,
-          abortController: abort,
-          environment: claudeEnvironment,
-          cwd,
+    return yield* Effect.acquireUseRelease(
+      Effect.try(() =>
+        claudeQuery({
+          // Never yield — we only need initialization data, not a conversation.
+          // This prevents any prompt from reaching the Anthropic API.
+          // oxlint-disable-next-line require-yield
+          prompt: (async function* (): AsyncGenerator<SDKUserMessage> {
+            await waitForAbortSignal(abort.signal);
+          })(),
+          options: buildClaudeCapabilitiesProbeQueryOptions({
+            executablePath,
+            abortController: abort,
+            environment,
+            cwd,
+          }),
         }),
-      });
-      const init = await q.initializationResult();
-      const account = init.account as
-        | {
-            readonly email?: string;
-            readonly subscriptionType?: string;
-            readonly tokenSource?: string;
-            readonly apiProvider?: string;
-          }
-        | undefined;
-      return {
-        email: account?.email,
-        subscriptionType: account?.subscriptionType,
-        tokenSource: account?.tokenSource,
-        apiProvider: account?.apiProvider,
-        slashCommands: parseClaudeInitializationCommands(init.commands),
-      } satisfies ClaudeCapabilitiesProbe;
-    });
+      ),
+      (q) =>
+        Effect.tryPromise(async () => {
+          const init = await q.initializationResult();
+          const account = init.account as
+            | {
+                readonly email?: string;
+                readonly subscriptionType?: string;
+                readonly tokenSource?: string;
+                readonly apiProvider?: string;
+              }
+            | undefined;
+          return {
+            email: account?.email,
+            subscriptionType: account?.subscriptionType,
+            tokenSource: account?.tokenSource,
+            apiProvider: account?.apiProvider,
+            slashCommands: parseClaudeInitializationCommands(init.commands),
+          } satisfies ClaudeCapabilitiesProbe;
+        }),
+      (q) =>
+        Effect.sync(() => abort.abort()).pipe(
+          Effect.andThen(Effect.try(() => q.close()).pipe(Effect.ignore)),
+        ),
+    );
   }).pipe(
     Effect.ensuring(
       Effect.sync(() => {
@@ -816,16 +838,102 @@ const probeClaudeCapabilities = (
       return Option.isSome(result.success) ? result.success.value : undefined;
     }),
   );
-};
+});
+
+const probeClaudeCapabilities = Effect.fn("probeClaudeCapabilities")(function* (
+  settings: ClaudeSettings,
+  environment?: NodeJS.ProcessEnv,
+  cwd?: string,
+) {
+  const resolvedEnvironment = yield* makeClaudeEnvironment(settings, {
+    ...(yield* HostProcessEnvironment),
+    ...environment,
+  });
+  return yield* probeResolvedClaudeCapabilities(
+    settings,
+    resolvedEnvironment,
+    cwd ?? (yield* HostProcessWorkingDirectory),
+  );
+});
+
+interface ClaudeNativeCatalogInput<R> {
+  readonly version: string | null;
+  readonly executablePath: string;
+  readonly environment: NodeJS.ProcessEnv;
+  readonly cwd: string;
+  readonly capabilities: Effect.Effect<ClaudeCapabilitiesProbe | undefined, never, R>;
+  readonly skills: Effect.Effect<ReadonlyArray<ServerProviderSkill>, never, R>;
+}
+
+/** 初始化的账户只属于本次检查；缓存仅持有已经脱离 SDK 生命周期的目录值。 */
+export const fetchClaudeCatalog = Effect.fn("fetchClaudeCatalog")(function* <R = never>(
+  settings: Pick<ClaudeSettings, "customModels">,
+  catalog?: CliProviderCatalog,
+  native?: ClaudeNativeCatalogInput<R>,
+) {
+  const builtInModels = native ? getBuiltInClaudeModelsForVersion(native.version) : BUILT_IN_MODELS;
+  const customModels = providerCustomModelSlugs(builtInModels, settings.customModels);
+  // SDK 将账户与命令合并在 initialize 响应中，读取当前账户必然也会收到当前命令。
+  const capabilities = native ? yield* native.capabilities : undefined;
+  const slashCommands = native
+    ? dedupeSlashCommands([
+        { name: "compact", description: "Summarize the conversation and reduce context usage" },
+        ...(capabilities?.slashCommands ?? []),
+      ])
+    : undefined;
+  const load = Effect.gen(function* () {
+    return {
+      models: providerModelsFromSettings(
+        builtInModels,
+        customModels,
+        DEFAULT_CLAUDE_MODEL_CAPABILITIES,
+      ),
+      ...(native ? { skills: yield* native.skills, slashCommands: slashCommands ?? [] } : {}),
+    };
+  });
+  const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
+  // 初始化失败的降级目录不写缓存，不能覆盖或延长之前成功发现的目录。
+  const data =
+    native && !capabilities
+      ? yield* load
+      : yield* providerCatalog
+          .fetchCatalog({
+            key: cliProviderCatalogIdentity({
+              driver: ProviderDriverKind.make("claudeAgent"),
+              operation: native ? "native-directory" : "configured-models",
+              config: {
+                customModels,
+                ...(native
+                  ? { binaryPath: native.executablePath, version: native.version, slashCommands }
+                  : {}),
+              },
+              ...(native ? { cwd: native.cwd, environment: native.environment } : {}),
+            }),
+            load,
+          })
+          .pipe(Effect.orDie);
+  const account = capabilities
+    ? {
+        email: capabilities.email,
+        subscriptionType: capabilities.subscriptionType,
+        tokenSource: capabilities.tokenSource,
+        apiProvider: capabilities.apiProvider,
+      }
+    : undefined;
+  return { catalog: data, account };
+});
 
 const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
   claudeSettings: ClaudeSettings,
   args: ReadonlyArray<string>,
   environment?: NodeJS.ProcessEnv,
+  cwd?: string,
 ) {
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, environment);
   const spawnCommand = yield* resolveSpawnCommand(claudeSettings.binaryPath, args, {
     env: claudeEnvironment,
+    extendEnv: false,
+    ...(cwd ? { cwd } : {}),
   });
   yield* Effect.annotateCurrentSpan({
     "claude.binary_path": claudeSettings.binaryPath,
@@ -837,6 +945,8 @@ const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
   });
   const command = ChildProcess.make(spawnCommand.command, spawnCommand.args, {
     env: claudeEnvironment,
+    extendEnv: false,
+    ...(cwd ? { cwd } : {}),
     shell: spawnCommand.shell,
   });
   return yield* spawnAndCollect(claudeSettings.binaryPath, command);
@@ -849,18 +959,21 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   ) => Effect.Effect<ClaudeCapabilitiesProbe | undefined>,
   environment?: NodeJS.ProcessEnv,
   cwd?: string,
+  catalog?: CliProviderCatalog,
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
   ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
 > {
-  const resolvedEnvironment = environment ?? process.env;
+  const resolvedEnvironment = yield* makeClaudeEnvironment(claudeSettings, {
+    ...(yield* HostProcessEnvironment),
+    ...environment,
+  });
+  const resolvedCwd = cwd ?? (yield* HostProcessWorkingDirectory);
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
-  const allModels = providerModelsFromSettings(
-    BUILT_IN_MODELS,
-    claudeSettings.customModels,
-    DEFAULT_CLAUDE_MODEL_CAPABILITIES,
-  );
+  const {
+    catalog: { models: allModels },
+  } = yield* fetchClaudeCatalog(claudeSettings, catalog);
 
   if (!claudeSettings.enabled) {
     return buildServerProvider({
@@ -881,6 +994,8 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   const claudeNpmPackageEntry = findClaudeNpmPackageEntry(
     resolvedEnvironment,
     yield* HostProcessPlatform,
+    undefined,
+    resolvedCwd,
   );
   if (claudeNpmPackageEntry && isClaudeNpmPackageEntryDamaged(claudeNpmPackageEntry)) {
     yield* Effect.logWarning("Claude Agent CLI installation appears damaged.", {
@@ -907,6 +1022,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     claudeSettings,
     ["--version"],
     resolvedEnvironment,
+    resolvedCwd,
   ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);
 
   if (Result.isFailure(versionProbe)) {
@@ -973,11 +1089,6 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
-  const models = providerModelsFromSettings(
-    getBuiltInClaudeModelsForVersion(parsedVersion),
-    claudeSettings.customModels,
-    DEFAULT_CLAUDE_MODEL_CAPABILITIES,
-  );
   const versionUpgradeMessage = supportsClaudeOpus5(parsedVersion)
     ? undefined
     : supportsClaudeFable5(parsedVersion)
@@ -988,18 +1099,23 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
           ? formatClaudeOpus48UpgradeMessage(parsedVersion)
           : formatClaudeOpus47UpgradeMessage(parsedVersion);
 
-  const capabilities = resolveCapabilities
-    ? yield* resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))
-    : undefined;
-  const skills = yield* discoverClaudeSkills(claudeSettings, cwd, resolvedEnvironment);
-  const slashCommands = [
-    {
-      name: "compact",
-      description: "Summarize the conversation and reduce context usage",
-    },
-    ...(capabilities?.slashCommands ?? []),
-  ];
-  const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
+  const {
+    catalog: { models, skills, slashCommands },
+    account: capabilities,
+  } = yield* fetchClaudeCatalog(claudeSettings, catalog, {
+    version: parsedVersion,
+    executablePath: yield* resolveClaudeSdkExecutablePath(
+      claudeSettings.binaryPath,
+      resolvedEnvironment,
+      resolvedCwd,
+    ),
+    environment: resolvedEnvironment,
+    cwd: resolvedCwd,
+    capabilities: resolveCapabilities
+      ? resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))
+      : probeResolvedClaudeCapabilities(claudeSettings, resolvedEnvironment, resolvedCwd),
+    skills: discoverClaudeSkills(claudeSettings, resolvedCwd, resolvedEnvironment),
+  });
 
   if (!capabilities) {
     return buildServerProvider({
@@ -1007,8 +1123,8 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       enabled: claudeSettings.enabled,
       checkedAt,
       models,
-      slashCommands: dedupedSlashCommands,
-      skills,
+      slashCommands: slashCommands ?? [],
+      skills: skills ?? [],
       probe: {
         installed: true,
         version: parsedVersion,
@@ -1029,8 +1145,8 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     enabled: claudeSettings.enabled,
     checkedAt,
     models,
-    slashCommands: dedupedSlashCommands,
-    skills,
+    slashCommands: slashCommands ?? [],
+    skills: skills ?? [],
     probe: {
       installed: true,
       version: parsedVersion,
@@ -1049,14 +1165,13 @@ const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
 export const makePendingClaudeProvider = (
   claudeSettings: ClaudeSettings,
+  catalog?: CliProviderCatalog,
 ): Effect.Effect<ServerProviderDraft> =>
   Effect.gen(function* () {
     const checkedAt = yield* nowIso;
-    const models = providerModelsFromSettings(
-      BUILT_IN_MODELS,
-      claudeSettings.customModels,
-      DEFAULT_CLAUDE_MODEL_CAPABILITIES,
-    );
+    const {
+      catalog: { models },
+    } = yield* fetchClaudeCatalog(claudeSettings, catalog);
 
     if (!claudeSettings.enabled) {
       return buildServerProvider({

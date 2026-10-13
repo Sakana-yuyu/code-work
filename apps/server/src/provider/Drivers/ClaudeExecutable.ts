@@ -53,13 +53,15 @@ export function findClaudeNpmPackageEntry(
   environment: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
   isFile: ExecutableFileCheck = isExistingFile,
+  cwd?: string,
 ): string | null {
   if (platform !== "win32") return null;
 
   const pathValue = environment.PATH ?? environment.Path ?? environment.path ?? "";
   for (const rawPathEntry of pathValue.split(";")) {
-    const pathEntry = rawPathEntry.trim().replace(/^"|"$/g, "");
-    if (!pathEntry) continue;
+    const rawEntry = rawPathEntry.trim().replace(/^"|"$/g, "");
+    if (!rawEntry) continue;
+    const pathEntry = cwd ? NodePath.win32.resolve(cwd, rawEntry) : rawEntry;
     for (const entrySegments of NPM_PACKAGE_ENTRY_CANDIDATES) {
       const candidate = NodePath.win32.join(pathEntry, ...entrySegments);
       if (isFile(candidate)) return candidate;
@@ -106,7 +108,11 @@ export const ClaudeExecutableFileCheck = Context.Reference<ExecutableFileCheck>(
  * platforms the configured value is returned unchanged.
  */
 export const resolveClaudeSdkExecutablePath = Effect.fn("resolveClaudeSdkExecutablePath")(
-  function* (binaryPath: string, environment: NodeJS.ProcessEnv): Effect.fn.Return<string> {
+  function* (
+    binaryPath: string,
+    environment: NodeJS.ProcessEnv,
+    cwd?: string,
+  ): Effect.fn.Return<string> {
     const platform = yield* HostProcessPlatform;
     if (platform !== "win32") {
       return binaryPath;
@@ -114,7 +120,8 @@ export const resolveClaudeSdkExecutablePath = Effect.fn("resolveClaudeSdkExecuta
 
     const resolveExecutable = yield* SpawnExecutableResolution;
     const isFile = yield* ClaudeExecutableFileCheck;
-    const resolved = resolveExecutable(binaryPath, platform, environment) ?? binaryPath;
+    // 与 SDK 进程的 cwd 一致，避免相对命令或相对 PATH 指向宿主工作目录中的另一份 CLI。
+    const resolved = resolveExecutable(binaryPath, platform, environment, cwd) ?? binaryPath;
     const extension = NodePath.win32.extname(resolved).toLowerCase();
     if (!WINDOWS_SHIM_EXTENSIONS.has(extension)) {
       return resolved;

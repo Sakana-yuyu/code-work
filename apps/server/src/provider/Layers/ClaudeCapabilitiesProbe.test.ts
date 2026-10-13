@@ -47,8 +47,8 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
       const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "codework-claude-probe-sdk-" });
       const executablePath = path.join(tempDir, "fake-claude.mjs");
       const invocationPath = path.join(tempDir, "invocation.json");
-      const workspaceCwd = path.join(tempDir, "workspace");
-      yield* fs.makeDirectory(workspaceCwd, { recursive: true });
+      // SDK close() 发起进程退出；工作目录用现有目录，临时文件释放不依赖 Windows 进程退出时序。
+      const workspaceCwd = yield* fs.realPath(process.cwd());
 
       yield* fs.writeFileString(
         executablePath,
@@ -64,15 +64,23 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
           '  const contents = existsSync(rawMcpConfig) ? readFileSync(rawMcpConfig, "utf8") : rawMcpConfig;',
           "  try { mcpConfig = JSON.parse(contents); } catch { mcpConfig = contents; }",
           "}",
-          "writeFileSync(process.env.CODEWORK_PROBE_INVOCATION_PATH, JSON.stringify({",
+          "const invocationPath = process.env.CODEWORK_PROBE_INVOCATION_PATH;",
+          'const previous = existsSync(invocationPath) ? JSON.parse(readFileSync(invocationPath, "utf8")) : undefined;',
+          "const invocation = {",
+          "  runs: (previous?.runs ?? 0) + 1,",
+          "  requests: [],",
           "  args,",
           "  cwd: process.cwd(),",
           "  connectorEnv: process.env.ENABLE_CLAUDEAI_MCP_SERVERS,",
           "  mcpConfig,",
-          "}));",
+          "};",
+          "const save = () => writeFileSync(invocationPath, JSON.stringify(invocation));",
+          "save();",
           "const lines = createInterface({ input: process.stdin });",
           'lines.on("line", (line) => {',
           "  const message = JSON.parse(line);",
+          "  invocation.requests.push({ type: message.type, subtype: message.request?.subtype });",
+          "  save();",
           '  if (message.type !== "control_request" || message.request?.subtype !== "initialize") return;',
           "  process.stdout.write(JSON.stringify({",
           '    type: "control_response",',
@@ -96,7 +104,7 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
       );
       yield* fs.chmod(executablePath, 0o755);
 
-      const capabilities = yield* probeClaudeCapabilities(
+      const probe = probeClaudeCapabilities(
         decodeClaudeSettings({ binaryPath: executablePath }),
         {
           ...process.env,
@@ -105,6 +113,10 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
         },
         workspaceCwd,
       );
+      const capabilities = yield* probe;
+      // 同一个已构造 Effect 再次运行必须获得新控制器，不能复用上次已中止的信号。
+      const nextCapabilities = yield* probe;
+      assert.deepEqual(nextCapabilities, capabilities);
 
       assert.deepEqual(capabilities, {
         email: "dev@example.com",
@@ -126,7 +138,12 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
         readonly cwd: string;
         readonly connectorEnv: string;
         readonly mcpConfig: unknown;
+        readonly runs: number;
+        readonly requests: ReadonlyArray<{ readonly type: string; readonly subtype: string }>;
       };
+      assert.equal(invocation.runs, 2);
+      assert.deepEqual(invocation.requests, [{ type: "control_request", subtype: "initialize" }]);
+      assert.equal(invocation.args.includes("--no-session-persistence"), true);
       assert.equal(invocation.cwd, yield* fs.realPath(workspaceCwd));
       assert.equal(invocation.connectorEnv, "false");
       assert.equal(invocation.args.includes("--strict-mcp-config"), true);

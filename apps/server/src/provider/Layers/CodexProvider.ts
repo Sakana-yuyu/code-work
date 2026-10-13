@@ -22,9 +22,14 @@ import type {
   ServerProviderModel,
   ServerProviderSkill,
 } from "@codework/contracts";
-import { PREFERRED_DEFAULT_CODEX_MODELS, ServerSettingsError } from "@codework/contracts";
+import {
+  PREFERRED_DEFAULT_CODEX_MODELS,
+  ProviderDriverKind,
+  ServerSettingsError,
+} from "@codework/contracts";
 
 import { createModelCapabilities } from "@codework/shared/model";
+import { HostProcessEnvironment, HostProcessWorkingDirectory } from "@codework/shared/hostProcess";
 import { resolveSpawnCommand } from "@codework/shared/shell";
 import { codexAppServerArgs, resolveCodexLaunchArgs } from "./codexLaunchArgs.ts";
 import {
@@ -36,7 +41,13 @@ import {
 } from "../providerSnapshot.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import packageJson from "../../../package.json" with { type: "json" };
+import {
+  cliProviderCatalogIdentity,
+  makeCliProviderCatalog,
+  type CliProviderCatalog,
+} from "../CliProviderCatalog.ts";
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
+const isCodexAppServerError = Schema.is(CodexErrors.CodexAppServerError);
 
 const CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER = "2 seconds" as const;
 
@@ -328,30 +339,30 @@ export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
   };
 }
 
-const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(function* (input: {
+interface CodexProviderProbeInput {
   readonly binaryPath: string;
   readonly homePath?: string;
   readonly launchArgs?: string;
   readonly cwd: string;
   readonly customModels?: ReadonlyArray<string>;
   readonly environment?: NodeJS.ProcessEnv;
-}) {
-  // `~` is not shell-expanded when env vars are set via `child_process.spawn`,
-  // so `CODEX_HOME=~/.codex_work` would reach codex verbatim and trip
-  // "CODEX_HOME points to '~/.codex_work', but that path does not exist".
-  // Expand here for parity with `CodexTextGeneration`/`CodexSessionRuntime`.
-  const resolvedHomePath = input.homePath ? expandHomePath(input.homePath) : undefined;
+  readonly catalog?: CliProviderCatalog;
+}
+
+const makeCodexProviderProbeClient = Effect.fn("makeCodexProviderProbeClient")(function* (
+  input: Pick<CodexProviderProbeInput, "binaryPath" | "launchArgs" | "cwd"> & {
+    readonly environment: NodeJS.ProcessEnv;
+  },
+) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const environment: NodeJS.ProcessEnv = {
-    ...input.environment,
-    ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
-  };
+  const environment = input.environment;
   const spawnCommand = yield* resolveSpawnCommand(
     input.binaryPath,
     codexAppServerArgs(input.launchArgs),
     {
       env: environment,
-      extendEnv: true,
+      extendEnv: false,
+      cwd: input.cwd,
     },
   );
   yield* Effect.annotateCurrentSpan({
@@ -365,7 +376,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       ChildProcess.make(spawnCommand.command, spawnCommand.args, {
         cwd: input.cwd,
         env: environment,
-        extendEnv: true,
+        extendEnv: false,
         forceKillAfter: CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER,
         shell: spawnCommand.shell,
       }),
@@ -399,6 +410,79 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   // Extract the version string after the first '/' in userAgent, up to the next space or the end
   const versionMatch = initialize.userAgent.match(/\/([^\s]+)/);
   const version = versionMatch ? versionMatch[1] : undefined;
+  return { client, version };
+});
+
+/** 目录加载自有进程作用域，首个健康检查结束不会关闭其他实例正在等待的目录。 */
+export const fetchCodexCatalog = Effect.fn("fetchCodexCatalog")(function* (
+  input: Pick<CodexProviderProbeInput, "binaryPath" | "launchArgs" | "cwd"> & {
+    readonly environment: NodeJS.ProcessEnv;
+    readonly version: string | undefined;
+    readonly account: CodexSchema.V2GetAccountResponse;
+    readonly catalog: CliProviderCatalog;
+  },
+) {
+  const probeInput = {
+    binaryPath: input.binaryPath,
+    ...(input.launchArgs === undefined ? {} : { launchArgs: input.launchArgs }),
+    cwd: input.cwd,
+    environment: { ...input.environment },
+  };
+  // 协议未提供 API Key / Bedrock 的稳定身份；同 home 换凭据不能命中旧目录。
+  const account = input.account.account;
+  const canReuseCompleted = account?.type === "chatgpt" && Boolean(account.email?.trim());
+  return yield* input.catalog
+    .fetchCatalog({
+      ...(!canReuseCompleted ? { forceRefresh: true } : {}),
+      key: cliProviderCatalogIdentity({
+        driver: ProviderDriverKind.make("codex"),
+        operation: "model/list+skills/list",
+        config: {
+          binaryPath: probeInput.binaryPath,
+          launchArgs: codexAppServerArgs(probeInput.launchArgs),
+          version: input.version,
+          account: input.account,
+        },
+        cwd: probeInput.cwd,
+        environment: probeInput.environment,
+      }),
+      load: Effect.gen(function* () {
+        const { client } = yield* makeCodexProviderProbeClient(probeInput);
+        const [skillsResponse, models] = yield* Effect.all(
+          [
+            client.request("skills/list", { cwds: [probeInput.cwd] }),
+            requestAllCodexModels(client),
+          ],
+          { concurrency: "unbounded" },
+        );
+        return { models, skills: parseCodexSkillsListResponse(skillsResponse, probeInput.cwd) };
+      }).pipe(Effect.scoped),
+    })
+    .pipe(
+      Effect.mapError((error) =>
+        isCodexAppServerError(error.cause)
+          ? error.cause
+          : CodexErrors.CodexAppServerRequestError.internalError(
+              "Codex 模型目录读取失败。",
+              undefined,
+              { method: "model/list", operation: "receive-response", cause: error.cause },
+            ),
+      ),
+    );
+});
+
+const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(function* (
+  input: CodexProviderProbeInput,
+) {
+  // home 展开与最终环境只解析一次，两个无会话进程及缓存键使用同一快照。
+  const resolvedHomePath = input.homePath ? expandHomePath(input.homePath) : undefined;
+  const environment = {
+    ...(yield* HostProcessEnvironment),
+    ...input.environment,
+    ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
+  };
+  const probeInput = { ...input, environment };
+  const { client, version } = yield* makeCodexProviderProbeClient(probeInput);
 
   const accountResponse = yield* client.request("account/read", {});
   if (!accountResponse.account && accountResponse.requiresOpenaiAuth) {
@@ -410,15 +494,13 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     } satisfies CodexAppServerProviderSnapshot;
   }
 
-  const [skillsResponse, models] = yield* Effect.all(
-    [
-      client.request("skills/list", {
-        cwds: [input.cwd],
-      }),
-      requestAllCodexModels(client),
-    ],
-    { concurrency: "unbounded" },
-  );
+  const catalog = input.catalog ?? (yield* makeCliProviderCatalog());
+  const { models, skills } = yield* fetchCodexCatalog({
+    ...probeInput,
+    version,
+    account: accountResponse,
+    catalog,
+  });
 
   return {
     account: accountResponse,
@@ -426,7 +508,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     models: applyPreferredCodexDefaultModel(
       appendCustomCodexModels(models, input.customModels ?? []),
     ),
-    skills: parseCodexSkillsListResponse(skillsResponse, input.cwd),
+    skills: skills ?? [],
   } satisfies CodexAppServerProviderSnapshot;
 });
 
@@ -566,6 +648,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     readonly cwd: string;
     readonly customModels: ReadonlyArray<string>;
     readonly environment?: NodeJS.ProcessEnv;
+    readonly catalog?: CliProviderCatalog;
   }) => Effect.Effect<
     CodexAppServerProviderSnapshot,
     CodexErrors.CodexAppServerError,
@@ -579,12 +662,13 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     never,
     ChildProcessSpawner.ChildProcessSpawner
   > = detectDamagedCodexInstall,
+  catalog?: CliProviderCatalog,
 ): Effect.fn.Return<
   ServerProviderDraft,
   ServerSettingsError,
   ChildProcessSpawner.ChildProcessSpawner
 > {
-  const resolvedEnvironment = environment ?? process.env;
+  const resolvedEnvironment = { ...(yield* HostProcessEnvironment), ...environment };
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const emptyModels = emptyCodexModelsFromSettings(codexSettings);
 
@@ -609,9 +693,10 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     binaryPath: codexSettings.binaryPath,
     homePath: codexSettings.homePath,
     launchArgs: resolveCodexLaunchArgs(codexSettings.launchArgs, resolvedEnvironment),
-    cwd: process.cwd(),
+    cwd: yield* HostProcessWorkingDirectory,
     customModels: codexSettings.customModels,
     environment: resolvedEnvironment,
+    ...(catalog ? { catalog } : {}),
   }).pipe(
     Effect.scoped,
     Effect.timeoutOption(Duration.millis(AUTH_PROBE_TIMEOUT_MS)),
