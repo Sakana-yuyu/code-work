@@ -50,7 +50,7 @@
 | 3   | 三态输出、默认 paragraph、旧键策略、三端设置                | 完成（本主题定向验收）                                       | settings / AssistantTextBuffer / ProviderRuntimeIngestion / Web/Desktop 设置 / Mobile 设置                 | 工作区 10 文件 / 273 项通过；纯暂存候选 35 项与五个目标类型检查通过；当前脏工作区的完整模块诊断仍记录为未通过，见下文 |
 | 4   | 全部客户端增量渲染清单与上游对应提交                        | 部分完成，继续补齐                                           | 闭合 Markdown 前缀 / 固定 Web 渲染身份 / 逐行高亮 / 共享回合与检查点引用 / Mobile 块键                     | 8 文件 / 188 项通过；Web DOM 追加与终态选区保持；完整清单见下文，未完成项保留                                         |
 | 5   | 60 ms leading+trailing、每帧提交、完整 store 与揭示切片     | 完成；增量清单、重开与滚动锚点继续随第4/8项验收              | ProviderRuntimeEventCoalescer / ProviderRuntimeIngestion / latestFrame / textReveal / NativeFrameScheduler | 定向与三端受控管线通过；Android 24 帧发布、43 帧字素揭示、全文/选区/终态通过，详见第34/35主题                         |
-| 6   | 流式选区与滚动锚点                                          | Web 与 Android 选区已验证，其余继续验收                      | 真实 StreamingChatMarkdown / Android 原生选区页及增量夹具                                                  | Android 范围与全文复制、追加和终态选区保持已验证；完整滚动锚点及 iOS 设备矩阵仍开放                                   |
+| 6   | 流式选区与滚动锚点                                          | 完成（DOM保留与手机固定全文等价选择页）                      | Web/Desktop StreamingChatMarkdown；Android/iOS 选择页                                                      | Web/Android实际选区与三端锚点通过，iOS同入口20项/类型通过；UIKit设备未实测，见第35/38/40主题                          |
 | 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证                           | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                                    | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题          |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归             |
@@ -730,3 +730,13 @@ React Native 0.85.3 bridgeless 的 rAF 是零延时计时器；此前仅纠正�
 六文件定向命令（resolver/supervisor/registry、threads-sync/threads-atoms/threads-pagination）104项通过；单测试文件 lint/format 与 HEAD 第38主题加本测试导出的纯候选 client-runtime 类型检查通过。结合第31/38主题三端实际关闭忙碌线程连接保持、重开、断线原事件重投、唯一全文、锚点与用户确认的首绘标准，第8项功能与共享协议验收完成。外部 provider、公网 relay/tunnel、SSH 和 iOS 设备覆盖仍按本表明确为未实测，不能把模拟元数据写成真实网络成功；完整39项目标仍继续。
 
 此主题只有测试与验收文档，无协议、产品设置、数据迁移或权限变化。全部 adapter 继续提供标准领域事件，聊天退出/重开与手动回尾的反向行为已覆盖；回退本主题仅恢复测试和记录。
+
+### 第40主题：两种手机平台提供固定全文选择页
+
+最终清单核对发现固定全文选择入口只有 Android；iOS 原有 UITextView 会保存/恢复选区，但 Windows 主机无法实际运行 UIKit 的追加/几何矩阵。目标第6项允许等价方案，因此复用现有平台通用 hook/modal，让 Android/iOS 的非空消息都提供“选择文本”。保留 iOS 正文的直接原生选区；Web 使用现有 DOM 冻结，不增加此手机入口。
+
+参数化原入口用例后，旧实现的 iOS 用例因缺少选择按钮失败；修复后按钮传递同一完整原文，不裁剪空白、代码或字素。快照选择页不随列表正文/回合终态更新，关闭重开取最新全文，环境/线程切换立即关闭，全文复制与系统选择共享同一快照。20项选择页/跟随测试、两源目标 lint/format、含真实 Stack 的纯候选 Mobile 类型检查通过；原始 iOS 红记录在工作区外。
+
+代表原生运行证据采用第35主题实际 Android：4800字符固定选择正文在追加33字符和完成后不变，系统高亮像素SHA一致；重开4833字符与provider/SQLite逐字相同。Android 条件分支的布局和动作没有改变，此主题不将旧bundle写为新bundle。iOS 的按钮、快照生命周期及 React Native 属性通过源码、参数化测试和目标类型核验，未编译或运行 iOS UIKit；该设备边界保留。Web 实际 DOM 选区冻结与前缀/代码节点复用、三端锚点与回尾证据按既有记录采用。
+
+第6项功能采用 Web/Desktop 同渲染器的 DOM 保留与两手机平台的固定全文等价选择页完成；可见滚动锚点已由第38主题三端实际运行补齐。没有新增协议、权限、库、模式设置或数据迁移，适用所有provider与本地/远程/隧道的标准消息来源；页面退出/重开与环境切换反向路径均覆盖。用户说明已更新。回退本主题恢复仅Android入口；不据此宣称iOS设备验收或整个39项目标完成。

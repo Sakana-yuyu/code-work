@@ -27,7 +27,7 @@ export const MessageTextSelectionButton = memo(function MessageTextSelectionButt
   readonly onSelect: (text: string) => void;
 }) {
   const iconColor = useThemeColor("--color-icon-subtle");
-  if (Platform.OS !== "android" || props.text.length === 0) return null;
+  if ((Platform.OS !== "android" && Platform.OS !== "ios") || props.text.length === 0) return null;
   return (
     <Pressable
       accessibilityRole="button"
@@ -45,7 +45,7 @@ export const MessageTextSelectionButton = memo(function MessageTextSelectionButt
   );
 });
 
-/** 独立于虚拟列表的原生 TextView，避免行回收或流式追加重置 Android 选区。 */
+/** 独立于虚拟列表的原生文本，避免行回收或流式追加重置手机选区。 */
 export const MessageTextSelection = memo(function MessageTextSelection(props: {
   readonly text: string | null;
   readonly onClose: () => void;

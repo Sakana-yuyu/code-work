@@ -68,7 +68,8 @@ describe("手机正文选区", () => {
     expect(renderSelection("environment-a:thread-a").text).toBe("环境 A 的最新正文");
   });
 
-  it("Android 入口传完整消息，不裁剪空白或代码", () => {
+  it.each(["android", "ios"])("%s 入口传完整消息，不裁剪空白或代码", (os) => {
+    platform.OS = os;
     const text = "\n正文\n```ts\nconst x = 1;\n```\n尾文\n";
     const onSelect = vi.fn();
     hooks.beginRender();
@@ -77,13 +78,13 @@ describe("手机正文选区", () => {
       (element) => element.props.accessibilityLabel === "messageTextSelection.action",
     );
     const press = button?.props.onPress;
-    if (typeof press !== "function") throw new Error("缺少 Android 选择入口");
+    if (typeof press !== "function") throw new Error("缺少手机选择入口");
     press();
     expect(onSelect).toHaveBeenCalledExactlyOnceWith(text);
   });
 
-  it.each(["ios", "web"])("%s 保留既有直接选区，不增加 Android 入口", (os) => {
-    platform.OS = os;
+  it("web 保留既有直接选区，不增加手机原生入口", () => {
+    platform.OS = "web";
     hooks.beginRender();
     expect(MessageTextSelectionButton({ text: "正文", onSelect: vi.fn() })).toBeNull();
   });
