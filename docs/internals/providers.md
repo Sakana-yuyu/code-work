@@ -22,15 +22,23 @@ CLI 目录身份散列实际命令、端点、工作目录与完整环境快照�
 
 Kimi、Antigravity、通用 ACP 的配置模型，以及 Pi/OhMyPi/ZCode 的路由模型，初始和健康检查入口也统一调用 `CliProviderCatalog.fetchCatalog`。纯配置加载没有外部进程，因此身份只含 driver、操作及实际影响模型结果的配置；不加入实例ID、命令、cwd、环境或认证。自定义模型复用展示层相同的规范化规则，去空、去重并排除内置重复项，保留顺序；路由快照只取 adapterId、displayName 和去除两端空格的 modelId。键与加载器共用快照，设置编辑不能污染已缓存结果。版本、安装、启用、认证和检查时间在缓存外计算；ZCode 官方凭据仍每次读取，Kimi 的 BYOK 发布前路由覆盖仍读取当前设置。目录缓存不共享 adapter、会话或实例运行状态，也不把会话内动态模式选项变成全局目录。
 
-Codex 每次健康检查建立无会话 app-server 连接读取版本和 `account/read`；模型分页与技能查询统一由 `fetchCodexCatalog` 在自己的进程 Scope 中加载。缓存身份含 binary、解析后的实际 argv、cwd、最终环境、版本和协议可见账户字段。只有带非空邮箱的 ChatGPT 账户复用一分钟成功值；API Key、Bedrock、无账户及空邮箱不能由当前协议唯一识别，跳过完成值但仍合并在途加载。此规则不等于完整认证指纹，同邮箱同套餐的组织切换仍可能在TTL内沿用目录。自定义模型在缓存外分别合并。冷检查需要一份健康连接和一份目录连接，N个等价并发检查为N份健康连接加一份目录连接；缓存命中仍执行健康连接，减少的是目录分页和技能查询，不能据此声称消除了所有进程启动。
+Codex 等价配置的整次原生刷新统一经过 `NativeProviderCatalog.fetchCatalog`，仅共享在途认证与健康结果；一次加载在同一个无会话 app-server client 中读取版本、`account/read`、模型分页与技能。十秒工作预算覆盖全部阶段与必要损坏诊断，诊断不能另外获得四秒；取消信号通过整段 Effect 与进程 Scope 中断停止 RPC 和后续请求。实际 binary、解析后的 argv、cwd、最终环境与 home 快照同时用于身份及执行；损坏诊断也使用相同 cwd/env。纯目录 `fetchCodexCatalog` 在当前 owner 中以 `shareInFlight:false` 读取或加载完成缓存，不建立第二个资源所有者；独立调用此公开目录接口仍可建立自己的探针 Scope。
 
-Claude 的 `fetchClaudeCatalog` 区分草稿 `configured-models` 与原生 `native-directory`。SDK initialize 合并返回账户与命令，因此当前账户和命令每次仍重新初始化读取；只缓存版本对应模型、自定义模型、命令值和本地技能。目录身份包含规范化自定义模型、实际 executable、cwd、最终环境、版本及当次命令值，不缓存账户。初始化失败的降级目录不写缓存，不能覆盖或延长上一份成功值。公开探针合并宿主与实例环境后固定快照，Windows executable 和相对 PATH 按同一 cwd 解析。每次执行创建独立 AbortController，成功、失败、取消和超时均 abort 并调用 SDK `close()`；其返回 void，只能确认发起清理，不代表已等待 OS 进程完全退出。初始化只发送控制消息，关闭会话持久化，不发送用户 prompt。
+Codex 纯目录身份仍含版本和协议可见账户。只有带非空邮箱的 ChatGPT 账户复用一分钟成功值；API Key、Bedrock、无账户及空邮箱不能由当前协议唯一识别，跳过完成值。此规则不等于完整认证指纹，同邮箱同套餐的组织切换仍可能在TTL内沿用目录。顺序健康检查继续读取当前账户，自定义模型与 checkedAt 在共享结果之外逐调用映射。冷检查和目录命中检查均只需一个健康进程，等价并发完整检查合并为一个进程；这一成本变化由协议及受控进程验收支持，不代表真实供应商端到端性能基准。
+
+Claude 的 `fetchClaudeCatalog` 区分草稿 `configured-models` 与原生 `native-directory`。原生版本、SDK initialize 和技能扫描通过 `NativeProviderCatalog` 共用三十秒工作预算；这个上限保留慢 Bedrock 初始化的实际需要，阶段不会各自续期。SDK 接收 owner 的同一个 AbortController，Query 在初始化成功后继续存活至技能读取完成，最终再关闭；独立公开 capabilities probe 保留自有二十五秒约定。宿主与实例环境固定快照，Windows executable 和相对 PATH 按同一 cwd 解析。超时保留已确认的安装与版本及相应模型门控，认证显示 unknown。
+
+Claude 当前账户与命令每次仍重新初始化读取，只缓存版本对应模型、命令与本地技能。整次刷新内部使用 `shareInFlight:false`，实例自定义模型在结果外分别合并；目录身份包含实际 executable、cwd、最终环境、版本及当次命令值，不缓存账户。初始化失败的降级目录不写缓存，不能覆盖或延长上一份成功值。成功初始化但账户字段全空保留此前状态语义，不将其当作已验证退出登录；明确认证失败覆盖初始化拒绝及随后恢复。关闭会话持久化、用户 hooks 和 MCP，只发送初始化控制消息，不发送用户 prompt。SDK `close(): void` 只能证明发起关闭，不能代表已等待 OS 进程完全退出。
 
 OpenCode 的版本、模型、variants、agent 模式和技能统一经过 `OpenCodeCatalog.fetchCatalog`。每个 registry 创建独立目录对象，同一 registry 的实例和重建共用；直接创建 driver 时使用私有对象。本地身份包含 binary、cwd 和完整实际环境（含 BYOK 注入配置），远端只包含去除两端空格的 serverUrl、password 和 directory。键和执行使用同一份输入快照，自定义模型在结果外合并。当前最低版本的组合接口同时返回模型与 connected，后续检查必须重新读取，不能将它放入一分钟成功缓存；因此复用公共缓存的仅在途模式，完成即清除。外部 SDK 直接按配置构造客户端，不借用 adapter client、不启动本地服务器或创建 session。
 
 OpenCode 每次共享加载拥有一个 Scope、AbortController 和十五秒工作预算。本地版本探测、三路目录命令及一秒重试等待均在此预算内；远端 provider、agent、skill 请求接收同一个 signal。后加入的等待者不会重置截止时间，首等待者取消不结束其余等待者的加载，最后等待者取消或超时则 abort 并释放资源。短命令使用两秒强制退出宽限并等待 finalizer，资源清理可能使实际返回晚于十五秒，不能把工作预算表述成绝对墙钟上限。公开 runtime 未传完整环境时继续继承宿主，目录内部固定最终 cwd/env 后关闭二次继承；Windows 命令解析与 spawn 使用同一参数。技能普通查询失败仍允许空列表，取消不会被降级为成功。
 
-`ProviderCatalogCache` 分开保存成功结果和在途加载，强制刷新跳过成功值但加入同键的在途加载；失败保留上一份成功结果，不延长其TTL。每轮加载以独立对象登记和清理，不依赖首等待者的时钟过期；旧等待者的清理不能删除同键新加载，同步完成也在缓存登记后释放。完成后清除加载闭包，容量只限制成功值。单个目录等待者取消或超时不影响其他等待者，最后一个等待者离开后中断实际加载；这与上面的 provider 状态检查 Scope 所有权不同。BYOK 每个目录加载最多十五秒，每次实例状态检查另有同一个十五秒截止时间，逐通道传入剩余等待预算；超时仍可读取同键旧值，预算耗尽后不启动新请求。BYOK 实际 Fetch 与 OpenCode 已按共享加载统一信号；其余 provider 总 deadline 与同一 signal、跨目标等待与取消所有权以及会话内模型/模式边界仍需继续收敛。Codex/Claude 的分阶段超时不算统一总预算。
+`NativeProviderCatalog` 属于注册表，实例重建沿用，同一注册表的 Codex/Claude 等价原生配置共享完整加载。认证只在途共享，后续检查重新读取。强刷新只加入已有强刷新；普通请求可加入已有强刷新或普通刷新。强通道中新建的执行始终携带强意图，避免选通道与登记之间结束造成语义回退。每个真正加载拥有独立 Scope 与 controller，晚加入者不重新获得预算，最后等待者退出中断实际加载。资源清理可能延长实际返回时间，工作预算不是包含所有系统调用的硬墙钟上限。
+
+`ProviderCatalogCache` 分开保存成功结果和在途加载，默认强制刷新跳过成功值但加入同键的在途加载；失败保留上一份成功结果，不延长其TTL。`shareInFlight:false` 让已有 owner 在当前 Scope 读写完成缓存；活动加载按代次保护写回，较新加载及仍受保护的强刷新不会被旧普通结果覆盖，强刷新失败也不恢复旧代写权限。所有活动加载结束后清除代次记录，容量只限制成功值。每轮在途请求按独立对象登记和清理，旧轮不能误删新轮；lookup 在开始前先让 Cache 安装等待者与取消处理，避免同步回执重入取消遗漏共享资源。首等待者取消不影响其余等待者，最后一个离开后中断加载；实际终止通过资源回执验收，不将取消等待者等同操作系统退出。
+
+BYOK 每个目录加载最多十五秒，每次实例状态检查另有同一个十五秒截止时间，逐通道传入剩余等待预算；超时仍可读取同键旧值，预算耗尽后不启动新请求。BYOK 实际 Fetch、OpenCode、Codex 和 Claude 已按共享加载统一资源与信号；其他 CLI 总 deadline/同一 signal、跨目标等待与取消所有权以及会话内模型/模式边界仍需继续收敛。
 
 > For maintainers. Using Code Work? See [docs/user](../user/).
 

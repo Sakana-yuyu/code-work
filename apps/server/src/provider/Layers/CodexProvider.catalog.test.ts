@@ -282,8 +282,8 @@ describe("Codex 共享模型与技能目录", () => {
         expect(yield* Fiber.join(secondWaiter)).toBe(firstResult);
         expect(firstResult.models[0]?.slug).toBe("concurrent-first");
         expect(fixture.count("skills/list")).toBe(3);
-        expect(fixture.commands).toHaveLength(5);
-        expect(fixture.finalized).toHaveLength(5);
+        expect(fixture.commands).toHaveLength(3);
+        expect(fixture.finalized).toHaveLength(3);
         fixture.assertNoSessions();
       }),
     );
@@ -322,7 +322,7 @@ describe("Codex 共享模型与技能目录", () => {
       expect(first.skills).toEqual(second.skills);
       expect(first.skills?.[0]?.name).toBe("fixture-skill");
       expect(fixture.count("account/read")).toBe(2);
-      expect(fixture.count("initialize")).toBe(3);
+      expect(fixture.count("initialize")).toBe(2);
       expect(fixture.count("model/list")).toBe(2);
       expect(fixture.count("skills/list")).toBe(1);
       expect(
@@ -336,9 +336,8 @@ describe("Codex 共享模型与技能目录", () => {
       expect(fixture.commands.map((command) => command.options.env)).toEqual([
         environment,
         environment,
-        environment,
       ]);
-      expect(fixture.finalized).toHaveLength(3);
+      expect(fixture.finalized).toHaveLength(2);
       fixture.assertNoSessions();
     }),
   );

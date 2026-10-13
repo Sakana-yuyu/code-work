@@ -28,6 +28,7 @@ import { ProviderDriverError } from "../Errors.ts";
 import { makeClaudeAdapter } from "../Layers/ClaudeAdapter.ts";
 import { checkClaudeProviderStatus, makePendingClaudeProvider } from "../Layers/ClaudeProvider.ts";
 import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import * as ModelManifest from "../ModelManifest.ts";
@@ -120,9 +121,19 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
   },
   configSchema: ClaudeSettings,
   defaultConfig: (): ClaudeSettings => decodeClaudeSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config, catalog }) =>
+  create: ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config,
+    catalog,
+    nativeCatalog,
+  }) =>
     Effect.gen(function* () {
       const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
+      const refreshes = nativeCatalog ?? (yield* makeNativeProviderCatalog());
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -178,7 +189,14 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       const checkProvider = modelManifest.refreshInBackground.pipe(
         Effect.andThen(
           Effect.zipWith(
-            checkClaudeProviderStatus(effectiveConfig, undefined, processEnv, cwd, providerCatalog),
+            checkClaudeProviderStatus(
+              effectiveConfig,
+              undefined,
+              processEnv,
+              cwd,
+              providerCatalog,
+              refreshes,
+            ),
             modelManifest.current,
             (draft, manifest) =>
               stampIdentity(ModelManifest.applyModelManifest(draft, manifest, DRIVER_KIND)),

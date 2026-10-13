@@ -35,6 +35,7 @@ import type { ByokAgentModelDriver } from "../composition/ByokAgentLoop.ts";
 import type { CompositionAgentServiceError } from "../composition/CompositionAgentService.ts";
 import type { CliProviderCatalog } from "./CliProviderCatalog.ts";
 import type { OpenCodeCatalog } from "./OpenCodeCatalog.ts";
+import type { NativeProviderCatalog } from "./NativeProviderCatalog.ts";
 import type { ProviderAdapterError, ProviderDriverError } from "./Errors.ts";
 import type { ProviderAdapterShape } from "./Services/ProviderAdapter.ts";
 import type { ServerProviderShape } from "./Services/ServerProvider.ts";
@@ -126,6 +127,8 @@ export interface ProviderDriverCreateInput<Config> {
   readonly catalog?: CliProviderCatalog;
   /** OpenCode 目录包含当前连接状态，仅共享在途刷新，不保存完成后的认证结果。 */
   readonly openCodeCatalog?: OpenCodeCatalog;
+  /** 原生健康与目录共用一次在途刷新；完成认证不会进入目录TTL缓存。 */
+  readonly nativeCatalog?: NativeProviderCatalog;
 }
 
 /**

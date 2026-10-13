@@ -8,6 +8,7 @@ import * as Stream from "effect/Stream";
 
 import type { CliProviderCatalog } from "../CliProviderCatalog.ts";
 import type { OpenCodeCatalog } from "../OpenCodeCatalog.ts";
+import type { NativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import type {
   ProviderDriver,
   ProviderDriverCreateInput,
@@ -29,6 +30,7 @@ const makeFixture = () => {
     readonly displayName: string | undefined;
     readonly catalog: CliProviderCatalog;
     readonly openCodeCatalog: OpenCodeCatalog;
+    readonly nativeCatalog: NativeProviderCatalog;
     readonly scope: Scope.Scope;
     stopCalls: number;
     closed: boolean;
@@ -42,13 +44,15 @@ const makeFixture = () => {
     create: Effect.fn("catalogTestDriver.create")(function* (
       input: ProviderDriverCreateInput<{ command: string }>,
     ) {
-      const { instanceId, displayName, config, catalog, openCodeCatalog } = input;
-      if (!catalog || !openCodeCatalog) return yield* Effect.die("注册表没有传入目录缓存");
+      const { instanceId, displayName, config, catalog, openCodeCatalog, nativeCatalog } = input;
+      if (!catalog || !openCodeCatalog || !nativeCatalog)
+        return yield* Effect.die("注册表没有传入目录缓存");
       const entry = {
         instanceId,
         displayName,
         catalog,
         openCodeCatalog,
+        nativeCatalog,
         scope: yield* Scope.Scope,
         stopCalls: 0,
         closed: false,
@@ -153,6 +157,7 @@ it.effect("同注册表的多实例与替代实例复用目录，但adapter和�
         assert.isDefined(secondCreated);
         assert.strictEqual(firstCreated.catalog, secondCreated.catalog);
         assert.strictEqual(firstCreated.openCodeCatalog, secondCreated.openCodeCatalog);
+        assert.strictEqual(firstCreated.nativeCatalog, secondCreated.nativeCatalog);
         assert.notStrictEqual(firstCreated.scope, secondCreated.scope);
         assert.notStrictEqual(first.adapter, second.adapter);
         assert.strictEqual(fixture.loadCalls(), 1);
@@ -168,6 +173,7 @@ it.effect("同注册表的多实例与替代实例复用目录，但adapter和�
         assert.isDefined(replacementCreated);
         assert.strictEqual(replacementCreated.catalog, firstCreated.catalog);
         assert.strictEqual(replacementCreated.openCodeCatalog, firstCreated.openCodeCatalog);
+        assert.strictEqual(replacementCreated.nativeCatalog, firstCreated.nativeCatalog);
         assert.notStrictEqual(replacementCreated.scope, firstCreated.scope);
         assert.notStrictEqual(replacement.adapter, first.adapter);
         assert.strictEqual(yield* registry.getInstance(secondId), second);
@@ -206,6 +212,7 @@ it.effect("不同注册表持有独立目录缓存，关闭其中一个不会关
     assert.isDefined(secondCreated);
     assert.notStrictEqual(firstCreated.catalog, secondCreated.catalog);
     assert.notStrictEqual(firstCreated.openCodeCatalog, secondCreated.openCodeCatalog);
+    assert.notStrictEqual(firstCreated.nativeCatalog, secondCreated.nativeCatalog);
     assert.strictEqual(fixture.loadCalls(), 2);
     yield* Scope.close(firstScope, Exit.void);
     assert.isTrue(firstCreated.closed);

@@ -39,7 +39,6 @@ import {
   buildBooleanOptionDescriptor,
   buildSelectOptionDescriptor,
   buildServerProvider,
-  DEFAULT_TIMEOUT_MS,
   isCommandMissingCause,
   parseGenericCliVersion,
   providerCustomModelSlugs,
@@ -59,6 +58,7 @@ import {
   makeCliProviderCatalog,
   type CliProviderCatalog,
 } from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog, type NativeProviderCatalog } from "../NativeProviderCatalog.ts";
 
 const DEFAULT_CLAUDE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
   optionDescriptors: [],
@@ -625,6 +625,8 @@ function apiProviderAuthMetadata(
 // account info. The previous 8s budget expired mid-init, so the probe returned
 // `undefined` and left the provider unverified and unselectable in the picker.
 const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
+/** 保留慢 Bedrock 初始化所需余量，版本、初始化与技能扫描共用这一次预算。 */
+const CLAUDE_REFRESH_TIMEOUT_MS = 30_000;
 
 /**
  * Keep workspace-scoped command discovery intact while isolating the periodic
@@ -759,32 +761,18 @@ function waitForAbortSignal(signal: AbortSignal): Promise<void> {
 }
 
 /**
- * Probe account information by spawning a lightweight Claude Agent SDK
- * session and reading the initialization result.
- *
- * We pass a never-yielding AsyncIterable as the prompt so that no user
- * message is ever written to the subprocess stdin. This means the Claude
- * Code subprocess completes its local initialization IPC (returning
- * account info and slash commands) but never starts an API request to
- * Anthropic. We read the init data and then abort the subprocess.
- *
- * This is used as a fallback when `claude auth status` does not include
- * subscription type information.
+ * 只读取 SDK 初始化中的当前账户与命令，不发送用户消息或创建持久会话。
+ * Query 留在整次刷新 Scope 中，后续目录读取也完成后才统一关闭。
  */
 const probeResolvedClaudeCapabilities = Effect.fn("probeResolvedClaudeCapabilities")(function* (
-  claudeSettings: ClaudeSettings,
+  executablePath: string,
   environment: NodeJS.ProcessEnv,
   cwd: string,
+  abort: AbortController,
 ) {
-  // 同一个 Effect 可以重复执行；每次初始化都必须拥有独立的取消信号。
-  const abort = new AbortController();
   return yield* Effect.gen(function* () {
-    const executablePath = yield* resolveClaudeSdkExecutablePath(
-      claudeSettings.binaryPath,
-      environment,
-      cwd,
-    );
-    return yield* Effect.acquireUseRelease(
+    // Query 跟随整次刷新 Scope；initialize 返回时技能扫描仍需要同一个有效信号。
+    const q = yield* Effect.acquireRelease(
       Effect.try(() =>
         claudeQuery({
           // Never yield — we only need initialization data, not a conversation.
@@ -801,42 +789,29 @@ const probeResolvedClaudeCapabilities = Effect.fn("probeResolvedClaudeCapabiliti
           }),
         }),
       ),
-      (q) =>
-        Effect.tryPromise(async () => {
-          const init = await q.initializationResult();
-          const account = init.account as
-            | {
-                readonly email?: string;
-                readonly subscriptionType?: string;
-                readonly tokenSource?: string;
-                readonly apiProvider?: string;
-              }
-            | undefined;
-          return {
-            email: account?.email,
-            subscriptionType: account?.subscriptionType,
-            tokenSource: account?.tokenSource,
-            apiProvider: account?.apiProvider,
-            slashCommands: parseClaudeInitializationCommands(init.commands),
-          } satisfies ClaudeCapabilitiesProbe;
-        }),
-      (q) =>
-        Effect.sync(() => abort.abort()).pipe(
-          Effect.andThen(Effect.try(() => q.close()).pipe(Effect.ignore)),
-        ),
+      (query) => Effect.try(() => query.close()).pipe(Effect.ignore),
     );
+    return yield* Effect.tryPromise(async () => {
+      const init = await q.initializationResult();
+      const account = init.account as
+        | {
+            readonly email?: string;
+            readonly subscriptionType?: string;
+            readonly tokenSource?: string;
+            readonly apiProvider?: string;
+          }
+        | undefined;
+      return {
+        email: account?.email,
+        subscriptionType: account?.subscriptionType,
+        tokenSource: account?.tokenSource,
+        apiProvider: account?.apiProvider,
+        slashCommands: parseClaudeInitializationCommands(init.commands),
+      } satisfies ClaudeCapabilitiesProbe;
+    });
   }).pipe(
-    Effect.ensuring(
-      Effect.sync(() => {
-        if (!abort.signal.aborted) abort.abort();
-      }),
-    ),
-    Effect.timeoutOption(CAPABILITIES_PROBE_TIMEOUT_MS),
     Effect.result,
-    Effect.map((result) => {
-      if (Result.isFailure(result)) return undefined;
-      return Option.isSome(result.success) ? result.success.value : undefined;
-    }),
+    Effect.map((result) => (Result.isSuccess(result) ? result.success : undefined)),
   );
 });
 
@@ -849,27 +824,45 @@ const probeClaudeCapabilities = Effect.fn("probeClaudeCapabilities")(function* (
     ...(yield* HostProcessEnvironment),
     ...environment,
   });
-  return yield* probeResolvedClaudeCapabilities(
-    settings,
+  const resolvedCwd = cwd ?? (yield* HostProcessWorkingDirectory);
+  const executablePath = yield* resolveClaudeSdkExecutablePath(
+    settings.binaryPath,
     resolvedEnvironment,
-    cwd ?? (yield* HostProcessWorkingDirectory),
+    resolvedCwd,
+  );
+  // 独立探针保持旧的 25 秒约定；整次刷新路径由外层唯一 owner 提供控制器与预算。
+  const abort = new AbortController();
+  return yield* probeResolvedClaudeCapabilities(
+    executablePath,
+    resolvedEnvironment,
+    resolvedCwd,
+    abort,
+  ).pipe(
+    Effect.ensuring(Effect.sync(() => abort.abort())),
+    Effect.scoped,
+    Effect.timeoutOption(CAPABILITIES_PROBE_TIMEOUT_MS),
+    Effect.map((result) => (Option.isSome(result) ? result.value : undefined)),
   );
 });
 
-interface ClaudeNativeCatalogInput<R> {
+interface ClaudeNativeCatalogInput<RCapabilities, RSkills> {
   readonly version: string | null;
   readonly executablePath: string;
   readonly environment: NodeJS.ProcessEnv;
   readonly cwd: string;
-  readonly capabilities: Effect.Effect<ClaudeCapabilitiesProbe | undefined, never, R>;
-  readonly skills: Effect.Effect<ReadonlyArray<ServerProviderSkill>, never, R>;
+  readonly capabilities: Effect.Effect<ClaudeCapabilitiesProbe | undefined, never, RCapabilities>;
+  readonly skills: Effect.Effect<ReadonlyArray<ServerProviderSkill>, never, RSkills>;
+  readonly shareInFlight?: boolean;
 }
 
 /** 初始化的账户只属于本次检查；缓存仅持有已经脱离 SDK 生命周期的目录值。 */
-export const fetchClaudeCatalog = Effect.fn("fetchClaudeCatalog")(function* <R = never>(
+export const fetchClaudeCatalog = Effect.fn("fetchClaudeCatalog")(function* <
+  RCapabilities = never,
+  RSkills = never,
+>(
   settings: Pick<ClaudeSettings, "customModels">,
   catalog?: CliProviderCatalog,
-  native?: ClaudeNativeCatalogInput<R>,
+  native?: ClaudeNativeCatalogInput<RCapabilities, RSkills>,
 ) {
   const builtInModels = native ? getBuiltInClaudeModelsForVersion(native.version) : BUILT_IN_MODELS;
   const customModels = providerCustomModelSlugs(builtInModels, settings.customModels);
@@ -910,6 +903,7 @@ export const fetchClaudeCatalog = Effect.fn("fetchClaudeCatalog")(function* <R =
               ...(native ? { cwd: native.cwd, environment: native.environment } : {}),
             }),
             load,
+            ...(native?.shareInFlight === false ? { shareInFlight: false } : {}),
           })
           .pipe(Effect.orDie);
   const account = capabilities
@@ -926,10 +920,9 @@ export const fetchClaudeCatalog = Effect.fn("fetchClaudeCatalog")(function* <R =
 const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
   claudeSettings: ClaudeSettings,
   args: ReadonlyArray<string>,
-  environment?: NodeJS.ProcessEnv,
-  cwd?: string,
+  claudeEnvironment: NodeJS.ProcessEnv,
+  cwd: string,
 ) {
-  const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, environment);
   const spawnCommand = yield* resolveSpawnCommand(claudeSettings.binaryPath, args, {
     env: claudeEnvironment,
     extendEnv: false,
@@ -952,24 +945,18 @@ const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
   return yield* spawnAndCollect(claudeSettings.binaryPath, command);
 });
 
-export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(function* (
+const checkResolvedClaudeProviderStatus = Effect.fn("checkResolvedClaudeProviderStatus")(function* (
   claudeSettings: ClaudeSettings,
+  resolvedEnvironment: NodeJS.ProcessEnv,
+  resolvedCwd: string,
+  executablePath: string,
+  abort: AbortController,
+  catalog: CliProviderCatalog,
+  progress: { installed: boolean; version: string | null },
   resolveCapabilities?: (
     claudeSettings: ClaudeSettings,
   ) => Effect.Effect<ClaudeCapabilitiesProbe | undefined>,
-  environment?: NodeJS.ProcessEnv,
-  cwd?: string,
-  catalog?: CliProviderCatalog,
-): Effect.fn.Return<
-  ServerProviderDraft,
-  never,
-  ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
-> {
-  const resolvedEnvironment = yield* makeClaudeEnvironment(claudeSettings, {
-    ...(yield* HostProcessEnvironment),
-    ...environment,
-  });
-  const resolvedCwd = cwd ?? (yield* HostProcessWorkingDirectory);
+) {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const {
     catalog: { models: allModels },
@@ -1023,7 +1010,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     ["--version"],
     resolvedEnvironment,
     resolvedCwd,
-  ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS), Effect.result);
+  ).pipe(Effect.result);
 
   if (Result.isFailure(versionProbe)) {
     const error = versionProbe.failure;
@@ -1049,25 +1036,11 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
-  if (Option.isNone(versionProbe.success)) {
-    return buildServerProvider({
-      presentation: CLAUDE_PRESENTATION,
-      enabled: claudeSettings.enabled,
-      checkedAt,
-      models: allModels,
-      probe: {
-        installed: true,
-        version: null,
-        status: "error",
-        auth: { status: "unknown" },
-        message:
-          "Claude Agent CLI is installed but failed to run. Timed out while running command.",
-      },
-    });
-  }
-
-  const version = versionProbe.success.value;
+  const version = versionProbe.success;
   const parsedVersion = parseGenericCliVersion(`${version.stdout}\n${version.stderr}`);
+  // SDK 或文件扫描超时不能抹掉版本阶段已经确认的安装信息。
+  progress.installed = true;
+  progress.version = parsedVersion;
   if (version.code !== 0) {
     yield* Effect.logWarning("Claude Agent CLI version probe exited with a non-zero status.", {
       exitCode: version.code,
@@ -1104,17 +1077,14 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     account: capabilities,
   } = yield* fetchClaudeCatalog(claudeSettings, catalog, {
     version: parsedVersion,
-    executablePath: yield* resolveClaudeSdkExecutablePath(
-      claudeSettings.binaryPath,
-      resolvedEnvironment,
-      resolvedCwd,
-    ),
+    executablePath,
     environment: resolvedEnvironment,
     cwd: resolvedCwd,
     capabilities: resolveCapabilities
       ? resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))
-      : probeResolvedClaudeCapabilities(claudeSettings, resolvedEnvironment, resolvedCwd),
+      : probeResolvedClaudeCapabilities(executablePath, resolvedEnvironment, resolvedCwd, abort),
     skills: discoverClaudeSkills(claudeSettings, resolvedCwd, resolvedEnvironment),
+    shareInFlight: false,
   });
 
   if (!capabilities) {
@@ -1159,6 +1129,89 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       ...(versionUpgradeMessage ? { message: versionUpgradeMessage } : {}),
     },
   });
+});
+
+export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(function* (
+  claudeSettings: ClaudeSettings,
+  resolveCapabilities?: (
+    settings: ClaudeSettings,
+  ) => Effect.Effect<ClaudeCapabilitiesProbe | undefined>,
+  environment?: NodeJS.ProcessEnv,
+  cwd?: string,
+  catalog?: CliProviderCatalog,
+  nativeCatalog?: NativeProviderCatalog,
+): Effect.fn.Return<
+  ServerProviderDraft,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
+> {
+  const settings = { ...claudeSettings, customModels: [...claudeSettings.customModels] };
+  const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
+  if (!settings.enabled) return yield* makePendingClaudeProvider(settings, providerCatalog);
+  const resolvedEnvironment = yield* makeClaudeEnvironment(settings, {
+    ...(yield* HostProcessEnvironment),
+    ...environment,
+  });
+  const resolvedCwd = cwd ?? (yield* HostProcessWorkingDirectory);
+  const executablePath = yield* resolveClaudeSdkExecutablePath(
+    settings.binaryPath,
+    resolvedEnvironment,
+    resolvedCwd,
+  );
+  const nativeSettings = {
+    ...settings,
+    homePath: settings.homePath.trim()
+      ? (resolvedEnvironment.CLAUDE_CONFIG_DIR ?? settings.homePath)
+      : "",
+    customModels: [],
+  };
+  const refreshes = nativeCatalog ?? (yield* makeNativeProviderCatalog());
+  const initial = yield* makePendingClaudeProvider(nativeSettings, providerCatalog);
+  const progress = { installed: false, version: null as string | null };
+  const snapshot = yield* refreshes.fetchCatalog({
+    key: cliProviderCatalogIdentity({
+      driver: ProviderDriverKind.make("claudeAgent"),
+      operation: "native-refresh",
+      config: { binaryPath: settings.binaryPath, executablePath },
+      environment: resolvedEnvironment,
+      cwd: resolvedCwd,
+    }),
+    timeoutMs: CLAUDE_REFRESH_TIMEOUT_MS,
+    onTimeout: () => ({
+      ...initial,
+      installed: progress.installed,
+      version: progress.version,
+      models: progress.installed
+        ? getBuiltInClaudeModelsForVersion(progress.version)
+        : initial.models,
+      status: "error",
+      message: "Claude 原生刷新超时；版本、初始化与技能扫描共用 30 秒预算。",
+    }),
+    load: (abort) =>
+      checkResolvedClaudeProviderStatus(
+        nativeSettings,
+        resolvedEnvironment,
+        resolvedCwd,
+        executablePath,
+        abort,
+        providerCatalog,
+        progress,
+        resolveCapabilities,
+      ).pipe(Effect.scoped),
+  });
+  const customModels = providerCustomModelSlugs(snapshot.models, settings.customModels);
+  return {
+    ...snapshot,
+    checkedAt: DateTime.formatIso(yield* DateTime.now),
+    models:
+      customModels.length === 0
+        ? snapshot.models
+        : providerModelsFromSettings(
+            snapshot.models,
+            customModels,
+            DEFAULT_CLAUDE_MODEL_CAPABILITIES,
+          ),
+  };
 });
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);

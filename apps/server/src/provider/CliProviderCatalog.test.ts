@@ -5,6 +5,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
+import * as Scope from "effect/Scope";
 import { TestClock } from "effect/testing";
 
 import {
@@ -152,6 +153,30 @@ describe("CliProviderCatalog", () => {
       assert.deepStrictEqual(yield* Fiber.join(second), directory("shared"));
       assert.strictEqual(loads, 1);
       assert.strictEqual(finalized, 1);
+    }),
+  );
+
+  it.effect("原生完整刷新可在自己的Scope中加载目录并复用同一完成缓存", () =>
+    Effect.gen(function* () {
+      const catalog = yield* makeCliProviderCatalog();
+      const value = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const owner = yield* Scope.Scope;
+          return yield* catalog.fetchCatalog({
+            key: "owned",
+            shareInFlight: false,
+            load: Effect.gen(function* () {
+              assert.strictEqual(yield* Scope.Scope, owner);
+              assert.strictEqual(yield* LoaderValue, "current");
+              return directory("owned");
+            }),
+          });
+        }),
+      ).pipe(Effect.provideService(LoaderValue, "current"));
+      assert.strictEqual(
+        yield* catalog.fetchCatalog({ key: "owned", load: Effect.die("必须复用完成目录") }),
+        value,
+      );
     }),
   );
 });

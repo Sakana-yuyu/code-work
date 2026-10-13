@@ -40,6 +40,8 @@ export interface CliProviderCatalog {
     readonly key: string;
     readonly load: Effect.Effect<CliProviderCatalogData, E, R>;
     readonly forceRefresh?: boolean;
+    /** 完整原生刷新统一拥有资源时，目录只读写完成缓存，不建立第二个加载 Scope。 */
+    readonly shareInFlight?: boolean;
   }) => Effect.Effect<CliProviderCatalogData, CliProviderCatalogError, R>;
 }
 
@@ -55,6 +57,7 @@ export const makeCliProviderCatalog = Effect.fn("makeCliProviderCatalog")(functi
     readonly key: string;
     readonly load: Effect.Effect<CliProviderCatalogData, E, R>;
     readonly forceRefresh?: boolean;
+    readonly shareInFlight?: boolean;
   }): Effect.fn.Return<CliProviderCatalogData, CliProviderCatalogError, R> {
     const context = yield* Effect.context<R>();
     const forceRefresh = input.forceRefresh ?? (yield* ProviderCatalogForceRefresh);
@@ -66,6 +69,7 @@ export const makeCliProviderCatalog = Effect.fn("makeCliProviderCatalog")(functi
         Effect.result,
       ),
       forceRefresh,
+      ...(input.shareInFlight === undefined ? {} : { shareInFlight: input.shareInFlight }),
     });
     return Result.isSuccess(result.value) ? result.value.success : yield* result.value.failure;
   });

@@ -39,6 +39,7 @@ import { ProviderDriverError } from "../Errors.ts";
 import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
 import { makeCodexAdapter } from "../Layers/CodexAdapter.ts";
 import { checkCodexProviderStatus, makePendingCodexProvider } from "../Layers/CodexProvider.ts";
+import { makeNativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import * as ModelManifest from "../ModelManifest.ts";
@@ -125,9 +126,19 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
   },
   configSchema: CodexSettings,
   defaultConfig: (): CodexSettings => decodeCodexSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config, catalog }) =>
+  create: ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config,
+    catalog,
+    nativeCatalog,
+  }) =>
     Effect.gen(function* () {
       const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
+      const providerRefresh = nativeCatalog ?? (yield* makeNativeProviderCatalog());
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const httpClient = yield* HttpClient.HttpClient;
       const serverConfig = yield* ServerConfig;
@@ -213,6 +224,7 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
               processEnv,
               undefined,
               providerCatalog,
+              providerRefresh,
             ),
             modelManifest.current,
             (draft, manifest) =>

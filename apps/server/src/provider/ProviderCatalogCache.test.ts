@@ -423,4 +423,212 @@ describe("ProviderCatalogCache", () => {
       }),
     );
   }
+
+  it.effect("调用者拥有加载时仍共享完成值，旧加载不能覆盖后启动的刷新", () =>
+    Effect.gen(function* () {
+      const { fetchCatalog } = yield* makeCache();
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const old = yield* fetchCatalog({
+        key: "a",
+        shareInFlight: false,
+        load: Deferred.succeed(entered, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+          Effect.as(1),
+        ),
+      }).pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(entered);
+      assert.deepStrictEqual(
+        yield* fetchCatalog({
+          key: "a",
+          shareInFlight: false,
+          forceRefresh: true,
+          load: Effect.succeed(2),
+        }),
+        { value: 2, cached: false },
+      );
+      yield* Deferred.succeed(release, undefined);
+      assert.deepStrictEqual(yield* Fiber.join(old), { value: 1, cached: false });
+      assert.deepStrictEqual(
+        yield* fetchCatalog({ key: "a", load: Effect.die("必须保留新目录") }),
+        {
+          value: 2,
+          cached: true,
+        },
+      );
+    }),
+  );
+
+  it.effect("新代失败后旧代晚完成也不写回，原成功值的TTL不延长", () =>
+    Effect.gen(function* () {
+      const { fetchCatalog } = yield* makeCache();
+      yield* fetchCatalog({ key: "a", load: Effect.succeed(1) });
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const old = yield* fetchCatalog({
+        key: "a",
+        shareInFlight: false,
+        forceRefresh: true,
+        load: Deferred.succeed(entered, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+          Effect.as(3),
+        ),
+      }).pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(entered);
+      yield* fetchCatalog({
+        key: "a",
+        shareInFlight: false,
+        forceRefresh: true,
+        load: Effect.succeed(-1),
+      });
+      assert.deepStrictEqual(yield* fetchCatalog({ key: "a", load: Effect.die("未过期") }), {
+        value: 1,
+        cached: true,
+      });
+      yield* TestClock.adjust("1 second");
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(old);
+      assert.deepStrictEqual(yield* fetchCatalog({ key: "a", load: Effect.succeed(4) }), {
+        value: 4,
+        cached: false,
+        previous: 1,
+      });
+    }),
+  );
+
+  it.effect("取消调用者加载不影响同键另一个拥有者", () =>
+    Effect.gen(function* () {
+      const { fetchCatalog } = yield* makeCache();
+      const entered = yield* Deferred.make<void>();
+      const secondEntered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const interrupted = yield* Deferred.make<void>();
+      const first = yield* fetchCatalog({
+        key: "a",
+        shareInFlight: false,
+        load: Deferred.succeed(entered, undefined).pipe(
+          Effect.andThen(Effect.never),
+          Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
+        ),
+      }).pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(entered);
+      const second = yield* fetchCatalog({
+        key: "a",
+        shareInFlight: false,
+        load: Deferred.succeed(secondEntered, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+          Effect.as(2),
+        ),
+      }).pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(secondEntered);
+      yield* Fiber.interrupt(first);
+      yield* Deferred.await(interrupted);
+      yield* Deferred.succeed(release, undefined);
+      assert.deepStrictEqual(yield* Fiber.join(second), { value: 2, cached: false });
+    }),
+  );
+
+  it.effect("普通拥有者晚到目录阶段不能取代进行中的强刷新写权限", () =>
+    Effect.gen(function* () {
+      const { fetchCatalog } = yield* makeCache();
+      const strongEntered = yield* Deferred.make<void>();
+      const ordinaryEntered = yield* Deferred.make<void>();
+      const strongRelease = yield* Deferred.make<void>();
+      const ordinaryRelease = yield* Deferred.make<void>();
+      const strong = yield* fetchCatalog({
+        key: "a",
+        shareInFlight: false,
+        forceRefresh: true,
+        load: Deferred.succeed(strongEntered, undefined).pipe(
+          Effect.andThen(Deferred.await(strongRelease)),
+          Effect.as(2),
+        ),
+      }).pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(strongEntered);
+      const ordinary = yield* fetchCatalog({
+        key: "a",
+        shareInFlight: false,
+        load: Deferred.succeed(ordinaryEntered, undefined).pipe(
+          Effect.andThen(Deferred.await(ordinaryRelease)),
+          Effect.as(1),
+        ),
+      }).pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(ordinaryEntered);
+      yield* Deferred.succeed(strongRelease, undefined);
+      yield* Fiber.join(strong);
+      yield* Deferred.succeed(ordinaryRelease, undefined);
+      yield* Fiber.join(ordinary);
+      assert.deepStrictEqual(
+        yield* fetchCatalog({ key: "a", load: Effect.die("应保留强刷新结果") }),
+        { value: 2, cached: true },
+      );
+    }),
+  );
+
+  it.effect("Promise同步发回执后取消也释放加载，下一次同键使用新闭包", () =>
+    Effect.gen(function* () {
+      const cache = yield* makeCache();
+      const entered = yield* Deferred.make<void>();
+      const aborted = yield* Deferred.make<void>();
+      const first = yield* cache
+        .fetchCatalog({
+          key: "a",
+          load: Effect.promise((signal) => {
+            signal.addEventListener("abort", () => Deferred.doneUnsafe(aborted, Effect.void), {
+              once: true,
+            });
+            Deferred.doneUnsafe(entered, Effect.void);
+            return new Promise<number>(() => undefined);
+          }),
+        })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(entered);
+      yield* Fiber.interrupt(first);
+      yield* Deferred.await(aborted);
+      assert.isFalse(yield* cache.hasInFlight("a"));
+      assert.deepStrictEqual(yield* cache.fetchCatalog({ key: "a", load: Effect.succeed(2) }), {
+        value: 2,
+        cached: false,
+      });
+    }),
+  );
+  it.effect("强加载先进入但失败，随后进入的普通加载也不能回填旧目录", () =>
+    Effect.gen(function* () {
+      const { fetchCatalog } = yield* makeCache();
+      yield* fetchCatalog({ key: "a", load: Effect.succeed(9) });
+      yield* TestClock.adjust("1 second");
+      const strongEntered = yield* Deferred.make<void>();
+      const ordinaryEntered = yield* Deferred.make<void>();
+      const strongRelease = yield* Deferred.make<void>();
+      const ordinaryRelease = yield* Deferred.make<void>();
+      const strong = yield* fetchCatalog({
+        key: "a",
+        shareInFlight: false,
+        forceRefresh: true,
+        load: Deferred.succeed(strongEntered, undefined).pipe(
+          Effect.andThen(Deferred.await(strongRelease)),
+          Effect.as(-1),
+        ),
+      }).pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(strongEntered);
+      const ordinary = yield* fetchCatalog({
+        key: "a",
+        shareInFlight: false,
+        load: Deferred.succeed(ordinaryEntered, undefined).pipe(
+          Effect.andThen(Deferred.await(ordinaryRelease)),
+          Effect.as(1),
+        ),
+      }).pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(ordinaryEntered);
+      yield* Deferred.succeed(strongRelease, undefined);
+      yield* Fiber.join(strong);
+      yield* Deferred.succeed(ordinaryRelease, undefined);
+      yield* Fiber.join(ordinary);
+      assert.deepStrictEqual(yield* fetchCatalog({ key: "a", load: Effect.succeed(3) }), {
+        value: 3,
+        cached: false,
+        previous: 9,
+      });
+    }),
+  );
 });

@@ -1,8 +1,7 @@
 import * as DateTime from "effect/DateTime";
-import * as Duration from "effect/Duration";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -35,7 +34,6 @@ import { codexAppServerArgs, resolveCodexLaunchArgs } from "./codexLaunchArgs.ts
 import {
   AUTH_PROBE_TIMEOUT_MS,
   buildServerProvider,
-  DEFAULT_TIMEOUT_MS,
   spawnAndCollect,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
@@ -46,6 +44,7 @@ import {
   makeCliProviderCatalog,
   type CliProviderCatalog,
 } from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog, type NativeProviderCatalog } from "../NativeProviderCatalog.ts";
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
 const isCodexAppServerError = Schema.is(CodexErrors.CodexAppServerError);
 
@@ -347,6 +346,7 @@ interface CodexProviderProbeInput {
   readonly customModels?: ReadonlyArray<string>;
   readonly environment?: NodeJS.ProcessEnv;
   readonly catalog?: CliProviderCatalog;
+  readonly signal?: AbortSignal;
 }
 
 const makeCodexProviderProbeClient = Effect.fn("makeCodexProviderProbeClient")(function* (
@@ -413,13 +413,14 @@ const makeCodexProviderProbeClient = Effect.fn("makeCodexProviderProbeClient")(f
   return { client, version };
 });
 
-/** 目录加载自有进程作用域，首个健康检查结束不会关闭其他实例正在等待的目录。 */
+/** 独立调用自有进程；整次原生刷新传入已有 client，仅复用完成目录，不另建共享所有者。 */
 export const fetchCodexCatalog = Effect.fn("fetchCodexCatalog")(function* (
   input: Pick<CodexProviderProbeInput, "binaryPath" | "launchArgs" | "cwd"> & {
     readonly environment: NodeJS.ProcessEnv;
     readonly version: string | undefined;
     readonly account: CodexSchema.V2GetAccountResponse;
     readonly catalog: CliProviderCatalog;
+    readonly client?: CodexClient.CodexAppServerClient["Service"];
   },
 ) {
   const probeInput = {
@@ -430,10 +431,12 @@ export const fetchCodexCatalog = Effect.fn("fetchCodexCatalog")(function* (
   };
   // 协议未提供 API Key / Bedrock 的稳定身份；同 home 换凭据不能命中旧目录。
   const account = input.account.account;
+  const existingClient = input.client;
   const canReuseCompleted = account?.type === "chatgpt" && Boolean(account.email?.trim());
   return yield* input.catalog
     .fetchCatalog({
       ...(!canReuseCompleted ? { forceRefresh: true } : {}),
+      ...(existingClient ? { shareInFlight: false } : {}),
       key: cliProviderCatalogIdentity({
         driver: ProviderDriverKind.make("codex"),
         operation: "model/list+skills/list",
@@ -447,7 +450,7 @@ export const fetchCodexCatalog = Effect.fn("fetchCodexCatalog")(function* (
         environment: probeInput.environment,
       }),
       load: Effect.gen(function* () {
-        const { client } = yield* makeCodexProviderProbeClient(probeInput);
+        const client = existingClient ?? (yield* makeCodexProviderProbeClient(probeInput)).client;
         const [skillsResponse, models] = yield* Effect.all(
           [
             client.request("skills/list", { cwds: [probeInput.cwd] }),
@@ -474,13 +477,8 @@ export const fetchCodexCatalog = Effect.fn("fetchCodexCatalog")(function* (
 const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(function* (
   input: CodexProviderProbeInput,
 ) {
-  // home 展开与最终环境只解析一次，两个无会话进程及缓存键使用同一快照。
-  const resolvedHomePath = input.homePath ? expandHomePath(input.homePath) : undefined;
-  const environment = {
-    ...(yield* HostProcessEnvironment),
-    ...input.environment,
-    ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
-  };
+  // 整次刷新已冻结 home 和环境；账户与目录使用同一个无会话 client。
+  const environment = input.environment ?? { ...(yield* HostProcessEnvironment) };
   const probeInput = { ...input, environment };
   const { client, version } = yield* makeCodexProviderProbeClient(probeInput);
 
@@ -500,6 +498,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     version,
     account: accountResponse,
     catalog,
+    client,
   });
 
   return {
@@ -600,7 +599,9 @@ function accountProbeStatus(account: CodexAppServerProviderSnapshot["account"]):
 export interface CodexDamageProbeInput {
   readonly binaryPath: string;
   readonly homePath?: string;
+  readonly cwd?: string;
   readonly environment?: NodeJS.ProcessEnv;
+  readonly signal?: AbortSignal;
 }
 
 /**
@@ -614,30 +615,41 @@ const detectDamagedCodexInstall = (
   input: CodexDamageProbeInput,
 ): Effect.Effect<boolean, never, ChildProcessSpawner.ChildProcessSpawner> =>
   Effect.gen(function* () {
-    const resolvedHomePath = input.homePath ? expandHomePath(input.homePath) : undefined;
-    const environment: NodeJS.ProcessEnv = {
-      ...input.environment,
-      ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
-    };
+    if (input.signal?.aborted) return yield* Effect.interrupt;
+    const environment = input.environment ?? { ...(yield* HostProcessEnvironment) };
     const spawnCommand = yield* resolveSpawnCommand(input.binaryPath, ["--version"], {
       env: environment,
-      extendEnv: true,
+      extendEnv: false,
+      ...(input.cwd ? { cwd: input.cwd } : {}),
     });
     const result = yield* spawnAndCollect(
       input.binaryPath,
       ChildProcess.make(spawnCommand.command, spawnCommand.args, {
         env: environment,
-        extendEnv: true,
+        extendEnv: false,
+        ...(input.cwd ? { cwd: input.cwd } : {}),
+        forceKillAfter: CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER,
         shell: spawnCommand.shell,
       }),
-    ).pipe(Effect.timeoutOption(Duration.millis(DEFAULT_TIMEOUT_MS)));
-    if (Option.isNone(result)) {
-      return false;
-    }
-    return CODEX_MISSING_PLATFORM_PACKAGE_PATTERN.test(
-      `${result.value.stdout}\n${result.value.stderr}`,
     );
+    return CODEX_MISSING_PLATFORM_PACKAGE_PATTERN.test(`${result.stdout}\n${result.stderr}`);
   }).pipe(Effect.orElseSucceed(() => false));
+
+/** RPC 以 Effect interruption 取消；共同信号只桥接整次刷新，不为各请求新建 controller。 */
+const interruptCodexRefreshOnAbort = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  signal: AbortSignal,
+) =>
+  Effect.suspend(() => {
+    if (signal.aborted) return Effect.interrupt;
+    const aborted = Effect.callback<never>((resume) => {
+      const interrupt = () => resume(Effect.interrupt);
+      signal.addEventListener("abort", interrupt, { once: true });
+      if (signal.aborted) interrupt();
+      return Effect.sync(() => signal.removeEventListener("abort", interrupt));
+    });
+    return Effect.raceFirst(aborted, effect);
+  });
 
 export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(function* (
   codexSettings: CodexSettings,
@@ -649,6 +661,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     readonly customModels: ReadonlyArray<string>;
     readonly environment?: NodeJS.ProcessEnv;
     readonly catalog?: CliProviderCatalog;
+    readonly signal?: AbortSignal;
   }) => Effect.Effect<
     CodexAppServerProviderSnapshot,
     CodexErrors.CodexAppServerError,
@@ -663,21 +676,27 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     ChildProcessSpawner.ChildProcessSpawner
   > = detectDamagedCodexInstall,
   catalog?: CliProviderCatalog,
+  nativeCatalog?: NativeProviderCatalog,
 ): Effect.fn.Return<
   ServerProviderDraft,
   ServerSettingsError,
   ChildProcessSpawner.ChildProcessSpawner
 > {
-  const resolvedEnvironment = { ...(yield* HostProcessEnvironment), ...environment };
+  const homePath = codexSettings.homePath ? expandHomePath(codexSettings.homePath) : undefined;
+  const resolvedEnvironment = {
+    ...(yield* HostProcessEnvironment),
+    ...environment,
+    ...(homePath ? { CODEX_HOME: homePath } : {}),
+  };
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
-  const emptyModels = emptyCodexModelsFromSettings(codexSettings);
+  const customModels = [...codexSettings.customModels];
 
   if (!codexSettings.enabled) {
     return buildServerProvider({
       presentation: CODEX_PRESENTATION,
       enabled: false,
       checkedAt,
-      models: emptyModels,
+      models: appendCustomCodexModels([], customModels),
       skills: [],
       probe: {
         installed: false,
@@ -689,65 +708,23 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     });
   }
 
-  const probeResult = yield* probe({
+  const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
+  const providerRefresh = nativeCatalog ?? (yield* makeNativeProviderCatalog());
+  const probeInput = {
     binaryPath: codexSettings.binaryPath,
-    homePath: codexSettings.homePath,
+    ...(homePath ? { homePath } : {}),
     launchArgs: resolveCodexLaunchArgs(codexSettings.launchArgs, resolvedEnvironment),
     cwd: yield* HostProcessWorkingDirectory,
-    customModels: codexSettings.customModels,
+    customModels: [],
     environment: resolvedEnvironment,
-    ...(catalog ? { catalog } : {}),
-  }).pipe(
-    Effect.scoped,
-    Effect.timeoutOption(Duration.millis(AUTH_PROBE_TIMEOUT_MS)),
-    Effect.result,
-  );
-
-  if (Result.isFailure(probeResult)) {
-    const error = probeResult.failure;
-    const installed = !isCodexAppServerSpawnError(error);
-    const damaged =
-      installed &&
-      (yield* detectDamagedInstall({
-        binaryPath: codexSettings.binaryPath,
-        homePath: codexSettings.homePath,
-        environment: resolvedEnvironment,
-      }));
-    yield* Effect.logWarning("Codex app-server health check failed.", {
-      errorTag: error._tag,
-      binaryPath: codexSettings.binaryPath,
-      reason: damaged
-        ? "installation-damaged"
-        : installed
-          ? "execution-failed"
-          : "command-not-found",
-    });
-    return buildServerProvider({
+    catalog: providerCatalog,
+  };
+  const timeoutDraft = () =>
+    buildServerProvider({
       presentation: CODEX_PRESENTATION,
-      enabled: codexSettings.enabled,
+      enabled: true,
       checkedAt,
-      models: emptyModels,
-      skills: [],
-      probe: {
-        installed: installed && !damaged,
-        version: null,
-        status: "error",
-        auth: { status: "unknown" },
-        message: damaged
-          ? CODEX_INSTALLATION_DAMAGED_MESSAGE
-          : installed
-            ? `Codex app-server provider probe failed: ${error.message}.`
-            : "Codex CLI (`codex`) was not found in Code Work's server environment. Check the configured binary path or restart Code Work after updating PATH.",
-      },
-    });
-  }
-
-  if (Option.isNone(probeResult.success)) {
-    return buildServerProvider({
-      presentation: CODEX_PRESENTATION,
-      enabled: codexSettings.enabled,
-      checkedAt,
-      models: emptyModels,
+      models: [],
       skills: [],
       probe: {
         installed: true,
@@ -757,37 +734,126 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
         message: "Timed out while checking Codex app-server provider status.",
       },
     });
-  }
-
-  const snapshot = probeResult.success.value;
-  const accountStatus = accountProbeStatus(snapshot.account);
-
-  return buildServerProvider({
-    presentation: CODEX_PRESENTATION,
-    enabled: codexSettings.enabled,
-    checkedAt,
-    models: snapshot.models,
-    skills: snapshot.skills,
-    slashCommands: [
-      {
-        name: "review",
-        description: "Review changes with Codex",
-        input: { hint: "Review instructions (optional; defaults to uncommitted changes)" },
+  const native = yield* providerRefresh.fetchCatalog({
+    key: cliProviderCatalogIdentity({
+      driver: ProviderDriverKind.make("codex"),
+      operation: "native-refresh",
+      config: {
+        binaryPath: probeInput.binaryPath,
+        launchArgs: codexAppServerArgs(probeInput.launchArgs),
       },
-      {
-        name: "feedback",
-        description: "Send this thread and Codex logs to OpenAI",
-        input: { hint: "Describe the issue (optional)" },
-      },
-    ],
-    probe: {
-      installed: true,
-      version: snapshot.version ?? null,
-      status: accountStatus.status,
-      auth: accountStatus.auth,
-      ...(accountStatus.message ? { message: accountStatus.message } : {}),
-    },
+      cwd: probeInput.cwd,
+      environment: resolvedEnvironment,
+    }),
+    timeoutMs: AUTH_PROBE_TIMEOUT_MS,
+    onTimeout: timeoutDraft,
+    load: (controller) =>
+      interruptCodexRefreshOnAbort(
+        Effect.gen(function* () {
+          const signal = controller.signal;
+          const deadlineAt = DateTime.toEpochMillis(yield* DateTime.now) + AUTH_PROBE_TIMEOUT_MS;
+          const probeResult = yield* probe({ ...probeInput, signal }).pipe(
+            Effect.scoped,
+            Effect.catchCause((cause) => {
+              if (Cause.hasInterrupts(cause)) return Effect.failCause(cause);
+              const error = Cause.squash(cause);
+              return Effect.fail(
+                isCodexAppServerError(error)
+                  ? error
+                  : CodexErrors.CodexAppServerRequestError.internalError(
+                      "Codex provider probe failed.",
+                      undefined,
+                      { method: "initialize", operation: "receive-response", cause: error },
+                    ),
+              );
+            }),
+            Effect.result,
+          );
+          if (Result.isFailure(probeResult)) {
+            const error = probeResult.failure;
+            const installed = !isCodexAppServerSpawnError(error);
+            // 诊断属于本轮预算；截止时不再启动另一个进程。
+            if (signal.aborted || DateTime.toEpochMillis(yield* DateTime.now) >= deadlineAt) {
+              return timeoutDraft();
+            }
+            const damaged =
+              installed &&
+              (yield* detectDamagedInstall({
+                binaryPath: probeInput.binaryPath,
+                ...(homePath ? { homePath } : {}),
+                cwd: probeInput.cwd,
+                environment: resolvedEnvironment,
+                signal,
+              }).pipe(
+                Effect.catchCause((cause) =>
+                  Cause.hasInterrupts(cause) ? Effect.failCause(cause) : Effect.succeed(false),
+                ),
+              ));
+            yield* Effect.logWarning("Codex app-server health check failed.", {
+              errorTag: error._tag,
+              binaryPath: probeInput.binaryPath,
+              reason: damaged
+                ? "installation-damaged"
+                : installed
+                  ? "execution-failed"
+                  : "command-not-found",
+            });
+            return buildServerProvider({
+              presentation: CODEX_PRESENTATION,
+              enabled: true,
+              checkedAt,
+              models: [],
+              skills: [],
+              probe: {
+                installed: installed && !damaged,
+                version: null,
+                status: "error",
+                auth: { status: "unknown" },
+                message: damaged
+                  ? CODEX_INSTALLATION_DAMAGED_MESSAGE
+                  : installed
+                    ? `Codex app-server provider probe failed: ${error.message}.`
+                    : "Codex CLI (`codex`) was not found in Code Work's server environment. Check the configured binary path or restart Code Work after updating PATH.",
+              },
+            });
+          }
+          const snapshot = probeResult.success;
+          const accountStatus = accountProbeStatus(snapshot.account);
+          return buildServerProvider({
+            presentation: CODEX_PRESENTATION,
+            enabled: true,
+            checkedAt,
+            models: snapshot.models,
+            skills: snapshot.skills,
+            slashCommands: [
+              {
+                name: "review",
+                description: "Review changes with Codex",
+                input: { hint: "Review instructions (optional; defaults to uncommitted changes)" },
+              },
+              {
+                name: "feedback",
+                description: "Send this thread and Codex logs to OpenAI",
+                input: { hint: "Describe the issue (optional)" },
+              },
+            ],
+            probe: {
+              installed: true,
+              version: snapshot.version ?? null,
+              status: accountStatus.status,
+              auth: accountStatus.auth,
+              ...(accountStatus.message ? { message: accountStatus.message } : {}),
+            },
+          });
+        }),
+        controller.signal,
+      ),
   });
+  return {
+    ...native,
+    checkedAt: DateTime.formatIso(yield* DateTime.now),
+    models: applyPreferredCodexDefaultModel(appendCustomCodexModels(native.models, customModels)),
+  };
 });
 
 // NOTE: the singleton `CodexProviderLive` Layer has been removed as part of

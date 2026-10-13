@@ -51,10 +51,13 @@ export const makeProviderCatalogCache = Effect.fn("makeProviderCatalogCache")(fu
 }) {
   const completed = new Map<string, { readonly value: A; readonly expiresAt: number }>();
   const active = new Map<string, CatalogRequest<A>>();
+  const generations = new Map<string, { latest: symbol; latestStrong: boolean; active: number }>();
   // Cache 管理加载与取消引用计数；显式清理已结束的一轮，不依赖首等待者的时钟。
   const inFlight = yield* Cache.makeWith(
     (request: CatalogRequest<A>) =>
-      request.run.pipe(
+      Effect.yieldNow.pipe(
+        // 先让 Cache 登记等待者与取消处理，再允许加载同步回执重入调用方。
+        Effect.andThen(request.run),
         Effect.ensuring(
           Effect.sync(() => {
             request.settled = true;
@@ -69,6 +72,8 @@ export const makeProviderCatalogCache = Effect.fn("makeProviderCatalogCache")(fu
     readonly key: string;
     readonly load: Effect.Effect<A>;
     readonly forceRefresh?: boolean;
+    /** 整次刷新已拥有 Scope 时，只复用完成值，加载留在调用者的资源边界内。 */
+    readonly shareInFlight?: boolean;
     readonly timeout?: {
       readonly milliseconds: number;
       readonly onTimeout: () => A;
@@ -82,21 +87,47 @@ export const makeProviderCatalogCache = Effect.fn("makeProviderCatalogCache")(fu
       return { value: cached.value, cached: true };
     }
 
-    const load = Effect.gen(function* () {
-      const previous = completed.get(input.key);
-      const value = yield* input.load;
-      const finishedAt = DateTime.toEpochMillis(yield* DateTime.now);
-      if (options.capacity > 0 && options.shouldCache(value)) {
-        completed.delete(input.key);
-        completed.set(input.key, { value, expiresAt: finishedAt + options.ttlMs });
-        for (const key of completed.keys()) {
-          if (completed.size <= options.capacity) break;
-          completed.delete(key);
+    const load = Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const generation = Symbol();
+        const state = generations.get(input.key) ?? {
+          latest: generation,
+          latestStrong: false,
+          active: 0,
+        };
+        // 旧整次检查可能较晚才到目录阶段；它不能夺取仍在保护中的强刷新写权限。
+        if (input.forceRefresh === true || !state.latestStrong) {
+          state.latest = generation;
+          state.latestStrong = input.forceRefresh === true;
         }
-      }
-      return { value, cached: false, ...(previous ? { previous: previous.value } : {}) };
-    });
-    const fetch = Effect.acquireUseRelease(
+        state.active += 1;
+        generations.set(input.key, state);
+        return { state, generation };
+      }),
+      ({ state, generation }) =>
+        Effect.gen(function* () {
+          const previous = completed.get(input.key);
+          const value = yield* input.load;
+          const finishedAt = DateTime.toEpochMillis(yield* DateTime.now);
+          // 普通加载晚完成不能覆盖后启动的手动刷新，失败新代也不恢复旧代写权限。
+          if (state.latest === generation && options.capacity > 0 && options.shouldCache(value)) {
+            completed.delete(input.key);
+            completed.set(input.key, { value, expiresAt: finishedAt + options.ttlMs });
+            for (const key of completed.keys()) {
+              if (completed.size <= options.capacity) break;
+              completed.delete(key);
+            }
+          }
+          return { value, cached: false, ...(previous ? { previous: previous.value } : {}) };
+        }),
+      ({ state }) =>
+        Effect.sync(() => {
+          state.active -= 1;
+          if (state.active === 0 && generations.get(input.key) === state)
+            generations.delete(input.key);
+        }),
+    );
+    const shared = Effect.acquireUseRelease(
       Effect.sync(() => {
         const request = active.get(input.key) ?? new CatalogRequest(input.key, load);
         active.set(input.key, request);
@@ -115,6 +146,7 @@ export const makeProviderCatalogCache = Effect.fn("makeProviderCatalogCache")(fu
           }
         }),
     );
+    const fetch = input.shareInFlight === false ? load : shared;
     const timeout = input.timeout;
     if (!timeout) return yield* fetch;
 
@@ -133,5 +165,8 @@ export const makeProviderCatalogCache = Effect.fn("makeProviderCatalogCache")(fu
     );
   });
 
-  return { fetchCatalog };
+  return {
+    fetchCatalog,
+    hasInFlight: (key: string) => Effect.sync(() => active.has(key)),
+  };
 });
