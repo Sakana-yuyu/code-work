@@ -35,6 +35,7 @@ import {
   listByokCompositionModelDescriptors,
 } from "../byok/ByokCompositionModel.ts";
 import { ProviderDriverError } from "../Errors.ts";
+import { ByokCatalog } from "../byok/ByokCatalog.ts";
 import { makeByokAdapter } from "../Layers/ByokAdapter.ts";
 import {
   buildInitialByokProviderSnapshot,
@@ -70,6 +71,7 @@ const UPDATE = makeStaticProviderMaintenanceResolver(
 
 export type ByokDriverEnv =
   | BackgroundPolicy.BackgroundPolicy
+  | ByokCatalog
   | Crypto.Crypto
   | FileSystem.FileSystem
   | HttpClient.HttpClient
@@ -104,6 +106,7 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
   create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
     Effect.gen(function* () {
       const httpClient = yield* HttpClient.HttpClient;
+      const catalog = yield* ByokCatalog;
       const serverSettings = yield* ServerSettingsService;
       const serverConfig = yield* ServerConfig;
       const fileSystem = yield* FileSystem.FileSystem;
@@ -145,7 +148,7 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
         checkByokProviderStatus(effectiveConfig),
         discoverSkills,
         (draft, skills) => ({ ...draft, skills: [...skills] }),
-      ).pipe(Effect.map(stampIdentity), Effect.provideService(HttpClient.HttpClient, httpClient));
+      ).pipe(Effect.map(stampIdentity), Effect.provideService(ByokCatalog, catalog));
 
       const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, serverSettings);
       const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<ByokSettings>>({
@@ -160,6 +163,7 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
             (draft, skills) => ({ ...draft, skills: [...skills] }),
           ).pipe(Effect.map(stampIdentity)),
         checkProvider,
+        usesCatalogCache: true,
       }).pipe(
         Effect.mapError(
           (cause) =>

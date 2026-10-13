@@ -43,6 +43,7 @@ import {
 import { checkClaudeProviderStatus } from "./ClaudeProvider.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import * as ModelManifest from "../ModelManifest.ts";
+import * as ByokCatalog from "../byok/ByokCatalog.ts";
 import * as OpenCodeRuntime from "../opencodeRuntime.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
 import { ProviderInstanceRegistryHydrationLive } from "./ProviderInstanceRegistryHydration.ts";
@@ -86,6 +87,7 @@ const TestHttpClientLive = Layer.succeed(
     Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ version: "0.0.0" }))),
   ),
 );
+const TestByokCatalogLive = ByokCatalog.layer.pipe(Layer.provideMerge(TestHttpClientLive));
 
 const BackgroundPolicyAlwaysRunLayer = Layer.mock(BackgroundPolicy.BackgroundPolicy)({
   reportClientActivity: () => Effect.void,
@@ -1541,7 +1543,7 @@ it.layer(
           ),
           Layer.provideMerge(testConfigLayer),
           Layer.provideMerge(ServerSecretStore.layer.pipe(Layer.provide(testConfigLayer))),
-          Layer.provideMerge(TestHttpClientLive),
+          Layer.provideMerge(TestByokCatalogLive),
           Layer.provideMerge(
             Layer.succeed(
               ProviderEventLoggers.ProviderEventLoggers,
@@ -1640,7 +1642,7 @@ it.layer(
           ),
           Layer.provideMerge(testConfigLayer),
           Layer.provideMerge(ServerSecretStore.layer.pipe(Layer.provide(testConfigLayer))),
-          Layer.provideMerge(TestHttpClientLive),
+          Layer.provideMerge(TestByokCatalogLive),
           Layer.provideMerge(
             Layer.succeed(
               ProviderEventLoggers.ProviderEventLoggers,
@@ -1770,7 +1772,7 @@ it.layer(
           ),
           Layer.provideMerge(testConfigLayer),
           Layer.provideMerge(ServerSecretStore.layer.pipe(Layer.provide(testConfigLayer))),
-          Layer.provideMerge(TestHttpClientLive),
+          Layer.provideMerge(TestByokCatalogLive),
           Layer.provideMerge(
             Layer.succeed(
               ProviderEventLoggers.ProviderEventLoggers,
@@ -1832,7 +1834,7 @@ it.layer(
             ),
             Layer.provideMerge(testConfigLayer),
             Layer.provideMerge(ServerSecretStore.layer.pipe(Layer.provide(testConfigLayer))),
-            Layer.provideMerge(TestHttpClientLive),
+            Layer.provideMerge(TestByokCatalogLive),
             Layer.provideMerge(
               Layer.succeed(
                 ProviderEventLoggers.ProviderEventLoggers,

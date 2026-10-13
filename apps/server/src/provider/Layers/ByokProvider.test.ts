@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { describe, expect, it } from "vite-plus/test";
 import { FetchHttpClient } from "effect/unstable/http";
+import * as ByokCatalog from "../byok/ByokCatalog.ts";
 
 import {
   byokModelCapabilities,
@@ -13,6 +14,13 @@ import {
 const asFetch = (
   implementation: (input: string | URL, init?: RequestInit) => Promise<Response>,
 ): typeof globalThis.fetch => implementation as unknown as typeof globalThis.fetch;
+
+const catalogLayer = (fetch: typeof globalThis.fetch) =>
+  ByokCatalog.layer.pipe(
+    Layer.provide(
+      FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetch))),
+    ),
+  );
 
 const settings = (): ByokSettings => ({
   ...DEFAULT_SERVER_SETTINGS.providers.byok,
@@ -72,11 +80,7 @@ describe("checkByokProviderStatus", () => {
     });
 
     const result = await Effect.runPromise(
-      checkByokProviderStatus(settings()).pipe(
-        Effect.provide(
-          FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetch))),
-        ),
-      ),
+      checkByokProviderStatus(settings()).pipe(Effect.provide(catalogLayer(fetch))),
     );
 
     expect(requestCount).toBe(1);
@@ -97,11 +101,7 @@ describe("checkByokProviderStatus", () => {
     );
 
     const result = await Effect.runPromise(
-      checkByokProviderStatus(settings()).pipe(
-        Effect.provide(
-          FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetch))),
-        ),
-      ),
+      checkByokProviderStatus(settings()).pipe(Effect.provide(catalogLayer(fetch))),
     );
 
     expect(result.status).toBe("ready");
@@ -150,11 +150,7 @@ describe("byokModelsFromSettings", () => {
             modelId: "deepseek-v4-flash",
           },
         ],
-      }).pipe(
-        Effect.provide(
-          FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetch))),
-        ),
-      ),
+      }).pipe(Effect.provide(catalogLayer(fetch))),
     );
 
     const discovered = result.models.find((model) => model.slug === "flash/deepseek-v9-beta");

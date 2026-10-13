@@ -10,22 +10,22 @@
  *   - enabled with no adapters → warning prompting the user to add one.
  *   - enabled with adapters → available ("N model adapters configured").
  *
- * As a lightweight liveness probe, each `openai`-protocol adapter gets one
- * `GET ${baseURL}/models` call to validate its API key. Probe failures only
- * downgrade the snapshot message — they never mark the provider unavailable.
+ * 状态检查与设置页共用目录服务；目录失败不代表已配置模型不可调用。
  *
  * @module provider/Layers/ByokProvider
  */
 import type { ByokSettings, ModelCapabilities, ServerProviderModel } from "@codework/contracts";
 import { createModelCapabilities } from "@codework/shared/model";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
-
 import { catalogCapabilitiesForModel } from "../byok/ContextWindowCatalog.ts";
-import { decodeModelCatalog } from "../byok/ModelCatalog.ts";
+import {
+  ByokCatalog,
+  byokCatalogIdentity,
+  byokCatalogTargetFromAdapter,
+} from "../byok/ByokCatalog.ts";
+import { BYOK_HTTP_TIMEOUT_MS } from "../byok/byokHttp.ts";
 import { buildServerProvider, type ServerProviderDraft } from "../providerSnapshot.ts";
 
 const BYOK_PRESENTATION = {
@@ -65,15 +65,10 @@ export const byokModelCapabilities = (
   });
 };
 
-const BYOK_KEY_PROBE_TIMEOUT_MS = 6_000;
-
 const normalizedRelayURL = (baseURL: string): string => baseURL.trim().replace(/\/+$/u, "");
 
 const relayKey = (adapter: ByokSettings["adapters"][number]): string =>
   `${adapter.protocol}\u0000${normalizedRelayURL(adapter.baseURL)}`;
-
-const authenticatedRelayKey = (adapter: ByokSettings["adapters"][number]): string =>
-  `${relayKey(adapter)}\u0000${adapter.apiKey}`;
 
 // ── model snapshots ────────────────────────────────────────────────
 
@@ -158,46 +153,10 @@ export function buildInitialByokProviderSnapshot(
 
 // ── health check ───────────────────────────────────────────────────
 
-/**
- * One lightweight `GET ${baseURL}/models` probe against an OpenAI-compatible
- * adapter to validate its API key. Returns a failure detail string, or the
- * model ids advertised by the endpoint on success.
- */
-const probeErrorDetail = (cause: unknown): string => {
-  const detail = cause instanceof Error ? cause.message : String(cause);
-  return detail.trim().length > 0 ? detail : "The adapter probe request failed.";
-};
-
-const probeOpenaiAdapter = (
-  httpClient: HttpClient.HttpClient,
-  input: { readonly baseURL: string; readonly apiKey: string },
-): Effect.Effect<ReadonlyArray<string>, string> =>
-  Effect.gen(function* () {
-    const url = `${input.baseURL.trim().replace(/\/+$/u, "")}/models`;
-    const request = HttpClientRequest.get(url).pipe(
-      HttpClientRequest.setHeader("authorization", `Bearer ${input.apiKey}`),
-    );
-    const responseOption = yield* httpClient
-      .execute(request)
-      .pipe(
-        Effect.flatMap(HttpClientResponse.filterStatusOk),
-        Effect.mapError(probeErrorDetail),
-        Effect.timeoutOption(BYOK_KEY_PROBE_TIMEOUT_MS),
-      );
-    if (Option.isNone(responseOption)) {
-      return yield* Effect.fail(`Timed out after ${BYOK_KEY_PROBE_TIMEOUT_MS}ms.`);
-    }
-    const response = responseOption.value;
-    const body: unknown = yield* HttpClientResponse.schemaBodyJson(Schema.Unknown)(response).pipe(
-      Effect.mapError(probeErrorDetail),
-    );
-    return decodeModelCatalog(body).map((model) => model.id);
-  });
-
 export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(function* (
   byokSettings: ByokSettings,
-): Effect.fn.Return<ServerProviderDraft, never, HttpClient.HttpClient> {
-  const httpClient = yield* HttpClient.HttpClient;
+): Effect.fn.Return<ServerProviderDraft, never, ByokCatalog> {
+  const catalog = yield* ByokCatalog;
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
 
   if (!byokSettings.enabled) {
@@ -214,20 +173,24 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
   );
   const discoveredModelsByRelay = new Set<string>();
   const probedRelays = new Set<string>();
+  const deadline = (yield* Clock.currentTimeMillis) + BYOK_HTTP_TIMEOUT_MS;
+  // 预算限制当前等待者；其他客户端仍在使用的目录加载不受此处超时影响。
   for (const adapter of byokSettings.adapters) {
-    if (adapter.protocol !== "openai" || adapter.baseURL.trim().length === 0) {
+    if (adapter.baseURL.trim().length === 0) {
       continue;
     }
-    const connectionKey = authenticatedRelayKey(adapter);
+    const target = byokCatalogTargetFromAdapter(adapter);
+    const connectionKey = byokCatalogIdentity(target);
     if (probedRelays.has(connectionKey)) continue;
     probedRelays.add(connectionKey);
 
-    const probeExit = yield* Effect.exit(
-      probeOpenaiAdapter(httpClient, { baseURL: adapter.baseURL, apiKey: adapter.apiKey }),
-    );
-    if (probeExit._tag === "Success") {
-      for (const modelId of probeExit.value) {
-        const normalizedModelId = modelId.trim();
+    const result = yield* catalog.fetchCatalog(target, {
+      timeoutMs: Math.max(0, deadline - (yield* Clock.currentTimeMillis)),
+    });
+    const discovered = result.value.status === "failed" ? result.previous : result.value;
+    if (discovered !== undefined) {
+      for (const model of discovered.models) {
+        const normalizedModelId = model.id.trim();
         if (normalizedModelId.length === 0) continue;
         const modelRelayKey = `${relayKey(adapter)}\u0000${normalizedModelId}`;
         if (
@@ -249,7 +212,6 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
       }
     }
   }
-
   const models = byokModelsFromSettings(byokSettings, discoveredModels);
   return buildServerProvider({
     presentation: BYOK_PRESENTATION,

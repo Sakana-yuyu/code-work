@@ -15,6 +15,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -22,6 +23,7 @@ import { TestClock } from "effect/testing";
 
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { makeProviderCatalogCache, ProviderCatalogForceRefresh } from "./ProviderCatalogCache.ts";
 import { makeManagedServerProvider } from "./makeManagedServerProvider.ts";
 
 const emptyCapabilities = createModelCapabilities({ optionDescriptors: [] });
@@ -164,6 +166,141 @@ const enrichedSnapshotSecond: ServerProvider = {
 };
 
 describe("makeManagedServerProvider", () => {
+  it.effect("目录刷新意图区分初次、手动、周期与设置检查，并覆盖外层意图", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const settingsRef = yield* Ref.make<TestSettings>({ enabled: true });
+        const settingsChanges = yield* PubSub.unbounded<TestSettings>();
+        const intents = yield* Queue.unbounded<boolean>();
+        const provider = yield* makeManagedServerProvider<TestSettings>({
+          maintenanceCapabilities,
+          getSettings: Ref.get(settingsRef),
+          streamSettings: Stream.fromPubSub(settingsChanges),
+          haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+          initialSnapshot: () => Effect.succeed(initialSnapshot),
+          usesCatalogCache: true,
+          checkProvider: Effect.gen(function* () {
+            yield* Queue.offer(intents, yield* ProviderCatalogForceRefresh);
+            return refreshedSnapshot;
+          }),
+          refreshInterval: "1 second",
+        });
+        assert.strictEqual(yield* Queue.take(intents), false);
+        yield* provider.refresh.pipe(Effect.provideService(ProviderCatalogForceRefresh, false));
+        assert.strictEqual(yield* Queue.take(intents), true);
+        yield* TestClock.adjust("1 second");
+        assert.strictEqual(yield* Queue.take(intents), false);
+        yield* Ref.set(settingsRef, { enabled: false });
+        yield* PubSub.publish(settingsChanges, { enabled: false });
+        assert.strictEqual(yield* Queue.take(intents), false);
+      }),
+    ).pipe(
+      Effect.provideService(ProviderCatalogForceRefresh, true),
+      Effect.provide(Layer.merge(AlwaysRunTestLayer, TestClock.layer())),
+    ),
+  );
+
+  it.effect("普通检查已读取旧目录时，手动刷新另行排队并合并并发强制请求", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const cache = yield* makeProviderCatalogCache<ServerProvider>({
+          ttlMs: 60_000,
+          capacity: 1,
+          shouldCache: () => true,
+        });
+        yield* cache.fetchCatalog({
+          key: "equivalent-config",
+          load: Effect.succeed(refreshedSnapshot),
+        });
+        const cachedRead = yield* Deferred.make<void>();
+        const releaseCached = yield* Deferred.make<void>();
+        const freshLoadEntered = yield* Deferred.make<void>();
+        const releaseFresh = yield* Deferred.make<void>();
+        let checkCalls = 0;
+        let freshLoads = 0;
+        const provider = yield* makeManagedServerProvider<TestSettings>({
+          maintenanceCapabilities,
+          getSettings: Effect.succeed({ enabled: true }),
+          streamSettings: Stream.empty,
+          haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+          initialSnapshot: () => Effect.succeed(initialSnapshot),
+          usesCatalogCache: true,
+          checkProvider: Effect.gen(function* () {
+            checkCalls += 1;
+            const result = yield* cache.fetchCatalog({
+              key: "equivalent-config",
+              forceRefresh: yield* ProviderCatalogForceRefresh,
+              load: Effect.gen(function* () {
+                freshLoads += 1;
+                yield* Deferred.succeed(freshLoadEntered, undefined);
+                yield* Deferred.await(releaseFresh);
+                return refreshedSnapshotSecond;
+              }),
+            });
+            if (result.cached) {
+              yield* Deferred.succeed(cachedRead, undefined);
+              yield* Deferred.await(releaseCached);
+            }
+            return result.value;
+          }),
+          refreshInterval: "1 second",
+        });
+        yield* Deferred.await(cachedRead);
+        const first = yield* provider.refresh.pipe(Effect.forkChild({ startImmediately: true }));
+        const second = yield* provider.refresh.pipe(Effect.forkChild({ startImmediately: true }));
+        assert.strictEqual(checkCalls, 1);
+        assert.strictEqual(freshLoads, 0);
+        yield* Deferred.succeed(releaseCached, undefined);
+        yield* Deferred.await(freshLoadEntered);
+        assert.deepStrictEqual(yield* provider.getSnapshot, refreshedSnapshot);
+        // 普通周期请求可以等待强制请求，不能再发起一次目录加载。
+        yield* TestClock.adjust("1 second");
+        yield* Deferred.succeed(releaseFresh, undefined);
+        assert.deepStrictEqual(yield* Fiber.join(first), refreshedSnapshotSecond);
+        assert.deepStrictEqual(yield* Fiber.join(second), refreshedSnapshotSecond);
+        assert.strictEqual(checkCalls, 2);
+        assert.strictEqual(freshLoads, 1);
+      }),
+    ).pipe(Effect.provide(Layer.merge(AlwaysRunTestLayer, TestClock.layer()))),
+  );
+
+  it.effect("关闭目录缓存provider作用域同时完成普通检查与排队强制请求", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const providerScope = yield* Scope.make();
+        yield* Effect.addFinalizer(() => Scope.close(providerScope, Exit.void));
+        const checkEntered = yield* Deferred.make<void>();
+        const checkInterrupted = yield* Deferred.make<void>();
+        let checkCalls = 0;
+        const provider = yield* makeManagedServerProvider<TestSettings>({
+          maintenanceCapabilities,
+          getSettings: Effect.succeed({ enabled: true }),
+          streamSettings: Stream.empty,
+          haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
+          initialSnapshot: () => Effect.succeed(initialSnapshot),
+          usesCatalogCache: true,
+          checkProvider: Effect.gen(function* () {
+            checkCalls += 1;
+            return yield* Deferred.succeed(checkEntered, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.onInterrupt(() => Deferred.succeed(checkInterrupted, undefined)),
+            );
+          }),
+          refreshInterval: 0,
+        }).pipe(Effect.provideService(Scope.Scope, providerScope));
+        yield* Deferred.await(checkEntered);
+        const first = yield* provider.refresh.pipe(Effect.forkChild({ startImmediately: true }));
+        const second = yield* provider.refresh.pipe(Effect.forkChild({ startImmediately: true }));
+        yield* Scope.close(providerScope, Exit.void);
+        yield* Deferred.await(checkInterrupted);
+        assert.strictEqual((yield* Fiber.await(first))._tag, "Failure");
+        assert.strictEqual((yield* Fiber.await(second))._tag, "Failure");
+        assert.strictEqual(checkCalls, 1);
+        assert.deepStrictEqual(yield* provider.getSnapshot, initialSnapshot);
+      }),
+    ).pipe(Effect.provide(AlwaysRunTestLayer)),
+  );
+
   it.effect("相同设置的并发手动刷新共享正在进行的初次检查", () =>
     Effect.scoped(
       Effect.gen(function* () {

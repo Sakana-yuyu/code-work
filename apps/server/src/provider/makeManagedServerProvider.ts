@@ -19,6 +19,7 @@ import * as Semaphore from "effect/Semaphore";
 
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { ProviderCatalogForceRefresh } from "./ProviderCatalogCache.ts";
 import type { ServerProviderShape } from "./Services/ServerProvider.ts";
 
 interface ProviderSnapshotState {
@@ -35,6 +36,8 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
   readonly haveSettingsChanged: (previous: Settings, next: Settings) => boolean;
   readonly initialSnapshot: (settings: Settings) => Effect.Effect<ServerProvider>;
   readonly checkProvider: Effect.Effect<ServerProvider, ServerSettingsError>;
+  /** 目录缓存接入后，手动刷新不能加入已经可能读取旧缓存的普通检查。 */
+  readonly usesCatalogCache?: boolean;
   /** 在任何快照对外可见前应用模型路由等必要约束，不等待异步补充信息。 */
   readonly prepareSnapshot?: (snapshot: ServerProvider) => Effect.Effect<ServerProvider>;
   readonly enrichSnapshot?: (input: {
@@ -70,6 +73,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
   const scope = yield* Effect.scope;
   const refreshes = new Set<{
     readonly settings: Settings;
+    readonly catalogForceRefresh: boolean;
     readonly deferred: Deferred.Deferred<Exit.Exit<ServerProvider, ServerSettingsError>>;
   }>();
 
@@ -130,13 +134,19 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     yield* Ref.set(enrichmentFiberRef, fiber);
   });
 
-  const applySnapshotBase = Effect.fn("applySnapshotBase")(function* (nextSettings: Settings) {
+  const applySnapshotBase = Effect.fn("applySnapshotBase")(function* (
+    nextSettings: Settings,
+    catalogForceRefresh: boolean,
+  ) {
     // 排队期间及探测期间都可能更新快照设置；过期检查不能发布或启动补充探测。
     if (input.haveSettingsChanged(nextSettings, yield* input.getSettings)) {
       return yield* Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot));
     }
 
-    const nextSnapshot = yield* input.checkProvider.pipe(Effect.flatMap(prepareSnapshot));
+    const nextSnapshot = yield* input.checkProvider.pipe(
+      Effect.provideService(ProviderCatalogForceRefresh, catalogForceRefresh),
+      Effect.flatMap(prepareSnapshot),
+    );
     if (input.haveSettingsChanged(nextSettings, yield* input.getSettings)) {
       return yield* Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot));
     }
@@ -159,18 +169,23 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
   });
   const applySnapshot = Effect.fn("applySnapshot")(function* (
     nextSettings: Settings,
-    options?: { readonly forceRefresh?: boolean },
+    options?: { readonly forceRefresh?: boolean; readonly catalogForceRefresh?: boolean },
   ) {
     return yield* Effect.uninterruptibleMask((restore) =>
       Effect.gen(function* () {
         if (scope.state._tag === "Closed") return yield* Effect.interrupt;
         const previousSettings = yield* Ref.get(settingsRef);
         const deferred = yield* Deferred.make<Exit.Exit<ServerProvider, ServerSettingsError>>();
-        const refresh = { settings: nextSettings, deferred };
+        const catalogForceRefresh = options?.catalogForceRefresh === true;
+        const refresh = { settings: nextSettings, catalogForceRefresh, deferred };
         // 查找与登记在同一个同步步骤完成，自动让出不会创建重复的排队检查。
         const pending = yield* Effect.sync(() => {
           const existing = [...refreshes].find(
-            (active) => !input.haveSettingsChanged(active.settings, nextSettings),
+            (active) =>
+              !input.haveSettingsChanged(active.settings, nextSettings) &&
+              (input.usesCatalogCache !== true ||
+                !catalogForceRefresh ||
+                active.catalogForceRefresh),
           );
           if (existing) return existing;
           if (
@@ -189,7 +204,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
           return yield* restore(Deferred.await(pending.deferred).pipe(Effect.flatten));
         // 探测属于 provider 生命周期，其可中断性不继承调用者，取消只结束自身等待。
         yield* refreshSemaphore
-          .withPermits(1)(applySnapshotBase(nextSettings))
+          .withPermits(1)(applySnapshotBase(nextSettings, catalogForceRefresh))
           .pipe(
             Effect.interruptible,
             Effect.onExit((exit) =>
@@ -205,9 +220,9 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     );
   });
 
-  const refreshSnapshot = Effect.fn("refreshSnapshot")(function* () {
+  const refreshSnapshot = Effect.fn("refreshSnapshot")(function* (catalogForceRefresh: boolean) {
     const nextSettings = yield* input.getSettings;
-    return yield* applySnapshot(nextSettings, { forceRefresh: true });
+    return yield* applySnapshot(nextSettings, { forceRefresh: true, catalogForceRefresh });
   });
 
   const hasProviderStatusDemand = Effect.gen(function* () {
@@ -265,7 +280,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
             intervalElapsed && Duration.toMillis(Duration.fromInputUnsafe(refreshInterval)) > 0
               ? hasProviderStatusDemand.pipe(
                   Effect.flatMap((shouldRefresh) =>
-                    shouldRefresh ? refreshSnapshot().pipe(Effect.asVoid) : Effect.void,
+                    shouldRefresh ? refreshSnapshot(false).pipe(Effect.asVoid) : Effect.void,
                   ),
                 )
               : Effect.void,
@@ -284,7 +299,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
   return {
     maintenanceCapabilities: input.maintenanceCapabilities,
     getSnapshot: Ref.get(snapshotStateRef).pipe(Effect.map((state) => state.snapshot)),
-    refresh: refreshSnapshot().pipe(Effect.tapError(Effect.logError), Effect.orDie),
+    refresh: refreshSnapshot(true).pipe(Effect.tapError(Effect.logError), Effect.orDie),
     get streamChanges() {
       return Stream.fromPubSub(changesPubSub);
     },

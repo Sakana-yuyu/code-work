@@ -6,9 +6,13 @@
 
 ## 供应商状态刷新
 
-内置 driver 的快照均通过 `makeManagedServerProvider` 管理。同一实例且快照设置等价时，初次、手动和定时刷新共享在途检查；设置不同则分别排队，实际检查仍由原 semaphore 串行执行。检查前后都核对设置，过期结果不发布；异步补充快照同时受设置和 generation 约束。这里的快照设置不代替 provider 配置：driver 的 `checkProvider` 仍捕获创建时配置，配置热更新由 registry 关闭旧 Scope、重建实例。
+内置 driver 的快照均通过 `makeManagedServerProvider` 管理。同一实例且快照设置等价时，默认共享在途检查；设置不同则分别排队，实际检查仍由原 semaphore 串行执行。接入目录缓存的 driver 设置 `usesCatalogCache`，初次、设置变化及周期检查允许命中缓存，公开 `refresh` 强制目录更新。强制请求只加入已有强制检查，避免普通检查已读旧缓存后吞掉手动刷新；普通请求可加入任一同设置检查。当前 BYOK 接入这一缓存语义，其他 driver 保持已有合并方式。检查前后都核对设置，过期结果不发布；异步补充快照同时受设置和 generation 约束。这里的快照设置不代替 provider 配置：driver 的 `checkProvider` 仍捕获创建时配置，配置热更新由 registry 关闭旧 Scope、重建实例。
 
 共享检查属于 provider Scope，调用者取消只结束自身等待。Scope 关闭时终止检查并唤醒全部等待者；失败清理登记后允许下一次刷新。短暂登记和退出清理不可中断，独立检查主体明确可中断，不继承父调用者的不可中断状态。完成结果以 `Deferred<Exit>` 共享，然后由各等待者重放，避免中断传播破坏共享唤醒。本机制不增加刷新缓存或统一超时，无等待者的检查仍会执行至完成或 Scope 关闭。
+
+BYOK 的状态、保存配置发现及草稿发现统一调用 `ByokCatalog.fetchCatalog`。生产装配只构造一个服务，供 registry 中的 driver 与 WebSocket 服务共用；不含实例身份的目录结果在一分钟内共享，成功值容量为128，最近使用的结果优先保留。缓存键覆盖协议、实际地址、供应商模板、候选顺序、目录策略、凭据及自定义请求头；键仅用于索引，探测仍执行本次调用提供的原始配置。adapter/instance 标识与模型路由在缓存外补齐，不共享会话或可变快照。
+
+`ProviderCatalogCache` 分开保存成功结果和在途加载，强制刷新跳过成功值但加入同键的在途加载；失败保留上一份成功结果，不延长其TTL。完成后清除加载闭包，容量只限制成功值。单个目录等待者取消或超时不影响其他等待者，最后一个等待者离开后中断实际加载；这与上面的 provider 状态检查 Scope 所有权不同。BYOK 每个目录加载最多十五秒，每次实例状态检查另有同一个十五秒截止时间，逐通道传入剩余等待预算；超时仍可读取同键旧值，预算耗尽后不启动新请求。Effect HTTP 当前仍给各底层请求创建独立 AbortSignal，统一共享 signal 以及其余 CLI 的统一目录入口仍需继续收敛。
 
 > For maintainers. Using Code Work? See [docs/user](../user/).
 
