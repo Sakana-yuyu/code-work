@@ -3,7 +3,6 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { AntigravitySettings, TextGenerationError, type ModelSelection } from "@codework/contracts";
-import { resolveSpawnCommand } from "@codework/shared/shell";
 import { extractJsonObject } from "@codework/shared/schemaJson";
 import { collectStreamAsString } from "../provider/providerSnapshot.ts";
 import * as TextGeneration from "./TextGeneration.ts";
@@ -20,6 +19,12 @@ import {
 } from "./TextGenerationUtils.ts";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@codework/shared/git";
 import { resolveConfiguredAntigravityModel } from "../provider/Layers/AntigravityProvider.ts";
+import { resolvePromptSpawnCommand } from "../provider/promptArgv.ts";
+import { ProviderAdapterValidationError } from "../provider/Errors.ts";
+
+const decodeEnvelope = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
+const isTextGenerationError = Schema.is(TextGenerationError);
+const isPromptValidationError = Schema.is(ProviderAdapterValidationError);
 
 export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGeneration")(function* (
   settings: AntigravitySettings,
@@ -40,13 +45,14 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
     Effect.gen(function* () {
       const selectedModel = resolveConfiguredAntigravityModel(settings, input.model.model);
       const modelArgs = selectedModel ? ["--model", selectedModel] : [];
-      const resolved = yield* resolveSpawnCommand(
-        settings.binaryPath,
-        ["-p", input.prompt, "--output-format", "json", ...modelArgs],
-        {
-          ...(environment ? { env: environment } : {}),
-        },
-      );
+      const resolved = yield* resolvePromptSpawnCommand({
+        provider: "antigravity",
+        operation: input.operation,
+        prompt: input.prompt,
+        command: settings.binaryPath,
+        args: ["-p", input.prompt, "--output-format", "json", ...modelArgs],
+        options: environment ? { env: environment } : undefined,
+      });
       const child = yield* spawner.spawn(
         ChildProcess.make(resolved.command, resolved.args, {
           cwd: input.cwd,
@@ -71,7 +77,7 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
           detail: "Antigravity returned empty output.",
         });
       let raw = output;
-      const envelope = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(output);
+      const envelope = decodeEnvelope(output);
       if (Option.isSome(envelope)) {
         const value = envelope.value;
         if (
@@ -110,11 +116,13 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
     }).pipe(
       Effect.scoped,
       Effect.mapError((cause) =>
-        Schema.is(TextGenerationError)(cause)
+        isTextGenerationError(cause)
           ? cause
           : new TextGenerationError({
               operation: input.operation,
-              detail: "Antigravity headless request failed.",
+              detail: isPromptValidationError(cause)
+                ? cause.message
+                : "Antigravity headless request failed.",
               cause,
             }),
       ),

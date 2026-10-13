@@ -603,6 +603,7 @@ export const makeZCodeAdapter = (config: ZCodeAgentSettings, options: ZCodeAdapt
             args,
             cwd: ctx.session.cwd,
             environment: { ...options.environment, ...zcodeSpawnEnv(options.spawnTarget) },
+            argvPrompt: { provider: PROVIDER, prompt: text },
           }),
         }).pipe(
           Effect.provideService(Scope.Scope, turnScope),

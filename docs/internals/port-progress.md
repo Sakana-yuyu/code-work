@@ -54,7 +54,7 @@
 | 7   | 每个 adapter 终态无 loading                                 | 完成：公共条目与交互终态、定向验证                           | 共享 runtimeTurnItems / 全部 canonical 发射入口 / 原生 Codex 与公共投影                                    | item、审批与提问均先收尾；两端状态、原生 adapter 及投影定向验证通过；详见下文                                         |
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题          |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归             |
-| 10  | Windows argv 三层守卫                                       | 待实施                                                       | Antigravity / ZCode / resolveSpawnCommand                                                                  | 尚未运行                                                                                                              |
+| 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                  |
 | 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 待实施                                                       | ProviderDriver / provider snapshot 探测                                                                    | 尚未运行                                                                                                              |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                              |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                          |
@@ -750,3 +750,19 @@ React Native 0.85.3 bridgeless 的 rAF 是零延时计时器；此前仅纠正�
 摘要边界重新确认：`shouldRefreshThreadShellSummary` 对assistant消息和普通工具活动返回false，文本delta不重复读取计划/活动/审批历史；用户时间查询已由第37主题移到SQLite元数据。计划、审批、问题、会话和检查点的离散状态变化仍按既有语义派生摘要，不声称完全删除所有历史查询，也不为非流式事件引入另一个缓存系统。它满足本清单的流式增量约束，后续若实际离散摘要出现性能问题再依据证据处理。
 
 第4项按完整九条源码/定向与代表三端实际运行完成。Mobile代表设备为本机隔离Android；iOS原生路径及第40主题等价选择页仅源码/React属性/目标类型，UIKit未实测。第3—9项已各自记录完成功能或静态性能口径，实际外部provider、公网relay/tunnel、SSH与iOS设备边界没有改写为通过。全部39项和comparison其余候选保持原范围，接下来进入第10项Agent接入契约。回退本主题仅恢复验收记录。
+
+### 第42主题：Windows 正文 argv 三层守卫
+
+逐入口清点确认只有 Antigravity 对话、Antigravity 文本生成和 ZCode 将正文放入启动参数。新增共同守卫，复用实际命令解析；原始 UTF-8 早拒后，按解析后的 cmd/bat 或直接进程互斥计算完整命令行。统一 `AGENT_PROMPT_TOO_LARGE` 保留阶段、计数及处理建议，不回显正文、路径或密钥，不截断或重试。cmd 多行限制单独转换为 `AGENT_PROMPT_UNSUPPORTED`。完整 provider 清单、限制推导、官方资料及跨端决定见 [Windows 正文参数边界](./windows-prompt-argv.md)，[用户说明](../user/windows-prompts.md)已同步。
+
+验收命令在 HEAD 第41主题加本主题十个源文件的隔离候选执行：
+
+- `vp test run --config .argv-test.config.ts apps/server/src/provider/promptArgv.test.ts apps/server/src/provider/Layers/AntigravityAdapter.test.ts apps/server/src/provider/zcode/ZCodeAdapter.test.ts apps/server/src/textGeneration/AntigravityTextGeneration.test.ts`：4文件26项通过。覆盖短输入、原始超限、合法长中文、UTF-16 emoji、多引号/反斜线、额外参数、两种 Windows 路径互斥、解析后路径、非 Windows、多行和三处错误传递；ZCode 正常模拟子进程与失败回合仍能结束。
+- `vp test run --config .argv-test.config.ts apps/server/src/provider/pifamily/PiAdapter.test.ts apps/server/src/provider/pifamily/OmpAdapter.test.ts`：2文件15项通过，确认共用启动函数中未声明正文 argv 的 JSONL/RPC 路径保持工作。
+- `tsgo --noEmit -p apps/server/.streaming-typecheck.json`：纯候选目标类型通过。十源 `vp fmt --check` 通过，目标 `vp lint` 退出0；仅保留 AntigravityTextGeneration 原有动态输出 schema 编译告警，不将其写成零诊断。未运行全仓检查。
+
+有效旧版对照在隔离候选临时恢复单一生产文件，结束后按 SHA 还原：Antigravity 对话和文本生成分别因调用守卫前的 spawner 而失败；ZCode 超限用例的旧版错误不含统一代码，新版返回统一错误并无进程参数文件。最初配置测试缺 prefix、随后隔离别名顺序导致零测试加载失败，均保留为夹具/配置失败，不算行为红证据；类型检查发现服务组合问题，修正 Layer 依赖后通过。临时目录写入工具未执行的两次调用经进程/文件检查后结束，再通过明确的临时目录写入权限完成，未重复启动测试或替换主工作区为旧源。
+
+独立只读入口审查没有发现遗漏或确定缺陷。本机 Node v24.18.1 使用项目相同的完整命令与参数转义，通过真实 `shell:true` 启动无副作用 Node 子进程：完整 cmd 字符串8189/8190/8191成功且参数长度正确，8192返回命令行过长。未转义 echo 的初步8191失败结论被完整转义实验推翻，未据此修改限额。此实验没有新增实际批处理文件，不证明任意批处理内部二次展开。直接 exe 接近32767的实测探针未进入脚本，按原工具句柄停止并确认两个自有PID退出；不算通过，也不据此归因守卫。直接进程的序列化上限以官方约束、运行时源码与确定性测试为证据。
+
+本主题适用 Web/Desktop/Mobile 连接的 Windows 服务器以及本地/远程/隧道入口；界面沿用既有失败消息与重发操作，无新控制项、wire 协议、权限或数据迁移。没有请求真实外部 provider，未把当前保留的旧验收服务写成已加载新守卫。回退本主题恢复旧 spawn 行为。第10项完成，全部39项与 comparison 额外范围继续；第11项目录统一、缓存、共享截止时间和草稿无会话进入下一主题。

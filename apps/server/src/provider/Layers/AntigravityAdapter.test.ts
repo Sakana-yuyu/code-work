@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AntigravitySettings, ThreadId } from "@codework/contracts";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
+import { SpawnExecutableResolution } from "@codework/shared/shell";
 import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -17,7 +18,45 @@ import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRun
 import { makeAntigravityAdapter, parseAntigravityStreamJson } from "./AntigravityAdapter.ts";
 import { resolveConfiguredAntigravityModel } from "./AntigravityProvider.ts";
 
+const decodeSettings = Schema.decodeUnknownEffect(AntigravitySettings);
+
 describe("Antigravity stream-json", () => {
+  it.effect("Windows cmd和exe超限在启动进程前返回统一可操作错误", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const spawner = ChildProcessSpawner.make(() => Effect.die("守卫前调用了spawner"));
+        for (const [binaryPath, prompt] of [
+          ["agy.cmd", "x".repeat(9_000)],
+          ["agy.exe", '"'.repeat(16_400)],
+        ] as const) {
+          const settings = yield* decodeSettings({
+            enabled: true,
+            binaryPath,
+          });
+          const adapter = yield* makeAntigravityAdapter(settings, { environment: {} }).pipe(
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+            Effect.provide(
+              ServerConfig.layerTest("/tmp/antigravity-prompt-guard", {
+                prefix: "codework-argv-guard-",
+              }).pipe(Layer.provideMerge(NodeServices.layer)),
+            ),
+          );
+          const threadId = ThreadId.make("antigravity-prompt-guard");
+          yield* adapter.startSession({ threadId, runtimeMode: "approval-required" });
+          const result = yield* Effect.result(adapter.sendTurn({ threadId, input: prompt })).pipe(
+            Effect.provideService(HostProcessPlatform, "win32"),
+            Effect.provideService(SpawnExecutableResolution, (command) => command),
+          );
+          if (Result.isSuccess(result)) throw Error("超限应失败");
+          expect(result.failure).toMatchObject({
+            _tag: "ProviderAdapterValidationError",
+            code: "AGENT_PROMPT_TOO_LARGE",
+          });
+          expect(result.failure.message).toContain("请缩短输入");
+        }
+      }),
+    ),
+  );
   it("extracts text deltas and ignores non-JSON diagnostics", () => {
     const events = parseAntigravityStreamJson(
       'diagnostic\n{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"hello "}}\n{"event":"result","result":{"response":"hello world"}}',
@@ -56,7 +95,7 @@ describe("Antigravity stream-json", () => {
             }),
           ),
         );
-        const settings = yield* Schema.decodeUnknownEffect(AntigravitySettings)({ enabled: true });
+        const settings = yield* decodeSettings({ enabled: true });
         const adapter = yield* makeAntigravityAdapter(settings, { environment: {} }).pipe(
           Effect.provide(ServerConfig.layerTest("/tmp/antigravity-test", "/tmp")),
           Effect.provideService(HostProcessPlatform, "linux"),

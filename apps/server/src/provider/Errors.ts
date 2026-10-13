@@ -11,11 +11,12 @@ export class ProviderAdapterValidationError extends Schema.TaggedErrorClass<Prov
     provider: Schema.String,
     operation: Schema.String,
     issue: Schema.String,
+    code: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {
-    return `Provider adapter validation failed (${this.provider}) in ${this.operation}: ${this.issue}`;
+    return `${this.code ? `${this.code}: ` : ""}Provider adapter validation failed (${this.provider}) in ${this.operation}: ${this.issue}`;
   }
 }
 

@@ -36,6 +36,8 @@ import type { ProviderAdapterError } from "../Errors.ts";
 import { makeZCodeAdapter } from "../Layers/ZCodeAdapter.ts";
 import type { PifamilyModelRoute } from "../pifamily/byokProviderConfig.ts";
 import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
+import { SpawnExecutableResolution } from "@codework/shared/shell";
 
 const decodeSettings = Schema.decodeSync(ZCodeAgentSettings);
 const isProviderRuntimeEvent = Schema.is(ProviderRuntimeEvent);
@@ -188,6 +190,37 @@ const readArgv = (argvFile: string) =>
   );
 
 describe("makeZCodeAdapter", () => {
+  it.effect("Windows argv超限不启动ZCode且失败终态保留统一错误", () =>
+    runWithAdapter({}, ({ adapter, recorder, argvFile }) =>
+      Effect.gen(function* () {
+        const threadId = ThreadId.make("zcode-prompt-too-large");
+        yield* adapter.startSession({ threadId, runtimeMode: "approval-required" });
+        yield* adapter.sendTurn({ threadId, input: "x".repeat(9_000) });
+        const completed = yield* recorder.waitFor((event) => event.type === "turn.completed");
+        expect(completed.payload).toMatchObject({ state: "failed" });
+        expect(JSON.stringify(completed.payload)).toContain("AGENT_PROMPT_TOO_LARGE");
+        const exists = yield* Effect.promise(() =>
+          NodeFSP.stat(argvFile)
+            .then(() => true)
+            .catch((error: unknown) => {
+              if (
+                typeof error === "object" &&
+                error !== null &&
+                "code" in error &&
+                error.code === "ENOENT"
+              )
+                return false;
+              throw error;
+            }),
+        );
+        expect(exists).toBe(false);
+        expect((yield* adapter.listSessions())[0]?.status).toBe("ready");
+      }),
+    ).pipe(
+      Effect.provideService(HostProcessPlatform, "win32"),
+      Effect.provideService(SpawnExecutableResolution, () => "C:/guard/zcode.cmd"),
+    ),
+  );
   it.effect("happy path：增量、工具、终态与续接游标；二次回合带 --resume", () =>
     runWithAdapter({}, ({ adapter, recorder, argvFile, preparedModels }) =>
       Effect.gen(function* () {

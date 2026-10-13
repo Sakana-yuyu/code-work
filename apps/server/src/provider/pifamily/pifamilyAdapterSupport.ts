@@ -39,6 +39,7 @@ import { makeTerminalSafeRuntimeEmitter } from "../runtimeTurnItems.ts";
 
 import { ProviderAdapterValidationError } from "../Errors.ts";
 import { JsonlRpcProcessError } from "./jsonlRpcProcess.ts";
+import { resolvePromptSpawnCommand } from "../promptArgv.ts";
 
 /** spawn 闭包的标签化错误（避免裸 Error 混入失败通道）。 */
 export class PifamilySpawnError extends Schema.TaggedErrorClass<PifamilySpawnError>()(
@@ -490,6 +491,8 @@ export const spawnPifamilyProcess = (input: {
   readonly args: ReadonlyArray<string>;
   readonly cwd: string | undefined;
   readonly environment: Readonly<Record<string, string>>;
+  /** 只有正文经 argv 传递的适配器声明；其他 JSONL/RPC 路径不受此限额。 */
+  readonly argvPrompt?: { readonly provider: string; readonly prompt: string };
 }): ((
   scope: Scope.Scope,
 ) => Effect.Effect<ChildProcessSpawner.ChildProcessHandle, PifamilySpawnError>) => {
@@ -498,10 +501,16 @@ export const spawnPifamilyProcess = (input: {
     scope: Scope.Scope,
   ): Effect.Effect<ChildProcessSpawner.ChildProcessHandle, PifamilySpawnError> =>
     Effect.gen(function* () {
-      const resolved = yield* resolveSpawnCommand(binaryPath, [...args], {
-        env: environment,
-        extendEnv: true,
-      });
+      const options = { env: environment, extendEnv: true };
+      const resolved = yield* input.argvPrompt
+        ? resolvePromptSpawnCommand({
+            ...input.argvPrompt,
+            operation: "sendTurn",
+            command: binaryPath,
+            args,
+            options,
+          }).pipe(Effect.mapError((cause) => new PifamilySpawnError({ detail: cause.message })))
+        : resolveSpawnCommand(binaryPath, args, options);
       return yield* spawner
         .spawn(
           ChildProcess.make(resolved.command, resolved.args, {

@@ -19,7 +19,6 @@ import * as Stream from "effect/Stream";
 import * as PlatformError from "effect/PlatformError";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
-import { resolveSpawnCommand } from "@codework/shared/shell";
 
 import { ServerConfig } from "../../config.ts";
 import { collectStreamAsString } from "../providerSnapshot.ts";
@@ -33,6 +32,7 @@ import {
   ProviderAdapterValidationError,
 } from "../Errors.ts";
 import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
+import { resolvePromptSpawnCommand } from "../promptArgv.ts";
 
 const PROVIDER = ProviderDriverKind.make("antigravity");
 
@@ -191,6 +191,24 @@ export function makeAntigravityAdapter(
           issue: "Antigravity headless turns require non-empty text.",
         });
       }
+      const args = ["-p", prompt, "--output-format", "stream-json"];
+      const resume = context.conversationId;
+      if (resume) args.push("--conversation", resume);
+      const selectedModel = resolveConfiguredAntigravityModel(
+        settings,
+        input.modelSelection?.model,
+      );
+      if (selectedModel) {
+        args.push("--model", selectedModel);
+      }
+      const resolved = yield* resolvePromptSpawnCommand({
+        provider: PROVIDER,
+        operation: "sendTurn",
+        prompt,
+        command: settings.binaryPath,
+        args,
+        options: options?.environment ? { env: options.environment } : undefined,
+      });
       const turnId = TurnId.make(yield* crypto.randomUUIDv4);
       const itemId = RuntimeItemId.make(yield* crypto.randomUUIDv4);
       context.interrupted = false;
@@ -203,30 +221,6 @@ export function makeAntigravityAdapter(
         payload: { model: input.modelSelection?.model ?? context.session.model },
         raw: { source: "antigravity.stream-json", payload: { prompt } },
       });
-
-      const args = ["-p", prompt, "--output-format", "stream-json"];
-      const resume = context.conversationId;
-      if (resume) args.push("--conversation", resume);
-      const selectedModel = resolveConfiguredAntigravityModel(
-        settings,
-        input.modelSelection?.model,
-      );
-      if (selectedModel) {
-        args.push("--model", selectedModel);
-      }
-      const resolved = yield* resolveSpawnCommand(settings.binaryPath, args, {
-        ...(options?.environment ? { env: options.environment } : {}),
-      }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderAdapterProcessError({
-              provider: PROVIDER,
-              threadId: input.threadId,
-              detail: String(cause),
-              cause,
-            }),
-        ),
-      );
       const child = yield* spawner
         .spawn(
           ChildProcess.make(resolved.command, resolved.args, {
