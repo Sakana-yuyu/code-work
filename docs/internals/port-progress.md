@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题                    |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归                       |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                          |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类目录；九类共享加载统一预算/资源/信号）      | ProviderCatalogCache / ByokCatalog / ByokHttpClient / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—57主题完成无会话、十二类目录共享及同设置刷新；通用ACP与六家原生CLI完整刷新统一，Pi/OhMyPi/ZCode总预算/信号、跨目标取消、显式共享可写home及模型模式边界仍开放 |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类共享刷新均有预算/资源/信号；横切验收继续）      | ProviderCatalogCache / ByokCatalog / ByokHttpClient / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—58主题完成无会话、十二类目录共享及整轮刷新预算；跨目标取消、共享可写home、模型/模式和完整入口/三端/连接矩阵仍开放 |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                                        |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                                    |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 待实施                                                       | ProviderAdapterCapabilities / server config / 三端控制                                                     | 尚未运行                                                                                                                        |
@@ -1028,3 +1028,23 @@ CursorDriver 接入 registry 持有的 `NativeProviderCatalog`，等价配置完
 旧版有效对照另1项：仅替换隔离候选 GenericAcpDriver 为第56主题版本，目录先耗3秒后，旧版本阶段重新取得8秒，到第9秒观察时限仍未完成，结果 `observer reached` 与整轮8000ms消息断言直接失败。恢复新版后同一用例通过，finally按SHA恢复；`catalog-generic-native-deadline-proof.json` 两轮 valid/restored 均 true。观察时限仅用于红灯证据，不是生产轮询。主矩阵加实际Windows/公开预算各1项共20个不同用例，复验不重复计数。
 
 三端现有设置/模型选择和本地/远程/隧道继续取服务端快照；没有新增UI、协议、权限、持久结构或动画。本轮没有产品运行、真实供应商或新服务启动，现存服务未加载此主题。实例初始目录、managed前后设置与OS清理不属于八秒工作预算。回退两源与四文档可恢复第56主题行为，无迁移。原84个无关文件及混合 BYOK/ChatView 改动保留。第11项继续开放 Pi、OhMyPi、ZCode 整轮预算/信号，跨目标取消、共享可写home、模型/模式及全连接/客户端验收；完整39项及comparison额外范围不缩减。
+
+## 58. Pi、OhMyPi、ZCode 完整刷新与官方凭据边界
+
+三类 Driver 接入 registry 的 `NativeProviderCatalog`，统一完整入口 `fetchPifamilyRefreshCatalog` 把刷新期路由读取、纯目录、版本及 ZCode 官方凭据装饰纳入一个十五秒 Scope/controller。旧纯目录 `fetchPifamilyProviderCatalog` 继续提供配置成功缓存，旧健康入口参数保持兼容并委托完整入口。禁用实例和 ZCode 内嵌运行时继续跳过版本探针，初始快照不创建会话。整轮完成值不保留，后续检查重新读取版本和官方账户。
+
+键包括实际命令、前置参数、启用/内嵌状态、展示命令标识、规范路由展示字段、真实 cwd/env及准备来源/路径/代次；准备和凭据回调存在性也参与身份。已有 catalogRevision 仅为内存元数据，区分路由代次。受管 home 是实际环境的一部分，不为跨实例复用而省略它；不同实例实际 home 不同自然不共享整轮执行，同一 registry 重建继续使用目录对象。路由、参数及显式环境在异步等待前复制，返回时补完成时间，各实例在完整结果之外补身份。
+
+版本解析与 spawn 使用同一个冻结 cwd/env，关闭二次继承并设置两秒退出宽限。旧部分环境输入继续捕获宿主以保留 PATH/SYSTEMROOT。Driver 明确 `completeEnvironment:true`，使用已清洗的完整受管环境；不能再合入被剥离的宿主供应商变量，防止探针绕回其他账户。禁用/内嵌跳过和 ZCode 前置 bundle 参数保持原行为。
+
+路由读取的预期失败关闭模型路由，但仍如实检查 CLI；取消与缺陷不再被 Driver 外部 `catchCause` 转为初始无路由快照。初始路由读取也只降级预期错误，不吞中断。ZCode 官方凭据读取位于同一个 owner 内；凭据阶段超时时保留已确认 installed/version/models，认证回到 unknown 并显示超时，不能以版本成功代替官方登录验证。创建时托管文件写入、文本通道构造、初始路由/凭据及 managed 前后设置读取是既有生命周期边界，不算进刷新工作预算。
+
+从第57主题 HEAD 导出纯候选，叠加5源。`vp test run --config .candidate-test.config.ts` 指定 `Layers/PifamilyProvider.refresh.test.ts`、`Layers/PifamilyProvider.catalog.test.ts`、`Drivers/PifamilyDrivers.catalog.test.ts`、`Drivers/ZCodeDriver.test.ts`、`pifamily/PiAdapter.test.ts`、`pifamily/OmpAdapter.test.ts`、`zcode/ZCodeAdapter.test.ts`（均在 apps/server/src/provider），7文件61项通过，39.25秒，日志 `catalog-pifamily-native-tests-final.log`。16项新共享刷新覆盖三种 provider 的准备/版本/凭据共15秒、晚加入、首/末取消、输入冻结、实时账户、完整/部分环境边界、强意图/代次和禁用/内嵌跳过。实际 Driver 文件11项通过，含新增的三类路由读取失败仍检查安装、三类路由读取预算以及 ZCode 实际凭据读取预算，共7个新增 Driver 用例；旧三类目录缓存与三个 adapter 回归保持通过。
+
+五源目标 `tsgo --noEmit -p apps/server/.streaming-typecheck.json` 退出0、无诊断，`vp fmt --check` 与 `vp lint` 退出0、lint无诊断。实际 Driver 11项最终复验通过，3.95秒，是61项子集。初次三文件矩阵的3个冻结测试失败来自夹具先发准备收据、再读取可变路由；准备快照先取得、再发收据后16项通过，生产逻辑未为此改动。测试类型的只读路由赋值改为可变夹具 `satisfies`，联合 Driver 调用改为具体类型工厂，没有 any 或不安全强转。没有全仓检查。
+
+额外真实 Windows `.cmd → Node` 组合三类各1项，共3项通过，4.45秒，日志 `catalog-pifamily-native-windows-initial.log`。版本阻塞、第6秒晚加入与首等待Scope关闭仍沿用第15秒截止时间，TCP关闭收据确认进程结束，随后目录恢复。共6次假 CLI启动、12个捕获外壳/Node PID 后续核对不存在，三个 scoped 临时目录已删除；ZCode 的 bundle.cjs 前置参数原样传递，只有版本命令，无会话请求。完整共享取消还需区分 Driver/managed 等待者生命周期，Windows 组合是原生入口的等待Scope验收，实际 Driver 边界由上面的测试覆盖。使用本机端口和虚构 CLI，不是云端认证或硬墙钟退出上限验收；既有 Windows shell DEP0190 提示保留，无 sleep/轮询、按名称 kill 或保留目录掩盖清理失败。
+
+旧版公开入口预算对照三类各1项，共3项直接失败：仅在隔离候选恢复第57主题 PifamilyProvider，挂起探针到16秒观察时限仍未完成，`observer reached` 与15000ms消息断言失败。finally 按SHA恢复后同三个用例通过，`catalog-pifamily-native-deadline-proof.json` valid/restored 两轮均 true。主矩阵加 Windows3项和公开预算3项共67个不同用例，诊断及复验不重复计数。
+
+三端既有设置/模型选择、本地/远程/隧道继续使用服务端快照，没有新UI、wire、权限、持久结构或动画。其余provider保持此前增量。本轮没有真实供应商、产品三端或新服务启动，现存服务未加载本主题。回退5源及4文档可恢复第57主题行为，无迁移。原84个无关文件及混合 BYOK/ChatView 改动保留。十二类共享刷新现在均有完整预算和取消资源边界；第11项仍开放跨目录目标取消、Grok显式共享可写home、模型/模式及全部入口/客户端/连接验收，不能据此把第11项或全部39项标为完成。

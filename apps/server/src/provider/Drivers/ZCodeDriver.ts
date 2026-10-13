@@ -60,11 +60,12 @@ import { ProviderAdapterValidationError, ProviderDriverError } from "../Errors.t
 import { makeZCodeAdapter } from "../Layers/ZCodeAdapter.ts";
 import {
   buildInitialPifamilyProviderSnapshot,
-  checkPifamilyProviderStatus,
+  fetchPifamilyRefreshCatalog,
   enrichPifamilySnapshot,
 } from "../Layers/PifamilyProvider.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   defaultProviderContinuationIdentity,
@@ -130,11 +131,15 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
     accentColor,
     environment,
     enabled,
-    config,
+    config: suppliedConfig,
     catalog: sharedCatalog,
+    nativeCatalog,
+    catalogRevision,
   }) =>
     Effect.gen(function* () {
+      const config = { ...suppliedConfig };
       const catalog = sharedCatalog ?? (yield* makeCliProviderCatalog());
+      const nativeProviderCatalog = nativeCatalog ?? (yield* makeNativeProviderCatalog());
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
@@ -142,7 +147,7 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
       const serverConfig = yield* ServerConfig;
       const serverSettings = yield* ServerSettingsService;
       const secretStore = yield* ServerSecretStore;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const processEnv = { ...mergeProviderInstanceEnvironment(environment) };
 
       // 官方账号模式：`zcode login` 的凭据落在同一受管数据根，模型走官方 Coding Plan。
       const official = config.authMode === "official";
@@ -328,30 +333,23 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
               Effect.orElseSucceed(() => draft),
             );
 
-      const checkProvider = Effect.gen(function* () {
-        const routes = yield* resolveRoutes;
-        return yield* checkPifamilyProviderStatus({
-          driverKind: "zcodeAgent",
-          settings: { ...effectiveConfig, binaryPath: spawnTarget.command },
-          routes,
-          catalog,
-          environment: { ...managedProcessEnv, ...zcodeSpawnEnv(spawnTarget) },
-          spawnArgsPrefix: spawnTarget.argsPrefix,
-          displayBinaryPath: spawnTarget.displayPath,
-          // 内嵌运行时常驻，不跑 --version 探针，卡片不会再报"CLI 版本命令返回失败"。
-          assumeInstalled: spawnTarget.source === "bundled",
-        });
+      const checkProvider = fetchPifamilyRefreshCatalog({
+        driverKind: "zcodeAgent",
+        settings: { ...effectiveConfig, binaryPath: spawnTarget.command },
+        routes: [],
+        catalog,
+        nativeCatalog: nativeProviderCatalog,
+        preparationIdentity: { sourceInstanceId, dataDir, official, catalogRevision },
+        prepareRoutes: () => resolveRoutes.pipe(Effect.orElseSucceed(() => [])),
+        finish: (draft) => decorateOfficialAuth(draft),
+        environment: { ...managedProcessEnv, ...zcodeSpawnEnv(spawnTarget) },
+        completeEnvironment: true,
+        spawnArgsPrefix: spawnTarget.argsPrefix,
+        displayBinaryPath: spawnTarget.displayPath,
+        // 内嵌运行时常驻，不跑 --version 探针，卡片不会再报"CLI 版本命令返回失败"。
+        assumeInstalled: spawnTarget.source === "bundled",
       }).pipe(
-        Effect.flatMap(decorateOfficialAuth),
         Effect.map(stampIdentity),
-        Effect.catchCause(() =>
-          buildInitialPifamilyProviderSnapshot({
-            driverKind: "zcodeAgent",
-            settings: effectiveConfig,
-            routes: [],
-            catalog,
-          }).pipe(Effect.map(stampIdentity)),
-        ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       );
 
@@ -366,7 +364,7 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
         haveSettingsChanged: haveProviderSnapshotSettingsChanged,
         initialSnapshot: () =>
           resolveRoutes.pipe(
-            Effect.catchCause(() => Effect.succeed([])),
+            Effect.orElseSucceed(() => []),
             Effect.flatMap((routes) =>
               buildInitialPifamilyProviderSnapshot({
                 driverKind: "zcodeAgent",

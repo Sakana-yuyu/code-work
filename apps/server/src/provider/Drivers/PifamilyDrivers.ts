@@ -52,11 +52,12 @@ import { makeOmpAdapter, type OmpAdapterOptions } from "../Layers/OmpAdapter.ts"
 import { makePiAdapter, type PiAdapterOptions } from "../Layers/PiAdapter.ts";
 import {
   buildInitialPifamilyProviderSnapshot,
-  checkPifamilyProviderStatus,
+  fetchPifamilyRefreshCatalog,
   enrichPifamilySnapshot,
 } from "../Layers/PifamilyProvider.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   defaultProviderContinuationIdentity,
@@ -177,11 +178,15 @@ function makePifamilyDriver<Settings extends PifamilySettings>(
       accentColor,
       environment,
       enabled,
-      config,
+      config: suppliedConfig,
       catalog: sharedCatalog,
+      nativeCatalog,
+      catalogRevision,
     }) =>
       Effect.gen(function* () {
+        const config = { ...suppliedConfig };
         const catalog = sharedCatalog ?? (yield* makeCliProviderCatalog());
+        const nativeProviderCatalog = nativeCatalog ?? (yield* makeNativeProviderCatalog());
         const crypto = yield* Crypto.Crypto;
         const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
         const fileSystem = yield* FileSystem.FileSystem;
@@ -189,7 +194,7 @@ function makePifamilyDriver<Settings extends PifamilySettings>(
         const serverConfig = yield* ServerConfig;
         const serverSettings = yield* ServerSettingsService;
         const secretStore = yield* ServerSecretStore;
-        const processEnv = mergeProviderInstanceEnvironment(environment);
+        const processEnv = { ...mergeProviderInstanceEnvironment(environment) };
 
         const sourceInstanceId = pifamilyByokSourceInstanceId(config);
         const origin = gatewayOrigin(serverConfig.port);
@@ -294,26 +299,19 @@ function makePifamilyDriver<Settings extends PifamilySettings>(
           accentColor,
           continuationGroupKey: continuationIdentity.continuationKey,
         });
-        const checkProvider = Effect.gen(function* () {
-          const routes = yield* resolveRoutes;
-          return yield* checkPifamilyProviderStatus({
-            driverKind: spec.driverKind,
-            settings: effectiveConfig,
-            routes,
-            catalog,
-            environment: managedProcessEnv,
-          });
+        const checkProvider = fetchPifamilyRefreshCatalog({
+          driverKind: spec.driverKind,
+          settings: effectiveConfig,
+          routes: [],
+          catalog,
+          nativeCatalog: nativeProviderCatalog,
+          preparationIdentity: { sourceInstanceId, origin, agentDir, catalogRevision },
+          // 设置读取失败关闭模型路由，但仍检查 CLI；中断与缺陷保持原样传播。
+          prepareRoutes: () => resolveRoutes.pipe(Effect.orElseSucceed(() => [])),
+          environment: managedProcessEnv,
+          completeEnvironment: true,
         }).pipe(
           Effect.map(stampIdentity),
-          // 设置读取失败时退回无路由草稿；探照灯照常报告 CLI 状态。
-          Effect.catchCause(() =>
-            buildInitialPifamilyProviderSnapshot({
-              driverKind: spec.driverKind,
-              settings: effectiveConfig,
-              routes: [],
-              catalog,
-            }).pipe(Effect.map(stampIdentity)),
-          ),
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         );
 
@@ -329,7 +327,7 @@ function makePifamilyDriver<Settings extends PifamilySettings>(
           haveSettingsChanged: haveProviderSnapshotSettingsChanged,
           initialSnapshot: () =>
             resolveRoutes.pipe(
-              Effect.catchCause(() => Effect.succeed([])),
+              Effect.orElseSucceed(() => []),
               Effect.flatMap((routes) =>
                 buildInitialPifamilyProviderSnapshot({
                   driverKind: spec.driverKind,

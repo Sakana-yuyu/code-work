@@ -1,9 +1,11 @@
-import { ProviderInstanceId } from "@codework/contracts";
+import { ProviderInstanceId, ServerSettingsError } from "@codework/contracts";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -11,6 +13,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
@@ -19,6 +22,7 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeCliProviderCatalog, type CliProviderCatalog } from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog, type NativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import { resolveZCodeDataDir } from "../zcode/zcodeByokConfig.ts";
 import { encryptZCodeValue, zcodeCredentialsPath } from "../zcode/zcodeCredentials.ts";
 import { OmpDriver, PiDriver } from "./PifamilyDrivers.ts";
@@ -57,6 +61,206 @@ const createInput = (id: string, catalog?: CliProviderCatalog) => ({
   environment: [{ name: "CATALOG_TEST_ACCOUNT", value: id, sensitive: false }],
   enabled: false,
   ...(catalog === undefined ? {} : { catalog }),
+});
+
+it.layer(driverTestLayer)("Pi 系 Driver 完整准备边界", (it) => {
+  const checks = [
+    {
+      driverKind: PiDriver.driverKind,
+      create: (id: string, nativeCatalog: NativeProviderCatalog) =>
+        PiDriver.create({
+          ...createInput(id),
+          enabled: true,
+          nativeCatalog,
+          config: { ...PiDriver.defaultConfig(), binaryPath: "fixture-cli" },
+        }),
+    },
+    {
+      driverKind: OmpDriver.driverKind,
+      create: (id: string, nativeCatalog: NativeProviderCatalog) =>
+        OmpDriver.create({
+          ...createInput(id),
+          enabled: true,
+          nativeCatalog,
+          config: { ...OmpDriver.defaultConfig(), binaryPath: "fixture-cli" },
+        }),
+    },
+    {
+      driverKind: ZCodeDriver.driverKind,
+      create: (id: string, nativeCatalog: NativeProviderCatalog) =>
+        ZCodeDriver.create({
+          ...createInput(id),
+          enabled: true,
+          nativeCatalog,
+          config: { ...ZCodeDriver.defaultConfig(), binaryPath: "fixture-cli" },
+        }),
+    },
+  ];
+  for (const driver of checks) {
+    for (const budget of [false, true]) {
+      it.effect(
+        `${driver.driverKind} ${budget ? "路由读取纳入十五秒预算" : "路由读取失败仍如实检查安装"}`,
+        () =>
+          Effect.gen(function* () {
+            const service = yield* ServerSettingsService;
+            const native = yield* makeNativeProviderCatalog();
+            const entered = yield* Deferred.make<void>(),
+              finalized = yield* Deferred.make<void>();
+            let active = false,
+              intercept = false,
+              probes = 0;
+            const observed: NativeProviderCatalog = {
+              ...native,
+              fetchCatalog: (input) =>
+                native.fetchCatalog({
+                  ...input,
+                  load: (controller) =>
+                    Effect.sync(() => {
+                      active = true;
+                    }).pipe(
+                      Effect.andThen(input.load(controller)),
+                      Effect.ensuring(
+                        Effect.sync(() => {
+                          active = false;
+                        }),
+                      ),
+                    ),
+                }),
+            };
+            const settings = {
+              ...service,
+              getSettings: Effect.gen(function* () {
+                if (!active || !intercept) return yield* service.getSettings;
+                if (!budget)
+                  return yield* new ServerSettingsError({
+                    settingsPath: "/fixture/settings.json",
+                    operation: "read-file",
+                    cause: "受控路由读取失败",
+                  });
+                yield* Effect.addFinalizer(() => Deferred.succeed(finalized, undefined));
+                yield* Deferred.succeed(entered, undefined);
+                return yield* Effect.never;
+              }),
+            };
+            const spawner = ChildProcessSpawner.make((command) =>
+              Effect.sync(() => {
+                if (!ChildProcess.isStandardCommand(command)) throw Error("只允许版本命令");
+                expect(command.args).toEqual(["--version"]);
+                probes++;
+                return ChildProcessSpawner.makeHandle({
+                  pid: ChildProcessSpawner.ProcessId(probes),
+                  exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+                  isRunning: Effect.succeed(false),
+                  kill: () => Effect.void,
+                  unref: Effect.succeed(Effect.void),
+                  stdin: Sink.drain,
+                  stdout: Stream.encodeText(Stream.make("fixture 1.2.3")),
+                  stderr: Stream.empty,
+                  all: Stream.empty,
+                  getInputFd: () => Sink.drain,
+                  getOutputFd: () => Stream.empty,
+                });
+              }),
+            );
+            const instance = yield* driver
+              .create(`full-${driver.driverKind}`, observed)
+              .pipe(
+                Effect.provideService(ServerSettingsService, settings),
+                Effect.provideService(HostProcessPlatform, "linux"),
+                Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+              );
+            yield* instance.snapshot.refresh;
+            intercept = true;
+            probes = 0;
+            if (budget) {
+              const refresh = yield* instance.snapshot.refresh.pipe(
+                Effect.forkChild({ startImmediately: true }),
+              );
+              yield* Deferred.await(entered);
+              yield* TestClock.adjust("15 seconds");
+              expect((yield* Fiber.join(refresh)).message).toContain("15000ms");
+              yield* Deferred.await(finalized);
+              expect(probes).toBe(0);
+            } else {
+              const refreshed = yield* instance.snapshot.refresh;
+              expect(refreshed.installed).toBe(true);
+              expect(refreshed.models).toEqual([]);
+              expect(refreshed.status).toBe("warning");
+              expect(probes).toBe(1);
+            }
+          }),
+      );
+    }
+  }
+  it.effect("ZCode 实际官方凭据读取在版本之后继续占用同一预算", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem,
+        config = yield* ServerConfig;
+      const instanceId = ProviderInstanceId.make("zcode-full-auth");
+      const credentials = zcodeCredentialsPath(
+        resolveZCodeDataDir({ stateDir: config.stateDir, instanceId }),
+      );
+      const entered = yield* Deferred.make<void>(),
+        finalized = yield* Deferred.make<void>();
+      let block = false;
+      const fixtureFs = {
+        ...fs,
+        readFileString: (file: string) =>
+          file === credentials && block
+            ? Effect.gen(function* () {
+                yield* Effect.addFinalizer(() => Deferred.succeed(finalized, undefined));
+                yield* Deferred.succeed(entered, undefined);
+                return yield* Effect.never;
+              })
+            : fs.readFileString(file),
+      };
+      const spawner = ChildProcessSpawner.make(() =>
+        Effect.succeed(
+          ChildProcessSpawner.makeHandle({
+            pid: ChildProcessSpawner.ProcessId(1),
+            exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+            isRunning: Effect.succeed(false),
+            kill: () => Effect.void,
+            unref: Effect.succeed(Effect.void),
+            stdin: Sink.drain,
+            stdout: Stream.encodeText(Stream.make("zcode 1.2.3")),
+            stderr: Stream.empty,
+            all: Stream.empty,
+            getInputFd: () => Sink.drain,
+            getOutputFd: () => Stream.empty,
+          }),
+        ),
+      );
+      const instance = yield* ZCodeDriver.create({
+        instanceId,
+        displayName: undefined,
+        enabled: true,
+        environment: [],
+        config: {
+          ...ZCodeDriver.defaultConfig(),
+          binaryPath: "fixture-zcode",
+          authMode: "official",
+        },
+      }).pipe(
+        Effect.provideService(FileSystem.FileSystem, fixtureFs),
+        Effect.provideService(HostProcessPlatform, "linux"),
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      );
+      yield* instance.snapshot.refresh;
+      block = true;
+      const refresh = yield* instance.snapshot.refresh.pipe(
+        Effect.forkChild({ startImmediately: true }),
+      );
+      yield* Deferred.await(entered);
+      yield* TestClock.adjust("15 seconds");
+      const snapshot = yield* Fiber.join(refresh);
+      expect(snapshot.message).toContain("15000ms");
+      expect(snapshot.installed).toBe(true);
+      expect(snapshot.version).toBe("1.2.3");
+      expect(snapshot.auth.status).toBe("unknown");
+      yield* Deferred.await(finalized);
+    }),
+  );
 });
 
 const drivers = [
