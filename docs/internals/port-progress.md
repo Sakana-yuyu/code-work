@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题                    |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归                       |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                          |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类预算/资源/信号及BYOK跨目标验收通过；横切验收继续） | ProviderCatalogCache / ByokCatalog / ByokHttpClient / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—59主题完成无会话、十二类共享刷新及BYOK跨目标取消；共享可写home、模型/模式和完整入口/三端/连接矩阵仍开放 |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类预算/资源/信号、BYOK跨目标及Grok目录占用验收通过） | ProviderCatalogCache / ByokCatalog / GrokHomeAccess / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / ACP 准备 | 第43—60主题完成无会话、共享刷新、跨目标取消和Grok目录消费保护；共享home会话启动、模型/模式和完整入口/三端/连接矩阵仍开放 |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                                        |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                                    |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 待实施                                                       | ProviderAdapterCapabilities / server config / 三端控制                                                     | 尚未运行                                                                                                                        |
@@ -1064,3 +1064,21 @@ CursorDriver 接入 registry 持有的 `NativeProviderCatalog`，等价配置完
 有效旧版对照只在隔离候选恢复第58主题两个生产文件：9项中4项直接断言失败、5项通过，失败分别为request/body的完成时间仍是开始时刻、跨目标加载使用编辑后的地址/密钥/请求头、旧键执行编辑后的地址和密钥。Vitest将两个同断言用例合并输出为一个失败块，因此证据以4个失败用例和3个直接AssertionError块共同校验；不把测试导入或包装器失败当红证据。finally按SHA恢复后9项通过，`catalog-byok-cross-target-red-proof.json` valid/restored均true。此复验属于93项子集，不重复计数。
 
 Web/Desktop/Mobile的设置发现与状态快照继续消费同一服务端入口，本地/远程/隧道规则相同；本主题没有UI、wire或动画变更，也未启动新产品客户端或真实供应商调用，保留实际三端/全部入口/连接验收。其他provider保持前主题行为。回退2生产源、1测试及4文档可恢复第58主题，无迁移。原84个无关文件、ChatView及混合BYOK改动继续保护。第11项仍开放Grok显式共享可写home写入顺序、模型/模式与完整入口/三端/连接矩阵，整个39项及comparison其余要求继续执行，未宣告完成。
+
+## 第60主题：Grok共享可写home的目录占用
+
+2026-10-13，第59主题提交后继续第11项。实际Driver原子写入只保护rename，不能保证其后版本/技能/ACP读取仍消费本轮文件；另一个实例的初始化也能在刷新中覆盖或删除managed区域。新增`GrokHomeAccess`，按物理home串行占用，从准备前保持至NativeProviderCatalog owner清理完毕；初始化协调以短Scope使用同一占用。排队计入既有十五秒工作预算，等待可取消，不同home并行；只保留有持有者/等待者的Map记录，最后退出即删除，不建立长寿命实例/账号注册表。
+
+路径采用realPath或最近存在的父目录规范化，CLI的GROK_HOME使用规范路径；Windows大小写和真实junction别名共用占用。代理指向个人目录的物理别名时拒绝写入；非代理个人目录仍只读。初始及刷新捕获同一FileSystem/Path/HostProcessPlatform，防止服务环境变化制造两个锁身份。队列权限在可中断等待成功后、受保护区域内登记Scope finalizer，取消排队不释放持有者，所有者CLI清理回执结束后才交接。
+
+从第59主题HEAD导出纯候选，叠加4源（2生产、2测试）。最终定向矩阵分两组串行运行，均为`vp test run --config .candidate-test.config.ts --testTimeout 8000 --reporter verbose`，路径均在apps/server/src/provider。核心6文件：`GrokHomeAccess.test.ts`、`grokHome.test.ts`、`Drivers/GrokDriver.home.test.ts`、`Drivers/GrokDriver.catalog.test.ts`、`NativeProviderCatalog.test.ts`、`Layers/GrokProvider.refresh.test.ts`，30项通过，8.96秒。既有4文件：`Layers/GrokProvider.catalog.test.ts`、`Layers/GrokProvider.test.ts`、`Drivers/GrokSkills.test.ts`、`byok/modelGateway.test.ts`，77项通过，48.70秒。日志`catalog-grok-home-core-final.log`与`catalog-grok-home-existing-final.log`，两组result的code=0/sourceStable=true。9项新增用例涵盖不同来源配置与各实例模型、代理/非代理初始化干扰、个人目录别名、清理顺序、排队取消、不同home并行、大小写/真实junction、未创建子目录稳定身份及排队预算恢复。
+
+四源目标`tsgo --noEmit -p apps/server/.streaming-typecheck.json`、`vp fmt --check`与`vp lint`退出0无诊断，`catalog-grok-home-checks-source-stability.json` stable=true。初次夹具发现服务未捕获导致初始化与刷新锁身份不一致，修复生产边界后通过；随后夹具先等待自动启动和显式刷新回执再清零本轮计数，避免把启动探针当成多余刷新。节点命名和process.platform两处lint已改为NodeFSP及HostProcessPlatform。没有全仓检查。
+
+验证过程保留两类无效记录：旧版对照误与同一候选回归并行，回归读到旧Driver，该批结果不作为验收（`catalog-grok-home-tests-parallel-invalid.log`）；恢复后完整10文件触发包装器60秒进程超时，未产生通过总结（`catalog-grok-home-tests-wrapper-timeout.log`），其中捕获PID4244/18816随后确认不存在。改为上述捕获子PID、实时输出、无60秒截断的分组串行执行；PID16736/110744正常close退出，两个完整结果通过。最终验收不使用这两批无效运行。
+
+有效旧版对照仅在隔离候选恢复第59主题GrokDriver：4项中3项直接AssertionError失败（个人目录别名错误放行、另一代理初始化覆盖本轮路由、非代理初始化删除本轮路由），1项跨刷新调度用例通过，不把它也说成旧版失败。finally按SHA恢复后4项通过，`catalog-grok-home-red-proof.json` valid/restored均true。该4项是107项子集，不重复计数；旧版对照与最终检查串行，不再共享同时被写入的候选。
+
+额外实际Windows`.cmd→Node`、真实文件与TCP阶段收据1项通过，最终7.89秒，日志`catalog-grok-home-windows-final.log`。真实Driver两来源在同一个home刷新，两次受测CLI配置读取分别包含model-a/model-b，对应各自实例；启动检查先经回执排空。全程6个外壳handle和6个Node PID被捕获，全部handle停止，12个PID的OS存在检查均失败为ESRCH；scoped临时目录确认不存在，资源记录`catalog-grok-home-windows-resources.json` alivePids=[]。只运行版本失败探针以结束检查，不发送会话/prompt或请求真实供应商；只使用自有TCP端口、文件和虚构路由，不按名称kill、sleep或轮询。保留既有Windows shell DEP0190提示。107定向加此1项共108个不同用例，诊断/复验不重复计数。
+
+本主题保护同一服务进程中的配置协调和完整目录消费，不是跨进程文件锁，不约束外部CLI/编辑器和原生会话修改；会话启动/续接、文本生成在共享home中的消费边界仍开放。Web/Desktop/Mobile沿用服务端目录快照，本地/远程/隧道规则一致，无新UI、wire、权限、动画或持久化迁移；未新测产品三端或真实账号，现存服务未加载本主题。回退2生产、2测试及4文档可恢复第59主题。原84个无关文件、BYOK与ChatView混合hunk继续保护。第11项的共享home会话边界、模型/模式与完整入口/三端/连接，以及原39项与comparison全部其他要求继续执行，未宣告整体完成。

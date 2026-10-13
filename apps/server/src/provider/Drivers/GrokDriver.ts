@@ -10,6 +10,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/unstable/http";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import { writeFileStringAtomically } from "../../atomicWrite.ts";
@@ -47,6 +48,7 @@ import {
 import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import { isDefaultGrokHome, resolveGrokHome } from "../grokHome.ts";
+import { acquireGrokHomeAccess, resolveGrokHomePath } from "../GrokHomeAccess.ts";
 import {
   makeProviderMaintenanceCapabilities,
   makeStaticProviderMaintenanceResolver,
@@ -141,16 +143,46 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
       const secretStore = yield* ServerSecretStore;
       const fileSystem = yield* FileSystem.FileSystem;
       const pathService = yield* Path.Path;
+      const platform = yield* HostProcessPlatform;
       const nativeProviderCatalog = nativeCatalog ?? (yield* makeNativeProviderCatalog());
       const inheritedEnv = mergeProviderInstanceEnvironment(environment);
       const routed = config.routeThroughByok === true;
-      const grokHome = resolveGrokHome({
+      const requestedHome = resolveGrokHome({
         stateDir: serverConfig.stateDir,
         instanceId,
         routed,
         explicitHome: inheritedEnv.GROK_HOME,
       });
-      if (routed && isDefaultGrokHome(grokHome)) {
+      const grokHome = yield* resolveGrokHomePath(requestedHome).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ProviderDriverError({
+              driver: DRIVER_KIND,
+              instanceId,
+              detail: "无法解析 Grok 配置目录。",
+              cause,
+            }),
+        ),
+      );
+      const personalHome = yield* resolveGrokHomePath(
+        resolveGrokHome({
+          stateDir: serverConfig.stateDir,
+          instanceId: "grok",
+          routed: false,
+        }),
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ProviderDriverError({
+              driver: DRIVER_KIND,
+              instanceId,
+              detail: "无法解析 Grok 个人目录。",
+              cause,
+            }),
+        ),
+      );
+      const personal = isDefaultGrokHome(grokHome) || grokHome === personalHome;
+      if (routed && personal) {
         return yield* new ProviderDriverError({
           driver: DRIVER_KIND,
           instanceId,
@@ -184,6 +216,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
 
       // 官方 GROK_HOME 同时隔离配置、认证和会话；只维护隔离目录中的模型块。
       const reconcileGrokRoutedConfigFile = Effect.gen(function* () {
+        if (!personal) yield* acquireGrokHomeAccess(grokHome);
         const configFilePath = pathService.join(grokHome, "config.toml");
         const existing = yield* fileSystem
           .readFileString(configFilePath)
@@ -195,7 +228,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
             ),
           );
         // 个人目录只读；内容参与目录身份，手工修改配置也不会误命中旧结果。
-        if (isDefaultGrokHome(grokHome)) return { configFileContents: existing };
+        if (personal) return { configFileContents: existing };
         if (existing === undefined && effectiveConfig.routeThroughByok !== true) return {};
         const currentSettings = effectiveConfig.routeThroughByok
           ? yield* serverSettings.getSettings
@@ -243,6 +276,9 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
             : {}),
         };
       }).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, pathService),
+        Effect.provideService(HostProcessPlatform, platform),
         Effect.mapError(
           (cause) =>
             new ProviderDriverError({
@@ -253,7 +289,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
             }),
         ),
       );
-      yield* reconcileGrokRoutedConfigFile;
+      yield* reconcileGrokRoutedConfigFile.pipe(Effect.scoped);
 
       const adapter = yield* makeGrokAdapter(effectiveConfig, {
         environment: processEnv,
