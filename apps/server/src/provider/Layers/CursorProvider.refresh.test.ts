@@ -69,6 +69,7 @@ const makeFixture = Effect.fn("makeCursorRefreshFixture")(function* () {
     },
   };
   const nativeCatalog: NativeProviderCatalog = {
+    ...native,
     fetchCatalog: (input) =>
       native.fetchCatalog({
         ...input,
@@ -231,6 +232,7 @@ const makeFixture = Effect.fn("makeCursorRefreshFixture")(function* () {
         sharedCatalog,
         state.preAbort
           ? {
+              ...nativeCatalog,
               fetchCatalog: (input) =>
                 nativeCatalog.fetchCatalog({
                   ...input,

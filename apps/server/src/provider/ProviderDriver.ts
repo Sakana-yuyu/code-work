@@ -129,6 +129,8 @@ export interface ProviderDriverCreateInput<Config> {
   readonly openCodeCatalog?: OpenCodeCatalog;
   /** 原生健康与目录共用一次在途刷新；完成认证不会进入目录TTL缓存。 */
   readonly nativeCatalog?: NativeProviderCatalog;
+  /** 路由来源的有效配置摘要；解码前保留，用于隔离重建实例的原生在途检查。 */
+  readonly catalogRevision?: string;
 }
 
 /**

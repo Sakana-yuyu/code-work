@@ -31,6 +31,7 @@ const makeFixture = () => {
     readonly catalog: CliProviderCatalog;
     readonly openCodeCatalog: OpenCodeCatalog;
     readonly nativeCatalog: NativeProviderCatalog;
+    readonly catalogRevision: string | undefined;
     readonly scope: Scope.Scope;
     stopCalls: number;
     closed: boolean;
@@ -53,6 +54,7 @@ const makeFixture = () => {
         catalog,
         openCodeCatalog,
         nativeCatalog,
+        catalogRevision: input.catalogRevision,
         scope: yield* Scope.Scope,
         stopCalls: 0,
         closed: false,
@@ -224,4 +226,24 @@ it.effect("不同注册表持有独立目录缓存，关闭其中一个不会关
     assert.strictEqual(firstCreated.stopCalls, 0);
     assert.strictEqual(secondCreated.stopCalls, 1);
   }),
+);
+
+it.effect("解码剥离路由摘要后仍传给driver，重建保留当前代次", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = makeFixture();
+      const withRevision = (revision: string) => ({
+        ...entry("路由"),
+        config: { command: "test-cli", __byokSourceFingerprint: revision },
+      });
+      const { mutator } = yield* makeProviderInstanceRegistry({
+        drivers: [fixture.driver],
+        configMap: { [firstId]: withRevision("first") },
+      });
+      assert.strictEqual(fixture.created[0]?.catalogRevision, "first");
+      yield* mutator.reconcile({ [firstId]: withRevision("next") });
+      assert.strictEqual(fixture.created[1]?.catalogRevision, "next");
+      assert.strictEqual(fixture.created[0]?.nativeCatalog, fixture.created[1]?.nativeCatalog);
+    }),
+  ),
 );

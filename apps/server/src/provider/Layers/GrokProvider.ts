@@ -8,14 +8,15 @@ import {
 import * as EffectAcpErrors from "effect-acp/errors";
 import * as EffectAcpSchema from "effect-acp/schema";
 import { causeErrorTag } from "@codework/shared/observability";
+import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { createModelCapabilities } from "@codework/shared/model";
@@ -43,9 +44,14 @@ import * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import { discoverGrokSkills } from "../Drivers/GrokSkills.ts";
 import {
   cliProviderCatalogIdentity,
-  makeCliProviderCatalog,
+  withCatalogAbortSignal,
   type CliProviderCatalog,
 } from "../CliProviderCatalog.ts";
+import {
+  makeNativeProviderCatalog,
+  type NativeProviderCatalog,
+  type NativeProviderCatalogError,
+} from "../NativeProviderCatalog.ts";
 
 const GROK_PRESENTATION = {
   displayName: "Grok",
@@ -57,8 +63,7 @@ const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({
   optionDescriptors: [],
 });
 
-const VERSION_PROBE_TIMEOUT_MS = 4_000;
-const GROK_ACP_MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
+const GROK_REFRESH_TIMEOUT_MS = 15_000;
 const GROK_MODELS_LIST_METHOD = "x.ai/models/list";
 const decodeGrokModelsEnvelope = Schema.decodeUnknownEffect(
   Schema.Struct({
@@ -252,6 +257,17 @@ const discoverGrokModelsViaAcp = (
 ) =>
   Effect.gen(function* () {
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    // 目录探针和自己的 taskkill 使用有限清理宽限，会话路径保留默认策略。
+    const probeSpawner = ChildProcessSpawner.make((command) =>
+      childProcessSpawner.spawn(
+        ChildProcess.isStandardCommand(command)
+          ? ChildProcess.make(command.command, command.args, {
+              ...command.options,
+              forceKillAfter: "2 seconds",
+            })
+          : command,
+      ),
+    );
     const context = yield* Layer.build(
       AcpSessionRuntime.layer({
         spawn: { ...buildGrokAcpSpawnInput(grokSettings, cwd, environment), extendEnv: false },
@@ -259,9 +275,7 @@ const discoverGrokModelsViaAcp = (
         // 与 CLI 的目录命令一致：读目录只握手，不触发认证写入或创建会话。
         authMethodId: "",
         clientInfo: { name: "code-work-provider-probe", version: "0.0.0" },
-      }).pipe(
-        Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner)),
-      ),
+      }).pipe(Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, probeSpawner))),
     );
     const acp = yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(
       Effect.provide(context),
@@ -304,207 +318,196 @@ const runGrokVersionCommand = (
         env: environment,
         extendEnv: false,
         shell: spawnCommand.shell,
+        forceKillAfter: "2 seconds",
       }),
     );
   });
 
-export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(function* (
-  grokSettings: GrokSettings,
-  environment?: NodeJS.ProcessEnv,
-  cwd?: string,
-  catalog?: CliProviderCatalog,
-  // 共享缓存的生产调用由 Driver 在路由协调后提供实际文件快照。
-  configFileContents?: string,
-): Effect.fn.Return<
+/** 路由读取与模型覆盖都属于同一次准备；覆盖函数只使用本轮已读的配置。 */
+export interface GrokCatalogPreparation {
+  readonly configFileContents?: string | undefined;
+  readonly mapSnapshot?: (snapshot: ServerProviderDraft) => ServerProviderDraft;
+}
+
+export const fetchGrokCatalog = Effect.fn("fetchGrokCatalog")(function* <
+  E = never,
+  R = never,
+>(request: {
+  readonly settings: GrokSettings;
+  readonly environment?: NodeJS.ProcessEnv | undefined;
+  readonly skillsWorkingDirectory?: string | undefined;
+  readonly nativeCatalog?: NativeProviderCatalog | undefined;
+  readonly configFileContents?: string | undefined;
+  readonly preparationIdentity?: Readonly<Record<string, string | boolean | undefined>>;
+  readonly prepare?: (signal: AbortSignal) => Effect.Effect<GrokCatalogPreparation, E, R>;
+}): Effect.fn.Return<
   ServerProviderDraft,
-  never,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto
+  NativeProviderCatalogError,
+  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Exclude<R, Scope.Scope>
 > {
+  const input = {
+    ...request,
+    environment: request.environment ? { ...request.environment } : undefined,
+    preparationIdentity: request.preparationIdentity
+      ? { ...request.preparationIdentity }
+      : undefined,
+  };
+  const grokSettings = { ...input.settings, customModels: [...input.settings.customModels] };
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
-  const fallbackModels = grokModelsFromSettings(grokSettings.customModels);
   const inheritedEnvironment = { ...(yield* HostProcessEnvironment) };
-  if (environment) {
-    // 与 ACP 原有隔离规则一致：仅显式传入的模拟协议开关才能传给子进程。
+  if (input.environment) {
     for (const key of Object.keys(inheritedEnvironment)) {
-      if (key.startsWith("CODEWORK_ACP_") && !Object.hasOwn(environment, key)) {
+      if (key.startsWith("CODEWORK_ACP_") && !Object.hasOwn(input.environment, key)) {
         delete inheritedEnvironment[key];
       }
     }
   }
-  const processEnvironment = { ...inheritedEnvironment, ...environment };
+  const processEnvironment = { ...inheritedEnvironment, ...input.environment };
   const modelWorkingDirectory = yield* HostProcessWorkingDirectory;
-  const workingDirectory = cwd ?? modelWorkingDirectory;
+  const skillsWorkingDirectory = input.skillsWorkingDirectory ?? modelWorkingDirectory;
+  const nativeSettings = { ...grokSettings, customModels: [] };
   const modelEnvironment =
-    buildGrokAcpSpawnInput(grokSettings, modelWorkingDirectory, processEnvironment).env ??
+    buildGrokAcpSpawnInput(nativeSettings, modelWorkingDirectory, processEnvironment).env ??
     processEnvironment;
-
-  if (!grokSettings.enabled) {
-    return buildServerProvider({
-      presentation: GROK_PRESENTATION,
-      enabled: false,
-      checkedAt,
-      models: fallbackModels,
-      probe: {
-        installed: false,
-        version: null,
-        status: "warning",
-        auth: { status: "unknown" },
-        message: "Grok is disabled in Code Work settings.",
-      },
-    });
+  if (!grokSettings.enabled && !input.prepare) {
+    return yield* buildInitialGrokProviderSnapshot(grokSettings);
   }
-
-  const versionResult = yield* runGrokVersionCommand(
-    grokSettings,
-    processEnvironment,
-    modelWorkingDirectory,
-  ).pipe(Effect.timeoutOption(VERSION_PROBE_TIMEOUT_MS), Effect.result);
-
-  if (Result.isFailure(versionResult)) {
-    const error = versionResult.failure;
-    yield* Effect.logWarning("Grok CLI health check failed.", {
-      errorTag: error._tag,
-    });
-    return buildServerProvider({
+  const native = input.nativeCatalog ?? (yield* makeNativeProviderCatalog());
+  let installed = false;
+  let version: string | null = null;
+  let skills: ServerProviderDraft["skills"] = [];
+  let mapSnapshot: GrokCatalogPreparation["mapSnapshot"];
+  const makeSnapshot = (
+    status: "ready" | "error" | "warning",
+    message?: string,
+    models = grokModelsFromSettings([]),
+  ) => {
+    const snapshot = buildServerProvider({
       presentation: GROK_PRESENTATION,
       enabled: grokSettings.enabled,
       checkedAt,
-      models: fallbackModels,
-      probe: {
-        installed: !isCommandMissingCause(error),
-        version: null,
-        status: "error",
-        auth: { status: "unknown" },
-        message: isCommandMissingCause(error)
-          ? "Grok CLI (`grok`) is not installed or not on PATH."
-          : "Failed to execute Grok CLI health check.",
-      },
-    });
-  }
-
-  if (Option.isNone(versionResult.success)) {
-    return buildServerProvider({
-      presentation: GROK_PRESENTATION,
-      enabled: grokSettings.enabled,
-      checkedAt,
-      models: fallbackModels,
-      probe: {
-        installed: true,
-        version: null,
-        status: "error",
-        auth: { status: "unknown" },
-        message: "Grok CLI is installed but timed out while running `grok --version`.",
-      },
-    });
-  }
-
-  const versionOutput = versionResult.success.value;
-  const version = parseGenericCliVersion(`${versionOutput.stdout}\n${versionOutput.stderr}`);
-  if (versionOutput.code !== 0) {
-    yield* Effect.logWarning("Grok CLI version probe exited with a non-zero status.", {
-      exitCode: versionOutput.code,
-      stdoutLength: versionOutput.stdout.length,
-      stderrLength: versionOutput.stderr.length,
-    });
-    return buildServerProvider({
-      presentation: GROK_PRESENTATION,
-      enabled: grokSettings.enabled,
-      checkedAt,
-      models: fallbackModels,
-      probe: {
-        installed: true,
-        version,
-        status: "error",
-        auth: { status: "unknown" },
-        message: "Grok CLI is installed but failed to run.",
-      },
-    });
-  }
-
-  const skills = yield* discoverGrokSkills(grokSettings, processEnvironment, workingDirectory);
-
-  const discoverModels = discoverGrokModelsViaAcp(
-    grokSettings,
-    modelEnvironment,
-    modelWorkingDirectory,
-  );
-  const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
-  const modelCatalog = providerCatalog
-    .fetchCatalog({
-      key: cliProviderCatalogIdentity({
-        driver: ProviderDriverKind.make("grok"),
-        operation: GROK_MODELS_LIST_METHOD,
-        config: { binaryPath: grokSettings.binaryPath || "grok", version, configFileContents },
-        cwd: modelWorkingDirectory,
-        environment: modelEnvironment,
-      }),
-      // 自定义模型属于实例设置，只在共享原生目录返回后合并。
-      load: discoverModels.pipe(Effect.map((models) => ({ models }))),
-    })
-    .pipe(Effect.map((result) => result.models));
-  const discoveryExit = yield* modelCatalog.pipe(
-    Effect.timeoutOption(GROK_ACP_MODEL_DISCOVERY_TIMEOUT_MS),
-    Effect.exit,
-  );
-  if (Exit.isFailure(discoveryExit)) {
-    yield* Effect.logWarning("Grok ACP model discovery failed", {
-      errorTag: causeErrorTag(discoveryExit.cause),
-    });
-    return buildServerProvider({
-      presentation: GROK_PRESENTATION,
-      enabled: grokSettings.enabled,
-      checkedAt,
-      models: fallbackModels,
+      models,
       skills,
       probe: {
-        installed: true,
+        installed,
         version,
-        status: "error",
+        status,
         auth: { status: "unknown" },
-        message:
-          "Grok CLI is installed but ACP model discovery failed. Update Grok CLI to a version supporting x.ai/models/list and check server logs for details.",
+        ...(message === undefined ? {} : { message }),
       },
     });
-  }
-  if (Option.isNone(discoveryExit.value)) {
-    yield* Effect.logWarning(
-      `Grok ACP model discovery timed out after ${GROK_ACP_MODEL_DISCOVERY_TIMEOUT_MS}ms.`,
-    );
-    return buildServerProvider({
-      presentation: GROK_PRESENTATION,
-      enabled: grokSettings.enabled,
-      checkedAt,
-      models: fallbackModels,
-      skills,
-      probe: {
-        installed: true,
-        version,
-        status: "error",
-        auth: { status: "unknown" },
-        message: `Grok CLI is installed but ACP startup timed out after ${GROK_ACP_MODEL_DISCOVERY_TIMEOUT_MS}ms.`,
+    return mapSnapshot ? mapSnapshot(snapshot) : snapshot;
+  };
+  const snapshot = yield* native.fetchCatalogWithError({
+    key: cliProviderCatalogIdentity({
+      driver: ProviderDriverKind.make("grok"),
+      operation: "grok/provider-refresh",
+      config: {
+        binaryPath: nativeSettings.binaryPath || "grok",
+        enabled: nativeSettings.enabled,
+        skillsWorkingDirectory,
+        modelEnvironment,
+        configFileContents: input.configFileContents,
+        preparationIdentity: input.preparationIdentity,
+        hasPreparation: input.prepare !== undefined,
       },
-    });
-  }
-  const discoveredModels = discoveryExit.value.value;
-  const models =
-    discoveredModels.length > 0
-      ? grokModelsFromSettings(grokSettings.customModels, discoveredModels)
-      : fallbackModels;
-
-  return buildServerProvider({
-    presentation: GROK_PRESENTATION,
-    enabled: grokSettings.enabled,
-    checkedAt,
-    models,
-    skills,
-    probe: {
-      installed: true,
-      version,
-      status: "ready",
-      auth: { status: "unknown" },
-    },
+      cwd: modelWorkingDirectory,
+      environment: processEnvironment,
+    }),
+    timeoutMs: GROK_REFRESH_TIMEOUT_MS,
+    onTimeout: () =>
+      makeSnapshot("error", `Grok provider refresh timed out after ${GROK_REFRESH_TIMEOUT_MS}ms.`),
+    load: (controller) =>
+      withCatalogAbortSignal(
+        Effect.gen(function* () {
+          if (input.prepare) {
+            const prepared = yield* input.prepare(controller.signal);
+            mapSnapshot = prepared.mapSnapshot;
+          }
+          if (!nativeSettings.enabled) {
+            return makeSnapshot("warning", "Grok is disabled in Code Work settings.");
+          }
+          const versionResult = yield* runGrokVersionCommand(
+            nativeSettings,
+            processEnvironment,
+            modelWorkingDirectory,
+          ).pipe(Effect.result);
+          if (Result.isFailure(versionResult)) {
+            const error = versionResult.failure;
+            installed = !isCommandMissingCause(error);
+            yield* Effect.logWarning("Grok CLI health check failed.", { errorTag: error._tag });
+            return makeSnapshot(
+              "error",
+              isCommandMissingCause(error)
+                ? "Grok CLI (`grok`) is not installed or not on PATH."
+                : "Failed to execute Grok CLI health check.",
+            );
+          }
+          installed = true;
+          const output = versionResult.success;
+          version = parseGenericCliVersion(`${output.stdout}\n${output.stderr}`);
+          if (output.code !== 0)
+            return makeSnapshot("error", "Grok CLI is installed but failed to run.");
+          skills = yield* discoverGrokSkills(
+            nativeSettings,
+            processEnvironment,
+            skillsWorkingDirectory,
+            {
+              signal: controller.signal,
+              completeEnvironment: true,
+            },
+          );
+          // 当前协议没有稳定账户身份。只共享整次在途工作，不保留未知身份模型完成值。
+          const discovery = yield* withCatalogAbortSignal(
+            discoverGrokModelsViaAcp(nativeSettings, modelEnvironment, modelWorkingDirectory),
+            controller.signal,
+          ).pipe(Effect.exit);
+          if (Exit.isFailure(discovery)) {
+            if (Cause.hasInterrupts(discovery.cause))
+              return yield* Effect.failCause(discovery.cause);
+            yield* Effect.logWarning("Grok ACP model discovery failed", {
+              errorTag: causeErrorTag(discovery.cause),
+            });
+            return makeSnapshot(
+              "error",
+              "Grok CLI is installed but ACP model discovery failed. Update Grok CLI to a version supporting x.ai/models/list and check server logs for details.",
+            );
+          }
+          return makeSnapshot(
+            "ready",
+            undefined,
+            discovery.value.length > 0 ? discovery.value : grokModelsFromSettings([]),
+          );
+        }),
+        controller.signal,
+      ),
   });
+  return {
+    ...snapshot,
+    checkedAt: DateTime.formatIso(yield* DateTime.now),
+    models:
+      grokSettings.routeThroughByok && input.prepare
+        ? snapshot.models
+        : grokModelsFromSettings(grokSettings.customModels, snapshot.models),
+  };
 });
+
+/** 旧状态入口仍可直接调用；有错误的路由准备只由完整目录入口接入。 */
+export const checkGrokProviderStatus = (
+  grokSettings: GrokSettings,
+  environment?: NodeJS.ProcessEnv,
+  cwd?: string,
+  _catalog?: CliProviderCatalog,
+  configFileContents?: string,
+  nativeCatalog?: NativeProviderCatalog,
+) =>
+  fetchGrokCatalog({
+    settings: grokSettings,
+    environment,
+    skillsWorkingDirectory: cwd,
+    configFileContents,
+    nativeCatalog,
+  }).pipe(Effect.orDie);
 
 export const enrichGrokSnapshot = (input: {
   readonly snapshot: ServerProvider;

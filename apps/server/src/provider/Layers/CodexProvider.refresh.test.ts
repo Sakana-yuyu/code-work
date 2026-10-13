@@ -65,6 +65,7 @@ const makeFixture = Effect.fn("makeCodexRefreshFixture")(function* () {
   const native = yield* makeNativeProviderCatalog();
   const signals: AbortSignal[] = [];
   const nativeCatalog: NativeProviderCatalog = {
+    ...native,
     fetchCatalog: (input) =>
       native.fetchCatalog({
         ...input,

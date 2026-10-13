@@ -133,6 +133,7 @@ const makeFixture = Effect.fn("makeClaudeRefreshFixture")(function* () {
       }),
   });
   const observedRefreshes: NativeProviderCatalog = {
+    ...refreshes,
     fetchCatalog: (input) =>
       Effect.gen(function* () {
         calls.refreshes += 1;

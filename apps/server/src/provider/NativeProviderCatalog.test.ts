@@ -1,7 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as Result from "effect/Result";
 import { TestClock } from "effect/testing";
 
 import { makeNativeProviderCatalog } from "./NativeProviderCatalog.ts";
@@ -19,6 +22,101 @@ const draft = (version: string) =>
 const base = { key: "native", timeoutMs: 10_000, onTimeout: () => draft("timeout") };
 
 describe("NativeProviderCatalog", () => {
+  it.effect("预期错误共享给等价等待者，保持原cause，退出后可重新执行", () =>
+    Effect.gen(function* () {
+      const catalog = yield* makeNativeProviderCatalog();
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const failure = new Error("配置准备失败");
+      let controller: AbortController | undefined;
+      const first = yield* catalog
+        .fetchCatalogWithError({
+          ...base,
+          load: (owner) =>
+            Effect.gen(function* () {
+              controller = owner;
+              yield* Deferred.succeed(entered, undefined);
+              yield* Deferred.await(release);
+              return yield* Effect.fail(failure);
+            }),
+        })
+        .pipe(Effect.result, Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(entered);
+      const second = yield* catalog
+        .fetchCatalogWithError({
+          ...base,
+          load: () => Effect.die("等价配置不重复准备"),
+        })
+        .pipe(Effect.result, Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.succeed(release, undefined);
+      for (const fiber of [first, second]) {
+        const result = yield* Fiber.join(fiber);
+        assert.isTrue(Result.isFailure(result));
+        if (Result.isFailure(result)) assert.strictEqual(result.failure.cause, failure);
+      }
+      assert.isTrue(controller?.signal.aborted);
+      assert.strictEqual(
+        (yield* catalog.fetchCatalogWithError({
+          ...base,
+          load: () => Effect.succeed(draft("recovered")),
+        })).version,
+        "recovered",
+      );
+    }),
+  );
+
+  it.effect("带错误加载的晚等待者也只用原owner剩余预算", () =>
+    Effect.gen(function* () {
+      const catalog = yield* makeNativeProviderCatalog();
+      const entered = yield* Deferred.make<void>();
+      let controller: AbortController | undefined;
+      const first = yield* catalog
+        .fetchCatalogWithError({
+          ...base,
+          load: (owner) => {
+            controller = owner;
+            return Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never));
+          },
+        })
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(entered);
+      yield* TestClock.adjust("7 seconds");
+      const second = yield* catalog
+        .fetchCatalogWithError({
+          ...base,
+          load: () => Effect.fail("不能另起准备"),
+        })
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* TestClock.adjust("3 seconds");
+      assert.strictEqual((yield* Fiber.join(first)).version, "timeout");
+      assert.strictEqual((yield* Fiber.join(second)).version, "timeout");
+      assert.isTrue(controller?.signal.aborted);
+    }),
+  );
+
+  it.effect("带错误入口不把中断和defect包成配置错误", () =>
+    Effect.gen(function* () {
+      const catalog = yield* makeNativeProviderCatalog();
+      const interrupted = yield* catalog
+        .fetchCatalogWithError({
+          ...base,
+          load: () => Effect.interrupt,
+        })
+        .pipe(Effect.exit);
+      assert.isTrue(Exit.isFailure(interrupted));
+      if (Exit.isFailure(interrupted)) assert.isTrue(Cause.hasInterrupts(interrupted.cause));
+      const defect = new Error("缺陷");
+      const died = yield* catalog
+        .fetchCatalogWithError({
+          ...base,
+          load: () => Effect.die(defect),
+        })
+        .pipe(Effect.exit);
+      assert.isTrue(Exit.isFailure(died));
+      if (Exit.isFailure(died)) assert.isTrue(Cause.hasDies(died.cause));
+    }),
+  );
+
   it.effect("等价整次刷新共享一个controller，首等待者取消后其他等待者完成", () =>
     Effect.gen(function* () {
       const catalog = yield* makeNativeProviderCatalog();

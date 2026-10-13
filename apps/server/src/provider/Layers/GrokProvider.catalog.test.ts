@@ -12,6 +12,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import { ProviderCatalogForceRefresh } from "../ProviderCatalogCache.ts";
 import { checkGrokProviderStatus } from "./GrokProvider.ts";
 
@@ -104,6 +105,7 @@ if (process.argv.includes("--version")) {
   );
   if (!isWindows) yield* fs.chmod(binaryPath, 0o755);
   const catalog = yield* makeCliProviderCatalog();
+  const nativeCatalog = yield* makeNativeProviderCatalog();
   const environment = { ...process.env, GROK_HOME: homeA, GROK_TEST_ROUTE: "alpha" };
   const settings = decodeSettings({ enabled: true, binaryPath });
   const readCalls = fs.readFileString(logPath).pipe(
@@ -116,10 +118,21 @@ if (process.argv.includes("--version")) {
   );
   const writeConfig = (home: string, contents: string) =>
     fs.writeFileString(path.join(home, "config.toml"), contents);
-  return { catalog, environment, settings, dir, homeA, homeB, setState, readCalls, writeConfig };
+  return {
+    catalog,
+    nativeCatalog,
+    environment,
+    settings,
+    dir,
+    homeA,
+    homeB,
+    setState,
+    readCalls,
+    writeConfig,
+  };
 });
 
-it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
+it.layer(NodeServices.layer)("Grok 完整原生目录检查", (it) => {
   it.effect("部分环境继承宿主快照，相对二进制按宿主目录执行且隔离模拟开关", () =>
     Effect.gen(function* () {
       const fixture = yield* makeCatalogFixture();
@@ -137,7 +150,14 @@ it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
       };
       const partialEnvironment = { GROK_HOME: fixture.homeA };
       const check = (environment: NodeJS.ProcessEnv) =>
-        checkGrokProviderStatus(settings, environment, fixture.homeB, fixture.catalog).pipe(
+        checkGrokProviderStatus(
+          settings,
+          environment,
+          fixture.homeB,
+          fixture.catalog,
+          undefined,
+          fixture.nativeCatalog,
+        ).pipe(
           Effect.provideService(HostProcessEnvironment, hostEnvironment),
           Effect.provideService(HostProcessWorkingDirectory, hostWorkingDirectory),
         );
@@ -167,12 +187,13 @@ it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
           })),
       ).toEqual([
         { cwd: hostWorkingDirectory, route: "inherited", fixtureFlag: "" },
+        { cwd: hostWorkingDirectory, route: "inherited", fixtureFlag: "" },
         { cwd: hostWorkingDirectory, route: "explicit", fixtureFlag: "allowed" },
       ]);
     }).pipe(Effect.scoped),
   );
 
-  it.effect("等价配置共享探测，自定义模型各自合并且版本与技能每次检查", () =>
+  it.effect("等价并发配置共享完整探测，自定义模型各自合并", () =>
     Effect.gen(function* () {
       const fixture = yield* makeCatalogFixture();
       const firstSettings = { ...fixture.settings, customModels: ["grok-first"] };
@@ -184,12 +205,16 @@ it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
             { ...fixture.environment },
             fixture.dir,
             fixture.catalog,
+            undefined,
+            fixture.nativeCatalog,
           ),
           checkGrokProviderStatus(
             secondSettings,
             { ...fixture.environment },
             fixture.dir,
             fixture.catalog,
+            undefined,
+            fixture.nativeCatalog,
           ),
         ],
         { concurrency: "unbounded" },
@@ -198,8 +223,8 @@ it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
       expect(second.models.map((model) => model.slug)).toEqual(["grok-alpha", "grok-second"]);
       const calls = yield* fixture.readCalls;
       expect(calls.filter((call) => call.kind === "models")).toHaveLength(1);
-      expect(calls.filter((call) => call.kind === "version")).toHaveLength(2);
-      expect(calls.filter((call) => call.kind === "skills")).toHaveLength(2);
+      expect(calls.filter((call) => call.kind === "version")).toHaveLength(1);
+      expect(calls.filter((call) => call.kind === "skills")).toHaveLength(1);
       expect(calls.filter((call) => call.kind === "request").map((call) => call.method)).toEqual([
         "initialize",
         "x.ai/models/list",
@@ -209,7 +234,7 @@ it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("命中后手动刷新和 CLI 版本更新都会重新发现目录", () =>
+  it.effect("未知账号每次顺序检查都刷新目录，手动刷新和版本更新保持实时", () =>
     Effect.gen(function* () {
       const fixture = yield* makeCatalogFixture();
       const check = checkGrokProviderStatus(
@@ -217,6 +242,8 @@ it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
         fixture.environment,
         fixture.dir,
         fixture.catalog,
+        undefined,
+        fixture.nativeCatalog,
       );
       yield* check;
       yield* check;
@@ -225,7 +252,7 @@ it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
       const latest = yield* check;
       expect(latest.version).toBe("1.0.46");
       const calls = yield* fixture.readCalls;
-      expect(calls.filter((call) => call.kind === "models")).toHaveLength(3);
+      expect(calls.filter((call) => call.kind === "models")).toHaveLength(4);
       expect(calls.filter((call) => call.kind === "version")).toHaveLength(4);
       expect(calls.filter((call) => call.kind === "skills")).toHaveLength(4);
     }).pipe(Effect.scoped),
@@ -235,7 +262,14 @@ it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
     Effect.gen(function* () {
       const fixture = yield* makeCatalogFixture();
       const check = (environment: NodeJS.ProcessEnv) =>
-        checkGrokProviderStatus(fixture.settings, environment, fixture.dir, fixture.catalog);
+        checkGrokProviderStatus(
+          fixture.settings,
+          environment,
+          fixture.dir,
+          fixture.catalog,
+          undefined,
+          fixture.nativeCatalog,
+        );
       yield* check({ ...fixture.environment, GROK_OAUTH2_REFERRER: "caller-one" });
       yield* check({ ...fixture.environment, GROK_OAUTH2_REFERRER: "caller-two" });
       const beta = yield* check({ ...fixture.environment, GROK_TEST_ROUTE: "beta" });
@@ -243,6 +277,7 @@ it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
       expect(beta.models.map((model) => model.slug)).toEqual(["grok-beta"]);
       const models = (yield* fixture.readCalls).filter((call) => call.kind === "models");
       expect(models.map((call) => [call.grokHome, call.route, call.referrer])).toEqual([
+        [fixture.homeA, "alpha", "codework"],
         [fixture.homeA, "alpha", "codework"],
         [fixture.homeA, "beta", "codework"],
         [fixture.homeB, "alpha", "codework"],
@@ -260,6 +295,7 @@ it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
           fixture.dir,
           fixture.catalog,
           config,
+          fixture.nativeCatalog,
         );
       yield* fixture.writeConfig(fixture.homeA, 'model = "first"');
       const first = yield* check('model = "first"');
@@ -272,7 +308,7 @@ it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
         (yield* fixture.readCalls)
           .filter((call) => call.kind === "models")
           .map((call) => call.config),
-      ).toEqual(['model = "first"', 'model = "second"']);
+      ).toEqual(['model = "first"', 'model = "first"', 'model = "second"']);
     }).pipe(Effect.scoped),
   );
 
@@ -285,6 +321,8 @@ it.layer(NodeServices.layer)("Grok 共享目录缓存", (it) => {
         fixture.environment,
         fixture.dir,
         fixture.catalog,
+        undefined,
+        fixture.nativeCatalog,
       );
       expect((yield* check).status).toBe("error");
       yield* fixture.setState({});

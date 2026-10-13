@@ -185,6 +185,13 @@ const buildEntry = <R>(input: {
     }
 
     const typedConfig = decodeResult.success;
+    const catalogRevision =
+      entry.config !== null &&
+      typeof entry.config === "object" &&
+      "__byokSourceFingerprint" in entry.config &&
+      typeof entry.config.__byokSourceFingerprint === "string"
+        ? entry.config.__byokSourceFingerprint
+        : undefined;
     const childScope = yield* Scope.make();
     // Attach the child scope to the registry's parent scope: if the
     // registry scope closes, each surviving instance's child scope is
@@ -204,6 +211,7 @@ const buildEntry = <R>(input: {
         catalog,
         openCodeCatalog,
         nativeCatalog,
+        ...(catalogRevision === undefined ? {} : { catalogRevision }),
       })
       .pipe(Effect.provideService(Scope.Scope, childScope), Effect.result);
     if (createResult._tag === "Failure") {

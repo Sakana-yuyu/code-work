@@ -140,7 +140,7 @@ export const deriveProviderInstanceConfigMap = (
           ? route.protocol === "openai"
           : true,
     );
-    // 来源变化沿用 Registry 的忙碌延迟更新；摘要仅供内存比较，driver 解码会剥离此字段。
+    // 来源变化沿用忙碌延迟更新；摘要经 registry 作为 catalogRevision 传递，不进入配置 Schema。
     const fingerprint = NodeCrypto.createHash("sha256")
       .update(
         JSON.stringify({

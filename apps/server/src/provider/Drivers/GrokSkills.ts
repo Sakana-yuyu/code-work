@@ -1,17 +1,8 @@
 /**
- * GrokSkills — skill discovery for the `$` picker via `grok inspect --json`.
- *
- * Unlike Claude Code, the Grok CLI reports its full skill catalog itself:
- * `grok inspect --json` returns `skills[]` with `name`, `description`,
- * `source.type` (`user` / `project` / `bundled` / `plugin`), `source.path`
- * (the absolute `SKILL.md` path), and `userInvocable`. Asking the CLI beats
- * scanning the filesystem because the catalog honors Grok's own skill config
- * (ignore lists, disabled skills) and includes plugin skills, which live
- * three levels deep under `~/.grok/installed-plugins/` where a flat scan
- * cannot see them. This mirrors how the Codex app-server reports skills over
- * `skills/list`. Discovery is best-effort: an older CLI without `inspect`,
- * a timeout, or malformed output yields an empty list, never a degraded
- * provider snapshot.
+ * 通过 `grok inspect --json` 获取 `$` 选择器的技能目录，遵守 CLI 自己的
+ * 忽略规则、停用设置和插件目录，避免另行扫描文件系统造成差异。
+ * 旧 CLI、非零退出和格式错误按最佳努力返回空目录。独立调用最多四秒；
+ * 完整刷新传入共享信号时由整轮预算负责超时，中断继续传递给整轮刷新。
  *
  * @module provider/Drivers/GrokSkills
  */
@@ -21,8 +12,10 @@ import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { resolveSpawnCommand } from "@codework/shared/shell";
+import { HostProcessEnvironment, HostProcessWorkingDirectory } from "@codework/shared/hostProcess";
 
 import { spawnAndCollect } from "../providerSnapshot.ts";
+import { withCatalogAbortSignal } from "../CliProviderCatalog.ts";
 
 const GROK_SKILLS_PROBE_TIMEOUT_MS = 4_000;
 
@@ -75,34 +68,45 @@ export function parseGrokInspectSkills(stdout: string): ReadonlyArray<ServerProv
   return [...skillsByName.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-/**
- * Run `grok inspect --json` and map the reported catalog onto provider
- * skills. Never fails: any spawn error, non-zero exit, or timeout resolves
- * to an empty list.
- */
+/** 独立发现采用四秒最佳努力；共享刷新使用外层预算，取消保持中断。 */
 export const discoverGrokSkills = Effect.fn("discoverGrokSkills")(function* (
   grokSettings: Pick<GrokSettings, "binaryPath">,
-  environment: NodeJS.ProcessEnv = process.env,
+  environment?: NodeJS.ProcessEnv,
   cwd?: string,
+  options?: { readonly signal?: AbortSignal; readonly completeEnvironment?: boolean },
 ): Effect.fn.Return<
   ReadonlyArray<ServerProviderSkill>,
   never,
   ChildProcessSpawner.ChildProcessSpawner
 > {
   const command = grokSettings.binaryPath || "grok";
-  const inspectResult = yield* Effect.gen(function* () {
+  const workingDirectory = cwd ?? (yield* HostProcessWorkingDirectory);
+  const processEnvironment = options?.completeEnvironment
+    ? { ...environment }
+    : { ...(yield* HostProcessEnvironment), ...environment };
+  const inspect = Effect.gen(function* () {
     const spawnCommand = yield* resolveSpawnCommand(command, ["inspect", "--json"], {
-      env: environment,
+      cwd: workingDirectory,
+      env: processEnvironment,
+      extendEnv: false,
     });
     return yield* spawnAndCollect(
       command,
       ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-        ...(cwd ? { cwd } : {}),
-        env: environment,
+        cwd: workingDirectory,
+        env: processEnvironment,
+        extendEnv: false,
         shell: spawnCommand.shell,
+        forceKillAfter: "2 seconds",
       }),
     );
-  }).pipe(Effect.timeoutOption(GROK_SKILLS_PROBE_TIMEOUT_MS), Effect.result);
+  });
+  // 完整刷新已有唯一预算；独立技能入口仍保留四秒最佳努力上限。
+  const inspectResult = yield* (
+    options?.signal
+      ? withCatalogAbortSignal(inspect, options.signal).pipe(Effect.map(Option.some))
+      : inspect.pipe(Effect.timeoutOption(GROK_SKILLS_PROBE_TIMEOUT_MS))
+  ).pipe(Effect.result);
 
   if (Result.isFailure(inspectResult) || Option.isNone(inspectResult.success)) {
     yield* Effect.logDebug("Grok skill discovery failed; continuing without skills.");

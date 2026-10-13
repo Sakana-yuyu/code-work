@@ -19,10 +19,12 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeGrokTextGeneration } from "../../textGeneration/GrokTextGeneration.ts";
 import { ProviderDriverError } from "../Errors.ts";
-import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
+import { makeNativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import {
   BYOK_GATEWAY_TOKEN_ENV,
   prepareRoutedProviderSnapshot,
+  applyRoutedProviderAvailability,
+  routedServerProviderModels,
   ensureGatewayToken,
   gatewayAdapterRoutes,
   gatewayOrigin,
@@ -32,7 +34,7 @@ import {
 import { makeGrokAdapter } from "../Layers/GrokAdapter.ts";
 import {
   buildInitialGrokProviderSnapshot,
-  checkGrokProviderStatus,
+  fetchGrokCatalog,
   enrichGrokSnapshot,
 } from "../Layers/GrokProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
@@ -117,8 +119,18 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
   },
   configSchema: GrokSettings,
   defaultConfig: (): GrokSettings => decodeGrokSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config, catalog }) =>
+  create: ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config: suppliedConfig,
+    nativeCatalog,
+    catalogRevision,
+  }) =>
     Effect.gen(function* () {
+      const config = { ...suppliedConfig, customModels: [...suppliedConfig.customModels] };
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const httpClient = yield* HttpClient.HttpClient;
@@ -129,7 +141,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
       const secretStore = yield* ServerSecretStore;
       const fileSystem = yield* FileSystem.FileSystem;
       const pathService = yield* Path.Path;
-      const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
+      const nativeProviderCatalog = nativeCatalog ?? (yield* makeNativeProviderCatalog());
       const inheritedEnv = mergeProviderInstanceEnvironment(environment);
       const routed = config.routeThroughByok === true;
       const grokHome = resolveGrokHome({
@@ -183,24 +195,53 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
             ),
           );
         // 个人目录只读；内容参与目录身份，手工修改配置也不会误命中旧结果。
-        if (isDefaultGrokHome(grokHome)) return existing;
-        if (existing === undefined && config.routeThroughByok !== true) return;
-        let managedBlock: string | null = null;
-        if (config.routeThroughByok === true) {
-          const currentSettings = yield* serverSettings.getSettings;
-          managedBlock = grokGatewayConfigBlock(
-            gatewayOrigin(serverConfig.port),
-            gatewayAdapterRoutes(currentSettings, config.byokSourceInstanceId),
-            config.byokSourceInstanceId,
+        if (isDefaultGrokHome(grokHome)) return { configFileContents: existing };
+        if (existing === undefined && effectiveConfig.routeThroughByok !== true) return {};
+        const currentSettings = effectiveConfig.routeThroughByok
+          ? yield* serverSettings.getSettings
+          : undefined;
+        const managedBlock = currentSettings
+          ? grokGatewayConfigBlock(
+              gatewayOrigin(serverConfig.port),
+              gatewayAdapterRoutes(currentSettings, effectiveConfig.byokSourceInstanceId),
+              effectiveConfig.byokSourceInstanceId,
+            )
+          : null;
+        const merged = mergeGrokManagedConfig(existing, managedBlock);
+        if (merged !== (existing ?? "")) {
+          yield* writeFileStringAtomically({ filePath: configFilePath, contents: merged }).pipe(
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, pathService),
           );
         }
-        const merged = mergeGrokManagedConfig(existing, managedBlock);
-        if (merged === (existing ?? "")) return merged;
-        yield* writeFileStringAtomically({ filePath: configFilePath, contents: merged }).pipe(
-          Effect.provideService(FileSystem.FileSystem, fileSystem),
-          Effect.provideService(Path.Path, pathService),
-        );
-        return merged;
+        return {
+          configFileContents: merged,
+          ...(currentSettings
+            ? {
+                // 复用本轮路由快照，不在目录结束后另读设置；共享结果不携带首实例身份。
+                mapSnapshot: (snapshot: ServerProviderDraft): ServerProviderDraft => {
+                  const mapped = applyRoutedProviderAvailability({
+                    ...stampIdentity(snapshot),
+                    models: routedServerProviderModels(
+                      currentSettings,
+                      "openai",
+                      effectiveConfig.byokSourceInstanceId,
+                      snapshot.models,
+                    ),
+                    auth: { status: "authenticated" as const, type: "byok", label: "BYOK Gateway" },
+                  });
+                  const { message: _oldMessage, ...base } = snapshot;
+                  return {
+                    ...base,
+                    models: mapped.models,
+                    auth: mapped.auth,
+                    status: mapped.status,
+                    ...(mapped.message === undefined ? {} : { message: mapped.message }),
+                  };
+                },
+              }
+            : {}),
+        };
       }).pipe(
         Effect.mapError(
           (cause) =>
@@ -222,24 +263,28 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
       const textGeneration = yield* makeGrokTextGeneration(effectiveConfig, processEnv);
 
       // 先更新实际模型路由，再用写入后的配置读取目录；键不选择执行环境。
-      const checkProvider = reconcileGrokRoutedConfigFile.pipe(
+      const checkProvider = fetchGrokCatalog({
+        settings: effectiveConfig,
+        environment: processEnv,
+        skillsWorkingDirectory: cwd,
+        nativeCatalog: nativeProviderCatalog,
+        preparationIdentity: {
+          grokHome,
+          routed,
+          source: effectiveConfig.byokSourceInstanceId,
+          gatewayOrigin: gatewayOrigin(serverConfig.port),
+          catalogRevision,
+        },
+        prepare: () => reconcileGrokRoutedConfigFile,
+      }).pipe(
         Effect.mapError(
           (cause) =>
             new ServerSettingsError({
               settingsPath: pathService.join(grokHome, "config.toml"),
               operation: "normalize",
               providerInstanceId: instanceId,
-              cause,
+              cause: cause.cause,
             }),
-        ),
-        Effect.flatMap((configFileContents) =>
-          checkGrokProviderStatus(
-            effectiveConfig,
-            processEnv,
-            cwd,
-            providerCatalog,
-            configFileContents,
-          ),
         ),
         Effect.map(stampIdentity),
         Effect.provideService(Crypto.Crypto, crypto),
@@ -253,11 +298,14 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
         streamSettings: snapshotSettings.streamSettings,
         haveSettingsChanged: haveProviderSnapshotSettingsChanged,
         initialSnapshot: (settings) =>
-          buildInitialGrokProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
+          buildInitialGrokProviderSnapshot(settings.provider).pipe(
+            Effect.map(stampIdentity),
+            Effect.flatMap((snapshot) =>
+              prepareRoutedProviderSnapshot(snapshot, effectiveConfig, serverSettings.getSettings),
+            ),
+          ),
         checkProvider,
         usesCatalogCache: true,
-        prepareSnapshot: (snapshot) =>
-          prepareRoutedProviderSnapshot(snapshot, config, serverSettings.getSettings),
         enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
           enrichGrokSnapshot({
             snapshot,
