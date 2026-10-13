@@ -34,6 +34,39 @@ const CODEX_CAPABILITIES: ModelCapabilities = {
 };
 
 describe("mobile provider options", () => {
+  it("原生模式按广告显示与发送，撤回值不进入模型设置", () => {
+    const capabilities: ModelCapabilities = {
+      optionDescriptors: [
+        {
+          id: "codexCollaborationMode",
+          label: "模式",
+          type: "select",
+          currentValue: "default",
+          options: [
+            { id: "default", label: "原生默认" },
+            { id: "plan", label: "原生计划" },
+          ],
+        },
+      ],
+    };
+    const descriptors = resolveProviderOptionDescriptors({
+      capabilities,
+      selections: [{ id: "codexCollaborationMode", value: "plan" }],
+    });
+    expect(providerOptionValueLabels(descriptors)).toEqual(["原生计划"]);
+    expect(
+      applyProviderOptionSelection(descriptors, { id: "codexCollaborationMode", value: "default" }),
+    ).toEqual([{ id: "codexCollaborationMode", value: "default" }]);
+    expect(
+      applyProviderOptionSelection(descriptors, { id: "codexCollaborationMode", value: "future" }),
+    ).toBeNull();
+    expect(
+      resolveProviderOptionDescriptors({
+        capabilities: { optionDescriptors: [] },
+        selections: [{ id: "codexCollaborationMode", value: "plan" }],
+      }),
+    ).toEqual([]);
+  });
   it("summarizes the option values currently in effect", () => {
     const descriptors = resolveProviderOptionDescriptors({
       capabilities: CODEX_CAPABILITIES,

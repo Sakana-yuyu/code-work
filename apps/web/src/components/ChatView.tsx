@@ -2,6 +2,7 @@ import {
   applySessionModelCatalogs,
   canUseProviderInteractionModes,
   resolveProviderInteractionMode,
+  resolveCodexPlanFollowUpSelection,
 } from "@codework/client-runtime/providerModels";
 import {
   type ApprovalRequestId,
@@ -5936,6 +5937,7 @@ function ChatViewContent(props: ChatViewProps) {
               ?.models.find((model) => model.slug === activeThread.modelSelection.model)
               ?.capabilities,
             interactionMode: activeThread.interactionMode,
+            modelSelection: activeThread.modelSelection,
           }),
           createdAt: new Date().toISOString(),
         },
@@ -6037,6 +6039,7 @@ function ChatViewContent(props: ChatViewProps) {
       providers: providerStatuses,
       instanceId: ctxSelectedModelSelection.instanceId,
       capabilities: selectedCapabilities,
+      modelSelection: ctxSelectedModelSelection,
       interactionMode,
     });
     const composerImages =
@@ -7120,12 +7123,26 @@ function ChatViewContent(props: ChatViewProps) {
         selectedModelSelection: ctxSelectedModelSelection,
       } = sendCtx;
 
+      const selectedCapabilities = ctxSelectedProviderModels.find(
+        (model) => model.slug === ctxSelectedModelSelection.model,
+      )?.capabilities;
+      const planModelSelection =
+        ctxSelectedProvider === "codex"
+          ? resolveCodexPlanFollowUpSelection(
+              ctxSelectedModelSelection,
+              selectedCapabilities,
+              nextInteractionMode,
+            )
+          : ctxSelectedModelSelection;
+      if (!planModelSelection) {
+        setThreadError(activeThread.id, "当前 Codex 目录未提供所请求的模式，请刷新目录后重试。");
+        return;
+      }
       const resolvedInteractionMode = resolveProviderInteractionMode({
         providers: providerStatuses,
         instanceId: ctxSelectedModelSelection.instanceId,
-        capabilities: ctxSelectedProviderModels.find(
-          (model) => model.slug === ctxSelectedModelSelection.model,
-        )?.capabilities,
+        capabilities: selectedCapabilities,
+        modelSelection: planModelSelection,
         interactionMode: nextInteractionMode,
       });
       const threadIdForSend = activeThread.id;
@@ -7161,7 +7178,7 @@ function ChatViewContent(props: ChatViewProps) {
       const settingsResult = await persistThreadSettingsForNextTurn({
         threadId: threadIdForSend,
         createdAt: messageCreatedAt,
-        modelSelection: ctxSelectedModelSelection,
+        modelSelection: planModelSelection,
         ...(localCheckoutBranchMismatch
           ? { branch: localCheckoutBranchMismatch.currentBranch }
           : {}),
@@ -7174,6 +7191,10 @@ function ChatViewContent(props: ChatViewProps) {
       if (failure === null) {
         // Keep the mode toggle and plan-follow-up banner in sync immediately
         // while the same-thread implementation turn is starting.
+        setComposerDraftModelSelection(
+          scopeThreadRef(activeThread.environmentId, threadIdForSend),
+          planModelSelection,
+        );
         setComposerDraftInteractionMode(
           scopeThreadRef(activeThread.environmentId, threadIdForSend),
           resolvedInteractionMode,
@@ -7189,7 +7210,7 @@ function ChatViewContent(props: ChatViewProps) {
               text: outgoingMessageText,
               attachments: [],
             },
-            modelSelection: ctxSelectedModelSelection,
+            modelSelection: planModelSelection,
             titleSeed: activeThread.title,
             runtimeMode,
             interactionMode: resolvedInteractionMode,
@@ -7241,6 +7262,7 @@ function ChatViewContent(props: ChatViewProps) {
       runtimeMode,
       scrollToEnd,
       setComposerDraftInteractionMode,
+      setComposerDraftModelSelection,
       setThreadError,
       startThreadTurn,
       environmentId,
@@ -7289,7 +7311,20 @@ function ChatViewContent(props: ChatViewProps) {
       return;
     }
     const nextThreadTitle = truncate(buildPlanImplementationThreadTitle(planMarkdown));
-    const nextThreadModelSelection: ModelSelection = ctxSelectedModelSelection;
+    const nextThreadModelSelection =
+      ctxSelectedProvider === "codex"
+        ? resolveCodexPlanFollowUpSelection(
+            ctxSelectedModelSelection,
+            ctxSelectedProviderModels.find(
+              (model) => model.slug === ctxSelectedModelSelection.model,
+            )?.capabilities,
+            "default",
+          )
+        : ctxSelectedModelSelection;
+    if (!nextThreadModelSelection) {
+      setThreadError(activeThread.id, "当前 Codex 目录未提供实施模式，请刷新目录后重试。");
+      return;
+    }
 
     sendInFlightRef.current = true;
     beginLocalDispatch({ preparingWorktree: false });
@@ -7326,7 +7361,7 @@ function ChatViewContent(props: ChatViewProps) {
             text: outgoingImplementationPrompt,
             attachments: [],
           },
-          modelSelection: ctxSelectedModelSelection,
+          modelSelection: nextThreadModelSelection,
           titleSeed: nextThreadTitle,
           runtimeMode,
           interactionMode: "default",

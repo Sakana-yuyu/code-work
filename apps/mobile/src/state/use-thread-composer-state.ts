@@ -279,6 +279,7 @@ export function useThreadComposerState() {
         providers: selectedEnvironmentRuntime?.serverConfig?.providers ?? [],
         instanceId: resolvedSelection.instanceId,
         capabilities: resolvedOption?.capabilities,
+        modelSelection: resolvedSelection,
         interactionMode: draft.interactionMode ?? thread.interactionMode,
       }),
       createdAt: metadata.createdAt,

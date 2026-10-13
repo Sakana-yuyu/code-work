@@ -18,6 +18,8 @@ export interface CliProviderCatalogData {
   readonly models: ReadonlyArray<ServerProviderModel>;
   readonly skills?: ReadonlyArray<ServerProviderSkill>;
   readonly slashCommands?: ReadonlyArray<ServerProviderSlashCommand>;
+  /** 可选目录发现失败时保留成功内容，但不能将残缺目录作为完成缓存。 */
+  readonly catalogMessage?: string;
 }
 
 export class CliProviderCatalogError extends Schema.TaggedErrorClass<CliProviderCatalogError>()(
@@ -66,7 +68,11 @@ export interface CliProviderCatalog {
 export const makeCliProviderCatalog = Effect.fn("makeCliProviderCatalog")(function* () {
   const cache = yield* makeProviderCatalogCache<
     Result.Result<CliProviderCatalogData, CliProviderCatalogError>
-  >({ ttlMs: 60_000, capacity: 128, shouldCache: Result.isSuccess });
+  >({
+    ttlMs: 60_000,
+    capacity: 128,
+    shouldCache: (result) => Result.isSuccess(result) && !result.success.catalogMessage,
+  });
 
   const fetchCatalog: CliProviderCatalog["fetchCatalog"] = Effect.fn(
     "CliProviderCatalog.fetchCatalog",

@@ -329,7 +329,13 @@ rollbacks live in `docs/internals/*-acp-provider.md` and [paseo-provider-catalog
 
 `client-runtime/providerModels` 的 `canUseProviderInteractionModes` 只读取当前 `instanceId` 的声明及当前模型能力，不按 driver 借用默认实例。已提供 `acpMode` 的模型使用原生选项；OpenCode 的 `agent` 选项同样替代旧两态控件。Web 的 Add 菜单、斜杠与 Shift+Tab 共用判断，Mobile 的斜杠菜单使用同一共享函数。普通发送、编辑重发、计划续接与 Mobile outbox 通过 `resolveProviderInteractionMode` 清除明确不支持实例的旧 plan 参数；离线且没有实例快照时保留请求模式。
 
-Antigravity 的 headless 参数和 Pi/OhMyPi 的 RPC 发送没有绑定 `interactionMode`，现在明确声明不展示两态控件。ZCode 将 plan 绑定到实际 `--mode plan`，继续声明支持。Codex、Claude 及其余 ACP Adapter 保留既有运行绑定；ACP 原生模式仍来自真实会话的配置/模式回执并在线程内合并，不为草稿新建会话。Codex 的 `collaborationMode/list` 目录发现尚未接入，不能据此宣布全部模式目录完成。
+Antigravity 的 headless 参数和 Pi/OhMyPi 的 RPC 发送没有绑定 `interactionMode`，现在明确声明不展示两态控件。ZCode 将 plan 绑定到实际 `--mode plan`，继续声明支持。Claude 及其余 ACP Adapter 保留既有运行绑定；ACP 原生模式仍来自真实会话的配置/模式回执并在线程内合并，不为草稿新建会话。
+
+Codex 的 `fetchCodexCatalog` 在同一个无会话 client 上并行读取 `model/list`、`skills/list` 和 `collaborationMode/list`，缓存身份同时覆盖三者，取消与整次十秒工作预算沿用原生刷新所有者。广告转换为 `codexCollaborationMode` 模型选项，保留原生名称、default/plan 标识及模型/推理预设说明，忽略未知、空和重复模式；不补造另一模式。用户明确选择的模型与推理仍优先，不因预设元数据改变。可选方法不支持或畸形时保留已成功模型和技能、撤回模式并提示更新/刷新，带告警的目录不进入完成缓存，同版本下一次刷新可恢复。
+
+三端复用已有选项界面；Codex 旧两态控件撤回。共享发送归一化同步选项与规范 `interactionMode`，Adapter 只从绑定实例读取 default/plan 原生选项并传给既有 `turn/start` 协作模式字段，运行权限和审批不变。Web 原线程续接及新线程“实施计划”显式选择广告的 default；没有相应模式时拒绝，不沿用旧 plan。目录撤回会清除失效选项。旧客户端的两态发送字段仍兼容，目录刷新没有另建线程或会话。
+
+2026-10-14 检索 `Codex collaborationMode/list` 并读取官方 [模式目录协议](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/src/protocol/v2/collaboration_mode.rs)、[ModeKind](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/config_types.rs) 及 [TUI 消费方式](https://github.com/openai/codex/blob/main/codex-rs/tui/src/collaboration_modes.rs)。采用原始协议确认空请求、可空预设、目前可执行的 default/plan 和可选发现边界；自主实现解码与测试，没有复制参考代码，也没有增加 TUI 的单请求超时。原生服务端会继续提供模式指令；Code Work 既有开发者指令、MCP 访问约束与运行权限保持原绑定。定向测试、实际 Windows 子进程与完整验收边界见 [移植进度](./port-progress.md) 第64主题。
 
 官方协议要求按真实会话广告传递模式标识，配置选项语义由类别声明。2026-10-14 检索 `ACP session modes session new config options`，采用 [ACP Session Modes](https://agentclientprotocol.com/protocol/v1/session-modes) 与 [Session Config Options](https://agentclientprotocol.com/protocol/v1/session-config-options) 原始规范；本主题复用既有回执合并，仅修复消费入口，没有复制参考代码。实际 Web/Android、本机推理 fixture 和能力声明回归见 [移植进度](./port-progress.md) 第63主题。
 

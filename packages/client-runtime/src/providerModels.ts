@@ -1,5 +1,6 @@
 import {
   ACP_MODE_OPTION_ID,
+  CODEX_COLLABORATION_MODE_OPTION_ID,
   ACP_CONFIG_OPTION_PREFIX,
   SelectProviderOptionDescriptor,
   ServerProviderModel,
@@ -8,6 +9,7 @@ import {
   type ProviderInstanceId,
   type ModelCapabilities,
   type ProviderInteractionMode,
+  type ModelSelection,
 } from "@codework/contracts";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
@@ -57,7 +59,26 @@ export function resolveProviderInteractionMode(input: {
   readonly instanceId: ProviderInstanceId;
   readonly capabilities?: ModelCapabilities | null | undefined;
   readonly interactionMode: ProviderInteractionMode;
+  readonly modelSelection?: ModelSelection;
 }): ProviderInteractionMode {
+  const nativeMode = input.capabilities?.optionDescriptors?.find(
+    (option) => option.id === CODEX_COLLABORATION_MODE_OPTION_ID && option.type === "select",
+  );
+  if (
+    nativeMode?.type === "select" &&
+    input.providers.some(
+      (provider) => provider.instanceId === input.instanceId && provider.driver === "codex",
+    )
+  ) {
+    const selected =
+      input.modelSelection?.instanceId === input.instanceId
+        ? input.modelSelection.options?.find((option) => option.id === nativeMode.id)?.value
+        : undefined;
+    const mode = nativeMode.options.some((option) => option.id === selected)
+      ? selected
+      : nativeMode.currentValue;
+    return mode === "plan" ? "plan" : "default";
+  }
   // 离线队列没有当前能力证据时保留用户草稿，不能把未知误当成明确不支持。
   if (!input.providers.some((provider) => provider.instanceId === input.instanceId)) {
     return input.interactionMode;
@@ -65,6 +86,36 @@ export function resolveProviderInteractionMode(input: {
   return canUseProviderInteractionModes(input.providers, input.instanceId, input.capabilities)
     ? input.interactionMode
     : "default";
+}
+
+/** 计划续接显式选择原生模式，避免“实施计划”仍携带旧 Plan 选项。 */
+export function resolveCodexPlanFollowUpSelection(
+  selection: ModelSelection,
+  capabilities: ModelCapabilities | null | undefined,
+  mode: ProviderInteractionMode,
+): ModelSelection | null {
+  const descriptor = capabilities?.optionDescriptors?.find(
+    (option) => option.id === CODEX_COLLABORATION_MODE_OPTION_ID,
+  );
+  if (descriptor?.type !== "select") {
+    if (mode === "plan") return null;
+    return selection.options?.some((option) => option.id === CODEX_COLLABORATION_MODE_OPTION_ID)
+      ? {
+          ...selection,
+          options: selection.options.filter(
+            (option) => option.id !== CODEX_COLLABORATION_MODE_OPTION_ID,
+          ),
+        }
+      : selection;
+  }
+  if (!descriptor.options.some((option) => option.id === mode)) return null;
+  return {
+    ...selection,
+    options: [
+      ...(selection.options ?? []).filter((option) => option.id !== descriptor.id),
+      { id: descriptor.id, value: mode },
+    ],
+  };
 }
 
 /** 合并同实例会话模型与模式；null 清除覆盖，空数组撤回模型广告，自定义模型保留。 */

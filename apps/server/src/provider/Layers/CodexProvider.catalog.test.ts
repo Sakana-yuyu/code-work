@@ -119,6 +119,13 @@ const makeFixture = Effect.fn("makeCodexCatalogFixture")(function* () {
           yield* Deferred.await(release);
         }
         let result: unknown;
+        if (request.method === "collaborationMode/list")
+          result = {
+            data: [
+              { name: "原生默认", mode: "default", model: null },
+              { name: "原生计划", mode: "plan", model: null },
+            ],
+          };
         if (request.method === "initialize") {
           result = {
             userAgent: `codex/${processState.version}`,
@@ -234,7 +241,14 @@ const makeFixture = Effect.fn("makeCodexCatalogFixture")(function* () {
   const count = (method: string) => calls.filter((call) => call.method === method).length;
   const assertNoSessions = () =>
     expect([...new Set(calls.map((call) => call.method))].sort()).toEqual(
-      ["account/read", "initialize", "initialized", "model/list", "skills/list"]
+      [
+        "account/read",
+        "initialize",
+        "initialized",
+        "model/list",
+        "skills/list",
+        "collaborationMode/list",
+      ]
         .filter((method) => count(method))
         .sort(),
     );
@@ -256,6 +270,57 @@ const makeFixture = Effect.fn("makeCodexCatalogFixture")(function* () {
 });
 
 describe("Codex 共享模型与技能目录", () => {
+  it.effect("模式与分页模型和技能共用入口、缓存与无会话进程", () =>
+    Effect.gen(function* () {
+      const f = yield* makeFixture();
+      const first = yield* f.fetch();
+      expect(
+        first.models[0]?.capabilities?.optionDescriptors?.find(
+          (option) => option.id === "codexCollaborationMode",
+        ),
+      ).toMatchObject({
+        currentValue: "default",
+        options: [
+          { id: "default", label: "原生默认" },
+          { id: "plan", label: "原生计划" },
+        ],
+      });
+      expect(yield* f.fetch()).toBe(first);
+      expect(f.count("collaborationMode/list")).toBe(1);
+      expect(f.count("model/list")).toBe(2);
+      expect(f.count("skills/list")).toBe(1);
+      expect(f.commands).toHaveLength(1);
+      expect(f.finalized).toHaveLength(1);
+      f.assertNoSessions();
+    }),
+  );
+  it.effect("模式方法不支持时保留模型和技能、提示更新，同版本再次刷新可恢复", () =>
+    Effect.gen(function* () {
+      const f = yield* makeFixture();
+      f.state.failMethod = "collaborationMode/list";
+      const first = yield* f.check();
+      expect(first.status).toBe("warning");
+      expect(first.message).toContain("更新 CLI");
+      expect(first.models).toHaveLength(2);
+      expect(first.skills).toHaveLength(1);
+      expect(first.showInteractionModeToggle).toBe(false);
+      expect(
+        first.models[0]?.capabilities?.optionDescriptors?.some(
+          (option) => option.id === "codexCollaborationMode",
+        ),
+      ).toBe(false);
+      f.state.failMethod = "";
+      const restored = yield* f.check();
+      expect(restored.status).toBe("ready");
+      expect(restored.message).toBeUndefined();
+      expect(
+        restored.models[0]?.capabilities?.optionDescriptors?.some(
+          (option) => option.id === "codexCollaborationMode",
+        ),
+      ).toBe(true);
+      f.assertNoSessions();
+    }),
+  );
   for (const unstable of unstableAccounts) {
     it.effect(`${unstable.label} 缺少稳定身份时不复用完成目录，并发仍共享在途加载`, () =>
       Effect.gen(function* () {

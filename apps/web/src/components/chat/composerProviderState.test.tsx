@@ -62,6 +62,27 @@ const ULTRATHINK_FRAME_CLASSES = {
 } as const;
 
 describe("getComposerProviderState", () => {
+  it("Codex原生模式保留选择，目录撤回时清除选项", () => {
+    const models = modelWith([
+      selectDescriptor("codexCollaborationMode", [
+        { id: "default", label: "原生默认", isDefault: true },
+        { id: "plan", label: "原生计划" },
+      ]),
+    ]);
+    const input = {
+      provider: PROVIDER,
+      model: MODEL,
+      models,
+      modelOptions: selections(["codexCollaborationMode", "plan"]),
+      planModeEnabled: false,
+    };
+    expect(getComposerProviderState(input).modelOptionsForDispatch).toEqual([
+      { id: "codexCollaborationMode", value: "plan" },
+    ]);
+    expect(
+      getComposerProviderState({ ...input, models: modelWith([]) }).modelOptionsForDispatch,
+    ).toBeUndefined();
+  });
   it("ACP 模式保留 URI，失效选择按当前目录恢复，提交不映射为 plan/default", () => {
     const uri = "https://agentclientprotocol.com/protocol/session-modes#review";
     const models = modelWith([

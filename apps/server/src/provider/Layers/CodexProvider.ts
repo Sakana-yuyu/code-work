@@ -45,6 +45,7 @@ import {
   type CliProviderCatalog,
 } from "../CliProviderCatalog.ts";
 import { makeNativeProviderCatalog, type NativeProviderCatalog } from "../NativeProviderCatalog.ts";
+import { requestCodexCollaborationModes } from "../CodexCollaborationModes.ts";
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
 const isCodexAppServerError = Schema.is(CodexErrors.CodexAppServerError);
 
@@ -60,7 +61,7 @@ const CODEX_MISSING_PLATFORM_PACKAGE_PATTERN = /missing optional dependency @ope
 
 const CODEX_PRESENTATION = {
   displayName: "Codex",
-  showInteractionModeToggle: true,
+  showInteractionModeToggle: false,
 } as const;
 
 export interface CodexAppServerProviderSnapshot {
@@ -68,6 +69,7 @@ export interface CodexAppServerProviderSnapshot {
   readonly version: string | undefined;
   readonly models: ReadonlyArray<ServerProviderModel>;
   readonly skills: ReadonlyArray<ServerProviderSkill>;
+  readonly catalogMessage?: string;
 }
 
 const REASONING_EFFORT_LABELS: Readonly<Record<string, string>> = {
@@ -439,7 +441,7 @@ export const fetchCodexCatalog = Effect.fn("fetchCodexCatalog")(function* (
       ...(existingClient ? { shareInFlight: false } : {}),
       key: cliProviderCatalogIdentity({
         driver: ProviderDriverKind.make("codex"),
-        operation: "model/list+skills/list",
+        operation: "model/list+skills/list+collaborationMode/list",
         config: {
           binaryPath: probeInput.binaryPath,
           launchArgs: codexAppServerArgs(probeInput.launchArgs),
@@ -451,14 +453,30 @@ export const fetchCodexCatalog = Effect.fn("fetchCodexCatalog")(function* (
       }),
       load: Effect.gen(function* () {
         const client = existingClient ?? (yield* makeCodexProviderProbeClient(probeInput)).client;
-        const [skillsResponse, models] = yield* Effect.all(
+        const [skillsResponse, models, modes] = yield* Effect.all(
           [
             client.request("skills/list", { cwds: [probeInput.cwd] }),
             requestAllCodexModels(client),
+            requestCodexCollaborationModes(client),
           ],
           { concurrency: "unbounded" },
         );
-        return { models, skills: parseCodexSkillsListResponse(skillsResponse, probeInput.cwd) };
+        const modeDescriptor = modes.descriptor;
+        return {
+          models: modeDescriptor
+            ? models.map((model) => ({
+                ...model,
+                capabilities: createModelCapabilities({
+                  optionDescriptors: [
+                    ...(model.capabilities?.optionDescriptors ?? []),
+                    modeDescriptor,
+                  ],
+                }),
+              }))
+            : models,
+          skills: parseCodexSkillsListResponse(skillsResponse, probeInput.cwd),
+          ...("message" in modes ? { catalogMessage: modes.message } : {}),
+        };
       }).pipe(Effect.scoped),
     })
     .pipe(
@@ -493,7 +511,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   }
 
   const catalog = input.catalog ?? (yield* makeCliProviderCatalog());
-  const { models, skills } = yield* fetchCodexCatalog({
+  const { models, skills, catalogMessage } = yield* fetchCodexCatalog({
     ...probeInput,
     version,
     account: accountResponse,
@@ -508,6 +526,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       appendCustomCodexModels(models, input.customModels ?? []),
     ),
     skills: skills ?? [],
+    ...(catalogMessage ? { catalogMessage } : {}),
   } satisfies CodexAppServerProviderSnapshot;
 });
 
@@ -840,9 +859,14 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
             probe: {
               installed: true,
               version: snapshot.version ?? null,
-              status: accountStatus.status,
+              status:
+                accountStatus.status === "ready" && snapshot.catalogMessage
+                  ? "warning"
+                  : accountStatus.status,
               auth: accountStatus.auth,
-              ...(accountStatus.message ? { message: accountStatus.message } : {}),
+              ...(accountStatus.message || snapshot.catalogMessage
+                ? { message: accountStatus.message ?? snapshot.catalogMessage }
+                : {}),
             },
           });
         }),

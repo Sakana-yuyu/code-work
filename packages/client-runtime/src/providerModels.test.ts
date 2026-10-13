@@ -13,6 +13,7 @@ import {
   applySessionModelCatalogs,
   canUseProviderInteractionModes,
   resolveProviderInteractionMode,
+  resolveCodexPlanFollowUpSelection,
 } from "./providerModels.ts";
 import {
   buildProviderOptionSelectionsFromDescriptors,
@@ -49,6 +50,69 @@ const row = (payload: unknown): OrchestrationThreadActivity => ({
 });
 
 describe("会话模型目录", () => {
+  it("Codex原生选择同步规范模式，实施计划明确改为default，未知广告拒绝", () => {
+    const current = {
+      ...provider,
+      driver: ProviderDriverKind.make("codex"),
+      showInteractionModeToggle: false,
+    };
+    const capabilities = {
+      optionDescriptors: [
+        {
+          id: "codexCollaborationMode",
+          label: "模式",
+          type: "select" as const,
+          currentValue: "default",
+          options: [
+            { id: "plan", label: "计划" },
+            { id: "default", label: "默认" },
+          ],
+        },
+      ],
+    };
+    const selection = {
+      instanceId: current.instanceId,
+      model: "new",
+      options: [{ id: "codexCollaborationMode", value: "plan" }],
+    };
+    expect(
+      resolveProviderInteractionMode({
+        providers: [current],
+        instanceId: current.instanceId,
+        capabilities,
+        interactionMode: "default",
+        modelSelection: selection,
+      }),
+    ).toBe("plan");
+    const implementation = resolveCodexPlanFollowUpSelection(selection, capabilities, "default");
+    expect(implementation?.options).toEqual([{ id: "codexCollaborationMode", value: "default" }]);
+    expect(
+      resolveProviderInteractionMode({
+        providers: [current],
+        instanceId: current.instanceId,
+        capabilities,
+        interactionMode: "plan",
+        ...(implementation ? { modelSelection: implementation } : {}),
+      }),
+    ).toBe("default");
+    expect(
+      resolveCodexPlanFollowUpSelection(selection, { optionDescriptors: [] }, "plan"),
+    ).toBeNull();
+    expect(
+      resolveCodexPlanFollowUpSelection(selection, { optionDescriptors: [] }, "default")?.options,
+    ).toEqual([]);
+    expect(
+      resolveCodexPlanFollowUpSelection(
+        selection,
+        {
+          optionDescriptors: [
+            { ...capabilities.optionDescriptors[0]!, options: [{ id: "plan", label: "计划" }] },
+          ],
+        },
+        "default",
+      ),
+    ).toBeNull();
+  });
   it("OpenCode 原生 agent 目录独立控制模式，不与旧两态推断重复", () => {
     const current = {
       ...provider,

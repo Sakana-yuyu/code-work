@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProviderDriverKind } from "./providerInstance.ts";
@@ -9,6 +10,8 @@ export type ProviderOptionDescriptorType = typeof ProviderOptionDescriptorType.T
 
 export const ACP_MODE_OPTION_ID = "acpMode";
 export const ACP_CONFIG_OPTION_PREFIX = "acpConfig:";
+/** Codex 原生协作模式的模型选项；与运行权限和旧两态草稿设置独立。 */
+export const CODEX_COLLABORATION_MODE_OPTION_ID = "codexCollaborationMode";
 
 export const ProviderOptionChoice = Schema.Struct({
   id: TrimmedNonEmptyString,

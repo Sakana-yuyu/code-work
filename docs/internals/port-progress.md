@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题          |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归             |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类刷新、完整预算、共享home及实例模式入口已验证） | ProviderCatalogCache / ByokProviderCatalog / GrokHomeAccess / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / client-runtime/providerModels | 第43—63主题补齐共享刷新、预算、配置所有权与当前实例模式控制；Codex原生模式发现及完整入口/三端/连接矩阵仍开放          |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类刷新、完整预算、共享home及实例模式入口已验证） | ProviderCatalogCache / ByokProviderCatalog / GrokHomeAccess / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / client-runtime/providerModels | 第43—64主题补齐共享刷新、预算、配置所有权、实例模式与Codex原生发现/发送；完整入口/三端/连接矩阵仍开放                 |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                                                                | 尚未运行                                                                                                              |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                                                                       | B19 为部分底座，验收尚未运行                                                                                          |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 进行中（实例模式入口与部分实际能力声明已修复）               | ProviderAdapterCapabilities / server config / 三端控制                                                                                                     | 第63主题验证模式控制；rewind分拆与其余能力、重启续接确认尚待实施                                                      |
@@ -1136,3 +1136,19 @@ Web 旧入口按 driver 查默认实例，可能借用另一配置的两态声�
 Web/Desktop 共用 React 控件，Mobile 使用同一共享判定和原生入口；本轮实际运行 Web 和 Android，没有新开 Electron、iOS设备或公网 relay/tunnel。设置页保留原生模型选项，ThreadSettingsSheet 没有独立两态入口；运行权限独立不变。实例切换、能力撤回、原生选项、离线未知与重新选择支持实例的反向路径由定向断言覆盖。未增加持续动画或全局订阅，未新测帧率；既有性能证据保持原边界。完整能力声明第14项、Codex模式发现及全部入口/客户端/连接验收继续开放。
 
 官方协议采用理由与检索日期见 providers 的“当前实例的模式入口”。回退本主题14源及4文档恢复此前行为，无数据迁移。精确暂存继续保护原 BYOK、ChatView 与 ChatComposer 混合 hunk，83个剩余无关基线文件保持原哈希。第11/14项保持进行中，完整39项及comparison额外范围不缩减。
+
+## 64. Codex 原生模式与统一目录、发送及计划续接
+
+此前 Codex 完整入口仅发现模型和技能，模式控件仍静态声明两态。本主题用现有 raw RPC 能力在 `fetchCodexCatalog` 中并行增加 `collaborationMode/list`，与分页模型、技能共用初始化后的无会话 client、缓存身份和整次十秒刷新所有者。没有额外认证、线程、会话或推理请求，没有新 controller、单请求 deadline 或外部探测入口。查询键同时标识三种发现，实际加载仍采用调用者快照和现有上下文。
+
+模式按官方响应自主解码为 `codexCollaborationMode` 模型选项：保留名称、default/plan 标识和预设模型/推理说明，过滤未知/空/重复项，只有一个广告就只展示一个，不补造另一模式。default 广告存在时优先；否则采用首个可执行广告。用户选择的模型和推理不被预设元数据覆盖。方法不支持时提示更新 CLI，其他 RPC 或数据错误提示刷新；成功模型和技能保留、模式控件撤回。内部目录增加可选 catalogMessage，带告警的结果不进入完成缓存，同版本下一次刷新可恢复；其余 CLI 无该字段时沿用完成缓存规则。挂起的模式请求仍受原生总预算与 Scope 取消控制。
+
+Codex 两态控件撤回，三端复用现有通用选项消费。普通发送、编辑重发和 Mobile outbox 从广告与有效选择同步规范 interactionMode；Adapter 只读取绑定实例的 native 选项并传给既有 turn/start 协作模式，旧两态字段继续兼容，运行权限和审批不变。Web 原线程续接和新线程实施明确设置广告的 default，原线程同步更新草稿；缺少请求模式时明确拒绝，模式撤回时清除旧选项。没有新增 wire 字段、权限、动画、全局订阅或持久化迁移。
+
+纯候选以 `f11f2253c` 为基线，只覆盖17源（9生产、8测试），继续剥离 ChatView 原4组混合改动。十一文件159项通过：CodexCollaborationModes、CodexProvider、CodexProvider.catalog/refresh、CodexAdapter、CodexSessionRuntime、codexModelOptions、CliProviderCatalog、client-runtime/providerModels、Web composerProviderState、Mobile providerOptions。新增13项断言覆盖广告元数据、单项/空/未知/畸形/错误响应、缓存复用/恢复、模式挂起整轮截止、绑定实例与有效选项、规范模式和实施反向路径。contracts、client-runtime、Server、Web、Mobile 五个目标 tsgo 通过，17源 fmt/lint 通过，全部检查前后哈希稳定。两处 no-unsafe-optional-chaining 警告在旧 CodexAdapter.test 中同样出现，独立 HEAD lint 退出0、同为两条并按哈希恢复；本主题没有新增这两处语句。
+
+首轮136项通过、1项失败，定位为临时脚本误将可选模式方法加入“模型/技能失败必须整轮失败”的断言；目录告警的内部类型缺失和纯候选 Web Node 类型配置一并修正。随后的148项及最终159项均通过，失败结果不改写为通过。旧 CodexProvider 恢复到同一候选、运行“模式与分页模型和技能共用入口”用例，因模式 descriptor 为 undefined 直接 AssertionError、退出1；恢复17源候选后同例退出0，文件SHA一致。
+
+实际 Windows 协议验收使用工作区外合成账户和受控 `.cmd`/Node fixture，由真实平台 spawner 启动。请求严格为 initialize、initialized、account/read、skills/list、model/list、collaborationMode/list，响应为 ready，返回两项真实 fixture 广告，旧两态声明 false；没有会话调用。worker 捕获 PID80860，Scope 关闭后 PID 已停止，追加的一项真实进程测试通过。临时验证入口最初放在候选根而无法解析平台依赖，迁至 server 依赖边界后通过；未修改依赖或产品源码。该证据是本机进程/RPC联调，不是官方 Codex 账户或外部推理验证。
+
+原始证据为工作区外 `catalog-codex-modes-{core,typecheck-*,format,lint,old-red,restored-green}.log`、red-proof、Windows fixture/result.json 与请求记录。官方原始来源、检索词、2026-10-14访问日期及采用理由写入 providers。未复制参考代码。第63主题实际 Web/Android证据不用于证明本主题新控件已实测；保留服务未加载本候选，本轮没有新产品客户端、Electron、iOS、外部供应商或公网 relay/tunnel运行。共享渲染器、通用选项及发送有定向覆盖，设置/聊天/命令/快捷键、全部实例/客户端/连接的最终矩阵仍开放。其他十一类 driver 沿用此前实现；第14项的完整能力分拆继续实施。回退17源及4文档恢复第63主题，无迁移。原83个无关基线文件、BYOK/ChatView/ChatComposer混合hunk继续保护，只提交本主题。第11项及完整39项与comparison额外范围保持进行中。

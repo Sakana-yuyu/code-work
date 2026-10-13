@@ -319,6 +319,36 @@ const sessionErrorLayer = it.layer(
 );
 
 sessionErrorLayer("CodexAdapterLive session errors", (it) => {
+  it.effect("原生模式选项绑定实际发送，同一实例的选项优先于旧两态字段", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CodexAdapter;
+      const threadId = asThreadId("native-mode-binding");
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("codex"),
+        threadId,
+        runtimeMode: "approval-required",
+      });
+      const runtime = sessionRuntimeFactory.lastRuntime;
+      NodeAssert.ok(runtime);
+      runtime.sendTurnImpl.mockClear();
+      for (const [instanceId, value, expected] of [
+        ["codex", "plan", "plan"],
+        ["codex", "default", "default"],
+        ["another-instance", "plan", "default"],
+        ["codex", "future", "default"],
+      ] as const) {
+        yield* adapter.sendTurn({
+          threadId,
+          input: "模式绑定测试",
+          interactionMode: "default",
+          modelSelection: createModelSelection(ProviderInstanceId.make(instanceId), "fixture", [
+            { id: "codexCollaborationMode", value },
+          ]),
+        });
+        NodeAssert.equal(runtime.sendTurnImpl.mock.calls.at(-1)?.[0].interactionMode, expected);
+      }
+    }),
+  );
   it.effect("maps missing adapter sessions to ProviderAdapterSessionNotFoundError", () =>
     Effect.gen(function* () {
       const adapter = yield* CodexAdapter;

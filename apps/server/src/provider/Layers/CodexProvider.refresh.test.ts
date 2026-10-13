@@ -55,6 +55,7 @@ const stages = [
   "model/list",
   "model/list:next-page",
   "skills/list",
+  "collaborationMode/list",
   "diagnosis",
 ] as const;
 type Stage = (typeof stages)[number];
@@ -158,6 +159,13 @@ const makeFixture = Effect.fn("makeCodexRefreshFixture")(function* () {
             : request.method;
         if (stages.includes(stage as Stage)) yield* waitAt(stage as Stage);
         let result: unknown;
+        if (request.method === "collaborationMode/list")
+          result = {
+            data: [
+              { name: "原生默认", mode: "default", model: null },
+              { name: "原生计划", mode: "plan", model: null },
+            ],
+          };
         if (request.method === "initialize")
           result = {
             userAgent: `codex/${current.version}`,
@@ -264,7 +272,14 @@ const makeFixture = Effect.fn("makeCodexRefreshFixture")(function* () {
   const count = (method: string) => requests.filter((request) => request.method === method).length;
   const assertNoSessions = () =>
     expect([...new Set(requests.map((request) => request.method))].sort()).toEqual(
-      ["initialize", "initialized", "account/read", "model/list", "skills/list"]
+      [
+        "initialize",
+        "initialized",
+        "account/read",
+        "model/list",
+        "skills/list",
+        "collaborationMode/list",
+      ]
         .filter((method) => count(method))
         .sort(),
     );
@@ -287,7 +302,11 @@ const makeFixture = Effect.fn("makeCodexRefreshFixture")(function* () {
 });
 
 describe("Codex 整次原生刷新", () => {
-  for (const pendingStage of ["model/list:next-page", "skills/list"] as const) {
+  for (const pendingStage of [
+    "model/list:next-page",
+    "skills/list",
+    "collaborationMode/list",
+  ] as const) {
     it.effect(`${pendingStage} 阻塞时整轮十秒截止，晚加入不续预算且无残缺目录`, () =>
       Effect.gen(function* () {
         const f = yield* makeFixture();
