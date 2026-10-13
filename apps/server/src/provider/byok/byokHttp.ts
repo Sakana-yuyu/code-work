@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
+import type * as Scope from "effect/Scope";
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import { collectUint8StreamText } from "../../stream/collectUint8StreamText.ts";
 
@@ -77,8 +78,8 @@ const redirectHeaders = (headers: Readonly<Record<string, string>>, from: URL, t
         ),
       );
 
-const execute = (
-  client: HttpClient.HttpClient,
+const execute = <E>(
+  client: HttpClient.HttpClient.With<E, Scope.Scope>,
   url: URL,
   headers: Readonly<Record<string, string>>,
 ) =>
@@ -91,12 +92,12 @@ const execute = (
     )
     .pipe(Effect.mapError(() => error("network", "The model catalog request failed.")));
 
-const follow = (
-  client: HttpClient.HttpClient,
+const follow = <E>(
+  client: HttpClient.HttpClient.With<E, Scope.Scope>,
   url: URL,
   headers: Readonly<Record<string, string>>,
   redirects: number,
-): Effect.Effect<ByokHttpResponse, ByokHttpError> =>
+): Effect.Effect<ByokHttpResponse, ByokHttpError, Scope.Scope> =>
   Effect.gen(function* () {
     const response = yield* execute(client, url, headers);
     const location = response.headers.location;
@@ -105,15 +106,8 @@ const follow = (
         return yield* Effect.fail(
           error("redirect_blocked", "The model catalog endpoint redirected too many times."),
         );
-      const target = yield* Effect.try({
-        try: () => new URL(location, url),
-        catch: () =>
-          error("redirect_blocked", "The model catalog endpoint returned an invalid redirect."),
-      });
-      if (target.protocol !== "http:" && target.protocol !== "https:")
-        return yield* Effect.fail(
-          error("redirect_blocked", "The model catalog redirect uses an unsupported protocol."),
-        );
+      const target = resolveRedirectURL(location, url);
+      if (!(target instanceof URL)) return yield* Effect.fail(target);
       return yield* follow(client, target, redirectHeaders(headers, url, target), redirects + 1);
     }
     const collected = yield* collectUint8StreamText({
@@ -137,6 +131,8 @@ const follow = (
 export const fetchByokCatalog = (input: {
   readonly url: string;
   readonly headers?: Readonly<Record<string, string>>;
+  /** 多地址发现传入整轮剩余预算；余额等单请求调用沿用默认上限。 */
+  readonly timeoutMs?: number;
 }): Effect.Effect<ByokHttpResponse, ByokHttpError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const url = yield* Effect.try({
@@ -144,8 +140,11 @@ export const fetchByokCatalog = (input: {
       catch: (cause) => cause as ByokHttpError,
     });
     const client = yield* HttpClient.HttpClient;
-    const result = yield* follow(client, url, input.headers ?? {}, 0).pipe(
-      Effect.timeoutOption(BYOK_HTTP_TIMEOUT_MS),
+    const result = yield* follow(HttpClient.withScope(client), url, input.headers ?? {}, 0).pipe(
+      // 手工跳转才能执行次数限制和跨源凭据剥离；整段结束时释放未读取的跳转响应。
+      Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }),
+      Effect.scoped,
+      Effect.timeoutOption(input.timeoutMs ?? BYOK_HTTP_TIMEOUT_MS),
     );
     if (Option.isNone(result))
       return yield* Effect.fail(error("timeout", "The model catalog request timed out."));

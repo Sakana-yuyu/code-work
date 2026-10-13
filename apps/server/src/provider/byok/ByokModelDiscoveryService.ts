@@ -38,7 +38,7 @@ import { catalogCapabilitiesForModel } from "./ContextWindowCatalog.ts";
 import { matchContextWindows } from "./ContextWindowMatcher.ts";
 import { parseByokCustomHeaders, streamChat } from "../Layers/byokChatClient.ts";
 import * as Stream from "effect/Stream";
-import { fetchByokCatalog } from "./byokHttp.ts";
+import { BYOK_HTTP_TIMEOUT_MS, fetchByokCatalog } from "./byokHttp.ts";
 import type { ByokHttpError } from "./byokHttp.ts";
 
 interface CacheEntry {
@@ -239,6 +239,7 @@ const publicModels = (models: ReturnType<typeof decodeModelCatalog>): ByokDiscov
 
 const discoverTarget = (target: ModelDiscoveryTarget) =>
   Effect.gen(function* () {
+    const deadline = (yield* Clock.currentTimeMillis) + BYOK_HTTP_TIMEOUT_MS;
     if (target.apiKey.trim() === "") return draftResultError("draft", "missing_credentials");
     const template = supplierTemplate(target.supplierID);
     const status = target.modelCatalogStatus ?? template.modelCatalog.status;
@@ -291,14 +292,18 @@ const discoverTarget = (target: ModelDiscoveryTarget) =>
       ...(customHeaderValues ?? {}),
     };
     for (const candidate of candidates) {
+      const remainingMs = deadline - (yield* Clock.currentTimeMillis);
+      if (remainingMs <= 0) return draftResultError("catalog", "timeout");
       const response = yield* Effect.result(
         fetchByokCatalog({
           url: candidate,
           headers: discoveryHeaders,
+          timeoutMs: remainingMs,
         }),
       );
       if (response._tag === "Failure") {
         lastError = draftResultError(new URL(candidate).origin, mapHttpError(response.failure));
+        if (response.failure.code === "timeout") return lastError;
         continue;
       }
       if (response.success.status < 200 || response.success.status >= 300) {
@@ -326,7 +331,11 @@ const discoverTarget = (target: ModelDiscoveryTarget) =>
       } satisfies ByokDraftModelDiscoveryResult;
     }
     return lastError ?? draftResultError("catalog", "no_models");
-  });
+  }).pipe(
+    // 整轮预算包含候选、重定向和正文读取；子请求不能各自重置十五秒。
+    Effect.timeoutOption(BYOK_HTTP_TIMEOUT_MS),
+    Effect.map(Option.getOrElse(() => draftResultError("catalog", "timeout"))),
+  );
 
 export interface ByokModelDiscoveryService {
   readonly benchmark: (

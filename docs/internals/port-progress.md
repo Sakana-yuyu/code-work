@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题          |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归             |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                  |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（Cursor/Grok 目录无会话增量）                        | ProviderDriver / provider snapshot / ACP 客户端准备                                                       | 第43主题只关闭已证实的两处目录会话副作用；统一入口、等价配置缓存与全程超时仍开放                                       |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（无草稿会话与 BYOK 整轮目录预算）                     | ProviderDriver / provider snapshot / ACP 准备 / ByokModelDiscoveryService                                  | 第43—44主题完成两处目录无会话及 BYOK 总预算；统一入口、等价配置缓存、全 driver deadline 与同一 AbortSignal 仍开放      |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                              |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                          |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 待实施                                                       | ProviderAdapterCapabilities / server config / 三端控制                                                     | 尚未运行                                                                                                              |
@@ -780,3 +780,17 @@ Cursor 使用准备后的 `cursor/list_available_models`，受控请求日志严
 测试夹具修正为 Windows cmd 加 Node 启动方式，探测退出改为作用域结束后检查捕获的真实进程句柄，替代原文件轮询。初轮四项旧 sh 夹具失败、受限运行下崩溃审批用例超时均保留；同一崩溃用例在隔离授权运行通过，尚不能将先前超时明确归因。一次 `MaxOpsBeforeYield=1` 的无效测试配置使调度无法推进，测试进程堆耗尽退出；改为16后准备与启动中断用例通过，不能将该实验写成产品内存问题。该两用例覆盖 RPC 开始后的中断与恢复，发布窗口由源码临界区与独立复查支持，不扩大为旧窗口已得到确定性红对照。
 
 本主题在服务器目录探测执行，Web/Desktop/Mobile 的模型选择、设置刷新以及本地/远程/隧道共用既有快照入口，没有新增 UI 控制、wire 字段、权限或持续动画。真正 Cursor/Grok 对话继续采用原认证、审批、runtimeMode 与会话恢复；其余 ACP provider 只复用生命周期修复，原模型/模式数据路径保留。无真实外部 Cursor/Grok 或原生客户端操作，本地 Node 假 ACP 子进程属于协议集成证据；不宣称真实供应商已验证。回退本主题恢复旧目录与生命周期行为，无数据迁移。第11项仍在进行，统一 fetchCatalog、等价配置共享缓存、单一 deadline/AbortSignal 与 BYOK 两路发现收敛仍必须完成；完整39项及 comparison 额外范围不缩减。
+
+### 第44主题：BYOK 目录总预算与跳转释放
+
+已保存配置和草稿发现共用的 `discoverTarget` 现在为整个候选循环提供15秒预算；每个 HTTP 请求只收到剩余时间，超时立即结束，不继续下一地址。预算包含跳转和响应正文。HTTP 帮助函数的独立调用保留默认15秒，因此余额查询无需改接口。成功/陈旧目录语义、配置与凭据指纹保持原行为，未移动或扩大缓存。
+
+本轮还证实真实 Fetch 默认自动跟随跳转，会越过已有的跳转次数限制及跨源凭据剥离。目录 HTTP 请求固定采用手工跳转，并复用现有 URL 校验、三次跳转限制、认证头剥离及4 MiB正文上限。每个请求链使用局部 Scope，完成、失败或超时均释放包括未读取3xx正文在内的请求。构造阶段注入的 fake/custom Fetch 保留；当前生产 BYOK 装配未配置其他 `FetchHttpClient.RequestInit` 默认字段，该帮助函数显式设置 `redirect: manual`，后续若增加其他默认 options，需要一并验证保留规则。
+
+隔离 HEAD 第43主题候选只叠加本主题四个源文件：`vp test run --config .candidate-test.config.ts` 指定 `ByokModelDiscoveryService.deadline.test.ts`、`ByokModelDiscoveryService.test.ts`、`byokHttp.test.ts`、`ByokBalanceService.test.ts`，4文件63项通过。新增虚拟时钟测试验证前一候选耗时8秒、下一请求或正文挂起时总计15秒终止；14秒成功保留模型；草稿超时取消；没有第三候选请求；捕获的请求 signal 已取消，正文 reader 已释放。未结束的302正文用例确认返回后两跳 signal 均取消。两台本机随机端口 HTTP 夹具配合真实 Node Fetch，确认跨源不转发 Authorization、x-api-key、x-goog-api-key，并保留普通请求头；两个服务在 finally 关闭，没有外部请求。
+
+有效红对照只在候选暂时恢复单个生产文件，随后按字节恢复：旧发现代码在15秒点仍未完成，两个断言失败；旧 HTTP 代码在目标服务器收到 `x-api-key`，实网用例失败。一次未转义的 shell 正则筛选没有运行目标测试，已单独保留为无效夹具失败，改用无元字符名称后才取得有效红证据。主工作区没有替换为旧源。
+
+最终纯候选目标 `tsgo --noEmit -p apps/server/.streaming-typecheck.json`、四源 `vp fmt --check` 通过；目标 `vp lint` 退出0，仅保留 ModelDiscoveryService 原有未使用 catch 参数与空 fallback spread 两条告警。测试夹具的 Node 导入、Error.code 类型及 Effect JSON 诊断已修复；未运行全仓检查。独立源码复查指出的未读跳转响应验收缺口已补定向断言。
+
+本主题改变服务端目录与共用 HTTP 行为，Web/Desktop/Mobile 和本地/远程/隧道均沿原 RPC；没有新 UI、wire 字段、权限、动画或持久结构。[用户说明](../user/model-catalog-refresh.md)已补充。其他 CLI provider 本主题不变；实际外部供应商、真实客户端和公网连接没有新增验收。回退四源即可恢复旧预算与 HTTP 行为，无数据迁移。Effect 当前仍为各请求创建独立 signal，不能将共用 Scope 写成同一 AbortSignal。统一 fetchCatalog、等价配置共享缓存、全 provider deadline 与底层共享 signal 仍需完成，第11项继续进行，全部39项及 comparison 附加范围保持。
