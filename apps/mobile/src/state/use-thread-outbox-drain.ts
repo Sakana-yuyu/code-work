@@ -9,6 +9,7 @@ import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   type MessageId,
+  type ServerConfig,
 } from "@codework/contracts";
 import { buildTemporaryWorktreeBranchName } from "@codework/shared/git";
 import * as Cause from "effect/Cause";
@@ -37,7 +38,8 @@ import {
   type QueuedThreadMessage,
   type ThreadOutboxCommandStage,
 } from "./thread-outbox-model";
-import { threadEnvironment } from "./threads";
+import { environmentThreadDetails, threadEnvironment } from "./threads";
+import { serverEnvironment } from "./server";
 import { useAtomCommand } from "./use-atom-command";
 import {
   editingQueuedMessageIdsAtom,
@@ -85,7 +87,28 @@ function settingsCommandId(message: QueuedThreadMessage, setting: string): Comma
   return CommandId.make(`${message.commandId}:${setting}`);
 }
 
+function queuedMessageCatalog(
+  message: QueuedThreadMessage,
+  config: ServerConfig,
+  existingThread: boolean,
+) {
+  return {
+    config,
+    ...(existingThread
+      ? {
+          activities: appAtomRegistry.get(
+            environmentThreadDetails.activitiesAtom({
+              environmentId: message.environmentId,
+              threadId: message.threadId,
+            }),
+          ),
+        }
+      : {}),
+  };
+}
+
 export function useThreadOutboxDrain(): void {
+  const readConfig = useAtomCommand(serverEnvironment.readConfig, { reportFailure: false });
   const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
@@ -167,8 +190,22 @@ export function useThreadOutboxDrain(): void {
 
   const sendQueuedMessage = useCallback(
     async (queuedMessage: QueuedThreadMessage, thread: EnvironmentThreadShell) => {
-      const settings = resolveQueuedThreadSettings(queuedMessage, thread);
       const { reportFailure, completeDelivery } = makeDeliveryHelpers(queuedMessage);
+      // 连接恢复早于配置流的新快照；显式读取当前投影，不能把旧缓存当作在线广告。
+      const configResult = await readConfig({
+        environmentId: queuedMessage.environmentId,
+        input: {},
+      });
+      if (AsyncResult.isFailure(configResult)) {
+        reportFailure(configResult, "settings-sync");
+        return false;
+      }
+      if (appAtomRegistry.get(editingQueuedMessageIdsAtom)[queuedMessage.messageId]) return true;
+      const settings = resolveQueuedThreadSettings(
+        queuedMessage,
+        thread,
+        queuedMessageCatalog(queuedMessage, configResult.value, true),
+      );
 
       if (!modelSelectionsEqual(settings.modelSelection, thread.modelSelection)) {
         const updateResult = await updateThreadMetadata({
@@ -238,6 +275,7 @@ export function useThreadOutboxDrain(): void {
     },
     [
       makeDeliveryHelpers,
+      readConfig,
       setThreadInteractionMode,
       setThreadRuntimeMode,
       startTurn,
@@ -255,7 +293,25 @@ export function useThreadOutboxDrain(): void {
       if (modelSelection === undefined) {
         return false;
       }
-      const { completeDelivery } = makeDeliveryHelpers(queuedMessage);
+      const { reportFailure, completeDelivery } = makeDeliveryHelpers(queuedMessage);
+      const configResult = await readConfig({
+        environmentId: queuedMessage.environmentId,
+        input: {},
+      });
+      if (AsyncResult.isFailure(configResult)) {
+        reportFailure(configResult, "settings-sync");
+        return false;
+      }
+      if (appAtomRegistry.get(editingQueuedMessageIdsAtom)[queuedMessage.messageId]) return true;
+      const settings = resolveQueuedThreadSettings(
+        queuedMessage,
+        {
+          modelSelection,
+          runtimeMode: queuedMessage.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+          interactionMode: queuedMessage.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
+        },
+        queuedMessageCatalog(queuedMessage, configResult.value, false),
+      );
       const deliveryResult = await startTurn({
         environmentId: queuedMessage.environmentId,
         input: buildProjectThreadStartTurnInput({
@@ -267,9 +323,9 @@ export function useThreadOutboxDrain(): void {
           createdAt: queuedMessage.createdAt,
           text: queuedMessage.text.trim(),
           attachments: queuedMessage.attachments,
-          modelSelection,
-          runtimeMode: queuedMessage.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-          interactionMode: queuedMessage.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
+          modelSelection: settings.modelSelection,
+          runtimeMode: settings.runtimeMode,
+          interactionMode: settings.interactionMode,
           workspaceMode: creation.workspaceMode,
           branch: creation.branch,
           worktreePath: creation.worktreePath,
@@ -279,7 +335,7 @@ export function useThreadOutboxDrain(): void {
       });
       return completeDelivery(deliveryResult);
     },
-    [makeDeliveryHelpers, startTurn],
+    [makeDeliveryHelpers, readConfig, startTurn],
   );
 
   useEffect(() => {

@@ -5,7 +5,11 @@ import {
   MessageId,
   ProjectId,
   ProviderInstanceId,
+  ProviderDriverKind,
   ThreadId,
+  EventId,
+  type ServerConfig,
+  type OrchestrationThreadActivity,
 } from "@codework/contracts";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
@@ -43,6 +47,170 @@ function queuedMessage(input: {
 }
 
 describe("thread outbox", () => {
+  const queuedModes = () => {
+    const selection = {
+      instanceId: ProviderInstanceId.make("codex_test"),
+      model: "fixture-model",
+      options: [
+        { id: "reasoningEffort", value: "medium" },
+        { id: "codexCollaborationMode", value: "plan" },
+      ],
+    };
+    const thread = {
+      modelSelection: selection,
+      runtimeMode: "approval-required" as const,
+      interactionMode: "plan" as const,
+    };
+    const message = {
+      ...queuedMessage({ messageId: "模式队列", createdAt: "2026-10-14T00:00:00.000Z" }),
+      ...thread,
+    };
+    const config = (modes: ReadonlyArray<string>) =>
+      ({
+        providers: [
+          {
+            instanceId: selection.instanceId,
+            driver: "codex",
+            enabled: true,
+            installed: true,
+            auth: { status: "authenticated", type: "none" },
+            showInteractionModeToggle: false,
+            models: [
+              {
+                slug: selection.model,
+                name: "受控模型",
+                capabilities: {
+                  optionDescriptors: [
+                    {
+                      id: "reasoningEffort",
+                      label: "推理",
+                      type: "select",
+                      currentValue: "medium",
+                      options: [{ id: "medium", label: "中" }],
+                    },
+                    ...(modes.length
+                      ? [
+                          {
+                            id: "codexCollaborationMode",
+                            label: "模式",
+                            type: "select",
+                            currentValue: modes[0],
+                            options: modes.map((id) => ({ id, label: id })),
+                          },
+                        ]
+                      : []),
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      }) as unknown as ServerConfig;
+    return { message, thread, config };
+  };
+
+  it("恢复发送按最新目录撤回Plan，保留推理与权限且不改写持久化队列", () => {
+    const { message, thread, config } = queuedModes();
+    const persisted = encodeQueuedThreadMessage(message);
+    const settings = resolveQueuedThreadSettings(message, thread, { config: config(["default"]) });
+    expect(settings.interactionMode).toBe("default");
+    expect(settings.modelSelection.options).toEqual([
+      { id: "reasoningEffort", value: "medium" },
+      { id: "codexCollaborationMode", value: "default" },
+    ]);
+    expect(settings.runtimeMode).toBe("approval-required");
+    expect(encodeQueuedThreadMessage(message)).toEqual(persisted);
+  });
+
+  it("恢复发送在模式全部撤回时删除旧选项，重新广告后仍尊重原计划意图", () => {
+    const { message, thread, config } = queuedModes();
+    const withdrawn = resolveQueuedThreadSettings(message, thread, { config: config([]) });
+    expect(withdrawn.interactionMode).toBe("default");
+    expect(withdrawn.modelSelection.options).toEqual([{ id: "reasoningEffort", value: "medium" }]);
+    const restored = resolveQueuedThreadSettings(message, thread, {
+      config: config(["default", "plan"]),
+    });
+    expect(restored.interactionMode).toBe("plan");
+    expect(restored.modelSelection.options).toEqual(message.modelSelection.options);
+  });
+
+  it("离线或缺少实例信息时保留队列原生意图，V1消息继承线程设置", () => {
+    const { message, thread } = queuedModes();
+    expect(resolveQueuedThreadSettings(message, thread, { config: null })).toEqual(thread);
+    expect(
+      resolveQueuedThreadSettings(message, thread, {
+        config: { providers: [] } as unknown as ServerConfig,
+      }),
+    ).toEqual(thread);
+    expect(
+      resolveQueuedThreadSettings(
+        queuedMessage({ messageId: "v1", createdAt: message.createdAt }),
+        thread,
+        { config: null },
+      ),
+    ).toEqual(thread);
+  });
+
+  it("其他实例的模式不能被借用，旧模型没有广告时撤回Codex模式", () => {
+    const { message, thread, config } = queuedModes();
+    const current = config(["default"]);
+    const other = config(["plan"]).providers[0]!;
+    const missingModel = {
+      ...current,
+      providers: [
+        { ...current.providers[0]!, models: [] },
+        { ...other, instanceId: ProviderInstanceId.make("other") },
+      ],
+    };
+    const settings = resolveQueuedThreadSettings(message, thread, { config: missingModel });
+    expect(settings.interactionMode).toBe("default");
+    expect(settings.modelSelection.options).toEqual([{ id: "reasoningEffort", value: "medium" }]);
+  });
+
+  it("恢复发送采用本线程ACP模式回执，保留原始URI并清理失效值", () => {
+    const { message, thread, config } = queuedModes();
+    const uri = "https://agentclientprotocol.com/protocol/session-modes#review";
+    const original = config([]).providers[0]!;
+    const current = {
+      ...config([]),
+      providers: [{ ...original, driver: ProviderDriverKind.make("acpAgent") }],
+    };
+    const activity: OrchestrationThreadActivity = {
+      id: EventId.make("mode"),
+      kind: "session.mode.updated",
+      tone: "info",
+      summary: "模式",
+      createdAt: message.createdAt,
+      turnId: null,
+      payload: {
+        providerInstanceId: original.instanceId,
+        mode: {
+          id: "acpMode",
+          label: "模式",
+          type: "select",
+          currentValue: uri,
+          options: [{ id: uri, label: "审查" }],
+        },
+      },
+    };
+    const settings = resolveQueuedThreadSettings(
+      {
+        ...message,
+        modelSelection: {
+          ...message.modelSelection,
+          options: [{ id: "acpMode", value: "removed" }],
+        },
+      },
+      thread,
+      { config: current, activities: [activity] },
+    );
+    expect(settings.interactionMode).toBe("default");
+    expect(settings.modelSelection.options).toEqual([
+      { id: "reasoningEffort", value: "medium" },
+      { id: "acpMode", value: uri },
+    ]);
+  });
+
   it("groups messages by scoped thread and preserves creation order", () => {
     const later = queuedMessage({
       messageId: "message-2",

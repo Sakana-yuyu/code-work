@@ -1136,6 +1136,14 @@ export function createServerEnvironmentAtoms<R, E>(
     updateStateAtom,
     settingsValueAtom,
     providersValueAtom,
+    readConfig: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:read-config",
+      tag: WS_METHODS.serverGetConfig,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId }) => environmentId,
+      },
+    }),
     mcpServers: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:mcp-servers",
       tag: WS_METHODS.serverGetMcpServers,

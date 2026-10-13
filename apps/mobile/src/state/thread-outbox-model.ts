@@ -1,4 +1,8 @@
 import { isTransportConnectionErrorMessage } from "@codework/client-runtime/errors";
+import {
+  applySessionModelCatalogs,
+  resolveProviderInteractionMode,
+} from "@codework/client-runtime/providerModels";
 import type { EnvironmentShellStatus } from "@codework/client-runtime/state/shell";
 import {
   CommandId,
@@ -14,12 +18,16 @@ import {
   type ProjectId as ProjectIdType,
   type ProviderInteractionMode as ProviderInteractionModeType,
   type RuntimeMode as RuntimeModeType,
+  type ServerConfig,
+  type OrchestrationThreadActivity,
+  CODEX_COLLABORATION_MODE_OPTION_ID,
 } from "@codework/contracts";
 import * as Schema from "effect/Schema";
 
 import { DraftComposerImageAttachmentSchema } from "../lib/composer-image-schema";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
 import { scopedThreadKey } from "../lib/scopedEntities";
+import { buildModelOptions } from "../lib/modelOptions";
 
 const THREAD_OUTBOX_SCHEMA_VERSION = 3;
 const THREAD_OUTBOX_MAX_RETRY_DELAY_MS = 16_000;
@@ -89,11 +97,53 @@ export interface ThreadSettingsSnapshot {
 export function resolveQueuedThreadSettings(
   message: QueuedThreadMessage,
   thread: ThreadSettingsSnapshot,
+  catalog?: {
+    readonly config: ServerConfig | null | undefined;
+    readonly activities?: ReadonlyArray<OrchestrationThreadActivity>;
+  },
 ): ThreadSettingsSnapshot {
-  return {
+  const settings = {
     modelSelection: message.modelSelection ?? thread.modelSelection,
     runtimeMode: message.runtimeMode ?? thread.runtimeMode,
     interactionMode: message.interactionMode ?? thread.interactionMode,
+  };
+  // 离线时保留持久化意图；恢复发送时采用消息所属环境的最新广告。
+  if (!catalog?.config) return settings;
+  const providers = applySessionModelCatalogs(catalog.config.providers, catalog.activities ?? []);
+  const option = buildModelOptions({ ...catalog.config, providers }, settings.modelSelection).find(
+    (candidate) =>
+      candidate.selection.instanceId === settings.modelSelection.instanceId &&
+      candidate.selection.model === settings.modelSelection.model,
+  );
+  let modelSelection = option?.selection ?? settings.modelSelection;
+  const provider = providers.find(
+    (candidate) => candidate.instanceId === modelSelection.instanceId,
+  );
+  // 旧模型可能没有能力描述；已在线的Codex也不能继续携带未广告的原生模式。
+  if (
+    provider?.driver === "codex" &&
+    !option?.capabilities?.optionDescriptors?.some(
+      (descriptor) => descriptor.id === CODEX_COLLABORATION_MODE_OPTION_ID,
+    ) &&
+    modelSelection.options?.some((selection) => selection.id === CODEX_COLLABORATION_MODE_OPTION_ID)
+  ) {
+    modelSelection = {
+      ...modelSelection,
+      options: modelSelection.options.filter(
+        (selection) => selection.id !== CODEX_COLLABORATION_MODE_OPTION_ID,
+      ),
+    };
+  }
+  return {
+    ...settings,
+    modelSelection,
+    interactionMode: resolveProviderInteractionMode({
+      providers,
+      instanceId: modelSelection.instanceId,
+      capabilities: option?.capabilities,
+      modelSelection,
+      interactionMode: settings.interactionMode,
+    }),
   };
 }
 

@@ -1208,3 +1208,23 @@ Codex 两态控件撤回，三端复用现有通用选项消费。普通发送�
 源码和定向用例核对十二类driver实际预算：Codex10秒、Claude30秒、Cursor/Grok/Kimi/Antigravity/OpenCode/Pi/OhMyPi/ZCode15秒、通用ACP8秒，BYOK实例与每个实际HTTP目录15秒且部分重叠目标仍共享。版本/准备/目录/技能各阶段消耗剩余预算，等价实例晚加入不续时；实际共享owner拥有取消信号。强/普通刷新、账号正反变化、输入冻结、缓存只作索引、等待者取消与无草稿会话的联合回归通过。具体十二行合同及对应测试入口写入providers，不能将静态声明误当原生目录广告：Codex和OpenCode由目录发现，ACP仅提供实际会话广告，Claude/ZCode保留真实运行绑定，BYOK/Antigravity/Pi/OhMyPi明确撤回未绑定的两态控制。
 
 本轮仅完善三份架构/验收文档，无新UI、协议、权限、缓存或会话实现；没有新三端产品、Windows CLI、外部供应商、iOS或公网relay/tunnel实际运行，也没有重新测帧率。Web/Desktop共用客户端控制，Mobile消费同一服务端快照；设置/聊天/命令/快捷键、本地/远程/隧道与反向状态的完整最终矩阵仍需逐项证明。第11项及第14项、完整39项/comparison额外范围继续进行。三文档可独立回退，无迁移；精确提交继续保护83个无关基线文件与原BYOK/ChatView/ChatComposer混合hunk。
+
+## 69. 手机持久化队列采用实际发送时的模式目录
+
+第68主题是有效进展。本轮基线bcac422c4，继续第11项的模式撤回边界；Electron替代自动化授权尚待答复，没有操作其窗口。源码确认Mobile只在入队时清理目录选项，outbox已有线程和新任务派发直接使用旧持久化设置。等待/离线期间目录变化会保留旧Plan，不能用菜单清理证明真正发送已一致。
+
+三生产源修改：thread-outbox-model在第三个可选目录输入中复用共享会话目录和模型选项归一化，同步规范模式；不改原消息、权限或旧两参数/V1继承行为，未知/离线仍保留意图。Codex旧模型未广告模式也清除原生模式，不借用其他实例。两个drain入口在确认持久化后读取所属环境当前配置，并在读取后复核编辑状态；新增共享客户端readConfig包装复用既有server.getConfig和按环境singleFlight。服务端只读取已发布provider投影，没有新增目录入口、wire字段、权限或草稿session。
+
+首版仅读取configValueAtom，五文件52项及Mobile类型/fmt/lint通过，但实际离线探针仍发送Plan，没有据此验收。配置流在恢复前后允许缓存值，不能保证已收到本轮快照；最终改为显式当前RPC。最终六文件71项通过：thread-outbox、drain派发入口、modelOptions、providerOptions、共享providerModels、共享state/server。新增9项断言覆盖撤回/恢复、推理与权限、实例/旧模型、ACP原始URI、离线/V1、持久化确认后的所属环境、新任务/已有线程、配置失败不删消息与读取期间进入编辑。Mobile和client-runtime目标tsgo、五源fmt/lint通过，检查前后SHA稳定。工作区外脚本首次多余括号导致解析失败，修正并先做node --check后运行；不计解析失败为测试通过。
+
+在检查停止后恢复候选两处Mobile生产源到旧HEAD，同一3个用例直接AssertionError，旧规范模式为plan、派发参数仍plan；退出1。finally恢复源码SHA一致，最终版相同3例退出0，final-red-proof中的oldExit=1/newExit=0/restored/directAssertion均符合预期。不是导入错误或超时对照。
+
+实际复用隔离emulator-5562与兼容开发客户端。三处最终生产源按测试候选SHA加载，未原生重建；仅重启捕获的本主题Metro。首次取包时端口尚未就绪，确认同一PID46604仍存活后继续读取，没有因观察失败再次重启。最终Android dev=true/minify=true包返回200，31,401,595字节，SHA-256 `f26a731312af0312d6f03e3e2898bcea60900e10feca931748b0cf1524c70271`，并通过开发菜单正式Reload确认重载，不能仅据同URL启动或HTTP取包宣称应用已加载。
+
+两轮忙碌探针在目录撤回前已进入RPC，未形成所需等待证据，不计为目录恢复派发通过；受控等待已释放，原始busy-attempt-proof保留。随后使用本任务模拟器的临时离线开关，原始状态disabled已记录。最终消息outbox-offline-fixed-69实际存入私有thread-outbox文件，schemaVersion3、messageId `4fdd00b3-b149-4963-a8ce-6a0217e468a2`、Plan选项/规范模式、Medium及approval-required完整保留，RPC中尚未出现该文本。只读取这条指定、无附件的合成消息，不读认证文件或修改客户端存储。Web正式刷新fixture为default-only，菜单实际只显示原生默认；恢复联网后真实Windows worker PID138112仅收到一次该消息，mode=default、untrusted/readOnly。只读SQLite同时保存default原生选项/default规范模式、Medium与approval-required，用户ID仍与文件一致，新增用户/助手两行完整，session ready、active_turn_id为空；原生界面显示完整默认回复，物理outbox目录为空。
+
+原生页面仍显示历史探针留下的1条队列计数，未把物理文件移除改写为整队列UI清空；第19项须继续对账。中间离线消息outbox-offline-refresh-69曾收到plan，与最终有效消息分开记录，不将失败抹去。即时SDK在路由/网络切换帧偶有空前台包，改用静态空闲层级核对，未复用旧XML或据空帧重启。没有通过SQL或隐藏RPC写入业务状态代替UI。
+
+原始证据在工作区外catalog-outbox-modes-{core,typecheck-mobile,typecheck-client-runtime,format,lint,final-old,final-green}.log、final-red-proof、final-native-source、final-queue-proof、final-runtime-proof及层级/PNG。可视化目录android-outbox-catalog-fixed.png、android-outbox-catalog-proof.json与outbox-catalog-default-only.png可查看。完成后恢复fixture原文件SHA、移除仅本主题两控制文件，通过实例停用释放PID138112再启用/刷新原目录；恢复飞行模式disabled，仅移除客户端13774测试连接，保留13773/13811，撤销reverse8088并停止捕获Metro46604。保留模拟器、Web/backend和服务端线程数据。
+
+本主题实际为Web目录撤回操作、Android已有线程离线恢复及Windows受控协议进程；不是外部供应商/真实账号验收。新任务派发有入口集成断言，ACP URI为定向证据，没有新任务设备、Electron、iOS、公网relay/tunnel或帧率实测。十二类provider沿用既有决定；新客户端RPC不执行供应商探测，Web/Desktop不改变发送入口。没有动画、全局订阅、持久格式迁移或审批放宽，队列参数规范化后仍走既有消息/命令身份。第11项完整矩阵、第14/19项及全部39项/comparison继续进行。五源与四文档可独立回退，原83个无关基线及BYOK/ChatView/ChatComposer混合hunk继续保护。
