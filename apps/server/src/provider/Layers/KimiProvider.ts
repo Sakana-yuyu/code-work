@@ -1,15 +1,26 @@
-import type { KimiSettings, ServerProvider, ServerProviderModel } from "@codework/contracts";
+import {
+  type KimiSettings,
+  ProviderDriverKind,
+  type ServerProvider,
+  type ServerProviderModel,
+} from "@codework/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import { resolveSpawnCommand } from "@codework/shared/shell";
+import {
+  cliProviderCatalogIdentity,
+  makeCliProviderCatalog,
+  type CliProviderCatalog,
+} from "../CliProviderCatalog.ts";
 
 import {
   buildServerProvider,
   collectStreamAsString,
   isCommandMissingCause,
+  providerCustomModelSlugs,
   providerModelsFromSettings,
   parseGenericCliVersion,
   type ServerProviderDraft,
@@ -22,18 +33,41 @@ const PRESENTATION = {
 } as const;
 
 const EMPTY_MODELS: ReadonlyArray<ServerProviderModel> = [];
+const CUSTOM_MODEL_CAPABILITIES = { optionDescriptors: [] } as const;
 
-export function buildInitialKimiProviderSnapshot(
-  settings: KimiSettings,
-): Effect.Effect<ServerProviderDraft> {
-  return Effect.map(DateTime.now, (now) =>
-    buildServerProvider({
+export const fetchKimiCatalog = Effect.fn("fetchKimiCatalog")(function* (
+  settings: Pick<KimiSettings, "customModels">,
+  catalog?: CliProviderCatalog,
+) {
+  // 键与加载器共用本次数组快照，后续设置编辑不会污染已经发布的目录。
+  const customModels = providerCustomModelSlugs(EMPTY_MODELS, settings.customModels);
+  const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
+  return yield* providerCatalog
+    .fetchCatalog({
+      key: cliProviderCatalogIdentity({
+        driver: ProviderDriverKind.make("kimi"),
+        operation: "configured-models",
+        config: { customModels, capabilities: CUSTOM_MODEL_CAPABILITIES },
+      }),
+      load: Effect.sync(() => ({
+        models: providerModelsFromSettings(EMPTY_MODELS, customModels, CUSTOM_MODEL_CAPABILITIES),
+      })),
+    })
+    .pipe(Effect.orDie);
+});
+
+export const buildInitialKimiProviderSnapshot = Effect.fn("buildInitialKimiProviderSnapshot")(
+  function* (
+    settings: KimiSettings,
+    catalog?: CliProviderCatalog,
+  ): Effect.fn.Return<ServerProviderDraft> {
+    const now = yield* DateTime.now;
+    const { models } = yield* fetchKimiCatalog(settings, catalog);
+    return buildServerProvider({
       presentation: PRESENTATION,
       enabled: settings.enabled,
       checkedAt: DateTime.formatIso(now),
-      models: providerModelsFromSettings(EMPTY_MODELS, settings.customModels, {
-        optionDescriptors: [],
-      }),
+      models,
       probe: {
         installed: false,
         version: null,
@@ -43,18 +77,17 @@ export function buildInitialKimiProviderSnapshot(
           ? "正在检查 Kimi CLI；官方登录请运行 `kimi login`。"
           : "Kimi CLI 已在 Code Work 设置中禁用。",
       },
-    }),
-  );
-}
+    });
+  },
+);
 
 export const checkKimiProviderStatus = Effect.fn("checkKimiProviderStatus")(function* (
   settings: KimiSettings,
   environment?: NodeJS.ProcessEnv,
+  catalog?: CliProviderCatalog,
 ): Effect.fn.Return<ServerProviderDraft, never, ChildProcessSpawner.ChildProcessSpawner> {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
-  const models = providerModelsFromSettings(EMPTY_MODELS, settings.customModels, {
-    optionDescriptors: [],
-  });
+  const { models } = yield* fetchKimiCatalog(settings, catalog);
   // 探测不受开关影响：禁用只决定状态文案，安装与否必须如实上报，
   // 否则已装 CLI 的禁用实例会一直挂着「安装 CLI」按钮。
   const probe = yield* Effect.gen(function* () {

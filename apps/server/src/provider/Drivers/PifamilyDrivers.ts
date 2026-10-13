@@ -56,6 +56,7 @@ import {
   enrichPifamilySnapshot,
 } from "../Layers/PifamilyProvider.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   defaultProviderContinuationIdentity,
@@ -170,8 +171,17 @@ function makePifamilyDriver<Settings extends PifamilySettings>(
     metadata: { displayName: spec.displayName, supportsMultipleInstances: true },
     configSchema: spec.configSchema,
     defaultConfig: spec.defaultConfig,
-    create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
+    create: ({
+      instanceId,
+      displayName,
+      accentColor,
+      environment,
+      enabled,
+      config,
+      catalog: sharedCatalog,
+    }) =>
       Effect.gen(function* () {
+        const catalog = sharedCatalog ?? (yield* makeCliProviderCatalog());
         const crypto = yield* Crypto.Crypto;
         const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
         const fileSystem = yield* FileSystem.FileSystem;
@@ -290,6 +300,7 @@ function makePifamilyDriver<Settings extends PifamilySettings>(
             driverKind: spec.driverKind,
             settings: effectiveConfig,
             routes,
+            catalog,
             environment: managedProcessEnv,
           });
         }).pipe(
@@ -300,6 +311,7 @@ function makePifamilyDriver<Settings extends PifamilySettings>(
               driverKind: spec.driverKind,
               settings: effectiveConfig,
               routes: [],
+              catalog,
             }).pipe(Effect.map(stampIdentity)),
           ),
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -310,6 +322,7 @@ function makePifamilyDriver<Settings extends PifamilySettings>(
           serverSettings,
         );
         const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<Settings>>({
+          usesCatalogCache: true,
           maintenanceCapabilities,
           getSettings: snapshotSettings.getSettings,
           streamSettings: snapshotSettings.streamSettings,
@@ -322,6 +335,7 @@ function makePifamilyDriver<Settings extends PifamilySettings>(
                   driverKind: spec.driverKind,
                   settings: effectiveConfig,
                   routes,
+                  catalog,
                 }),
               ),
               Effect.map(stampIdentity),

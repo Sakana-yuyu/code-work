@@ -18,6 +18,7 @@ import {
 } from "../byok/modelGateway.ts";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ProviderDriverError } from "../Errors.ts";
+import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
 import { makeCursorAdapter } from "../Layers/CursorAdapter.ts";
 import {
   buildInitialKimiProviderSnapshot,
@@ -101,7 +102,7 @@ export const KimiDriver: ProviderDriver<KimiSettings, KimiDriverEnv> = {
   metadata: { displayName: "Kimi", supportsMultipleInstances: true },
   configSchema: KimiSettings,
   defaultConfig: (): KimiSettings => decodeKimiSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
+  create: ({ instanceId, displayName, accentColor, environment, enabled, config, catalog }) =>
     Effect.gen(function* () {
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -111,6 +112,7 @@ export const KimiDriver: ProviderDriver<KimiSettings, KimiDriverEnv> = {
       const serverSettings = yield* ServerSettingsService;
       const secretStore = yield* ServerSecretStore;
       const eventLoggers = yield* ProviderEventLoggers;
+      const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
       const baseProcessEnv = mergeProviderInstanceEnvironment(environment);
       // BYOK 网关路由替换 CLI 自身的模型端点：开启时注入变量覆盖同名实例环境。
       const processEnv =
@@ -163,7 +165,11 @@ export const KimiDriver: ProviderDriver<KimiSettings, KimiDriverEnv> = {
         clientName: "code-work-kimi-text",
         supportsModelSelection: false,
       });
-      const checkProvider = checkKimiProviderStatus(effectiveConfig, processEnv).pipe(
+      const checkProvider = checkKimiProviderStatus(
+        effectiveConfig,
+        processEnv,
+        providerCatalog,
+      ).pipe(
         Effect.map(stampIdentity),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       );
@@ -174,10 +180,13 @@ export const KimiDriver: ProviderDriver<KimiSettings, KimiDriverEnv> = {
         streamSettings: snapshotSettings.streamSettings,
         haveSettingsChanged: haveProviderSnapshotSettingsChanged,
         initialSnapshot: (settings) =>
-          buildInitialKimiProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
+          buildInitialKimiProviderSnapshot(settings.provider, providerCatalog).pipe(
+            Effect.map(stampIdentity),
+          ),
         prepareSnapshot: (snapshot) =>
           prepareRoutedProviderSnapshot(snapshot, config, serverSettings.getSettings),
         checkProvider,
+        usesCatalogCache: true,
         enrichSnapshot: ({ snapshot: currentSnapshot, publishSnapshot }) =>
           enrichKimiSnapshot({ snapshot: stampIdentity(currentSnapshot), publishSnapshot }),
       }).pipe(

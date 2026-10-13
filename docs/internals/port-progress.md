@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题                    |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归                       |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                          |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（BYOK、Cursor、Grok 统一入口及共享缓存）              | ProviderCatalogCache / ByokCatalog / CliProviderCatalog / makeManagedServerProvider / ACP 准备             | 第43—47主题完成无会话、三类目录跨实例等价缓存及同设置刷新合并；其余九个 CLI 入口/模型模式收敛、全 driver deadline/同一 signal 仍开放 |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（九类 provider 的配置/发现目录统一及共享缓存）       | ProviderCatalogCache / ByokCatalog / CliProviderCatalog / makeManagedServerProvider / ACP 准备             | 第43—48主题完成无会话、九类目录跨实例等价缓存及同设置刷新合并；Codex/Claude/OpenCode 原生目录、模型模式剩余边界、全 driver deadline/同一 signal 仍开放 |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                | 尚未运行                                                                                                                        |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                       | B19 为部分底座，验收尚未运行                                                                                                    |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 待实施                                                       | ProviderAdapterCapabilities / server config / 三端控制                                                     | 尚未运行                                                                                                                        |
@@ -840,3 +840,21 @@ Cursor 使用准备后的 `cursor/list_available_models`，受控请求日志严
 此行为由服务器提供，Web/Desktop/Mobile 既有设置刷新、模型选择及本地/远程/隧道请求共享；聊天/命令面板/快捷键没有新增入口，wire、权限、持久结构、会话审批与帧率实现未变。失败再刷新、配置变化、实例关闭/重建、改名和自定义模型隔离均有定向覆盖。BYOK沿用第46主题，Codex、Claude、OpenCode、GenericACP、Kimi、Antigravity、Pi、OhMyPi、ZCode保留原目录行为，后续继续收敛。
 
 本轮没有真实外部Cursor/Grok账号、三端UI或新服务启动验收，保留服务未加载新主题。回退本主题恢复原探测与环境解析行为，无数据迁移。第11项仍开放其余九个CLI统一入口、完整模型/模式目录、所有provider单一总deadline及共享AbortSignal；两CLI现有分阶段超时不能视为统一总预算。完整39项及comparison额外范围保持不变。
+
+## 48. 六类 CLI 的配置模型目录共享与动态状态隔离
+
+Kimi、Antigravity、通用 ACP 的配置模型，以及 Pi/OhMyPi/ZCode 的路由模型，初始快照和健康检查统一经过 `CliProviderCatalog.fetchCatalog`。五个 driver 源文件复用 registry 传入的目录对象，未注入时创建私有对象；Pi 系及 ZCode 的异常草稿也传入同一对象。六个 driver 均启用 `usesCatalogCache`：普通检查复用一分钟成功值，手动刷新重新生成，实例 adapter 和会话各自独立。
+
+这些目录由本地配置映射而成，不启动模型探针或创建 session，因此缓存身份不包含实例名称、进程命令、cwd、环境或账号。Pi 系只快照实际显示所需的 adapterId、displayName、trim(modelId)，保留路由顺序，忽略当前映射不用的协议、上下文窗口和来源账号。Kimi/Antigravity/GenericACP 复用 `providerCustomModelSlugs`，先规范化自定义模型，再让键和加载器共用同一数组快照。默认模型与能力声明没有改变；GenericACP 的 `default` 仍代表 CLI 自选，能力为 null。
+
+独立审核发现并修复等价配置分裂：原先原始 `customModels` 参与键，而展示层另行 trim、去空、去重，导致相同目录不能共享。现在目录键和 `providerModelsFromSettings` 共用同一规则，保留首见顺序并排除内置重复项。旧归一化边界的两个反例明确断言失败，修正后通过。另分别换回 HEAD 第47主题的 GenericACP driver 和 Pi 系快照层，得到一个及三个引用共享断言失败；三组对照均只替换外部候选，finally 按字节恢复，原始失败日志保留。
+
+版本、安装、启用、认证和检查时间继续在目录之外更新。Kimi/Antigravity 禁用实例仍检查安装，Pi 系保持禁用时不启动版本探针的既有行为。ZCode 测试在目录引用保持一致时，读取临时受管目录里的加密测试凭据，验证未登录→账号A→账号B→退出，认证随每次检查更新。Kimi 的 `routeThroughByok` 最终发布仍经过当前网关设置的实时路由覆盖，此处不声明所有最终 models 引用共享；会话内动态模式也不缓存为全局目录。
+
+主线程以 HEAD 第47主题加15源形成纯候选，运行 `vp test run --config .candidate-test.config.ts` 指定14文件：`Drivers/GenericAcpDriver.test.ts`、`Drivers/GenericAcpDriver.settings.test.ts`、`Drivers/PifamilyDrivers.catalog.test.ts`、`Drivers/ZCodeDriver.test.ts`、`Layers/ConfiguredCliProvider.catalog.test.ts`、`Layers/PifamilyProvider.catalog.test.ts`、`Layers/KimiProvider.test.ts`、`Layers/AntigravityProvider.test.ts`、`providerSnapshot.test.ts`、`CliProviderCatalog.test.ts`、`ProviderCatalogCache.test.ts`、`makeManagedServerProvider.test.ts`、`pifamily/PifamilyByokRouting.e2e.test.ts`、`Layers/ProviderInstanceRegistryLive.catalog.test.ts`，共94项通过，62.68秒。路径均位于 `apps/server/src/provider/`。服务端目标 `tsgo --noEmit -p apps/server/.streaming-typecheck.json`、15源格式和lint检查通过；lint保留6处HEAD已有告警，没有新增告警。Node既有Windows shell DEP0190提示保留，没有运行全仓检查。
+
+旧实现恢复及新增测试的Schema编译位置修正后，最终再跑 GenericACP、Pi系driver、两组配置目录四个测试文件，36项通过，39.23秒；这些属于上面的94项，不重复计数。最终15源格式、lint与目标类型检查再次通过。
+
+独立审核在外部候选添加一次真实 GenericACP driver 组合测试，1/1通过，3.86秒：有空格/重复/内置default的配置与规范配置共享一次加载，身份和adapter独立、全部session列表为空，手动刷新使加载次数加一，第三等价实例复用刷新结果；实际子进程仅执行 Node `--version`。十个生产源的工作区/候选SHA一致，临时审核文件和日志保留在工作区外，不提交。与主矩阵合计95个不同用例。审核后的确定缺陷均已修复。
+
+Web/Desktop/Mobile 的现有模型选择和设置刷新，以及本地/远程/隧道，都继续使用服务端快照；没有新增 UI、wire 字段、权限、快捷键、持续动画或持久结构。其他provider：BYOK/Cursor/Grok沿用此前共享目录；Codex/Claude/OpenCode原生目录尚待接入。修改配置后得到新目录、手动刷新、TTL、实例重建与私有缓存隔离有定向覆盖；没有真实供应商账号、三端操作或新服务运行验收，保留服务未加载本主题。回退这15个源文件可恢复此前目录行为，不涉及数据迁移。第11项仍在进行，统一总deadline、同一AbortSignal以及模型/模式的剩余边界继续开放，全部39项和comparison额外范围不缩减。

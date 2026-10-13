@@ -19,9 +19,11 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { clearMcpProviderSession, setMcpProviderSession } from "../../mcp/McpProviderSession.ts";
 import { NoOpProviderEventLoggers, ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { classifyAcpCommandProbe, GenericAcpDriver } from "./GenericAcpDriver.ts";
+import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
 import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 
 const decodeAcpSettings = Schema.decodeEffect(AcpAgentSettings);
+const decodeAcpSettingsSync = Schema.decodeSync(AcpAgentSettings);
 const encodeLiteral = Schema.encodeSync(Schema.fromJsonString(Schema.String));
 const decodeArgs = Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Schema.String)));
 
@@ -34,6 +36,59 @@ const driverTestLayer = Layer.mergeAll(BackgroundPolicy.layer, ServerSecretStore
 );
 
 it.layer(driverTestLayer)("ACP 命令实际启动", (it) => {
+  it.effect("等价配置共享目录，命令健康仍独立检查且刷新不创建会话", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "acp-catalog-" });
+      const log = NodePath.join(directory, "calls.ndjson");
+      const launcher = NodePath.join(directory, "fixture.mjs");
+      yield* fs.writeFileString(
+        launcher,
+        `import { appendFileSync } from "node:fs";
+appendFileSync(${encodeLiteral(log)}, JSON.stringify(process.argv.slice(2)) + "\\n");
+if (!process.argv.includes("--version")) process.exit(8);
+if (process.argv.includes("--fail")) process.exit(2);
+console.log("1.0.0");
+`,
+      );
+      const catalog = yield* makeCliProviderCatalog();
+      const create = (id: string, fail: boolean, customModels: ReadonlyArray<string>) =>
+        GenericAcpDriver.create({
+          instanceId: ProviderInstanceId.make(id),
+          displayName: id,
+          enabled: true,
+          environment: [{ name: "ACCOUNT", value: id, sensitive: false }],
+          catalog,
+          config: decodeAcpSettingsSync({
+            command: `"${process.execPath}" "${launcher}"${fail ? " --fail" : ""}`,
+            customModels,
+          }),
+        });
+      const first = yield* create("acp-catalog-one", false, ["model-a"]);
+      const firstInitial = yield* first.snapshot.getSnapshot;
+      const second = yield* create("acp-catalog-two", true, ["model-a"]);
+      const secondInitial = yield* second.snapshot.getSnapshot;
+      expect(secondInitial.models).toBe(firstInitial.models);
+      expect(secondInitial.instanceId).not.toBe(firstInitial.instanceId);
+      expect(first.adapter).not.toBe(second.adapter);
+      const changed = yield* create("acp-catalog-three", false, ["model-b"]);
+      expect((yield* changed.snapshot.getSnapshot).models).not.toBe(firstInitial.models);
+      const refreshed = yield* first.snapshot.refresh;
+      expect(refreshed.status).toBe("ready");
+      expect(refreshed.models).toEqual(firstInitial.models);
+      expect(refreshed.models).not.toBe(firstInitial.models);
+      const failed = yield* second.snapshot.refresh;
+      expect(failed.status).toBe("error");
+      expect(failed.auth.status).toBe("unknown");
+      expect(failed.models).toEqual(refreshed.models);
+      const calls = yield* Effect.forEach(
+        (yield* fs.readFileString(log)).trim().split("\n"),
+        (line) => decodeArgs(line),
+      );
+      expect(calls.length).toBeGreaterThanOrEqual(2);
+      expect(calls.every((args) => args.includes("--version"))).toBe(true);
+    }),
+  );
   it.effect("空认证配置贯穿驱动，新建和恢复不发送 authenticate", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

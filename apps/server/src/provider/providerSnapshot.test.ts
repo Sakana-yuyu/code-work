@@ -11,6 +11,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import {
   isCommandMissingCause,
+  providerCustomModelSlugs,
   providerModelsFromSettings,
   spawnAndCollect,
 } from "./providerSnapshot.ts";
@@ -35,6 +36,28 @@ const OPENCODE_CUSTOM_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabil
 });
 
 describe("providerModelsFromSettings", () => {
+  it("规范化顺序与目录一致，忽略空项重复项和内置模型且不修改输入", () => {
+    const capabilities = createModelCapabilities({ optionDescriptors: [] });
+    const builtin = { slug: "built-in", name: "Built In", isCustom: false, capabilities };
+    const customModels = Object.freeze([
+      " z-model ",
+      " built-in ",
+      "",
+      "  ",
+      "z-model",
+      " a-model ",
+    ]);
+    const normalized = providerCustomModelSlugs([builtin], customModels);
+    const models = providerModelsFromSettings([builtin], customModels, capabilities);
+    expect(normalized).toEqual(["z-model", "a-model"]);
+    expect(models.map((model) => model.slug)).toEqual(["built-in", ...normalized]);
+    expect(models[0]).toBe(builtin);
+    expect(
+      models.slice(1).every((model) => model.isCustom && model.capabilities === capabilities),
+    ).toBe(true);
+    expect(customModels).toEqual([" z-model ", " built-in ", "", "  ", "z-model", " a-model "]);
+  });
+
   it("applies the provided capabilities to custom models", () => {
     const models = providerModelsFromSettings(
       [],

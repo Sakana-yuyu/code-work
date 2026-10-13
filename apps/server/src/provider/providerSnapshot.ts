@@ -138,14 +138,13 @@ export function parseGenericCliVersion(output: string): string | null {
   return match?.[1] ?? null;
 }
 
-export function providerModelsFromSettings(
-  builtInModels: ReadonlyArray<ServerProviderModel>,
+/** 目录身份与输出共用规范化规则，保留首见顺序并排除已存在的内置模型。 */
+export function providerCustomModelSlugs(
+  builtInModels: ReadonlyArray<Pick<ServerProviderModel, "slug">>,
   customModels: ReadonlyArray<string>,
-  customModelCapabilities: ModelCapabilities,
-): ReadonlyArray<ServerProviderModel> {
-  const resolvedBuiltInModels = [...builtInModels];
-  const seen = new Set(resolvedBuiltInModels.map((model) => model.slug));
-  const customEntries: ServerProviderModel[] = [];
+): ReadonlyArray<string> {
+  const seen = new Set(builtInModels.map((model) => model.slug));
+  const slugs: string[] = [];
 
   for (const candidate of customModels) {
     const normalized = normalizeCustomModelSlug(candidate);
@@ -153,15 +152,23 @@ export function providerModelsFromSettings(
       continue;
     }
     seen.add(normalized);
-    customEntries.push({
-      slug: normalized,
-      name: normalized,
-      isCustom: true,
-      capabilities: customModelCapabilities,
-    });
+    slugs.push(normalized);
   }
+  return slugs;
+}
 
-  return [...resolvedBuiltInModels, ...customEntries];
+export function providerModelsFromSettings(
+  builtInModels: ReadonlyArray<ServerProviderModel>,
+  customModels: ReadonlyArray<string>,
+  customModelCapabilities: ModelCapabilities,
+): ReadonlyArray<ServerProviderModel> {
+  const customEntries = providerCustomModelSlugs(builtInModels, customModels).map((slug) => ({
+    slug,
+    name: slug,
+    isCustom: true,
+    capabilities: customModelCapabilities,
+  }));
+  return [...builtInModels, ...customEntries];
 }
 
 export function buildSelectOptionDescriptor(input: {

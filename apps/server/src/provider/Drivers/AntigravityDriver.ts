@@ -11,6 +11,7 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeAntigravityTextGeneration } from "../../textGeneration/AntigravityTextGeneration.ts";
 import { ProviderDriverError } from "../Errors.ts";
+import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
 import { makeAntigravityAdapter } from "../Layers/AntigravityAdapter.ts";
 import {
   buildInitialAntigravityProviderSnapshot,
@@ -93,7 +94,7 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
   metadata: { displayName: "Antigravity", supportsMultipleInstances: true },
   configSchema: AntigravitySettings,
   defaultConfig: (): AntigravitySettings => decodeAntigravitySettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
+  create: ({ instanceId, displayName, accentColor, environment, enabled, config, catalog }) =>
     Effect.gen(function* () {
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -102,6 +103,7 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
       const serverConfig = yield* ServerConfig;
       const serverSettings = yield* ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
+      const providerCatalog = catalog ?? (yield* makeCliProviderCatalog());
       const processEnv = mergeProviderInstanceEnvironment(environment);
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
@@ -131,7 +133,11 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
         effectiveConfig,
         processEnv,
       ) as unknown as Effect.Effect<ProviderInstance["textGeneration"]>;
-      const checkProvider = checkAntigravityProviderStatus(effectiveConfig, processEnv).pipe(
+      const checkProvider = checkAntigravityProviderStatus(
+        effectiveConfig,
+        processEnv,
+        providerCatalog,
+      ).pipe(
         Effect.map(stampIdentity),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       );
@@ -144,10 +150,11 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
         streamSettings: snapshotSettings.streamSettings,
         haveSettingsChanged: haveProviderSnapshotSettingsChanged,
         initialSnapshot: (settings) =>
-          buildInitialAntigravityProviderSnapshot(settings.provider).pipe(
+          buildInitialAntigravityProviderSnapshot(settings.provider, providerCatalog).pipe(
             Effect.map(stampIdentity),
           ),
         checkProvider,
+        usesCatalogCache: true,
         enrichSnapshot: ({ snapshot: currentSnapshot, publishSnapshot }) =>
           enrichAntigravitySnapshot({ snapshot: stampIdentity(currentSnapshot), publishSnapshot }),
       }).pipe(

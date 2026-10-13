@@ -30,8 +30,9 @@ export const cliProviderCatalogIdentity = (input: {
   readonly driver: ProviderDriverKind;
   readonly operation: string;
   readonly config: unknown;
-  readonly cwd: string;
-  readonly environment: NodeJS.ProcessEnv;
+  /** 纯配置目录没有进程；原生探针必须传入实际工作目录与环境快照。 */
+  readonly cwd?: string;
+  readonly environment?: NodeJS.ProcessEnv;
 }): string => NodeCrypto.createHash("sha256").update(stableStringify(input)).digest("hex");
 
 export interface CliProviderCatalog {

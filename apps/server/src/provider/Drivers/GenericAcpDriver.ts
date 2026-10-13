@@ -38,11 +38,13 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeCursorTextGeneration } from "../../textGeneration/CursorTextGeneration.ts";
 import { ProviderDriverError } from "../Errors.ts";
+import { cliProviderCatalogIdentity, makeCliProviderCatalog } from "../CliProviderCatalog.ts";
 import { makeCursorAdapter } from "../Layers/CursorAdapter.ts";
 import {
   buildServerProvider,
   collectStreamAsString,
   isCommandMissingCause,
+  providerCustomModelSlugs,
   providerModelsFromSettings,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
@@ -166,8 +168,9 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
   metadata: { displayName: "ACP Agent", supportsMultipleInstances: true },
   configSchema: AcpAgentSettings,
   defaultConfig: (): AcpAgentSettings => decodeAcpSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
+  create: ({ instanceId, displayName, accentColor, environment, enabled, config, catalog }) =>
     Effect.gen(function* () {
+      const sharedCatalog = catalog ?? (yield* makeCliProviderCatalog());
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -217,6 +220,25 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
         continuationGroupKey: continuationIdentity.continuationKey,
       });
       const effectiveConfig = { ...config, enabled } satisfies AcpAgentSettings;
+      // 配置目录不探测进程；实例命令、认证和启用状态在目录外检查。
+      const customModels = providerCustomModelSlugs(
+        CLI_DEFAULT_MODELS,
+        effectiveConfig.customModels,
+      );
+      const fetchCatalog = sharedCatalog
+        .fetchCatalog({
+          key: cliProviderCatalogIdentity({
+            driver: DRIVER_KIND,
+            operation: "configured-models",
+            config: { customModels },
+          }),
+          load: Effect.sync(() => ({
+            models: providerModelsFromSettings(CLI_DEFAULT_MODELS, customModels, {
+              optionDescriptors: [],
+            }),
+          })),
+        })
+        .pipe(Effect.orDie);
 
       const maintenanceCapabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
         MAINTENANCE,
@@ -257,13 +279,7 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
       // 探测：命令可执行且不抛 ENOENT 即视为 installed；模型目录来自 customModels。
       const checkProvider = Effect.gen(function* () {
         const checkedAt = DateTime.formatIso(yield* DateTime.now);
-        const models = providerModelsFromSettings(
-          CLI_DEFAULT_MODELS,
-          effectiveConfig.customModels,
-          {
-            optionDescriptors: [],
-          },
-        );
+        const { models } = yield* fetchCatalog;
         const probe = yield* Effect.gen(function* () {
           const spawnCommand = yield* resolveSpawnCommand(acpCommand, [...acpArgs, "--version"], {
             env: injectedEnv,
@@ -324,6 +340,7 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
       const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, serverSettings);
       const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<AcpAgentSettings>>(
         {
+          usesCatalogCache: true,
           maintenanceCapabilities,
           getSettings: snapshotSettings.getSettings,
           streamSettings: snapshotSettings.streamSettings,
@@ -331,18 +348,13 @@ export const GenericAcpDriver: ProviderDriver<AcpAgentSettings, GenericAcpDriver
           initialSnapshot: () =>
             Effect.gen(function* () {
               const checkedAt = DateTime.formatIso(yield* DateTime.now);
+              const { models } = yield* fetchCatalog;
               return stampIdentity(
                 buildServerProvider({
                   presentation: PRESENTATION,
                   enabled: effectiveConfig.enabled,
                   checkedAt,
-                  models: providerModelsFromSettings(
-                    CLI_DEFAULT_MODELS,
-                    effectiveConfig.customModels,
-                    {
-                      optionDescriptors: [],
-                    },
-                  ),
+                  models,
                   probe: {
                     installed: commandParts.length > 0,
                     version: null,

@@ -64,6 +64,7 @@ import {
   enrichPifamilySnapshot,
 } from "../Layers/PifamilyProvider.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   defaultProviderContinuationIdentity,
@@ -123,8 +124,17 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
   metadata: { displayName: "ZCode", supportsMultipleInstances: true },
   configSchema: ZCodeAgentSettings,
   defaultConfig: (): ZCodeAgentSettings => decodeZCodeSettings({}),
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
+  create: ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config,
+    catalog: sharedCatalog,
+  }) =>
     Effect.gen(function* () {
+      const catalog = sharedCatalog ?? (yield* makeCliProviderCatalog());
       const crypto = yield* Crypto.Crypto;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
@@ -324,6 +334,7 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
           driverKind: "zcodeAgent",
           settings: { ...effectiveConfig, binaryPath: spawnTarget.command },
           routes,
+          catalog,
           environment: { ...managedProcessEnv, ...zcodeSpawnEnv(spawnTarget) },
           spawnArgsPrefix: spawnTarget.argsPrefix,
           displayBinaryPath: spawnTarget.displayPath,
@@ -338,6 +349,7 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
             driverKind: "zcodeAgent",
             settings: effectiveConfig,
             routes: [],
+            catalog,
           }).pipe(Effect.map(stampIdentity)),
         ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -347,6 +359,7 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
       const snapshot = yield* makeManagedServerProvider<
         ProviderSnapshotSettings<ZCodeAgentSettings>
       >({
+        usesCatalogCache: true,
         maintenanceCapabilities,
         getSettings: snapshotSettings.getSettings,
         streamSettings: snapshotSettings.streamSettings,
@@ -359,6 +372,7 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
                 driverKind: "zcodeAgent",
                 settings: effectiveConfig,
                 routes,
+                catalog,
               }),
             ),
             Effect.flatMap(decorateOfficialAuth),

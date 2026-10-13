@@ -6,7 +6,7 @@
 
 ## 供应商状态刷新
 
-内置 driver 的快照均通过 `makeManagedServerProvider` 管理。同一实例且快照设置等价时，默认共享在途检查；设置不同则分别排队，实际检查仍由原 semaphore 串行执行。接入目录缓存的 driver 设置 `usesCatalogCache`，初次、设置变化及周期检查允许命中缓存，公开 `refresh` 强制目录更新。强制请求只加入已有强制检查，避免普通检查已读旧缓存后吞掉手动刷新；普通请求可加入任一同设置检查。当前 BYOK、Cursor、Grok 接入这一缓存语义，其他 driver 保持已有合并方式。检查前后都核对设置，过期结果不发布；异步补充快照同时受设置和 generation 约束。这里的快照设置不代替 provider 配置：driver 的 `checkProvider` 仍捕获创建时配置，配置热更新由 registry 关闭旧 Scope、重建实例。
+内置 driver 的快照均通过 `makeManagedServerProvider` 管理。同一实例且快照设置等价时，默认共享在途检查；设置不同则分别排队，实际检查仍由原 semaphore 串行执行。接入目录缓存的 driver 设置 `usesCatalogCache`，初次、设置变化及周期检查允许命中缓存，公开 `refresh` 强制目录更新。强制请求只加入已有强制检查，避免普通检查已读旧缓存后吞掉手动刷新；普通请求可加入任一同设置检查。当前 BYOK、Cursor、Grok、Kimi、Antigravity、Pi、OhMyPi、ZCode、通用 ACP 接入这一缓存语义，Codex、Claude、OpenCode 保持已有合并方式。检查前后都核对设置，过期结果不发布；异步补充快照同时受设置和 generation 约束。这里的快照设置不代替 provider 配置：driver 的 `checkProvider` 仍捕获创建时配置，配置热更新由 registry 关闭旧 Scope、重建实例。
 
 共享检查属于 provider Scope，调用者取消只结束自身等待。Scope 关闭时终止检查并唤醒全部等待者；失败清理登记后允许下一次刷新。短暂登记和退出清理不可中断，独立检查主体明确可中断，不继承父调用者的不可中断状态。完成结果以 `Deferred<Exit>` 共享，然后由各等待者重放，避免中断传播破坏共享唤醒。本机制不增加刷新缓存或统一超时，无等待者的检查仍会执行至完成或 Scope 关闭。
 
@@ -15,6 +15,8 @@ BYOK 的状态、保存配置发现及草稿发现统一调用 `ByokCatalog.fetc
 Cursor/Grok 的无会话模型探针统一经过 `CliProviderCatalog.fetchCatalog`，同样采用一分钟成功缓存、容量128及在途合并。每个 registry 创建一个目录对象，通过 `ProviderDriverCreateInput.catalog` 传入实例；同一 registry 的实例重建沿用它，不同 registry 相互独立。直接创建 driver 时建立实例私有目录对象。固定目录类型仅包含模型、技能和斜杠命令字段，当前两者只缓存模型及其能力选项；版本、认证、检查时间、Grok 技能、实例自定义模型和身份继续实时读取或在缓存外合并。会话、adapter 和运行时状态保持实例独立。
 
 CLI 目录身份散列实际命令、端点、工作目录与完整环境快照；Grok 还包含当次 CLI 版本及路由协调后的 `config.toml` 内容。凭据和配置原文只参与摘要，不作为缓存键输出。目录加载使用本次调用的参数与服务上下文，不保留旧实例的加载器。ACP 探针显式关闭环境二次继承；Windows 相对可执行文件和相对 PATH 条目也锚定同一 cwd。Grok 每次检查前协调托管模型路由，个人默认配置目录仅只读，失败不能复用旧路由目录。失败目录不缓存，保留原来的错误提示及自定义模型回退；并未为 CLI 增加 BYOK 的过期目录展示语义。
+
+Kimi、Antigravity、通用 ACP 的配置模型，以及 Pi/OhMyPi/ZCode 的路由模型，初始和健康检查入口也统一调用 `CliProviderCatalog.fetchCatalog`。纯配置加载没有外部进程，因此身份只含 driver、操作及实际影响模型结果的配置；不加入实例ID、命令、cwd、环境或认证。自定义模型复用展示层相同的规范化规则，去空、去重并排除内置重复项，保留顺序；路由快照只取 adapterId、displayName 和去除两端空格的 modelId。键与加载器共用快照，设置编辑不能污染已缓存结果。版本、安装、启用、认证和检查时间在缓存外计算；ZCode 官方凭据仍每次读取，Kimi 的 BYOK 发布前路由覆盖仍读取当前设置。目录缓存不共享 adapter、会话或实例运行状态，也不把会话内动态模式选项变成全局目录。
 
 `ProviderCatalogCache` 分开保存成功结果和在途加载，强制刷新跳过成功值但加入同键的在途加载；失败保留上一份成功结果，不延长其TTL。完成后清除加载闭包，容量只限制成功值。单个目录等待者取消或超时不影响其他等待者，最后一个等待者离开后中断实际加载；这与上面的 provider 状态检查 Scope 所有权不同。BYOK 每个目录加载最多十五秒，每次实例状态检查另有同一个十五秒截止时间，逐通道传入剩余等待预算；超时仍可读取同键旧值，预算耗尽后不启动新请求。Effect HTTP 当前仍给各底层请求创建独立 AbortSignal，统一共享 signal 以及其余 CLI 的统一目录入口仍需继续收敛。
 

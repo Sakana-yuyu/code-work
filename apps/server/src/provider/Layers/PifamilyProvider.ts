@@ -6,12 +6,13 @@
  *
  * @module provider/Layers/PifamilyProvider
  */
-import type {
-  PiAgentSettings,
-  OmpAgentSettings,
-  ZCodeAgentSettings,
-  ServerProvider,
-  ServerProviderModel,
+import {
+  ProviderDriverKind,
+  type PiAgentSettings,
+  type OmpAgentSettings,
+  type ZCodeAgentSettings,
+  type ServerProvider,
+  type ServerProviderModel,
 } from "@codework/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -28,6 +29,11 @@ import {
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
 import type { PifamilyModelRoute } from "../pifamily/byokProviderConfig.ts";
+import {
+  cliProviderCatalogIdentity,
+  makeCliProviderCatalog,
+  type CliProviderCatalog,
+} from "../CliProviderCatalog.ts";
 
 export type PifamilyDriverKind = "piAgent" | "ompAgent" | "zcodeAgent";
 
@@ -40,7 +46,7 @@ const PRESENTATIONS: Record<PifamilyDriverKind, { displayName: string; badgeLabe
 };
 
 export function pifamilyProviderModels(
-  routes: ReadonlyArray<PifamilyModelRoute>,
+  routes: ReadonlyArray<Pick<PifamilyModelRoute, "adapterId" | "displayName" | "modelId">>,
 ): ReadonlyArray<ServerProviderModel> {
   return routes.map((route) => ({
     slug: route.adapterId,
@@ -51,35 +57,65 @@ export function pifamilyProviderModels(
   }));
 }
 
-export function buildInitialPifamilyProviderSnapshot(input: {
+/** 目录只取实际呈现的路由字段；网关凭据、进程环境和实例身份留在运行时。 */
+export const fetchPifamilyProviderCatalog = Effect.fn("fetchPifamilyProviderCatalog")(
+  function* (input: {
+    readonly driverKind: PifamilyDriverKind;
+    readonly routes: ReadonlyArray<PifamilyModelRoute>;
+    readonly catalog?: CliProviderCatalog;
+  }) {
+    const routes = input.routes.map(({ adapterId, displayName, modelId }) => ({
+      adapterId,
+      displayName,
+      modelId: modelId.trim(),
+    }));
+    const catalog = input.catalog ?? (yield* makeCliProviderCatalog());
+    return yield* catalog
+      .fetchCatalog({
+        key: cliProviderCatalogIdentity({
+          driver: ProviderDriverKind.make(input.driverKind),
+          operation: "configured-models",
+          config: { routes },
+        }),
+        load: Effect.sync(() => ({ models: pifamilyProviderModels(routes) })),
+      })
+      .pipe(Effect.orDie);
+  },
+);
+
+export const buildInitialPifamilyProviderSnapshot = Effect.fn(
+  "buildInitialPifamilyProviderSnapshot",
+)(function* (input: {
   readonly driverKind: PifamilyDriverKind;
   readonly settings: PifamilySnapshotSettings;
   readonly routes: ReadonlyArray<PifamilyModelRoute>;
-}): Effect.Effect<ServerProviderDraft> {
-  return Effect.map(DateTime.now, (now) =>
-    buildServerProvider({
-      presentation: PRESENTATIONS[input.driverKind],
-      enabled: input.settings.enabled,
-      checkedAt: DateTime.formatIso(now),
-      models: pifamilyProviderModels(input.routes),
-      probe: {
-        installed: false,
-        version: null,
-        status: "warning",
-        auth: { status: "unknown" },
-        message: input.settings.enabled
-          ? "正在检查 CLI；模型由 BYOK 网关提供。"
-          : "该供应商已在 Code Work 设置中禁用。",
-      },
-    }),
-  );
-}
+  readonly catalog?: CliProviderCatalog;
+}): Effect.fn.Return<ServerProviderDraft> {
+  const { models } = yield* fetchPifamilyProviderCatalog(input);
+  const now = yield* DateTime.now;
+  return buildServerProvider({
+    presentation: PRESENTATIONS[input.driverKind],
+    enabled: input.settings.enabled,
+    checkedAt: DateTime.formatIso(now),
+    models,
+    probe: {
+      installed: false,
+      version: null,
+      status: "warning",
+      auth: { status: "unknown" },
+      message: input.settings.enabled
+        ? "正在检查 CLI；模型由 BYOK 网关提供。"
+        : "该供应商已在 Code Work 设置中禁用。",
+    },
+  });
+});
 
 export const checkPifamilyProviderStatus = Effect.fn("checkPifamilyProviderStatus")(
   function* (input: {
     readonly driverKind: PifamilyDriverKind;
     readonly settings: PifamilySnapshotSettings;
     readonly routes: ReadonlyArray<PifamilyModelRoute>;
+    readonly catalog?: CliProviderCatalog;
     readonly environment?: NodeJS.ProcessEnv;
     /** 探针命令前置参数（ZCode 内嵌运行时的 bundle 路径）。 */
     readonly spawnArgsPrefix?: ReadonlyArray<string>;
@@ -89,7 +125,7 @@ export const checkPifamilyProviderStatus = Effect.fn("checkPifamilyProviderStatu
     readonly assumeInstalled?: boolean;
   }): Effect.fn.Return<ServerProviderDraft, never, ChildProcessSpawner.ChildProcessSpawner> {
     const checkedAt = DateTime.formatIso(yield* DateTime.now);
-    const models = pifamilyProviderModels(input.routes);
+    const { models } = yield* fetchPifamilyProviderCatalog(input);
     const label = PRESENTATIONS[input.driverKind].displayName;
 
     // 禁用实例不启动 CLI 探针；启用后才验证安装状态。内嵌运行时
