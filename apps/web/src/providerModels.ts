@@ -9,6 +9,7 @@ import {
   type ServerProviderModel,
 } from "@codework/contracts";
 import { createModelCapabilities, normalizeModelSlug } from "@codework/shared/model";
+import { canUseProviderInteractionModes } from "@codework/client-runtime/providerModels";
 
 const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({
   optionDescriptors: [],
@@ -48,9 +49,13 @@ export function getProviderDisplayName(
 
 export function getProviderInteractionModeToggle(
   providers: ReadonlyArray<ServerProvider>,
-  provider: ProviderDriverKind,
+  instanceId: ProviderInstanceId,
+  model?: string,
 ): boolean {
-  return getProviderSnapshot(providers, provider)?.showInteractionModeToggle ?? true;
+  const capabilities = providers
+    .find((provider) => provider.instanceId === instanceId)
+    ?.models.find((candidate) => candidate.slug === model)?.capabilities;
+  return canUseProviderInteractionModes(providers, instanceId, capabilities);
 }
 
 export function isProviderEnabled(

@@ -5,6 +5,9 @@ import {
   ServerProviderModel,
   type OrchestrationThreadActivity,
   type ServerProvider,
+  type ProviderInstanceId,
+  type ModelCapabilities,
+  type ProviderInteractionMode,
 } from "@codework/contracts";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
@@ -29,6 +32,40 @@ const decodeConfigOptions = Schema.decodeUnknownOption(
     configOptions: Schema.Array(SelectProviderOptionDescriptor),
   }),
 );
+
+/** 两态控制只采用当前实例的声明；会话原生模式由模型选项独立控制。 */
+export function canUseProviderInteractionModes(
+  providers: ReadonlyArray<ServerProvider>,
+  instanceId: ProviderInstanceId,
+  capabilities?: ModelCapabilities | null,
+): boolean {
+  const provider = providers.find((candidate) => candidate.instanceId === instanceId);
+  return (
+    provider !== undefined &&
+    provider.showInteractionModeToggle !== false &&
+    !capabilities?.optionDescriptors?.some(
+      (option) =>
+        option.id === ACP_MODE_OPTION_ID ||
+        (provider.driver === "opencode" && option.id === "agent"),
+    )
+  );
+}
+
+/** 切换到无两态能力的实例后，旧草稿不能继续携带上一实例的 plan 参数。 */
+export function resolveProviderInteractionMode(input: {
+  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly instanceId: ProviderInstanceId;
+  readonly capabilities?: ModelCapabilities | null | undefined;
+  readonly interactionMode: ProviderInteractionMode;
+}): ProviderInteractionMode {
+  // 离线队列没有当前能力证据时保留用户草稿，不能把未知误当成明确不支持。
+  if (!input.providers.some((provider) => provider.instanceId === input.instanceId)) {
+    return input.interactionMode;
+  }
+  return canUseProviderInteractionModes(input.providers, input.instanceId, input.capabilities)
+    ? input.interactionMode
+    : "default";
+}
 
 /** 合并同实例会话模型与模式；null 清除覆盖，空数组撤回模型广告，自定义模型保留。 */
 export function applySessionModelCatalogs(

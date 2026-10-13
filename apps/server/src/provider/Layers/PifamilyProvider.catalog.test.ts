@@ -67,6 +67,7 @@ for (const provider of providers) {
         const catalog = yield* makeCliProviderCatalog();
         const input = { ...provider, catalog, routes: [route()] };
         const first = yield* buildInitialPifamilyProviderSnapshot(input);
+        expect(first.showInteractionModeToggle).toBe(provider.driverKind === "zcodeAgent");
         const equivalentRoutes = [
           route({
             modelId: " upstream-alpha ",
@@ -88,6 +89,7 @@ for (const provider of providers) {
           Effect.provideService(HostProcessPlatform, "linux"),
         );
         expect(current.models).toBe(first.models);
+        expect(current.showInteractionModeToggle).toBe(provider.driverKind === "zcodeAgent");
         expect(current.models).toEqual([
           {
             slug: "gateway-alpha",

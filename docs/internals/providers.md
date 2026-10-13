@@ -325,4 +325,12 @@ rollbacks live in `docs/internals/*-acp-provider.md` and [paseo-provider-catalog
 
 ## 接入范围与验证方法
 
+### 当前实例的模式入口
+
+`client-runtime/providerModels` 的 `canUseProviderInteractionModes` 只读取当前 `instanceId` 的声明及当前模型能力，不按 driver 借用默认实例。已提供 `acpMode` 的模型使用原生选项；OpenCode 的 `agent` 选项同样替代旧两态控件。Web 的 Add 菜单、斜杠与 Shift+Tab 共用判断，Mobile 的斜杠菜单使用同一共享函数。普通发送、编辑重发、计划续接与 Mobile outbox 通过 `resolveProviderInteractionMode` 清除明确不支持实例的旧 plan 参数；离线且没有实例快照时保留请求模式。
+
+Antigravity 的 headless 参数和 Pi/OhMyPi 的 RPC 发送没有绑定 `interactionMode`，现在明确声明不展示两态控件。ZCode 将 plan 绑定到实际 `--mode plan`，继续声明支持。Codex、Claude 及其余 ACP Adapter 保留既有运行绑定；ACP 原生模式仍来自真实会话的配置/模式回执并在线程内合并，不为草稿新建会话。Codex 的 `collaborationMode/list` 目录发现尚未接入，不能据此宣布全部模式目录完成。
+
+官方协议要求按真实会话广告传递模式标识，配置选项语义由类别声明。2026-10-14 检索 `ACP session modes session new config options`，采用 [ACP Session Modes](https://agentclientprotocol.com/protocol/v1/session-modes) 与 [Session Config Options](https://agentclientprotocol.com/protocol/v1/session-config-options) 原始规范；本主题复用既有回执合并，仅修复消费入口，没有复制参考代码。实际 Web/Android、本机推理 fixture 和能力声明回归见 [移植进度](./port-progress.md) 第63主题。
+
 固定6个内置及38个ACP入口的绑定、能力事实来源、工具/账号/多端证据边界和定向验证入口见 [Agent入口与验收合同](./acp-provider-validation.md)。目录数量和历史勾选不能替代逐项执行结果与最终独立验证。

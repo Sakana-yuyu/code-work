@@ -33,6 +33,7 @@ import { scopedThreadKey } from "../lib/scopedEntities";
 import { copyTextWithHaptic } from "../lib/copyTextWithHaptic";
 import { createThreadFeedSelector } from "../lib/threadFeedSelectors";
 import { buildModelOptions } from "../lib/modelOptions";
+import { resolveProviderInteractionMode } from "@codework/client-runtime/providerModels";
 import { appAtomRegistry } from "../state/atom-registry";
 import {
   appendComposerDraftAttachments,
@@ -255,16 +256,16 @@ export function useThreadComposerState() {
     // draft, preserving anything typed since.
     const requestedSelection = draft.modelSelection ?? thread.modelSelection;
     // 与菜单使用同一会话目录，防止已撤回模式留在持久化发送队列中。
-    const resolvedSelection =
-      buildModelOptions(
-        selectedEnvironmentRuntime?.serverConfig,
-        requestedSelection,
-        selectedThreadDetail?.activities ?? [],
-      ).find(
-        (option) =>
-          option.selection.instanceId === requestedSelection.instanceId &&
-          option.selection.model === requestedSelection.model,
-      )?.selection ?? requestedSelection;
+    const resolvedOption = buildModelOptions(
+      selectedEnvironmentRuntime?.serverConfig,
+      requestedSelection,
+      selectedThreadDetail?.activities ?? [],
+    ).find(
+      (option) =>
+        option.selection.instanceId === requestedSelection.instanceId &&
+        option.selection.model === requestedSelection.model,
+    );
+    const resolvedSelection = resolvedOption?.selection ?? requestedSelection;
     const enqueuePromise = enqueueThreadOutboxMessage({
       environmentId: selectedThreadShell.environmentId,
       threadId: selectedThreadShell.id,
@@ -274,7 +275,12 @@ export function useThreadComposerState() {
       attachments,
       modelSelection: resolvedSelection,
       runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
-      interactionMode: draft.interactionMode ?? thread.interactionMode,
+      interactionMode: resolveProviderInteractionMode({
+        providers: selectedEnvironmentRuntime?.serverConfig?.providers ?? [],
+        instanceId: resolvedSelection.instanceId,
+        capabilities: resolvedOption?.capabilities,
+        interactionMode: draft.interactionMode ?? thread.interactionMode,
+      }),
       createdAt: metadata.createdAt,
     });
     clearComposerDraftContent(threadKey);

@@ -32,7 +32,8 @@ import {
 const PRESENTATION = {
   displayName: "Antigravity",
   badgeLabel: "CLI",
-  showInteractionModeToggle: true,
+  // 当前 print 模式只发送 prompt/model，没有原生计划模式参数。
+  showInteractionModeToggle: false,
 } as const;
 const EMPTY_MODELS: ReadonlyArray<ServerProviderModel> = [];
 const CUSTOM_MODEL_CAPABILITIES = { optionDescriptors: [] } as const;

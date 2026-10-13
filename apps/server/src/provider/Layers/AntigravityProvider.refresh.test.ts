@@ -137,6 +137,8 @@ describe("Antigravity 完整刷新所有权", () => {
         b = yield* Fiber.join(second);
       expect(a.message).toContain("15000ms");
       expect(b.message).toContain("15000ms");
+      expect(a.showInteractionModeToggle).toBe(false);
+      expect(b.showInteractionModeToggle).toBe(false);
       expect(a.models.map((m) => m.slug)).toEqual(["model"]);
       expect(b.checkedAt).toBe(DateTime.formatIso(yield* DateTime.now));
       expect(f.controllers).toHaveLength(1);
@@ -144,7 +146,9 @@ describe("Antigravity 完整刷新所有权", () => {
       expect(f.finalized).toEqual([1]);
       f.state.blockModels = false;
       f.state.blockVersion = false;
-      expect((yield* f.call()).version).toBe("1.1.27");
+      const recovered = yield* f.call();
+      expect(recovered.version).toBe("1.1.27");
+      expect(recovered.showInteractionModeToggle).toBe(false);
       expect(f.controllers).toHaveLength(2);
     }),
   );

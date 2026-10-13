@@ -1297,16 +1297,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
-  // ACP 使用上游完整模式目录，避免旧两态开关与显式模式冲突。
-  const planModeUiEnabled = !selectedModelOptionsForDispatch?.some(
-    (option) => option.id === ACP_MODE_OPTION_ID,
-  );
+  // 所有两态入口共用当前实例声明，ACP 原生模式仍走独立选项目录。
+  const planModeUiEnabled =
+    getProviderInteractionModeToggle(providerStatuses, selectedInstanceId, selectedModel) &&
+    !selectedModelOptionsForDispatch?.some((option) => option.id === ACP_MODE_OPTION_ID);
   const composerProviderControls = useMemo(
     () => ({
-      showInteractionModeToggle:
-        planModeUiEnabled && getProviderInteractionModeToggle(providerStatuses, selectedProvider),
+      showInteractionModeToggle: planModeUiEnabled,
     }),
-    [planModeUiEnabled, providerStatuses, selectedProvider],
+    [planModeUiEnabled],
   );
   const selectedModelSelection = useMemo<ModelSelection>(
     () => createModelSelection(selectedInstanceId, selectedModel, selectedModelOptionsForDispatch),
@@ -4038,6 +4037,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     interactionMode={interactionMode}
                     planModeEnabled={planModeUiEnabled}
+                    planModeAvailable={planModeUiEnabled}
                     canEditGoal={routeKind === "server" || routeKind === "draft"}
                     goal={visibleThreadGoal}
                     draftObjective={routeKind === "draft" ? draftGoalObjective : null}

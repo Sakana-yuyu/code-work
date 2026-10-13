@@ -9,7 +9,11 @@ import {
   type ServerProvider,
   type ServerProviderModel,
 } from "@codework/contracts";
-import { applySessionModelCatalogs } from "./providerModels.ts";
+import {
+  applySessionModelCatalogs,
+  canUseProviderInteractionModes,
+  resolveProviderInteractionMode,
+} from "./providerModels.ts";
 import {
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionDescriptors,
@@ -45,6 +49,128 @@ const row = (payload: unknown): OrchestrationThreadActivity => ({
 });
 
 describe("会话模型目录", () => {
+  it("OpenCode 原生 agent 目录独立控制模式，不与旧两态推断重复", () => {
+    const current = {
+      ...provider,
+      driver: ProviderDriverKind.make("opencode"),
+      showInteractionModeToggle: true,
+    };
+    const capabilities = {
+      optionDescriptors: [
+        {
+          id: "agent",
+          label: "Agent",
+          type: "select" as const,
+          currentValue: "plan",
+          options: [
+            { id: "build", label: "Build" },
+            { id: "plan", label: "Plan" },
+          ],
+        },
+      ],
+    };
+    expect(canUseProviderInteractionModes([current], current.instanceId, capabilities)).toBe(false);
+    expect(
+      resolveProviderInteractionMode({
+        providers: [current],
+        instanceId: current.instanceId,
+        capabilities,
+        interactionMode: "plan",
+      }),
+    ).toBe("default");
+    expect(
+      buildProviderOptionSelectionsFromDescriptors(
+        getProviderOptionDescriptors({
+          caps: capabilities,
+          selections: [{ id: "agent", value: "plan" }],
+        }),
+      ),
+    ).toEqual([{ id: "agent", value: "plan" }]);
+    expect(canUseProviderInteractionModes([current], current.instanceId, null)).toBe(true);
+    expect(canUseProviderInteractionModes([provider], provider.instanceId, capabilities)).toBe(
+      true,
+    );
+  });
+  it("两态能力按当前实例隔离，缺省声明兼容但缺失实例不显示控制", () => {
+    const disabled = { ...provider, showInteractionModeToggle: false };
+    const allowed = {
+      ...provider,
+      instanceId: ProviderInstanceId.make("b"),
+      showInteractionModeToggle: true,
+    };
+    for (const providers of [
+      [disabled, allowed],
+      [allowed, disabled],
+    ]) {
+      expect(canUseProviderInteractionModes(providers, disabled.instanceId)).toBe(false);
+      expect(canUseProviderInteractionModes(providers, allowed.instanceId)).toBe(true);
+      expect(
+        resolveProviderInteractionMode({
+          providers,
+          instanceId: disabled.instanceId,
+          interactionMode: "plan",
+        }),
+      ).toBe("default");
+      expect(
+        resolveProviderInteractionMode({
+          providers,
+          instanceId: allowed.instanceId,
+          interactionMode: "plan",
+        }),
+      ).toBe("plan");
+    }
+    expect(canUseProviderInteractionModes([provider], provider.instanceId)).toBe(true);
+    expect(canUseProviderInteractionModes([allowed], provider.instanceId)).toBe(false);
+    expect(
+      resolveProviderInteractionMode({
+        providers: [],
+        instanceId: provider.instanceId,
+        interactionMode: "plan",
+      }),
+    ).toBe("plan");
+  });
+  it("原生模式广告关闭两态推断，撤回广告后恢复实例声明并保留原始 ID", () => {
+    const mode: SelectProviderOptionDescriptor = {
+      id: ACP_MODE_OPTION_ID,
+      label: "模式",
+      type: "select",
+      currentValue: "review",
+      options: [{ id: "review", label: "审查" }],
+    };
+    const original = { ...provider, models: [model], showInteractionModeToggle: true };
+    const activity = {
+      ...row({ providerInstanceId: provider.instanceId, mode }),
+      kind: "session.mode.updated",
+    };
+    const active = applySessionModelCatalogs([original], [activity]);
+    expect(
+      canUseProviderInteractionModes(
+        active,
+        provider.instanceId,
+        active[0]!.models[0]!.capabilities,
+      ),
+    ).toBe(false);
+    expect(
+      resolveProviderInteractionMode({
+        providers: active,
+        instanceId: provider.instanceId,
+        capabilities: active[0]!.models[0]!.capabilities,
+        interactionMode: "plan",
+      }),
+    ).toBe("default");
+    expect(active[0]!.models[0]!.capabilities!.optionDescriptors![0]!.id).toBe(ACP_MODE_OPTION_ID);
+    const withdrawn = applySessionModelCatalogs(
+      [original],
+      [activity, { ...activity, payload: { providerInstanceId: provider.instanceId, mode: null } }],
+    );
+    expect(
+      canUseProviderInteractionModes(
+        withdrawn,
+        provider.instanceId,
+        withdrawn[0]!.models[0]!.capabilities,
+      ),
+    ).toBe(true);
+  });
   it("角色与权限保留空默认值编码，隔离实例并支持撤回，不覆盖模式", () => {
     const descriptor: SelectProviderOptionDescriptor = {
       id: "acpConfig:agent",

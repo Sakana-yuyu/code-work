@@ -42,10 +42,18 @@ export type PifamilyDriverKind = "piAgent" | "ompAgent" | "zcodeAgent";
 
 type PifamilySnapshotSettings = PiAgentSettings | OmpAgentSettings | ZCodeAgentSettings;
 
-const PRESENTATIONS: Record<PifamilyDriverKind, { displayName: string; badgeLabel: string }> = {
-  piAgent: { displayName: "Pi", badgeLabel: "BYOK" },
-  ompAgent: { displayName: "OhMyPi", badgeLabel: "BYOK" },
-  zcodeAgent: { displayName: "ZCode", badgeLabel: "BYOK" },
+const PRESENTATIONS: Record<
+  PifamilyDriverKind,
+  {
+    displayName: string;
+    badgeLabel: string;
+    showInteractionModeToggle: boolean;
+  }
+> = {
+  // Pi/OMP 的 RPC prompt 没有绑定 interactionMode；不能显示无实际作用的两态控件。
+  piAgent: { displayName: "Pi", badgeLabel: "BYOK", showInteractionModeToggle: false },
+  ompAgent: { displayName: "OhMyPi", badgeLabel: "BYOK", showInteractionModeToggle: false },
+  zcodeAgent: { displayName: "ZCode", badgeLabel: "BYOK", showInteractionModeToggle: true },
 };
 
 export function pifamilyProviderModels(

@@ -74,6 +74,8 @@ export interface ComposerAddMenuProps {
   readonly disabled: boolean;
   readonly interactionMode: ProviderInteractionMode;
   readonly planModeEnabled: boolean;
+  /** 实例没有两态能力或已提供原生模式时，不展示旧式模式入口。 */
+  readonly planModeAvailable?: boolean;
   readonly subagentMode: ComposerSubagentModeControl;
   readonly canEditGoal: boolean;
   readonly goal: ThreadGoal | null;
@@ -679,19 +681,21 @@ export function ComposerAddMenuBody(props: ComposerAddMenuBodyProps) {
           props.goal ? <span className="size-1.5 rounded-full bg-emerald-500" /> : undefined
         }
       />
-      <ComposerAddMenuItem
-        icon={<LightbulbIcon className="size-4" />}
-        title={t("composer.planMode")}
-        description={
-          props.planModeEnabled ? planDescription : t("composer.planModeDisabledDescription")
-        }
-        disabled={props.disabled || !props.planModeEnabled}
-        onClick={() => {
-          props.onTogglePlanMode();
-          props.onDismiss();
-        }}
-        trailing={props.interactionMode === "plan" ? <CheckIcon className="size-4" /> : undefined}
-      />
+      {props.planModeAvailable !== false ? (
+        <ComposerAddMenuItem
+          icon={<LightbulbIcon className="size-4" />}
+          title={t("composer.planMode")}
+          description={
+            props.planModeEnabled ? planDescription : t("composer.planModeDisabledDescription")
+          }
+          disabled={props.disabled || !props.planModeEnabled}
+          onClick={() => {
+            props.onTogglePlanMode();
+            props.onDismiss();
+          }}
+          trailing={props.interactionMode === "plan" ? <CheckIcon className="size-4" /> : undefined}
+        />
+      ) : null}
       <ComposerAddMenuItem
         icon={<BotIcon className="size-4" />}
         title={t("composer.subagentMode")}

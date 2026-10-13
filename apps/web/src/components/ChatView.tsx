@@ -1,4 +1,8 @@
-import { applySessionModelCatalogs } from "@codework/client-runtime/providerModels";
+import {
+  applySessionModelCatalogs,
+  canUseProviderInteractionModes,
+  resolveProviderInteractionMode,
+} from "@codework/client-runtime/providerModels";
 import {
   type ApprovalRequestId,
   type CanvasReference,
@@ -5924,7 +5928,15 @@ function ChatViewContent(props: ChatViewProps) {
             attachments: [],
           },
           runtimeMode: activeThread.runtimeMode,
-          interactionMode: activeThread.interactionMode,
+          interactionMode: resolveProviderInteractionMode({
+            providers: providerStatuses,
+            instanceId: activeThread.modelSelection.instanceId,
+            capabilities: providerStatuses
+              .find((provider) => provider.instanceId === activeThread.modelSelection.instanceId)
+              ?.models.find((model) => model.slug === activeThread.modelSelection.model)
+              ?.capabilities,
+            interactionMode: activeThread.interactionMode,
+          }),
           createdAt: new Date().toISOString(),
         },
       });
@@ -5945,6 +5957,7 @@ function ChatViewContent(props: ChatViewProps) {
       isRevertingCheckpoint,
       isSendBusy,
       phase,
+      providerStatuses,
       revertThreadCheckpoint,
       setThreadError,
       startThreadTurn,
@@ -6017,6 +6030,15 @@ function ChatViewContent(props: ChatViewProps) {
       selectedPromptEffort: ctxSelectedPromptEffort,
       selectedModelSelection: ctxSelectedModelSelection,
     } = sendCtx;
+    const selectedCapabilities = ctxSelectedProviderModels.find(
+      (model) => model.slug === ctxSelectedModelSelection.model,
+    )?.capabilities;
+    const sendInteractionMode = resolveProviderInteractionMode({
+      providers: providerStatuses,
+      instanceId: ctxSelectedModelSelection.instanceId,
+      capabilities: selectedCapabilities,
+      interactionMode,
+    });
     const composerImages =
       directAnnotation?.image &&
       !sendContextImages.some((image) => image.id === directAnnotation.image?.id)
@@ -6176,6 +6198,11 @@ function ChatViewContent(props: ChatViewProps) {
       return;
     }
     const standaloneSlashCommand =
+      canUseProviderInteractionModes(
+        providerStatuses,
+        ctxSelectedModelSelection.instanceId,
+        selectedCapabilities,
+      ) &&
       composerImages.length === 0 &&
       sendableComposerTerminalContexts.length === 0 &&
       composerElementContexts.length === 0 &&
@@ -6464,7 +6491,7 @@ function ChatViewContent(props: ChatViewProps) {
           ? { branch: localCheckoutBranchMismatch.currentBranch }
           : {}),
         runtimeMode,
-        interactionMode,
+        interactionMode: sendInteractionMode,
       });
       if (settingsResult._tag === "Failure") {
         failure = settingsResult;
@@ -6488,7 +6515,7 @@ function ChatViewContent(props: ChatViewProps) {
                       title,
                       modelSelection: threadCreateModelSelection,
                       runtimeMode,
-                      interactionMode,
+                      interactionMode: sendInteractionMode,
                       branch: activeThreadBranch,
                       worktreePath: activeThread.worktreePath,
                       ...(composerGoalObjective ? { goalObjective: composerGoalObjective } : {}),
@@ -6527,7 +6554,7 @@ function ChatViewContent(props: ChatViewProps) {
         modelSelection: ctxSelectedModelSelection,
         titleSeed: title,
         runtimeMode,
-        interactionMode,
+        interactionMode: sendInteractionMode,
         ...(bootstrap ? { bootstrap } : {}),
         createdAt: messageCreatedAt,
       };
@@ -7093,6 +7120,14 @@ function ChatViewContent(props: ChatViewProps) {
         selectedModelSelection: ctxSelectedModelSelection,
       } = sendCtx;
 
+      const resolvedInteractionMode = resolveProviderInteractionMode({
+        providers: providerStatuses,
+        instanceId: ctxSelectedModelSelection.instanceId,
+        capabilities: ctxSelectedProviderModels.find(
+          (model) => model.slug === ctxSelectedModelSelection.model,
+        )?.capabilities,
+        interactionMode: nextInteractionMode,
+      });
       const threadIdForSend = activeThread.id;
       const messageIdForSend = newMessageId();
       const messageCreatedAt = new Date().toISOString();
@@ -7131,7 +7166,7 @@ function ChatViewContent(props: ChatViewProps) {
           ? { branch: localCheckoutBranchMismatch.currentBranch }
           : {}),
         runtimeMode,
-        interactionMode: nextInteractionMode,
+        interactionMode: resolvedInteractionMode,
       });
       let failure: AtomCommandResult<unknown, unknown> | null =
         settingsResult._tag === "Failure" ? settingsResult : null;
@@ -7141,7 +7176,7 @@ function ChatViewContent(props: ChatViewProps) {
         // while the same-thread implementation turn is starting.
         setComposerDraftInteractionMode(
           scopeThreadRef(activeThread.environmentId, threadIdForSend),
-          nextInteractionMode,
+          resolvedInteractionMode,
         );
 
         const startResult = await startThreadTurn({
@@ -7157,8 +7192,8 @@ function ChatViewContent(props: ChatViewProps) {
             modelSelection: ctxSelectedModelSelection,
             titleSeed: activeThread.title,
             runtimeMode,
-            interactionMode: nextInteractionMode,
-            ...(nextInteractionMode === "default" && activeProposedPlan
+            interactionMode: resolvedInteractionMode,
+            ...(resolvedInteractionMode === "default" && activeProposedPlan
               ? {
                   sourceProposedPlan: {
                     threadId: activeThread.id,
@@ -7201,6 +7236,7 @@ function ChatViewContent(props: ChatViewProps) {
       isServerThread,
       localCheckoutBranchMismatch,
       persistThreadSettingsForNextTurn,
+      providerStatuses,
       resetLocalDispatch,
       runtimeMode,
       scrollToEnd,

@@ -8,14 +8,19 @@ import type {
   RuntimeMode,
   ServerConfig as CodeworkServerConfig,
 } from "@codework/contracts";
-import { ACP_MODE_OPTION_ID } from "@codework/contracts";
+import { canUseProviderInteractionModes } from "@codework/client-runtime/providerModels";
 import {
   detectComposerTrigger,
   replaceTextRange,
   serializeComposerFileLink,
   type ComposerTrigger,
 } from "@codework/shared/composerTrigger";
-import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
+import {
+  StackActions,
+  useFocusEffect,
+  useNavigation,
+  type NavigationProp,
+} from "@react-navigation/native";
 import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
@@ -298,7 +303,12 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     specWorkflow.isPending ||
     specWorkflow.hasError ||
     specWorkflow.capability === null;
-  const navigation = useNavigation();
+  const navigation = useNavigation<
+    NavigationProp<{
+      ThreadGoal: { readonly environmentId: string; readonly threadId: string };
+      ThreadSettingsSheet: undefined;
+    }>
+  >();
   const { themeAppearance } = useAppearancePreferences();
   const isDarkMode = themeAppearance === "dark";
   const foregroundColor = useThemeColor("--color-foreground");
@@ -374,10 +384,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         option.selection.instanceId === currentModelSelection.instanceId &&
         option.selection.model === currentModelSelection.model,
     ) ?? null;
-  const hasAcpModes =
-    currentModelOption?.capabilities?.optionDescriptors?.some(
-      (option) => option.id === ACP_MODE_OPTION_ID,
-    ) ?? false;
+  const canUseInteractionModes = canUseProviderInteractionModes(
+    props.serverConfig?.providers ?? [],
+    currentModelSelection.instanceId,
+    currentModelOption?.capabilities,
+  );
   const currentRuntimeMode = props.selectedThread.runtimeMode;
   const connectionStatus = composerConnectionStatus({
     connectionError: props.connectionError,
@@ -463,7 +474,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       const builtIn = allBuiltIn.filter(
         (item) =>
           item.command.includes(q) &&
-          (!hasAcpModes || (item.command !== "plan" && item.command !== "default")),
+          (canUseInteractionModes || (item.command !== "plan" && item.command !== "default")),
       );
 
       const providerCommands: ComposerCommandItem[] = [];
@@ -597,7 +608,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     composerTrigger,
     pathSearch.entries,
     selectedProviderStatus,
-    hasAcpModes,
+    canUseInteractionModes,
     props.activities,
     props.selectedThread.modelSelection.instanceId,
   ]);
