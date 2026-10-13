@@ -362,6 +362,8 @@ Mobile入队时的目录归一化不能代替实际派发时的检查：等待�
 
 第72主题把新任务旧两态按钮也接入已有 `canUseProviderInteractionModes`：设备旧版偏好开启只是必要条件，所选实例及模型能力也必须允许两态。Codex原生模式、ACP会话模式、OpenCode原生agent和明确不支持的实例不重复显示按钮，未知实例不展示；其他实例保留既有兼容判断。Android实际开启偏好后，旧Codex按钮可见且点击无效；修复版隐藏它并保留原生模式菜单，通用ACP声明支持的实例可Plan→Build→Plan，切入BYOK后隐藏。三文件33项、Mobile目标类型与单源fmt/lint通过，Codex草稿会话/回合计数不增加；本轮没有供应商实际发送回合。详见 [移植进度](./port-progress.md) 第72主题。
 
+第73主题补齐受控ACP实际回执：Web启动真实Windows mock会话，Android显式选当前动态模型的“审查”后发送；同进程收到一次 `session/set_config_option`，配置项operation及完整URI `https://agentclientprotocol.com/protocol/session-modes#review` 保持原值。主会话空配置快照随后生成mode=null及空配置活动，两端原生模式控件撤回，受监督权限与消息身份保留。三文件146项及实际协议/SQLite/原生控件断言通过。本轮没有生产源码修改；首轮开发后端watch重启后，mock恢复返回初始目录，旧动态模型被拒绝，该失败保留。Mobile历史模型原始显示、重启目录对齐及撤回后再次发送继续验收，不将控件撤回等同于历史选择清除。具体包哈希、进程清理与设备/外部账号边界见 [移植进度](./port-progress.md) 第73主题。
+
 ### 连续保存实例设置
 
 Web/Desktop 的供应商卡片仍提交完整 `providerInstances` 映射，服务端保持替换语义。表单连续失焦可能从同一个旧渲染快照构造三个实例，直接并发发送会让后来的名称保存覆盖之前的 home 或程序路径。`providerInstanceEdits` 将卡片更新按所选环境串行提交，以验证过的 `server.updateSettings` 成功回执作为下一次基础，只重放相对卡片旧实例实际改变的字段。对象递归重放；删除键、数组、标量与 null 保持替换，未改字段保留最新值。等待中的设置推送按相对上一推送的变化合入，失败不推进回执、不自动重试，之后的编辑仍可执行。

@@ -72,6 +72,8 @@
 
    第69主题修复Mobile队列等待后继续使用旧模式的问题。已有线程和新任务派发前读取所属环境的当前 `server.getConfig` 投影，再按广告校正模式，保留推理/运行权限、离线意图及消息身份。六文件71项、两个目标类型、旧版直接失败及真实Android离线Plan到Windows default回合的证明通过，见 [移植进度](./port-progress.md)。第70主题进一步通过Android新任务设备路径：离线文件保留原生Plan及创建参数，撤回Plan后联网自动创建指定项目线程并仅发送一次default，消息身份/Medium/受监督权限保留，完整回复可见、队列文件移除。第71主题把新任务显示/在线创建/离线入队的原生模式与规范模式对齐，七文件83项及在线/离线Android Plan回合通过。第72主题新任务旧两态入口复用实例能力门控，三文件33项及开启偏好的Android旧版无效按钮/新版Codex隐藏、通用ACP双向切换、BYOK隐藏对照通过。ACP实际回执、历史队列计数及完整入口/三端/连接矩阵仍开放，不缩减第11项或全部39项。
 
+   第73主题验证Web/Android到真实Windows受控ACP进程的原生URI模式：Android选择审查后只发送一次operation配置请求，完整URI保持不变；主会话撤回配置后mode=null/空配置活动落库，两端控件撤回，受监督权限与四条唯一完整消息保持。三文件146项与直接协议/投影/原生控件断言通过，无生产源码变更。首轮后端watch重启后的旧动态模型拒绝继续保留；历史模型显示、重启恢复、撤回后再次发送、Electron/iOS及外部连接矩阵继续验收，第11项和原39项范围不变，详见 [移植进度](./port-progress.md)。
+
 2. **`steerActiveTurn` 契约。** 回合进行中追加指令：适配器声明是否支持，不支持则由 manager 回退为“打断后替换”；适配器出错时不得自动重试（结果不明确）；打断时必须丢弃尚未被 provider 读取的 steer。上游 T3 Code 已有“排队或 steer”的 UI（见 §5），后端契约可参考 Paseo。
 3. **用户消息的规范身份。** manager 为前台 prompt 记录唯一规范 timeline 行，`messageId` 与 `clientMessageId` 一致，provider 回显只用于对账，不做全局文本去重。
 4. **终态前清理瞬态行。** 适配器在发出 `turn_completed/failed/canceled` 前，必须终结所有仍在 loading 的行（例如 Codex 的 `contextCompaction`）。2026-10-12 全部 canonical 发射入口已接入同一 item 与交互边界，终态前整批补齐完成通知；Codex 原生遗漏完成通知的三种终态回归已通过。遗漏的审批以 cancel、提问以空答案关闭客户端等待，真实回应保持原结果，不调用 provider 或扩大授权。原生 adapter、公共活动投影及两端状态定向验证通过，第 7 项完成；独立后台 task 保持实际生命周期，hook 没有 loading 投影且保留原生结果。真实连接/设备与性能按相应条目继续验收，证据及回退范围见 [port-progress](./port-progress.md)。

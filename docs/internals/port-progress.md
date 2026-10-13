@@ -55,7 +55,7 @@
 | 8   | 重连不重不丢不乱、关闭忙碌流、打开运行线程                  | 完成（共享协议矩阵与三端受控运行验收）                       | ws/state/threads/缓存游标/复合身份/Mobile ThreadFeed                                                                                                       | 五种已准备连接×完成标记两态通过；三端关闭/重开/断线重投、锚点与回尾通过，首绘采用用户确认标准，见第38/39主题          |
 | 9   | 同口径帧间隔性能无回归                                      | 三端同口径静态滚动验收通过；流式与连接矩阵归相应条目继续核验 | 1280×720、实际组件输入 1202 活动、上下各 20 页 ×4 组                                                                                                       | Web/Desktop 原 72 窗口保留；Android 原始基线新 24 窗口与 FrameTimeline 通过，两当前轮 16 对应窗口均无回归             |
 | 10  | Windows argv 三层守卫                                       | 完成（入口清点与定向验收）                                   | promptArgv / Antigravity 对话及文本生成 / ZCode 最终 spawn                                                                                                 | 4文件26项、旧版失败对照、纯候选目标类型通过；Windows shell边界实测与证据边界见第42主题                                |
-| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类刷新、完整预算、共享home及实例模式入口已验证） | ProviderCatalogCache / ByokProviderCatalog / GrokHomeAccess / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / client-runtime/providerModels | 第43—67主题补齐共享刷新、预算、配置所有权、模式发现/发送与Web/Android实际入口；完整入口/三端/连接矩阵仍开放           |
+| 11  | 统一 catalog、缓存键、deadline、AbortSignal、无草稿 session | 进行中（十二类刷新、完整预算、共享home及实例模式入口已验证） | ProviderCatalogCache / ByokProviderCatalog / GrokHomeAccess / CliProviderCatalog / OpenCodeCatalog / NativeProviderCatalog / client-runtime/providerModels | 第43—73主题补齐共享刷新、预算、配置所有权、模式发现/发送与Web/Android实际入口；完整入口/三端/连接矩阵仍开放           |
 | 12  | steer 全契约与排队/steer UI                                 | 待实施                                                       | ProviderAdapter / ProviderService / reactor / 三端 composer                                                                                                | 尚未运行                                                                                                              |
 | 13  | 规范消息身份与回显对账                                      | 待核验补齐                                                   | decider / normalizer / provider echo                                                                                                                       | B19 为部分底座，验收尚未运行                                                                                          |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 进行中（实例模式入口与部分实际能力声明已修复）               | ProviderAdapterCapabilities / server config / 三端控制                                                                                                     | 第63主题验证模式控制；rewind分拆与其余能力、重启续接确认尚待实施                                                      |
@@ -1286,3 +1286,25 @@ Android在线新任务实际选原生Plan、Medium和受监督，通过开始任
 工作区外catalog-newtask-toggle-{old,ui,preference,cleanup}-proof.json、before-counts、native-source、bundle-result及导航XML/PNG保留。可视化目录android-newtask-toggle-{before,after,allowed,byok}.png及android-newtask-toggle-proof.json可查看，截图/脚本不提交。更新providers、comparison及用户模型目录说明；单源加四文档可独立回退，无迁移。
 
 本轮新增Android新任务入口、设备本地设置及实例切换的直接证据，不是通用ACP供应商回合或外部账号验收。Web/Desktop沿用既有共享门控未修改；其余provider按当前实例声明决定，未增加支持能力；设置入口只是偏好开关，实际控制仍在模型/草稿入口。Electron替代自动化授权仍待答复；iOS、ACP实际动态模式、全部入口、远程/relay/tunnel、未知配置编辑、首绘/队列对账及帧率未新增验收。第11项剩余矩阵、完整14/19项及全39项/comparison继续进行。精确提交仍保护原83个无关基线文件、原BYOK/ChatView/ChatComposer混合hunk及92项未提交状态。
+
+## 73. ACP 原生 URI 模式实际发送与主会话目录撤回
+
+基线270e08805，继续第11项。本轮没有生产源码、协议、权限或用户行为修改；复用GenericAcpDriver、CursorAdapter及已有ACP配置回执合并，验证Web首回合、Android原生模式选择、Windows实际协议请求与两端撤回。实例ID仍为byok，实际driver为acpAgent；与byok-fixture的BYOK网关分别对账。原39项与comparison完整范围保持不变。
+
+在工作区外原受控命令加临时记录层，原字节另存，--version仍返回1.0.0。子进程执行仓库既有acp-mock-agent.ts；启用其URI模式和动态config更新开关，第二组另启用已有STARTUP_CONFIG=dynamic回执场景。记录层只保存方法/请求ID、指定模式字段、两组合成测试文本和配置选项ID，不记录认证、MCP或初始化参数；没有复制上游实现或修改数据库。草稿阶段记录文件尚不存在，首个session/new仅在实际发送后出现。mock源SHA与当前提交相同，为57403f8445e0609719ccf341af6c268e302b9ae401cfbd579ab124e6960ec612。
+
+第一组acp-bootstrap-73由Windows worker156556完成，Web显示动态“计划/实施/审查”。Android正式Reload后连接恢复曾短暂“暂无线程”，打开线程也出现“正在加载消息”，之后完整“配置已更新”可见。Mobile历史选择仍显示原始default；在设置中显式选当前动态默认模型后才显示原生模式菜单。选择审查并发送acp-uri-73，进程151696执行session/load后返回初始model配置，dynamic-default被本地配置校验拒绝，未调用第二个prompt；规范用户行已落库、会话error、active_turn_id为空。失败线程2367d4eb-3530-4a97-92a6-a9c042ab76eb及原始证据保留。
+
+日志在第一组两回合之间记录06:52:17的Restarting 'src/bin.ts'、代理ECONNRESET和06:52:27重新监听。空闲回收阈值为1800000ms，不能将本次重新加载归因为空闲回收；先前中间说明的该归因已撤回，具体watch触发源未确认。恢复后mock未保留动态目录是直接失败边界，不把启动配置场景的成功用于覆盖此失败。后端重启后的模型/模式对齐、未知模型显示/编辑、撤回后再次发送仍随完整矩阵继续。
+
+第二组独立线程7a185f1f-1497-4a21-9fe4-f627f03347db：Web发送acp-bootstrap-73-live，Android加载同线程，在设置显式选择当前“默认模型”及“审查”，保存后发送acp-uri-73-live。真实Windows worker98968在同一mock-session-1收到两个prompt；其中URI只调用一次session/set_config_option，configId=operation、value=https://agentclientprotocol.com/protocol/session-modes#review，成功response且无legacy session/set_mode。该URI不被缩写成两态plan/code；规范interaction_mode保持default，实际原生选择按完整URI持久化，runtime_mode仍为approval-required。
+
+首回合主会话公布engine/operation/fast配置，foreign和isReplay回执不覆盖其模式。第二个prompt主会话发完整空configOptions，实际活动投影末尾session.mode.updated的mode为null、session.config-options.updated为空；Web移除模式按钮，Android设置只剩fixture-acp-model和受监督运行选项，没有Agent模式或审查入口。持久化历史选择仍保留原URI及dynamic-default，Mobile输入框显示原始dynamic-default；本轮只证明撤回广告与控件，不声称历史选项清除或下一次派发已验收。只读SQLite证实四条唯一完整消息，两条助手回复均“配置已更新”，is_streaming=0，会话ready、无active_turn_id/last_error，项目身份保持不变。catalog-acp-live-proof.valid=true执行16项明确断言。
+
+复用emulator-5562及兼容开发客户端、隔离13774后端/5734 Web，不连接真实账号或live userdata。捕获Metro127968，8088；原生NewTaskDraftScreen加载SHA仍为第72主题cf4c7b7787d8380ae30fc59551fa27ccb15eeb4944ea9445d28fbdd70684b31e。本轮Android包HTTP200、31,404,760字节、SHA e2f0482de91f2d08d0477a0b5a8928a1f171c9ef1c40379205f6169ae9201ccd，通过真实Tools→Reload加载。语义读取在未就绪时点击失败，改读新层级后继续，没有回用旧XML。原生设备Plan偏好未改变，沿用第72主题已恢复的false。
+
+当前HEAD纯候选三文件146项通过：AcpJsonRpcConnection、AcpRuntimeModel、共享providerModels，覆盖配置/legacy URI、动态目录、根/foreign/replay归属、withdrawal和客户端模式归一化。测试PID77436退出0，九份对应源/测试文件与当前生产源SHA一致，执行前后哈希稳定；命令为vp test run --config .candidate-test.config.ts <上述三文件> --testTimeout 10000，回执与日志在工作区外catalog-acp-live-checks.cjs及test-result.json/test.log。不重复生产类型/lint或旧版产品对照；本轮无生产源修改，文档fmt与diff检查另行通过，不跑全仓检查。
+
+通过Web实例停用释放受控会话，原wrapper按备份字节恢复，SHA 08d14bb66f352c7c0dbc14fdc73103285c3cb3432b52032db77a8583fb7a4faf；再启用并正式刷新原实例。临时记录层额外child98968在wrapper退出后仍存在，核对捕获的父PID65788和实际mock命令身份后，仅停止该PID；全部六个捕获wrapper/child均已退出。仅忘记Android13774测试连接、移除reverse8088、停止捕获Metro127968；原13773/13811实际已连接，8087/13773/13811转发及保留的Web/backend/fixture不变。cleanup-proof.valid=true，合成线程和失败数据不删除。
+
+证据保留在工作区外catalog-acp-live-{rpc,proof,state-accepted,state-after,source-proof,test-result,cleanup-proof}及导航XML/PNG；可视化目录android-acp-live-selected.png、android-acp-live-withdrawn.png、web-acp-live-after.png和acp-live-proof.json可查看，截图/临时脚本不提交。三份架构/进度文档独立提交，可独立回退且无迁移。本轮是本机Web/Android到受控Windows ACP进程的集成验证；Electron替代自动化授权仍待答复，iOS、外部供应商账号、公网relay/tunnel、全部入口、重启恢复/再次发送和帧率没有新增通过结论。第11项剩余矩阵、第14/19项与全39项/comparison继续进行，原83个无关文件、混合hunk及92项未提交状态继续保护。
