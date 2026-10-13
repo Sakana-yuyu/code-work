@@ -11,16 +11,90 @@ import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
+import * as Exit from "effect/Exit";
 import { TestClock } from "effect/testing";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { acquireGrokHomeAccess, resolveGrokHomePath } from "./GrokHomeAccess.ts";
+import {
+  acquireGrokHomeAccess,
+  claimGrokHomeConfiguration,
+  GrokHomeConflict,
+  resolveGrokHomePath,
+} from "./GrokHomeAccess.ts";
 import { fetchGrokCatalog } from "./Layers/GrokProvider.ts";
 import { makeNativeProviderCatalog } from "./NativeProviderCatalog.ts";
 
 const decodeSettings = Schema.decodeSync(GrokSettings);
+const isGrokHomeConflict = Schema.is(GrokHomeConflict);
+const routedConfiguration = {
+  routed: true,
+  source: "first",
+  gatewayOrigin: "http://127.0.0.1:13000",
+};
 
 it.layer(NodeServices.layer)("Grok home 占用生命周期", (it) => {
+  for (const [name, conflicting] of [
+    ["不同来源", { ...routedConfiguration, source: "second" }],
+    ["不同网关", { ...routedConfiguration, gatewayOrigin: "http://127.0.0.1:13001" }],
+    ["代理与非代理", { routed: false }],
+  ] as const) {
+    it.effect(`${name}在实例仍存活时立即拒绝共享home`, () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const home = yield* fs.makeTempDirectoryScoped({ prefix: "codework-grok-claim-" });
+        yield* claimGrokHomeConfiguration(home, routedConfiguration);
+        const result = yield* claimGrokHomeConfiguration(home, conflicting).pipe(Effect.result);
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure") {
+          expect(isGrokHomeConflict(result.failure)).toBe(true);
+          expect(result.failure.message).toContain("独立 GROK_HOME");
+        }
+      }),
+    );
+  }
+
+  it.effect("等价配置按实例引用计数，最后Scope关闭后才能交给不兼容配置", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "codework-grok-refcount-" });
+      const first = yield* Scope.make("sequential");
+      const second = yield* Scope.make("sequential");
+      yield* Effect.addFinalizer(() => Scope.close(first, Exit.void));
+      yield* Effect.addFinalizer(() => Scope.close(second, Exit.void));
+      yield* claimGrokHomeConfiguration(home, routedConfiguration).pipe(
+        Effect.provideService(Scope.Scope, first),
+      );
+      yield* claimGrokHomeConfiguration(home, { ...routedConfiguration }).pipe(
+        Effect.provideService(Scope.Scope, second),
+      );
+      yield* Scope.close(first, Exit.void);
+      const conflicting = { ...routedConfiguration, source: "next" };
+      expect((yield* claimGrokHomeConfiguration(home, conflicting).pipe(Effect.result))._tag).toBe(
+        "Failure",
+      );
+      yield* Scope.close(second, Exit.void);
+      yield* claimGrokHomeConfiguration(home, conflicting);
+    }),
+  );
+
+  it.effect("非代理配置不受无效的来源/网关展示字段影响，失败构造释放配置所有权", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "codework-grok-rollback-" });
+      const result = yield* Effect.gen(function* () {
+        yield* claimGrokHomeConfiguration(home, { routed: false });
+        yield* claimGrokHomeConfiguration(home, {
+          routed: false,
+          source: "ignored",
+          gatewayOrigin: "http://127.0.0.1:1",
+        });
+        return yield* Effect.fail("模拟后续初始化失败");
+      }).pipe(Effect.scoped, Effect.result);
+      expect(result._tag).toBe("Failure");
+      yield* claimGrokHomeConfiguration(home, routedConfiguration);
+    }),
+  );
   it.effect("同一 home 在先前 owner 的清理回执完成后才交给下一 owner", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -161,6 +235,12 @@ it.layer(NodeServices.layer)("Grok home 占用生命周期", (it) => {
       expect(resolved).toBe(path.join(yield* fs.realPath(home), "new", "nested"));
       yield* fs.makeDirectory(path.join(home, "new", "nested"), { recursive: true });
       expect(yield* resolveGrokHomePath(path.join(alias, "new", "nested"))).toBe(resolved);
+      yield* claimGrokHomeConfiguration(home, routedConfiguration);
+      expect(
+        (yield* claimGrokHomeConfiguration(alias, { ...routedConfiguration, source: "other" }).pipe(
+          Effect.result,
+        ))._tag,
+      ).toBe("Failure");
       const entered = yield* Deferred.make<void>();
       const release = yield* Deferred.make<void>();
       const trace: string[] = [];

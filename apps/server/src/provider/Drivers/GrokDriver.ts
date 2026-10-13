@@ -48,7 +48,11 @@ import {
 import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import { isDefaultGrokHome, resolveGrokHome } from "../grokHome.ts";
-import { acquireGrokHomeAccess, resolveGrokHomePath } from "../GrokHomeAccess.ts";
+import {
+  acquireGrokHomeAccess,
+  claimGrokHomeConfiguration,
+  resolveGrokHomePath,
+} from "../GrokHomeAccess.ts";
 import {
   makeProviderMaintenanceCapabilities,
   makeStaticProviderMaintenanceResolver,
@@ -189,6 +193,29 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
           detail: "Grok 代理接管需要独立 GROK_HOME，不能写入个人默认账号目录。",
         });
       }
+      if (!personal)
+        yield* claimGrokHomeConfiguration(grokHome, {
+          routed,
+          ...(routed
+            ? {
+                source: config.byokSourceInstanceId,
+                gatewayOrigin: gatewayOrigin(serverConfig.port),
+              }
+            : {}),
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ProviderDriverError({
+                driver: DRIVER_KIND,
+                instanceId,
+                detail:
+                  cause._tag === "GrokHomeConflict"
+                    ? cause.message
+                    : "无法取得 Grok 目录配置所有权。",
+                cause,
+              }),
+          ),
+        );
       const baseProcessEnv = { ...inheritedEnv, GROK_HOME: grokHome };
       // The grok CLI reads the gateway key from the env var that the managed
       // config.toml block references via `env_key`.
