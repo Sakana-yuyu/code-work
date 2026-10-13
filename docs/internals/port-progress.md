@@ -1228,3 +1228,21 @@ Codex 两态控件撤回，三端复用现有通用选项消费。普通发送�
 原始证据在工作区外catalog-outbox-modes-{core,typecheck-mobile,typecheck-client-runtime,format,lint,final-old,final-green}.log、final-red-proof、final-native-source、final-queue-proof、final-runtime-proof及层级/PNG。可视化目录android-outbox-catalog-fixed.png、android-outbox-catalog-proof.json与outbox-catalog-default-only.png可查看。完成后恢复fixture原文件SHA、移除仅本主题两控制文件，通过实例停用释放PID138112再启用/刷新原目录；恢复飞行模式disabled，仅移除客户端13774测试连接，保留13773/13811，撤销reverse8088并停止捕获Metro46604。保留模拟器、Web/backend和服务端线程数据。
 
 本主题实际为Web目录撤回操作、Android已有线程离线恢复及Windows受控协议进程；不是外部供应商/真实账号验收。新任务派发有入口集成断言，ACP URI为定向证据，没有新任务设备、Electron、iOS、公网relay/tunnel或帧率实测。十二类provider沿用既有决定；新客户端RPC不执行供应商探测，Web/Desktop不改变发送入口。没有动画、全局订阅、持久格式迁移或审批放宽，队列参数规范化后仍走既有消息/命令身份。第11项完整矩阵、第14/19项及全部39项/comparison继续进行。五源与四文档可独立回退，原83个无关基线及BYOK/ChatView/ChatComposer混合hunk继续保护。
+
+## 70. Android新任务离线恢复采用当前目录的实际验收
+
+第69主题是有效进展，本轮基线fb21d508e。第11项仍进行，完整39项与comparison额外范围保持不变；Electron替代自动化授权尚未收到，没有操作其窗口。继续使用test-codework-mobile流程、隔离emulator-5562、兼容com.codework.mobile.dev开发客户端，以及此前保留的13774后端/5734 Web环境。开工核对devRunner156576、fixture124388仍存活，端口实际监听分别为server119888和Web54228。未运行真实账号、外部供应商或live userdata，未写SQL业务状态。
+
+三处第69主题生产源在原生副本的SHA与已测试候选一致，无新产品源码修改或原生重建。启动并捕获本主题Metro120540、8088端口，APP_VARIANT=development、dev-client、codework-dev、CI=1、EXPO_OFFLINE=1。Android包HTTP200、31,401,571字节、SHA-256 `f5377b0ca9aac450d28f6c0223162d31676caeecf99b053a40ff4dba82a44320`；通过真实Tools菜单Reload重载。最初两次层级只有Tools加载帧，确认同一Metro仍存活且完成编译后页面加载，没有因观察延迟重启。Metro日志保留依赖导出、颜色环境变量及资源解析告警，不当成验收通过依据。
+
+实际新建任务选择隔离server项目，输入newtask-offline-catalog-70。选择器最初只显示草稿旧模型gpt-5.6-sol；打开旧版模型筛选后确认合成Codex模式验收模型被标为旧版，显式选择它，设置Medium、原生计划及受监督。模型待选状态须点击保存；左侧返回不提交待选模型。右侧Tools浮层覆盖按钮部分区域，点击当前保存按钮可见边缘成功回到草稿；导航帧的XML一度早于截图，最终以草稿截图和随后文件共同确认，不凭旧层级推断。没有更改目录语义来绕过筛选，也没有把合成模型的旧版标签当成外部模型结论。
+
+本任务模拟器原飞行模式disabled，临时enable后确认原生“您离线”和“将任务加入队列”。队列保存指定文件edc6b503-1164-46df-a971-e966c0418df2.json；只读这条无附件合成消息。文件为schemaVersion3、环境56819db7-b079-4e29-b460-8f036e42d292、预分配线程12c26f38-cbb3-4581-8d96-49079af4b983、消息edc6b503-1164-46df-a971-e966c0418df2、命令a910c823-12b3-4a12-a423-35db784afb23；原生mode=plan、Medium、approval-required，creation为指定项目9bd1fd3c-05b0-4b52-93a7-aac7f0bf2c69、local和原cwd；当时尚无该文本turn/start。文件规范interactionMode为default，原生选项为plan，不能宣称入队表示已一致；该表示仍随第14/19项核对。
+
+通过本主题可恢复合成fixture控制撤回Plan，Web设置正式刷新，打开新线程的完整模型选项菜单确认只广告原生默认。恢复飞行模式disabled后自动创建线程并派发；真实Windows Node worker78776只收到一次该文本，model=fixture-codex-model、mode=default、untrusted/readOnly。只读SQLite投影证实项目与预分配线程一致，规范与原生选项均default、Medium与approval-required保留，原user messageId不变，仅用户/助手两行且is_streaming=0，助手完整“原生默认模式已确认。”，session ready、active_turn_id与last_error为空，物理outbox为空。runtime-proof.valid=true覆盖这些断言。
+
+原生列表实际出现新线程，打开初期曾显示加载消息、连接失败重试和两个环境重连；没有据落库完成就声称正文可见。观察同一进程/连接继续恢复，最终新线程全文和默认回复可见，旧13773/13811与本轮13774均实际已连接。点击已变化的重连提示时SDK语义动作失败，刷新层级后继续，没有复用旧XML或重启。这证明最终恢复与新任务目录派发，不证明重连延迟无回归；完整连接矩阵及第8/19项的状态对账仍开放。
+
+原始工作区外catalog-newtask-native-{queue-proof,runtime-proof,metro,bundle-result,cleanup-proof}.json、Metro日志和各导航层级/PNG保留。可视化目录android-newtask-catalog-completed.png、android-newtask-catalog-proof.json、newtask-default-only.png及newtask-provider-restored.png可查看。恢复fixture原字节SHA、移除本主题newtask-modes.json，通过实例停用释放worker78776后重新启用/刷新，Web确认已认证；仅忘记手机13774测试连接，保留13773/13811已连接；移除reverse8088，停止捕获Metro120540，飞行模式disabled。保留模拟器、Web/backend、服务端新线程和验收数据。
+
+本轮新增Android新任务实际离线入队/目录撤回/自动创建/一次发送/完整回复/文件移除证据，无新源码、协议、权限、会话生命周期或用户行为变更。因此未重复第69主题71项测试/目标类型/lint或第68主题361项，也未重做旧版对照；对应源码证据按原范围保留。Web为目录撤回入口，Windows为受控CLI子进程；Electron、iOS、ACP实际动态目录、外部供应商、公网relay/tunnel和帧率未新增验收。第11项剩余完整矩阵、第14/19项及全39项/comparison继续进行。三份架构/进度文档可独立回退，无迁移，原有92项未提交状态与受保护混合hunk继续保留。
