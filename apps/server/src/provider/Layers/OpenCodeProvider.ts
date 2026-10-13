@@ -4,37 +4,33 @@ import {
   type ServerProviderModel,
   type ServerProviderSkill,
 } from "@codework/contracts";
-import * as Cause from "effect/Cause";
-import * as Data from "effect/Data";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Result from "effect/Result";
 
+import { HostProcessEnvironment } from "@codework/shared/hostProcess";
 import { createModelCapabilities } from "@codework/shared/model";
-import { compareSemverVersions } from "@codework/shared/semver";
 import {
   buildServerProvider,
   nonEmptyTrimmed,
-  parseGenericCliVersion,
   providerModelsFromSettings,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
+import { OpenCodeRuntime, type OpenCodeInventory } from "../opencodeRuntime.ts";
 import {
-  OpenCodeRuntime,
-  openCodeRuntimeErrorDetail,
-  type OpenCodeInventory,
-} from "../opencodeRuntime.ts";
+  makeOpenCodeCatalog,
+  MINIMUM_OPENCODE_VERSION,
+  OpenCodeCatalogError,
+  type OpenCodeCatalog,
+} from "../OpenCodeCatalog.ts";
 import type { Agent, ProviderListResponse } from "@opencode-ai/sdk/v2";
+
+export { MINIMUM_OPENCODE_VERSION } from "../OpenCodeCatalog.ts";
 
 const OPENCODE_PRESENTATION = {
   displayName: "OpenCode",
   showInteractionModeToggle: false,
 } as const;
-const MINIMUM_OPENCODE_VERSION = "1.14.19";
-
-class OpenCodeProbeError extends Data.TaggedError("OpenCodeProbeError")<{
-  readonly cause: unknown;
-  readonly detail: string;
-}> {}
 
 function normalizeProbeMessage(message: string): string | undefined {
   const trimmed = message.trim();
@@ -51,7 +47,7 @@ function normalizeProbeMessage(message: string): string | undefined {
 }
 
 function normalizedErrorMessage(cause: unknown): string | undefined {
-  if (cause instanceof OpenCodeProbeError) {
+  if (cause instanceof OpenCodeCatalogError) {
     return normalizeProbeMessage(cause.detail);
   }
 
@@ -326,9 +322,9 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
   openCodeSettings: OpenCodeSettings,
   cwd: string,
   environment?: NodeJS.ProcessEnv,
+  catalog?: OpenCodeCatalog,
 ): Effect.fn.Return<ServerProviderDraft, never, OpenCodeRuntime> {
-  const openCodeRuntime = yield* OpenCodeRuntime;
-  const resolvedEnvironment = environment ?? process.env;
+  const resolvedEnvironment = { ...(yield* HostProcessEnvironment), ...environment };
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const customModels = openCodeSettings.customModels;
   const isExternalServer = openCodeSettings.serverUrl.trim().length > 0;
@@ -372,93 +368,44 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     });
   }
 
-  let version: string | null = null;
-  if (!isExternalServer) {
-    const versionExit = yield* Effect.exit(
-      openCodeRuntime
-        .runOpenCodeCommand({
-          binaryPath: openCodeSettings.binaryPath,
-          args: ["--version"],
-          environment: resolvedEnvironment,
-        })
-        .pipe(
-          Effect.mapError(
-            (cause) => new OpenCodeProbeError({ cause, detail: openCodeRuntimeErrorDetail(cause) }),
-          ),
-        ),
-    );
-    if (versionExit._tag === "Failure") {
-      return fallback(Cause.squash(versionExit.cause));
-    }
-    version = parseGenericCliVersion(versionExit.value.stdout) ?? null;
-
-    if (!version) {
-      return fallback(
-        new Error(
-          `Unable to determine OpenCode version from \`opencode --version\` output. Code Work requires OpenCode v${MINIMUM_OPENCODE_VERSION} or newer.`,
-        ),
-        null,
-      );
-    }
-    if (compareSemverVersions(version, MINIMUM_OPENCODE_VERSION) < 0) {
-      return buildServerProvider({
-        presentation: OPENCODE_PRESENTATION,
-        enabled: openCodeSettings.enabled,
-        checkedAt,
-        models: providerModelsFromSettings([], customModels, DEFAULT_OPENCODE_MODEL_CAPABILITIES),
-        probe: {
-          installed: true,
-          version,
-          status: "error",
-          auth: { status: "unknown" },
-          message: `OpenCode v${version} is too old. Upgrade to v${MINIMUM_OPENCODE_VERSION} or newer.`,
-        },
-      });
-    }
+  const providerCatalog = catalog ?? (yield* makeOpenCodeCatalog());
+  const result = yield* providerCatalog
+    .fetchCatalog({
+      binaryPath: openCodeSettings.binaryPath,
+      serverUrl: openCodeSettings.serverUrl,
+      serverPassword: openCodeSettings.serverPassword,
+      cwd,
+      environment: resolvedEnvironment,
+    })
+    .pipe(Effect.result);
+  if (Result.isFailure(result)) {
+    return fallback(result.failure, result.failure.version);
+  }
+  const { version } = result.success;
+  if (result.success.status === "unsupported") {
+    return buildServerProvider({
+      presentation: OPENCODE_PRESENTATION,
+      enabled: true,
+      checkedAt,
+      models: providerModelsFromSettings([], customModels, DEFAULT_OPENCODE_MODEL_CAPABILITIES),
+      probe: {
+        installed: true,
+        version,
+        status: "error",
+        auth: { status: "unknown" },
+        message: `OpenCode v${version} is too old. Upgrade to v${MINIMUM_OPENCODE_VERSION} or newer.`,
+      },
+    });
   }
 
-  const inventoryExit = yield* Effect.exit(
-    (isExternalServer
-      ? Effect.scoped(
-          Effect.gen(function* () {
-            const server = yield* openCodeRuntime.connectToOpenCodeServer({
-              binaryPath: openCodeSettings.binaryPath,
-              serverUrl: openCodeSettings.serverUrl,
-              environment: resolvedEnvironment,
-            });
-            return yield* openCodeRuntime.loadOpenCodeInventory(
-              openCodeRuntime.createOpenCodeSdkClient({
-                baseUrl: server.url,
-                directory: cwd,
-                ...(openCodeSettings.serverPassword
-                  ? { serverPassword: openCodeSettings.serverPassword }
-                  : {}),
-              }),
-            );
-          }),
-        )
-      : openCodeRuntime.loadInventoryFromCli({
-          binaryPath: openCodeSettings.binaryPath,
-          cwd,
-          environment: resolvedEnvironment,
-        })
-    ).pipe(
-      Effect.mapError(
-        (cause) => new OpenCodeProbeError({ cause, detail: openCodeRuntimeErrorDetail(cause) }),
-      ),
-    ),
-  );
-  if (inventoryExit._tag === "Failure") {
-    return fallback(Cause.squash(inventoryExit.cause), version);
-  }
-
+  const { inventory } = result.success;
   const models = providerModelsFromSettings(
-    flattenOpenCodeModels(inventoryExit.value),
+    flattenOpenCodeModels(inventory),
     customModels,
     DEFAULT_OPENCODE_MODEL_CAPABILITIES,
   );
-  const skills = flattenOpenCodeSkills(inventoryExit.value);
-  const connectedCount = inventoryExit.value.providerList.connected.length;
+  const skills = flattenOpenCodeSkills(inventory);
+  const connectedCount = inventory.providerList.connected.length;
   return buildServerProvider({
     presentation: OPENCODE_PRESENTATION,
     enabled: true,

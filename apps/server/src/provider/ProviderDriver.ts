@@ -34,6 +34,7 @@ import type * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import type { ByokAgentModelDriver } from "../composition/ByokAgentLoop.ts";
 import type { CompositionAgentServiceError } from "../composition/CompositionAgentService.ts";
 import type { CliProviderCatalog } from "./CliProviderCatalog.ts";
+import type { OpenCodeCatalog } from "./OpenCodeCatalog.ts";
 import type { ProviderAdapterError, ProviderDriverError } from "./Errors.ts";
 import type { ProviderAdapterShape } from "./Services/ProviderAdapter.ts";
 import type { ServerProviderShape } from "./Services/ServerProvider.ts";
@@ -123,6 +124,8 @@ export interface ProviderDriverCreateInput<Config> {
   readonly config: Config;
   /** 注册表内共享只读目录结果；直接创建 driver 时可省略并使用独立缓存。 */
   readonly catalog?: CliProviderCatalog;
+  /** OpenCode 目录包含当前连接状态，仅共享在途刷新，不保存完成后的认证结果。 */
+  readonly openCodeCatalog?: OpenCodeCatalog;
 }
 
 /**

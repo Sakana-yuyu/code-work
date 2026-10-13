@@ -21,6 +21,8 @@ export interface ProviderCatalogResult<A> {
 class CatalogRequest<A> implements Equal.Equal {
   readonly key: string;
   readonly run: Effect.Effect<ProviderCatalogResult<A>>;
+  waiters = 0;
+  settled = false;
 
   constructor(key: string, run: Effect.Effect<ProviderCatalogResult<A>>) {
     this.key = key;
@@ -28,7 +30,7 @@ class CatalogRequest<A> implements Equal.Equal {
   }
 
   [Equal.symbol](other: unknown): boolean {
-    return other instanceof CatalogRequest && this.key === other.key;
+    return this === other;
   }
 
   [Hash.symbol](): number {
@@ -48,15 +50,19 @@ export const makeProviderCatalogCache = Effect.fn("makeProviderCatalogCache")(fu
   readonly shouldCache: (value: A) => boolean;
 }) {
   const completed = new Map<string, { readonly value: A; readonly expiresAt: number }>();
-  // 在途检查不能因容量逐出而重复启动；完成记录在等待结束时清理。
-  const inFlight = yield* Cache.makeWith((request: CatalogRequest<A>) => request.run, {
-    capacity: Infinity,
-    timeToLive: () => Duration.zero,
-  });
-  const pruneCompletedLoads = Cache.keys(inFlight).pipe(
-    // keys 惰性删除已到期条目；同步遍历保留 expiresAt 尚未设置的新一轮加载。
-    Effect.map((keys) => Array.from(keys)),
-    Effect.asVoid,
+  const active = new Map<string, CatalogRequest<A>>();
+  // Cache 管理加载与取消引用计数；显式清理已结束的一轮，不依赖首等待者的时钟。
+  const inFlight = yield* Cache.makeWith(
+    (request: CatalogRequest<A>) =>
+      request.run.pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            request.settled = true;
+            if (active.get(request.key) === request) active.delete(request.key);
+          }),
+        ),
+      ),
+    { capacity: Infinity, timeToLive: () => Duration.infinity },
   );
 
   const fetchCatalog = Effect.fn("ProviderCatalogCache.fetchCatalog")(function* (input: {
@@ -76,24 +82,39 @@ export const makeProviderCatalogCache = Effect.fn("makeProviderCatalogCache")(fu
       return { value: cached.value, cached: true };
     }
 
-    const request = new CatalogRequest(
-      input.key,
-      Effect.gen(function* () {
-        const previous = completed.get(input.key);
-        const value = yield* input.load;
-        const finishedAt = DateTime.toEpochMillis(yield* DateTime.now);
-        if (options.capacity > 0 && options.shouldCache(value)) {
-          completed.delete(input.key);
-          completed.set(input.key, { value, expiresAt: finishedAt + options.ttlMs });
-          for (const key of completed.keys()) {
-            if (completed.size <= options.capacity) break;
-            completed.delete(key);
-          }
+    const load = Effect.gen(function* () {
+      const previous = completed.get(input.key);
+      const value = yield* input.load;
+      const finishedAt = DateTime.toEpochMillis(yield* DateTime.now);
+      if (options.capacity > 0 && options.shouldCache(value)) {
+        completed.delete(input.key);
+        completed.set(input.key, { value, expiresAt: finishedAt + options.ttlMs });
+        for (const key of completed.keys()) {
+          if (completed.size <= options.capacity) break;
+          completed.delete(key);
         }
-        return { value, cached: false, ...(previous ? { previous: previous.value } : {}) };
+      }
+      return { value, cached: false, ...(previous ? { previous: previous.value } : {}) };
+    });
+    const fetch = Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const request = active.get(input.key) ?? new CatalogRequest(input.key, load);
+        active.set(input.key, request);
+        request.waiters += 1;
+        return request;
       }),
+      (request) => Cache.get(inFlight, request),
+      (request) =>
+        Effect.gen(function* () {
+          request.waiters -= 1;
+          // 同步加载可能早于 Cache 安装条目完成；必须在等待返回后清理该对象。
+          // 零等待者同时覆盖登记后、Cache.get 启动前取消的窗口。
+          if (request.settled || request.waiters === 0) {
+            if (active.get(request.key) === request) active.delete(request.key);
+            yield* Cache.invalidate(inFlight, request);
+          }
+        }),
     );
-    const fetch = Cache.get(inFlight, request).pipe(Effect.ensuring(pruneCompletedLoads));
     const timeout = input.timeout;
     if (!timeout) return yield* fetch;
 

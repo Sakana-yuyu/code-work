@@ -6,7 +6,7 @@
 
 ## 供应商状态刷新
 
-内置 driver 的快照均通过 `makeManagedServerProvider` 管理。同一实例且快照设置等价时，默认共享在途检查；设置不同则分别排队，实际检查仍由原 semaphore 串行执行。接入目录缓存的 driver 设置 `usesCatalogCache`，初次、设置变化及周期检查允许命中缓存，公开 `refresh` 强制目录更新。强制请求只加入已有强制检查，避免普通检查已读旧缓存后吞掉手动刷新；普通请求可加入任一同设置检查。当前 BYOK、Cursor、Grok、Kimi、Antigravity、Pi、OhMyPi、ZCode、通用 ACP、Codex、Claude 接入这一缓存语义，OpenCode 保持已有合并方式。检查前后都核对设置，过期结果不发布；异步补充快照同时受设置和 generation 约束。这里的快照设置不代替 provider 配置：driver 的 `checkProvider` 仍捕获创建时配置，配置热更新由 registry 关闭旧 Scope、重建实例。
+内置 driver 的快照均通过 `makeManagedServerProvider` 管理。同一实例且快照设置等价时，默认共享在途检查；设置不同则分别排队，实际检查仍由原 semaphore 串行执行。接入目录缓存的 driver 设置 `usesCatalogCache`，初次、设置变化及周期检查允许命中缓存，公开 `refresh` 强制目录更新。强制请求只加入已有强制检查，避免普通检查已读旧缓存后吞掉手动刷新；普通请求可加入任一同设置检查。当前 BYOK、Cursor、Grok、Kimi、Antigravity、Pi、OhMyPi、ZCode、通用 ACP、Codex、Claude、OpenCode 均接入；OpenCode 只合并在途目录，不保留已完成的连接状态。检查前后都核对设置，过期结果不发布；异步补充快照同时受设置和 generation 约束。这里的快照设置不代替 provider 配置：driver 的 `checkProvider` 仍捕获创建时配置，配置热更新由 registry 关闭旧 Scope、重建实例。
 
 共享检查属于 provider Scope，调用者取消只结束自身等待。Scope 关闭时终止检查并唤醒全部等待者；失败清理登记后允许下一次刷新。短暂登记和退出清理不可中断，独立检查主体明确可中断，不继承父调用者的不可中断状态。完成结果以 `Deferred<Exit>` 共享，然后由各等待者重放，避免中断传播破坏共享唤醒。本机制不增加刷新缓存或统一超时，无等待者的检查仍会执行至完成或 Scope 关闭。
 
@@ -22,7 +22,11 @@ Codex 每次健康检查建立无会话 app-server 连接读取版本和 `accoun
 
 Claude 的 `fetchClaudeCatalog` 区分草稿 `configured-models` 与原生 `native-directory`。SDK initialize 合并返回账户与命令，因此当前账户和命令每次仍重新初始化读取；只缓存版本对应模型、自定义模型、命令值和本地技能。目录身份包含规范化自定义模型、实际 executable、cwd、最终环境、版本及当次命令值，不缓存账户。初始化失败的降级目录不写缓存，不能覆盖或延长上一份成功值。公开探针合并宿主与实例环境后固定快照，Windows executable 和相对 PATH 按同一 cwd 解析。每次执行创建独立 AbortController，成功、失败、取消和超时均 abort 并调用 SDK `close()`；其返回 void，只能确认发起清理，不代表已等待 OS 进程完全退出。初始化只发送控制消息，关闭会话持久化，不发送用户 prompt。
 
-`ProviderCatalogCache` 分开保存成功结果和在途加载，强制刷新跳过成功值但加入同键的在途加载；失败保留上一份成功结果，不延长其TTL。完成后清除加载闭包，容量只限制成功值。单个目录等待者取消或超时不影响其他等待者，最后一个等待者离开后中断实际加载；这与上面的 provider 状态检查 Scope 所有权不同。BYOK 每个目录加载最多十五秒，每次实例状态检查另有同一个十五秒截止时间，逐通道传入剩余等待预算；超时仍可读取同键旧值，预算耗尽后不启动新请求。Effect HTTP 当前仍给各底层请求创建独立 AbortSignal，OpenCode 统一入口、全 provider 总 deadline 与同一 signal 以及会话内模型/模式边界仍需继续收敛。Codex/Claude 本次接入不把既有分阶段超时算作统一总预算。
+OpenCode 的版本、模型、variants、agent 模式和技能统一经过 `OpenCodeCatalog.fetchCatalog`。每个 registry 创建独立目录对象，同一 registry 的实例和重建共用；直接创建 driver 时使用私有对象。本地身份包含 binary、cwd 和完整实际环境（含 BYOK 注入配置），远端只包含去除两端空格的 serverUrl、password 和 directory。键和执行使用同一份输入快照，自定义模型在结果外合并。当前最低版本的组合接口同时返回模型与 connected，后续检查必须重新读取，不能将它放入一分钟成功缓存；因此复用公共缓存的仅在途模式，完成即清除。外部 SDK 直接按配置构造客户端，不借用 adapter client、不启动本地服务器或创建 session。
+
+OpenCode 每次共享加载拥有一个 Scope、AbortController 和十五秒工作预算。本地版本探测、三路目录命令及一秒重试等待均在此预算内；远端 provider、agent、skill 请求接收同一个 signal。后加入的等待者不会重置截止时间，首等待者取消不结束其余等待者的加载，最后等待者取消或超时则 abort 并释放资源。短命令使用两秒强制退出宽限并等待 finalizer，资源清理可能使实际返回晚于十五秒，不能把工作预算表述成绝对墙钟上限。公开 runtime 未传完整环境时继续继承宿主，目录内部固定最终 cwd/env 后关闭二次继承；Windows 命令解析与 spawn 使用同一参数。技能普通查询失败仍允许空列表，取消不会被降级为成功。
+
+`ProviderCatalogCache` 分开保存成功结果和在途加载，强制刷新跳过成功值但加入同键的在途加载；失败保留上一份成功结果，不延长其TTL。每轮加载以独立对象登记和清理，不依赖首等待者的时钟过期；旧等待者的清理不能删除同键新加载，同步完成也在缓存登记后释放。完成后清除加载闭包，容量只限制成功值。单个目录等待者取消或超时不影响其他等待者，最后一个等待者离开后中断实际加载；这与上面的 provider 状态检查 Scope 所有权不同。BYOK 每个目录加载最多十五秒，每次实例状态检查另有同一个十五秒截止时间，逐通道传入剩余等待预算；超时仍可读取同键旧值，预算耗尽后不启动新请求。Effect HTTP 当前仍给 BYOK 各底层请求创建独立 AbortSignal，其余 provider 总 deadline 与同一 signal 以及会话内模型/模式边界仍需继续收敛。Codex/Claude 的分阶段超时不算统一总预算。
 
 > For maintainers. Using Code Work? See [docs/user](../user/).
 

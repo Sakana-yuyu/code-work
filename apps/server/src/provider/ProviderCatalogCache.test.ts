@@ -395,4 +395,32 @@ describe("ProviderCatalogCache", () => {
       });
     }),
   );
+
+  for (const capacity of [0, 2]) {
+    it.effect(`首等待者取消后容量${capacity}的下一次刷新使用当前加载器`, () =>
+      Effect.gen(function* () {
+        const { fetchCatalog } = yield* makeCache(capacity);
+        const entered = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const first = yield* fetchCatalog({
+          key: "a",
+          load: Deferred.succeed(entered, undefined).pipe(
+            Effect.andThen(Deferred.await(release)),
+            Effect.as(1),
+          ),
+        }).pipe(Effect.forkChild({ startImmediately: true }));
+        yield* Deferred.await(entered);
+        const second = yield* fetchCatalog({ key: "a", load: Effect.die("必须共享当前加载") }).pipe(
+          Effect.forkChild({ startImmediately: true }),
+        );
+        yield* Fiber.interrupt(first);
+        yield* Deferred.succeed(release, undefined);
+        assert.deepStrictEqual(yield* Fiber.join(second), { value: 1, cached: false });
+        assert.deepStrictEqual(
+          yield* fetchCatalog({ key: "a", forceRefresh: true, load: Effect.succeed(2) }),
+          { value: 2, cached: false, ...(capacity > 0 ? { previous: 1 } : {}) },
+        );
+      }),
+    );
+  }
 });
