@@ -113,6 +113,7 @@ import * as CompositionAutomationRuntime from "./composition/CompositionAutomati
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as ProcessRunner from "./processRunner.ts";
+import * as ManagedProcessRegistry from "./process/ManagedProcessRegistry.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -788,6 +789,11 @@ const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = RuntimeCoreDependencie
   // no longer transitively provides it. Exposing it at the runtime level
   // keeps a single Live for all opencode consumers.
   Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
+  // Provider-derived helper processes register here at spawn; startup
+  // reconcile in `reconcileProviderSessions` reaps leftovers from the
+  // previous run. Provided once at the runtime level so every spawn seam
+  // (provider runtimes, ACP sessions, pifamily transports) sees one ledger.
+  Layer.provideMerge(ManagedProcessRegistry.layer),
   Layer.provideMerge(Layer.mergeAll(WorkspaceLayerLive, CompositionToolBrokerLayerLive)),
   Layer.provideMerge(ProjectFaviconResolverLayerLive),
   Layer.provideMerge(Layer.mergeAll(RepositoryIdentityResolver.layer, ServerEnvironment.layer)),

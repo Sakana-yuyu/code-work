@@ -795,6 +795,7 @@ export const makeOmpAdapter = (config: OmpAgentSettings, options: OmpAdapterOpti
         const spawn = spawnPifamilyProcess({
           spawner,
           diagnosticName: "OhMyPi",
+          owner: { provider: PROVIDER, kind: "session-transport" },
           binaryPath: config.binaryPath,
           args,
           cwd: input.cwd,

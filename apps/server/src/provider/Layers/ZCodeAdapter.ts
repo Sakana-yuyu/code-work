@@ -599,6 +599,7 @@ export const makeZCodeAdapter = (config: ZCodeAgentSettings, options: ZCodeAdapt
           spawn: spawnPifamilyProcess({
             spawner,
             diagnosticName: "ZCode",
+            owner: { provider: PROVIDER, kind: "session-transport" },
             binaryPath: options.spawnTarget.command,
             args,
             cwd: ctx.session.cwd,

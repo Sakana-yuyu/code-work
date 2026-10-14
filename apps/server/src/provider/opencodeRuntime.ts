@@ -30,6 +30,7 @@ import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { isWindowsCommandNotFound } from "../processRunner.ts";
+import * as ManagedProcessRegistry from "../process/ManagedProcessRegistry.ts";
 import { collectStreamAsString } from "./providerSnapshot.ts";
 import * as NetService from "@codework/shared/Net";
 import {
@@ -595,6 +596,20 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         Effect.ignore,
       );
       yield* Scope.addFinalizer(runtimeScope, terminateChild);
+
+      const managedRecord = yield* ManagedProcessRegistry.recordSpawnedChild({
+        owner: { provider: "opencode", kind: "helper-server" },
+        pid: Number(child.pid),
+        command: spawnCommand.command,
+        args: spawnCommand.args,
+        metadata: { port },
+      });
+      if (Option.isSome(managedRecord)) {
+        yield* Scope.addFinalizer(
+          runtimeScope,
+          ManagedProcessRegistry.removeManagedRecord(managedRecord.value),
+        );
+      }
 
       const stdoutRef = yield* Ref.make("");
       const stderrRef = yield* Ref.make("");

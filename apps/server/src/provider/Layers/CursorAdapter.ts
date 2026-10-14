@@ -881,6 +881,7 @@ export function makeCursorAdapter(
             : options?.environment;
           const acp = yield* makeCursorAcpRuntime({
             cursorSettings: effectiveCursorSettings,
+            owner: { provider: PROVIDER, kind: "session-transport" },
             ...(sessionEnvironment ? { environment: sessionEnvironment } : {}),
             childProcessSpawner,
             cwd,

@@ -25,6 +25,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -39,6 +40,7 @@ import * as EffectCodexSchema from "effect-codex-app-server/schema";
 import { buildCodexInitializeParams } from "./CodexProvider.ts";
 import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
+import * as ManagedProcessRegistry from "../../process/ManagedProcessRegistry.ts";
 import { buildCodexDeveloperInstructions } from "../CodexDeveloperInstructions.ts";
 const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnStartResponse);
 
@@ -1199,6 +1201,19 @@ export const makeCodexSessionRuntime = (
             }),
         ),
       );
+
+    const managedRecord = yield* ManagedProcessRegistry.recordSpawnedChild({
+      owner: { provider: PROVIDER, kind: "session-transport" },
+      pid: Number(child.pid),
+      command: spawnCommand.command,
+      args: spawnCommand.args,
+    });
+    if (Option.isSome(managedRecord)) {
+      yield* Scope.addFinalizer(
+        runtimeScope,
+        ManagedProcessRegistry.removeManagedRecord(managedRecord.value),
+      );
+    }
 
     const clientContext = yield* CodexClient.layerChildProcess(child).pipe(
       Layer.build,

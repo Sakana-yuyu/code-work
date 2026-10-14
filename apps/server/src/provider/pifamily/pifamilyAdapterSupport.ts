@@ -13,6 +13,7 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -35,6 +36,7 @@ import {
 import { resolveSpawnCommand } from "@codework/shared/shell";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import * as ManagedProcessRegistry from "../../process/ManagedProcessRegistry.ts";
 import { makeTerminalSafeRuntimeEmitter } from "../runtimeTurnItems.ts";
 
 import { ProviderAdapterValidationError } from "../Errors.ts";
@@ -493,6 +495,11 @@ export const spawnPifamilyProcess = (input: {
   readonly environment: Readonly<Record<string, string>>;
   /** 只有正文经 argv 传递的适配器声明；其他 JSONL/RPC 路径不受此限额。 */
   readonly argvPrompt?: { readonly provider: string; readonly prompt: string };
+  /**
+   * 传入后把 spawn 出的传输进程登记进 managed-process 账本，服务器重启时
+   * 据此对账残留进程；缺省不登记（短寿命探针等）。
+   */
+  readonly owner?: ManagedProcessRegistry.ManagedProcessOwner;
 }): ((
   scope: Scope.Scope,
 ) => Effect.Effect<ChildProcessSpawner.ChildProcessHandle, PifamilySpawnError>) => {
@@ -511,7 +518,7 @@ export const spawnPifamilyProcess = (input: {
             options,
           }).pipe(Effect.mapError((cause) => new PifamilySpawnError({ detail: cause.message })))
         : resolveSpawnCommand(binaryPath, args, options);
-      return yield* spawner
+      const child = yield* spawner
         .spawn(
           ChildProcess.make(resolved.command, resolved.args, {
             ...(cwd === undefined ? {} : { cwd }),
@@ -529,6 +536,21 @@ export const spawnPifamilyProcess = (input: {
               }),
           ),
         );
+      if (input.owner !== undefined) {
+        const managedRecord = yield* ManagedProcessRegistry.recordSpawnedChild({
+          owner: input.owner,
+          pid: Number(child.pid),
+          command: resolved.command,
+          args: resolved.args,
+        });
+        if (Option.isSome(managedRecord)) {
+          yield* Scope.addFinalizer(
+            scope,
+            ManagedProcessRegistry.removeManagedRecord(managedRecord.value),
+          );
+        }
+      }
+      return child;
     });
 };
 

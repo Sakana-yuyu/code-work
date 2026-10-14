@@ -983,6 +983,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
           const mcpSession = McpProviderSession.readMcpProviderSession(input.threadId);
           const acp = yield* makeGrokAcpRuntime({
             grokSettings,
+            owner: { provider: PROVIDER, kind: "session-transport" },
             ...(options?.environment ? { environment: options.environment } : {}),
             childProcessSpawner,
             cwd,

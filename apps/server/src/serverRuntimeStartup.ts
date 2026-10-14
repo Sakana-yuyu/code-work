@@ -28,6 +28,7 @@ import * as Scope from "effect/Scope";
 import * as ServerConfig from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
+import * as ManagedProcessRegistry from "./process/ManagedProcessRegistry.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as OrchestrationReactor from "./orchestration/Services/OrchestrationReactor.ts";
@@ -531,6 +532,23 @@ export const reconcileProviderSessions = Effect.gen(function* () {
   const providerService = yield* ProviderService.ProviderService;
   const threadGoalStore = yield* Effect.serviceOption(ThreadGoalStore);
   const query = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+
+  // Reap provider helper processes left behind by the previous run before
+  // marking their sessions orphaned. A ledger failure never blocks session
+  // reconciliation — un-reaped leftovers retry on the next startup.
+  const managedProcesses = yield* Effect.serviceOption(
+    ManagedProcessRegistry.ManagedProcessRegistry,
+  );
+  if (Option.isSome(managedProcesses)) {
+    const reapExit = yield* Effect.exit(managedProcesses.value.reapStale());
+    if (Exit.isFailure(reapExit)) {
+      yield* Effect.logWarning("failed to reconcile managed helper process ledger", {
+        cause: reapExit.cause,
+      });
+    } else if (reapExit.value.checked > 0 || reapExit.value.errors.length > 0) {
+      yield* Effect.logInfo("managed helper process ledger reconciled", reapExit.value);
+    }
+  }
 
   const liveThreadIds = new Set(
     (yield* providerService.listSessions()).map((session) => session.threadId),

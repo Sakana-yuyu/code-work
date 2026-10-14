@@ -14,6 +14,7 @@ import {
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as PlatformError from "effect/PlatformError";
@@ -21,6 +22,7 @@ import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../../config.ts";
+import * as ManagedProcessRegistry from "../../process/ManagedProcessRegistry.ts";
 import { collectStreamAsString } from "../providerSnapshot.ts";
 import { makeTerminalSafeRuntimeEmitter } from "../runtimeTurnItems.ts";
 import { resolveConfiguredAntigravityModel } from "./AntigravityProvider.ts";
@@ -251,6 +253,13 @@ export function makeAntigravityAdapter(
           ),
         );
       context.activeChild = child;
+      const managedRecord = yield* ManagedProcessRegistry.recordSpawnedChild({
+        owner: { provider: PROVIDER, kind: "turn-transport" },
+        pid: Number(child.pid),
+        command: resolved.command,
+        args: resolved.args,
+        metadata: { threadId: input.threadId, turnId },
+      });
       const outputParts: string[] = [];
       let resultStatus: string | undefined;
       let resultError: string | undefined;
@@ -323,7 +332,17 @@ export function makeAntigravityAdapter(
       const [, stderr, exitCode] = yield* Effect.all(
         [consumeStdout, collectStreamAsString(child.stderr), child.exitCode],
         { concurrency: "unbounded" },
-      ).pipe(Effect.ensuring(Effect.sync(() => (context.activeChild = undefined))));
+      ).pipe(
+        Effect.ensuring(
+          Effect.sync(() => (context.activeChild = undefined)).pipe(
+            Effect.andThen(
+              Option.isSome(managedRecord)
+                ? ManagedProcessRegistry.removeManagedRecord(managedRecord.value)
+                : Effect.void,
+            ),
+          ),
+        ),
+      );
       // 标准流的 result.response 是完整答案；仅在没有正文增量时用它补齐输出。
       if (outputParts.length === 0 && resultResponse) {
         outputParts.push(resultResponse);

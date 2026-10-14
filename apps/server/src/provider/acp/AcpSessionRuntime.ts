@@ -52,6 +52,7 @@ import {
   normalizeCodebuddyToolResult,
   normalizeCodebuddyCancelledToolNotification,
 } from "./CodebuddyAcpToolResult.ts";
+import * as ManagedProcessRegistry from "../../process/ManagedProcessRegistry.ts";
 
 interface AcpToolCallTrackedState {
   readonly state: AcpToolCallState;
@@ -114,6 +115,12 @@ export interface AcpSpawnInput {
 export interface AcpSessionRuntimeOptions {
   readonly spawn: AcpSpawnInput;
   readonly cwd: string;
+  /**
+   * When set, the spawned transport is recorded in the managed-process
+   * ledger so a server restart can reconcile leftovers. Catalog probes and
+   * other short-lived runtimes leave it unset.
+   */
+  readonly owner?: ManagedProcessRegistry.ManagedProcessOwner;
   readonly resumeSessionId?: string;
   readonly sessionLoadTimeout?: Duration.Input;
   readonly sessionLoadReplayIdleGap?: Duration.Input;
@@ -531,6 +538,21 @@ export const make = (
             }),
         ),
       );
+
+    if (options.owner !== undefined) {
+      const managedRecord = yield* ManagedProcessRegistry.recordSpawnedChild({
+        owner: options.owner,
+        pid: Number(child.pid),
+        command: spawnCommand.command,
+        args: spawnCommand.args,
+      });
+      if (Option.isSome(managedRecord)) {
+        yield* Scope.addFinalizer(
+          runtimeScope,
+          ManagedProcessRegistry.removeManagedRecord(managedRecord.value),
+        );
+      }
+    }
 
     if (spawnCommand.shell) {
       yield* Effect.addFinalizer(() =>

@@ -502,6 +502,7 @@ export const makePiAdapter = (config: PiAgentSettings, options: PiAdapterOptions
         const spawn = spawnPifamilyProcess({
           spawner,
           diagnosticName: "Pi",
+          owner: { provider: PROVIDER, kind: "session-transport" },
           binaryPath: config.binaryPath,
           args,
           cwd: input.cwd,
