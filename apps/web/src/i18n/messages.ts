@@ -566,6 +566,9 @@ export const en: Record<string, string> = {
   "modelPicker.openProviderSettings": "Open provider settings",
   "pullRequests.updateEnvironmentServer":
     "Update this environment's Code Work server to browse pull requests.",
+  "modelSwitch.restartContinueTitle": "Switch model and restart this session?",
+  "modelSwitch.restartContinueDescription":
+    "{{model}} requires restarting the provider session. Your conversation continues from where it left off.",
   "pullRequests.failedToPrepareThread": "Failed to prepare {{pr}} thread.",
   "sidebar.sortLastUserMessage": "Last user message",
   "sidebar.sortCreatedAt": "Created at",
@@ -6966,6 +6969,9 @@ export const zhCN: Record<string, string> = {
   "settings.instanceIdExists": "名为“{{id}}”的实例已存在。",
   "settings.groupByRepository": "按仓库分组",
   "settings.groupByRepositoryPath": "按仓库路径分组",
+  "modelSwitch.restartContinueTitle": "切换模型并重启会话？",
+  "modelSwitch.restartContinueDescription":
+    "切换到 {{model}} 需要重启 provider 会话，对话会从当前进度继续。",
   "settings.keepSeparate": "各自独立",
   "settings.breadcrumb": "设置导航",
   "settings.systemMonospace": "系统等宽字体",

@@ -602,6 +602,13 @@ export const ja: Record<string, string> = {
   "checkpointRevert.reconnectFirst": "チェックポイントを戻す前に、再接続してください。",
   "checkpointRevert.interruptFirst": "チェックポイントを戻す前に、現在のターンを中断してください。",
   couldNotRevertCheckpoint: "チェックポイントを戻せませんでした。",
+  "modelSwitch.requiresNewThreadTitle": "モデルを変更するには新しいチャットを開始してください",
+  "modelSwitch.requiresNewThreadDescription":
+    "このプロバイダーは会話開始後のモデル切り替えを許可していません。",
+  "modelSwitch.restartContinueTitle": "モデルを切り替えてセッションを再起動しますか？",
+  "modelSwitch.restartContinueDescription":
+    "{{model}} への切り替えにはプロバイダーセッションの再起動が必要です。会話は現在の位置から続きます。",
+  "modelSwitch.restartContinueConfirm": "モデルを切り替える",
   "editUserMessage.action": "編集して再送信",
   "editUserMessage.cancel": "キャンセル",
   "editUserMessage.send": "送信",

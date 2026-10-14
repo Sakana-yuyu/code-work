@@ -187,7 +187,11 @@ const correlateSnapshotWithSource = (
       ),
     );
   }
-  return Effect.succeed(snapshot);
+  return Effect.succeed(
+    source.sessionModelSwitch === undefined
+      ? snapshot
+      : { ...snapshot, sessionModelSwitch: source.sessionModelSwitch },
+  );
 };
 
 /**
@@ -209,6 +213,7 @@ const buildSnapshotSource = (instance: ProviderInstance): ProviderSnapshotSource
   return {
     instanceId: instance.instanceId,
     driverKind: instance.driverKind,
+    sessionModelSwitch: instance.adapter.capabilities?.sessionModelSwitch,
     getSnapshot: snapshot.getSnapshot,
     refresh: snapshot.refresh,
     streamChanges: snapshot.streamChanges,

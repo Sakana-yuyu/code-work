@@ -11,6 +11,7 @@ import {
   type ThreadId,
   type TurnId,
 } from "@codework/contracts";
+import { startedSessionModelChangeGate } from "@codework/client-runtime/providerModels";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadShell } from "../types";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import * as Schema from "effect/Schema";
@@ -504,36 +505,15 @@ export function deriveLockedProvider(input: {
 }
 
 export function getStartedThreadModelChangeBlockReason(input: {
-  providers: ReadonlyArray<Pick<ServerProvider, "instanceId" | "requiresNewThreadForModelChange">>;
+  providers: ReadonlyArray<
+    Pick<ServerProvider, "instanceId" | "requiresNewThreadForModelChange" | "sessionModelSwitch">
+  >;
   hasStartedSession: boolean;
   currentModelSelection: ModelSelection;
   currentProviderInstanceId?: ModelSelection["instanceId"] | null | undefined;
   nextModelSelection: ModelSelection;
 }): { title: string; description: string } | null {
-  if (!input.hasStartedSession) {
-    return null;
-  }
-  const currentModelSelection = {
-    ...input.currentModelSelection,
-    instanceId: input.currentProviderInstanceId ?? input.currentModelSelection.instanceId,
-  };
-  if (
-    currentModelSelection.instanceId === input.nextModelSelection.instanceId &&
-    currentModelSelection.model === input.nextModelSelection.model
-  ) {
-    return null;
-  }
-  const currentProvider = input.providers.find(
-    (snapshot) => snapshot.instanceId === currentModelSelection.instanceId,
-  );
-  const nextProvider = input.providers.find(
-    (snapshot) => snapshot.instanceId === input.nextModelSelection.instanceId,
-  );
-  if (
-    currentModelSelection.instanceId === input.nextModelSelection.instanceId &&
-    (currentProvider?.requiresNewThreadForModelChange === true ||
-      nextProvider?.requiresNewThreadForModelChange === true)
-  ) {
+  if (startedSessionModelChangeGate(input) === "blocked") {
     return {
       title: t("startANewChatToChangeModels"),
       description: t("thisProviderDoesNotAllowSwitchingModelsAfterAConversationHasStarted"),

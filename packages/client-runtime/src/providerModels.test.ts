@@ -15,6 +15,7 @@ import {
   canUseProviderInteractionModes,
   resolveProviderInteractionMode,
   resolveCodexPlanFollowUpSelection,
+  startedSessionModelChangeGate,
 } from "./providerModels.ts";
 import {
   buildProviderOptionSelectionsFromDescriptors,
@@ -431,5 +432,81 @@ describe("会话模型目录", () => {
       { ...model, capabilities: { optionDescriptors: [] } },
     ]);
     expect(olderReads).toBe(0);
+  });
+});
+
+describe("startedSessionModelChangeGate", () => {
+  const base = {
+    currentModelSelection: { instanceId: ProviderInstanceId.make("a"), model: "m1" },
+    nextModelSelection: { instanceId: ProviderInstanceId.make("a"), model: "m2" },
+  };
+
+  it("未开始的会话不需要门控", () => {
+    expect(
+      startedSessionModelChangeGate({
+        providers: [{ ...provider, sessionModelSwitch: "restart-continue" }],
+        hasStartedSession: false,
+        ...base,
+      }),
+    ).toBeNull();
+  });
+
+  it("restart-continue 实例的异模型切换需要确认", () => {
+    expect(
+      startedSessionModelChangeGate({
+        providers: [{ ...provider, sessionModelSwitch: "restart-continue" }],
+        hasStartedSession: true,
+        ...base,
+      }),
+    ).toBe("confirm-restart");
+  });
+
+  it("requiresNewThreadForModelChange 优先于重启续接确认", () => {
+    expect(
+      startedSessionModelChangeGate({
+        providers: [
+          {
+            ...provider,
+            requiresNewThreadForModelChange: true,
+            sessionModelSwitch: "restart-continue",
+          },
+        ],
+        hasStartedSession: true,
+        ...base,
+      }),
+    ).toBe("blocked");
+  });
+
+  it("in-session 或缺省声明不需要确认；同模型与跨实例切换不触发", () => {
+    expect(
+      startedSessionModelChangeGate({
+        providers: [provider],
+        hasStartedSession: true,
+        ...base,
+      }),
+    ).toBeNull();
+    expect(
+      startedSessionModelChangeGate({
+        providers: [{ ...provider, sessionModelSwitch: "restart-continue" }],
+        hasStartedSession: true,
+        ...base,
+        nextModelSelection: { instanceId: ProviderInstanceId.make("a"), model: "m1" },
+      }),
+    ).toBeNull();
+    expect(
+      startedSessionModelChangeGate({
+        providers: [
+          { ...provider, sessionModelSwitch: "restart-continue" },
+          {
+            ...provider,
+            instanceId: ProviderInstanceId.make("b"),
+            sessionModelSwitch: "restart-continue",
+          },
+        ],
+        hasStartedSession: true,
+        ...base,
+        nextModelSelection: { instanceId: ProviderInstanceId.make("b"), model: "m2" },
+      }),
+    ).toBeNull();
   });
 });

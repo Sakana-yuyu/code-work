@@ -171,6 +171,11 @@ export const ServerProvider = Schema.Struct({
   continuation: Schema.optional(ServerProviderContinuation),
   showInteractionModeToggle: Schema.optional(Schema.Boolean),
   requiresNewThreadForModelChange: Schema.optional(Schema.Boolean),
+  // Adapter-declared model-switch behavior on a live session. Stamped by the
+  // registry from `adapter.capabilities` — absent on legacy/cached snapshots.
+  sessionModelSwitch: Schema.optional(
+    Schema.Literals(["in-session", "restart-continue", "unsupported"]),
+  ),
   enabled: Schema.Boolean,
   installed: Schema.Boolean,
   version: Schema.NullOr(TrimmedNonEmptyString),

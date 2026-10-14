@@ -490,6 +490,9 @@ export const ja: Record<string, string> = {
   "modelPicker.openProviderSettings": "プロバイダー設定を開く",
   "pullRequests.updateEnvironmentServer":
     "プルリクエストを閲覧するには、この環境の Code Work サーバーを更新してください。",
+  "modelSwitch.restartContinueTitle": "モデルを切り替えてセッションを再起動しますか？",
+  "modelSwitch.restartContinueDescription":
+    "{{model}} への切り替えにはプロバイダーセッションの再起動が必要です。会話は現在の位置から続きます。",
   "pullRequests.failedToPrepareThread": "{{pr}} のスレッドを準備できませんでした。",
   "sidebar.sortLastUserMessage": "最終ユーザーメッセージ",
   "sidebar.sortCreatedAt": "作成日時",

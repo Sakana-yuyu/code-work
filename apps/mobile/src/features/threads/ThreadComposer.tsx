@@ -8,7 +8,10 @@ import type {
   RuntimeMode,
   ServerConfig as CodeworkServerConfig,
 } from "@codework/contracts";
-import { canUseProviderInteractionModes } from "@codework/client-runtime/providerModels";
+import {
+  canUseProviderInteractionModes,
+  startedSessionModelChangeGate,
+} from "@codework/client-runtime/providerModels";
 import {
   detectComposerTrigger,
   replaceTextRange,
@@ -730,7 +733,39 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       providerGroups: threadProviderGroups,
       agentLocked,
       selectedModel: currentModelSelection,
-      onSelectModel: (option) => props.onUpdateModelSelection(option.selection),
+      onSelectModel: (option) => {
+        const nextSelection = option.selection;
+        const gate = startedSessionModelChangeGate({
+          providers: props.serverConfig?.providers ?? [],
+          hasStartedSession: threadStarted,
+          currentModelSelection,
+          currentProviderInstanceId: props.selectedThread.session?.providerInstanceId ?? null,
+          nextModelSelection: nextSelection,
+        });
+        if (gate === "blocked") {
+          Alert.alert(
+            t("modelSwitch.requiresNewThreadTitle"),
+            t("modelSwitch.requiresNewThreadDescription"),
+          );
+          return;
+        }
+        // 重启续接的适配器切模型会重启 provider 会话但保留对话，先确认。
+        if (gate === "confirm-restart") {
+          Alert.alert(
+            t("modelSwitch.restartContinueTitle"),
+            t("modelSwitch.restartContinueDescription", { model: nextSelection.model }),
+            [
+              { text: t("cancel"), style: "cancel" },
+              {
+                text: t("modelSwitch.restartContinueConfirm"),
+                onPress: () => props.onUpdateModelSelection(nextSelection),
+              },
+            ],
+          );
+          return;
+        }
+        props.onUpdateModelSelection(nextSelection);
+      },
       optionDescriptors: providerOptionDescriptors,
       onUpdateOptionSelections: (options) =>
         props.onUpdateModelSelection({ ...currentModelSelection, options }),
@@ -743,9 +778,12 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       currentRuntimeMode,
       props.onUpdateModelSelection,
       props.onUpdateRuntimeMode,
+      props.selectedThread.session?.providerInstanceId,
+      props.serverConfig,
       providerOptionDescriptors,
       settingsOwnerId,
       threadProviderGroups,
+      threadStarted,
     ],
   );
   const openSettings = useCallback(() => {

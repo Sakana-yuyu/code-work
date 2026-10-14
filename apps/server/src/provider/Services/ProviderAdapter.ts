@@ -73,7 +73,10 @@ export type ProviderToolBrokerApprovalHandler = (
   approvalRequestId: string,
 ) => Effect.Effect<ProviderApprovalDecision, ProviderAdapterRequestError>;
 
-export type ProviderSessionModelSwitchMode = "in-session" | "unsupported";
+// "in-session" applies the model on the live session, "restart-continue"
+// restarts the provider session but continues the conversation through its
+// resume cursor, "unsupported" restarts into a fresh conversation.
+export type ProviderSessionModelSwitchMode = "in-session" | "restart-continue" | "unsupported";
 
 export interface ProviderAdapterCapabilities {
   /**

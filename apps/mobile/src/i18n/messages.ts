@@ -568,6 +568,13 @@ export const en: Record<string, string> = {
   "checkpointRevert.reconnectFirst": "Reconnect before reverting checkpoints.",
   "checkpointRevert.interruptFirst": "Interrupt the current turn before reverting checkpoints.",
   couldNotRevertCheckpoint: "Could not revert checkpoint.",
+  "modelSwitch.requiresNewThreadTitle": "Start a new chat to change models",
+  "modelSwitch.requiresNewThreadDescription":
+    "This provider does not allow switching models after a conversation has started.",
+  "modelSwitch.restartContinueTitle": "Switch model and restart this session?",
+  "modelSwitch.restartContinueDescription":
+    "{{model}} requires restarting the provider session. Your conversation continues from where it left off.",
+  "modelSwitch.restartContinueConfirm": "Switch model",
   "editUserMessage.action": "Edit and resend",
   "editUserMessage.cancel": "Cancel",
   "editUserMessage.send": "Send",
@@ -3338,6 +3345,12 @@ export const zhCN: Record<string, string> = {
   searchProjectContentsPlaceholder: "搜索项目文件",
   matchCase: "区分大小写",
   matchWholeWord: "匹配整个单词",
+  "modelSwitch.requiresNewThreadTitle": "开始新聊天才能切换模型",
+  "modelSwitch.requiresNewThreadDescription": "该 provider 不允许在对话开始后切换模型。",
+  "modelSwitch.restartContinueTitle": "切换模型并重启会话？",
+  "modelSwitch.restartContinueDescription":
+    "切换到 {{model}} 需要重启 provider 会话，对话会从当前进度继续。",
+  "modelSwitch.restartContinueConfirm": "切换模型",
   useRegularExpression: "使用正则表达式",
   searching: "搜索中……",
   resultsInFiles: "{{value1}} 个匹配{{value2}}，涉及 {{value3}} 个文件",

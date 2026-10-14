@@ -1001,7 +1001,8 @@ const make = Effect.gen(function* () {
         requestedModelSelection !== undefined &&
         requestedModelSelection.model !== activeSession?.model;
       const instanceChanged = activeSession?.providerInstanceId !== desiredInstanceId;
-      const shouldRestartForModelChange = modelChanged && sessionModelSwitch === "unsupported";
+      const shouldRestartForModelChange = modelChanged && sessionModelSwitch !== "in-session";
+      const restartPreservesConversation = sessionModelSwitch === "restart-continue";
       const previousModelSelection = threadModelSelections.get(threadId);
       const shouldRestartForModelSelectionChange =
         preferredProvider === "claudeAgent" &&
@@ -1019,7 +1020,7 @@ const make = Effect.gen(function* () {
       }
 
       const resumeCursor =
-        shouldRestartForModelChange || incompatibleSession
+        (shouldRestartForModelChange && !restartPreservesConversation) || incompatibleSession
           ? undefined
           : (activeSession?.resumeCursor ?? undefined);
       yield* Effect.logInfo("provider command reactor restarting provider session", {
@@ -1043,7 +1044,7 @@ const make = Effect.gen(function* () {
       });
       const restartedSession = yield* startProviderSession({
         ...(resumeCursor !== undefined ? { resumeCursor } : {}),
-        freshConversation: shouldRestartForModelChange,
+        freshConversation: shouldRestartForModelChange && !restartPreservesConversation,
       });
       yield* Effect.logInfo("provider command reactor restarted provider session", {
         threadId,
@@ -1142,7 +1143,7 @@ const make = Effect.gen(function* () {
         /^\/compact(?:\s|$)/i.test(normalizedInput ?? ""));
     const turnInput = nativeCommand ? normalizedInput : providerInputWithWorkflow;
     const modelForTurn =
-      sessionModelSwitch === "unsupported" && input.modelSelection === undefined
+      sessionModelSwitch !== "in-session" && input.modelSelection === undefined
         ? activeSession?.model !== undefined
           ? {
               ...requestedModelSelection,

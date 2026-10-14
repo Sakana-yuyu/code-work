@@ -3,6 +3,7 @@ import {
   canUseProviderInteractionModes,
   resolveProviderInteractionMode,
   resolveCodexPlanFollowUpSelection,
+  startedSessionModelChangeGate,
 } from "@codework/client-runtime/providerModels";
 import {
   type ApprovalRequestId,
@@ -7565,12 +7566,44 @@ function ChatViewContent(props: ChatViewProps) {
         scheduleComposerFocus();
         return;
       }
-      setComposerDraftModelSelection(
-        scopeThreadRef(activeThread.environmentId, activeThread.id),
-        nextModelSelection,
-      );
-      setStickyComposerModelSelection(nextModelSelection);
-      scheduleComposerFocus();
+      const applySelection = () => {
+        setComposerDraftModelSelection(
+          scopeThreadRef(activeThread.environmentId, activeThread.id),
+          nextModelSelection,
+        );
+        setStickyComposerModelSelection(nextModelSelection);
+        scheduleComposerFocus();
+      };
+      // 重启续接的适配器切模型会重启 provider 会话但保留对话——按
+      // ConfirmsModelSwitch.switchRestarts 先让用户确认。
+      const needsRestartConfirm =
+        startedSessionModelChangeGate({
+          providers: providerStatuses,
+          hasStartedSession: threadHasStarted(activeThread),
+          currentModelSelection: activeThread.modelSelection,
+          currentProviderInstanceId: activeThread.session?.providerInstanceId ?? null,
+          nextModelSelection,
+        }) === "confirm-restart";
+      if (needsRestartConfirm) {
+        const localApi = readLocalApi();
+        if (!localApi) {
+          scheduleComposerFocus();
+          return;
+        }
+        void localApi.dialogs
+          .confirm(
+            [
+              t("modelSwitch.restartContinueTitle"),
+              t("modelSwitch.restartContinueDescription", { model: resolvedModel }),
+            ].join("\n"),
+          )
+          .then((confirmed) => {
+            if (confirmed) applySelection();
+            else scheduleComposerFocus();
+          });
+        return;
+      }
+      applySelection();
     },
     [
       activeThread,

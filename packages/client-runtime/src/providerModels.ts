@@ -243,3 +243,52 @@ export function applySessionModelCatalogs(
     };
   });
 }
+
+/**
+ * How a same-instance model change must be applied on an already-started
+ * thread, per the provider snapshot's real capabilities. `null` means the
+ * selection can be applied without user friction; `"blocked"` mirrors the
+ * server-side rejection for providers that forbid mid-thread switches;
+ * `"confirm-restart"` marks adapters that restart the provider session and
+ * continue the conversation through a resume cursor — callers must ask the
+ * user before applying.
+ */
+export function startedSessionModelChangeGate(input: {
+  readonly providers: ReadonlyArray<
+    Pick<ServerProvider, "instanceId" | "requiresNewThreadForModelChange" | "sessionModelSwitch">
+  >;
+  readonly hasStartedSession: boolean;
+  readonly currentModelSelection: ModelSelection;
+  readonly currentProviderInstanceId?: ModelSelection["instanceId"] | null | undefined;
+  readonly nextModelSelection: ModelSelection;
+}): "blocked" | "confirm-restart" | null {
+  if (!input.hasStartedSession) {
+    return null;
+  }
+  const currentModelSelection = {
+    ...input.currentModelSelection,
+    instanceId: input.currentProviderInstanceId ?? input.currentModelSelection.instanceId,
+  };
+  if (
+    currentModelSelection.instanceId !== input.nextModelSelection.instanceId ||
+    currentModelSelection.model === input.nextModelSelection.model
+  ) {
+    return null;
+  }
+  const currentProvider = input.providers.find(
+    (snapshot) => snapshot.instanceId === currentModelSelection.instanceId,
+  );
+  const nextProvider = input.providers.find(
+    (snapshot) => snapshot.instanceId === input.nextModelSelection.instanceId,
+  );
+  if (
+    currentProvider?.requiresNewThreadForModelChange === true ||
+    nextProvider?.requiresNewThreadForModelChange === true
+  ) {
+    return "blocked";
+  }
+  if (nextProvider?.sessionModelSwitch === "restart-continue") {
+    return "confirm-restart";
+  }
+  return null;
+}

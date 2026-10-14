@@ -411,3 +411,9 @@ Codex 的 `fetchCodexCatalog` 在同一个无会话 client 上并行读取 `mode
 官方协议要求按真实会话广告传递模式标识，配置选项语义由类别声明。2026-10-14 检索 `ACP session modes session new config options`，采用 [ACP Session Modes](https://agentclientprotocol.com/protocol/v1/session-modes) 与 [Session Config Options](https://agentclientprotocol.com/protocol/v1/session-config-options) 原始规范；本主题复用既有回执合并，仅修复消费入口，没有复制参考代码。实际 Web/Android、本机推理 fixture 和能力声明回归见 [移植进度](./port-progress.md) 第63主题。
 
 固定6个内置及38个ACP入口的绑定、能力事实来源、工具/账号/多端证据边界和定向验证入口见 [Agent入口与验收合同](./acp-provider-validation.md)。目录数量和历史勾选不能替代逐项执行结果与最终独立验证。
+
+### 会话模型切换声明（sessionModelSwitch）
+
+`ProviderAdapterCapabilities.sessionModelSwitch` 声明活会话上的模型切换语义，三态：`in-session`（直接在活会话上下发模型）、`restart-continue`（重启 provider 会话但经 resumeCursor 续接对话）、`unsupported`（重启进入全新对话）。注册表把适配器声明合进每份 `ServerProvider` 快照（`sessionModelSwitch` 可选字段），客户端看到的是真实适配器能力而非手工展示位；`requiresNewThreadForModelChange` 仍是更硬的“必须新线程”声明（Grok），服务端与两端门控都优先生效。
+
+编排语义：restart-continue 切模型时重启会话、保留 `resumeCursor`、不置 `freshConversation`；unsupported 重启丢弃游标并开新对话；`modelSelection` 缺省时非 in-session 声明沿用 `activeSession.model`，避免误改模型。客户端共享门控 `startedSessionModelChangeGate`（client-runtime/providerModels）返回 `blocked | confirm-restart | null`；Web 与 Mobile 在 confirm-restart 时先弹确认再应用选择（Paseo `ConfirmsModelSwitch.switchRestarts` 的对应实现）。Antigravity 声明 restart-continue：每回合 spawn 新 `agy -p`，`startSession` 从自有形状的 resumeCursor（`{schemaVersion:1, conversationId}`）恢复会话标识并以 `--conversation` 续接；异构或畸形游标安全回退为新会话。证据与边界见 [移植进度](./port-progress.md) 第80主题。

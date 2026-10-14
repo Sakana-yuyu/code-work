@@ -39,7 +39,7 @@ const PROVIDER = ProviderDriverKind.make("antigravity");
 type SessionContext = {
   session: ProviderSession;
   turns: Array<{ readonly id: TurnId; readonly items: Array<unknown> }>;
-  conversationId?: string;
+  conversationId: string | undefined;
   activeChild:
     | { readonly kill: () => Effect.Effect<unknown, PlatformError.PlatformError> }
     | undefined;
@@ -66,6 +66,15 @@ function conversationId(value: unknown): string | undefined {
   if (!record) return undefined;
   const body = asRecord(record[record.event === "result" ? "result" : "step_update"]);
   const id = record.conversation_id ?? body?.conversation_id;
+  return typeof id === "string" && id.trim() ? id.trim() : undefined;
+}
+
+// Own resume-cursor shape emitted by `sendTurn` results; anything else
+// (foreign cursor, malformed payload) falls back to a fresh conversation.
+function conversationIdFromResumeCursor(value: unknown): string | undefined {
+  const record = asRecord(value);
+  if (!record || record.schemaVersion !== 1) return undefined;
+  const id = record.conversationId;
   return typeof id === "string" && id.trim() ? id.trim() : undefined;
 }
 
@@ -159,6 +168,7 @@ export function makeAntigravityAdapter(
       sessions.set(input.threadId, {
         session,
         turns: [],
+        conversationId: conversationIdFromResumeCursor(input.resumeCursor),
         activeChild: undefined,
         interrupted: false,
       });
@@ -455,7 +465,9 @@ export function makeAntigravityAdapter(
     yield* Effect.addFinalizer(stopAll);
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "unsupported" },
+      // 每个回合都是新 spawn 的 `agy -p`，模型切换要重启会话；
+      // 会话经 resumeCursor 的 conversationId 续接，不丢上下文。
+      capabilities: { sessionModelSwitch: "restart-continue" },
       startSession,
       sendTurn,
       interruptTurn,
