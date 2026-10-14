@@ -2191,6 +2191,7 @@ export function makeCursorAdapter(
         reasoningStream: true,
         mcp: true,
         persistence: true,
+        steer: true,
         toolBrokerCanonicalTools: [
           "workspace.read_file",
           "workspace.write_file",

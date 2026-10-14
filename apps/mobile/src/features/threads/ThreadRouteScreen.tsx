@@ -243,6 +243,9 @@ function ThreadRouteContent(
     reportFailure: false,
   });
   const startThreadTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const cancelQueuedTurn = useAtomCommand(threadEnvironment.cancelQueuedTurn, {
+    reportFailure: false,
+  });
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
   const navigation = useNavigation();
   const params = props.route.params;
@@ -775,6 +778,64 @@ function ThreadRouteContent(
     });
   }, [interruptThreadTurn, selectedThread]);
 
+  const handleCancelQueuedMessage = useCallback(
+    (messageId: MessageId) => {
+      if (!selectedThread) return;
+      void cancelQueuedTurn({
+        environmentId: selectedThread.environmentId,
+        input: { threadId: selectedThread.id, messageId },
+      }).then((result) => {
+        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+          const failure = squashAtomCommandFailure(result);
+          Alert.alert(
+            t("queuedSteer.cancelFailed"),
+            failure instanceof Error ? failure.message : t("queuedSteer.cancelFailed"),
+          );
+        }
+      });
+    },
+    [cancelQueuedTurn, selectedThread],
+  );
+
+  const handleSteerQueuedMessage = useCallback(
+    (messageId: MessageId) => {
+      const thread = selectedThreadWithDraftSettings ?? selectedThread;
+      if (!thread || thread.session?.status !== "running") return;
+      const queued = thread.queuedMessages?.find((entry) => entry.messageId === messageId);
+      if (!queued) return;
+      // Reuse the stored user message so a steer resend keeps its original
+      // attachments; the queue row itself only carries text.
+      const source = selectedThreadDetail?.messages.find((entry) => entry.id === messageId);
+      const metadata = makeTurnCommandMetadata();
+      void startThreadTurn({
+        environmentId: thread.environmentId,
+        input: {
+          commandId: CommandId.make(metadata.commandId),
+          threadId: thread.id,
+          message: {
+            messageId,
+            role: "user",
+            text: source?.text ?? queued.text,
+            attachments: source?.attachments ?? [],
+          },
+          runtimeMode: thread.runtimeMode,
+          interactionMode: thread.interactionMode,
+          steer: true,
+          createdAt: metadata.createdAt,
+        },
+      }).then((result) => {
+        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+          const failure = squashAtomCommandFailure(result);
+          Alert.alert(
+            t("queuedSteer.steerFailed"),
+            failure instanceof Error ? failure.message : t("queuedSteer.steerFailed"),
+          );
+        }
+      });
+    },
+    [selectedThread, selectedThreadDetail, selectedThreadWithDraftSettings, startThreadTurn],
+  );
+
   const handleOpenTerminal = useCallback(
     (nextTerminalId?: string | null) => {
       terminalDebugLog("terminal-menu:open-existing", {
@@ -1110,6 +1171,8 @@ function ThreadRouteContent(
           onSelectUserInputOption={requests.onSelectUserInputOption}
           onChangeUserInputCustomAnswer={requests.onChangeUserInputCustomAnswer}
           onSubmitUserInput={requests.onSubmitUserInput}
+          onSteerQueuedMessage={handleSteerQueuedMessage}
+          onCancelQueuedMessage={handleCancelQueuedMessage}
         />
       </View>
     </>

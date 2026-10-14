@@ -1725,6 +1725,7 @@ export function makeOpenCodeAdapter(
         reasoningStream: true,
         mcp: true,
         persistence: true,
+        steer: true,
       },
       startSession,
       sendTurn,

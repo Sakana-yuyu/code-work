@@ -1656,6 +1656,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         streaming: true,
         reasoningStream: true,
         persistence: true,
+        steer: true,
       },
       startSession,
       sendTurn,

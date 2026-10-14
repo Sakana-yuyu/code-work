@@ -969,6 +969,10 @@ export const ThreadTurnStartCommand = Schema.Struct({
   ),
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  // Explicit steer: deliver into the running turn now instead of parking the
+  // turn start behind it. Adapters that cannot steer fall back to
+  // interrupt-then-replace in the command reactor.
+  steer: Schema.optional(Schema.Boolean),
   createdAt: IsoDateTime,
 });
 
@@ -988,6 +992,7 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  steer: Schema.optional(Schema.Boolean),
   createdAt: IsoDateTime,
 });
 
@@ -1432,6 +1437,7 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
+  steer: Schema.optional(Schema.Boolean),
   createdAt: IsoDateTime,
 });
 

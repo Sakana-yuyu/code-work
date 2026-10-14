@@ -2215,6 +2215,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
         reasoningStream: true,
         mcp: true,
         persistence: true,
+        steer: true,
       },
       startSession,
       sendTurn,

@@ -4778,6 +4778,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       reasoningStream: true,
       mcp: true,
       persistence: true,
+      steer: true,
     },
     startSession,
     sendTurn,

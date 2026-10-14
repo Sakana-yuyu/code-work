@@ -238,6 +238,7 @@ describe("ProviderCommandReactor", () => {
     readonly baseDir?: string;
     readonly threadModelSelection?: ModelSelection;
     readonly sessionModelSwitch?: "unsupported" | "in-session" | "restart-continue";
+    readonly steer?: boolean;
     readonly requiresNewThreadForModelChange?: boolean;
     readonly titleRegenerationCompletionDispatchFailures?: number;
     readonly titleRegenerationBeforeStart?: "one" | "two";
@@ -439,6 +440,9 @@ describe("ProviderCommandReactor", () => {
       getCapabilities: (_provider) =>
         Effect.succeed({
           sessionModelSwitch: input?.sessionModelSwitch ?? "in-session",
+          // The harness instance models codex, which accepts mid-turn input;
+          // queue/fallback scenarios opt out explicitly.
+          steer: input?.steer ?? true,
         }),
       getInstanceInfo: (instanceId) => {
         const raw = String(instanceId);
@@ -3394,6 +3398,244 @@ describe("ProviderCommandReactor", () => {
     await waitFor(() => harness.interruptTurn.mock.calls.length === 1);
     expect(harness.interruptTurn.mock.calls[0]?.[0]).toEqual({
       threadId: "thread-1",
+    });
+  });
+
+  const setRunningSession = (
+    harness: Awaited<ReturnType<typeof createHarness>>,
+    activeTurnId: TurnId = asTurnId("turn-1"),
+  ) =>
+    harness.engine.dispatch({
+      type: "thread.session.set",
+      commandId: CommandId.make(`cmd-session-running-${activeTurnId}`),
+      threadId: ThreadId.make("thread-1"),
+      session: {
+        threadId: ThreadId.make("thread-1"),
+        status: "running",
+        providerName: "codex",
+        providerInstanceId: ProviderInstanceId.make("codex"),
+        runtimeMode: "approval-required",
+        activeTurnId,
+        lastError: null,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+
+  const settleSession = (
+    harness: Awaited<ReturnType<typeof createHarness>>,
+    status: "ready" | "interrupted",
+    createdAt = "2026-01-01T00:00:30.000Z",
+  ) =>
+    harness.engine.dispatch({
+      type: "thread.session.set",
+      commandId: CommandId.make(`cmd-session-settle-${status}-${createdAt}`),
+      threadId: ThreadId.make("thread-1"),
+      session: {
+        threadId: ThreadId.make("thread-1"),
+        status,
+        providerName: "codex",
+        runtimeMode: "approval-required",
+        activeTurnId: null,
+        lastError: null,
+        updatedAt: createdAt,
+      },
+      createdAt,
+    });
+
+  const turnStart = (
+    messageId: string,
+    options?: {
+      readonly steer?: boolean;
+      readonly createdAt?: string;
+      readonly commandId?: string;
+    },
+  ) => ({
+    type: "thread.turn.start" as const,
+    commandId: CommandId.make(options?.commandId ?? `cmd-${messageId}`),
+    threadId: ThreadId.make("thread-1"),
+    message: {
+      messageId: asMessageId(messageId),
+      role: "user" as const,
+      text: `text-${messageId}`,
+      attachments: [],
+    },
+    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+    runtimeMode: "approval-required" as const,
+    ...(options?.steer === true ? { steer: true } : {}),
+    createdAt: options?.createdAt ?? "2026-01-01T00:00:10.000Z",
+  });
+
+  it("parks a queued turn start behind a running turn when the adapter cannot steer, then drains it on turn end", async () => {
+    const harness = await createHarness({ steer: false });
+    await harness.runEffect(setRunningSession(harness));
+    await waitFor(
+      async () =>
+        (await harness.readModel()).threads.find((entry) => entry.id === ThreadId.make("thread-1"))
+          ?.session?.activeTurnId === "turn-1",
+    );
+
+    await harness.runEffect(harness.engine.dispatch(turnStart("queued-message-1")));
+    await harness.drain();
+    expect(harness.sendTurn).not.toHaveBeenCalled();
+    const queued = (await harness.readModel()).threads.find(
+      (entry) => entry.id === ThreadId.make("thread-1"),
+    )?.queuedMessages;
+    expect(queued?.map((entry) => String(entry.messageId))).toEqual(["queued-message-1"]);
+
+    await harness.runEffect(settleSession(harness, "ready"));
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId: "thread-1",
+      input: "text-queued-message-1",
+    });
+  });
+
+  it("delivers a mid-turn send through a steer-capable adapter and adopts the pending row", async () => {
+    const harness = await createHarness({ steer: true });
+    // A real provider session must be bound to the thread first: the send
+    // path looks it up in the provider service, not just the projection.
+    await harness.runEffect(harness.engine.dispatch(turnStart("first-message")));
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await harness.runEffect(setRunningSession(harness));
+    await waitFor(
+      async () =>
+        (await harness.readModel()).threads.find((entry) => entry.id === ThreadId.make("thread-1"))
+          ?.session?.activeTurnId === "turn-1",
+    );
+
+    await harness.runEffect(harness.engine.dispatch(turnStart("steered-message-1")));
+    await waitFor(() => harness.sendTurn.mock.calls.length === 2);
+    // sendTurn returned the running turn id, so the reactor re-dispatched the
+    // session and the pending turn-start row was adopted into that turn —
+    // the message leaves the queue instead of waiting for the next turn.
+    await waitFor(async () => {
+      const queued = (await harness.readModel()).threads.find(
+        (entry) => entry.id === ThreadId.make("thread-1"),
+      )?.queuedMessages;
+      return (queued ?? []).length === 0;
+    });
+    const queued = (await harness.readModel()).threads.find(
+      (entry) => entry.id === ThreadId.make("thread-1"),
+    )?.queuedMessages;
+    expect(queued ?? []).toHaveLength(0);
+    expect(harness.interruptTurn).not.toHaveBeenCalled();
+  });
+
+  it("falls back to interrupt-then-replace for an explicit steer on a non-steer adapter", async () => {
+    const harness = await createHarness({
+      steer: false,
+      sendTurnEffect: () =>
+        Effect.succeed({ threadId: ThreadId.make("thread-1"), turnId: asTurnId("turn-2") }),
+    });
+    await harness.runEffect(setRunningSession(harness));
+    await waitFor(
+      async () =>
+        (await harness.readModel()).threads.find((entry) => entry.id === ThreadId.make("thread-1"))
+          ?.session?.activeTurnId === "turn-1",
+    );
+
+    await harness.runEffect(
+      harness.engine.dispatch(turnStart("steer-now-message", { steer: true })),
+    );
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.interruptTurn.mock.calls.length).toBe(1);
+    expect(harness.interruptTurn.mock.calls[0]?.[0]).toEqual({ threadId: "thread-1" });
+  });
+
+  it("does not retry after an adapter send error and settles the failed turn start", async () => {
+    const harness = await createHarness({
+      steer: true,
+      sendTurnEffect: () =>
+        Effect.fail(
+          new ProviderAdapterRequestError({
+            provider: "codex",
+            method: "sendTurn",
+            detail: "ambiguous transport failure",
+          }),
+        ),
+    });
+    await harness.runEffect(setRunningSession(harness));
+    await harness.runEffect(harness.engine.dispatch(turnStart("failing-message")));
+    await harness.drain();
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    await waitFor(async () => {
+      const thread = (await harness.readModel()).threads.find(
+        (entry) => entry.id === ThreadId.make("thread-1"),
+      );
+      return (
+        thread?.activities.some((entry) => entry.kind === "provider.turn.start.failed") === true
+      );
+    });
+    // The result is ambiguous, so no automatic retry is allowed.
+    expect(harness.sendTurn.mock.calls.length).toBe(1);
+    const thread = (await harness.readModel()).threads.find(
+      (entry) => entry.id === ThreadId.make("thread-1"),
+    );
+    expect(thread?.queuedMessages ?? []).toHaveLength(0);
+  });
+
+  it("discards parked queued input on interrupt and drops pre-interrupt arrivals", async () => {
+    const harness = await createHarness({ steer: false });
+    await harness.runEffect(setRunningSession(harness));
+    await waitFor(
+      async () =>
+        (await harness.readModel()).threads.find((entry) => entry.id === ThreadId.make("thread-1"))
+          ?.session?.activeTurnId === "turn-1",
+    );
+
+    await harness.runEffect(
+      harness.engine.dispatch(turnStart("parked-1", { createdAt: "2026-01-01T00:00:10.000Z" })),
+    );
+    await harness.runEffect(
+      harness.engine.dispatch(turnStart("parked-2", { createdAt: "2026-01-01T00:00:11.000Z" })),
+    );
+    await harness.drain();
+    expect(harness.sendTurn).not.toHaveBeenCalled();
+
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("cmd-interrupt"),
+        threadId: ThreadId.make("thread-1"),
+        turnId: asTurnId("turn-1"),
+        createdAt: "2026-01-01T00:00:20.000Z",
+      }),
+    );
+    await waitFor(() => harness.interruptTurn.mock.calls.length === 1);
+
+    await harness.runEffect(settleSession(harness, "interrupted"));
+    await harness.drain();
+    // Both parked entries were unread steer input: discarded, not delivered.
+    expect(harness.sendTurn).not.toHaveBeenCalled();
+    const thread = (await harness.readModel()).threads.find(
+      (entry) => entry.id === ThreadId.make("thread-1"),
+    );
+    expect(thread?.queuedMessages ?? []).toHaveLength(0);
+
+    // A start written before the interrupt but processed after is still
+    // dropped; a post-interrupt send delivers normally.
+    await harness.runEffect(
+      harness.engine.dispatch(
+        turnStart("stale-pre-interrupt", {
+          createdAt: "2026-01-01T00:00:15.000Z",
+        }),
+      ),
+    );
+    await harness.drain();
+    expect(harness.sendTurn).not.toHaveBeenCalled();
+
+    await harness.runEffect(
+      harness.engine.dispatch(
+        turnStart("post-interrupt", {
+          createdAt: "2026-01-01T00:00:25.000Z",
+        }),
+      ),
+    );
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId: "thread-1",
+      input: "text-post-interrupt",
     });
   });
 

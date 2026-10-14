@@ -2898,8 +2898,16 @@ function ChatViewContent(props: ChatViewProps) {
     () => timelineMessages.filter((message) => !queuedMessageIds.has(String(message.id))),
     [queuedMessageIds, timelineMessages],
   );
-  // 引导仅对纯文本的排队消息开放（带图片附件的消息引导会丢图），且只在
-  // BYOK 线程展示；刷新后仅剩 localStorage 记录时按不可引导处理。
+  // Steer is adapter-declared: only providers whose live turn can receive
+  // mid-turn input get the fold-in action. Text-only stays as the attachment
+  // constraint; after a reload only localStorage remains, which cannot resend.
+  const activeProviderSupportsSteer = useMemo(() => {
+    const instanceId = activeThread?.session?.providerInstanceId;
+    if (instanceId === undefined) return false;
+    return (
+      providerStatuses.find((status) => status.instanceId === instanceId)?.supportsSteer === true
+    );
+  }, [activeThread?.session?.providerInstanceId, providerStatuses]);
   const steerableQueuedMessageIds = useMemo(
     () =>
       new Set(
@@ -4953,41 +4961,40 @@ function ChatViewContent(props: ChatViewProps) {
       );
       if (!queued || queued.environmentId !== environmentId) return;
       if (queuedTurnDispatchRef.current?.messageId === queued.input.message.messageId) return;
-      void startThreadTurn({ environmentId: queued.environmentId, input: queued.input }).then(
-        (result) => {
-          if (result._tag === "Failure") {
-            if (!isAtomCommandInterrupted(result)) {
-              const error = squashAtomCommandFailure(result);
-              toastManager.add(
-                stackedThreadToast({
-                  type: "error",
-                  title: t("chat.steerQueuedMessageFailed"),
-                  description:
-                    error instanceof Error ? error.message : t("composer.failedToSendMessage"),
-                }),
-              );
-            }
-            return;
+      void startThreadTurn({
+        environmentId: queued.environmentId,
+        input: { ...queued.input, steer: true },
+      }).then((result) => {
+        if (result._tag === "Failure") {
+          if (!isAtomCommandInterrupted(result)) {
+            const error = squashAtomCommandFailure(result);
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: t("chat.steerQueuedMessageFailed"),
+                description:
+                  error instanceof Error ? error.message : t("composer.failedToSendMessage"),
+              }),
+            );
           }
-          // 成功：从队列撤下，时间线里的用户消息由投影送达（与排队分发一致，
-          // 乐观行靠相同 messageId 去重）；引导失败时条目留在队列照常等待。
-          const next = queuedTurnSubmissionsRef.current.filter(
-            (submission) => submission !== queued,
-          );
-          queuedTurnSubmissionsRef.current = next;
-          setQueuedTurnSubmissions(next);
-          setQueuedMessageRecords((existing) =>
-            existing.filter((message) => message.messageId !== rawMessageId),
-          );
-          setLocalMessagePresentations((existing) => {
-            if (!(rawMessageId in existing)) return existing;
-            const nextPresentations = { ...existing };
-            delete nextPresentations[rawMessageId];
-            return nextPresentations;
-          });
-          acknowledgeActiveThreadWoke();
-        },
-      );
+          return;
+        }
+        // 成功：从队列撤下，时间线里的用户消息由投影送达（与排队分发一致，
+        // 乐观行靠相同 messageId 去重）；引导失败时条目留在队列照常等待。
+        const next = queuedTurnSubmissionsRef.current.filter((submission) => submission !== queued);
+        queuedTurnSubmissionsRef.current = next;
+        setQueuedTurnSubmissions(next);
+        setQueuedMessageRecords((existing) =>
+          existing.filter((message) => message.messageId !== rawMessageId),
+        );
+        setLocalMessagePresentations((existing) => {
+          if (!(rawMessageId in existing)) return existing;
+          const nextPresentations = { ...existing };
+          delete nextPresentations[rawMessageId];
+          return nextPresentations;
+        });
+        acknowledgeActiveThreadWoke();
+      });
     },
     [
       acknowledgeActiveThreadWoke,
@@ -8326,8 +8333,7 @@ function ChatViewContent(props: ChatViewProps) {
                             onCancelQueuedMessage={onCancelQueuedMessage}
                             onEditQueuedMessage={onEditQueuedMessage}
                             onClearQueuedMessages={onClearQueuedMessages}
-                            {...(phase === "running" &&
-                            activeThread?.session?.providerName === "byok"
+                            {...(phase === "running" && activeProviderSupportsSteer
                               ? { onSteerQueuedMessage }
                               : {})}
                             isServerThread={isServerThread}

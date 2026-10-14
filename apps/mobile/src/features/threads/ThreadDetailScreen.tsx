@@ -145,6 +145,10 @@ export interface ThreadDetailScreenProps {
     customAnswer: string,
   ) => void;
   readonly onSubmitUserInput: () => Promise<unknown>;
+  /** Steer a server-queued message into the running turn (steer-capable providers only). */
+  readonly onSteerQueuedMessage?: (messageId: MessageId) => void;
+  /** Withdraw a server-queued message before the provider reads it. */
+  readonly onCancelQueuedMessage?: (messageId: MessageId) => void;
   readonly showContent?: boolean;
 }
 
@@ -784,6 +788,8 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 onUpdateInteractionMode={props.onUpdateThreadInteractionMode}
                 onExpandedChange={setComposerExpanded}
                 onEditorFocusChange={handleOwnedInputFocusChange}
+                onSteerQueuedMessage={props.onSteerQueuedMessage}
+                onCancelQueuedMessage={props.onCancelQueuedMessage}
               />
             </View>
           </View>

@@ -95,6 +95,13 @@ export interface ProviderAdapterCapabilities {
   readonly mcp?: boolean;
   /** Session state survives restarts through a resumeCursor. */
   readonly persistence?: boolean;
+  /**
+   * A `sendTurn` while a turn is running delivers the input into the live
+   * turn (provider-side queue or fold-in). Without it the orchestrator holds
+   * queued turn starts until the turn ends; an explicit steer then falls back
+   * to interrupt-then-replace instead of being dropped or retried.
+   */
+  readonly steer?: boolean;
 }
 
 export interface ProviderThreadTurnSnapshot {

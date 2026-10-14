@@ -181,6 +181,7 @@ export const ServerProvider = Schema.Struct({
   supportsReasoningStream: Schema.optional(Schema.Boolean),
   supportsMcp: Schema.optional(Schema.Boolean),
   supportsSessionResume: Schema.optional(Schema.Boolean),
+  supportsSteer: Schema.optional(Schema.Boolean),
   enabled: Schema.Boolean,
   installed: Schema.Boolean,
   version: Schema.NullOr(TrimmedNonEmptyString),

@@ -144,6 +144,10 @@ export interface ThreadComposerProps {
   readonly onExpandedChange?: (expanded: boolean) => void;
   /** Fires on editor focus/blur; hosts use it to vet stale keyboard state. */
   readonly onEditorFocusChange?: (focused: boolean) => void;
+  /** Steer a server-queued message into the running turn (steer-capable providers only). */
+  readonly onSteerQueuedMessage?: (messageId: MessageId) => void;
+  /** Withdraw a server-queued message before the provider reads it. */
+  readonly onCancelQueuedMessage?: (messageId: MessageId) => void;
 }
 
 /**
@@ -371,6 +375,19 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const showStopAction =
     props.selectedThread.session?.status === "running" ||
     props.selectedThread.session?.status === "starting";
+
+  // Server-side queued turn starts (pending rows). Outbox entries are not
+  // listed — they are still "sending" from this device, not parked upstream.
+  const serverQueuedMessages = props.selectedThread.queuedMessages ?? [];
+  // Steer is adapter-declared: only providers whose live turn can receive
+  // mid-turn input show the fold-in action.
+  const queuedSteerAvailable =
+    props.selectedThread.session?.status === "running" &&
+    props.selectedThread.session.activeTurnId !== null &&
+    props.onSteerQueuedMessage !== undefined &&
+    props.serverConfig?.providers.find(
+      (provider) => provider.instanceId === props.selectedThread.session?.providerInstanceId,
+    )?.supportsSteer === true;
 
   const sendLabel =
     props.connectionState !== "connected" || props.queueCount > 0
@@ -1071,13 +1088,40 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           ) : null}
         </ComposerSurface>
 
-        {/* Queue count */}
+        {/* Queue count + server-queued rows with steer/cancel actions */}
         {props.queueCount > 0 ? (
           <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
             <Text className="pt-2 text-xs text-foreground-muted">
               {props.queueCount} {t("queuedMessage")}
               {props.queueCount === 1 ? "" : "s"} {t("willSendAutomatically")}
             </Text>
+            {serverQueuedMessages.map((queued) => (
+              <View key={String(queued.messageId)} className="mt-1.5 flex-row items-center gap-2">
+                <Text numberOfLines={1} className="flex-1 text-xs text-foreground-muted">
+                  {queued.text}
+                </Text>
+                {queuedSteerAvailable ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t("queuedSteer.steer")}
+                    onPress={() => props.onSteerQueuedMessage?.(queued.messageId)}
+                    className="rounded-full bg-card px-2.5 py-1 active:opacity-70"
+                  >
+                    <Text className="text-xs text-foreground">{t("queuedSteer.steer")}</Text>
+                  </Pressable>
+                ) : null}
+                {props.onCancelQueuedMessage ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t("queuedSteer.cancel")}
+                    onPress={() => props.onCancelQueuedMessage?.(queued.messageId)}
+                    className="rounded-full bg-card px-2.5 py-1 active:opacity-70"
+                  >
+                    <Text className="text-xs text-foreground-muted">{t("queuedSteer.cancel")}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ))}
           </Animated.View>
         ) : null}
       </Animated.View>

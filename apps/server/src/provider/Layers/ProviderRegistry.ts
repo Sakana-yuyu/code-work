@@ -197,6 +197,7 @@ const correlateSnapshotWithSource = (
           supportsReasoningStream: source.adapterCapabilities.reasoningStream === true,
           supportsMcp: source.adapterCapabilities.mcp === true,
           supportsSessionResume: source.adapterCapabilities.persistence === true,
+          supportsSteer: source.adapterCapabilities.steer === true,
         },
   );
 };

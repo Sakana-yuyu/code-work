@@ -34,6 +34,7 @@ import { makeDrainableWorker } from "@codework/shared/DrainableWorker";
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 import { increment, orchestrationEventsProcessedTotal } from "../../observability/Metrics.ts";
 import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
+import { isByokNativeSlashInput } from "../../provider/byok/ByokSlashCommands.ts";
 import type { ProviderServiceError } from "../../provider/Errors.ts";
 import { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
@@ -83,6 +84,7 @@ type ProviderIntentEvent = Extract<
       | "thread.turn-start-cancelled"
       | "thread.approval-response-requested"
       | "thread.user-input-response-requested"
+      | "thread.session-set"
       | "thread.session-stop-requested";
   }
 >;
@@ -464,6 +466,57 @@ const make = Effect.gen(function* () {
 
   const threadModelSelections = new Map<string, ModelSelection>();
   const pendingTurnSends = new Map<ThreadId, number>();
+  // Steer contract bookkeeping. `pendingSteerMessageIds` tracks every turn
+  // start that has not yet reached the provider (in-flight sends plus held
+  // queue entries), so an interrupt can discard steer input the provider
+  // never read. `heldTurnStarts` parks turn starts for adapters that cannot
+  // receive mid-turn input; they drain FIFO once the running turn ends.
+  const pendingSteerMessageIds = new Map<ThreadId, Set<MessageId>>();
+  const heldTurnStarts = new Map<
+    ThreadId,
+    Map<
+      MessageId,
+      {
+        readonly event: Extract<ProviderIntentEvent, { type: "thread.turn-start-requested" }>;
+        readonly cwd: string;
+      }
+    >
+  >();
+  const lastTurnInterruptedAt = new Map<ThreadId, string>();
+  const trackPendingSteer = (threadId: ThreadId, messageId: MessageId) => {
+    const set = pendingSteerMessageIds.get(threadId) ?? new Set<MessageId>();
+    set.add(messageId);
+    pendingSteerMessageIds.set(threadId, set);
+  };
+  const untrackPendingSteer = (threadId: ThreadId, messageId: MessageId) => {
+    const set = pendingSteerMessageIds.get(threadId);
+    if (set === undefined) return;
+    set.delete(messageId);
+    if (set.size === 0) pendingSteerMessageIds.delete(threadId);
+  };
+  // Discards every turn start the provider has not read yet: parked queue
+  // entries plus sends still in flight. `except` keeps the caller's own
+  // message live so an interrupt-then-replace can still deliver it.
+  const discardUnreadSteer = (threadId: ThreadId, except?: MessageId) =>
+    Effect.sync(() => {
+      const set = pendingSteerMessageIds.get(threadId);
+      if (set !== undefined) {
+        for (const messageId of set) {
+          if (messageId !== except) markTurnStartCancelled(messageId);
+        }
+        if (except === undefined) {
+          pendingSteerMessageIds.delete(threadId);
+        } else {
+          set.clear();
+          set.add(except);
+        }
+      }
+      if (except === undefined) {
+        heldTurnStarts.delete(threadId);
+      } else {
+        heldTurnStarts.get(threadId)?.delete(except);
+      }
+    });
   // Queued turn starts the user cancelled before the provider adopted them. The
   // set is process-lifetime only and covers the race window between the cancel
   // event and the projection row delete; the cancel event deletes the pending
@@ -1140,7 +1193,8 @@ const make = Effect.gen(function* () {
     const nativeCommand =
       (activeSession?.provider === "codex" && /^\/review(?:\s|$)/i.test(normalizedInput ?? "")) ||
       (activeSession?.provider === "claudeAgent" &&
-        /^\/compact(?:\s|$)/i.test(normalizedInput ?? ""));
+        /^\/compact(?:\s|$)/i.test(normalizedInput ?? "")) ||
+      (activeSession?.provider === "byok" && isByokNativeSlashInput(normalizedInput));
     const turnInput = nativeCommand ? normalizedInput : providerInputWithWorkflow;
     const modelForTurn =
       sessionModelSwitch !== "in-session" && input.modelSelection === undefined
@@ -1444,13 +1498,28 @@ const make = Effect.gen(function* () {
     function* (
       event: Extract<ProviderIntentEvent, { type: "thread.turn-start-requested" }>,
       cwd: string,
+      skipHandledDedupe = false,
     ) {
       if (cancelledTurnStartMessageIds.has(event.payload.messageId)) {
         return;
       }
-      const key = turnStartKeyForEvent(event);
-      if (yield* hasHandledTurnStartRecently(key)) {
+      // A queued turn start written before the user interrupted is unread
+      // steer input: the projection already drops its pending row on the
+      // interrupted session-set, so the reactor must not deliver it either.
+      const interruptedAt = lastTurnInterruptedAt.get(event.payload.threadId);
+      if (
+        interruptedAt !== undefined &&
+        event.payload.createdAt <= interruptedAt &&
+        event.payload.steer !== true
+      ) {
+        markTurnStartCancelled(event.payload.messageId);
         return;
+      }
+      if (!skipHandledDedupe) {
+        const key = turnStartKeyForEvent(event);
+        if (yield* hasHandledTurnStartRecently(key)) {
+          return;
+        }
       }
 
       const thread = yield* resolveThread(event.payload.threadId);
@@ -1458,111 +1527,98 @@ const make = Effect.gen(function* () {
         return;
       }
 
-      const message = thread.messages.find((entry) => entry.id === event.payload.messageId);
-      if (!message || message.role !== "user") {
-        yield* appendProviderFailureActivity({
-          threadId: event.payload.threadId,
-          kind: "provider.turn.start.failed",
-          summary: "Provider turn start failed",
-          detail: `User message '${event.payload.messageId}' was not found for turn start request.`,
-          messageId: event.payload.messageId,
-          turnId: null,
-          createdAt: event.payload.createdAt,
-        });
-        return;
-      }
-
-      yield* ensureThreadWorktree(thread);
-
-      const isFirstUserMessageTurn =
-        thread.messages.filter((entry) => entry.role === "user").length === 1;
-      if (isFirstUserMessageTurn) {
-        const project = yield* resolveProject(thread.projectId);
-        const generationCwd =
-          resolveThreadWorkspaceCwd({
-            thread,
-            projects: project ? [project] : [],
-          }) ?? process.cwd();
-        const generationInput = {
-          messageText: message.text,
-          ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
-          ...(event.payload.titleSeed !== undefined ? { titleSeed: event.payload.titleSeed } : {}),
-        };
-
-        yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
-          threadId: event.payload.threadId,
-          branch: thread.branch,
-          worktreePath: thread.worktreePath,
-          ...generationInput,
-        }).pipe(Effect.forkScoped);
-
-        if (canReplaceThreadTitle(thread.title, event.payload.titleSeed)) {
-          yield* maybeGenerateThreadTitleForFirstTurn({
-            threadId: event.payload.threadId,
-            cwd: generationCwd,
-            ...generationInput,
-          }).pipe(Effect.forkScoped);
+      // Queue-or-steer split. A running turn plus an adapter that cannot
+      // receive mid-turn input means this turn start waits for the turn to
+      // end; a `steer` command still goes through and the send path applies
+      // interrupt-then-replace. An in-flight send on the thread counts as an
+      // in-progress turn for the same reason.
+      const turnInFlight =
+        thread.session?.status === "running" && thread.session.activeTurnId !== null;
+      const steerAlreadyInFlight =
+        (pendingSteerMessageIds.get(thread.id)?.size ?? 0) > 0 ||
+        (pendingTurnSends.get(thread.id) ?? 0) > 0;
+      if (event.payload.steer !== true && (turnInFlight || steerAlreadyInFlight)) {
+        const instanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
+        const supportsSteer =
+          instanceId !== undefined &&
+          (yield* providerService.getCapabilities(instanceId).pipe(
+            Effect.map((capabilities) => capabilities.steer === true),
+            Effect.orElseSucceed(() => false),
+          ));
+        if (!supportsSteer) {
+          const held = heldTurnStarts.get(thread.id) ?? new Map();
+          held.set(event.payload.messageId, { event, cwd });
+          heldTurnStarts.set(thread.id, held);
+          trackPendingSteer(thread.id, event.payload.messageId);
+          return;
         }
       }
 
-      let providerSessionReady = false;
-      const handleTurnStartFailure = (cause: Cause.Cause<unknown>) => {
-        if (Cause.hasInterruptsOnly(cause)) {
-          return Effect.void;
-        }
-        const detail = formatFailureDetail(cause);
-        if (detail === PROVIDER_SWITCH_WHILE_RUNNING_DETAIL) {
-          // 拒绝追加的切换请求不能把仍在执行的原回合改成错误或暂停其目标。
-          return appendProviderFailureActivity({
+      // From here the turn start is being delivered: held entries are marked
+      // pending so an interrupt discards them before the provider reads them.
+      // The flag is cleared by the send fiber's ensuring, by an early return
+      // below, or by an interrupt/cancel that marks the message cancelled.
+      trackPendingSteer(thread.id, event.payload.messageId);
+      let deliveredToSend = false;
+      yield* Effect.gen(function* () {
+        const message = thread.messages.find((entry) => entry.id === event.payload.messageId);
+        if (!message || message.role !== "user") {
+          yield* appendProviderFailureActivity({
             threadId: event.payload.threadId,
             kind: "provider.turn.start.failed",
             summary: "Provider turn start failed",
-            detail,
+            detail: `User message '${event.payload.messageId}' was not found for turn start request.`,
             messageId: event.payload.messageId,
             turnId: null,
             createdAt: event.payload.createdAt,
-          }).pipe(Effect.asVoid);
-        }
-        if (isThreadGoalBudgetExhaustedError(cause.reasons.find(Cause.isFailReason)?.error)) {
-          return Effect.gen(function* () {
-            const latest = yield* resolveThread(thread.id);
-            // 只结束本请求创建的待启动状态，不能覆盖正在执行的追加输入。
-            if (
-              providerSessionReady &&
-              latest?.session?.status === "starting" &&
-              latest.session.activeTurnId === null &&
-              latest.messages.findLast((entry) => entry.role === "user")?.id ===
-                event.payload.messageId
-            ) {
-              yield* setThreadSession({
-                threadId: thread.id,
-                session: { ...latest.session, status: "ready" },
-                createdAt: event.payload.createdAt,
-              });
-            }
-            yield* appendProviderFailureActivity({
-              threadId: event.payload.threadId,
-              kind: "provider.turn.start.failed",
-              summary: "任务目标预算已耗尽",
-              detail,
-              messageId: event.payload.messageId,
-              turnId: null,
-              createdAt: event.payload.createdAt,
-            });
           });
+          return;
         }
-        return setThreadSessionErrorOnTurnStartFailure({
-          threadId: event.payload.threadId,
-          detail,
-          createdAt: event.payload.createdAt,
-        }).pipe(
-          Effect.ensuring(
-            syncThreadGoalStatus(event.payload.threadId, "paused").pipe(
-              Effect.catchCause(() => Effect.void),
-            ),
-          ),
-          Effect.flatMap(() =>
-            appendProviderFailureActivity({
+
+        yield* ensureThreadWorktree(thread);
+
+        const isFirstUserMessageTurn =
+          thread.messages.filter((entry) => entry.role === "user").length === 1;
+        if (isFirstUserMessageTurn) {
+          const project = yield* resolveProject(thread.projectId);
+          const generationCwd =
+            resolveThreadWorkspaceCwd({
+              thread,
+              projects: project ? [project] : [],
+            }) ?? process.cwd();
+          const generationInput = {
+            messageText: message.text,
+            ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
+            ...(event.payload.titleSeed !== undefined
+              ? { titleSeed: event.payload.titleSeed }
+              : {}),
+          };
+
+          yield* maybeGenerateAndRenameWorktreeBranchForFirstTurn({
+            threadId: event.payload.threadId,
+            branch: thread.branch,
+            worktreePath: thread.worktreePath,
+            ...generationInput,
+          }).pipe(Effect.forkScoped);
+
+          if (canReplaceThreadTitle(thread.title, event.payload.titleSeed)) {
+            yield* maybeGenerateThreadTitleForFirstTurn({
+              threadId: event.payload.threadId,
+              cwd: generationCwd,
+              ...generationInput,
+            }).pipe(Effect.forkScoped);
+          }
+        }
+
+        let providerSessionReady = false;
+        const handleTurnStartFailure = (cause: Cause.Cause<unknown>) => {
+          if (Cause.hasInterruptsOnly(cause)) {
+            return Effect.void;
+          }
+          const detail = formatFailureDetail(cause);
+          if (detail === PROVIDER_SWITCH_WHILE_RUNNING_DETAIL) {
+            // 拒绝追加的切换请求不能把仍在执行的原回合改成错误或暂停其目标。
+            return appendProviderFailureActivity({
               threadId: event.payload.threadId,
               kind: "provider.turn.start.failed",
               summary: "Provider turn start failed",
@@ -1570,85 +1626,180 @@ const make = Effect.gen(function* () {
               messageId: event.payload.messageId,
               turnId: null,
               createdAt: event.payload.createdAt,
-            }),
-          ),
-          Effect.asVoid,
-        );
-      };
-
-      const recoverTurnStartFailure = (cause: Cause.Cause<unknown>) =>
-        handleTurnStartFailure(cause).pipe(
-          Effect.catchCause((recoveryCause) =>
-            Effect.logWarning("provider command reactor failed to recover turn start failure", {
-              eventType: event.type,
-              threadId: event.payload.threadId,
-              cause: Cause.pretty(recoveryCause),
-              originalCause: Cause.pretty(cause),
-            }),
-          ),
-        );
-
-      // 先把暂停中的 Goal 恢复为本轮执行态，再读取上下文，避免模型看到过期的 paused 状态。
-      const budgetAvailable = yield* checkThreadGoalBudget(thread.id).pipe(
-        Effect.as(true),
-        Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(false))),
-      );
-      if (!budgetAvailable) return;
-      yield* syncThreadGoalStatus(event.payload.threadId, "active");
-
-      const sendTurnRequest = yield* buildSendTurnRequestForThread({
-        threadId: event.payload.threadId,
-        messageText: message.text,
-        messageId: event.payload.messageId,
-        sequence: event.sequence,
-        ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
-        ...(event.payload.modelSelection !== undefined
-          ? { modelSelection: event.payload.modelSelection }
-          : {}),
-        interactionMode: event.payload.interactionMode,
-        createdAt: event.payload.createdAt,
-      }).pipe(
-        Effect.map(Option.some),
-        Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(Option.none()))),
-      );
-
-      if (Option.isNone(sendTurnRequest)) {
-        return;
-      }
-      providerSessionReady = sendTurnRequest.value.providerSessionReady;
-
-      const send = workspaceLock.withLock(
-        cwd,
-        Effect.gen(function* () {
-          // 会话启动及排队等待期间可能收到预算事件，实际发送前再读一次。
-          yield* checkThreadGoalBudget(thread.id);
-          // 排队期间收到取消即丢弃；取消事件在同一事件流中排在 start 之后。
-          if (cancelledTurnStartMessageIds.has(event.payload.messageId)) {
-            return;
+            }).pipe(Effect.asVoid);
           }
-          yield* providerService.sendTurn(sendTurnRequest.value.request);
-          cancelledTurnStartMessageIds.delete(event.payload.messageId);
-        }),
-      );
-      const sendWhenAvailable: typeof send = send.pipe(
-        Effect.catchTag("WorkspaceBusyError", (error) =>
-          workspaceLock
-            .waitUntilAvailable(error.cwd)
-            .pipe(Effect.andThen(Effect.suspend(() => sendWhenAvailable))),
-        ),
-      );
-      // 实际发送在后台等待时也必须保留绑定，不能让后续选择把该请求送给另一个运行器。
-      pendingTurnSends.set(thread.id, (pendingTurnSends.get(thread.id) ?? 0) + 1);
-      yield* sendWhenAvailable.pipe(
-        Effect.catchCause(recoverTurnStartFailure),
+          if (isThreadGoalBudgetExhaustedError(cause.reasons.find(Cause.isFailReason)?.error)) {
+            return Effect.gen(function* () {
+              const latest = yield* resolveThread(thread.id);
+              // 只结束本请求创建的待启动状态，不能覆盖正在执行的追加输入。
+              if (
+                providerSessionReady &&
+                latest?.session?.status === "starting" &&
+                latest.session.activeTurnId === null &&
+                latest.messages.findLast((entry) => entry.role === "user")?.id ===
+                  event.payload.messageId
+              ) {
+                yield* setThreadSession({
+                  threadId: thread.id,
+                  session: { ...latest.session, status: "ready" },
+                  createdAt: event.payload.createdAt,
+                });
+              }
+              yield* appendProviderFailureActivity({
+                threadId: event.payload.threadId,
+                kind: "provider.turn.start.failed",
+                summary: "任务目标预算已耗尽",
+                detail,
+                messageId: event.payload.messageId,
+                turnId: null,
+                createdAt: event.payload.createdAt,
+              });
+            });
+          }
+          return setThreadSessionErrorOnTurnStartFailure({
+            threadId: event.payload.threadId,
+            detail,
+            createdAt: event.payload.createdAt,
+          }).pipe(
+            Effect.ensuring(
+              syncThreadGoalStatus(event.payload.threadId, "paused").pipe(
+                Effect.catchCause(() => Effect.void),
+              ),
+            ),
+            Effect.flatMap(() =>
+              appendProviderFailureActivity({
+                threadId: event.payload.threadId,
+                kind: "provider.turn.start.failed",
+                summary: "Provider turn start failed",
+                detail,
+                messageId: event.payload.messageId,
+                turnId: null,
+                createdAt: event.payload.createdAt,
+              }),
+            ),
+            Effect.asVoid,
+          );
+        };
+
+        const recoverTurnStartFailure = (cause: Cause.Cause<unknown>) =>
+          handleTurnStartFailure(cause).pipe(
+            Effect.catchCause((recoveryCause) =>
+              Effect.logWarning("provider command reactor failed to recover turn start failure", {
+                eventType: event.type,
+                threadId: event.payload.threadId,
+                cause: Cause.pretty(recoveryCause),
+                originalCause: Cause.pretty(cause),
+              }),
+            ),
+          );
+
+        // 先把暂停中的 Goal 恢复为本轮执行态，再读取上下文，避免模型看到过期的 paused 状态。
+        const budgetAvailable = yield* checkThreadGoalBudget(thread.id).pipe(
+          Effect.as(true),
+          Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(false))),
+        );
+        if (!budgetAvailable) return;
+        yield* syncThreadGoalStatus(event.payload.threadId, "active");
+
+        const sendTurnRequest = yield* buildSendTurnRequestForThread({
+          threadId: event.payload.threadId,
+          messageText: message.text,
+          messageId: event.payload.messageId,
+          sequence: event.sequence,
+          ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
+          ...(event.payload.modelSelection !== undefined
+            ? { modelSelection: event.payload.modelSelection }
+            : {}),
+          interactionMode: event.payload.interactionMode,
+          createdAt: event.payload.createdAt,
+        }).pipe(
+          Effect.map(Option.some),
+          Effect.catchCause((cause) =>
+            handleTurnStartFailure(cause).pipe(Effect.as(Option.none())),
+          ),
+        );
+
+        if (Option.isNone(sendTurnRequest)) {
+          return;
+        }
+        providerSessionReady = sendTurnRequest.value.providerSessionReady;
+
+        const activeTurnIdAtSend = thread.session?.activeTurnId ?? null;
+        const send = workspaceLock.withLock(
+          cwd,
+          Effect.gen(function* () {
+            // 会话启动及排队等待期间可能收到预算事件，实际发送前再读一次。
+            yield* checkThreadGoalBudget(thread.id);
+            // 排队期间收到取消即丢弃；取消事件在同一事件流中排在 start 之后。
+            if (cancelledTurnStartMessageIds.has(event.payload.messageId)) {
+              return;
+            }
+            if (event.payload.steer === true && activeTurnIdAtSend !== null) {
+              const instanceId =
+                thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
+              const steerCapable =
+                instanceId !== undefined &&
+                (yield* providerService.getCapabilities(instanceId, thread.id).pipe(
+                  Effect.map((capabilities) => capabilities.steer === true),
+                  Effect.orElseSucceed(() => false),
+                ));
+              if (!steerCapable) {
+                // Interrupt-then-replace fallback: an explicit steer on an
+                // adapter that cannot receive mid-turn input aborts the running
+                // turn and this start becomes a fresh turn. Still-unread queued
+                // input is discarded first, matching the interrupt contract.
+                yield* providerService.interruptTurn({ threadId: thread.id });
+                yield* discardUnreadSteer(thread.id, event.payload.messageId);
+              }
+            }
+            const turn = yield* providerService.sendTurn(sendTurnRequest.value.request);
+            cancelledTurnStartMessageIds.delete(event.payload.messageId);
+            if (activeTurnIdAtSend !== null && turn.turnId === activeTurnIdAtSend) {
+              // The adapter folded this send into the already-running turn, so
+              // no new turn.started arrives to adopt the pending turn-start
+              // row. Re-dispatching the session unchanged runs that adoption.
+              const latest = yield* resolveThread(thread.id);
+              if (latest?.session && latest.session.activeTurnId !== null) {
+                yield* setThreadSession({
+                  threadId: thread.id,
+                  session: { ...latest.session, updatedAt: event.payload.createdAt },
+                  createdAt: event.payload.createdAt,
+                });
+              }
+            }
+          }),
+        );
+        const sendWhenAvailable: typeof send = send.pipe(
+          Effect.catchTag("WorkspaceBusyError", (error) =>
+            workspaceLock
+              .waitUntilAvailable(error.cwd)
+              .pipe(Effect.andThen(Effect.suspend(() => sendWhenAvailable))),
+          ),
+        );
+        // 实际发送在后台等待时也必须保留绑定，不能让后续选择把该请求送给另一个运行器。
+        pendingTurnSends.set(thread.id, (pendingTurnSends.get(thread.id) ?? 0) + 1);
+        deliveredToSend = true;
+        yield* sendWhenAvailable.pipe(
+          Effect.catchCause(recoverTurnStartFailure),
+          Effect.ensuring(
+            Effect.sync(() => {
+              const remaining = (pendingTurnSends.get(thread.id) ?? 1) - 1;
+              if (remaining > 0) pendingTurnSends.set(thread.id, remaining);
+              else pendingTurnSends.delete(thread.id);
+              untrackPendingSteer(thread.id, event.payload.messageId);
+            }),
+          ),
+          Effect.forkScoped,
+        );
+      }).pipe(
+        // Turn starts that never reach the send fiber (missing message,
+        // session bootstrap failure, validation) must not stay marked as
+        // unread steer input.
         Effect.ensuring(
           Effect.sync(() => {
-            const remaining = (pendingTurnSends.get(thread.id) ?? 1) - 1;
-            if (remaining > 0) pendingTurnSends.set(thread.id, remaining);
-            else pendingTurnSends.delete(thread.id);
+            if (!deliveredToSend) untrackPendingSteer(thread.id, event.payload.messageId);
           }),
         ),
-        Effect.forkScoped,
       );
     },
   );
@@ -1765,16 +1916,24 @@ const make = Effect.gen(function* () {
     };
 
     // Orchestration turn ids are not provider turn ids, so interrupt by session.
-    yield* providerService
-      .interruptTurn({ threadId: event.payload.threadId })
-      .pipe(
-        Effect.catchCause(recoverInterruptFailure),
-        Effect.ensuring(
-          syncThreadGoalStatus(event.payload.threadId, "paused").pipe(
-            Effect.catchCause(() => Effect.void),
-          ),
+    yield* providerService.interruptTurn({ threadId: event.payload.threadId }).pipe(
+      // Interrupt discards steer input the provider never read: parked
+      // queue entries and still-in-flight sends are marked cancelled. The
+      // timestamp also lets the turn-start path drop stale queued starts
+      // whose createdAt predates the interrupt.
+      Effect.tap(() => discardUnreadSteer(event.payload.threadId)),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          lastTurnInterruptedAt.set(event.payload.threadId, event.payload.createdAt);
+        }),
+      ),
+      Effect.catchCause(recoverInterruptFailure),
+      Effect.ensuring(
+        syncThreadGoalStatus(event.payload.threadId, "paused").pipe(
+          Effect.catchCause(() => Effect.void),
         ),
-      );
+      ),
+    );
   });
 
   const processApprovalResponseRequested = Effect.fn("processApprovalResponseRequested")(function* (
@@ -1894,7 +2053,84 @@ const make = Effect.gen(function* () {
       },
       createdAt: now,
     });
+    // A session that is going away can never read parked queue entries or
+    // in-flight sends; discard them so they cannot fire into the next
+    // session bound to this thread.
+    yield* discardUnreadSteer(thread.id);
     yield* syncThreadGoalStatus(thread.id, "paused");
+  });
+
+  // Every session transition lands here. A turn that ended with the session
+  // still usable drains the earliest parked turn start so queued input
+  // becomes its own turn; entries queued before an interrupt are discarded
+  // because the provider never read them.
+  const processSessionSet = Effect.fn("processSessionSet")(function* (
+    event: Extract<ProviderIntentEvent, { type: "thread.session-set" }>,
+  ) {
+    const session = event.payload.session;
+    if (session.activeTurnId !== null) {
+      // A turn is live (including the fold-in adoption re-set); parked queue
+      // entries keep waiting for the next turn end.
+      return;
+    }
+    const held = heldTurnStarts.get(event.payload.threadId);
+    if (held === undefined || held.size === 0) {
+      return;
+    }
+    if (session.status === "stopped" || session.status === "error") {
+      // Unusable session: discard unread input instead of firing it at a
+      // dead runner. The projection already dropped the pending rows on this
+      // same event.
+      yield* discardUnreadSteer(event.payload.threadId);
+      return;
+    }
+    if (session.status === "interrupted") {
+      const watermark = lastTurnInterruptedAt.get(event.payload.threadId) ?? event.occurredAt;
+      for (const [messageId, entry] of held) {
+        if (entry.event.payload.createdAt <= watermark) {
+          markTurnStartCancelled(messageId);
+          untrackPendingSteer(event.payload.threadId, messageId);
+          held.delete(messageId);
+        }
+      }
+    }
+    // Drain the earliest surviving entry: it becomes its own turn. Cancelled
+    // or otherwise dropped entries are skipped in the same pass so a dead
+    // head cannot pin the queue; survivors drain one per completed turn.
+    let delivered = false;
+    while (!delivered) {
+      const next = held.entries().next().value;
+      if (next === undefined) {
+        heldTurnStarts.delete(event.payload.threadId);
+        return;
+      }
+      const [messageId, entry] = next;
+      held.delete(messageId);
+      if (held.size === 0) heldTurnStarts.delete(event.payload.threadId);
+      // Untrack first so the in-flight check does not count this entry
+      // against itself when it re-enters the turn-start path.
+      untrackPendingSteer(event.payload.threadId, messageId);
+      if (cancelledTurnStartMessageIds.has(messageId)) {
+        continue;
+      }
+      const deliver = workspaceLock.withLock(
+        entry.cwd,
+        processTurnStartRequestedUnlocked(entry.event, entry.cwd, true),
+      );
+      const deliverWhenAvailable: typeof deliver = deliver.pipe(
+        Effect.catchTag("WorkspaceBusyError", (error) =>
+          workspaceLock
+            .waitUntilAvailable(error.cwd)
+            .pipe(Effect.andThen(Effect.suspend(() => deliverWhenAvailable))),
+        ),
+      );
+      yield* deliverWhenAvailable;
+      // A handled entry is either back in-flight (tracked again) or parked
+      // by the busy re-check; a dropped one lets the next entry try.
+      delivered =
+        pendingSteerMessageIds.get(event.payload.threadId)?.has(messageId) === true ||
+        heldTurnStarts.get(event.payload.threadId)?.has(messageId) === true;
+    }
   });
 
   const processDomainEvent = Effect.fn("processDomainEvent")(function* (
@@ -1945,9 +2181,14 @@ const make = Effect.gen(function* () {
         return;
       case "thread.turn-start-cancelled":
         markTurnStartCancelled(event.payload.messageId);
+        heldTurnStarts.get(event.payload.threadId)?.delete(event.payload.messageId);
+        untrackPendingSteer(event.payload.threadId, event.payload.messageId);
         return;
       case "thread.turn-interrupt-requested":
         yield* processTurnInterruptRequested(event);
+        return;
+      case "thread.session-set":
+        yield* processSessionSet(event);
         return;
       case "thread.approval-response-requested":
         yield* processApprovalResponseRequested(event);
@@ -1997,6 +2238,7 @@ const make = Effect.gen(function* () {
         event.type === "thread.turn-interrupt-requested" ||
         event.type === "thread.approval-response-requested" ||
         event.type === "thread.user-input-response-requested" ||
+        event.type === "thread.session-set" ||
         event.type === "thread.session-stop-requested"
       ) {
         return yield* worker.enqueue(event);

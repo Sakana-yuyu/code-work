@@ -2077,6 +2077,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       reasoningStream: true,
       mcp: true,
       persistence: true,
+      steer: true,
     },
     startSession,
     sendTurn,

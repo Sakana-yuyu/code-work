@@ -302,7 +302,13 @@ const makeProjectionTurnRepository = Effect.gen(function* () {
   const appendPendingTurnStart: ProjectionTurnRepositoryShape["appendPendingTurnStart"] = (row) =>
     // Appends one pending placeholder per queued turn start; a thread may hold
     // several queued messages at once, so insertion no longer clears siblings.
-    insertPendingProjectionTurn(row).pipe(
+    // Re-requesting a start for the same message (steer resend, outbox retry)
+    // replaces its row rather than queueing the message twice.
+    deletePendingProjectionTurnByMessageId({
+      threadId: row.threadId,
+      messageId: row.messageId,
+    }).pipe(
+      Effect.andThen(insertPendingProjectionTurn(row)),
       Effect.mapError(
         toPersistenceSqlOrDecodeError(
           "ProjectionTurnRepository.appendPendingTurnStart:query",
