@@ -14,6 +14,7 @@ import type {
 } from "@codework/contracts";
 import {
   ApprovalRequestId,
+  EnvironmentId,
   EventId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -51,7 +52,10 @@ import type {
 import * as ProviderAdapterRegistry from "../Services/ProviderAdapterRegistry.ts";
 import * as ProviderService from "../Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "../Services/ProviderSessionDirectory.ts";
-import { makeProviderServiceLive } from "./ProviderService.ts";
+import {
+  makeProviderServiceLive as makeProviderServiceLiveBase,
+  type ProviderServiceLiveOptions,
+} from "./ProviderService.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
 import { ProviderSessionDirectoryLive } from "./ProviderSessionDirectory.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -73,6 +77,26 @@ const serverConfigTestLayer = ServerConfig.layerTest(process.cwd(), process.cwd(
 const asRequestId = (value: string): ApprovalRequestId => ApprovalRequestId.make(value);
 const asEventId = (value: string): EventId => EventId.make(value);
 const asThreadId = (value: string): ThreadId => ThreadId.make(value);
+
+// 生产里 McpSessionRegistry.layer 常驻（server.ts 组装）；真实签发器读的是
+// 运行时装配的模块全局 registry，测试里缺省模拟"registry 存活"以便声明
+// mcp 的伪适配器照常起会话。需要验证签发失败时，显式传 issueMcpCredential。
+const makeProviderServiceLive = (options?: ProviderServiceLiveOptions) =>
+  makeProviderServiceLiveBase({
+    issueMcpCredential: (request) =>
+      Effect.succeed({
+        config: {
+          environmentId: "env-test" as EnvironmentId,
+          threadId: request.threadId,
+          providerSessionId: "provider-session-test",
+          providerInstanceId: request.providerInstanceId,
+          endpoint: "http://127.0.0.1:1/mcp",
+          authorizationHeader: "Bearer test",
+          capabilities: request.capabilities ?? [],
+        },
+      }),
+    ...options,
+  });
 const asTurnId = (value: string): TurnId => TurnId.make(value);
 const codexInstanceId = ProviderInstanceId.make("codex");
 const claudeAgentInstanceId = ProviderInstanceId.make("claudeAgent");
@@ -2587,6 +2611,7 @@ describe("agent browser access", () => {
     enableAgentBrowserAccess: boolean,
     threadId: ThreadId,
     capabilitiesOverride?: Partial<ProviderAdapterCapabilities>,
+    options?: { readonly credentialUnavailable?: boolean },
   ) =>
     Effect.gen(function* () {
       const issued: Array<{ threadId: ThreadId; capabilities: string[] }> = [];
@@ -2608,7 +2633,19 @@ describe("agent browser access", () => {
               threadId: request.threadId,
               capabilities: [...(request.capabilities ?? [])],
             });
-            return undefined;
+            return options?.credentialUnavailable === true
+              ? undefined
+              : {
+                  config: {
+                    environmentId: "env-test" as EnvironmentId,
+                    threadId: request.threadId,
+                    providerSessionId: "provider-session-test",
+                    providerInstanceId: request.providerInstanceId,
+                    endpoint: "http://127.0.0.1:1/mcp",
+                    authorizationHeader: "Bearer test",
+                    capabilities: request.capabilities ?? [],
+                  },
+                };
           }),
       }).pipe(
         Layer.provide(providerAdapterLayer),
@@ -2663,6 +2700,21 @@ describe("agent browser access", () => {
       const issued = yield* startSessionWith(true, threadId, { mcp: false });
 
       assert.deepEqual(issued, []);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("声明 MCP 能力但凭据签发不可用时失败关闭，不启动会话", () =>
+    Effect.gen(function* () {
+      const threadId = asThreadId("thread-mcp-unavailable");
+
+      const failure = yield* startSessionWith(true, threadId, undefined, {
+        credentialUnavailable: true,
+      }).pipe(Effect.result);
+
+      assert.equal(failure._tag, "Failure");
+      if (failure._tag === "Failure") {
+        assert.equal(failure.failure._tag, "ProviderAdapterProcessError");
+      }
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });

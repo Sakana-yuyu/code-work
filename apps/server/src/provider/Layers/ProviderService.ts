@@ -52,6 +52,7 @@ import {
 } from "../../observability/Metrics.ts";
 import {
   type ProviderAdapterError,
+  ProviderAdapterProcessError,
   type ProviderServiceError,
   ProviderValidationError,
 } from "../Errors.ts";
@@ -273,6 +274,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     threadId: ThreadId,
     providerInstanceId: ProviderInstanceId,
     supportsMcp: boolean,
+    provider: string,
   ) =>
     Effect.gen(function* () {
       // 只为真实注入 Code Work MCP 桥的适配器签发凭据，避免空挂令牌。
@@ -288,9 +290,17 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         providerInstanceId,
         capabilities,
       });
-      if (credential) {
-        yield* Effect.sync(() => McpProviderSession.setMcpProviderSession(credential.config));
+      if (credential === undefined) {
+        // 失败关闭：适配器声明注入 MCP 桥但注册表不可用（layer 未物化）时
+        // 拒绝启动，避免会话在失去凭据绑定的状态下静默失去注入工具。
+        return yield* new ProviderAdapterProcessError({
+          provider,
+          threadId,
+          detail:
+            "MCP credential issuance is unavailable while the adapter declares MCP support; refusing to start the session without the injected bridge.",
+        });
       }
+      yield* Effect.sync(() => McpProviderSession.setMcpProviderSession(credential.config));
       return credential;
     });
   const clearMcpSession = (threadId: ThreadId) =>
@@ -534,6 +544,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         input.binding.threadId,
         bindingInstanceId,
         adapter.capabilities.mcp === true,
+        adapter.provider,
       );
       const resumed = yield* adapter
         .startSession({
@@ -752,7 +763,12 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         eventBindings.set(threadId, previousInstanceId);
         sessionTransitions.set(threadId, transition);
         yield* stopStaleSessionsForThread({ threadId, currentInstanceId: resolvedInstanceId });
-        yield* prepareMcpSession(threadId, resolvedInstanceId, adapter.capabilities.mcp === true);
+        yield* prepareMcpSession(
+          threadId,
+          resolvedInstanceId,
+          adapter.capabilities.mcp === true,
+          adapter.provider,
+        );
         const session = yield* adapter
           .startSession({
             ...input,

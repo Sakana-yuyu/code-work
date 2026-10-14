@@ -86,9 +86,9 @@
 5. **草稿阶段不创建 provider session。** 查模型/命令/feature 用 client 级 API，避免产生空的原生会话污染 provider 自己的历史界面。2026-10-13 已将 Cursor 目录改为客户端准备加 `cursor/list_available_models`，Grok 改为官方无认证的初始化加 `x.ai/models/list`；不创建临时 session，不删除动态模型或推理参数，旧 CLI 不支持扩展时保留错误与升级建议。真实对话继续走会话建立/恢复。生命周期、协议模拟及版本边界见 [providers](./providers.md) 和 [port-progress](./port-progress.md) 第43主题；第11项的统一 fetchCatalog、等价缓存和共享 deadline 仍需继续完成。
 6. **更细的能力声明。** rewind 拆成 conversation / files / both，另有 streaming、reasoning stream、MCP、persistence 等标志；设置页只展示真实可用控制。2026-10-14 rewind 三态已落地：`thread.checkpoint.revert` 增加可选 scope（缺省=both，与旧事件兼容），files 不触碰 provider 会话且保留检查点 ref 与投影历史，conversation 跳过全部 git 步骤并在无会话/无 threadRollback 时失败关闭；两端 UI 提供范围选择与分 scope 确认文案。同日 sessionModelSwitch 三态落地：`in-session | restart-continue | unsupported`，注册表把适配器声明盖进 `ServerProvider` 快照，restart-continue 重启保留 resumeCursor 且两端在选择前先确认。同日 streaming/reasoningStream/mcp/persistence 四标志落地：逐适配器按真实事件/游标/MCP 注入核对声明，快照透出为 `supportsStreaming` 等四个布尔，`ProviderService` 仅对声明 `mcp` 的适配器签发 MCP 凭据。证据与边界见 [port-progress](./port-progress.md) 第79/80/81主题；本项全部子条目已实施完毕。
 7. **managed-process registry。** provider 衍生的长寿命 helper 进程登记 PID、命令与平台进程身份，启动后后台对账；身份不匹配只删记录不杀进程。与仓库“不要按名称杀进程”规则同向。
-8. **provider 配置的深度合并。** `options` 对象递归合并，数组/标量/`null` 替换，只持久化 agent 自己的部分，provider 默认值改动在下次启动生效，profile 继承基础 provider。
+8. **provider 配置的深度合并。** `options` 对象递归合并，数组/标量/`null` 替换，只持久化 agent 自己的部分，provider 默认值改动在下次启动生效，profile 继承基础 provider。2026-10-14 核对为等价实现：`applyServerSettingsPatch` 经 `deepMerge` 满足递归/替换语义；实例 `config` 是不透明 blob 原样持久化，驱动每次启动解码套用最新缺省；`providerInstances` 整表替换是有意设计；provider profile 继承无对应概念（backgroundActivityProfile 自带 baseProfile 继承）。证据见 [port-progress](./port-progress.md) 第86主题。
 9. **插件化 provider。** 新 provider 作为 `plugins/<id>/` 通过 SDK 注册，自带图标、传输与能力声明。对 fork 生态有价值，但需先定边界与安全模型，成本高。
-10. **失败关闭的 MCP 预批准。** 新 provider 在无法对“某个精确注入的 MCP server 与工具”预批准之前，无人值守执行必须拒绝。
+10. **失败关闭的 MCP 预批准。** 新 provider 在无法对“某个精确注入的 MCP server 与工具”预批准之前，无人值守执行必须拒绝。2026-10-14 已落地：`prepareMcpSession` 在适配器声明 `mcp` 但凭据签发不可用（registry 层未物化）时以 `ProviderAdapterProcessError` 拒绝启动——此前静默继续 spawn；预批准由「注入即批准 + canUseTool + 服务端 bearer/thread/capability 门控」表达。证据见 [port-progress](./port-progress.md) 第86主题。
 
 ### 2.3 来自 BaoCode
 
