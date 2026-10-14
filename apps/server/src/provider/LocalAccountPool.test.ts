@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off - 冷却断言对照墙上时间。
 import { describe, expect, it } from "vite-plus/test";
-import { ProviderDriverKind, ProviderInstanceId, type ServerSettings } from "@codework/contracts";
+import { ProviderDriverKind, type ServerSettings } from "@codework/contracts";
 import {
   createLocalPoolUsageStore,
   localPoolUsageStore,
@@ -12,7 +12,9 @@ import {
   cursorCredentialEnvironment,
   localGatewayAdapters,
   markLocalAccountFailure,
+  LOCAL_POOL_SESSION_AFFINITY_CAPACITY,
   parseLocalCredential,
+  peekLocalAccountSessionBinding,
   pickLocalAccount,
   refreshLocalPoolInstanceAdapters,
 } from "./LocalAccountPool.ts";
@@ -162,6 +164,56 @@ describe("LocalAccountPool", () => {
   });
   it("supports scoped account ids", () => {
     expect(pickLocalAccount(settings("fill-first"), "codex", ["b"])?.id).toBe("b");
+  });
+  it("keeps a session on the bound account while new sessions still round-robin", () => {
+    const value = settings("round-robin");
+    const first = pickLocalAccount(value, "codex", undefined, undefined, "sess-sticky-1");
+    expect(first).toBeDefined();
+    for (let i = 0; i < 6; i += 1) {
+      expect(pickLocalAccount(value, "codex", undefined, undefined, "sess-sticky-1")?.id).toBe(
+        first!.id,
+      );
+    }
+    // 新会话仍按轮询分配，粘滞不冻结无键请求。
+    expect(pickLocalAccount(value, "codex", undefined, undefined, "sess-sticky-2")?.id).not.toBe(
+      undefined,
+    );
+    expect(pickLocalAccount(value, "codex")?.id).not.toBe(undefined);
+    expect(peekLocalAccountSessionBinding("codex", "sess-sticky-1")).toBe(String(first!.id));
+  });
+  it("rebinds a session when the bound account cools down or leaves the candidates", () => {
+    const value = settings("round-robin");
+    const bound = pickLocalAccount(value, "codex", undefined, undefined, "sess-rebind")!;
+    markLocalAccountFailure(String(bound.id), 429);
+    const next = pickLocalAccount(value, "codex", undefined, undefined, "sess-rebind");
+    expect(next).toBeDefined();
+    expect(String(next!.id)).not.toBe(String(bound.id));
+    expect(peekLocalAccountSessionBinding("codex", "sess-rebind")).toBe(String(next!.id));
+    // 绑定账号被移出候选集（另一实例的池）时同样换绑或落空，而非固守失效账号。
+    const candidateFree = pickLocalAccount(
+      value,
+      "codex",
+      [String(next!.id) === "a" ? "b" : "a"],
+      undefined,
+      "sess-rebind",
+    );
+    expect(candidateFree).toBeUndefined();
+    localPoolUsageStore.setCooldown(String(bound.id), null);
+  });
+  it("evicts the oldest session binding beyond the affinity capacity", () => {
+    const value = settings("fill-first");
+    const key = (index: number) => `sess-cap-${index}`;
+    for (let i = 0; i < LOCAL_POOL_SESSION_AFFINITY_CAPACITY; i += 1) {
+      pickLocalAccount(value, "codex", undefined, undefined, key(i));
+    }
+    expect(peekLocalAccountSessionBinding("codex", key(0))).toBe("a");
+    // 超出容量的绑定让最旧一条失效；2000 之后的会话仍有绑定。
+    pickLocalAccount(value, "codex", undefined, undefined, "sess-cap-overflow");
+    expect(peekLocalAccountSessionBinding("codex", key(0))).toBeUndefined();
+    expect(peekLocalAccountSessionBinding("codex", "sess-cap-overflow")).toBe("a");
+    expect(
+      peekLocalAccountSessionBinding("codex", key(LOCAL_POOL_SESSION_AFFINITY_CAPACITY - 1)),
+    ).toBe("a");
   });
   it("filters accounts by the published model when credentials declare models", () => {
     const base = settings("fill-first");

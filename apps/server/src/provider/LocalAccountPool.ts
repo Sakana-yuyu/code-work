@@ -197,16 +197,49 @@ export const credentialAuthKind = (credential: Record<string, unknown>): LocalAc
 
 const cursor = new Map<string, number>();
 const MAX_LOCAL_ACCOUNT_WEIGHT = 99;
+// 会话→账号粘滞绑定：上游提示缓存与加密推理绑定账号，同一会话尽量停在
+// 同一账号；绑定账号不再可选（冷却/禁用/被移出候选）时由下一轮挑选换绑。
+// 容量对齐上游 CodexBalancer 的 2000 会话上限，超出按插入序逐出最旧绑定。
+export const LOCAL_POOL_SESSION_AFFINITY_CAPACITY = 2000;
+const sessionAffinity = new Map<string, string>();
 // 冷却截止存在 localPoolUsageStore 里（随 local-pool-usage.json 持久化），
 // 服务器重启后限流账号不会立刻被再次选中。
 const needsRefresh = new Set<string>();
 const refreshLocks = new Map<string, Semaphore.Semaphore>();
+
+const sessionAffinityKey = (provider: LocalAccountProvider, sessionKey: string): string =>
+  `${provider}:${sessionKey}`;
+
+const bindLocalAccountSession = (
+  provider: LocalAccountProvider,
+  sessionKey: string,
+  accountId: string,
+): void => {
+  const key = sessionAffinityKey(provider, sessionKey);
+  sessionAffinity.delete(key);
+  sessionAffinity.set(key, accountId);
+  while (sessionAffinity.size > LOCAL_POOL_SESSION_AFFINITY_CAPACITY) {
+    const oldest = sessionAffinity.keys().next().value;
+    if (oldest === undefined) break;
+    sessionAffinity.delete(oldest);
+  }
+};
+
+/** 读取会话当前绑定的账号 id；无绑定或会话键为空时返回 undefined。 */
+export const peekLocalAccountSessionBinding = (
+  provider: LocalAccountProvider,
+  sessionKey: string | undefined,
+): string | undefined =>
+  sessionKey === undefined || sessionKey.length === 0
+    ? undefined
+    : sessionAffinity.get(sessionAffinityKey(provider, sessionKey));
 
 export const pickLocalAccount = (
   settings: ServerSettings,
   provider: LocalAccountProvider,
   candidateIds?: readonly string[],
   model?: string,
+  sessionKey?: string,
 ): LocalAccount | undefined => {
   const pool = settings.localAccountPool ?? {
     accounts: {},
@@ -228,12 +261,29 @@ export const pickLocalAccount = (
       (localPoolUsageStore.cooldownUntilUnixMs(String(account.id)) ?? 0) <= now,
   );
   if (all.length === 0) return undefined;
-  if (pool.strategy === "fill-first") return all[0];
+  const boundAccountId = peekLocalAccountSessionBinding(provider, sessionKey);
+  if (boundAccountId !== undefined) {
+    const bound = all.find((account) => String(account.id) === boundAccountId);
+    if (bound !== undefined) return bound;
+  }
+  const picked = pickLocalAccountFromEligible(pool.strategy, provider, all);
+  if (picked !== undefined && sessionKey !== undefined && sessionKey.length > 0) {
+    bindLocalAccountSession(provider, sessionKey, String(picked.id));
+  }
+  return picked;
+};
+
+const pickLocalAccountFromEligible = (
+  strategy: LocalAccountPoolStrategy,
+  provider: LocalAccountProvider,
+  all: readonly LocalAccount[],
+): LocalAccount | undefined => {
+  if (strategy === "fill-first") return all[0];
   // ponytail: 以账号子集隔离轮询游标，避免不同 CLI 池共享偏移；账号数量较少，排序扫描成本可忽略。
   // weighted-round-robin 把账号按权重展开成重复槽位后轮询，权重越大分到的调用越多；
   // 权重缺省或小于 1 时按 1 处理，避免权重 0 造成账号不可见。
   const slots =
-    pool.strategy === "weighted-round-robin"
+    strategy === "weighted-round-robin"
       ? all.flatMap((account) =>
           Array.from(
             { length: Math.min(MAX_LOCAL_ACCOUNT_WEIGHT, Math.max(1, account.weight ?? 1)) },
@@ -241,7 +291,7 @@ export const pickLocalAccount = (
           ),
         )
       : all;
-  const cursorKey = `${pool.strategy}:${provider}:${all
+  const cursorKey = `${strategy}:${provider}:${all
     .map((account) => String(account.id))
     .sort()
     .join(",")}`;

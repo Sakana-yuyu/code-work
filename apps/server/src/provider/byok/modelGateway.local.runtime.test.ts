@@ -122,6 +122,8 @@ const makeGateway = (
               "codex-three-a": { api_key: "codex-three-key-a" },
               "codex-three-b": { api_key: "codex-three-key-b" },
               "codex-three-c": { api_key: "codex-three-key-c" },
+              "codex-sticky-1": { api_key: "codex-sticky-key-1" },
+              "codex-sticky-2": { api_key: "codex-sticky-key-2" },
               "codex-external": { api_key: "codex-external-key" },
               "codex-oauth": { access_token: "codex-oauth-token", account_id: "acct-1" },
               "claude-oauth": { access_token: "claude-oauth-token" },
@@ -1387,6 +1389,95 @@ describe("Responses → Chat Completions 回退", () => {
       messages: [{ role: "user", content: "hi" }],
     });
     expect(gateway.captured[1]?.body).not.toHaveProperty("stream");
+    await gateway.dispose();
+  });
+});
+
+describe("本地账号会话粘滞", () => {
+  const okStream = () =>
+    new Response('data: {"ok":true}\n\ndata: [DONE]\n\n', {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  const stickySettings = () =>
+    localSettings("codex-sticky", "codex", "codex", ["codex-sticky-1", "codex-sticky-2"], {
+      "codex-sticky-1": {
+        id: "codex-sticky-1",
+        provider: "codex",
+        authKind: "api-key",
+        displayName: "S1",
+        credentialRef: "codex-sticky-1",
+        enabled: true,
+        models: ["gpt-5.4"],
+      },
+      "codex-sticky-2": {
+        id: "codex-sticky-2",
+        provider: "codex",
+        authKind: "api-key",
+        displayName: "S2",
+        credentialRef: "codex-sticky-2",
+        enabled: true,
+        models: ["gpt-5.4"],
+      },
+    });
+  const post = (
+    gateway: ReturnType<typeof makeGateway>,
+    routeId: string,
+    fields: Record<string, unknown>,
+  ) =>
+    gateway.handler(
+      new Request("http://gateway.test/byok-gw/openai/source/codex-sticky/v1/responses", {
+        method: "POST",
+        headers: { authorization: `Bearer ${gateway.token}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          model: routeId,
+          stream: true,
+          input: [{ role: "user", content: "hi" }],
+          ...fields,
+        }),
+      }),
+    );
+
+  it("同一会话键的请求粘在同一账号，新会话仍按轮询分到不同账号", async () => {
+    const settings = stickySettings();
+    const gateway = makeGateway(settings, [okStream(), okStream(), okStream(), okStream()]);
+    const route = gatewayAdapterRoutes(settings, "codex-sticky")[0];
+    if (route === undefined) throw new Error("本地 Codex 路由未发布");
+
+    expect((await post(gateway, route.id, { session_id: "sess-keep-1" })).status).toBe(200);
+    expect((await post(gateway, route.id, { session_id: "sess-keep-1" })).status).toBe(200);
+    expect((await post(gateway, route.id, { session_id: "sess-fresh-a" })).status).toBe(200);
+    expect((await post(gateway, route.id, { session_id: "sess-fresh-b" })).status).toBe(200);
+
+    const auth = (index: number) => gateway.captured[index]?.headers.authorization;
+    // 粘滞：第二个相同会话命中绑定账号（纯轮询本会交替到另一个账号）。
+    expect(auth(1)).toBe(auth(0));
+    // 新会话仍轮询分布：连续两个不同会话键落在不同账号上。
+    expect(auth(3)).not.toBe(auth(2));
+    await gateway.dispose();
+  });
+
+  it("绑定账号失败后同一会话换绑到健康账号并停在它上面", async () => {
+    const settings = stickySettings();
+    const gateway = makeGateway(settings, [
+      new Response('{"error":{"message":"expired"}}', {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      }),
+      okStream(),
+      okStream(),
+    ]);
+    const route = gatewayAdapterRoutes(settings, "codex-sticky")[0];
+    if (route === undefined) throw new Error("本地 Codex 路由未发布");
+
+    expect((await post(gateway, route.id, { session_id: "sess-failover" })).status).toBe(200);
+    expect((await post(gateway, route.id, { session_id: "sess-failover" })).status).toBe(200);
+
+    const auth = (index: number) => gateway.captured[index]?.headers.authorization;
+    // 第一次请求先在绑定账号上失败、换号成功；绑定随换号更新。
+    expect(auth(1)).not.toBe(auth(0));
+    // 同一会话的下一请求停在换绑后的账号，而非回到已冷却的账号。
+    expect(auth(2)).toBe(auth(1));
     await gateway.dispose();
   });
 });

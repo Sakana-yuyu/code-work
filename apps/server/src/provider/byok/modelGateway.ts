@@ -819,21 +819,59 @@ export const rewriteGatewayModel = (bodyText: string, modelId: string): string =
   return bodyText;
 };
 
-const extractGatewayModel = (bodyText: string): string | undefined => {
+const parseGatewayBodyRecord = (bodyText: string): Record<string, unknown> | undefined => {
   try {
     const parsed: unknown = JSON.parse(bodyText);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      "model" in parsed &&
-      typeof (parsed as { model: unknown }).model === "string"
-    ) {
-      return (parsed as { model: string }).model;
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
     }
   } catch {
-    // Non-JSON bodies fall through to the no-model path below.
+    // Non-JSON bodies fall through to the no-model/no-session path below.
   }
   return undefined;
+};
+
+const extractGatewayModel = (bodyText: string): string | undefined => {
+  const parsed = parseGatewayBodyRecord(bodyText);
+  return typeof parsed?.model === "string" ? parsed.model : undefined;
+};
+
+const stringBodyField = (
+  record: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined => {
+  const value = record?.[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+};
+
+/**
+ * 提取请求的会话粘滞键：同一会话尽量停在同一本地账号（提示缓存与加密
+ * 推理绑定账号）。优先级对齐上游——显式 header 优先，其次是各 CLI 实际
+ * 会随请求携带的会话字段：Responses 的 previous_response_id、Codex 的
+ * session_id/prompt_cache_key、Claude Code 的 metadata.user_id 等。
+ */
+export const extractGatewaySessionKey = (
+  headers: Record<string, string>,
+  bodyText: string | undefined,
+): string | undefined => {
+  const headerKey = headers["x-session-id"] ?? headers["X-Session-Id"];
+  if (headerKey !== undefined && headerKey.trim().length > 0) return headerKey.trim();
+  if (bodyText === undefined) return undefined;
+  const record = parseGatewayBodyRecord(bodyText);
+  if (record === undefined) return undefined;
+  const metadata = record.metadata;
+  const metadataUserId =
+    typeof metadata === "object" && metadata !== null && !Array.isArray(metadata)
+      ? stringBodyField(metadata as Record<string, unknown>, "user_id")
+      : undefined;
+  return (
+    stringBodyField(record, "previous_response_id") ??
+    stringBodyField(record, "session_id") ??
+    stringBodyField(record, "conversation_id") ??
+    stringBodyField(record, "prompt_cache_key") ??
+    metadataUserId ??
+    stringBodyField(record, "user")
+  );
 };
 
 interface GatewayErrorShape {
@@ -1370,6 +1408,9 @@ const gatewayHandler = (
 
     const localProvider = adapter.localProvider;
     const triedLocalIds = new Set<string>();
+    // 同一会话尽量停在同一账号（提示缓存绑定账号）；换号重试时因已试账号
+    // 被移出候选，绑定自动换到新账号——与上游"额度用尽才切换"同语义。
+    const sessionKey = extractGatewaySessionKey(request.headers, bodyText);
     const nextLocalAccount = () =>
       localProvider === undefined
         ? undefined
@@ -1379,6 +1420,7 @@ const gatewayHandler = (
             adapter.localAccountIds?.filter((id) => !triedLocalIds.has(id)),
             // 体验套餐通道的可用性由 JWT 决定，不受账号声明模型限制。
             adapter.localChannel === "zcode-start" ? undefined : adapter.modelId,
+            sessionKey,
           );
     let localAccount = nextLocalAccount();
     // 账号池按失败账号去重后换号；中转通道无号可换，改为对上游 5xx 与

@@ -101,7 +101,7 @@
 7. **`/goal`。** BaoCode 不信任输出（输出几乎不提 goal），而是从两处读取：会话 hooks 里的 Stop hook（type prompt）与会话文件里的 `goal_status` 行。Code Work 已有 goal 相关实现（上游 T3 Code 已做原生 `/goal`），此处值得借鉴的是“状态每次从权威来源重新计算，不依赖之前的推断”。
 8. **本机代理的安全姿态。** 只监听 127.0.0.1，随机端口，每次运行重新生成令牌，只应答带令牌的请求，密钥读取发生在每次请求发出时，所以改密钥立即生效。Code Work 的 `CliProxy` / `LocalGatewayKey` 可对照检查。2026-10-14 已落地：`rotateGatewayTokenForRun` 在 `CliProxy.layer` 构建期（命令门就绪之前）重写 `byok-gateway-token` 并把持久化池适配器重盖章到本次运行的 origin/token；`refreshLocalPoolInstanceAdapters` 的 connection 参数改为显式传入时优先于陈旧 anchor。只应答带令牌请求与请求时读密钥为既有行为复验通过。回环监听/随机端口有意不适用：网关是共享主 listener 上的路由，远程与隧道客户端依赖同一监听，令牌是访问边界。证据见 [port-progress](./port-progress.md) 第83主题。
 9. **协议翻译与思考预算。** Anthropic Messages 与 OpenAI Chat/Responses 之间双向翻译（含流式）；`thinking budget → level` 映射（≤512 minimal、≤1024 low、≤8192 medium、≤24576 high，之上 xhigh）；`count_tokens` 在上游没有时用估算。翻译器来自 CLIProxyAPI（MIT，需保留 NOTICE）。可作为 `modelGateway` 协议兼容的测试清单。
-10. **账号均衡与会话粘滞。** `CodexBalancer` 让同一会话尽量停在同一账号（提示缓存与加密推理都绑定账号），额度用尽才切换，记忆 2000 个会话。Code Work 已有 `LocalAccountPool`，对照其粘滞与切换规则。
+10. **账号均衡与会话粘滞。** `CodexBalancer` 让同一会话尽量停在同一账号（提示缓存与加密推理都绑定账号），额度用尽才切换，记忆 2000 个会话。Code Work 已有 `LocalAccountPool`，对照其粘滞与切换规则。2026-10-14 已落地：`pickLocalAccount` 新增可选 `sessionKey`，网关从 `x-session-id`/`previous_response_id`/`session_id`/`conversation_id`/`prompt_cache_key`/`metadata.user_id`/`user` 提取粘滞键；绑定账号仍可用时命中且不推进轮询游标，冷却/被移出候选时按原策略换绑；LRU 绑定表上限 2000。证据见 [port-progress](./port-progress.md) 第84主题。
 11. **一键导入上游。** `baocode://provider/import` 只接受 `url`、`protocol`、`name`、`key` 几个字段，不允许经链接写入 `env`、认证方式或模型列表（因为 env 会成为环境变量，可执行代码）；参数放在 URL `#` 之后，浏览器不会发给服务器；同一协议同一 Base URL 已存在时让用户选择“更新密钥”还是“另存”。可作为 Code Work 的 BYOK 导入入口设计参考，安全边界尤其值得照搬。
 
 ## 3. 可借鉴点：IDE 与对话体验（来自 BaoCode）

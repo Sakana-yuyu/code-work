@@ -22,6 +22,7 @@ import {
   anthropicGatewayEnv,
   applyRoutedProviderAvailability,
   byokGatewayRouteLayer,
+  extractGatewaySessionKey,
   extractGatewayUsageLine,
   gatewayAdapterRoutes,
   gatewayCodexConfigArgs,
@@ -1164,5 +1165,40 @@ describe("extractGatewayUsageLine", () => {
     );
     expect(Array.from(passthrough)).toEqual(chunks);
     expect(seen).toEqual([{ inputTokens: 12, outputTokens: 7 }]);
+  });
+});
+
+describe("extractGatewaySessionKey", () => {
+  it("显式 x-session-id 头优先于请求体会话字段", () => {
+    expect(
+      extractGatewaySessionKey(
+        { "x-session-id": " hdr-session " },
+        JSON.stringify({ session_id: "body-session", previous_response_id: "resp_1" }),
+      ),
+    ).toBe("hdr-session");
+  });
+  it("Responses/会话字段按优先级提取，metadata.user_id 与普通 user 兜底", () => {
+    expect(extractGatewaySessionKey({}, JSON.stringify({ previous_response_id: "resp_9" }))).toBe(
+      "resp_9",
+    );
+    expect(extractGatewaySessionKey({}, JSON.stringify({ session_id: "s-1" }))).toBe("s-1");
+    expect(extractGatewaySessionKey({}, JSON.stringify({ conversation_id: "conv-1" }))).toBe(
+      "conv-1",
+    );
+    expect(extractGatewaySessionKey({}, JSON.stringify({ prompt_cache_key: "pck-1" }))).toBe(
+      "pck-1",
+    );
+    expect(
+      extractGatewaySessionKey({}, JSON.stringify({ metadata: { user_id: "claude-user" } })),
+    ).toBe("claude-user");
+    expect(extractGatewaySessionKey({}, JSON.stringify({ user: "openai-user" }))).toBe(
+      "openai-user",
+    );
+  });
+  it("无会话字段、非 JSON 与无 body 请求都不产生粘滞键", () => {
+    expect(extractGatewaySessionKey({}, JSON.stringify({ model: "gpt-5.4" }))).toBeUndefined();
+    expect(extractGatewaySessionKey({}, "not-json")).toBeUndefined();
+    expect(extractGatewaySessionKey({}, undefined)).toBeUndefined();
+    expect(extractGatewaySessionKey({}, JSON.stringify([1, 2]))).toBeUndefined();
   });
 });
