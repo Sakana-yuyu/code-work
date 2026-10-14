@@ -467,7 +467,11 @@ export function makeAntigravityAdapter(
       provider: PROVIDER,
       // 每个回合都是新 spawn 的 `agy -p`，模型切换要重启会话；
       // 会话经 resumeCursor 的 conversationId 续接，不丢上下文。
-      capabilities: { sessionModelSwitch: "restart-continue" },
+      capabilities: {
+        sessionModelSwitch: "restart-continue",
+        streaming: true,
+        persistence: true,
+      },
       startSession,
       sendTurn,
       interruptTurn,

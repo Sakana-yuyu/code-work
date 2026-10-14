@@ -1154,6 +1154,91 @@ it.layer(
       }),
     );
 
+    it.effect("stamps adapter-declared capabilities onto emitted snapshots", () =>
+      Effect.gen(function* () {
+        const cursorDriver = ProviderDriverKind.make("cursor");
+        const cursorInstanceId = ProviderInstanceId.make("cursor");
+        const provider = {
+          instanceId: cursorInstanceId,
+          driver: cursorDriver,
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-04-14T00:00:00.000Z",
+          version: "2026.04.09-f2b0fcd",
+          models: [],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        const instance = {
+          instanceId: cursorInstanceId,
+          driverKind: cursorDriver,
+          continuationIdentity: {
+            driverKind: cursorDriver,
+            continuationKey: "cursor:instance:cursor",
+          },
+          displayName: undefined,
+          enabled: true,
+          snapshot: {
+            maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
+              provider: cursorDriver,
+              packageName: null,
+            }),
+            getSnapshot: Effect.succeed(provider),
+            refresh: Effect.succeed(provider),
+            streamChanges: Stream.empty,
+          },
+          adapter: {
+            capabilities: {
+              sessionModelSwitch: "restart-continue",
+              streaming: true,
+              reasoningStream: true,
+              persistence: true,
+            },
+          } as unknown as ProviderInstance["adapter"],
+          textGeneration: {} as ProviderInstance["textGeneration"],
+        } satisfies ProviderInstance;
+        const instanceRegistryLayer = Layer.succeed(
+          ProviderInstanceRegistry.ProviderInstanceRegistry,
+          {
+            getInstance: (instanceId) =>
+              Effect.succeed(instanceId === cursorInstanceId ? instance : undefined),
+            listInstances: Effect.succeed([instance]),
+            listUnavailable: Effect.succeed([]),
+            streamChanges: Stream.empty,
+            subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), (pubsub) =>
+              PubSub.subscribe(pubsub),
+            ),
+          },
+        );
+        const scope = yield* Scope.make();
+        yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
+        const runtimeServices = yield* Layer.build(
+          ProviderRegistryLive.pipe(
+            Layer.provideMerge(instanceRegistryLayer),
+            Layer.provideMerge(
+              ServerConfig.layerTest(process.cwd(), {
+                prefix: "codework-provider-registry-caps-",
+              }),
+            ),
+            Layer.provideMerge(BackgroundPolicyAlwaysRunLayer),
+            Layer.provideMerge(NodeServices.layer),
+          ),
+        ).pipe(Scope.provide(scope));
+
+        yield* Effect.gen(function* () {
+          const registry = yield* ProviderRegistry.ProviderRegistry;
+          const emitted = (yield* registry.getProviders)[0];
+          assert.equal(emitted?.sessionModelSwitch, "restart-continue");
+          assert.equal(emitted?.supportsStreaming, true);
+          assert.equal(emitted?.supportsReasoningStream, true);
+          assert.equal(emitted?.supportsMcp, false);
+          assert.equal(emitted?.supportsSessionResume, true);
+        }).pipe(Effect.provide(runtimeServices));
+      }),
+    );
+
     it.effect(
       "persists authoritative OpenCode removals without resurrecting them on a failed live refresh",
       () =>

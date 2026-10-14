@@ -1721,6 +1721,10 @@ export function makeOpenCodeAdapter(
       provider: PROVIDER,
       capabilities: {
         sessionModelSwitch: "in-session",
+        streaming: true,
+        reasoningStream: true,
+        mcp: true,
+        persistence: true,
       },
       startSession,
       sendTurn,

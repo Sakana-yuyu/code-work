@@ -2187,6 +2187,10 @@ export function makeCursorAdapter(
       provider: PROVIDER,
       capabilities: {
         sessionModelSwitch: "in-session",
+        streaming: true,
+        reasoningStream: true,
+        mcp: true,
+        persistence: true,
         toolBrokerCanonicalTools: [
           "workspace.read_file",
           "workspace.write_file",

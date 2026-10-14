@@ -269,8 +269,14 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     Effect.orElseSucceed(() => false),
   );
 
-  const prepareMcpSession = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) =>
+  const prepareMcpSession = (
+    threadId: ThreadId,
+    providerInstanceId: ProviderInstanceId,
+    supportsMcp: boolean,
+  ) =>
     Effect.gen(function* () {
+      // 只为真实注入 Code Work MCP 桥的适配器签发凭据，避免空挂令牌。
+      if (!supportsMcp) return undefined;
       const capabilities: Array<McpCapability> = (yield* agentBrowserAccessEnabled)
         ? ["preview", "canvas"]
         : ["canvas"];
@@ -524,7 +530,11 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       const persistedCwd = readPersistedCwd(input.binding.runtimePayload);
       const persistedModelSelection = readPersistedModelSelection(input.binding.runtimePayload);
 
-      yield* prepareMcpSession(input.binding.threadId, bindingInstanceId);
+      yield* prepareMcpSession(
+        input.binding.threadId,
+        bindingInstanceId,
+        adapter.capabilities.mcp === true,
+      );
       const resumed = yield* adapter
         .startSession({
           threadId: input.binding.threadId,
@@ -742,7 +752,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         eventBindings.set(threadId, previousInstanceId);
         sessionTransitions.set(threadId, transition);
         yield* stopStaleSessionsForThread({ threadId, currentInstanceId: resolvedInstanceId });
-        yield* prepareMcpSession(threadId, resolvedInstanceId);
+        yield* prepareMcpSession(threadId, resolvedInstanceId, adapter.capabilities.mcp === true);
         const session = yield* adapter
           .startSession({
             ...input,

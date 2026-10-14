@@ -176,6 +176,11 @@ export const ServerProvider = Schema.Struct({
   sessionModelSwitch: Schema.optional(
     Schema.Literals(["in-session", "restart-continue", "unsupported"]),
   ),
+  // Same adapter-declared capabilities, stamped the same way.
+  supportsStreaming: Schema.optional(Schema.Boolean),
+  supportsReasoningStream: Schema.optional(Schema.Boolean),
+  supportsMcp: Schema.optional(Schema.Boolean),
+  supportsSessionResume: Schema.optional(Schema.Boolean),
   enabled: Schema.Boolean,
   installed: Schema.Boolean,
   version: Schema.NullOr(TrimmedNonEmptyString),

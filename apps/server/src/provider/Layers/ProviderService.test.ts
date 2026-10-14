@@ -44,7 +44,10 @@ import {
   ProviderValidationError,
   type ProviderAdapterError,
 } from "../Errors.ts";
-import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
+import type {
+  ProviderAdapterCapabilities,
+  ProviderAdapterShape,
+} from "../Services/ProviderAdapter.ts";
 import * as ProviderAdapterRegistry from "../Services/ProviderAdapterRegistry.ts";
 import * as ProviderService from "../Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "../Services/ProviderSessionDirectory.ts";
@@ -90,7 +93,10 @@ type LegacyProviderRuntimeEvent = {
   readonly [key: string]: unknown;
 };
 
-function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
+function makeFakeCodexAdapter(
+  provider: ProviderDriverKind = CODEX_DRIVER,
+  capabilitiesOverride?: Partial<ProviderAdapterCapabilities>,
+) {
   const sessions = new Map<ThreadId, ProviderSession>();
   const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
 
@@ -216,7 +222,9 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
     provider,
     capabilities: {
       sessionModelSwitch: "in-session",
+      mcp: true,
       ...(provider === CURSOR_DRIVER ? {} : { threadRollback: true }),
+      ...capabilitiesOverride,
     },
     startSession,
     sendTurn,
@@ -2575,10 +2583,14 @@ validation.layer("ProviderServiceLive validation", (it) => {
 });
 
 describe("agent browser access", () => {
-  const startSessionWith = (enableAgentBrowserAccess: boolean, threadId: ThreadId) =>
+  const startSessionWith = (
+    enableAgentBrowserAccess: boolean,
+    threadId: ThreadId,
+    capabilitiesOverride?: Partial<ProviderAdapterCapabilities>,
+  ) =>
     Effect.gen(function* () {
       const issued: Array<{ threadId: ThreadId; capabilities: string[] }> = [];
-      const codex = makeFakeCodexAdapter();
+      const codex = makeFakeCodexAdapter(CODEX_DRIVER, capabilitiesOverride);
       const providerAdapterLayer = Layer.succeed(
         ProviderAdapterRegistry.ProviderAdapterRegistry,
         makeAdapterRegistryMock({ [CODEX_DRIVER]: codex.adapter }),
@@ -2641,6 +2653,16 @@ describe("agent browser access", () => {
       const issued = yield* startSessionWith(true, threadId);
 
       assert.deepEqual(issued, [{ threadId, capabilities: ["preview", "canvas"] }]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("未声明 MCP 能力的适配器不签发 MCP 凭据", () =>
+    Effect.gen(function* () {
+      const threadId = asThreadId("thread-no-mcp-capability");
+
+      const issued = yield* startSessionWith(true, threadId, { mcp: false });
+
+      assert.deepEqual(issued, []);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });

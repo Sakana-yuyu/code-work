@@ -4774,6 +4774,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
+      streaming: true,
+      reasoningStream: true,
+      mcp: true,
+      persistence: true,
     },
     startSession,
     sendTurn,

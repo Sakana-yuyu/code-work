@@ -1651,7 +1651,12 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
 
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "in-session" },
+      capabilities: {
+        sessionModelSwitch: "in-session",
+        streaming: true,
+        reasoningStream: true,
+        persistence: true,
+      },
       startSession,
       sendTurn,
       interruptTurn,

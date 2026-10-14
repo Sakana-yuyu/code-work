@@ -1,5 +1,5 @@
 import type { ProviderDriverKind, ProviderInstanceId, ServerProvider } from "@codework/contracts";
-import type { ProviderSessionModelSwitchMode } from "./Services/ProviderAdapter.ts";
+import type { ProviderAdapterCapabilities } from "./Services/ProviderAdapter.ts";
 import type * as Effect from "effect/Effect";
 import type * as PubSub from "effect/PubSub";
 import type * as Scope from "effect/Scope";
@@ -15,8 +15,8 @@ export type ProviderSnapshotSource = {
   readonly instanceId: ProviderInstanceId;
   /** Driver implementation kind. */
   readonly driverKind: ProviderDriverKind;
-  /** Adapter-declared switch semantics; stamped onto every emitted snapshot. */
-  readonly sessionModelSwitch?: ProviderSessionModelSwitchMode | undefined;
+  /** Adapter-declared capabilities; stamped onto every emitted snapshot. */
+  readonly adapterCapabilities?: ProviderAdapterCapabilities | undefined;
   readonly getSnapshot: ServerProviderShape["getSnapshot"];
   readonly refresh: ServerProviderShape["refresh"];
   readonly streamChanges: Stream.Stream<ServerProvider>;

@@ -1099,6 +1099,9 @@ export const makeOmpAdapter = (config: OmpAgentSettings, options: OmpAdapterOpti
       provider: PROVIDER,
       capabilities: {
         sessionModelSwitch: "in-session",
+        streaming: true,
+        reasoningStream: true,
+        persistence: true,
         toolBrokerCanonicalTools: [...OMP_TOOL_BROKER_CANONICAL_TOOLS],
       },
       configureToolBroker: (input: {

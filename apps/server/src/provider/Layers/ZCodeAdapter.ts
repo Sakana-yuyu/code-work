@@ -666,7 +666,12 @@ export const makeZCodeAdapter = (config: ZCodeAgentSettings, options: ZCodeAdapt
 
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "in-session" },
+      capabilities: {
+        sessionModelSwitch: "in-session",
+        streaming: true,
+        reasoningStream: true,
+        persistence: true,
+      },
       startSession,
       sendTurn,
       interruptTurn,

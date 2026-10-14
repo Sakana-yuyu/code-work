@@ -2073,6 +2073,10 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     capabilities: {
       sessionModelSwitch: "in-session",
       threadRollback: true,
+      streaming: true,
+      reasoningStream: true,
+      mcp: true,
+      persistence: true,
     },
     startSession,
     sendTurn,

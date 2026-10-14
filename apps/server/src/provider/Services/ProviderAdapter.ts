@@ -87,6 +87,14 @@ export interface ProviderAdapterCapabilities {
   readonly threadRollback?: boolean;
   /** 只有真实注册宿主工具回调的 Adapter 才能声明这些 canonical tools。 */
   readonly toolBrokerCanonicalTools?: ReadonlyArray<string>;
+  /** Emits incremental assistant `content.delta` events during a turn. */
+  readonly streaming?: boolean;
+  /** Emits reasoning deltas (`reasoning_text` / `reasoning_summary_text`). */
+  readonly reasoningStream?: boolean;
+  /** Session injects the Code Work-managed MCP bridge (McpProviderSession). */
+  readonly mcp?: boolean;
+  /** Session state survives restarts through a resumeCursor. */
+  readonly persistence?: boolean;
 }
 
 export interface ProviderThreadTurnSnapshot {
