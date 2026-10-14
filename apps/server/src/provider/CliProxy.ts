@@ -97,6 +97,7 @@ import {
   ensureGatewayToken,
   gatewayOrigin,
   openaiGatewayBase,
+  rotateGatewayToken,
 } from "./byok/modelGateway.ts";
 
 const decodeByokSettings = Schema.decodeUnknownSync(ByokSettings);
@@ -1084,6 +1085,26 @@ export const makeCliProxyService = (
     });
   });
 
+/**
+ * 每次运行轮换内部 BYOK 网关令牌（本机代理姿态：令牌随进程退出失效），
+ * 并把持久化在 BYOK 实例 `config.adapters` 里的本地账号池适配器重盖章到
+ * 本次运行的 origin 与令牌。在 `CliProxy.layer` 构建期运行——路由图物化
+ * 先于 `signalCommandReady`，因此没有会话 spawn 或网关请求能拿到旧令牌。
+ */
+export const rotateGatewayTokenForRun = (
+  settings: ServerSettingsService["Service"],
+  secretStore: ServerSecretStore["Service"],
+  origin: string,
+) =>
+  Effect.gen(function* () {
+    const current = yield* settings.getSettings;
+    const token = yield* rotateGatewayToken(secretStore);
+    const patch = refreshLocalPoolInstanceAdapters(current, { origin, token });
+    if (patch !== undefined) {
+      yield* settings.updateSettings(patch);
+    }
+  });
+
 export const layer = Layer.effect(
   CliProxy,
   Effect.gen(function* () {
@@ -1133,6 +1154,12 @@ export const layer = Layer.effect(
         : `http://${config.host}:${config.port}`;
     const runtime = new CliProxyRuntime(origin);
     runtime.config = { strategy: (yield* settings.getSettings).localAccountPool.strategy };
+    // 轮换失败只意味着旧令牌继续可用——记警告，不阻塞服务启动。
+    yield* rotateGatewayTokenForRun(settings, secrets, origin).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("Failed to rotate BYOK gateway token on startup", { cause: error }),
+      ),
+    );
     const loginStore: CliProxyLoginStore = {
       readCredential: (provider, terminalId) =>
         fs

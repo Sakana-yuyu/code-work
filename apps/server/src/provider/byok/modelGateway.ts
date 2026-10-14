@@ -51,7 +51,7 @@ import {
 
 import * as NodeCrypto from "node:crypto";
 
-import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
+import { ServerSecretStore, type SecretStoreError } from "../../auth/ServerSecretStore.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   BRIDGEABLE_ANTHROPIC_PATHS,
@@ -329,7 +329,7 @@ export const pickGatewayAdapter = (
   protocol: GatewayProtocol,
   model: string,
 ): GatewayAdapterRoute | undefined => {
-  const normalized = model.replace(/\[[^\[\]]*\]$/u, "").trim();
+  const normalized = model.replace(/\[[^[\]]*\]$/u, "").trim();
   const candidates = routes.filter(
     (route) => route.protocol === protocol && (route.id === model || route.id === normalized),
   );
@@ -579,6 +579,21 @@ export const ensureGatewayToken = (
     Effect.map((bytes) => Buffer.from(bytes).toString("hex")),
     Effect.orDie,
   );
+
+/**
+ * Regenerate the internal gateway bearer token for this server run. Rotating on
+ * every boot means a token lifted from a previous run's process environment
+ * stops working as soon as that server exits — callers must re-stamp any
+ * persisted copies (local-pool BYOK adapters) with the returned value.
+ */
+export const rotateGatewayToken = (
+  secretStore: ServerSecretStore["Service"],
+): Effect.Effect<string, SecretStoreError> => {
+  const token = NodeCrypto.randomBytes(32).toString("hex");
+  return secretStore
+    .set(BYOK_GATEWAY_TOKEN_SECRET, Buffer.from(token, "hex"))
+    .pipe(Effect.as(token));
+};
 
 const timingSafeTokenMatch = (provided: string, expected: string): boolean => {
   const left = Buffer.from(provided);

@@ -23,10 +23,15 @@ import {
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { layerTest, ServerSettingsService } from "../serverSettings.ts";
 import { CliProxyRuntime } from "./CliProxyRuntime.ts";
-import { makeCliProxyService, resolveLocalPoolProvider } from "./CliProxy.ts";
+import {
+  makeCliProxyService,
+  resolveLocalPoolProvider,
+  rotateGatewayTokenForRun,
+} from "./CliProxy.ts";
 import { localGatewayAdapters } from "./LocalAccountPool.ts";
 import { localPoolUsageStore } from "./LocalPoolUsage.ts";
 import {
+  ensureGatewayToken,
   gatewayAdapterRoutes,
   pickGatewayAdapter,
   routedServerProviderModels,
@@ -1237,4 +1242,74 @@ describe("内置 CLIProxyAPI 核心", () => {
       "local://codex",
     );
   });
+
+  it.effect("每次运行轮换内部网关令牌并把持久化的池适配器重盖章到新坐标", () =>
+    runWithServices(
+      (() => {
+        const accounts = { a: account("a", "codex", ["gpt-5.4"]) };
+        const staleOrigin = "http://127.0.0.1:1";
+        const staleToken = "old-run-token";
+        const staleAdapters = localGatewayAdapters(
+          { localAccountPool: { accounts } } as unknown as ServerSettings,
+          staleOrigin,
+          staleToken,
+          "pool",
+        );
+        return {
+          localAccountPool: {
+            accounts,
+            strategy: "round-robin" as const,
+            providerInstances: { pool: ["a"] },
+          },
+          providerInstances: {
+            pool: {
+              driver: ProviderDriverKind.make("byok"),
+              enabled: true,
+              config: {
+                enabled: true,
+                adapters: [
+                  {
+                    id: "own-adapter",
+                    displayName: "Own",
+                    protocol: "openai",
+                    baseURL: "https://relay.example/v1",
+                    apiKey: "own-key",
+                    modelId: "own-model",
+                  },
+                  ...staleAdapters,
+                ],
+              },
+            },
+          },
+        } as unknown as Partial<ServerSettings>;
+      })(),
+      (settings, secrets) =>
+        Effect.gen(function* () {
+          const pool = ProviderInstanceId.make("pool");
+          const before = yield* settings.getSettings;
+          const beforeAdapters = (
+            before.providerInstances[pool]!.config as {
+              adapters: ReadonlyArray<{ apiKey: string }>;
+            }
+          ).adapters;
+          expect(beforeAdapters.some((adapter) => adapter.apiKey === "old-run-token")).toBe(true);
+
+          yield* rotateGatewayTokenForRun(settings, secrets, "http://127.0.0.1:41000");
+
+          const token = yield* ensureGatewayToken(secrets);
+          expect(token).not.toBe("old-run-token");
+          const updated = yield* settings.getSettings;
+          const adapters = (
+            updated.providerInstances[pool]!.config as {
+              adapters: ReadonlyArray<{ id: string; apiKey: string; baseURL: string }>;
+            }
+          ).adapters;
+          const poolAdapters = adapters.filter((adapter) => adapter.id.startsWith("local:"));
+          expect(poolAdapters.map((adapter) => adapter.id)).toEqual(["local:pool:codex:gpt-5.4"]);
+          expect(poolAdapters[0]?.apiKey).toBe(token);
+          expect(poolAdapters[0]?.baseURL).toBe("http://127.0.0.1:41000/v1");
+          expect(adapters.find((adapter) => adapter.id === "own-adapter")?.apiKey).toBe("own-key");
+        }),
+    ),
+  );
 });

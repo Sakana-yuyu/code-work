@@ -831,11 +831,16 @@ export const refreshLocalPoolInstanceAdapters = (
     const anchor = adapters.find(isPoolAdapterRecord);
     const bound = Object.hasOwn(settings.localAccountPool.providerInstances, instanceId);
     if (anchor === undefined && (!bound || connection === undefined)) continue;
-    const baseURL =
-      typeof anchor?.baseURL === "string" ? anchor.baseURL : (connection?.origin ?? "");
-    const apiKey = typeof anchor?.apiKey === "string" ? anchor.apiKey : (connection?.token ?? "");
-    if (baseURL.length === 0 || apiKey.length === 0) continue;
-    const origin = anchor?.protocol === "openai" ? baseURL.replace(/\/v1$/u, "") : baseURL;
+    // connection 是“当前坐标”（本次进程实际服务的 origin 与本次运行轮换出的
+    // 令牌）：显式传入时覆盖 anchor 上的旧值，令牌轮换与端口漂移借此收敛；
+    // 未传 connection 的调用（账号池内部重算）保留 anchor 原值不动。
+    const anchorBaseURL = typeof anchor?.baseURL === "string" ? anchor.baseURL : "";
+    const anchorApiKey = typeof anchor?.apiKey === "string" ? anchor.apiKey : "";
+    const origin =
+      connection?.origin ??
+      (anchor?.protocol === "openai" ? anchorBaseURL.replace(/\/v1$/u, "") : anchorBaseURL);
+    const apiKey = connection?.token ?? anchorApiKey;
+    if (origin.length === 0 || apiKey.length === 0) continue;
     const nextAdapters = localGatewayAdapters(settings, origin, apiKey, instanceId);
     const refreshed: unknown[] = [];
     let inserted = false;
