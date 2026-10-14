@@ -8,6 +8,7 @@ import type {
 import { CODEX_COLLABORATION_MODE_OPTION_ID } from "@codework/contracts";
 import {
   applySessionModelCatalogs,
+  hasSessionModelCatalog,
   resolveProviderInteractionMode,
 } from "@codework/client-runtime/providerModels";
 import {
@@ -148,11 +149,9 @@ export function buildModelOptions(
   const selectedProvider = providers.find(
     (provider) => provider.instanceId === fallbackModelSelection?.instanceId,
   );
-  const originalProvider = config?.providers.find(
-    (provider) => provider.instanceId === fallbackModelSelection?.instanceId,
-  );
   const selectionRemoved =
-    selectedProvider !== originalProvider &&
+    fallbackModelSelection !== null &&
+    hasSessionModelCatalog(activities, fallbackModelSelection.instanceId) &&
     selectedProvider !== undefined &&
     !selectedProvider.models.some((model) => model.slug === fallbackModelSelection?.model);
 
@@ -215,6 +214,34 @@ export function buildModelOptions(
   }
 
   return [...options.values()];
+}
+
+/** 已撤回模型只回落到当前实例目录；未知或离线选择由菜单保留。 */
+export function resolveThreadModelOption(
+  options: ReadonlyArray<ModelOption>,
+  selection: ModelSelection,
+): ModelOption | null {
+  const current = options.find(
+    (option) =>
+      option.selection.instanceId === selection.instanceId &&
+      option.selection.model === selection.model,
+  );
+  if (current) return current;
+  const candidates = options.filter(
+    (option) => option.selection.instanceId === selection.instanceId,
+  );
+  const fallback = candidates.find((option) => option.isDefault) ?? candidates[0];
+  return fallback
+    ? {
+        ...fallback,
+        selection: fallback.capabilities
+          ? normalizeSelectionOptions(
+              { ...selection, model: fallback.selection.model },
+              fallback.capabilities,
+            )
+          : fallback.selection,
+      }
+    : null;
 }
 
 /** 新任务快照与菜单采用同一目录；原生模式优先于旧版两态偏好。 */

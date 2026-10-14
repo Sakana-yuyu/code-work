@@ -14,7 +14,166 @@ import {
   resolveDefaultableModelSelection,
   resolveSelectableModelSelection,
   resolveModelInteractionSettings,
+  resolveThreadModelOption,
 } from "./modelOptions";
+
+describe("当前线程模型目录", () => {
+  const instanceId = ProviderInstanceId.make("acp-test");
+  const uri = "https://agentclientprotocol.com/protocol/session-modes#review";
+  const selection = {
+    instanceId,
+    model: "old",
+    options: [
+      { id: "acpMode", value: uri },
+      { id: "reasoningEffort", value: "medium" },
+    ],
+  };
+  const config = {
+    providers: [
+      {
+        instanceId,
+        driver: "acpAgent",
+        enabled: true,
+        installed: true,
+        auth: { status: "authenticated" },
+        models: [{ slug: "old", name: "旧模型", capabilities: null }],
+      },
+      {
+        instanceId: ProviderInstanceId.make("other"),
+        driver: "acpAgent",
+        enabled: true,
+        installed: true,
+        auth: { status: "authenticated" },
+        models: [{ slug: "other-default", name: "其他实例", isDefault: true, capabilities: null }],
+      },
+    ],
+  } as unknown as ServerConfig;
+  const activity = (models: unknown): OrchestrationThreadActivity => ({
+    id: EventId.make("models"),
+    kind: "session.models.updated",
+    tone: "info",
+    summary: "模型目录",
+    createdAt: "2026-10-14T00:00:00.000Z",
+    turnId: null,
+    payload: { providerInstanceId: instanceId, models },
+  });
+  const model = (slug: string, isDefault = false) => ({
+    slug,
+    name: slug,
+    isDefault,
+    isCustom: false,
+    capabilities: null,
+  });
+
+  it("被撤回模型采用同实例默认项，界面和设置使用同一个选择", () => {
+    const options = buildModelOptions(config, selection, [
+      activity([model("first"), model("current", true)]),
+    ]);
+    const resolved = resolveThreadModelOption(options, selection);
+    expect(resolved?.label).toBe("current");
+    expect(resolved?.selection).toEqual({ instanceId, model: "current" });
+    expect(selection.model).toBe("old");
+    expect(selection.options).toHaveLength(2);
+  });
+
+  it("没有默认项时采用同实例首项，完整空目录不能借用另一实例", () => {
+    expect(
+      resolveThreadModelOption(
+        buildModelOptions(config, selection, [activity([model("first"), model("next")])]),
+        selection,
+      )?.selection.model,
+    ).toBe("first");
+    expect(
+      resolveThreadModelOption(buildModelOptions(config, selection, [activity([])]), selection),
+    ).toBeNull();
+  });
+
+  it("回落保留兼容的URI与推理选项，失效值按当前广告校正", () => {
+    const current = {
+      ...model("current", true),
+      capabilities: {
+        optionDescriptors: [
+          {
+            id: "acpMode",
+            label: "模式",
+            type: "select",
+            currentValue: "code",
+            options: [
+              { id: uri, label: "审查" },
+              { id: "code", label: "实施" },
+            ],
+          },
+          {
+            id: "reasoningEffort",
+            label: "推理",
+            type: "select",
+            currentValue: "high",
+            options: [
+              { id: "medium", label: "中" },
+              { id: "high", label: "高" },
+            ],
+          },
+        ],
+      },
+    };
+    expect(
+      resolveThreadModelOption(
+        buildModelOptions(config, selection, [activity([current])]),
+        selection,
+      )?.selection.options,
+    ).toEqual(selection.options);
+    const invalid = { ...selection, options: [{ id: "acpMode", value: "removed" }] };
+    expect(
+      resolveThreadModelOption(buildModelOptions(config, invalid, [activity([current])]), invalid)
+        ?.selection.options,
+    ).toEqual([
+      { id: "acpMode", value: "code" },
+      { id: "reasoningEffort", value: "high" },
+    ]);
+  });
+
+  it("模型仍可用时不切默认，离线或未知目录保留原选择", () => {
+    const options = buildModelOptions(config, selection, [
+      activity([model("current", true), model("old")]),
+    ]);
+    expect(resolveThreadModelOption(options, selection)).toBe(
+      options.find((option) => option.selection.model === "old"),
+    );
+    expect(resolveThreadModelOption(buildModelOptions(null, selection), selection)?.selection).toBe(
+      selection,
+    );
+    const unknown = { ...selection, model: "unknown" };
+    expect(resolveThreadModelOption(buildModelOptions(config, unknown), unknown)?.selection).toBe(
+      unknown,
+    );
+  });
+
+  it("仅模式或配置更新仍保留未知模型，null撤销模型覆盖也保留", () => {
+    const unknown = { ...selection, model: "unknown" };
+    for (const activities of [
+      [
+        {
+          ...activity(null),
+          kind: "session.mode.updated",
+          payload: { providerInstanceId: instanceId, mode: null },
+        },
+      ],
+      [
+        {
+          ...activity(null),
+          kind: "session.config-options.updated",
+          payload: { providerInstanceId: instanceId, configOptions: [] },
+        },
+      ],
+      [activity([]), activity(null)],
+    ]) {
+      expect(
+        resolveThreadModelOption(buildModelOptions(config, unknown, activities), unknown)
+          ?.selection,
+      ).toBe(unknown);
+    }
+  });
+});
 
 describe("新任务模型与规范模式", () => {
   const instanceId = ProviderInstanceId.make("codex");

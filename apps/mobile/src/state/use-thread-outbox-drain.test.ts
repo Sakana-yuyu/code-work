@@ -7,6 +7,7 @@ import {
   ProviderInstanceId,
   ThreadId,
   type ServerConfig,
+  type OrchestrationThreadActivity,
 } from "@codework/contracts";
 import type { QueuedThreadMessage } from "./thread-outbox-model";
 import * as Cause from "effect/Cause";
@@ -19,6 +20,7 @@ const harness = vi.hoisted(() => ({
   threads: [] as unknown[],
   queued: {} as Record<string, QueuedThreadMessage[]>,
   reads: [] as string[],
+  activities: [] as OrchestrationThreadActivity[],
   confirm: vi.fn(),
   remove: vi.fn(),
   start: vi.fn(),
@@ -46,7 +48,11 @@ vi.mock("./atom-registry", () => ({
       if (typeof key !== "string")
         return harness.registry.has(key) ? harness.registry.get(key) : harness.editing;
       harness.reads.push(key);
-      return key.startsWith("config:") ? harness.config : [];
+      return key.startsWith("config:")
+        ? harness.config
+        : key.startsWith("activities:")
+          ? harness.activities
+          : [];
     },
     set: (key: unknown, value: unknown) => {
       harness.registry.set(key, value);
@@ -150,6 +156,7 @@ beforeEach(() => {
   harness.atomReads = 0;
   harness.config = null;
   harness.reads = [];
+  harness.activities = [];
   harness.editing = {};
   harness.finished = null;
   harness.registry.clear();
@@ -161,6 +168,33 @@ beforeEach(() => {
 });
 
 describe("手机队列实际派发入口", () => {
+  it("主会话撤回全部模型后不派发、不写设置、不删除待发内容", async () => {
+    harness.config = config;
+    harness.activities = [
+      {
+        id: "withdraw-models",
+        kind: "session.models.updated",
+        tone: "info",
+        summary: "目录撤回",
+        createdAt: queued.createdAt,
+        turnId: null,
+        payload: { providerInstanceId: selection.instanceId, models: [] },
+      } as OrchestrationThreadActivity,
+    ];
+    harness.confirm.mockResolvedValue(true);
+    const finished = new Promise<void>((resolve) => (harness.finished = resolve));
+    useThreadOutboxDrain();
+    const cleanups = harness.effects.map((effect) => effect());
+    await finished;
+    expect(harness.start).not.toHaveBeenCalled();
+    expect(harness.update).not.toHaveBeenCalled();
+    expect(harness.mode).not.toHaveBeenCalled();
+    expect(harness.runtime).not.toHaveBeenCalled();
+    expect(harness.remove).not.toHaveBeenCalled();
+    expect(harness.queued["target:thread"]).toEqual([queued]);
+    for (const cleanup of cleanups) if (typeof cleanup === "function") cleanup();
+  });
+
   it("当前配置读取失败保留队列，读取期间进入编辑也不发送", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     let complete!: () => void;

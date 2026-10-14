@@ -206,6 +206,7 @@ export function useThreadOutboxDrain(): void {
         thread,
         queuedMessageCatalog(queuedMessage, configResult.value, true),
       );
+      if (!settings) return false;
 
       if (!modelSelectionsEqual(settings.modelSelection, thread.modelSelection)) {
         const updateResult = await updateThreadMetadata({
@@ -312,6 +313,7 @@ export function useThreadOutboxDrain(): void {
         },
         queuedMessageCatalog(queuedMessage, configResult.value, false),
       );
+      if (!settings) return false;
       const deliveryResult = await startTurn({
         environmentId: queuedMessage.environmentId,
         input: buildProjectThreadStartTurnInput({

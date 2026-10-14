@@ -67,6 +67,7 @@ import {
   buildModelOptions,
   getThreadProviderGroups,
   groupByProvider,
+  resolveThreadModelOption,
 } from "../../lib/modelOptions";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
@@ -331,7 +332,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   // Opening and presentation count as active so the composer stays expanded
   // while focus moves between its native editor and the settings picker.
   const isExpanded = isFocused || settingsSheetPresentation.isActive || specWorkflow.enabled;
-  const canSend = hasContent;
 
   // Notify the parent from the derived value, not focus events: the parent
   // sizes the feed inset from this, and blur-during-sheet would otherwise
@@ -373,17 +373,19 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     props.connectionState !== "connected" || props.queueCount > 0
       ? t("interface.queue")
       : t("interface.send");
-  const currentModelSelection = props.selectedThread.modelSelection;
+  const requestedModelSelection = props.selectedThread.modelSelection;
   const modelOptions = useMemo(
-    () => buildModelOptions(props.serverConfig, currentModelSelection, props.activities),
-    [props.serverConfig, currentModelSelection, props.activities],
+    () => buildModelOptions(props.serverConfig, requestedModelSelection, props.activities),
+    [props.serverConfig, requestedModelSelection, props.activities],
   );
-  const currentModelOption =
-    modelOptions.find(
-      (option) =>
-        option.selection.instanceId === currentModelSelection.instanceId &&
-        option.selection.model === currentModelSelection.model,
-    ) ?? null;
+  const currentModelOption = useMemo(
+    () => resolveThreadModelOption(modelOptions, requestedModelSelection),
+    [modelOptions, requestedModelSelection],
+  );
+  const currentModelSelection = currentModelOption?.selection ?? requestedModelSelection;
+  const canSend =
+    hasContent &&
+    (props.connectionState !== "connected" || !props.serverConfig || currentModelOption !== null);
   const canUseInteractionModes = canUseProviderInteractionModes(
     props.serverConfig?.providers ?? [],
     currentModelSelection.instanceId,
@@ -998,7 +1000,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   iconNode={
                     <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
                   }
-                  label={currentModelOption?.label ?? currentModelSelection.model}
+                  label={currentModelOption?.label ?? t("chooseModel")}
                   maxWidth={152}
                   onPress={openSettings}
                 />

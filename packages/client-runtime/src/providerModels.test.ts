@@ -11,6 +11,7 @@ import {
 } from "@codework/contracts";
 import {
   applySessionModelCatalogs,
+  hasSessionModelCatalog,
   canUseProviderInteractionModes,
   resolveProviderInteractionMode,
   resolveCodexPlanFollowUpSelection,
@@ -50,6 +51,46 @@ const row = (payload: unknown): OrchestrationThreadActivity => ({
 });
 
 describe("会话模型目录", () => {
+  it("最新有效模型快照决定撤回，空数组生效而null清除覆盖", () => {
+    const snapshot = row({ providerInstanceId: "a", models: [] });
+    expect(hasSessionModelCatalog([snapshot], provider.instanceId)).toBe(true);
+    expect(
+      hasSessionModelCatalog(
+        [snapshot, row({ providerInstanceId: "a", models: null })],
+        provider.instanceId,
+      ),
+    ).toBe(false);
+    expect(
+      hasSessionModelCatalog(
+        [snapshot, row({ providerInstanceId: "a", models: "invalid" })],
+        provider.instanceId,
+      ),
+    ).toBe(true);
+    expect(
+      hasSessionModelCatalog(
+        [snapshot, row({ providerInstanceId: "b", models: null })],
+        provider.instanceId,
+      ),
+    ).toBe(true);
+  });
+
+  it("仅模式或配置更新不能作为模型目录撤回依据", () => {
+    expect(
+      hasSessionModelCatalog(
+        [
+          { ...row({ providerInstanceId: "a", mode: null }), kind: "session.mode.updated" },
+          {
+            ...row({ providerInstanceId: "a", configOptions: [] }),
+            kind: "session.config-options.updated",
+          },
+          row({ providerInstanceId: "b", models: [] }),
+          row({ providerInstanceId: "a", models: [{}] }),
+        ],
+        provider.instanceId,
+      ),
+    ).toBe(false);
+  });
+
   it("Codex原生选择同步规范模式，实施计划明确改为default，未知广告拒绝", () => {
     const current = {
       ...provider,

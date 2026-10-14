@@ -32,7 +32,7 @@ import type { DraftComposerImageAttachment } from "../lib/composerImages";
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { copyTextWithHaptic } from "../lib/copyTextWithHaptic";
 import { createThreadFeedSelector } from "../lib/threadFeedSelectors";
-import { buildModelOptions } from "../lib/modelOptions";
+import { buildModelOptions, resolveThreadModelOption } from "../lib/modelOptions";
 import { resolveProviderInteractionMode } from "@codework/client-runtime/providerModels";
 import { appAtomRegistry } from "../state/atom-registry";
 import {
@@ -256,15 +256,22 @@ export function useThreadComposerState() {
     // draft, preserving anything typed since.
     const requestedSelection = draft.modelSelection ?? thread.modelSelection;
     // 与菜单使用同一会话目录，防止已撤回模式留在持久化发送队列中。
-    const resolvedOption = buildModelOptions(
-      selectedEnvironmentRuntime?.serverConfig,
+    const resolvedOption = resolveThreadModelOption(
+      buildModelOptions(
+        selectedEnvironmentRuntime?.serverConfig,
+        requestedSelection,
+        selectedThreadDetail?.activities ?? [],
+      ),
       requestedSelection,
-      selectedThreadDetail?.activities ?? [],
-    ).find(
-      (option) =>
-        option.selection.instanceId === requestedSelection.instanceId &&
-        option.selection.model === requestedSelection.model,
     );
+    if (
+      !resolvedOption &&
+      selectedEnvironmentRuntime?.connectionState === "connected" &&
+      selectedEnvironmentRuntime.serverConfig
+    ) {
+      Alert.alert(t("chooseModel"), t("serverSettingsMobile.noModels"));
+      return null;
+    }
     const resolvedSelection = resolvedOption?.selection ?? requestedSelection;
     const enqueuePromise = enqueueThreadOutboxMessage({
       environmentId: selectedThreadShell.environmentId,

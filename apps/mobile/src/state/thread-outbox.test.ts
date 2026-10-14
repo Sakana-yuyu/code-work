@@ -113,25 +113,25 @@ describe("thread outbox", () => {
     const { message, thread, config } = queuedModes();
     const persisted = encodeQueuedThreadMessage(message);
     const settings = resolveQueuedThreadSettings(message, thread, { config: config(["default"]) });
-    expect(settings.interactionMode).toBe("default");
-    expect(settings.modelSelection.options).toEqual([
+    expect(settings?.interactionMode).toBe("default");
+    expect(settings?.modelSelection.options).toEqual([
       { id: "reasoningEffort", value: "medium" },
       { id: "codexCollaborationMode", value: "default" },
     ]);
-    expect(settings.runtimeMode).toBe("approval-required");
+    expect(settings?.runtimeMode).toBe("approval-required");
     expect(encodeQueuedThreadMessage(message)).toEqual(persisted);
   });
 
   it("恢复发送在模式全部撤回时删除旧选项，重新广告后仍尊重原计划意图", () => {
     const { message, thread, config } = queuedModes();
     const withdrawn = resolveQueuedThreadSettings(message, thread, { config: config([]) });
-    expect(withdrawn.interactionMode).toBe("default");
-    expect(withdrawn.modelSelection.options).toEqual([{ id: "reasoningEffort", value: "medium" }]);
+    expect(withdrawn?.interactionMode).toBe("default");
+    expect(withdrawn?.modelSelection.options).toEqual([{ id: "reasoningEffort", value: "medium" }]);
     const restored = resolveQueuedThreadSettings(message, thread, {
       config: config(["default", "plan"]),
     });
-    expect(restored.interactionMode).toBe("plan");
-    expect(restored.modelSelection.options).toEqual(message.modelSelection.options);
+    expect(restored?.interactionMode).toBe("plan");
+    expect(restored?.modelSelection.options).toEqual(message.modelSelection.options);
   });
 
   it("离线或缺少实例信息时保留队列原生意图，V1消息继承线程设置", () => {
@@ -163,8 +163,8 @@ describe("thread outbox", () => {
       ],
     };
     const settings = resolveQueuedThreadSettings(message, thread, { config: missingModel });
-    expect(settings.interactionMode).toBe("default");
-    expect(settings.modelSelection.options).toEqual([{ id: "reasoningEffort", value: "medium" }]);
+    expect(settings?.interactionMode).toBe("default");
+    expect(settings?.modelSelection.options).toEqual([{ id: "reasoningEffort", value: "medium" }]);
   });
 
   it("恢复发送采用本线程ACP模式回执，保留原始URI并清理失效值", () => {
@@ -204,11 +204,95 @@ describe("thread outbox", () => {
       thread,
       { config: current, activities: [activity] },
     );
-    expect(settings.interactionMode).toBe("default");
-    expect(settings.modelSelection.options).toEqual([
+    expect(settings?.interactionMode).toBe("default");
+    expect(settings?.modelSelection.options).toEqual([
       { id: "reasoningEffort", value: "medium" },
       { id: "acpMode", value: uri },
     ]);
+  });
+
+  it("会话模型替换后采用同实例新目录，不补回已撤回的队列模型", () => {
+    const { message, thread, config } = queuedModes();
+    const current = config([]);
+    const uri = "https://agentclientprotocol.com/protocol/session-modes#review";
+    const queued = {
+      ...message,
+      modelSelection: {
+        ...thread.modelSelection,
+        options: [
+          { id: "reasoningEffort", value: "medium" },
+          { id: "acpMode", value: uri },
+        ],
+      },
+    };
+    const activity: OrchestrationThreadActivity = {
+      id: EventId.make("new-models"),
+      kind: "session.models.updated",
+      tone: "info",
+      summary: "目录",
+      createdAt: message.createdAt,
+      turnId: null,
+      payload: {
+        providerInstanceId: thread.modelSelection.instanceId,
+        models: [
+          {
+            slug: "current-model",
+            name: "当前模型",
+            isCustom: false,
+            isDefault: true,
+            capabilities: {
+              optionDescriptors: [
+                ...current.providers[0]!.models[0]!.capabilities!.optionDescriptors!,
+                {
+                  id: "acpMode",
+                  label: "模式",
+                  type: "select",
+                  currentValue: "code",
+                  options: [
+                    { id: "code", label: "实施" },
+                    { id: uri, label: "审查" },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const settings = resolveQueuedThreadSettings(queued, thread, {
+      config: current,
+      activities: [activity],
+    });
+    expect(settings?.modelSelection).toEqual({
+      instanceId: thread.modelSelection.instanceId,
+      model: "current-model",
+      options: queued.modelSelection.options,
+    });
+    expect(settings?.runtimeMode).toBe("approval-required");
+    expect(settings?.interactionMode).toBe("default");
+    expect(queued.modelSelection.model).toBe("fixture-model");
+  });
+
+  it("目录撤回全部模型时保留队列等待，不发送旧模型或借用其他实例", () => {
+    const { message, thread, config } = queuedModes();
+    const current = config([]);
+    const other = { ...current.providers[0]!, instanceId: ProviderInstanceId.make("other") };
+    const activity: OrchestrationThreadActivity = {
+      id: EventId.make("empty-models"),
+      kind: "session.models.updated",
+      tone: "info",
+      summary: "目录撤回",
+      createdAt: message.createdAt,
+      turnId: null,
+      payload: { providerInstanceId: thread.modelSelection.instanceId, models: [] },
+    };
+    expect(
+      resolveQueuedThreadSettings(message, thread, {
+        config: { ...current, providers: [...current.providers, other] },
+        activities: [activity],
+      }),
+    ).toBeNull();
+    expect(message.modelSelection).toBe(thread.modelSelection);
   });
 
   it("groups messages by scoped thread and preserves creation order", () => {

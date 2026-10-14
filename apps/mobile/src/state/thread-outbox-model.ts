@@ -27,7 +27,7 @@ import * as Schema from "effect/Schema";
 import { DraftComposerImageAttachmentSchema } from "../lib/composer-image-schema";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
 import { scopedThreadKey } from "../lib/scopedEntities";
-import { buildModelOptions } from "../lib/modelOptions";
+import { buildModelOptions, resolveThreadModelOption } from "../lib/modelOptions";
 
 const THREAD_OUTBOX_SCHEMA_VERSION = 3;
 const THREAD_OUTBOX_MAX_RETRY_DELAY_MS = 16_000;
@@ -101,7 +101,7 @@ export function resolveQueuedThreadSettings(
     readonly config: ServerConfig | null | undefined;
     readonly activities?: ReadonlyArray<OrchestrationThreadActivity>;
   },
-): ThreadSettingsSnapshot {
+): ThreadSettingsSnapshot | null {
   const settings = {
     modelSelection: message.modelSelection ?? thread.modelSelection,
     runtimeMode: message.runtimeMode ?? thread.runtimeMode,
@@ -110,15 +110,16 @@ export function resolveQueuedThreadSettings(
   // 离线时保留持久化意图；恢复发送时采用消息所属环境的最新广告。
   if (!catalog?.config) return settings;
   const providers = applySessionModelCatalogs(catalog.config.providers, catalog.activities ?? []);
-  const option = buildModelOptions({ ...catalog.config, providers }, settings.modelSelection).find(
-    (candidate) =>
-      candidate.selection.instanceId === settings.modelSelection.instanceId &&
-      candidate.selection.model === settings.modelSelection.model,
+  const option = resolveThreadModelOption(
+    buildModelOptions(catalog.config, settings.modelSelection, catalog.activities),
+    settings.modelSelection,
   );
   let modelSelection = option?.selection ?? settings.modelSelection;
   const provider = providers.find(
     (candidate) => candidate.instanceId === modelSelection.instanceId,
   );
+  // 已知实例的完整空目录不能继续发送历史选择；队列等待目录恢复或用户编辑。
+  if (provider && !option) return null;
   // 旧模型可能没有能力描述；已在线的Codex也不能继续携带未广告的原生模式。
   if (
     provider?.driver === "codex" &&

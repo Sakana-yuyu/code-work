@@ -118,6 +118,22 @@ export function resolveCodexPlanFollowUpSelection(
   };
 }
 
+/** 只有有效模型快照能撤回旧选择；模式更新不是模型目录，null 恢复全局目录。 */
+export function hasSessionModelCatalog(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  instanceId: ProviderInstanceId,
+): boolean {
+  for (let index = activities.length - 1; index >= 0; index--) {
+    const activity = activities[index];
+    if (activity?.kind !== "session.models.updated") continue;
+    const decoded = decodeModels(activity.payload);
+    if (Option.isSome(decoded) && decoded.value.providerInstanceId === instanceId) {
+      return decoded.value.models !== null;
+    }
+  }
+  return false;
+}
+
 /** 合并同实例会话模型与模式；null 清除覆盖，空数组撤回模型广告，自定义模型保留。 */
 export function applySessionModelCatalogs(
   providers: ReadonlyArray<ServerProvider>,
