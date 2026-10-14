@@ -221,6 +221,83 @@ describe("EnvironmentProviderSettings routing", () => {
     expect(settingsState.updateEnvironmentIds).toEqual([environmentId]);
   });
 
+  it("实例标识复用旧默认槽时只显示实际驱动，编辑不改旧驱动配置", async () => {
+    const id = ProviderInstanceId.make("byok");
+    const extraId = ProviderInstanceId.make("byok-extra");
+    const instance: ProviderInstanceConfig = {
+      driver: ProviderDriverKind.make("acpAgent"),
+      enabled: true,
+      displayName: "标识复用测试",
+      config: { command: "fixture-acp" },
+    };
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [id]: instance,
+        [extraId]: { driver: ProviderDriverKind.make("byok"), enabled: false },
+      },
+    };
+    settingsState.updateSettings.mockResolvedValue({
+      _tag: "Success",
+      value: settingsState.value,
+    });
+    const cards: ReactElement<Record<string, unknown>>[] = [];
+    const panel = renderPanel();
+    visitElements(panel, (element) => {
+      if (element.props.instanceId === id && element.props.mode === "list") cards.push(element);
+      return false;
+    });
+    expect(cards).toHaveLength(1);
+    expect(
+      visitElements(
+        panel,
+        (element) => element.props.instanceId === extraId && element.props.mode === "list",
+      ),
+    ).not.toBeNull();
+    (cards[0]!.props.onSelect as () => void)();
+    const editor = visitElements(
+      renderPanel(),
+      (element) => element.props.instanceId === id && element.props.mode === "editor",
+    );
+    expect(editor).not.toBeNull();
+    expect(editor!.props.onDelete).toBeTypeOf("function");
+    await (editor!.props.onUpdate as (next: ProviderInstanceConfig) => Promise<unknown>)({
+      ...instance,
+      enabled: false,
+      config: { command: "fixture-next" },
+    });
+    expect(settingsState.updateSettings).toHaveBeenCalledTimes(1);
+    const patch = settingsState.updateSettings.mock.calls[0]![0];
+    expect(patch.providers).toBeUndefined();
+    expect(patch.providerInstances[id]).toMatchObject({
+      driver: "acpAgent",
+      enabled: false,
+      config: { command: "fixture-next" },
+    });
+  });
+
+  it("实例标识占用旧槽的未知驱动保留为可删除实例", () => {
+    const id = ProviderInstanceId.make("grok");
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [id]: { driver: ProviderDriverKind.make("futureAgent"), enabled: false },
+      },
+    };
+    const cards: ReactElement<Record<string, unknown>>[] = [];
+    visitElements(renderPanel(), (element) => {
+      if (element.props.instanceId === id && element.props.mode === "list") cards.push(element);
+      return false;
+    });
+    expect(cards).toHaveLength(1);
+    (cards[0]!.props.onSelect as () => void)();
+    const editor = visitElements(
+      renderPanel(),
+      (element) => element.props.instanceId === id && element.props.mode === "editor",
+    );
+    expect(editor!.props.onDelete).toBeTypeOf("function");
+  });
+
   it("coalesces a nullable provider snapshot before rendering array-backed UI", () => {
     expect(() => renderPanel()).not.toThrow();
     expect(settingsState.readEnvironmentIds).toEqual([environmentId]);

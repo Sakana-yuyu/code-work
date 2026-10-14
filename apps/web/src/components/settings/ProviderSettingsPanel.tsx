@@ -742,8 +742,11 @@ export function EnvironmentProviderSettings({
         config: legacyConfigRest,
       } satisfies ProviderInstanceConfig;
     };
+    // 旧默认标识可被其他驱动占用；该实例由真实驱动入列，不能再套用旧槽。
     const effectiveInstance: ProviderInstanceConfig | undefined =
-      explicitInstance ?? synthesizedInstance();
+      explicitInstance !== undefined && explicitInstance.driver !== driver
+        ? undefined
+        : (explicitInstance ?? synthesizedInstance());
     // Only the default slot depends on the legacy blob; custom instances for
     // the driver must still render even when the slot has nothing to show.
     if (effectiveInstance !== undefined) {
@@ -770,7 +773,9 @@ export function EnvironmentProviderSettings({
         instanceId: id,
         instance,
         driver: instance.driver,
-        isDefault: defaultSlotIdsBySource.has(String(id)),
+        isDefault:
+          id === defaultInstanceIdForDriver(instance.driver) &&
+          defaultSlotIdsBySource.has(String(id)),
       });
     }
   }

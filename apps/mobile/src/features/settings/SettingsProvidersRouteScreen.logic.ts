@@ -293,6 +293,8 @@ export function buildMobileProviderRows(
     const brandedDriver = ProviderDriverKind.make(driver);
     const instanceId = defaultInstanceIdForDriver(brandedDriver);
     const explicit = settings.providerInstances?.[instanceId];
+    // 标识不决定驱动；跨驱动占用的实例在下方按真实字段显示。
+    if (explicit !== undefined && explicit.driver !== brandedDriver) continue;
     const instance = explicit ?? legacyInstance(driver, legacyProviders[driver]);
     if (instance === undefined) continue;
     rows.push({ instanceId, driver, instance, isDefault: true, known: true });

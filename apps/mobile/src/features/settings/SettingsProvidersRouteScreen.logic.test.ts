@@ -187,6 +187,40 @@ describe("移动端 Provider 设置逻辑", () => {
     expect(Object.keys(instances)).toContain("opencode");
   });
 
+  it.each([
+    { id: "codex", driver: "acpAgent", known: true },
+    { id: "codex", driver: "byok", known: true },
+    { id: "cursor", driver: "futureAgent", known: false },
+  ])("实例标识$id复用旧槽时采用实际$driver字段", ({ id, driver, known }) => {
+    const instanceId = ProviderInstanceId.make(id);
+    const extraId = ProviderInstanceId.make("codex-extra");
+    const instance = {
+      driver: ProviderDriverKind.make(driver),
+      enabled: false,
+      config: { command: "fixture-acp" },
+    };
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providerInstances: {
+        [instanceId]: instance,
+        [extraId]: { driver: ProviderDriverKind.make("codex"), enabled: false },
+      },
+    };
+    const rows = buildMobileProviderRows(settings);
+    const matches = rows.filter((row) => row.instanceId === instanceId);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({ driver, known, isDefault: false });
+    expect(matches[0]!.instance).toBe(instance);
+    expect(rows.find((row) => row.instanceId === extraId)?.driver).toBe("codex");
+    expect(materializeProviderInstances(settings)[instanceId]).toEqual(instance);
+    if (driver === "acpAgent") {
+      expect(providerFields(matches[0]!.driver).map((field) => field.key)).toContain("command");
+      expect(providerFields(matches[0]!.driver).map((field) => field.key)).not.toContain(
+        "homePath",
+      );
+    }
+  });
+
   it("空文本会删除可选字段，开关只在启用时写入配置", () => {
     const [binaryPath] = providerFields("codex");
     const routeThroughByok = providerFields("grok").find(
