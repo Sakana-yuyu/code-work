@@ -243,6 +243,33 @@ describe("Chat Completions → Responses", () => {
     expect(eventsOf(events).map((item) => item.type)).not.toContain("response.completed");
   });
 
+  it("上游回复缺 usage 时非流式与流式都回退零值 usage", () => {
+    const result = chatCompletionToResponses(
+      {
+        id: "chat-no-usage",
+        choices: [{ finish_reason: "stop", message: { content: "ok" } }],
+      },
+      translatedRequest,
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      body: {
+        status: "completed",
+        usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+      },
+    });
+
+    const stream = new ChatStreamToResponsesSse(translatedRequest);
+    let events = stream.push(
+      'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n',
+    );
+    events += stream.push("data: [DONE]\n\n") + stream.complete();
+    const completed = eventsOf(events).find((item) => item.type === "response.completed");
+    expect(completed?.response).toMatchObject({
+      usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+    });
+  });
+
   it("SSE 数据行跨传输块时仍只输出一次正文", () => {
     const stream = new ChatStreamToResponsesSse(translatedRequest);
     let output = stream.push('data: {"choices":[{"delta":{"content":"你');

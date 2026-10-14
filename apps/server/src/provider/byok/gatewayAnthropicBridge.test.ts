@@ -136,6 +136,7 @@ describe("anthropicMessagesToChatBody", () => {
             role: "assistant",
             content: [
               { type: "thinking", thinking: "hmm", signature: "sig" },
+              { type: "redacted_thinking", data: "opaque-blob" },
               { type: "text", text: "answer" },
             ],
           },
@@ -257,6 +258,26 @@ describe("ChatStreamToAnthropicSse", () => {
     expect(out.match(/event: message_stop/gu)?.length).toBe(1);
     expect(out.match(/event: content_block_stop/gu)?.length).toBe(1);
   });
+
+  it("上游全程无 usage 时回退为零而非缺省字段", () => {
+    const translator = new ChatStreamToAnthropicSse("m");
+    let out = "";
+    out += translator.push('data: {"choices":[{"delta":{"content":"hi"}}]}\n');
+    out += translator.push('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n');
+    out += translator.push("data: [DONE]\n");
+    out += translator.complete();
+
+    const events = parseEvents(out);
+    const messageStart = events.find((entry) => entry.event === "message_start");
+    expect(messageStart).toBeDefined();
+    expect((messageStart!.data.message as Record<string, unknown>).usage).toEqual({
+      input_tokens: 0,
+      output_tokens: 0,
+    });
+    const messageDelta = events.find((entry) => entry.event === "message_delta");
+    expect(messageDelta?.data.usage).toEqual({ output_tokens: 0 });
+    expect(messageDelta?.data.delta).toMatchObject({ stop_reason: "end_turn" });
+  });
 });
 
 describe("chatCompletionToAnthropicMessage", () => {
@@ -294,6 +315,20 @@ describe("chatCompletionToAnthropicMessage", () => {
         { type: "text", text: "done" },
         { type: "tool_use", id: "call_9", name: "shell_exec", input: { cmd: "ls" } },
       ],
+    });
+  });
+
+  it("上游响应缺 usage 时输出零值 usage", () => {
+    const message = chatCompletionToAnthropicMessage(
+      {
+        id: "chatcmpl-no-usage",
+        choices: [{ message: { content: "done" }, finish_reason: "stop" }],
+      },
+      "m",
+    );
+    expect(message).toMatchObject({
+      stop_reason: "end_turn",
+      usage: { input_tokens: 0, output_tokens: 0 },
     });
   });
 

@@ -142,7 +142,7 @@ BaoCode 的速度优势来自原生渲染（启动约 0.18 秒、单窗口约 12
 6. **事件幂等与重连。** BaoCode 的 `seq` + 按 id/偏移应用，使重连重放安全；上游同时修了“关闭忙碌流不再断开连接”（`eac52f0087`）、“打开运行中线程时同步状态不再闪烁”（`ab70c8943f`）。2026-10-12 已修复线程订阅未立即接入实时总线、导致同步游标读取期间尾文可能丢失的竞态，旧行为红/新行为绿；线程真实 RPC 6 项与共享同步/挂载/分页/RPC 会话 43 项通过。运行正文在替换连接时保持身份和最新游标，重叠与过期序号忽略，不按文本全局去重。公共 ingestion 现按复合身份在合并前过滤最近 10000 个 canonical 事件的重投，跨窗口和终态后重投不重复入库，新的身份即使文字相同仍保留。该有界内存防护不跨服务重启；客户端网络恢复继续回放按持久化序号应用的领域事件，不重新执行 provider 命令。设备/连接全路径继续核验，见 [port-progress](./port-progress.md)。
 7. **思考内容可见。** 上游 `feat(chat): show provider thinking traces`（2026-09-16）与 `feat(clients): live row shows the agent's latest thought`（2026-10-07）：运行中那一行显示 agent 最新的思考片段，减少“没反应”的感觉。Code Work 未探测到对应实现（需核对）。
 8. **跨 provider 的统一回合语义。** 终态前清理瞬态行（Paseo）、`TurnStarted(unprompted)` 区分“用户发起”与“agent 自行接手后台子 agent 报告”（BaoCode）、`ActivityReported` 表示不可见的忙碌状态。三者结合后，UI 的 spinner 才不会撒谎。
-9. **BYOK 调用链。** 对照 BaoCode 的翻译清单为 `modelGateway` 补兼容测试：流式分块边界、思考块与签名处理、工具调用 id 往返、`count_tokens` 估算、上游无 usage 时的兜底；账号粘滞与额度用尽切换对照 `LocalAccountPool`。
+9. **BYOK 调用链。** 对照 BaoCode 的翻译清单为 `modelGateway` 补兼容测试：流式分块边界、思考块与签名处理、工具调用 id 往返、`count_tokens` 估算、上游无 usage 时的兜底；账号粘滞与额度用尽切换对照 `LocalAccountPool`。2026-10-14 已核对：分块边界、thinking/redacted_thinking 丢弃、工具 id 往返、count_tokens 本地估算均有既有覆盖；无 usage 零值兜底三例补齐；账号粘滞/换绑见第84主题。证据见 [port-progress](./port-progress.md) 第85主题。
 10. **性能验收口径。** Code Work 在 `agent-provider-product-comparison.md` 中已有 Web 长流的帧间隔验收；落地 §4.2-1 到 §4.2-3 后应重新测量同一口径（1280×720、1200 条活动、四组上滚/下滚各 20 页），并补桌面独立外壳与手机实机。
 
 2026-10-13 的连续 Android 录像发现，已有缓存详情的忙碌线程重开时仍可能暂时空白。移动端已复用最近一次同窗口、同布局的实测视口，减少从零宽度开始的排版修正；仅保存一条尺寸记录，不保留额外线程流。82 项列表定向测试与纯候选目标类型检查通过。去探针录像记录约 0.25 秒的初次挂载等待；用户已确认允许这一首绘等待，要求正文出现后不闪烁并继续锚点与连接矩阵验收。此项仍按剩余矩阵推进，不把录屏编码帧当成 UI 帧率。原始失败、诊断与候选记录见 [port-progress](./port-progress.md)。
