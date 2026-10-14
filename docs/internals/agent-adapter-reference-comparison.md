@@ -76,6 +76,8 @@
 
    第74主题统一Mobile已有线程的模型显示、设置与队列解析，撤回模型只采用同实例当前默认/首项，空目录保留待发内容，不把旧模型重新补回。六文件75项、目标类型/fmt/lint与旧版两个直接失败通过；Android在服务器仍保存旧default时无需重选即可操作新目录，真实Windows同进程接收dynamic-default和一次完整URI模式请求，终态/权限/消息身份一致。实际渲染循环已修复并保留失败证据；后端重启目录对齐及跨线程设置导航仍开放。用户已授权后续独立Electron窗口的Playwright/CDP验收，本轮未据授权声称已执行。第11项与原39项/comparison范围保持完整，详见 [移植进度](./port-progress.md)。
 
+   第75主题实际执行独立Electron的Playwright/CDP联调，完成Codex原生Plan→实现/default、ACP完整Review URI发送与主会话广告撤回。两组各四条唯一完整消息，权限/项目/原消息身份保持；草稿计数未新增会话，现有stop命令正常停止且历史不删。当前提交的桌面壳/服务端构建及五文件173项通过，无生产源码修改。首次原生启动失败、隔离测试别名漏配、截图/定位超时与后端watch重启均保留；产品数据隔离且未连接真实账号。设置重复实例卡片、重启目录对齐、其他入口/设备/连接矩阵继续，第11项及原39项/comparison仍未整体完成，详见 [移植进度](./port-progress.md)。
+
 2. **`steerActiveTurn` 契约。** 回合进行中追加指令：适配器声明是否支持，不支持则由 manager 回退为“打断后替换”；适配器出错时不得自动重试（结果不明确）；打断时必须丢弃尚未被 provider 读取的 steer。上游 T3 Code 已有“排队或 steer”的 UI（见 §5），后端契约可参考 Paseo。
 3. **用户消息的规范身份。** manager 为前台 prompt 记录唯一规范 timeline 行，`messageId` 与 `clientMessageId` 一致，provider 回显只用于对账，不做全局文本去重。
 4. **终态前清理瞬态行。** 适配器在发出 `turn_completed/failed/canceled` 前，必须终结所有仍在 loading 的行（例如 Codex 的 `contextCompaction`）。2026-10-12 全部 canonical 发射入口已接入同一 item 与交互边界，终态前整批补齐完成通知；Codex 原生遗漏完成通知的三种终态回归已通过。遗漏的审批以 cancel、提问以空答案关闭客户端等待，真实回应保持原结果，不调用 provider 或扩大授权。原生 adapter、公共活动投影及两端状态定向验证通过，第 7 项完成；独立后台 task 保持实际生命周期，hook 没有 loading 投影且保留原生结果。真实连接/设备与性能按相应条目继续验收，证据及回退范围见 [port-progress](./port-progress.md)。
