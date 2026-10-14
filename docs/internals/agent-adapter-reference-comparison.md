@@ -30,9 +30,9 @@
 
 ### 2.1 来自 open-design
 
-1. **降低新增 ACP 类 CLI 的成本。** open-design 新增 CLI 是“一个 def 文件加一行注册”。Code Work 已有 `GenericAcpDriver` 与 `AcpRegistryCatalog`，可评估把更多纯 ACP CLI 收敛到配置驱动，而不是每个 CLI 一套 Adapter/Provider/测试。
+1. **降低新增 ACP 类 CLI 的成本。** open-design 新增 CLI 是“一个 def 文件加一行注册”。2026-10-15 核验：Code Work 已达等价且更强——共享 `CursorAdapter`/`AcpSessionRuntime` 加薄 driver 配置（Kimi 即一例）、`GenericAcpDriver` 纯实例配置接入任意 ACP CLI、`AcpRegistryCatalog` 数据条目（远端注册表+快照+MANUAL_AGENTS）；约40个按 CLI 的探针重放测试替代 bespoke 适配器。证据见 [port-progress](./port-progress.md) 第90主题。
 2. **argv 长度守卫。** 2026-10-13 已清点并覆盖 Antigravity 对话/文本生成与 ZCode 三个正文 argv 入口：spawn 前先检查原始 UTF-8 字节，再依据解析后的路径互斥检查 `.cmd` / `.bat` 完整转义命令行或直接进程的 UTF-16 命令行。统一错误 `AGENT_PROMPT_TOO_LARGE` 保留阶段、计数与操作建议，不回显正文；既有 cmd 多行限制独立返回 `AGENT_PROMPT_UNSUPPORTED`，不修改正文。其余 provider 的正文走 stdin、SDK/RPC/ACP 或 HTTP，不套用 argv 限制。定向测试、有效旧版失败对照、目标类型与真实 Windows shell 边界核验见 [port-progress](./port-progress.md) 第42主题；[用户说明](../user/windows-prompts.md)给出可执行处理方式。
-3. **help 探测能力标志。** 解析 `--help` 决定是否传某个 flag，避免旧版 CLI 因未知参数失败。
+3. **help 探测能力标志。** 解析 `--help` 决定是否传某个 flag，避免旧版 CLI 因未知参数失败。2026-10-15 核验为有意不适用：Code Work 会话 flag 均为必需协议项、显式请求支撑项或用户供给项，无可安全省略者（省略即静默错误）；能力发现在声明式实例配置、ACP `initialize` 握手（`agentInfo`/`clientCapabilities`，含 gemini-cli 版本特判）与版本下限层，上游探测的 OpenCode `run` flags 不在 `serve` 路径上。证据见 [port-progress](./port-progress.md) 第90主题。
 4. **纯文本 CLI 兜底。** 无结构化输出的 CLI，运行结束后扫描 `<artifact>` 块落盘。仅在确实要支持这类 CLI 时再做。
 5. **不要照搬：** 全局免交互放权（`--yolo` 等）与 Code Work 的审批模型冲突。
 
