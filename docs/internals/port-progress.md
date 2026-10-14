@@ -1450,3 +1450,17 @@ decider 既有守卫（本线程 session starting/running/activeTurn/排队时�
 测试：ProviderService.test.ts fake 适配器支持能力覆盖并新增“未声明 mcp 不签发凭据”负向用例（48 项通过）；ProviderRegistry.test.ts 新增快照盖章用例（sessionModelSwitch=restart-continue、supportsMcp=false、其余为真；54 项通过）。17 份改动文件 fmt/lint 干净（ClaudeAdapter 一处 3764 行既有 spread 警告系 HEAD 已存在、未触碰）；server/contracts 作用域 tsgo 对本主题文件零诊断（ByokAdapter 1235–1529 行的错误属无关脏工作区 BYOK 改动）。
 
 边界：能力标志当前为透出+服务端消费，三端设置页暂无按这些标志门控的现存控件（模型切换已由 sessionModelSwitch/requiresNewThreadForModelChange 覆盖）；streaming/reasoning/persistence 目前是诚实描述与后续门控的底座，UI 消费待出现对应控件时接入。无浏览器/实机验收。
+
+## 82. 编辑器打开期间目录撤回的选择器组件级收敛证据（第11项）
+
+基线含第81主题提交0f5f325c6。本轮为第11项“目录在编辑器打开期间撤回”的 Web 组件渲染层证据：只新增回归测试与文档，未改生产源码。结论为既有行为已正确，此前缺口是覆盖而非实现。
+
+静态链路复核：`ChatView` 以 `applySessionModelCatalogs(serverConfig.providers, activeThread.activities)` 派生 `providerStatuses`（依赖数组含活动列表，新目录活动到达即重算）→ `ChatComposer providerStatuses` prop → `providerInstanceEntries`/`modelOptionsByInstance` useMemo → `ProviderModelPicker`/`ModelPickerContent`。弹层内部 `flatModels`/`filteredModels`/`filteredItemKeys` 全部经 useMemo 从 props 派生，无陈旧缓存；`flatModels` 显式跳过 `entryByInstanceId` 中已消失实例的残留选项；`selectedInstanceId`/`expandedLegacyInstances` 是选择器本地 useState，目标实例消失时过滤结果自然收敛为空列表而非崩溃。触发器收敛面：`selectedInstanceOptions.find(slug===model) ?? options[0]`——被撤回的展示模型回退到实例首项；整目录撤空（显式撤回语义、无可校正依据）时回退为选择原值透传。
+
+新增 `ProviderModelPicker.catalog.test.tsx` 五项用例，经仓库既有 `renderToStaticMarkup` 组件测试模式验证真实渲染输出（前后两次渲染重放目录变化）：目录内含所选模型时触发器显示该模型；所选模型被撤回后触发器收敛到实例首项且不再显示撤回名；整目录撤空时触发器原样显示待定选择 slug；实例从 `instanceEntries` 撤回后其边栏 rail 消失；正在查看的实例消失时选择器收敛为空列表而不抛错。
+
+入口覆盖复核：设置面板走 `resolveAppModelSelectionState`；Mobile 组合器 `buildModelOptions(config, selection, activities)` 依赖活动列表、outbox 分发时由 `thread-outbox-model.ts` 合并目录；命令面板/快捷键无独立切模型路径（仅选择器内跳转键）。测试基建边界：LegendList 虚拟列表在 SSR 下不产出行、`ComboboxEmpty` 的 provider-settings `Link` 需要异步 Router 上下文，两者不可静态断言，行级收敛由第78主题的纯函数链路测试与本组件的 props→useMemo 派生结构共同支撑。
+
+验证：新文件 5 项用例全绿（49ms）；`vp check --fix` 零告警；作用域 tsgo 对本文件零诊断（全仓 WorkspaceLayout/AgentToolsSettings 等处错误属脏工作区既有无关改动）。
+
+边界：本轮为 Web SSR 组件级证据，真实浏览器/Electron 交互与 Mobile 实机证据仍属第11项开放矩阵（需用户授权的浏览器验证或物理设备/EAS）。第11项其余矩阵与整体39项继续。
