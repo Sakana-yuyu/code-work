@@ -1385,6 +1385,7 @@ export const en: Record<string, string> = {
   dismissToClearTheWokeIndicatorOrSendAMessageToKeepGoing:
     "Dismiss to clear the Woke indicator, or send a message to keep going.",
   dismissUpdateNotice: "Dismiss update notice",
+  dismissUserInputQuestion: "Dismiss question",
   dismissWokeNotification: "Dismiss Woke notification",
   displayName: "Display name",
   done: "Done",
@@ -7606,6 +7607,7 @@ export const zhCN: Record<string, string> = {
   dismissTasksForThisTurn: "关闭本轮任务",
   dismissToClearTheWokeIndicatorOrSendAMessageToKeepGoing: "清除以消除唤醒指示，或发送消息继续。",
   dismissUpdateNotice: "关闭更新提示",
+  dismissUserInputQuestion: "关闭问题",
   dismissWokeNotification: "清除唤醒通知",
   displayName: "显示名称",
   done: "完成",

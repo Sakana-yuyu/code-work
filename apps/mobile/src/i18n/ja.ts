@@ -640,6 +640,7 @@ export const ja: Record<string, string> = {
   "diagnostics.copied": "コピーしました",
   "diagnostics.copyTraceId": "トレース ID をコピー",
   dismissKeyboard: "キーボードを閉じる",
+  dismissUserInputQuestion: "質問を閉じる",
   done: "完了",
   donTShowThisAgain: "今後表示しない",
   doubleTapToShowFullDetailsLongPressToCopy: "ダブルタップで詳細を表示、長押しでコピーします。",

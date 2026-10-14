@@ -145,6 +145,7 @@ export interface ThreadDetailScreenProps {
     customAnswer: string,
   ) => void;
   readonly onSubmitUserInput: () => Promise<unknown>;
+  readonly onDismissUserInput: () => Promise<unknown>;
   /** Steer a server-queued message into the running turn (steer-capable providers only). */
   readonly onSteerQueuedMessage?: (messageId: MessageId) => void;
   /** Withdraw a server-queued message before the provider reads it. */
@@ -750,6 +751,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                       onSelectOption={props.onSelectUserInputOption}
                       onChangeCustomAnswer={props.onChangeUserInputCustomAnswer}
                       onSubmit={props.onSubmitUserInput}
+                      onDismiss={props.onDismissUserInput}
                     />
                   ) : null}
                 </Animated.View>

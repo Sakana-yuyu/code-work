@@ -2886,6 +2886,17 @@ function ChatViewContent(props: ChatViewProps) {
     localMessagePresentations,
     optimisticUserMessages,
   ]);
+  // ↑/↓ recall source: every user prompt already on the timeline (server rows
+  // plus still-optimistic sends), newest first. Empty texts are dropped so a
+  // recall never lands on a blank draft.
+  const sentPromptRecallTexts = useMemo(
+    () =>
+      timelineMessages
+        .filter((message) => message.role === "user" && message.text.trim().length > 0)
+        .map((message) => message.text)
+        .reverse(),
+    [timelineMessages],
+  );
   const queuedMessagesForThread = useMemo(
     () => queuedMessageRecords.filter((message) => message.threadKey === routeThreadKey),
     [queuedMessageRecords, routeThreadKey],
@@ -4944,6 +4955,16 @@ function ChatViewContent(props: ChatViewProps) {
       scheduleComposerFocus,
       setComposerDraftPrompt,
     ],
+  );
+  // ↑/↓ sent-prompt recall lands here: the recalled text replaces the draft
+  // wholesale (the walk only runs while the box holds a recalled entry or is
+  // empty), and focus follows so the caret sits in the recalled text.
+  const onRecallSentPrompt = useCallback(
+    (text: string) => {
+      setComposerDraftPrompt(composerDraftTarget, text);
+      scheduleComposerFocus();
+    },
+    [composerDraftTarget, scheduleComposerFocus, setComposerDraftPrompt],
   );
   // 一键清空：逐条走取消路径，分发守卫对每条独立生效，正在分发的自然跳过。
   const onClearQueuedMessages = useCallback(() => {
@@ -7104,6 +7125,14 @@ function ChatViewContent(props: ChatViewProps) {
     [activePendingUserInput, composerRef],
   );
 
+  // Closing the card without answering resolves the request with an empty
+  // answer map — the same shape the ACP adapters already emit on interrupt —
+  // so the provider unblocks with "no answer" instead of hanging.
+  const onDismissActivePendingUserInput = useCallback(() => {
+    if (!activePendingUserInput) return;
+    void onRespondToUserInput(activePendingUserInput.requestId, {});
+  }, [activePendingUserInput, onRespondToUserInput]);
+
   const onAdvanceActivePendingUserInput = useCallback(() => {
     if (!activePendingUserInput || !activePendingProgress) {
       return;
@@ -8333,6 +8362,8 @@ function ChatViewContent(props: ChatViewProps) {
                             onCancelQueuedMessage={onCancelQueuedMessage}
                             onEditQueuedMessage={onEditQueuedMessage}
                             onClearQueuedMessages={onClearQueuedMessages}
+                            sentPromptRecallTexts={sentPromptRecallTexts}
+                            onRecallSentPrompt={onRecallSentPrompt}
                             {...(phase === "running" && activeProviderSupportsSteer
                               ? { onSteerQueuedMessage }
                               : {})}
@@ -8396,6 +8427,7 @@ function ChatViewContent(props: ChatViewProps) {
                               onSelectActivePendingUserInputOption
                             }
                             onAdvanceActivePendingUserInput={onAdvanceActivePendingUserInput}
+                            onDismissActivePendingUserInput={onDismissActivePendingUserInput}
                             onPreviousActivePendingUserInputQuestion={
                               onPreviousActivePendingUserInputQuestion
                             }

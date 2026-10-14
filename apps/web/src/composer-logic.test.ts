@@ -10,6 +10,7 @@ import {
   parseStandaloneComposerSlashCommand,
   queuedMessageRecallTargetId,
   replaceTextRange,
+  sentPromptRecallForArrow,
 } from "./composer-logic";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
@@ -456,6 +457,136 @@ describe("queuedMessageRecallTargetId", () => {
     ).toBeNull();
     expect(
       queuedMessageRecallTargetId({ prompt: "", goalComposerActive: true, queuedMessages: queued }),
+    ).toBeNull();
+  });
+});
+
+describe("sentPromptRecallForArrow", () => {
+  const sentPrompts = ["newest prompt", "older prompt", "oldest prompt"];
+
+  it("recalls the newest sent prompt on ArrowUp in an empty draft", () => {
+    expect(
+      sentPromptRecallForArrow({
+        direction: "up",
+        prompt: "",
+        goalComposerActive: false,
+        sentPrompts,
+        recall: null,
+      }),
+    ).toEqual({ index: 0, text: "newest prompt" });
+  });
+
+  it("walks further back on repeated ArrowUp while the box holds the recalled text", () => {
+    expect(
+      sentPromptRecallForArrow({
+        direction: "up",
+        prompt: "newest prompt",
+        goalComposerActive: false,
+        sentPrompts,
+        recall: { index: 0, text: "newest prompt" },
+      }),
+    ).toEqual({ index: 1, text: "older prompt" });
+  });
+
+  it("stays put at the oldest entry", () => {
+    expect(
+      sentPromptRecallForArrow({
+        direction: "up",
+        prompt: "oldest prompt",
+        goalComposerActive: false,
+        sentPrompts,
+        recall: { index: 2, text: "oldest prompt" },
+      }),
+    ).toBeNull();
+  });
+
+  it("steps forward on ArrowDown and clears the draft at the newest entry", () => {
+    expect(
+      sentPromptRecallForArrow({
+        direction: "down",
+        prompt: "older prompt",
+        goalComposerActive: false,
+        sentPrompts,
+        recall: { index: 1, text: "older prompt" },
+      }),
+    ).toEqual({ index: 0, text: "newest prompt" });
+    expect(
+      sentPromptRecallForArrow({
+        direction: "down",
+        prompt: "newest prompt",
+        goalComposerActive: false,
+        sentPrompts,
+        recall: { index: 0, text: "newest prompt" },
+      }),
+    ).toBe("clear");
+  });
+
+  it("leaves ArrowDown alone when no recall is active", () => {
+    expect(
+      sentPromptRecallForArrow({
+        direction: "down",
+        prompt: "",
+        goalComposerActive: false,
+        sentPrompts,
+        recall: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("ends the walk once the recalled text was edited, then restarts fresh", () => {
+    // User typed into the recalled text: it no longer matches the tracked
+    // entry, so the walk is dead and the arrow falls back to caret behavior.
+    expect(
+      sentPromptRecallForArrow({
+        direction: "up",
+        prompt: "newest prompt!",
+        goalComposerActive: false,
+        sentPrompts,
+        recall: { index: 0, text: "newest prompt" },
+      }),
+    ).toBeNull();
+    // Clearing the box afterwards recalls the newest prompt again.
+    expect(
+      sentPromptRecallForArrow({
+        direction: "up",
+        prompt: "",
+        goalComposerActive: false,
+        sentPrompts,
+        recall: { index: 0, text: "newest prompt" },
+      }),
+    ).toEqual({ index: 0, text: "newest prompt" });
+  });
+
+  it("treats a terminal-context-only draft as empty", () => {
+    expect(
+      sentPromptRecallForArrow({
+        direction: "up",
+        prompt: INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
+        goalComposerActive: false,
+        sentPrompts,
+        recall: null,
+      }),
+    ).toEqual({ index: 0, text: "newest prompt" });
+  });
+
+  it("does nothing without sent prompts or in the goal composer", () => {
+    expect(
+      sentPromptRecallForArrow({
+        direction: "up",
+        prompt: "",
+        goalComposerActive: false,
+        sentPrompts: [],
+        recall: null,
+      }),
+    ).toBeNull();
+    expect(
+      sentPromptRecallForArrow({
+        direction: "up",
+        prompt: "",
+        goalComposerActive: true,
+        sentPrompts,
+        recall: null,
+      }),
     ).toBeNull();
   });
 });

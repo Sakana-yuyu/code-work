@@ -68,6 +68,8 @@ export interface PendingUserInputCardProps {
     customAnswer: string,
   ) => void;
   readonly onSubmit: () => Promise<unknown>;
+  /** Resolves the request with empty answers — "no answer", not a cancel error. */
+  readonly onDismiss: () => Promise<unknown>;
 }
 
 /**
@@ -223,24 +225,37 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
           : { maxHeight: props.maxHeight }
       }
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t("collapseUserInput")}
-        onPress={props.onToggleCollapsed}
-        className="flex-row items-start gap-2"
-      >
-        <View className="flex-1 gap-2.5">
-          <Text className="font-codework-bold text-2xs uppercase tracking-[1.1px] text-sky-700 dark:text-sky-300">
-            {t("userInputNeeded")}
-          </Text>
-          <Text className="font-codework-bold text-lg text-neutral-950 dark:text-neutral-50">
-            {t("fillInThePendingAnswers")}
-          </Text>
-        </View>
-        <View className="h-8 w-8 items-center justify-center rounded-full bg-neutral-200/70 dark:bg-white/8">
-          <SymbolView name="chevron.down" size={13} tintColor={iconSubtle} type="monochrome" />
-        </View>
-      </Pressable>
+      <View className="flex-row items-start gap-2">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("collapseUserInput")}
+          onPress={props.onToggleCollapsed}
+          className="flex-1 flex-row items-start gap-2"
+        >
+          <View className="flex-1 gap-2.5">
+            <Text className="font-codework-bold text-2xs uppercase tracking-[1.1px] text-sky-700 dark:text-sky-300">
+              {t("userInputNeeded")}
+            </Text>
+            <Text className="font-codework-bold text-lg text-neutral-950 dark:text-neutral-50">
+              {t("fillInThePendingAnswers")}
+            </Text>
+          </View>
+          <View className="h-8 w-8 items-center justify-center rounded-full bg-neutral-200/70 dark:bg-white/8">
+            <SymbolView name="chevron.down" size={13} tintColor={iconSubtle} type="monochrome" />
+          </View>
+        </Pressable>
+        {/* Dismiss resolves with no answer (the agent proceeds); collapsing
+            only hides the card while the request stays pending. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("dismissUserInputQuestion")}
+          disabled={props.respondingUserInputId === props.pendingUserInput.requestId}
+          onPress={() => void props.onDismiss()}
+          className="h-8 w-8 items-center justify-center rounded-full bg-neutral-200/70 dark:bg-white/8"
+        >
+          <SymbolView name="xmark" size={13} tintColor={iconSubtle} type="monochrome" />
+        </Pressable>
+      </View>
       <ScrollView
         bounces={false}
         className="min-h-0"

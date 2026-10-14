@@ -1444,6 +1444,7 @@ export const ja: Record<string, string> = {
   dismissToClearTheWokeIndicatorOrSendAMessageToKeepGoing:
     "閉じるとWokeインジケーターがクリアされます。続けるにはメッセージを送信してください。",
   dismissUpdateNotice: "アップデート通知を閉じる",
+  dismissUserInputQuestion: "質問を閉じる",
   dismissWokeNotification: "Woke通知を閉じる",
   displayName: "表示名",
   done: "完了",

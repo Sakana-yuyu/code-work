@@ -40,6 +40,48 @@ export function queuedMessageRecallTargetId(input: {
   return input.queuedMessages.at(-1)?.id ?? null;
 }
 
+/**
+ * ↑/↓ walks already-sent prompts shell-history style. `recall` tracks which
+ * sent prompt currently occupies the box: ↑ steps further back, ↓ steps
+ * forward and returns `"clear"` at the newest entry so the draft empties out.
+ * Any edit to the recalled text invalidates the walk (the prompt no longer
+ * matches `recall.text`), so the caller can drop its state and start over.
+ */
+export interface ComposerSentPromptRecallState {
+  readonly index: number;
+  readonly text: string;
+}
+
+export function sentPromptRecallForArrow(input: {
+  readonly direction: "up" | "down";
+  readonly prompt: string;
+  readonly goalComposerActive: boolean;
+  /** Already-sent user prompt texts, newest first. */
+  readonly sentPrompts: ReadonlyArray<string>;
+  readonly recall: ComposerSentPromptRecallState | null;
+}): ComposerSentPromptRecallState | "clear" | null {
+  if (input.goalComposerActive) return null;
+  const promptEmpty =
+    input.prompt.split(INLINE_TERMINAL_CONTEXT_PLACEHOLDER).join("").trim().length === 0;
+
+  const activeRecall =
+    input.recall !== null && input.prompt === input.recall.text ? input.recall : null;
+
+  if (activeRecall === null) {
+    if (input.direction !== "up" || !promptEmpty) return null;
+    const text = input.sentPrompts[0];
+    return text === undefined ? null : { index: 0, text };
+  }
+
+  if (input.direction === "up") {
+    const text = input.sentPrompts[activeRecall.index + 1];
+    return text === undefined ? null : { index: activeRecall.index + 1, text };
+  }
+  if (activeRecall.index === 0) return "clear";
+  const text = input.sentPrompts[activeRecall.index - 1];
+  return text === undefined ? "clear" : { index: activeRecall.index - 1, text };
+}
+
 const isInlineTokenSegment = (
   segment:
     | { type: "text"; text: string }

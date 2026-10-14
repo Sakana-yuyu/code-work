@@ -42,6 +42,8 @@ import {
   collapseExpandedComposerCursor,
   composerSubmissionIntentForEnter,
   queuedMessageRecallTargetId,
+  sentPromptRecallForArrow,
+  type ComposerSentPromptRecallState,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
   replaceTextRange,
@@ -557,6 +559,12 @@ export interface ChatComposerProps {
   /** 提供时排队条带显示引导按钮：立即送达运行中的 agent，不中断当前输出。 */
   onSteerQueuedMessage?: (messageId: string) => void;
   onClearQueuedMessages?: () => void;
+  /**
+   * Already-sent user prompt texts, newest first. Powers ↑/↓ shell-style
+   * recall when the queue has nothing to pull back.
+   */
+  sentPromptRecallTexts?: ReadonlyArray<string>;
+  onRecallSentPrompt?: (text: string) => void;
   isServerThread: boolean;
   isLocalDraftThread: boolean;
   forceExpandedOnMobile: boolean;
@@ -644,6 +652,7 @@ export interface ChatComposerProps {
   ) => Promise<unknown>;
   onSelectActivePendingUserInputOption: (questionId: string, optionLabel: string) => void;
   onAdvanceActivePendingUserInput: () => void;
+  onDismissActivePendingUserInput: () => void;
   onPreviousActivePendingUserInputQuestion: () => void;
   onChangeActivePendingUserInputCustomAnswer: (
     questionId: string,
@@ -670,6 +679,8 @@ const EMPTY_QUEUED_MESSAGES: ReadonlyArray<{
   readonly text: string;
   readonly steerable?: boolean;
 }> = [];
+
+const EMPTY_SENT_PROMPT_RECALLS: ReadonlyArray<string> = [];
 
 export function QueuedMessagesPanel({
   messages,
@@ -784,6 +795,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onEditQueuedMessage,
     onSteerQueuedMessage,
     onClearQueuedMessages,
+    sentPromptRecallTexts = EMPTY_SENT_PROMPT_RECALLS,
+    onRecallSentPrompt,
     isServerThread: _isServerThread,
     isLocalDraftThread: _isLocalDraftThread,
     forceExpandedOnMobile,
@@ -832,6 +845,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onRespondToApproval,
     onSelectActivePendingUserInputOption,
     onAdvanceActivePendingUserInput,
+    onDismissActivePendingUserInput,
     onPreviousActivePendingUserInputQuestion,
     onChangeActivePendingUserInputCustomAnswer,
     onProviderModelSelect,
@@ -2562,6 +2576,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: command key
   // ------------------------------------------------------------------
+  // ↑/↓ sent-prompt recall walk state. The box holding the recalled text is
+  // what marks the walk active — editing that text ends it on the next arrow.
+  const sentPromptRecallRef = useRef<ComposerSentPromptRecallState | null>(null);
   const onComposerCommandKey = (
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
     event: KeyboardEvent,
@@ -2598,9 +2615,34 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         queuedMessages,
       });
       if (recallMessageId !== null) {
+        sentPromptRecallRef.current = null;
         onEditQueuedMessage(recallMessageId);
         return true;
       }
+    }
+    // ↑/↓ then walks already-sent prompts shell-history style: ↑ recalls the
+    // newest prompt into the empty box, further presses step back, ↓ steps
+    // forward and empties the draft at the newest entry. Editing the recalled
+    // text ends the walk (the prompt stops matching the tracked entry).
+    if (key === "ArrowUp" || key === "ArrowDown") {
+      const nextRecall = sentPromptRecallForArrow({
+        direction: key === "ArrowUp" ? "up" : "down",
+        prompt,
+        goalComposerActive: isGoalComposerActive,
+        sentPrompts: sentPromptRecallTexts,
+        recall: sentPromptRecallRef.current,
+      });
+      if (nextRecall === "clear") {
+        sentPromptRecallRef.current = null;
+        onRecallSentPrompt?.("");
+        return true;
+      }
+      if (nextRecall !== null) {
+        sentPromptRecallRef.current = nextRecall;
+        onRecallSentPrompt?.(nextRecall.text);
+        return true;
+      }
+      sentPromptRecallRef.current = null;
     }
     const submissionIntent =
       key === "Enter"
@@ -3515,6 +3557,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               questionIndex={activePendingQuestionIndex}
               onToggleOption={onSelectActivePendingUserInputOption}
               onAdvance={onAdvanceActivePendingUserInput}
+              onDismiss={onDismissActivePendingUserInput}
             />
           ) : !isComposerCollapsedMobile && showPlanFollowUpPrompt && activeProposedPlan ? (
             <ComposerPlanFollowUpBanner
@@ -3546,6 +3589,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 questionIndex={activePendingQuestionIndex}
                 onToggleOption={onSelectActivePendingUserInputOption}
                 onAdvance={onAdvanceActivePendingUserInput}
+                onDismiss={onDismissActivePendingUserInput}
               />
               <div className="px-3 pb-3 sm:px-4">
                 <div

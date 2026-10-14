@@ -177,6 +177,29 @@ export function useSelectedThreadRequests() {
     selectedThreadShell,
   ]);
 
+  // Closing the card without answering resolves the request with an empty
+  // answer map — the same "no answer" shape the ACP adapters emit on
+  // interrupt — so the provider unblocks instead of waiting forever.
+  const onDismissUserInput = useCallback(async () => {
+    if (!selectedThreadShell || !activePendingUserInput) {
+      return;
+    }
+
+    setRespondingUserInputId(activePendingUserInput.requestId);
+    const result = await respondToUserInput({
+      environmentId: selectedThreadShell.environmentId,
+      input: {
+        threadId: selectedThreadShell.id,
+        requestId: activePendingUserInput.requestId,
+        answers: {},
+      },
+    });
+    setRespondingUserInputId((current) =>
+      current === activePendingUserInput.requestId ? null : current,
+    );
+    return result;
+  }, [activePendingUserInput, respondToUserInput, selectedThreadShell]);
+
   return {
     activePendingApproval,
     activePendingUserInput,
@@ -188,5 +211,6 @@ export function useSelectedThreadRequests() {
     onSelectUserInputOption,
     onChangeUserInputCustomAnswer,
     onSubmitUserInput,
+    onDismissUserInput,
   };
 }

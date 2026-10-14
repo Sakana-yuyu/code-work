@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
+import { t } from "~/i18n";
 import type { PendingUserInput } from "../../session-logic";
 
 const prompt: PendingUserInput = {
@@ -22,7 +23,7 @@ const prompt: PendingUserInput = {
   ],
 };
 
-function renderPanel() {
+function renderPanel(onDismiss: () => void = () => {}) {
   return renderToStaticMarkup(
     <ComposerPendingUserInputPanel
       pendingUserInputs={[prompt]}
@@ -31,6 +32,7 @@ function renderPanel() {
       questionIndex={0}
       onToggleOption={() => {}}
       onAdvance={() => {}}
+      onDismiss={onDismiss}
     />,
   );
 }
@@ -57,5 +59,13 @@ describe("ComposerPendingUserInputPanel", () => {
     expect(markup).toContain("Which approach should the migration take?");
     expect(markup).toContain("Incremental");
     expect(markup).toContain("Big bang");
+  });
+
+  it("offers a dismiss control separate from the collapse toggle", () => {
+    const markup = renderPanel();
+
+    const label = t("dismissUserInputQuestion");
+    expect(markup).toContain(`aria-label="${label}"`);
+    expect(markup).toContain(`title="${label}"`);
   });
 });
