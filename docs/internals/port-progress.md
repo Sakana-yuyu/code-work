@@ -1376,3 +1376,19 @@ Mobile目标tsgo通过，PID137316；Web局部目标首次报既有useCopyToClip
 保留原Android/iOS源码路径，Mobile fields/unknown/materialize行为和目标类型有直接回归证据，本轮没有新增该标识复用的Android/iOS设备动作。桌面壳复用已构建的第75主题，Web与Desktop采用同一修复源；服务端、所有adapter、目录入口/缓存和连接协议不变。其他driver依据显式driver与既有声明，不新增支持能力。当前证据是本机第二环境与受控配置，不是外部账号、公网relay/tunnel或本轮帧率。
 
 工作区外catalog-instance-slots-{old-source,old-test-result,old-test,core-result,typecheck-_,baseline-web-typecheck_,web-source,desktop-before,desktop-after,settings-before,settings-disabled,settings-restored,proof}保留；可视化目录desktop-provider-slot-{before,after}.png及provider-slot-proof.json可查看，截图/脚本不提交。两生产源、两测试与四份用户/架构/比较/进度文档独立提交，可独立回退，无迁移。fixture wrapper继续保持原恢复字节，enabled恢复；独立Electron、原窗口和原服务保留。第11项完整模型/模式/设置/待发入口矩阵、重启目录、原第14/19项及全39项/comparison继续进行，不能以本轮行构造修复替代它们。提交前后仍检查原83个无关基线文件、BYOK/ChatView/ChatComposer混合hunk及92项原未提交状态。
+
+## 77. 恢复会话的 ACP 模型与模式选择按当前目录对齐
+
+基线3491b56879bc44c4d115fa0fafd0bd391907d6b8，第76主题已独立提交，本轮为第11项首个可独立验收增量：后端重启或原生会话恢复后，持久化的动态模型/模式选择与新CLI实际广告目录对齐。不改协议合同、不手工改SQL/历史消息/目录、不重造统一目录与缓存。
+
+保留失败线程2367d4eb-3530-4a97-92a6-a9c042ab76eb：watch重启后session/load广告default、composer-2、gpt-5.4、claude-opus-4-6，持久化dynamic-default在session/set_config_option本地校验被拒，Invalid value "dynamic-default"，第二个prompt未调用，规范用户消息已落库、会话error。重启有watch日志证据，空闲阈值1800000ms，不归因空闲回收，触发源未确认。原实现把持久化值直接送入set_config_option/set_model，本主题在adapter边界补齐对账。
+
+CursorAcpSupport.applyCursorAcpModelSelection返回{appliedModel,withdrawnModel}：先读当前configOptions并抽取模型configId；config选项目录按请求全值→基础模型ID→当前有效值→首个有效项回退；空数组视为明确撤回、不派发；目录null（CLI未广告）保留原请求值透传。旧式getAvailableModels目录同理：请求在目录内用之，否则广告默认，否则首项，空目录不派发。模型下发后重新读getConfigOptions再应用reasoning/context/fast，因为per-model选项随模型切换出现；首次漏掉re-read被完整测试回归捕获并修复。AcpAdapterSupport.applyAcpModeSelection返回{applied,withdrawnModeId}：按getModeState强校验，撤回模式不派发交调用方回退；非字符串模式值仍是ACP请求错误。applyAcpConfigSelections语义不变，撤回配置值仍拒绝并提示刷新会话配置。
+
+Grok模型路径明确不按目录强校验：session/set_model旧式接口本接受目录外自定义模型，runtime成功后以isCustom追加，CLI仍是权威；新增透传回归测试。GrokAdapter两个调用点仅消费模式结果，撤回模式发runtime.warning后继续。CursorAdapter抽applyRequestedSessionConfiguration统一startSession/sendTurn：模型对齐、显式模式优先于default/plan推断、撤回模式告警后走正常runtime/interaction解析、配置项按最新目录校验。会话显示模型与turn.started记录实际下发值而非撤回原值；runtime.warning携带eventId/createdAt与provider/thread/turn元数据，经既有ProviderRuntimeIngestion落工作日志，不新增合同类型。
+
+新增与更新测试：CursorAcpSupport模型选择describe转@effect/vitest的it.effect并补撤回回退/空目录/旧式目录/null透传共10项；GrokAcpSupport透传用例累计16项；CursorAdapter新增恢复回归（持久化dynamic-default+标准目录，撤回不派发且回退currentValue不产生请求、警告与提示均落事件、URI模式与通知收集器需先Effect.yieldNow挂订阅再跑会话）累计44项；既有失效模式值用例由"整轮失败"改断言"不派发且继续"；GrokAdapter 50项。四文件合计120项全部通过，PID退出0；完整CursorAdapter回归曾暴露per-model配置在setModel前取目录的顺序缺陷，修复后复跑全绿。
+
+定向fmt/lint对十份改动文件零错误；CursorAdapter.test.ts约1398行一处既有未用参数告警保留未动，不混入本提交。scoped tsgo对本八份源/测试文件零诊断；全仓server tsgo仍有脏工作区既有无关错误（AgentHooks的JSON/ExitCode/Path诊断、ToolBroker未标记Error、CliProxy建议项、server.test.ts缺ByokCatalog上下文等），不属于本主题。CursorTextGeneration.textGeneration以丢弃位置调用applyCursorAcpModelSelection，新返回对象兼容无需改动。
+
+providers.md的ACP目录章节记录三态目录语义（null透传/非空回退/空不下发）、Grok模型透传依据与per-model重读决策。尚未完成：保留受控环境对失败线程场景的后端重启恢复实测、完全空目录/未知配置的真实客户端草稿与待发行为、目录在编辑器打开期间撤回的三端表现、设置/新任务/命令面板/快捷键入口覆盖及Mobile实机证据；这些为第11项后续增量，不以本轮单测/适配层证据替代。提交前后核验：原83个无关基线文件SHA一致，15个相对基线变更文件均为既往已提交主题产物且与本提交无交集，BYOK/ChatView/ChatComposer混合hunk及92项原未提交状态保留。

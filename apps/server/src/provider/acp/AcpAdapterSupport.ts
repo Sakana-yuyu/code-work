@@ -23,22 +23,34 @@ const isAcpInputStreamEndedError = Schema.is(EffectAcpErrors.AcpInputStreamEnded
 const isAcpTransportError = Schema.is(EffectAcpErrors.AcpTransportError);
 const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
 
-/** 显式模式优先于兼容的 default/plan 推断，错误不能静默降级为另一模式。 */
+export interface AcpModeSelectionResult {
+  /** 显式模式请求是否已按当前目录写入。 */
+  readonly applied: boolean;
+  /** 请求的模式不在当前会话模式目录中时携带被撤回的原始值。 */
+  readonly withdrawnModeId: string | undefined;
+}
+
+/** 显式模式优先于兼容的 default/plan 推断；恢复后已撤回的模式不派发，交回调用方按当前目录回退。 */
 export function applyAcpModeSelection(
   runtime: AcpSessionRuntime["Service"],
   selections: ReadonlyArray<ProviderOptionSelection> | null | undefined,
-): Effect.Effect<boolean, EffectAcpErrors.AcpError> {
-  const selection = selections?.find((option) => option.id === ACP_MODE_OPTION_ID);
-  if (!selection) return Effect.succeed(false);
-  if (typeof selection.value !== "string") {
-    return Effect.fail(
-      new EffectAcpErrors.AcpRequestError({
+): Effect.Effect<AcpModeSelectionResult, EffectAcpErrors.AcpError> {
+  return Effect.gen(function* () {
+    const selection = selections?.find((option) => option.id === ACP_MODE_OPTION_ID);
+    if (!selection) return { applied: false, withdrawnModeId: undefined };
+    if (typeof selection.value !== "string") {
+      return yield* new EffectAcpErrors.AcpRequestError({
         code: -32602,
         errorMessage: "ACP 模式必须为当前会话提供的字符串 ID。",
-      }),
-    );
-  }
-  return runtime.setMode(selection.value).pipe(Effect.as(true));
+      });
+    }
+    const modeState = yield* runtime.getModeState;
+    if (!modeState || !modeState.availableModes.some((mode) => mode.id === selection.value)) {
+      return { applied: false, withdrawnModeId: selection.value };
+    }
+    yield* runtime.setMode(selection.value);
+    return { applied: true, withdrawnModeId: undefined };
+  });
 }
 
 /** 按最新广告校验再写回，缺省不改变角色或权限，撤回的配置不可继续提交。 */

@@ -325,6 +325,14 @@ function resolveRequestedModeId(input: {
   );
 }
 
+interface AppliedRequestedSessionConfiguration {
+  /** 模型应用路径是否执行；执行时 appliedModel 为空表示目录整体撤回、未派发任何模型设置。 */
+  readonly modelApplied: boolean;
+  readonly appliedModel: string | undefined;
+  /** 已撤回选择被丢弃或回退时生成的用户可见告警。 */
+  readonly warnings: ReadonlyArray<string>;
+}
+
 function applyRequestedSessionConfiguration<E>(input: {
   readonly runtime: AcpSessionRuntime.AcpSessionRuntime["Service"];
   readonly runtimeMode: RuntimeMode;
@@ -340,15 +348,18 @@ function applyRequestedSessionConfiguration<E>(input: {
     readonly cause: import("effect-acp/errors").AcpError;
     readonly method: "session/set_config_option" | "session/set_mode";
   }) => E;
-}): Effect.Effect<void, E> {
+}): Effect.Effect<AppliedRequestedSessionConfiguration, E> {
   return Effect.gen(function* () {
+    const warnings: Array<string> = [];
+    let modelApplied = false;
+    let appliedModel: string | undefined;
     if (
       input.supportsModelSelection &&
       input.modelSelection &&
       (input.modelSelection.model !== "default" ||
         (yield* input.runtime.getAvailableModels)?.some((model) => model.slug === "default"))
     ) {
-      yield* applyCursorAcpModelSelection({
+      const modelResult = yield* applyCursorAcpModelSelection({
         runtime: input.runtime,
         model: input.modelSelection.model,
         selections: input.modelSelection.options,
@@ -358,13 +369,27 @@ function applyRequestedSessionConfiguration<E>(input: {
             method: "session/set_config_option",
           }),
       });
+      modelApplied = true;
+      appliedModel = modelResult.appliedModel;
+      if (modelResult.withdrawnModel !== undefined) {
+        warnings.push(
+          modelResult.appliedModel !== undefined
+            ? `模型选择「${modelResult.withdrawnModel}」已不在当前 CLI 模型目录中，本次改用「${modelResult.appliedModel}」。`
+            : `模型选择「${modelResult.withdrawnModel}」已不在当前 CLI 模型目录中，本次未发送模型设置。`,
+        );
+      }
     }
 
     const explicitMode = yield* applyAcpModeSelection(
       input.runtime,
       input.modelSelection?.options,
     ).pipe(Effect.mapError((cause) => input.mapError({ cause, method: "session/set_mode" })));
-    const requestedModeId = explicitMode
+    if (explicitMode.withdrawnModeId !== undefined) {
+      warnings.push(
+        `会话模式「${explicitMode.withdrawnModeId}」已不在当前 CLI 模式目录中，已按当前会话模式继续。`,
+      );
+    }
+    const requestedModeId = explicitMode.applied
       ? undefined
       : resolveRequestedModeId({
           interactionMode: input.interactionMode,
@@ -384,6 +409,8 @@ function applyRequestedSessionConfiguration<E>(input: {
     yield* applyAcpConfigSelections(input.runtime, input.modelSelection?.options).pipe(
       Effect.mapError((cause) => input.mapError({ cause, method: "session/set_config_option" })),
     );
+
+    return { modelApplied, appliedModel, warnings };
   });
 }
 
@@ -1521,7 +1548,7 @@ export function makeCursorAdapter(
           );
           activeAcpSessionId = started.sessionId;
 
-          yield* applyRequestedSessionConfiguration({
+          const appliedConfiguration = yield* applyRequestedSessionConfiguration({
             runtime: acp,
             runtimeMode: input.runtimeMode,
             interactionMode: undefined,
@@ -1530,6 +1557,15 @@ export function makeCursorAdapter(
             mapError: ({ cause, method }) =>
               mapAcpToAdapterError(PROVIDER, input.threadId, method, cause),
           });
+          for (const warning of appliedConfiguration.warnings) {
+            yield* offerRuntimeEvent({
+              type: "runtime.warning",
+              ...(yield* makeEventStamp()),
+              provider: PROVIDER,
+              threadId: input.threadId,
+              payload: { message: warning },
+            });
+          }
 
           const now = yield* nowIso;
           const session: ProviderSession = {
@@ -1538,7 +1574,7 @@ export function makeCursorAdapter(
             status: "ready",
             runtimeMode: input.runtimeMode,
             cwd,
-            model: cursorModelSelection?.model,
+            model: appliedConfiguration.appliedModel ?? cursorModelSelection?.model,
             threadId: input.threadId,
             resumeCursor: {
               schemaVersion: CURSOR_RESUME_VERSION,
@@ -1789,8 +1825,7 @@ export function makeCursorAdapter(
           const turnModelSelection =
             input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined;
           const model = turnModelSelection?.model ?? ctx.session.model;
-          const resolvedModel = resolveCursorAcpBaseModelId(model);
-          yield* applyRequestedSessionConfiguration({
+          const appliedConfiguration = yield* applyRequestedSessionConfiguration({
             runtime: ctx.acp,
             runtimeMode: ctx.session.runtimeMode,
             interactionMode: input.interactionMode,
@@ -1805,12 +1840,29 @@ export function makeCursorAdapter(
             mapError: ({ cause, method }) =>
               mapAcpToAdapterError(PROVIDER, input.threadId, method, cause),
           });
+          for (const warning of appliedConfiguration.warnings) {
+            yield* offerRuntimeEvent({
+              type: "runtime.warning",
+              ...(yield* makeEventStamp()),
+              provider: PROVIDER,
+              threadId: input.threadId,
+              turnId,
+              payload: { message: warning },
+            });
+          }
+          // 目录撤回时被丢弃的选择不再展示为已生效模型；目录缺失则保留请求值用于下次重试。
+          const turnModel = appliedConfiguration.modelApplied
+            ? appliedConfiguration.appliedModel
+            : resolveCursorAcpBaseModelId(model);
           ctx.activeTurnId = turnId;
           if (steeringTurnId === undefined) {
             ctx.lastPlanFingerprint = undefined;
           }
           ctx.session = {
             ...ctx.session,
+            model: appliedConfiguration.modelApplied
+              ? (appliedConfiguration.appliedModel ?? ctx.session.model)
+              : ctx.session.model,
             activeTurnId: turnId,
             updatedAt: yield* nowIso,
           };
@@ -1822,7 +1874,7 @@ export function makeCursorAdapter(
               provider: PROVIDER,
               threadId: input.threadId,
               turnId,
-              payload: { model: resolvedModel },
+              payload: turnModel === undefined ? {} : { model: turnModel },
             });
           }
 
@@ -1951,7 +2003,7 @@ export function makeCursorAdapter(
             ...ctx.session,
             activeTurnId: turnId,
             updatedAt: yield* nowIso,
-            model: resolvedModel,
+            ...(turnModel === undefined ? {} : { model: turnModel }),
           };
 
           // Only the last remaining prompt settles the turn — a steer-

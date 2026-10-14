@@ -1258,11 +1258,25 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             grokModelSelection,
             "reasoningEffort",
           );
-          yield* applyAcpModeSelection(acp, grokModelSelection?.options).pipe(
+          const startModeResult = yield* applyAcpModeSelection(
+            acp,
+            grokModelSelection?.options,
+          ).pipe(
             Effect.mapError((cause) =>
               mapAcpToAdapterError(PROVIDER, input.threadId, "session/set_mode", cause),
             ),
           );
+          if (startModeResult.withdrawnModeId !== undefined) {
+            yield* offerRuntimeEvent({
+              type: "runtime.warning",
+              ...(yield* makeEventStamp()),
+              provider: PROVIDER,
+              threadId: input.threadId,
+              payload: {
+                message: `会话模式「${startModeResult.withdrawnModeId}」已不在当前 CLI 模式目录中，已按当前会话模式继续。`,
+              },
+            });
+          }
           yield* applyAcpConfigSelections(acp, grokModelSelection?.options).pipe(
             Effect.mapError((cause) =>
               mapAcpToAdapterError(PROVIDER, input.threadId, "session/set_config_option", cause),
@@ -1656,11 +1670,26 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 });
               }
 
-              yield* applyAcpModeSelection(ctx.acp, input.modelSelection?.options).pipe(
+              const turnModeResult = yield* applyAcpModeSelection(
+                ctx.acp,
+                input.modelSelection?.options,
+              ).pipe(
                 Effect.mapError((cause) =>
                   mapAcpToAdapterError(PROVIDER, input.threadId, "session/set_mode", cause),
                 ),
               );
+              if (turnModeResult.withdrawnModeId !== undefined) {
+                yield* offerRuntimeEvent({
+                  type: "runtime.warning",
+                  ...(yield* makeEventStamp()),
+                  provider: PROVIDER,
+                  threadId: input.threadId,
+                  turnId,
+                  payload: {
+                    message: `会话模式「${turnModeResult.withdrawnModeId}」已不在当前 CLI 模式目录中，已按当前会话模式继续。`,
+                  },
+                });
+              }
               yield* applyAcpConfigSelections(ctx.acp, input.modelSelection?.options).pipe(
                 Effect.mapError((cause) =>
                   mapAcpToAdapterError(

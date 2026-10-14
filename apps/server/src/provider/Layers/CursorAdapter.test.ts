@@ -413,8 +413,15 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const adapter = yield* CursorAdapter;
       const settings = yield* ServerSettingsService;
       const threadId = ThreadId.make("acp-uri-mode");
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "acp-uri-mode-")),
+      );
+      const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ CODEWORK_ACP_URI_MODES: "1" }),
+        makeMockAgentWrapper({
+          CODEWORK_ACP_URI_MODES: "1",
+          CODEWORK_ACP_REQUEST_LOG_PATH: requestLogPath,
+        }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
       const uri = "https://agentclientprotocol.com/protocol/session-modes#review";
@@ -457,14 +464,48 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         activities.findLast((activity) => activity.kind === "session.mode.updated")?.payload,
         { providerInstanceId: "cursor", mode: { ...initial?.payload.mode, currentValue: "ask" } },
       );
-      for (const value of [true, "removed"]) {
-        assert.equal(
-          (yield* adapter
-            .sendTurn({ threadId, input: "不能发送", modelSelection: selection(value) })
-            .pipe(Effect.result))._tag,
-          "Failure",
-        );
+      // 非字符串垃圾值仍是非法输入，整轮拒绝。
+      assert.equal(
+        (yield* adapter
+          .sendTurn({ threadId, input: "不能发送", modelSelection: selection(true) })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      // 已从目录撤回的字符串模式不再拒绝整轮：回退到当前有效模式并发出告警，
+      // 失效值不得出现在下发请求里（重启恢复路径依赖这一行为）。
+      const removedTurnEvents = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        yield* Effect.yieldNow;
       }
+      const removedResult = yield* adapter
+        .sendTurn({ threadId, input: "模式已撤回", modelSelection: selection("removed") })
+        .pipe(Effect.result);
+      assert.equal(removedResult._tag, "Success");
+      const removedCollected = Array.from(yield* Fiber.join(removedTurnEvents));
+      assert.isTrue(
+        removedCollected.some(
+          (event) => event.type === "runtime.warning" && event.payload.message.includes("removed"),
+        ),
+      );
+      const requests = yield* Effect.promise(() => readJsonLines(requestLogPath));
+      assert.isFalse(
+        requests.some(
+          (entry) =>
+            (entry.method === "session/set_mode" || entry.method === "session/set_config_option") &&
+            (entry.params as Record<string, unknown>)?.modeId === "removed",
+        ),
+      );
+      assert.isFalse(
+        requests.some(
+          (entry) =>
+            entry.method === "session/set_config_option" &&
+            (entry.params as Record<string, unknown>)?.value === "removed",
+        ),
+      );
       yield* adapter.stopSession(threadId);
     }),
   );
@@ -549,6 +590,91 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
             (entry.params as Record<string, unknown>)?.value === "code",
         ),
       );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("恢复后已撤回模型回退当前目录并告警，后续发送不再派发失效值", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("acp-stale-model-recovery");
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "acp-stale-model-")),
+      );
+      const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
+      // 参数化模型目录 default/composer-2/gpt-5.4/claude-opus-4-6，复现
+      // 2367d4eb 重启恢复时旧持久化 dynamic-default 被撤回的场景。
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ CODEWORK_ACP_REQUEST_LOG_PATH: requestLogPath }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const startup = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "thread.started"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("cursor"),
+          model: "dynamic-default",
+        },
+      });
+      const startupEvents = Array.from(yield* Fiber.join(startup));
+      assert.isTrue(
+        startupEvents.some(
+          (event) =>
+            event.type === "runtime.warning" && event.payload.message.includes("dynamic-default"),
+        ),
+      );
+
+      // 第二、三次发送仍携带旧持久化值：每次都按当前目录回退而非整轮失败。
+      for (const input of ["恢复后第二次发送", "恢复后第三次发送"]) {
+        const completed = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "turn.completed"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        // 先让订阅挂上，回合早期事件（告警/turn.started）才不会被漏收。
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          yield* Effect.yieldNow;
+        }
+        yield* adapter.sendTurn({
+          threadId,
+          input,
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("cursor"),
+            model: "dynamic-default",
+          },
+        });
+        const events = Array.from(yield* Fiber.join(completed));
+        assert.isFalse(events.some((event) => event.type === "runtime.error"));
+        assert.isTrue(
+          events.some(
+            (event) =>
+              event.type === "runtime.warning" && event.payload.message.includes("dynamic-default"),
+          ),
+        );
+      }
+
+      const requests = yield* Effect.promise(() => readJsonLines(requestLogPath));
+      // 失效值绝不能出现在下发请求里；回退到 currentValue 时 setConfigOption
+      // 本就是 no-op，不强制要求产生模型写请求。
+      assert.isFalse(
+        requests.some(
+          (entry) =>
+            (entry.method === "session/set_config_option" ||
+              entry.method === "session/set_model") &&
+            Object.values((entry.params ?? {}) as Record<string, unknown>).includes(
+              "dynamic-default",
+            ),
+        ),
+      );
+      assert.equal(requests.filter((entry) => entry.method === "session/prompt").length, 2);
       yield* adapter.stopSession(threadId);
     }),
   );

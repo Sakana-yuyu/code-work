@@ -147,6 +147,8 @@ export function currentGrokReasoningEffortFromSessionSetup(
     : undefined;
 }
 
+// session/set_model 属旧式接口且接受目录外自定义模型（runtime 成功后按 isCustom 追加），
+// 模型选择不按目录强校验；CLI 仍是合法性的最终权威。
 export function applyGrokAcpModelSelection<E>(input: {
   readonly runtime: Pick<AcpSessionRuntime.AcpSessionRuntime["Service"], "setSessionModel">;
   readonly currentModelId: string | undefined;

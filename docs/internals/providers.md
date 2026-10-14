@@ -135,6 +135,8 @@ Grok 扩展的 JSON-RPC result 还包含一层 `result` / `error` 包装，error
 
 2026-10-13 以 `xai-org grok-build cli_models`、`grok models ACP` 检索官方源代码，采用固定 SHA `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8`（1.0.45）的[目录客户端](https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-shell/src/cli_models.rs#L49-L93)、[目录 handler](https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-shell/src/agent/handlers/models.rs#L8-L25)及[认证实现](https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-shell/src/agent/mvp_agent/acp_agent.rs#L679-L686)核对请求与副作用。公开1.0.0源码已有该扩展，但更早公开alpha采用不同合同；不推断全部旧版本可用。实现只移植协议行为，不复制上游源码。本机没有已安装Grok CLI的运行证据，验收范围见[移植记录](./port-progress.md)。
 
+持久化的模型/模式选择与恢复后广告目录的对齐在 adapter 边界完成（`applyCursorAcpModelSelection`、`applyAcpModeSelection`）。目录为 `null` 表示 CLI 没有广告模型信息，保留请求值透传；目录为非空数组时按请求全值→基础模型 ID→当前有效值→首个有效项的顺序回退；目录为空数组表示 CLI 明确撤回全部模型，不下发任何模型设置。被撤回的模型/模式产生 `runtime.warning` 事件而非请求失败，会话显示模型与 `turn.started` 记录实际下发的值。`session/set_model` 旧式接口本就接受目录外自定义模型（运行时成功后会以 `isCustom` 追加），因此 Grok 的模型路径保持透传、由 CLI 作权威校验；模式目录是强校验的，失效模式值被忽略并告警，回退到正常 runtime/interaction 模式解析。per-model 配置项（reasoning/context/fast）在模型下发后重新读取 `getConfigOptions` 再应用，因为新模型可能带来不同的 configOptions。
+
 ## Model manifest
 
 The model picker's legacy section is driven by `apps/server/src/provider/model-manifest.json`, which

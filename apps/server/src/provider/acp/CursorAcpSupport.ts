@@ -13,6 +13,11 @@ import {
   resolveCursorAcpConfigUpdates,
 } from "../Layers/CursorProvider.ts";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
+import {
+  collectSessionConfigOptionValues,
+  extractModelConfigId,
+  findSessionConfigOption,
+} from "./AcpRuntimeModel.ts";
 
 type CursorAcpRuntimeCursorSettings = Pick<CursorSettings, "apiEndpoint" | "binaryPath">;
 
@@ -96,6 +101,7 @@ export const makeCursorAcpRuntime = (
 
 interface CursorAcpModelSelectionRuntime {
   readonly getConfigOptions: AcpSessionRuntime.AcpSessionRuntime["Service"]["getConfigOptions"];
+  readonly getAvailableModels: AcpSessionRuntime.AcpSessionRuntime["Service"]["getAvailableModels"];
   readonly setConfigOption: (
     configId: string,
     value: string | boolean,
@@ -103,22 +109,74 @@ interface CursorAcpModelSelectionRuntime {
   readonly setModel: (model: string) => Effect.Effect<unknown, EffectAcpErrors.AcpError>;
 }
 
+export interface CursorAcpModelSelectionResult {
+  /** 对齐当前目录后实际生效的模型 ID；目录整体撤回时为 undefined（未派发任何模型设置）。 */
+  readonly appliedModel: string | undefined;
+  /** 请求模型不在当前目录且被回退或丢弃时为请求的原始 ID。 */
+  readonly withdrawnModel: string | undefined;
+}
+
+/** 重启/恢复后旧目录可能已撤回：请求值先按广告对齐到当前值或首个可选项，目录为空则不派发。 */
 export function applyCursorAcpModelSelection<E>(input: {
   readonly runtime: CursorAcpModelSelectionRuntime;
   readonly model: string | null | undefined;
   readonly selections: ReadonlyArray<ProviderOptionSelection> | null | undefined;
   readonly mapError: (context: CursorAcpModelSelectionErrorContext) => E;
-}): Effect.Effect<void, E> {
+}): Effect.Effect<CursorAcpModelSelectionResult, E> {
   return Effect.gen(function* () {
-    yield* input.runtime.setModel(resolveCursorAcpBaseModelId(input.model)).pipe(
-      Effect.mapError((cause) =>
-        input.mapError({
-          cause,
-          step: "set-model",
-        }),
-      ),
-    );
+    const configOptions = yield* input.runtime.getConfigOptions;
+    const requestedRaw = input.model?.trim() || "default";
+    const requestedBase = resolveCursorAcpBaseModelId(input.model);
+    const candidates =
+      requestedRaw === requestedBase ? [requestedBase] : [requestedRaw, requestedBase];
 
+    const modelConfigId = extractModelConfigId({ configOptions });
+    const modelOption = modelConfigId
+      ? findSessionConfigOption(configOptions, modelConfigId)
+      : undefined;
+
+    let appliedModel: string | undefined;
+    let withdrawnModel: string | undefined;
+    if (modelOption !== undefined) {
+      const allowedValues = collectSessionConfigOptionValues(modelOption);
+      appliedModel = candidates.find((candidate) => allowedValues.includes(candidate));
+      if (appliedModel === undefined) {
+        withdrawnModel = requestedRaw;
+        const currentValue = modelOption.currentValue;
+        appliedModel =
+          typeof currentValue === "string" && allowedValues.includes(currentValue)
+            ? currentValue
+            : allowedValues[0];
+      }
+    } else {
+      const advertisedModels = yield* input.runtime.getAvailableModels;
+      if (advertisedModels === null) {
+        // CLI 未提供模型目录信息，保持原透传语义让 CLI 自行校验。
+        appliedModel = requestedBase;
+      } else {
+        appliedModel = candidates.find((candidate) =>
+          advertisedModels.some((model) => model.slug === candidate),
+        );
+        if (appliedModel === undefined) {
+          withdrawnModel = requestedRaw;
+          appliedModel =
+            advertisedModels.find((model) => model.isDefault)?.slug ?? advertisedModels[0]?.slug;
+        }
+      }
+    }
+
+    if (appliedModel !== undefined) {
+      yield* input.runtime.setModel(appliedModel).pipe(
+        Effect.mapError((cause) =>
+          input.mapError({
+            cause,
+            step: "set-model",
+          }),
+        ),
+      );
+    }
+
+    // 模型切换后才出现 per-model 配置（reasoning/context/fast 等），必须以最新快照解析。
     const configUpdates = resolveCursorAcpConfigUpdates(
       yield* input.runtime.getConfigOptions,
       input.selections,
@@ -134,5 +192,7 @@ export function applyCursorAcpModelSelection<E>(input: {
         ),
       );
     }
+
+    return { appliedModel, withdrawnModel };
   });
 }

@@ -207,4 +207,18 @@ describe("applyGrokAcpModelSelection", () => {
       expect(error).toBe(failure.message);
     }),
   );
+
+  it.effect("passes out-of-catalog model ids through to the custom-tolerant setter", () =>
+    Effect.gen(function* () {
+      const { runtime, modelCalls } = makeRecordingRuntime();
+      const result = yield* applyGrokAcpModelSelection({
+        runtime,
+        currentModelId: "grok-build",
+        requestedModelId: "grok-custom-experimental",
+        mapError: (cause) => cause.message,
+      });
+      expect(modelCalls).toEqual([{ modelId: "grok-custom-experimental" }]);
+      expect(result).toBe("grok-custom-experimental");
+    }),
+  );
 });
