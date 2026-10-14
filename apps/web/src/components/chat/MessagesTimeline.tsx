@@ -9,6 +9,7 @@ import {
   type ProviderDriverKind,
   type ScopedThreadRef,
   type ServerProviderSkill,
+  type ThreadCheckpointRevertScope,
   type ThreadId,
   type TurnId,
 } from "@codework/contracts";
@@ -80,6 +81,7 @@ import {
   Clock3Icon,
 } from "lucide-react";
 import { Button } from "../ui/button";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { LocalPluginTimelineRow } from "../localPlugins/LocalPluginTimelineRow";
 import type { EnabledLocalPluginTimelineEntry } from "~/localPlugins/adapters/localPluginTimelineAdapter";
 
@@ -169,7 +171,7 @@ interface TimelineRowSharedState {
   repositoryRoot: string | undefined;
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
-  onRevertUserMessage: (messageId: MessageId) => void;
+  onRevertUserMessage: (messageId: MessageId, scope: ThreadCheckpointRevertScope) => void;
   onEditUserMessage: (messageId: MessageId, text: string) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
@@ -255,7 +257,7 @@ interface MessagesTimelineProps {
   routeThreadKey: string;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   revertTurnCountByUserMessageId: Map<MessageId, number | null>;
-  onRevertUserMessage: (messageId: MessageId) => void;
+  onRevertUserMessage: (messageId: MessageId, scope: ThreadCheckpointRevertScope) => void;
   onEditUserMessage: (messageId: MessageId, text: string) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
@@ -1434,25 +1436,42 @@ function TimelineMessageCard(props: {
 function RevertUserMessageButton({ messageId }: { messageId: MessageId }) {
   const ctx = use(TimelineRowCtx);
   const activity = use(TimelineRowActivityCtx);
+  const disabled = activity.isRevertingCheckpoint || activity.isWorking;
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            disabled={activity.isRevertingCheckpoint || activity.isWorking}
-            onClick={() => ctx.onRevertUserMessage(messageId)}
-            aria-label={t("revertToThisMessage")}
-          />
-        }
-      >
-        <Undo2Icon className="size-3" />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{t("revertToThisMessage")}</TooltipPopup>
-    </Tooltip>
+    <Menu>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <MenuTrigger
+              render={
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  disabled={disabled}
+                  aria-label={t("revertToThisMessage")}
+                />
+              }
+            />
+          }
+        >
+          <Undo2Icon className="size-3" />
+        </TooltipTrigger>
+        <TooltipPopup side="top">{t("revertToThisMessage")}</TooltipPopup>
+      </Tooltip>
+      <MenuPopup align="end" side="top">
+        <MenuItem onClick={() => ctx.onRevertUserMessage(messageId, "both")}>
+          {t("checkpointRevert.scope.both")}
+        </MenuItem>
+        <MenuItem onClick={() => ctx.onRevertUserMessage(messageId, "conversation")}>
+          {t("checkpointRevert.scope.conversation")}
+        </MenuItem>
+        <MenuItem onClick={() => ctx.onRevertUserMessage(messageId, "files")}>
+          {t("checkpointRevert.scope.files")}
+        </MenuItem>
+      </MenuPopup>
+    </Menu>
   );
 }
 

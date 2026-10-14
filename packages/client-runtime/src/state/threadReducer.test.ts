@@ -1411,6 +1411,83 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.latestTurn?.turnId).toBe("turn-1");
       }
     });
+
+    it("scope=files keeps conversation, checkpoints and activities intact", () => {
+      const threadWithData: OrchestrationThread = {
+        ...baseThread,
+        latestTurn: {
+          turnId: TurnId.make("turn-2"),
+          state: "completed",
+          requestedAt: "2026-04-01T03:00:00.000Z",
+          startedAt: "2026-04-01T03:00:00.000Z",
+          completedAt: "2026-04-01T03:00:00.000Z",
+          assistantMessageId: null,
+        },
+        messages: [
+          {
+            id: MessageId.make("msg-1"),
+            role: "user",
+            text: "First",
+            turnId: null,
+            streaming: false,
+            createdAt: "2026-04-01T01:00:00.000Z",
+            updatedAt: "2026-04-01T01:00:00.000Z",
+          },
+          {
+            id: MessageId.make("msg-3"),
+            role: "assistant",
+            text: "Response 2",
+            turnId: TurnId.make("turn-2"),
+            streaming: false,
+            createdAt: "2026-04-01T03:00:00.000Z",
+            updatedAt: "2026-04-01T03:00:00.000Z",
+          },
+        ],
+        checkpoints: [
+          {
+            turnId: TurnId.make("turn-1"),
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("ref-1"),
+            status: "ready",
+            files: [],
+            assistantMessageId: null,
+            completedAt: "2026-04-01T02:00:00.000Z",
+          },
+          {
+            turnId: TurnId.make("turn-2"),
+            checkpointTurnCount: 2,
+            checkpointRef: CheckpointRef.make("ref-2"),
+            status: "ready",
+            files: [],
+            assistantMessageId: null,
+            completedAt: "2026-04-01T03:00:00.000Z",
+          },
+        ],
+      };
+
+      const result = applyThreadDetailEvent(threadWithData, {
+        ...baseEventFields,
+        sequence: 14,
+        occurredAt: "2026-04-01T04:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.reverted",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          turnCount: 1,
+          scope: "files",
+        },
+      });
+
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.checkpoints).toHaveLength(2);
+        expect(result.thread.messages).toHaveLength(2);
+        expect(result.thread.latestTurn?.turnId).toBe("turn-2");
+        expect(result.thread.latestTurn?.state).toBe("completed");
+        expect(result.thread.updatedAt).toBe("2026-04-01T04:00:00.000Z");
+      }
+    });
   });
 
   describe("no-op events", () => {

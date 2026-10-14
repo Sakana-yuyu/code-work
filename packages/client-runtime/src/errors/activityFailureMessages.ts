@@ -16,6 +16,7 @@ const KEY_BY_ACTIVITY_KIND: Readonly<Record<string, string>> = {
   "provider.approval.respond.failed": "activity.providerApprovalRespondFailed",
   "provider.user-input.respond.failed": "activity.providerUserInputRespondFailed",
   "checkpoint.revert.failed": "activity.checkpointRevertFailed",
+  "checkpoint.reverted": "activity.checkpointReverted",
   "checkpoint.capture.failed": "activity.checkpointCaptureFailed",
   "runtime.error": "activity.runtimeError",
   "tool.denied": "activity.toolDenied",
@@ -37,6 +38,14 @@ export function activityFailureTranslation(activity: {
     const toolName = payload?.toolName;
     if (typeof toolName !== "string" || toolName.length === 0) return null;
     return { key, params: { toolName } };
+  }
+  if (activity.kind === "checkpoint.reverted") {
+    const payload =
+      activity.payload !== null && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const turnCount = payload?.turnCount;
+    return typeof turnCount === "number" ? { key, params: { count: String(turnCount) } } : null;
   }
   return { key, params: {} };
 }

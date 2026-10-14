@@ -247,6 +247,8 @@ export const ja: Record<string, string> = {
   "activity.providerApprovalRespondFailed": "プロバイダーの承認応答に失敗しました",
   "activity.providerUserInputRespondFailed": "プロバイダーのユーザー入力応答に失敗しました",
   "activity.checkpointRevertFailed": "チェックポイントの復元に失敗しました",
+  "activity.checkpointReverted":
+    "ワークスペースのファイルをチェックポイント {{count}} に復元しました",
   "activity.checkpointCaptureFailed": "チェックポイントの取得に失敗しました",
   "activity.runtimeError": "ランタイムエラー",
   "activity.toolDenied": "ツールが拒否されました: {{toolName}}",
@@ -585,6 +587,17 @@ export const ja: Record<string, string> = {
   "checkpointRevert.title": "このスレッドをチェックポイント {{count}} に戻しますか？",
   "checkpointRevert.description":
     "このスレッド内のそれ以降のメッセージとターンの差分は破棄されます。",
+  "checkpointRevert.title.conversation":
+    "このスレッドの会話をチェックポイント {{count}} まで巻き戻しますか？",
+  "checkpointRevert.description.conversation":
+    "このスレッド内のそれ以降のメッセージとターンの差分は破棄されます。ワークスペースのファイルは変更されません。",
+  "checkpointRevert.title.files":
+    "ワークスペースのファイルをチェックポイント {{count}} に復元しますか？",
+  "checkpointRevert.description.files":
+    "ワークスペースのファイルがチェックポイントの状態に復元されます。会話は変更されません。",
+  "checkpointRevert.scope.both": "会話とファイルを戻す",
+  "checkpointRevert.scope.conversation": "会話のみ戻す",
+  "checkpointRevert.scope.files": "ファイルのみ復元",
   "checkpointRevert.warning": "この操作は元に戻せません。",
   "checkpointRevert.reconnectFirst": "チェックポイントを戻す前に、再接続してください。",
   "checkpointRevert.interruptFirst": "チェックポイントを戻す前に、現在のターンを中断してください。",

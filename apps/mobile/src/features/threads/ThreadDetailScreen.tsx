@@ -14,6 +14,7 @@ import type {
   ProviderInteractionMode,
   RuntimeMode,
   ServerConfig as CodeworkServerConfig,
+  ThreadCheckpointRevertScope,
   ThreadId,
   UserInputQuestion,
 } from "@codework/contracts";
@@ -115,7 +116,7 @@ export interface ThreadDetailScreenProps {
   readonly onHeaderMaterialVisibilityChange?: (visible: boolean) => void;
   readonly onOpenCanvas?: (canvas: CanvasReference) => void;
   readonly revertTurnCountByUserMessageId?: ReadonlyMap<MessageId, number | null>;
-  readonly onRevertToTurnCount?: (turnCount: number) => void;
+  readonly onRevertToTurnCount?: (turnCount: number, scope: ThreadCheckpointRevertScope) => void;
   readonly isRevertingCheckpoint?: boolean;
   readonly onEditUserMessage?: (messageId: MessageId, text: string) => void;
   readonly onOpenConnectionEditor: () => void;

@@ -651,6 +651,13 @@ export function applyThreadDetailEvent(
 
     // ── Revert ──────────────────────────────────────────────────────
     case "thread.reverted": {
+      // 仅文件回退保留对话与检查点索引（与服务器投影一致）。
+      if (event.payload.scope === "files") {
+        return {
+          kind: "updated",
+          thread: { ...thread, updatedAt: event.occurredAt },
+        };
+      }
       const checkpoints = pipe(
         thread.checkpoints,
         Arr.filter(

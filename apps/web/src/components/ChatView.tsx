@@ -28,6 +28,7 @@ import {
   ProviderDriverKind,
   RuntimeMode,
   TerminalOpenInput,
+  type ThreadCheckpointRevertScope,
 } from "@codework/contracts";
 import { type EnvironmentConnectionPresentation } from "@codework/client-runtime/connection";
 import { type StartThreadTurnInput } from "@codework/client-runtime/operations";
@@ -5805,7 +5806,7 @@ function ChatViewContent(props: ChatViewProps) {
   ]);
 
   const onRevertToTurnCount = useCallback(
-    async (turnCount: number) => {
+    async (turnCount: number, scope: ThreadCheckpointRevertScope = "both") => {
       const localApi = readLocalApi();
       if (!localApi || !activeThread || isRevertingCheckpoint) return;
 
@@ -5822,8 +5823,21 @@ function ChatViewContent(props: ChatViewProps) {
       }
       const confirmed = await localApi.dialogs.confirm(
         [
-          t("checkpointRevert.title", { count: turnCount }),
-          t("checkpointRevert.description"),
+          t(
+            scope === "files"
+              ? "checkpointRevert.title.files"
+              : scope === "conversation"
+                ? "checkpointRevert.title.conversation"
+                : "checkpointRevert.title",
+            { count: turnCount },
+          ),
+          t(
+            scope === "files"
+              ? "checkpointRevert.description.files"
+              : scope === "conversation"
+                ? "checkpointRevert.description.conversation"
+                : "checkpointRevert.description",
+          ),
           t("checkpointRevert.warning"),
         ].join("\n"),
         { variant: "destructive" },
@@ -5839,6 +5853,7 @@ function ChatViewContent(props: ChatViewProps) {
         input: {
           threadId: activeThread.id,
           turnCount,
+          scope,
         },
       });
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
@@ -7632,13 +7647,16 @@ function ChatViewContent(props: ChatViewProps) {
   revertTurnCountRef.current = revertTurnCountByUserMessageId;
   const onRevertToTurnCountRef = useRef(onRevertToTurnCount);
   onRevertToTurnCountRef.current = onRevertToTurnCount;
-  const onRevertUserMessage = useCallback((messageId: MessageId) => {
-    const targetTurnCount = revertTurnCountRef.current.get(messageId);
-    if (typeof targetTurnCount !== "number") {
-      return;
-    }
-    void onRevertToTurnCountRef.current(targetTurnCount);
-  }, []);
+  const onRevertUserMessage = useCallback(
+    (messageId: MessageId, scope: ThreadCheckpointRevertScope) => {
+      const targetTurnCount = revertTurnCountRef.current.get(messageId);
+      if (typeof targetTurnCount !== "number") {
+        return;
+      }
+      void onRevertToTurnCountRef.current(targetTurnCount, scope);
+    },
+    [],
+  );
 
   // Empty state: no active thread
   if (!activeThread) {

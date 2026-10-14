@@ -1412,3 +1412,15 @@ providers.md的ACP目录章节记录三态目录语义（null透传/非空回退
 `apps/web/src/composerDraftStore.test.ts` 共 87 项通过（新增 6 项），`.t3` 两份隔离副本 81 项亦过；vp check --fix 后该文件 fmt/lint 零告警；Web 目标 tsgo --noEmit 仅有脏工作区既有无关诊断（WorkspaceLayout/useResizableWidth 的 setWidth、AgentToolsSettings 的 cryptoRandomUUID），本文件零错误。
 
 边界：本轮为 Web 纯函数层证据。设置/新任务/命令面板/快捷键入口、真实客户端 UI 下“编辑器打开期间目录撤回”的端到端表现、Mobile 实机操作证据仍属第11项开放矩阵；整体39项与comparison继续。
+
+## 79. 检查点回退拆分为 conversation / files / both
+
+基线含第78主题提交2413d8fc1。本轮落实comparison第6项“更细的能力声明”中的 rewind 三态拆分（第14项的一部分）：合同新增 `ThreadCheckpointRevertScope`（conversation/files/both），`thread.checkpoint.revert` 命令、`thread.revert.complete` 内部命令、`thread.checkpoint-revert-requested` 与 `thread.reverted` 事件全部携带可选 scope；持久化旧事件无该字段一律按 both 解释，协议向后兼容。
+
+语义：both 保持既有完整行为（恢复文件+回退 provider 对话+裁剪投影）。files 只还原工作区：经 `WorkspaceOperationLock` 作用在线程配置工作区（无 provider 会话时回退到 thread/project 配置 cwd），仍做 git 工作区校验、同工作区忙碌扫描、恢复检查点与 index 备份；不调 `rollbackConversation`、不查 `threadRollback` 能力、保留目标之后的检查点 ref（对话仍引用这些回合）；`thread.reverted` scope=files 在内存 projector、SQL ProjectionPipeline 全部五个处理器与客户端 threadReducer 中均为不裁减语义，仅刷新 updatedAt；reactor 追加 `checkpoint.reverted` 活动（经 activityFailureMessages 映射到三端本地化文案）供用户可见。conversation 只回退对话：跳过全部 git 步骤（无工作区扫描、无 index 备份、无恢复检查点），仍要求绑定 provider 会话且具备 threadRollback，无会话或不支持时失败关闭、不落任何文件副作用；失败分支不做文件补偿，仅报告对话回退未完成或“服务商已回退但本地历史提交失败”。
+
+decider 既有守卫（本线程 session starting/running/activeTurn/排队时拒绝）对三个 scope 一致生效，conversation scope 下在途回合不可能被回退。Web 端消息行回退按钮改为菜单（both/conversation/files 三项），`localApi.dialogs.confirm` 按 scope 显示对应标题与后果说明；Mobile 端 `UserMessageActions` 改用 `ControlPillMenu`（iOS 原生 UIMenu / Android `AndroidAnchoredMenu`），Alert 确认框同样分 scope 文案，`isRevertingCheckpoint` 期间菜单项禁用。Desktop 复用 Web 路径。
+
+测试：CheckpointReactor.test.ts 新增 4 项 scope 用例（files 仅还原工作区保留对话与检查点索引、conversation 仅回退对话不动文件与 git ref、files 无 provider 会话仍可还原、conversation 无会话拒绝且不触碰文件），全部用 `effectIt.effect` 风格，文件累计 37 项；threadReducer.test.ts 新增 files 不裁减用例；MessagesTimeline 既有测试在签名变更后复跑通过。定向套件：server 侧 12 文件 349 项、web/client 6 文件 256 项、mobile threads 目录 66 文件 489 项全部通过。18 份改动文件 fmt/lint 零错误；scoped tsgo 对合同/server 改动零诊断，web/mobile 仅剩脏工作区既有无关错误（Stack.tsx 引用未跟踪的 SettingsAgentToolsRouteScreen 等）。
+
+文档：providers.md 回退段落记录三态语义与文件/对话失败补偿边界；source-control.md 用户文档更新为三种范围说明（对话回退仍仅 Codex，文件还原不需要 provider 会话）。边界：conversation scope 的真实 provider 回退仅 Codex 适配器声明 threadRollback，其余适配器在能力检查处失败关闭（未新增声明）；无浏览器/实机验收；legacy 命令与事件不带 scope 时行为与旧版完全一致已由 both 路径回归覆盖。第14项其余能力（streaming/reasoning/MCP/persistence/sessionModelSwitch 三态）与设置页真实能力门控仍为开放条目。

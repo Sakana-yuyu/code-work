@@ -939,6 +939,15 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             return;
           }
 
+          if (event.payload.scope === "files") {
+            yield* projectionThreadRepository.upsert({
+              ...existingRow.value,
+              updatedAt: event.occurredAt,
+            });
+            yield* refreshThreadShellSummary(event.payload.threadId);
+            return;
+          }
+
           const retainedTurns = yield* projectionTurnRepository.listByThreadId({
             threadId: event.payload.threadId,
           });
@@ -1005,6 +1014,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         }
 
         case "thread.reverted": {
+          if (event.payload.scope === "files") return;
           const existingRows = yield* projectionThreadMessageRepository.listByThreadId({
             threadId: event.payload.threadId,
           });
@@ -1060,6 +1070,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           return;
 
         case "thread.reverted": {
+          if (event.payload.scope === "files") return;
           const existingRows = yield* projectionThreadProposedPlanRepository.listByThreadId({
             threadId: event.payload.threadId,
           });
@@ -1114,6 +1125,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           return;
 
         case "thread.reverted": {
+          if (event.payload.scope === "files") return;
           const existingRows = yield* projectionThreadActivityRepository.listByThreadId({
             threadId: event.payload.threadId,
           });
@@ -1496,6 +1508,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         }
 
         case "thread.reverted": {
+          if (event.payload.scope === "files") return;
           const existingTurns = yield* projectionTurnRepository.listByThreadId({
             threadId: event.payload.threadId,
           });

@@ -18,6 +18,7 @@ import {
   ThreadId,
   type CanvasReference,
   type ProjectScript,
+  type ThreadCheckpointRevertScope,
 } from "@codework/contracts";
 import {
   requestOlderThreadTurns,
@@ -559,7 +560,7 @@ function ThreadRouteContent(
     ],
   );
   const performRevertToTurnCount = useCallback(
-    async (turnCount: number) => {
+    async (turnCount: number, scope: ThreadCheckpointRevertScope) => {
       if (messageActionThread === null || isRevertingCheckpoint) {
         return;
       }
@@ -570,6 +571,7 @@ function ThreadRouteContent(
         input: {
           threadId: messageActionThread.id,
           turnCount,
+          scope,
         },
       });
       setIsRevertingCheckpoint(false);
@@ -585,7 +587,7 @@ function ThreadRouteContent(
     [isRevertingCheckpoint, revertThreadCheckpoint, messageActionThread],
   );
   const handleRevertToTurnCount = useCallback(
-    (turnCount: number) => {
+    (turnCount: number, scope: ThreadCheckpointRevertScope) => {
       if (messageActionThread === null || isRevertingCheckpoint) {
         return;
       }
@@ -599,15 +601,31 @@ function ThreadRouteContent(
       }
 
       Alert.alert(
-        t("checkpointRevert.title", { count: turnCount }),
-        [t("checkpointRevert.description"), t("checkpointRevert.warning")].join("\n"),
+        t(
+          scope === "files"
+            ? "checkpointRevert.title.files"
+            : scope === "conversation"
+              ? "checkpointRevert.title.conversation"
+              : "checkpointRevert.title",
+          { count: turnCount },
+        ),
+        [
+          t(
+            scope === "files"
+              ? "checkpointRevert.description.files"
+              : scope === "conversation"
+                ? "checkpointRevert.description.conversation"
+                : "checkpointRevert.description",
+          ),
+          t("checkpointRevert.warning"),
+        ].join("\n"),
         [
           { text: t("cancel"), style: "cancel" },
           {
             text: t("revert"),
             style: "destructive",
             onPress: () => {
-              void performRevertToTurnCount(turnCount);
+              void performRevertToTurnCount(turnCount, scope);
             },
           },
         ],

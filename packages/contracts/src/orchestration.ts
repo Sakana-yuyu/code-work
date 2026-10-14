@@ -1027,11 +1027,18 @@ const ThreadUserInputRespondCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+// Rewind scope: "conversation" rolls back provider+local history only,
+// "files" restores the workspace checkpoint only, "both" (the default for
+// commands/events persisted before the scope existed) reverts both.
+export const ThreadCheckpointRevertScope = Schema.Literals(["conversation", "files", "both"]);
+export type ThreadCheckpointRevertScope = typeof ThreadCheckpointRevertScope.Type;
+
 const ThreadCheckpointRevertCommand = Schema.Struct({
   type: Schema.Literal("thread.checkpoint.revert"),
   commandId: CommandId,
   threadId: ThreadId,
   turnCount: NonNegativeInt,
+  scope: Schema.optional(ThreadCheckpointRevertScope),
   createdAt: IsoDateTime,
 });
 
@@ -1191,6 +1198,7 @@ const ThreadRevertCompleteCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   turnCount: NonNegativeInt,
+  scope: Schema.optional(ThreadCheckpointRevertScope),
   createdAt: IsoDateTime,
 });
 
@@ -1456,12 +1464,14 @@ const ThreadUserInputResponseRequestedPayload = Schema.Struct({
 export const ThreadCheckpointRevertRequestedPayload = Schema.Struct({
   threadId: ThreadId,
   turnCount: NonNegativeInt,
+  scope: Schema.optional(ThreadCheckpointRevertScope),
   createdAt: IsoDateTime,
 });
 
 export const ThreadRevertedPayload = Schema.Struct({
   threadId: ThreadId,
   turnCount: NonNegativeInt,
+  scope: Schema.optional(ThreadCheckpointRevertScope),
 });
 
 export const ThreadSessionStopRequestedPayload = Schema.Struct({

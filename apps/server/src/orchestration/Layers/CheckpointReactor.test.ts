@@ -1524,6 +1524,231 @@ describe("CheckpointReactor", () => {
     ).toBe(false);
   });
 
+  const seedTwoCheckpoints = Effect.fn("seedTwoCheckpoints")(function* (
+    harness: Awaited<ReturnType<typeof createHarness>>,
+    createdAt: string,
+  ) {
+    yield* harness.engine.dispatch({
+      type: "thread.session.set",
+      commandId: CommandId.make("cmd-session-set"),
+      threadId: ThreadId.make("thread-1"),
+      session: {
+        threadId: ThreadId.make("thread-1"),
+        status: "ready",
+        providerName: "codex",
+        runtimeMode: "approval-required",
+        activeTurnId: null,
+        lastError: null,
+        updatedAt: createdAt,
+      },
+      createdAt,
+    });
+    yield* harness.engine.dispatch({
+      type: "thread.turn.diff.complete",
+      commandId: CommandId.make("cmd-diff-1"),
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-1"),
+      completedAt: createdAt,
+      checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      status: "ready",
+      files: [],
+      checkpointTurnCount: 1,
+      createdAt,
+    });
+    yield* harness.engine.dispatch({
+      type: "thread.turn.diff.complete",
+      commandId: CommandId.make("cmd-diff-2"),
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-2"),
+      completedAt: createdAt,
+      checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2),
+      status: "ready",
+      files: [],
+      checkpointTurnCount: 2,
+      createdAt,
+    });
+  });
+
+  const seedTwoDiffCheckpoints = Effect.fn("seedTwoDiffCheckpoints")(function* (
+    harness: Awaited<ReturnType<typeof createHarness>>,
+    createdAt: string,
+  ) {
+    yield* harness.engine.dispatch({
+      type: "thread.turn.diff.complete",
+      commandId: CommandId.make("cmd-diff-1"),
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-1"),
+      completedAt: createdAt,
+      checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      status: "ready",
+      files: [],
+      checkpointTurnCount: 1,
+      createdAt,
+    });
+    yield* harness.engine.dispatch({
+      type: "thread.turn.diff.complete",
+      commandId: CommandId.make("cmd-diff-2"),
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-2"),
+      completedAt: createdAt,
+      checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2),
+      status: "ready",
+      files: [],
+      checkpointTurnCount: 2,
+      createdAt,
+    });
+  });
+
+  effectIt.effect("scope=files 仅还原工作区文件，保留对话与检查点索引", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      yield* seedTwoCheckpoints(harness, createdAt);
+
+      yield* harness.engine.dispatch({
+        type: "thread.checkpoint.revert",
+        commandId: CommandId.make("cmd-revert-files"),
+        threadId: ThreadId.make("thread-1"),
+        turnCount: 1,
+        scope: "files",
+        createdAt,
+      });
+
+      yield* Effect.promise(() =>
+        waitForEvent(harness.engine, (event) => event.type === "thread.reverted"),
+      );
+      yield* Effect.promise(harness.drain);
+      const thread = yield* Effect.promise(() =>
+        waitForThread(
+          harness.readModel,
+          (entry) =>
+            entry.checkpoints.length === 2 &&
+            entry.activities.some((activity) => activity.kind === "checkpoint.reverted"),
+        ),
+      );
+
+      expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+      expect(thread.checkpoints.map((entry) => entry.checkpointTurnCount)).toEqual([1, 2]);
+      expect(thread.latestTurn?.turnId).toBe("turn-2");
+      expect(
+        NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8").replaceAll(
+          "\r\n",
+          "\n",
+        ),
+      ).toBe("v2\n");
+      // 对话仍在：两个检查点 ref 都必须保留供后续回退复用。
+      expect(
+        gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2)),
+      ).toBe(true);
+    }),
+  );
+
+  effectIt.effect("scope=conversation 仅回退服务商对话，文件与 git 引用不动", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      yield* seedTwoCheckpoints(harness, createdAt);
+
+      yield* harness.engine.dispatch({
+        type: "thread.checkpoint.revert",
+        commandId: CommandId.make("cmd-revert-conversation"),
+        threadId: ThreadId.make("thread-1"),
+        turnCount: 1,
+        scope: "conversation",
+        createdAt,
+      });
+
+      yield* Effect.promise(() =>
+        waitForEvent(harness.engine, (event) => event.type === "thread.reverted"),
+      );
+      yield* Effect.promise(harness.drain);
+      const thread = yield* Effect.promise(() =>
+        waitForThread(harness.readModel, (entry) => entry.checkpoints.length === 1),
+      );
+
+      expect(harness.provider.rollbackConversation).toHaveBeenCalledTimes(1);
+      expect(harness.provider.rollbackConversation).toHaveBeenCalledWith({
+        threadId: ThreadId.make("thread-1"),
+        numTurns: 1,
+      });
+      expect(thread.latestTurn?.turnId).toBe("turn-1");
+      // 工作区未被触碰；检查点 git 引用保留。
+      expect(
+        NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8").replaceAll(
+          "\r\n",
+          "\n",
+        ),
+      ).toBe("v3\n");
+      expect(
+        gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2)),
+      ).toBe(true);
+    }),
+  );
+
+  effectIt.effect("scope=files 在没有 provider 会话时仍还原配置的工作区", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness({ hasSession: false }));
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      yield* seedTwoDiffCheckpoints(harness, createdAt);
+
+      yield* harness.engine.dispatch({
+        type: "thread.checkpoint.revert",
+        commandId: CommandId.make("cmd-revert-files-nosession"),
+        threadId: ThreadId.make("thread-1"),
+        turnCount: 1,
+        scope: "files",
+        createdAt,
+      });
+
+      yield* Effect.promise(() =>
+        waitForEvent(harness.engine, (event) => event.type === "thread.reverted"),
+      );
+      yield* Effect.promise(harness.drain);
+
+      expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+      expect(
+        NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8").replaceAll(
+          "\r\n",
+          "\n",
+        ),
+      ).toBe("v2\n");
+    }),
+  );
+
+  effectIt.effect("scope=conversation 在没有 provider 会话时拒绝且不触碰文件", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness({ hasSession: false }));
+      const createdAt = "2026-01-01T00:00:00.000Z";
+
+      yield* harness.engine.dispatch({
+        type: "thread.checkpoint.revert",
+        commandId: CommandId.make("cmd-revert-conv-nosession"),
+        threadId: ThreadId.make("thread-1"),
+        turnCount: 0,
+        scope: "conversation",
+        createdAt,
+      });
+
+      yield* Effect.promise(harness.drain);
+      const thread = yield* Effect.promise(() =>
+        waitForThread(harness.readModel, (entry) =>
+          entry.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+        ),
+      );
+
+      expect(harness.provider.rollbackConversation).not.toHaveBeenCalled();
+      expect(
+        NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8").replaceAll(
+          "\r\n",
+          "\n",
+        ),
+      ).toBe("v3\n");
+      expect(
+        thread.activities.some((activity) => activity.kind === "checkpoint.revert.failed"),
+      ).toBe(true);
+    }),
+  );
+
   for (const stoppedReplay of [false, true]) {
     effectIt.effect(
       `${stoppedReplay ? "停止的重建会话" : "原生会话"}回退执行期间拒绝新 turn 且不写入会被截断的消息`,

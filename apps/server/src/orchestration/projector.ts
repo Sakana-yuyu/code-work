@@ -779,6 +779,17 @@ export function projectEvent(
             return nextBase;
           }
 
+          // 仅文件回退不裁减对话、检查点索引或活动；工作区恢复通过
+          // checkpoint.reverted 活动对用户可见。
+          if (payload.scope === "files") {
+            return {
+              ...nextBase,
+              threads: updateThread(nextBase.threads, payload.threadId, {
+                updatedAt: event.occurredAt,
+              }),
+            };
+          }
+
           const checkpoints = thread.checkpoints
             .filter((entry) => entry.checkpointTurnCount <= payload.turnCount)
             .toSorted((left, right) => left.checkpointTurnCount - right.checkpointTurnCount)

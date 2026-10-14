@@ -5,6 +5,7 @@ import type {
   CanvasReference,
   EnvironmentId,
   MessageId,
+  ThreadCheckpointRevertScope,
   ThreadId,
   TurnId,
 } from "@codework/contracts";
@@ -84,6 +85,8 @@ import {
 
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { CopyTextButton } from "../../components/CopyTextButton";
+import { ControlPillMenu } from "../../components/ControlPill";
+import type { MenuAction } from "@react-native-menu/menu";
 import {
   parseReviewCommentMessageSegments,
   type ReviewInlineComment,
@@ -195,7 +198,7 @@ export interface ThreadFeedProps {
   readonly onEndFollowEnabledChange?: (enabled: boolean) => void;
   readonly onOpenCanvas?: (canvas: CanvasReference) => void;
   readonly revertTurnCountByUserMessageId?: ReadonlyMap<MessageId, number | null>;
-  readonly onRevertToTurnCount?: (turnCount: number) => void;
+  readonly onRevertToTurnCount?: (turnCount: number, scope: ThreadCheckpointRevertScope) => void;
   readonly isRevertingCheckpoint?: boolean;
   readonly onEditUserMessage?: (messageId: MessageId, text: string) => void;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;
@@ -981,6 +984,26 @@ function useMarkdownStyles(
   ]);
 }
 
+function revertScopeActions(disabled: boolean): MenuAction[] {
+  return [
+    {
+      id: "both",
+      title: t("checkpointRevert.scope.both"),
+      attributes: { destructive: true, disabled },
+    },
+    {
+      id: "conversation",
+      title: t("checkpointRevert.scope.conversation"),
+      attributes: { destructive: true, disabled },
+    },
+    {
+      id: "files",
+      title: t("checkpointRevert.scope.files"),
+      attributes: { destructive: true, disabled },
+    },
+  ];
+}
+
 function UserMessageActions(props: {
   readonly messageId: MessageId;
   readonly text: string;
@@ -989,7 +1012,7 @@ function UserMessageActions(props: {
   readonly revertTurnCount: number | undefined;
   readonly canEdit: boolean;
   readonly isRevertingCheckpoint: boolean;
-  readonly onRevertToTurnCount?: (turnCount: number) => void;
+  readonly onRevertToTurnCount?: (turnCount: number, scope: ThreadCheckpointRevertScope) => void;
   readonly onEditUserMessage?: (messageId: MessageId, text: string) => void;
   readonly onSelectText: (text: string) => void;
 }) {
@@ -1084,21 +1107,32 @@ function UserMessageActions(props: {
         </Pressable>
       ) : null}
       {props.revertTurnCount !== undefined && props.onRevertToTurnCount ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("revertToThisMessage")}
-          disabled={props.isRevertingCheckpoint}
-          hitSlop={6}
-          onPress={() => props.onRevertToTurnCount?.(props.revertTurnCount as number)}
-          className="rounded-md px-1 py-1"
+        <ControlPillMenu
+          actions={revertScopeActions(props.isRevertingCheckpoint)}
+          isAnchoredToRight
+          title={t("revertToThisMessage")}
+          onPressAction={({ nativeEvent }) =>
+            props.onRevertToTurnCount?.(
+              props.revertTurnCount as number,
+              nativeEvent.event as ThreadCheckpointRevertScope,
+            )
+          }
         >
-          <SymbolView
-            name="arrow.uturn.backward"
-            size={14}
-            tintColor={props.iconSubtleColor}
-            type="monochrome"
-          />
-        </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("revertToThisMessage")}
+            disabled={props.isRevertingCheckpoint}
+            hitSlop={6}
+            className="rounded-md px-1 py-1"
+          >
+            <SymbolView
+              name="arrow.uturn.backward"
+              size={14}
+              tintColor={props.iconSubtleColor}
+              type="monochrome"
+            />
+          </Pressable>
+        </ControlPillMenu>
       ) : null}
     </View>
   );

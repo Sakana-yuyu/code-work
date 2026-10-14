@@ -143,6 +143,38 @@ const make = Effect.gen(function* () {
       ),
     );
 
+  const appendRevertCompletedActivity = (input: {
+    readonly threadId: ThreadId;
+    readonly turnCount: number;
+    readonly scope: "files" | "conversation" | "both";
+    readonly createdAt: string;
+  }) =>
+    Effect.all({
+      commandId: serverCommandId("checkpoint-revert-completed"),
+      activityId: serverEventId,
+    }).pipe(
+      Effect.flatMap(({ commandId, activityId }) =>
+        orchestrationEngine.dispatch({
+          type: "thread.activity.append",
+          commandId,
+          threadId: input.threadId,
+          activity: {
+            id: activityId,
+            tone: "info",
+            kind: "checkpoint.reverted",
+            summary: "Checkpoint revert completed",
+            payload: {
+              turnCount: input.turnCount,
+              scope: input.scope,
+            },
+            turnId: null,
+            createdAt: input.createdAt,
+          },
+          createdAt: input.createdAt,
+        }),
+      ),
+    );
+
   const appendCaptureFailureActivity = (input: {
     readonly threadId: ThreadId;
     readonly turnId: TurnId | null;
@@ -752,6 +784,10 @@ const make = Effect.gen(function* () {
     event: Extract<OrchestrationEvent, { type: "thread.checkpoint-revert-requested" }>,
   ) {
     const now = DateTime.formatIso(yield* DateTime.now);
+    // Events persisted before the scope field existed always reverted both.
+    const scope = event.payload.scope ?? "both";
+    const restoreFiles = scope !== "conversation";
+    const rewindConversation = scope !== "files";
 
     const thread = yield* resolveThreadDetail(event.payload.threadId);
     if (!thread) {
@@ -765,7 +801,7 @@ const make = Effect.gen(function* () {
     }
 
     const sessionRuntime = yield* resolveRevertRuntimeForThread(event.payload.threadId);
-    if (Option.isNone(sessionRuntime)) {
+    if (Option.isNone(sessionRuntime) && rewindConversation) {
       yield* appendRevertFailureActivity({
         threadId: event.payload.threadId,
         turnCount: event.payload.turnCount,
@@ -774,74 +810,91 @@ const make = Effect.gen(function* () {
       }).pipe(Effect.catch(() => Effect.void));
       return;
     }
-    if (!isGitWorkspace(sessionRuntime.value.cwd)) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: "Checkpoints are unavailable because this project is not a git repository.",
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
 
-    const cwd = sessionRuntime.value.cwd;
-    const workspaceKey = yield* workspaceLock.key(cwd);
     const snapshot = yield* projectionSnapshotQuery.getSnapshot();
     const configuredCwd = resolveThreadWorkspaceCwd({ thread, projects: snapshot.projects });
-    if (
-      !configuredCwd ||
-      (yield* workspaceLock.key(configuredCwd)) !== workspaceKey ||
+    // 文件回退不需要 provider 会话：没有绑定时直接作用于线程配置的工作区。
+    const cwd = Option.isSome(sessionRuntime) ? sessionRuntime.value.cwd : configuredCwd;
+
+    if (restoreFiles) {
+      if (!cwd || !isGitWorkspace(cwd)) {
+        yield* appendRevertFailureActivity({
+          threadId: event.payload.threadId,
+          turnCount: event.payload.turnCount,
+          detail: "Checkpoints are unavailable because this project is not a git repository.",
+          createdAt: now,
+        }).pipe(Effect.catch(() => Effect.void));
+        return;
+      }
+      const workspaceKey = yield* workspaceLock.key(cwd);
+      if (
+        Option.isSome(sessionRuntime) &&
+        (!configuredCwd ||
+          (yield* workspaceLock.key(configuredCwd)) !== workspaceKey ||
+          thread.runtimeMode !== sessionRuntime.value.runtimeMode)
+      ) {
+        yield* appendRevertFailureActivity({
+          threadId: thread.id,
+          turnCount: event.payload.turnCount,
+          detail: "当前任务目录或运行模式与服务商会话不一致，请先重新建立会话后再回退。",
+          createdAt: now,
+        });
+        return;
+      }
+      for (const candidate of snapshot.threads) {
+        const candidateCwd = resolveThreadWorkspaceCwd({
+          thread: candidate,
+          projects: snapshot.projects,
+        });
+        if (!candidateCwd || (yield* workspaceLock.key(candidateCwd)) !== workspaceKey) continue;
+        const pending = yield* projectionTurns.getPendingTurnStartByThreadId({
+          threadId: candidate.id,
+        });
+        if (
+          Option.isSome(pending) ||
+          candidate.session?.status === "running" ||
+          candidate.session?.status === "starting" ||
+          candidate.session?.activeTurnId != null ||
+          backgroundLiveness.getThreadBackgroundLiveness(candidate.id) !== null ||
+          threadHasQueuedTurnStart(candidate, now)
+        ) {
+          yield* appendRevertFailureActivity({
+            threadId: thread.id,
+            turnCount: event.payload.turnCount,
+            detail: `任务 ${candidate.id} 在同一工作区运行或排队，请等待完成后再回退。`,
+            createdAt: now,
+          });
+          return;
+        }
+      }
+      const sessions = yield* providerService.listSessions();
+      for (const session of sessions) {
+        if (
+          session.cwd &&
+          (session.status === "running" || session.status === "connecting") &&
+          (yield* workspaceLock.key(session.cwd)) === workspaceKey
+        ) {
+          yield* appendRevertFailureActivity({
+            threadId: thread.id,
+            turnCount: event.payload.turnCount,
+            detail: `服务商会话 ${session.threadId} 正在使用同一工作区，请等待完成后再回退。`,
+            createdAt: now,
+          });
+          return;
+        }
+      }
+    } else if (
+      // sessionRuntime is guaranteed Some when rewindConversation is true.
+      Option.isSome(sessionRuntime) &&
       thread.runtimeMode !== sessionRuntime.value.runtimeMode
     ) {
       yield* appendRevertFailureActivity({
         threadId: thread.id,
         turnCount: event.payload.turnCount,
-        detail: "当前任务目录或运行模式与服务商会话不一致，请先重新建立会话后再回退。",
+        detail: "当前任务运行模式与服务商会话不一致，请先重新建立会话后再回退。",
         createdAt: now,
       });
       return;
-    }
-    for (const candidate of snapshot.threads) {
-      const candidateCwd = resolveThreadWorkspaceCwd({
-        thread: candidate,
-        projects: snapshot.projects,
-      });
-      if (!candidateCwd || (yield* workspaceLock.key(candidateCwd)) !== workspaceKey) continue;
-      const pending = yield* projectionTurns.getPendingTurnStartByThreadId({
-        threadId: candidate.id,
-      });
-      if (
-        Option.isSome(pending) ||
-        candidate.session?.status === "running" ||
-        candidate.session?.status === "starting" ||
-        candidate.session?.activeTurnId != null ||
-        backgroundLiveness.getThreadBackgroundLiveness(candidate.id) !== null ||
-        threadHasQueuedTurnStart(candidate, now)
-      ) {
-        yield* appendRevertFailureActivity({
-          threadId: thread.id,
-          turnCount: event.payload.turnCount,
-          detail: `任务 ${candidate.id} 在同一工作区运行或排队，请等待完成后再回退。`,
-          createdAt: now,
-        });
-        return;
-      }
-    }
-    const sessions = yield* providerService.listSessions();
-    for (const session of sessions) {
-      if (
-        session.cwd &&
-        (session.status === "running" || session.status === "connecting") &&
-        (yield* workspaceLock.key(session.cwd)) === workspaceKey
-      ) {
-        yield* appendRevertFailureActivity({
-          threadId: thread.id,
-          turnCount: event.payload.turnCount,
-          detail: `服务商会话 ${session.threadId} 正在使用同一工作区，请等待完成后再回退。`,
-          createdAt: now,
-        });
-        return;
-      }
     }
 
     const currentTurnCount = thread.checkpoints.reduce(
@@ -859,14 +912,15 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    const targetCheckpointRef =
-      event.payload.turnCount === 0
+    const targetCheckpointRef = restoreFiles
+      ? event.payload.turnCount === 0
         ? checkpointRefForThreadTurn(event.payload.threadId, 0)
         : thread.checkpoints.find(
             (checkpoint) => checkpoint.checkpointTurnCount === event.payload.turnCount,
-          )?.checkpointRef;
+          )?.checkpointRef
+      : undefined;
 
-    if (!targetCheckpointRef) {
+    if (restoreFiles && !targetCheckpointRef) {
       yield* appendRevertFailureActivity({
         threadId: event.payload.threadId,
         turnCount: event.payload.turnCount,
@@ -877,7 +931,7 @@ const make = Effect.gen(function* () {
     }
 
     const rolledBackTurns = Math.max(0, currentTurnCount - event.payload.turnCount);
-    if (rolledBackTurns > 0) {
+    if (Option.isSome(sessionRuntime) && rewindConversation && rolledBackTurns > 0) {
       const capabilities = yield* providerService.getCapabilities(
         sessionRuntime.value.providerInstanceId,
         thread.id,
@@ -897,17 +951,22 @@ const make = Effect.gen(function* () {
       `${checkpointRefForThreadTurn(thread.id, 0)}-recovery-${recoveryId}`,
     );
     // Git 检查点会重置暂存区，补偿时必须同时恢复原始 index。
-    const indexResult = yield* vcsProcess.run({
-      operation: "checkpoint.revert.backup-index",
-      command: "git",
-      args: ["rev-parse", "--path-format=absolute", "--git-path", "index"],
-      cwd,
-    });
-    const indexPath = indexResult.stdout.trim();
-    const indexBackupPath = `${indexPath}.codework-revert-${recoveryId}`;
-    const hadIndex = yield* fileSystem.exists(indexPath);
-    if (hadIndex) yield* fileSystem.copyFile(indexPath, indexBackupPath);
-    yield* checkpointStore.captureCheckpoint({ cwd, checkpointRef: recoveryRef });
+    let indexPath: string | null = null;
+    let indexBackupPath: string | null = null;
+    let hadIndex = false;
+    if (restoreFiles && cwd) {
+      const indexResult = yield* vcsProcess.run({
+        operation: "checkpoint.revert.backup-index",
+        command: "git",
+        args: ["rev-parse", "--path-format=absolute", "--git-path", "index"],
+        cwd,
+      });
+      indexPath = indexResult.stdout.trim();
+      indexBackupPath = `${indexPath}.codework-revert-${recoveryId}`;
+      hadIndex = yield* fileSystem.exists(indexPath);
+      if (hadIndex) yield* fileSystem.copyFile(indexPath, indexBackupPath);
+      yield* checkpointStore.captureCheckpoint({ cwd, checkpointRef: recoveryRef });
+    }
     let providerRolledBack = false;
     let committed = false;
     const completionCommand = {
@@ -915,22 +974,25 @@ const make = Effect.gen(function* () {
       commandId: yield* serverCommandId("checkpoint-revert-complete"),
       threadId: thread.id,
       turnCount: event.payload.turnCount,
+      scope,
       createdAt: now,
     };
     yield* Effect.uninterruptibleMask((restore) =>
       restore(
         Effect.gen(function* () {
-          const restored = yield* checkpointStore.restoreCheckpoint({
-            cwd,
-            checkpointRef: targetCheckpointRef,
-            fallbackToHead: event.payload.turnCount === 0,
-          });
-          if (!restored)
-            return yield* new OrchestrationCommandInvariantError({
-              commandType: "thread.checkpoint.revert",
-              detail: `第 ${event.payload.turnCount} 轮的文件检查点不可用。`,
+          if (restoreFiles) {
+            const restored = yield* checkpointStore.restoreCheckpoint({
+              cwd: cwd ?? "",
+              checkpointRef: targetCheckpointRef ?? checkpointRefForThreadTurn(thread.id, 0),
+              fallbackToHead: event.payload.turnCount === 0,
             });
-          if (rolledBackTurns > 0) {
+            if (!restored)
+              return yield* new OrchestrationCommandInvariantError({
+                commandType: "thread.checkpoint.revert",
+                detail: `第 ${event.payload.turnCount} 轮的文件检查点不可用。`,
+              });
+          }
+          if (rewindConversation && rolledBackTurns > 0) {
             yield* providerService.rollbackConversation({
               threadId: thread.id,
               numTurns: rolledBackTurns,
@@ -947,15 +1009,22 @@ const make = Effect.gen(function* () {
         Effect.catchCause((cause) =>
           Effect.gen(function* () {
             let detail = Cause.pretty(cause);
-            if (!providerRolledBack || sessionRuntime.value.historyReplay) {
+            if (!restoreFiles) {
+              detail += providerRolledBack
+                ? " 服务商已回退，但本地历史提交失败；本地记录可能仍显示已回退的回合，请核对后再继续。"
+                : " 对话回退未完成，本地历史未修改。";
+            } else if (
+              !providerRolledBack ||
+              (Option.isSome(sessionRuntime) && sessionRuntime.value.historyReplay)
+            ) {
               const recovered = yield* checkpointStore
-                .restoreCheckpoint({ cwd, checkpointRef: recoveryRef })
+                .restoreCheckpoint({ cwd: cwd ?? "", checkpointRef: recoveryRef })
                 .pipe(
                   Effect.flatMap((restored) =>
                     restored
                       ? (hadIndex
-                          ? fileSystem.copyFile(indexBackupPath, indexPath)
-                          : fileSystem.remove(indexPath, { force: true })
+                          ? fileSystem.copyFile(indexBackupPath ?? "", indexPath ?? "")
+                          : fileSystem.remove(indexPath ?? "", { force: true })
                         ).pipe(Effect.as(true))
                       : Effect.succeed(false),
                   ),
@@ -979,7 +1048,9 @@ const make = Effect.gen(function* () {
                 " 服务商已回退，但本地历史提交失败；目标工作区与恢复引用均已保留。请先核对并修复本地历史，不要直接重试回退，避免二次回退服务商上下文。";
             }
             // 保留备份供失败或进程重启后的人工恢复，绝不把跨 provider 操作宣称为原子事务。
-            detail += ` 恢复检查点：${recoveryRef}；暂存区备份：${hadIndex ? indexBackupPath : "原先不存在 index"}。`;
+            if (restoreFiles) {
+              detail += ` 恢复检查点：${recoveryRef}；暂存区备份：${hadIndex ? indexBackupPath : "原先不存在 index"}。`;
+            }
             yield* appendRevertFailureActivity({
               threadId: thread.id,
               turnCount: event.payload.turnCount,
@@ -992,21 +1063,42 @@ const make = Effect.gen(function* () {
       ),
     );
     if (committed) {
-      const staleCheckpointRefs = thread.checkpoints
-        .filter((entry) => entry.checkpointTurnCount > event.payload.turnCount)
-        .map((entry) => entry.checkpointRef);
-      yield* checkpointStore
-        .deleteCheckpointRefs({ cwd, checkpointRefs: [...staleCheckpointRefs, recoveryRef] })
-        .pipe(
-          Effect.catch((error) =>
-            Effect.logWarning("checkpoint revert completed but reference cleanup failed", {
-              detail: error.message,
-            }),
-          ),
-        );
-      if (hadIndex) yield* fileSystem.remove(indexBackupPath, { force: true }).pipe(Effect.ignore);
+      if (restoreFiles && cwd) {
+        // files 范围保留回退目标之后的检查点（对话仍在，引用仍可复用）；
+        // both 范围照旧随对话一起裁掉。
+        const staleCheckpointRefs =
+          scope === "files"
+            ? []
+            : thread.checkpoints
+                .filter((entry) => entry.checkpointTurnCount > event.payload.turnCount)
+                .map((entry) => entry.checkpointRef);
+        yield* checkpointStore
+          .deleteCheckpointRefs({ cwd, checkpointRefs: [...staleCheckpointRefs, recoveryRef] })
+          .pipe(
+            Effect.catch((error) =>
+              Effect.logWarning("checkpoint revert completed but reference cleanup failed", {
+                detail: error.message,
+              }),
+            ),
+          );
+        if (hadIndex && indexBackupPath !== null) {
+          yield* fileSystem.remove(indexBackupPath, { force: true }).pipe(Effect.ignore);
+        }
+      }
+      if (scope === "files") {
+        // 文件回退不裁减投影（thread.reverted scope=files 不修改会话），
+        // 追加一条活动让用户能看到回退确实发生。
+        yield* appendRevertCompletedActivity({
+          threadId: thread.id,
+          turnCount: event.payload.turnCount,
+          scope,
+          createdAt: now,
+        }).pipe(Effect.catch(() => Effect.void));
+      }
     }
-    yield* workspaceEntries.refresh(cwd);
+    if (restoreFiles && cwd) {
+      yield* workspaceEntries.refresh(cwd);
+    }
   });
 
   const handleRevertRequested = Effect.fn("handleRevertRequested")(function* (
@@ -1014,9 +1106,21 @@ const make = Effect.gen(function* () {
   ) {
     const session = yield* resolveRevertRuntimeForThread(event.payload.threadId);
     const operation = handleRevertRequestedUnlocked(event);
-    return yield* Option.isSome(session)
-      ? workspaceLock.withRevertLock(session.value.cwd, operation)
-      : operation;
+    if (Option.isSome(session)) {
+      return yield* workspaceLock.withRevertLock(session.value.cwd, operation);
+    }
+    // 文件回退允许在没有 provider 会话时执行；锁落在线程配置的工作区上。
+    if ((event.payload.scope ?? "both") === "files") {
+      const thread = yield* resolveThreadDetail(event.payload.threadId);
+      const snapshot = yield* projectionSnapshotQuery.getSnapshot();
+      const configuredCwd = thread
+        ? resolveThreadWorkspaceCwd({ thread, projects: snapshot.projects })
+        : undefined;
+      if (configuredCwd) {
+        return yield* workspaceLock.withRevertLock(configuredCwd, operation);
+      }
+    }
+    return yield* operation;
   });
 
   const processDomainEvent = Effect.fn("processDomainEvent")(function* (event: OrchestrationEvent) {

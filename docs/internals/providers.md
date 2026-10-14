@@ -192,6 +192,18 @@ captures a recovery checkpoint plus the original Git index. Provider rollback an
 commit cannot form one transaction, so failures keep the recovery references and require the caller
 to verify provider context before retrying.
 
+`thread.checkpoint.revert` carries an optional `scope`: `both` (default, identical to events persisted
+before the field existed), `conversation`, or `files`. `conversation` skips every git step — the
+workspace busy scan, index backup, and recovery capture — and only requires the bound provider
+session plus `threadRollback`; the projection trims messages/plans/activities/checkpoint entries but
+keeps the git refs. `files` is provider-independent: it needs no session at all (the workspace cwd
+falls back to the thread/project config), skips the `threadRollback` check and
+`rollbackConversation`, and keeps the newer checkpoint refs because the conversation still references
+those turns; `thread.reverted` with `scope: "files"` is a projection no-op (conversation trim is
+skipped in `projector.ts`, the SQL `ProjectionPipeline` handlers, and the client `threadReducer`), so
+the reactor appends a `checkpoint.reverted` activity for user visibility. Recovery on failure only
+exists for scopes that touched files; a conversation-only failure reports without restoring anything.
+
 ### 共用工具时间线
 
 适配器把原生工具事件映射为带同一 `itemId` 的 `item.started`、`item.updated` 和 `item.completed`；
