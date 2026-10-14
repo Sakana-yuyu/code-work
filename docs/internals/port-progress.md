@@ -1398,3 +1398,17 @@ providers.md的ACP目录章节记录三态目录语义（null透传/非空回退
 之后node --watch未对mtime/内容变更重启（Windows侧既有行为），仅终止已确认归属子PID126656后supervisor不再自动重生；改由手动spawn node src/bin.ts（CODEWORK_HOME=隔离、CODEWORK_PORT=13774、PID88448）接替，端口与环境ID不变，devRunner/原supervisor仍存活但此后端不再受watch管理，已记录为环境拓扑差异。第二次agent send在新代码上session/new取得标准目录：请求日志中set_config_option仅mode=code、零dynamic-default、session/prompt送达合成文本，projection落runtime.warning“模型选择「dynamic-default」已不在当前CLI模型目录中，本次改用「default」”，回合completed、session ready、last_error空。第三次send同会话第二个prompt同样completed且未重复告警（会话模型已对齐实际下发值default，线程级用户选择仍显示dynamic-default属草稿层原值）。证据catalog-acp-restore77-{proof.json,req-phase1.log,req-phase2.log,control-final.json,wrapper-original.cjs}存于证据根目录。边界：前一轮恢复经由session/new（首轮未落provider_session_id），本轮补充session/load原生续接变体实测并已通过；两轮均为本机合成后端重启，不是外部provider账号或跨机relay验证。
 
 补充session/load变体实测（同环境、同一控制文件wrapper机制）：首轮以标准目录+composer-2建会话，provider_session_runtime持久化resume_cursor{sessionId:mock-session-1}；控制文件切CODEWORK_ACP_STARTUP_CONFIG=explicit后杀掉自建后端PID88448并同配置重生（真实后端进程重启，ACP子进程随之消亡）。第二次send经ensureSessionForThread检测死会话后携resumeCursor走session/load：load结果先广告标准目录（model含composer-2），startupMetadata随后以config_option_update翻转为动态目录。请求日志顺序证实set_config_option(model=composer-2)在其仍属合法目录时派发一次（非撤回后误派发），sendTurn二次应用时目录已变为engine动态集，composer-2撤回→runtime.warning“模型选择「composer-2」已不在当前CLI模型目录中，本次改用「dynamic-default」”→set_config_option(engine=dynamic-default)+operation=code→prompt送达完成。第三次send零配置写入仅prompt、未重复告警，session ready、last_error空、三组用户/助手消息完整。证据catalog-acp-restore77-load-{a.log,b.log,proof.json,control-final-load.json}保留；wrapper与控制文件已恢复/删除，后端PID88448重生进程保留供后续矩阵使用。
+
+## 78. Web 草稿有效模型状态按当前会话目录对齐的回归覆盖
+
+基线含第77主题提交1b58b6f80。本轮为第11项“完全空目录/未知配置的客户端行为、编辑器打开期间目录撤回”增量的 Web 侧证据：只新增回归测试与文档，未改生产源码。结论为既有行为已正确，此前缺口是覆盖而非实现。
+
+`deriveEffectiveComposerModelState`（composerDraftStore）此前无任何定向用例。新增 describe 覆盖六条：持久化草稿模型被会话目录撤回后解析为同实例默认项；目录无默认项时取首项；完全空目录不借用其他实例模型，落空到驱动静态默认（cursor→auto）；草稿中已消失实例的选择不串入选中实例且其选项不进入选中实例派发键；实例 `customModels` 配置的自定义模型在目录撤回后保留（与服务端 Grok `session/set_model` 自定义透传语义一致）；撤回模型与撤回 `acpMode` 模式值经 `deriveEffectiveComposerModelState`→`getComposerProviderState` 组合后同时校正，派发选项只含当前目录有效值。
+
+开发中曾出现的两条红测是测试夹具缺陷而非产品缺陷：会话快照负载缺 `capabilities` 必填字段（`ServerProviderModel` 要求 NullOr），`decodeModels` 解码失败导致快照被忽略，旧目录继续生效——同时印证了畸形负载不替换最近合法快照的既有语义。补齐字段后全绿。
+
+派发链路复核：`ChatView` 以 `applySessionModelCatalogs(serverConfig.providers, activeThread.activities)` 响应式合并目录，`useEffectiveComposerModelState`→`getComposerProviderState`→`selectedModelSelection` 全部消费合并后目录；模型选择器打开期间目录活动到达时选项随 `providerStatuses` 即时收敛（useMemo 依赖活动列表）；待发/排队条目仅携带 messageId/text/createdAt，不携带冻结 modelSelection，分发时由 adapter 边界按当时目录对齐（第77主题）。`thread.turn-start-requested` 负载的 modelSelection 是发送时点的已校正值。
+
+`apps/web/src/composerDraftStore.test.ts` 共 87 项通过（新增 6 项），`.t3` 两份隔离副本 81 项亦过；vp check --fix 后该文件 fmt/lint 零告警；Web 目标 tsgo --noEmit 仅有脏工作区既有无关诊断（WorkspaceLayout/useResizableWidth 的 setWidth、AgentToolsSettings 的 cryptoRandomUUID），本文件零错误。
+
+边界：本轮为 Web 纯函数层证据。设置/新任务/命令面板/快捷键入口、真实客户端 UI 下“编辑器打开期间目录撤回”的端到端表现、Mobile 实机操作证据仍属第11项开放矩阵；整体39项与comparison继续。

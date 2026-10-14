@@ -8,13 +8,19 @@ import * as Schema from "effect/Schema";
 import {
   defaultInstanceIdForDriver,
   EnvironmentId,
+  EventId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
   type ModelSelection,
+  type OrchestrationThreadActivity,
   type ProviderOptionSelection,
+  type ServerProvider,
+  type ServerProviderModel,
 } from "@codework/contracts";
+import { DEFAULT_UNIFIED_SETTINGS } from "@codework/contracts/settings";
+import { applySessionModelCatalogs } from "@codework/client-runtime/providerModels";
 import { createModelSelection } from "@codework/shared/model";
 
 // The composer draft's `modelSelectionByProvider` and
@@ -27,6 +33,8 @@ const CURSOR_INSTANCE = ProviderInstanceId.make("cursor");
 const CODEX_DRIVER = ProviderDriverKind.make("codex");
 const CLAUDE_AGENT_DRIVER = ProviderDriverKind.make("claudeAgent");
 const CURSOR_DRIVER = ProviderDriverKind.make("cursor");
+const GROK_DRIVER = ProviderDriverKind.make("grok");
+const GROK_INSTANCE = ProviderInstanceId.make("grok");
 
 type ProviderOptionSelectionBag = ReadonlyArray<ProviderOptionSelection>;
 type ProviderOptionSelectionsByProvider = Partial<Record<string, ProviderOptionSelectionBag>>;
@@ -61,6 +69,7 @@ import {
   COMPOSER_DRAFT_STORAGE_KEY,
   clearComposerDraftsEnvironment,
   composerDraftHasUserContent,
+  deriveEffectiveComposerModelState,
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThread,
   markPromotedDraftThreadByRef,
@@ -70,6 +79,7 @@ import {
   useComposerDraftStore,
   DraftId,
 } from "./composerDraftStore";
+import { getComposerProviderState } from "./components/chat/composerProviderState";
 import { removeLocalStorageItem, setLocalStorageItem } from "./hooks/useLocalStorage";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
@@ -1638,6 +1648,295 @@ describe("composerDraftStore modelSelection", () => {
     expect(
       useComposerDraftStore.getState().stickyModelSelectionByProvider[CLAUDE_AGENT_INSTANCE],
     ).toEqual(modelSelection(CLAUDE_AGENT_DRIVER, "claude-opus-4-6", { effort: "max" }));
+  });
+});
+
+describe("deriveEffectiveComposerModelState catalog healing", () => {
+  function catalogProvider(input: {
+    instanceId: string;
+    driver: ProviderDriverKind;
+    models: ReadonlyArray<
+      | string
+      | { slug: string; isDefault?: boolean; capabilities?: ServerProviderModel["capabilities"] }
+    >;
+  }): ServerProvider {
+    return {
+      instanceId: ProviderInstanceId.make(input.instanceId),
+      driver: input.driver,
+      enabled: true,
+      installed: true,
+      version: null,
+      status: "ready",
+      auth: { status: "authenticated" },
+      checkedAt: "2026-01-01T00:00:00.000Z",
+      models: input.models.map((model) => {
+        const entry = typeof model === "string" ? { slug: model } : model;
+        return {
+          slug: entry.slug,
+          name: entry.slug,
+          isCustom: false,
+          ...(typeof model !== "string" && model.isDefault ? { isDefault: true } : {}),
+          capabilities:
+            typeof model !== "string" && model.capabilities !== undefined
+              ? model.capabilities
+              : null,
+        };
+      }),
+      slashCommands: [],
+      skills: [],
+    };
+  }
+
+  function sessionModelsUpdated(
+    instanceId: ProviderInstanceId,
+    models: unknown,
+  ): OrchestrationThreadActivity {
+    return {
+      id: EventId.make(`session-models-${instanceId}`),
+      kind: "session.models.updated",
+      tone: "info",
+      summary: "模型目录",
+      createdAt: "2026-09-30T00:00:00.000Z",
+      turnId: null,
+      payload: { providerInstanceId: instanceId, models },
+    };
+  }
+
+  function deriveState(input: {
+    draftModelSelection: ModelSelection | null;
+    providers: ReadonlyArray<ServerProvider>;
+    instanceId: ProviderInstanceId;
+    driver: ProviderDriverKind;
+    settings?: typeof DEFAULT_UNIFIED_SETTINGS;
+  }) {
+    return deriveEffectiveComposerModelState({
+      draft: input.draftModelSelection
+        ? {
+            activeProvider: input.instanceId,
+            modelSelectionByProvider: { [input.instanceId]: input.draftModelSelection },
+          }
+        : null,
+      providers: input.providers,
+      selectedProvider: input.driver,
+      selectedInstanceId: input.instanceId,
+      threadModelSelection: null,
+      projectModelSelection: null,
+      settings: input.settings ?? DEFAULT_UNIFIED_SETTINGS,
+    });
+  }
+
+  it("撤回模型回退到当前会话目录的默认项", () => {
+    const providers = applySessionModelCatalogs(
+      [
+        catalogProvider({
+          instanceId: "cursor",
+          driver: CURSOR_DRIVER,
+          models: ["dynamic-default", "dynamic-next"],
+        }),
+      ],
+      [
+        sessionModelsUpdated(CURSOR_INSTANCE, [
+          {
+            slug: "composer-2",
+            name: "Composer 2",
+            isCustom: false,
+            isDefault: true,
+            capabilities: null,
+          },
+          { slug: "gpt-5.4", name: "GPT 5.4", isCustom: false, capabilities: null },
+        ]),
+      ],
+    );
+
+    const state = deriveState({
+      draftModelSelection: createModelSelection(CURSOR_INSTANCE, "dynamic-default"),
+      providers,
+      instanceId: CURSOR_INSTANCE,
+      driver: CURSOR_DRIVER,
+    });
+
+    expect(state.selectedModel).toBe("composer-2");
+  });
+
+  it("撤回后目录无默认项时采用首项", () => {
+    const providers = applySessionModelCatalogs(
+      [
+        catalogProvider({
+          instanceId: "cursor",
+          driver: CURSOR_DRIVER,
+          models: ["dynamic-default"],
+        }),
+      ],
+      [
+        sessionModelsUpdated(CURSOR_INSTANCE, [
+          { slug: "new-a", name: "New A", isCustom: false, capabilities: null },
+          { slug: "new-b", name: "New B", isCustom: false, capabilities: null },
+        ]),
+      ],
+    );
+
+    const state = deriveState({
+      draftModelSelection: createModelSelection(CURSOR_INSTANCE, "dynamic-default"),
+      providers,
+      instanceId: CURSOR_INSTANCE,
+      driver: CURSOR_DRIVER,
+    });
+
+    expect(state.selectedModel).toBe("new-a");
+  });
+
+  it("完全空目录不借用其他实例，落空到驱动静态默认", () => {
+    const providers = applySessionModelCatalogs(
+      [
+        catalogProvider({
+          instanceId: "cursor",
+          driver: CURSOR_DRIVER,
+          models: ["dynamic-default"],
+        }),
+        catalogProvider({
+          instanceId: "claudeAgent",
+          driver: CLAUDE_AGENT_DRIVER,
+          models: ["claude-other-instance-model"],
+        }),
+      ],
+      [sessionModelsUpdated(CURSOR_INSTANCE, [])],
+    );
+
+    const state = deriveState({
+      draftModelSelection: createModelSelection(CURSOR_INSTANCE, "dynamic-default"),
+      providers,
+      instanceId: CURSOR_INSTANCE,
+      driver: CURSOR_DRIVER,
+    });
+
+    expect(state.selectedModel).toBe("auto");
+    expect(state.selectedModel).not.toBe("claude-other-instance-model");
+  });
+
+  it("草稿中已消失实例的选择不串入选中实例", () => {
+    const providers = [
+      catalogProvider({
+        instanceId: "cursor",
+        driver: CURSOR_DRIVER,
+        models: [{ slug: "composer-2", isDefault: true }],
+      }),
+    ];
+    const draft = {
+      activeProvider: ProviderInstanceId.make("cursor_secondary"),
+      modelSelectionByProvider: {
+        [ProviderInstanceId.make("cursor_secondary")]: createModelSelection(
+          ProviderInstanceId.make("cursor_secondary"),
+          "secondary-only-model",
+          toSelections({ acpMode: "plan" }),
+        ),
+      },
+    };
+
+    const state = deriveEffectiveComposerModelState({
+      draft,
+      providers,
+      selectedProvider: CURSOR_DRIVER,
+      selectedInstanceId: CURSOR_INSTANCE,
+      threadModelSelection: null,
+      projectModelSelection: null,
+      settings: DEFAULT_UNIFIED_SETTINGS,
+    });
+
+    expect(state.selectedModel).toBe("composer-2");
+    expect(state.modelOptions?.[CURSOR_INSTANCE]).toBeUndefined();
+  });
+
+  it("目录撤回不删除实例配置的自定义模型（Grok 透传语义）", () => {
+    const settings = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [GROK_INSTANCE]: {
+          driver: GROK_DRIVER,
+          config: { customModels: ["grok-custom-experimental"] },
+        },
+      },
+    };
+    const providers = applySessionModelCatalogs(
+      [
+        catalogProvider({
+          instanceId: "grok",
+          driver: GROK_DRIVER,
+          models: ["grok-build"],
+        }),
+      ],
+      [
+        sessionModelsUpdated(GROK_INSTANCE, [
+          { slug: "grok-4", name: "Grok 4", isCustom: false, capabilities: null },
+        ]),
+      ],
+    );
+
+    const state = deriveState({
+      draftModelSelection: createModelSelection(GROK_INSTANCE, "grok-custom-experimental"),
+      providers,
+      instanceId: GROK_INSTANCE,
+      driver: GROK_DRIVER,
+      settings,
+    });
+
+    expect(state.selectedModel).toBe("grok-custom-experimental");
+  });
+
+  it("撤回模型与撤回模式值在派发前同时按当前目录校正", () => {
+    const providers = applySessionModelCatalogs(
+      [
+        catalogProvider({
+          instanceId: "cursor",
+          driver: CURSOR_DRIVER,
+          models: ["dynamic-default"],
+        }),
+      ],
+      [
+        sessionModelsUpdated(CURSOR_INSTANCE, [
+          {
+            slug: "composer-2",
+            name: "Composer 2",
+            isCustom: false,
+            isDefault: true,
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "acpMode",
+                  label: "模式",
+                  type: "select",
+                  options: [
+                    { id: "code", label: "编码", isDefault: true },
+                    { id: "plan", label: "计划" },
+                  ],
+                  currentValue: "code",
+                },
+              ],
+            },
+          },
+        ]),
+      ],
+    );
+
+    const state = deriveState({
+      draftModelSelection: createModelSelection(CURSOR_INSTANCE, "dynamic-default", [
+        { id: "acpMode", value: "urn:withdrawn-mode" },
+      ]),
+      providers,
+      instanceId: CURSOR_INSTANCE,
+      driver: CURSOR_DRIVER,
+    });
+
+    expect(state.selectedModel).toBe("composer-2");
+
+    const providerState = getComposerProviderState({
+      provider: CURSOR_DRIVER,
+      model: state.selectedModel,
+      models: providers.find((provider) => provider.instanceId === CURSOR_INSTANCE)?.models ?? [],
+      modelOptions: state.modelOptions?.[CURSOR_INSTANCE],
+      planModeEnabled: false,
+    });
+
+    expect(providerState.modelOptionsForDispatch).toEqual([{ id: "acpMode", value: "code" }]);
   });
 });
 

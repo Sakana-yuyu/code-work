@@ -372,6 +372,8 @@ Mobile入队时的目录归一化不能代替实际派发时的检查：等待�
 
 第76主题修复设置列表的同类身份边界：显式实例占用了其他driver的默认标识时，Web默认槽不再套用该实例，也不再从旧配置另造同标识行；真实driver仍保留它的自定义实例。未列出的driver按自己的默认标识判定身份，不能借用旧driver槽位获得重置动作。Mobile同样跳过被其他driver占用的旧槽，由实际driver决定字段和known状态。旧源五个行为回归直接失败，新版相关五文件71项、Web/Mobile目标类型及四文件fmt/lint通过。同一Electron窗口从两个开关变为一个，实际正反启停只改变目标实例enabled，旧driver、其他实例和命令配置哈希不变。该主题不改发现入口、缓存、协议或后端；Android/iOS的这一复用标识设备场景未新增操作证明，完整矩阵继续，详见 [移植进度](./port-progress.md) 第76主题。
 
+第78主题补齐 Web 草稿侧目录对齐的回归证据，未改生产源码。`deriveEffectiveComposerModelState` 读取草稿持久化选择时经 `resolveAppModelSelectionForInstance`/`resolveAppModelSelection` 按当前合并目录（`applySessionModelCatalogs`）校验：撤回模型回退到同实例默认/首项；完全空目录不借用其他实例，落空到驱动静态默认；草稿中已消失实例的选择不串入选中实例；实例配置的自定义模型（Grok 透传语义）不受目录撤回影响。派发选项再由 `getComposerProviderState` 按当前 `optionDescriptors` 校正，撤回的模式值回退到描述符当前值/默认项，失效值不会进入 `modelSelection`。输入框与待发编辑复用同一份 `providerStatuses`，目录活动在编辑器打开期间到达时选项即时收敛。六条新增回归用例与原文件共 87 项通过；Mobile 对应路径已由第74主题覆盖。设置/新任务/命令面板入口与 Mobile 实机证据继续开放，详见 [移植进度](./port-progress.md) 第78主题。
+
 ### 连续保存实例设置
 
 Web/Desktop 的供应商卡片仍提交完整 `providerInstances` 映射，服务端保持替换语义。表单连续失焦可能从同一个旧渲染快照构造三个实例，直接并发发送会让后来的名称保存覆盖之前的 home 或程序路径。`providerInstanceEdits` 将卡片更新按所选环境串行提交，以验证过的 `server.updateSettings` 成功回执作为下一次基础，只重放相对卡片旧实例实际改变的字段。对象递归重放；删除键、数组、标量与 null 保持替换，未改字段保留最新值。等待中的设置推送按相对上一推送的变化合入，失败不推进回执、不自动重试，之后的编辑仍可执行。
