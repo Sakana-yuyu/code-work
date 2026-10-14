@@ -43,10 +43,21 @@ type SessionContext = {
   turns: Array<{ readonly id: TurnId; readonly items: Array<unknown> }>;
   conversationId: string | undefined;
   activeChild:
-    | { readonly kill: () => Effect.Effect<unknown, PlatformError.PlatformError> }
+    | {
+        readonly kill: (
+          options?: ChildProcess.KillOptions,
+        ) => Effect.Effect<unknown, PlatformError.PlatformError>;
+        readonly exitCode: Effect.Effect<unknown, PlatformError.PlatformError>;
+      }
     | undefined;
   interrupted: boolean;
 };
+
+// `kill()` only signals; the `stopped` contract needs the exit confirmed —
+// SIGTERM, escalate to SIGKILL after the grace window, then wait for the
+// exit event either way (a signal exit reports through the error channel).
+const killAndAwaitExit = (child: NonNullable<SessionContext["activeChild"]>) =>
+  child.kill({ forceKillAfter: "2 seconds" }).pipe(Effect.andThen(child.exitCode), Effect.ignore);
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -435,14 +446,14 @@ export function makeAntigravityAdapter(
     const stopSession = ((threadId: ThreadId) =>
       Effect.gen(function* () {
         const context = yield* requireSession(threadId);
-        if (context.activeChild) yield* context.activeChild.kill().pipe(Effect.ignore);
+        if (context.activeChild) yield* killAndAwaitExit(context.activeChild);
         sessions.delete(threadId);
       })) as unknown as ProviderAdapterShape<ProviderAdapterError>["stopSession"];
     const interruptTurn = ((threadId: ThreadId) =>
       Effect.gen(function* () {
         const context = yield* requireSession(threadId);
         context.interrupted = true;
-        if (context.activeChild) yield* context.activeChild.kill().pipe(Effect.ignore);
+        if (context.activeChild) yield* killAndAwaitExit(context.activeChild);
       })) as unknown as ProviderAdapterShape<ProviderAdapterError>["interruptTurn"];
     const respondToRequest = ((threadId: ThreadId) =>
       requireSession(threadId).pipe(
@@ -475,9 +486,8 @@ export function makeAntigravityAdapter(
     const stopAll = () =>
       Effect.forEach(
         [...sessions.values()],
-        (context) =>
-          context.activeChild ? context.activeChild.kill().pipe(Effect.ignore) : Effect.void,
-        { discard: true },
+        (context) => (context.activeChild ? killAndAwaitExit(context.activeChild) : Effect.void),
+        { concurrency: "unbounded", discard: true },
       ).pipe(Effect.tap(() => Effect.sync(() => sessions.clear())));
     const streamEvents = Stream.fromQueue(events);
 

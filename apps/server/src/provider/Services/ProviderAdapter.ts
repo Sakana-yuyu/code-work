@@ -175,7 +175,10 @@ export interface ProviderAdapterShape<TError> {
   ) => Effect.Effect<void, TError>;
 
   /**
-   * Stop one provider session.
+   * Stop one provider session. Resolves only after the provider process has
+   * fully exited — callers use that guarantee to order restarts, reverts,
+   * and instance switches so nothing can still write session files
+   * afterwards. A fire-and-forget signal does not satisfy the contract.
    */
   readonly stopSession: (threadId: ThreadId) => Effect.Effect<void, TError>;
 

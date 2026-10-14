@@ -94,7 +94,7 @@
 
 1. **能力接口而非巨型接口。** `AgentKernel` 本体只有 `send/answer/cancel/restart/prepare/release/dispose/stopped`，其余（选模型、选模式、选权限、选 effort、选上下文、确认切模型会重启）各是独立接口，UI 仅渲染内核声明的部分。与 Paseo 的能力标志同方向，但把“能做什么”绑定到类型上。可作为细化 `ProviderAdapterCapabilities` 的参考。
 2. **`prepare()` / `release()` 生命周期。** 对话显示时提前准备（内核可启动并上报选项），空闲且不可见时释放资源，再次使用时重启。对多线程、多 provider 的内存占用有直接帮助，需核对 Code Work 是否已有等价的空闲回收。
-3. **`stopped` Future。** `dispose` 之后可等待“它运行的东西已完全停止”，保证没有任何东西再写入会话文件。可用于重启、回滚、切换前的安全等待。
+3. **`stopped` Future。** `dispose` 之后可等待“它运行的东西已完全停止”，保证没有任何东西再写入会话文件。可用于重启、回滚、切换前的安全等待。2026-10-14 已落地：`ProviderAdapterShape.stopSession` 契约写明仅在进程完全退出后返回；scoped 传输本经 spawner finalizer 等退出，唯一缺口 Antigravity 由 fire-and-forget kill 改为 SIGTERM→2s 宽限 SIGKILL→等待 `exitCode`（`stopSession`/`interruptTurn`/`stopAll` 同径），确定性回归证明顺序。证据见 [port-progress](./port-progress.md) 第89主题。
 4. **切模型会重启会话时先询问。** `ConfirmsModelSwitch.switchRestarts(model)`：例如选到由另一供应商服务的模型，会重启 agent 并续接对话，先让用户确认。2026-10-14 已落地：`sessionModelSwitch` 扩为 `in-session | restart-continue | unsupported` 三态；Antigravity 声明 restart-continue（`agy -p` 按回合 spawn、`--conversation` 续接），reactor 重启时保留 resumeCursor 且不开新对话；共享门控 `startedSessionModelChangeGate` 让 Web/Mobile 在应用选择前先确认。证据见 [port-progress](./port-progress.md) 第80主题。
 5. **事件带 `seq`，按 id 与偏移幂等应用。** `KernelEvent.seq` 单调递增，低于等于已应用值的事件视为重复，条目按 id 替换，文本增量落在指定偏移。重连或重放不会改变状态。对 Code Work 的 WebSocket 重连与历史重放是稳健性参考，需核对现有 projector 是否已保证等价幂等。
 6. **Transcript 只存已上报内容，其余是投影。** 状态、任务、待处理变更都由 Transcript 投影得到，用 `version` 缓存。与 Code Work 事件溯源方向一致。

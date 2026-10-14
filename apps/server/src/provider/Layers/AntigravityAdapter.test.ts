@@ -14,6 +14,7 @@ import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { ServerConfig } from "../../config.ts";
+import * as ManagedProcessRegistry from "../../process/ManagedProcessRegistry.ts";
 import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 import { makeAntigravityAdapter, parseAntigravityStreamJson } from "./AntigravityAdapter.ts";
 import { resolveConfiguredAntigravityModel } from "./AntigravityProvider.ts";
@@ -266,6 +267,97 @@ describe("Antigravity stream-json", () => {
         const flagIndex = argv.indexOf("--conversation");
         expect(flagIndex).toBeGreaterThanOrEqual(0);
         expect(argv[flagIndex + 1]).toBe("conv-restored");
+      }).pipe(Effect.provide(NodeServices.layer)),
+    ),
+  );
+
+  it.effect("stopSession 在活动子进程退出事件到达前不返回（stopped 保证）", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const chunks = yield* Queue.unbounded<string>();
+        const processExit = yield* Deferred.make<ChildProcessSpawner.ExitCode>();
+        const killed = yield* Deferred.make<unknown>();
+        const recorded = yield* Deferred.make<unknown>();
+        const spawner = ChildProcessSpawner.make(() =>
+          Effect.succeed(
+            ChildProcessSpawner.makeHandle({
+              pid: ChildProcessSpawner.ProcessId(4),
+              exitCode: Deferred.await(processExit),
+              isRunning: Effect.succeed(true),
+              kill: (options) => Deferred.succeed(killed, options).pipe(Effect.asVoid),
+              unref: Effect.succeed(Effect.void),
+              stdin: Sink.drain,
+              stdout: Stream.encodeText(
+                Stream.fromQueue(chunks).pipe(Stream.takeWhile((chunk) => chunk !== "__END__")),
+              ),
+              stderr: Stream.empty,
+              all: Stream.empty,
+              getInputFd: () => Sink.drain,
+              getOutputFd: () => Stream.empty,
+            }),
+          ),
+        );
+        // 登记发生在 activeChild 赋值之后，await 它即证明子进程已激活。
+        const managedRegistry = ManagedProcessRegistry.ManagedProcessRegistry.of({
+          record: (input) =>
+            Deferred.succeed(recorded, input).pipe(
+              Effect.as({
+                id: "rec-test",
+                owner: input.owner,
+                pid: input.pid,
+                command: input.command,
+                args: [...input.args],
+                metadata: {},
+                identity: { commandLine: null, startedAt: null },
+                createdAt: "",
+              }),
+            ),
+          remove: () => Effect.void,
+          list: () => Effect.succeed([]),
+          reapStale: () =>
+            Effect.succeed({
+              checked: 0,
+              dead: 0,
+              mismatched: 0,
+              removed: 0,
+              terminated: 0,
+              errors: [],
+            }),
+        });
+        const settings = yield* decodeSettings({ enabled: true });
+        const adapter = yield* makeAntigravityAdapter(settings, { environment: {} }).pipe(
+          Effect.provide(ServerConfig.layerTest("/tmp/antigravity-stop", "/tmp")),
+          Effect.provideService(HostProcessPlatform, "linux"),
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        );
+        const threadId = ThreadId.make("antigravity-stop-test");
+        yield* adapter.startSession({ threadId, runtimeMode: "full-access" });
+        // recordSpawnedChild resolves the registry from sendTurn's call-site
+        // environment, not the adapter's make-time environment. The record call
+        // happens after activeChild is assigned, so it doubles as the
+        // "child is active" receipt.
+        const sendFiber = yield* adapter.sendTurn({ threadId, input: "work" }).pipe(
+          Effect.provideService(ManagedProcessRegistry.ManagedProcessRegistry, managedRegistry),
+          Effect.provideService(SpawnExecutableResolution, (command) => command),
+          Effect.forkChild,
+        );
+        const firstReceipt = yield* Effect.raceFirst(
+          Deferred.await(recorded).pipe(Effect.as("recorded" as const)),
+          Fiber.await(sendFiber).pipe(Effect.as("sendDone" as const)),
+        );
+        if (firstReceipt === "sendDone") {
+          const exit = yield* Fiber.await(sendFiber);
+          throw new Error(`sendTurn ended before managed record: ${exit}`);
+        }
+
+        const stop = yield* adapter.stopSession(threadId).pipe(Effect.forkChild);
+        const killOptions = yield* Deferred.await(killed);
+        expect(killOptions).toMatchObject({ forceKillAfter: "2 seconds" });
+        // kill 信号已发出但进程尚未退出——stopped 契约要求此时仍不得返回。
+        expect(stop.pollUnsafe()).toBeUndefined();
+        yield* Deferred.succeed(processExit, ChildProcessSpawner.ExitCode(143));
+        yield* Fiber.join(stop);
+        expect(yield* adapter.hasSession(threadId)).toBe(false);
       }).pipe(Effect.provide(NodeServices.layer)),
     ),
   );
