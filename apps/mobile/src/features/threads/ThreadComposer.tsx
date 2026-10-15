@@ -19,6 +19,11 @@ import {
   type ComposerTrigger,
 } from "@codework/shared/composerTrigger";
 import {
+  isUsageLimitsCommand,
+  type MergedAccountQuotaProvider,
+} from "@codework/shared/accountQuotaMerge";
+import { useAccountQuota } from "../../state/accountQuota";
+import {
   StackActions,
   useFocusEffect,
   useNavigation,
@@ -144,6 +149,12 @@ export interface ThreadComposerProps {
   readonly onExpandedChange?: (expanded: boolean) => void;
   /** Fires on editor focus/blur; hosts use it to vet stale keyboard state. */
   readonly onEditorFocusChange?: (focused: boolean) => void;
+  /**
+   * `/usage-limits` resolves locally from the merged quota snapshot; the host
+   * decides where the report docks. Returns whether the panel opened — false
+   * means "no quota data here", so the draft stays untouched.
+   */
+  readonly onShowUsageLimits?: (providers: readonly MergedAccountQuotaProvider[]) => boolean;
   /** Steer a server-queued message into the running turn (steer-capable providers only). */
   readonly onSteerQueuedMessage?: (messageId: MessageId) => void;
   /** Withdraw a server-queued message before the provider reads it. */
@@ -465,6 +476,20 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     query: composerTrigger?.kind === "path" ? composerTrigger.query : null,
   });
 
+  // /usage-limits is answered locally from the merged quota snapshot — only
+  // offered where this environment has actually reported limits.
+  const accountQuota = useAccountQuota();
+  const usageLimitsProviders = useMemo(
+    () => accountQuota.providersForEnvironment(props.environmentId),
+    [accountQuota, props.environmentId],
+  );
+  const usageLimitsOffered =
+    props.onShowUsageLimits !== undefined && usageLimitsProviders.length > 0;
+  const openUsageLimits = useCallback(
+    () => props.onShowUsageLimits?.(usageLimitsProviders) === true,
+    [props.onShowUsageLimits, usageLimitsProviders],
+  );
+
   const composerMenuItems: ComposerCommandItem[] = useMemo(() => {
     if (!composerTrigger) return [];
 
@@ -478,6 +503,18 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           label: "/model",
           description: t("switchModel"),
         },
+        // /usage-limits resolves locally; picking it is the action itself.
+        ...(usageLimitsOffered
+          ? ([
+              {
+                id: "cmd:usage-limits",
+                type: "slash-command" as const,
+                command: "usage-limits",
+                label: "/usage-limits",
+                description: t("usageLimits.commandDescription"),
+              },
+            ] as const)
+          : []),
         {
           id: "cmd:plan",
           type: "slash-command" as const,
@@ -633,12 +670,24 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     canUseInteractionModes,
     props.activities,
     props.selectedThread.modelSelection.instanceId,
+    usageLimitsOffered,
   ]);
 
   // ── Handle command selection ──────────────────────────────
   const { onChangeDraftMessage, onUpdateInteractionMode, draftMessage, onSendMessage } = props;
 
   const handleSend = useCallback(async () => {
+    // /usage-limits typed out in full resolves locally too. Attachments mean
+    // the user is sending a prompt, so those go through as usual.
+    if (
+      usageLimitsOffered &&
+      props.draftAttachments.length === 0 &&
+      isUsageLimitsCommand(draftMessage) &&
+      openUsageLimits()
+    ) {
+      onChangeDraftMessage("");
+      return;
+    }
     const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
     if (inFlightThreadIdsRef.current.has(threadKey)) return;
     inFlightThreadIdsRef.current.add(threadKey);
@@ -665,6 +714,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     props.environmentLabel,
     props.selectedThread.id,
     props.selectedThread.title,
+    draftMessage,
+    onChangeDraftMessage,
+    openUsageLimits,
+    props.draftAttachments.length,
+    usageLimitsOffered,
   ]);
   const handleCommandSelect = useCallback(
     (item: ComposerCommandItem) => {
@@ -683,6 +737,19 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         setComposerSelection({ start: result.cursor, end: result.cursor });
         onChangeDraftMessage(result.text);
         onUpdateInteractionMode(item.command);
+        return;
+      }
+
+      if (item.type === "slash-command" && item.command === "usage-limits") {
+        const result = replaceTextRange(
+          draftMessage,
+          composerTrigger.rangeStart,
+          composerTrigger.rangeEnd,
+          "",
+        );
+        setComposerSelection({ start: result.cursor, end: result.cursor });
+        onChangeDraftMessage(result.text);
+        openUsageLimits();
         return;
       }
 
@@ -706,7 +773,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       setComposerSelection({ start: result.cursor, end: result.cursor });
       onChangeDraftMessage(result.text);
     },
-    [composerTrigger, draftMessage, onChangeDraftMessage, onUpdateInteractionMode],
+    [composerTrigger, draftMessage, onChangeDraftMessage, onUpdateInteractionMode, openUsageLimits],
   );
 
   // ── Model menu ───────────────────────────────────────────

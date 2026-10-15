@@ -473,6 +473,7 @@ function runtimeEventBase(
   return {
     eventId: event.id,
     provider: event.provider,
+    ...(event.providerInstanceId ? { providerInstanceId: event.providerInstanceId } : {}),
     threadId: canonicalThreadId,
     createdAt: event.createdAt,
     ...(event.turnId ? { turnId: event.turnId } : {}),

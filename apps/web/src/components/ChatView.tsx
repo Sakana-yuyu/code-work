@@ -273,6 +273,7 @@ import { appendReviewCommentsToPrompt, type ReviewCommentContext } from "../revi
 import { environmentCatalog } from "../connection/catalog";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useKnownTerminalSessions, useThreadRunningTerminalIds } from "../state/terminalSessions";
+import { useAccountQuota } from "../state/accountQuota";
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
 import {
@@ -340,6 +341,7 @@ import {
   useLinkedThreadPullRequest,
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
+import { usageLimitsBannerItem } from "./chat/ComposerUsageLimits";
 import {
   hasAvailableClaudeCompactionProvider,
   hasDismissedResumeCompaction,
@@ -6967,6 +6969,53 @@ function ChatViewContent(props: ChatViewProps) {
     workLogEntries,
   ]);
 
+  // The open /usage-limits panel for this thread and turn. Only the open moment
+  // is stored: the rows read live quota data, so a fresh rate-limit push shows
+  // through. Anything that spends quota closes it — a new turn, or the agent
+  // resuming after an approval or answered question.
+  const accountQuota = useAccountQuota();
+  const usageLimitsProviders = accountQuota.providersForEnvironment(routeThreadRef.environmentId);
+  const usageLimitsOffered = usageLimitsProviders.length > 0;
+  const usageLimitsKey = [
+    routeThreadKey,
+    activeLatestTurn?.turnId ?? "",
+    activePendingApproval?.requestId ?? activePendingUserInput?.requestId ?? "",
+  ].join(":");
+  const [usageLimitsPanel, setUsageLimitsPanel] = useState<{ key: string; now: number } | null>(
+    null,
+  );
+  // Drop the snapshot as soon as the thread or turn changes so it cannot resurface stale.
+  if (usageLimitsPanel !== null && usageLimitsPanel.key !== usageLimitsKey) {
+    setUsageLimitsPanel(null);
+  }
+  const openUsageLimits = useCallback(() => {
+    if (usageLimitsProviders.length > 0) {
+      setUsageLimitsPanel({ key: usageLimitsKey, now: Date.now() });
+      return true;
+    }
+    toastManager.add({ type: "info", title: t("usageLimits.unavailable") });
+    return false;
+  }, [usageLimitsKey, usageLimitsProviders.length]);
+  const usageLimitsBannerItemMemo = useMemo<ComposerBannerStackItem | null>(
+    () =>
+      usageLimitsPanel !== null && usageLimitsPanel.key === usageLimitsKey
+        ? usageLimitsBannerItem({
+            id: `usage-limits:${usageLimitsPanel.key}:${usageLimitsPanel.now}`,
+            providers: usageLimitsProviders,
+            environmentsCount: accountQuota.environmentsCount,
+            instanceLabel: accountQuota.instanceLabel,
+            onDismiss: () => setUsageLimitsPanel(null),
+          })
+        : null,
+    [
+      accountQuota.environmentsCount,
+      accountQuota.instanceLabel,
+      usageLimitsKey,
+      usageLimitsPanel,
+      usageLimitsProviders,
+    ],
+  );
+
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
@@ -6976,11 +7025,13 @@ function ChatViewContent(props: ChatViewProps) {
       backgroundLivenessBannerItem === null ? [] : [backgroundLivenessBannerItem];
     const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
     const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
+    const usageLimitsItems = usageLimitsBannerItemMemo === null ? [] : [usageLimitsBannerItemMemo];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
       return [
         ...urgentSystemItems,
         ...backgroundLivenessItems,
         ...calmSystemItems,
+        ...usageLimitsItems,
         ...wokeThreadItems,
         ...parkedThreadItems,
       ];
@@ -6989,6 +7040,7 @@ function ChatViewContent(props: ChatViewProps) {
       ...urgentSystemItems,
       ...backgroundLivenessItems,
       ...calmSystemItems,
+      ...usageLimitsItems,
       ...wokeThreadItems,
       {
         id: `branch-mismatch:${activeBranchMismatchKey}`,
@@ -7042,6 +7094,7 @@ function ChatViewContent(props: ChatViewProps) {
     parkedThreadBannerItem,
     showBranchMismatchBanner,
     systemComposerBannerItems,
+    usageLimitsBannerItemMemo,
     wokeThreadBannerItem,
   ]);
 
@@ -8482,6 +8535,8 @@ function ChatViewContent(props: ChatViewProps) {
                             compactDisabled={compactDisabled}
                             compactDisabledReason={compactDisabledReason}
                             onCompactContext={handleCompactContext}
+                            usageLimitsOffered={usageLimitsOffered}
+                            onOpenUsageLimits={openUsageLimits}
                             resumeCompactionTokens={resumeCompactionTokens}
                             keepFullHistory={keepFullHistory}
                             onToggleKeepFullHistory={toggleKeepFullHistory}

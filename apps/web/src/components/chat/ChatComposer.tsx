@@ -22,6 +22,7 @@ import {
 } from "@codework/contracts";
 import type { EnvironmentConnectionPresentation } from "@codework/client-runtime/connection";
 import { serializeComposerFileLink } from "@codework/shared/composerTrigger";
+import { isUsageLimitsCommand } from "@codework/shared/accountQuotaMerge";
 import { createModelSelection, normalizeModelSlug } from "@codework/shared/model";
 import {
   memo,
@@ -630,6 +631,11 @@ export interface ChatComposerProps {
   compactDisabledReason: string | null;
   /** Dispatches a standalone `/compact` turn; the draft is untouched. */
   onCompactContext: () => void;
+
+  // /usage-limits resolves locally from the merged quota snapshot; the agent
+  // never sees it. Offered only when this environment has reported limits.
+  usageLimitsOffered?: boolean;
+  onOpenUsageLimits?: () => boolean;
   /** Tokens a stale session would re-read; shows the Compact chip and compacts on send. */
   resumeCompactionTokens: number | null;
   keepFullHistory: boolean;
@@ -845,6 +851,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     compactDisabled,
     compactDisabledReason,
     onCompactContext,
+    usageLimitsOffered = false,
+    onOpenUsageLimits,
     resumeCompactionTokens,
     keepFullHistory,
     onToggleKeepFullHistory,
@@ -1575,6 +1583,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           label: "/model",
           description: t("switchResponseModelForThisThread"),
         },
+        // /usage-limits resolves locally; picking it is the action itself.
+        ...(usageLimitsOffered
+          ? ([
+              {
+                id: "slash:usage-limits",
+                type: "slash-command",
+                command: "usage-limits",
+                label: "/usage-limits",
+                description: t("usageLimits.commandDescription"),
+              },
+            ] as const)
+          : []),
         ...(planModeUiEnabled
           ? ([
               {
@@ -2305,6 +2325,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       if (item.type === "slash-command") {
+        if (item.command === "usage-limits") {
+          const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+            expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+            focusEditorAfterReplace: false,
+          });
+          if (applied) {
+            setComposerHighlightedItemId(null);
+            onOpenUsageLimits?.();
+          }
+          return;
+        }
         if (item.command === "model") {
           const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
             expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
@@ -2479,6 +2510,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           promptRef.current = objective;
           onSend(undefined, intent, undefined, objective);
         })();
+        return;
+      }
+      // /usage-limits typed out in full resolves locally too. Attachments mean
+      // the user is sending a prompt, so those go through as usual.
+      if (
+        usageLimitsOffered &&
+        composerImagesRef.current.length === 0 &&
+        isUsageLimitsCommand(promptForSubmission) &&
+        onOpenUsageLimits?.() === true
+      ) {
+        event?.preventDefault();
+        setComposerDraftPrompt(composerDraftTarget, "");
+        promptRef.current = "";
+        setComposerCursor(0);
+        setComposerTrigger(null);
+        setComposerSubmissionError(null);
         return;
       }
       const submission = submitComposerDraft({

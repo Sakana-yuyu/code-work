@@ -69,6 +69,9 @@ import type {
 } from "../../lib/threadActivity";
 import { PendingApprovalCard } from "./PendingApprovalCard";
 import { PendingUserInputCard } from "./PendingUserInputCard";
+import { ComposerUsageLimits } from "./ComposerUsageLimits";
+import { useAccountQuota } from "../../state/accountQuota";
+import type { MergedAccountQuotaProvider } from "@codework/shared/accountQuotaMerge";
 import {
   derivePendingUserInputMaxHeight,
   ESTIMATED_KEYBOARD_HEIGHT,
@@ -276,6 +279,31 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const selectedThreadKeyRef = useRef(selectedThreadKey);
   const lastScrolledSubmittedMessageIdRef = useRef<MessageId | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
+  // The open /usage-limits panel for this thread and turn; a new turn closes
+  // it because fresh quota spend makes the snapshot stale.
+  const [usageLimitsPanelKey, setUsageLimitsPanelKey] = useState<string | null>(null);
+  const accountQuota = useAccountQuota();
+  const usageLimitsProviders = useMemo(
+    () => accountQuota.providersForEnvironment(props.environmentId),
+    [accountQuota, props.environmentId],
+  );
+  const accountQuotaEnvironmentsCount = accountQuota.environmentsCount;
+  const accountQuotaInstanceLabel = accountQuota.instanceLabel;
+  // A new turn spends quota and an answered approval resumes agent work, so a
+  // panel armed under the old turn or pending request never shows stale rows.
+  const usageLimitsKey = [
+    selectedThreadKey,
+    props.selectedThread.latestTurn?.turnId ?? "",
+    props.activePendingApproval?.requestId ?? props.activePendingUserInput?.requestId ?? "",
+  ].join(":");
+  const handleShowUsageLimits = useCallback(
+    (providers: readonly MergedAccountQuotaProvider[]) => {
+      if (providers.length === 0) return false;
+      setUsageLimitsPanelKey(usageLimitsKey);
+      return true;
+    },
+    [usageLimitsKey],
+  );
   const [anchorMessageId, setAnchorMessageId] = useState<MessageId | null>(null);
   const [submittedMessageId, setSubmittedMessageId] = useState<MessageId | null>(null);
   const [endFollowEnabled, setEndFollowEnabled] = useState(true);
@@ -758,6 +786,17 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
               ) : null}
             </View>
 
+            {usageLimitsPanelKey === usageLimitsKey ? (
+              <View className="w-full self-center px-4 pb-2" style={{ maxWidth: contentMaxWidth }}>
+                <ComposerUsageLimits
+                  providers={usageLimitsProviders}
+                  environmentsCount={accountQuotaEnvironmentsCount}
+                  instanceLabel={accountQuotaInstanceLabel}
+                  onClose={() => setUsageLimitsPanelKey(null)}
+                />
+              </View>
+            ) : null}
+
             {/* Hidden (not unmounted) while a user-input request owns the
                 composer slot, so composer drafts and editor state survive. */}
             <View style={activeUserInputRequestId !== null ? { display: "none" } : undefined}>
@@ -792,6 +831,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 onEditorFocusChange={handleOwnedInputFocusChange}
                 onSteerQueuedMessage={props.onSteerQueuedMessage}
                 onCancelQueuedMessage={props.onCancelQueuedMessage}
+                onShowUsageLimits={handleShowUsageLimits}
               />
             </View>
           </View>

@@ -2,7 +2,9 @@ import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 export type ComposerTriggerKind = "path" | "slash-command" | "skill";
-export type ComposerSlashCommand = "model" | "plan" | "default";
+// `usage-limits` is answered locally by the client; the others are
+// mode-switch commands the composer applies itself.
+export type ComposerSlashCommand = "model" | "plan" | "default" | "usage-limits";
 export type ComposerSubmissionIntent = "foreground" | "background";
 
 export interface ComposerTrigger {
@@ -328,7 +330,7 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
 
 export function parseStandaloneComposerSlashCommand(
   text: string,
-): Exclude<ComposerSlashCommand, "model"> | null {
+): Extract<ComposerSlashCommand, "plan" | "default"> | null {
   const match = /^\/(plan|default)\s*$/i.exec(text.trim());
   if (!match) {
     return null;

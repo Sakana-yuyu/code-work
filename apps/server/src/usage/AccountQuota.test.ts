@@ -22,12 +22,14 @@ describe("normalizeAccountRateLimits", () => {
       label: "5 hours",
       usedFraction: 0.42,
       resetsAt: "2026-01-01T00:00:00.000Z",
+      windowDurationMins: 300,
       status: "ok",
     });
     expect(windows[1]).toMatchObject({
       id: "secondary",
       label: "7 days",
       usedFraction: 0.07,
+      windowDurationMins: 10_080,
       status: "ok",
     });
   });
@@ -107,6 +109,35 @@ describe("accountQuotaStore", () => {
     const store = createAccountQuotaStore();
     store.update("codex", { unrelated: true }, 1_000);
     expect(store.snapshot(1_000).providers).toHaveLength(0);
+  });
+
+  it("keeps two instances of one driver in separate account slots", () => {
+    const store = createAccountQuotaStore();
+    store.update("codex", { primary: { usedPercent: 10 } }, 1_000);
+    store.update("codex", { primary: { usedPercent: 60 } }, 1_000, "codex-work");
+    store.update("codex", { primary: { usedPercent: 20 } }, 2_000);
+
+    const { providers } = store.snapshot(2_000);
+    expect(providers).toHaveLength(2);
+    expect(providers.map((p) => p.providerInstanceId)).toEqual([undefined, "codex-work"]);
+    expect(
+      providers.find((p) => p.providerInstanceId === undefined)?.windows[0]?.usedFraction,
+    ).toBe(0.2);
+    expect(
+      providers.find((p) => p.providerInstanceId === "codex-work")?.windows[0]?.usedFraction,
+    ).toBe(0.6);
+  });
+
+  it("persists and rehydrates per-instance slots independently", () => {
+    const source = createAccountQuotaStore();
+    source.update("codex", { primary: { usedPercent: 10 } }, 1_000);
+    source.update("codex", { primary: { usedPercent: 60 }, planType: "pro" }, 1_000, "codex-work");
+
+    const restored = createAccountQuotaStore();
+    restored.hydrate(source.takeDirtySnapshot()!);
+    const { providers } = restored.snapshot(2_000);
+    expect(providers).toHaveLength(2);
+    expect(providers.find((p) => p.providerInstanceId === "codex-work")?.planName).toBe("pro");
   });
 
   it("round-trips through serialize/hydrate without clobbering live windows", () => {

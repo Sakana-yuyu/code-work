@@ -111,6 +111,11 @@ same `$name` skill token to your message. The original skill name remains search
 also reports that skill as a native slash command, Code Work hides the duplicate native entry and keeps
 the `/skill:Skill Name` label.
 
+`/usage-limits` is a Code Work command, not a provider one: it opens a panel above the composer with
+the subscription quota that environment has reported (remaining percent, reset times, plan). The
+command is listed only once that environment has quota data, and answering it never sends anything
+to the agent. The same information lives on **Usage → Personal plan**.
+
 When you return to a large Claude thread whose prompt cache has expired, the composer shows a
 **Compact** chip with the thread's token count next to the send button. While it is on, sending
 summarizes the conversation first so the resumed session does not re-read the full history. Click

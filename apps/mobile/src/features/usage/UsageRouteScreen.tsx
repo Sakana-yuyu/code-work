@@ -28,8 +28,13 @@ import {
 } from "../../state/byokBalance";
 import type { MergedByokAdapter, MergedByokPlans } from "@codework/shared/byokBalanceMerge";
 import type { MergedAccountQuotaProvider } from "@codework/shared/accountQuotaMerge";
-import type { AccountQuotaWindow } from "@codework/contracts";
+import {
+  externalUsageLinkForProvider,
+  quotaWindowElapsedFraction,
+} from "@codework/shared/accountQuotaMerge";
+import type { AccountQuotaWindow, EnvironmentId } from "@codework/contracts";
 import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
+import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { SettingsSection } from "../settings/components/SettingsSection";
 import { UsageDailyChart } from "./UsageDailyChart";
 import type { UsageChartMetric } from "./usageChartData";
@@ -173,6 +178,8 @@ export function UsageRouteScreen() {
           providers={accountQuota.providers}
           hasData={accountQuota.hasData}
           isPending={accountQuota.isPending}
+          environmentsCount={accountQuota.environmentsCount}
+          instanceLabel={accountQuota.instanceLabel}
         />
         <ByokBalanceSection
           environments={byok.environments}
@@ -741,46 +748,80 @@ function AccountQuotaSection(props: {
   readonly providers: readonly MergedAccountQuotaProvider[];
   readonly hasData: boolean;
   readonly isPending: boolean;
+  readonly environmentsCount: number;
+  readonly instanceLabel: (
+    environmentId: EnvironmentId,
+    instanceId: string | undefined,
+  ) => string | undefined;
 }) {
   const language = useResolvedLanguage();
   if (props.isPending || !props.hasData) {
     return null;
   }
+  // 同一 driver 跑了多个账号时才需要实例标签消歧。
+  const accountCounts = new Map<string, number>();
+  for (const provider of props.providers) {
+    accountCounts.set(provider.provider, (accountCounts.get(provider.provider) ?? 0) + 1);
+  }
   return (
     <SettingsSection title={t("usageAccountQuotaMobile.title")} card>
       <View className="gap-3 p-4">
-        {props.providers.map((provider) => (
-          <View
-            key={`${provider.environmentId}:${provider.provider}`}
-            className="gap-2.5 rounded-[16px] bg-subtle p-3"
-          >
-            <View className="flex-row items-center gap-2">
-              <Text
-                className="min-w-0 flex-1 text-sm font-codework-medium text-foreground"
-                numberOfLines={1}
-              >
-                {accountQuotaProviderLabel(provider.provider)}
-              </Text>
-              {provider.planName === undefined ? null : (
-                <Text className="rounded-md bg-card px-1.5 py-0.5 text-2xs text-foreground-muted">
-                  {accountQuotaPlanLabel(provider.planName)}
+        {props.providers.map((provider) => {
+          const instance = props.instanceLabel(provider.environmentId, provider.providerInstanceId);
+          const showInstance =
+            instance !== undefined && (accountCounts.get(provider.provider) ?? 0) > 1;
+          const externalUsage = externalUsageLinkForProvider(provider.provider);
+          return (
+            <View
+              key={`${provider.environmentId}:${provider.provider}:${provider.providerInstanceId ?? ""}`}
+              className="gap-2.5 rounded-[16px] bg-subtle p-3"
+            >
+              <View className="flex-row items-center gap-2">
+                <Text
+                  className="min-w-0 flex-1 text-sm font-codework-medium text-foreground"
+                  numberOfLines={1}
+                >
+                  {accountQuotaProviderLabel(provider.provider)}
+                  {showInstance ? ` · ${instance}` : ""}
                 </Text>
+                {provider.planName === undefined ? null : (
+                  <Text className="rounded-md bg-card px-1.5 py-0.5 text-2xs text-foreground-muted">
+                    {accountQuotaPlanLabel(provider.planName)}
+                  </Text>
+                )}
+                {props.environmentsCount > 1 ? (
+                  <Text className="text-[10px] text-foreground-tertiary" numberOfLines={1}>
+                    {provider.environmentLabel}
+                  </Text>
+                ) : null}
+              </View>
+              {provider.windows.map((window) => (
+                <AccountQuotaWindowRow key={window.id} window={window} language={language} />
+              ))}
+              {externalUsage === null ? null : (
+                <Pressable
+                  accessibilityRole="link"
+                  className="self-start active:opacity-60"
+                  hitSlop={8}
+                  onPress={() => void tryOpenExternalUrl(externalUsage.url, "usage-dashboard")}
+                >
+                  <Text className="text-[10px] text-foreground-tertiary underline">
+                    {externalUsage.label} ↗
+                  </Text>
+                </Pressable>
               )}
+              <Text className="text-[10px] text-foreground-tertiary">
+                {t("usageAccountQuotaMobile.updatedAt", {
+                  value1: formatDateTimeShort(
+                    new Date(provider.updatedAtUnixMs).toISOString(),
+                    undefined,
+                    language,
+                  ),
+                })}
+              </Text>
             </View>
-            {provider.windows.map((window) => (
-              <AccountQuotaWindowRow key={window.id} window={window} language={language} />
-            ))}
-            <Text className="text-[10px] text-foreground-tertiary">
-              {t("usageAccountQuotaMobile.updatedAt", {
-                value1: formatDateTimeShort(
-                  new Date(provider.updatedAtUnixMs).toISOString(),
-                  undefined,
-                  language,
-                ),
-              })}
-            </Text>
-          </View>
-        ))}
+          );
+        })}
       </View>
     </SettingsSection>
   );
@@ -798,29 +839,60 @@ function AccountQuotaWindowRow(props: {
   readonly language: string;
 }) {
   const window = props.window;
+  const pace = quotaWindowPaceLabel(window, Date.now());
+  const resetsInFuture = window.resetsAt !== undefined && Date.parse(window.resetsAt) > Date.now();
   return (
     <View className="gap-1">
       <View className="flex-row items-baseline justify-between gap-3">
         <Text className="min-w-0 flex-1 text-xs text-foreground-muted" numberOfLines={1}>
           {accountQuotaWindowLabel(window)}
+          {window.windowDurationMins !== undefined
+            ? ` (${formatWindowMinutes(window.windowDurationMins)})`
+            : ""}
         </Text>
         <Text
           className={`text-sm font-codework-medium tabular-nums ${ACCOUNT_QUOTA_VALUE_CLASSES[window.status]}`}
         >
           {window.usedFraction === undefined
             ? t("usageAccountQuotaMobile.unknown")
-            : `${formatPercent(window.usedFraction, 0)} ${t("usageAccountQuotaMobile.usedSuffix")}`}
+            : `${formatPercent(1 - window.usedFraction, 0)} ${t("usageAccountQuotaMobile.leftSuffix")}`}
         </Text>
       </View>
-      {window.resetsAt === undefined ? null : (
-        <Text className="text-[10px] text-foreground-tertiary">
-          {t("usageAccountQuotaMobile.resetsAt", {
-            value1: formatDateTimeShort(window.resetsAt, undefined, props.language),
-          })}
+      {pace === null && !resetsInFuture ? null : (
+        <Text className="text-[10px] text-foreground-tertiary" numberOfLines={1}>
+          {[
+            resetsInFuture
+              ? t("usageAccountQuotaMobile.resetsAt", {
+                  value1: formatDateTimeShort(window.resetsAt!, undefined, props.language),
+                })
+              : null,
+            pace,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </Text>
       )}
     </View>
   );
+}
+
+/** "5h"/"7d" 风格窗口时长，挂在窗口名后的括号里。 */
+function formatWindowMinutes(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  const hours = minutes / 60;
+  if (hours < 24) return `${Math.round(hours)}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
+/** 用量占比对窗口已流逝占比，与 web 端进度条上的 pace tick 同一语义。 */
+function quotaWindowPaceLabel(window: AccountQuotaWindow, nowUnixMs: number): string | null {
+  const elapsed = quotaWindowElapsedFraction(window, nowUnixMs);
+  if (elapsed === null || window.usedFraction === undefined) return null;
+  const delta = window.usedFraction - elapsed;
+  if (Math.abs(delta) < 0.05) return t("usageAccountQuotaMobile.paceOnTrack");
+  return delta > 0
+    ? t("usageAccountQuotaMobile.paceAhead")
+    : t("usageAccountQuotaMobile.paceBehind");
 }
 
 function accountQuotaWindowLabel(window: AccountQuotaWindow): string {

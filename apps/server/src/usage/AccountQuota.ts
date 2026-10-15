@@ -21,6 +21,7 @@ import {
   type AccountQuotaWindow,
   type AccountQuotaWindowStatus,
   type ProviderDriverKind,
+  type ProviderInstanceId,
 } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -35,6 +36,8 @@ interface QuotaWindowEntry extends AccountQuotaWindow {
 
 interface QuotaProviderEntry {
   readonly provider: string;
+  /** Distinct account when the event named its configured instance. */
+  readonly providerInstanceId?: string;
   planName?: string;
   readonly windows: Map<string, QuotaWindowEntry>;
   updatedAtUnixMs: number;
@@ -53,7 +56,12 @@ const isAccountQuotaPersistence = Schema.is(AccountQuotaPersistenceSchema);
 
 export interface AccountQuotaStore {
   /** CLI 报告了一次额度；按窗口 id 合并（Claude 一次只报一个窗口）。 */
-  readonly update: (provider: string, rateLimits: unknown, nowUnixMs: number) => void;
+  readonly update: (
+    provider: string,
+    rateLimits: unknown,
+    nowUnixMs: number,
+    providerInstanceId?: string,
+  ) => void;
   readonly snapshot: (nowUnixMs: number) => AccountQuotaResult;
   readonly serialize: () => AccountQuotaPersistence;
   readonly hydrate: (state: AccountQuotaPersistence) => void;
@@ -143,6 +151,7 @@ export const normalizeAccountRateLimits = (
       label: windowLabel(key, windowMinutes),
       usedFraction: toFraction(usedPercent),
       resetsAt: readResetAt(window, ["resetsAt", "resets_at"]),
+      ...(windowMinutes !== null ? { windowDurationMins: windowMinutes } : {}),
       status: statusFromFraction(toFraction(usedPercent)),
     });
   }
@@ -158,11 +167,13 @@ export const normalizeAccountRateLimits = (
   const directType = readString(limits, ["rate_limit_type", "type", "window"]);
   if (directUsed !== null) {
     const id = directType ?? "current";
+    const directMinutes = readNumber(limits, ["windowDurationMins", "window_duration_mins"]);
     windows.push({
       id,
-      label: windowLabel(id, null),
+      label: windowLabel(id, directMinutes),
       usedFraction: toFraction(directUsed),
       resetsAt: readResetAt(limits, ["resetsAt", "reset_at", "resets_at"]),
+      ...(directMinutes !== null ? { windowDurationMins: directMinutes } : {}),
       status: statusFromFraction(toFraction(directUsed)),
     });
     return { windows, ...(planName ? { planName } : {}) };
@@ -174,11 +185,13 @@ export const normalizeAccountRateLimits = (
     if (!window) continue;
     const usedPercent = readNumber(window, ["usedPercent", "used_percent", "utilization"]);
     if (usedPercent === null) continue;
+    const windowMinutes = readNumber(window, ["windowDurationMins", "window_duration_mins"]);
     windows.push({
       id: key,
-      label: windowLabel(key, readNumber(window, ["windowDurationMins", "window_duration_mins"])),
+      label: windowLabel(key, windowMinutes),
       usedFraction: toFraction(usedPercent),
       resetsAt: readResetAt(window, ["resetsAt", "resets_at"]),
+      ...(windowMinutes !== null ? { windowDurationMins: windowMinutes } : {}),
       status: statusFromFraction(toFraction(usedPercent)),
     });
   }
@@ -189,13 +202,21 @@ export const normalizeAccountRateLimits = (
 const WINDOW_TTL_UNIX_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const createAccountQuotaStore = (): AccountQuotaStore => {
+  // Keyed `provider:instanceId` so two accounts of one driver stay distinct;
+  // events without an instance id share the driver's default slot.
   const providers = new Map<string, QuotaProviderEntry>();
   let dirty = false;
+
+  const entryKey = (provider: string, providerInstanceId?: string): string =>
+    providerInstanceId === undefined ? provider : `${provider}:${providerInstanceId}`;
 
   const toPersistence = (): AccountQuotaPersistence => ({
     version: 1,
     providers: [...providers.values()].map((entry) => ({
       provider: entry.provider as ProviderDriverKind,
+      ...(entry.providerInstanceId !== undefined
+        ? { providerInstanceId: entry.providerInstanceId as ProviderInstanceId }
+        : {}),
       ...(entry.planName ? { planName: entry.planName } : {}),
       windows: [...entry.windows.values()].map(
         ({ updatedAtUnixMs: _updatedAt, ...window }) => window,
@@ -205,13 +226,19 @@ export const createAccountQuotaStore = (): AccountQuotaStore => {
   });
 
   return {
-    update: (provider, rateLimits, nowUnixMs) => {
+    update: (provider, rateLimits, nowUnixMs, providerInstanceId) => {
       const { windows, planName } = normalizeAccountRateLimits(rateLimits);
       if (windows.length === 0 && !planName) return;
-      let entry = providers.get(provider);
+      const key = entryKey(provider, providerInstanceId);
+      let entry = providers.get(key);
       if (!entry) {
-        entry = { provider, windows: new Map(), updatedAtUnixMs: nowUnixMs };
-        providers.set(provider, entry);
+        entry = {
+          provider,
+          ...(providerInstanceId !== undefined ? { providerInstanceId } : {}),
+          windows: new Map(),
+          updatedAtUnixMs: nowUnixMs,
+        };
+        providers.set(key, entry);
       }
       for (const window of windows) {
         entry.windows.set(window.id, { ...window, updatedAtUnixMs: nowUnixMs });
@@ -232,22 +259,37 @@ export const createAccountQuotaStore = (): AccountQuotaStore => {
         windows.sort((left, right) => left.id.localeCompare(right.id));
         states.push({
           provider: entry.provider as ProviderDriverKind,
+          ...(entry.providerInstanceId !== undefined
+            ? { providerInstanceId: entry.providerInstanceId as ProviderInstanceId }
+            : {}),
           ...(entry.planName ? { planName: entry.planName } : {}),
           windows,
           updatedAtUnixMs: entry.updatedAtUnixMs,
         });
       }
-      states.sort((left, right) => left.provider.localeCompare(right.provider));
+      states.sort((left, right) =>
+        (entryKey(left.provider, left.providerInstanceId) as string).localeCompare(
+          entryKey(right.provider, right.providerInstanceId),
+        ),
+      );
       return { generatedAtUnixMs: nowUnixMs, providers: states };
     },
     serialize: toPersistence,
     // 水合按窗口取最新：重启前的快照不能覆盖进程已收到的更新。
     hydrate: (state) => {
       for (const incoming of state.providers ?? []) {
-        let entry = providers.get(incoming.provider);
+        const key = entryKey(incoming.provider, incoming.providerInstanceId);
+        let entry = providers.get(key);
         if (!entry) {
-          entry = { provider: incoming.provider, windows: new Map(), updatedAtUnixMs: 0 };
-          providers.set(incoming.provider, entry);
+          entry = {
+            provider: incoming.provider,
+            ...(incoming.providerInstanceId !== undefined
+              ? { providerInstanceId: incoming.providerInstanceId }
+              : {}),
+            windows: new Map(),
+            updatedAtUnixMs: 0,
+          };
+          providers.set(key, entry);
         }
         if ((incoming.updatedAtUnixMs ?? 0) > entry.updatedAtUnixMs) {
           entry.updatedAtUnixMs = incoming.updatedAtUnixMs;

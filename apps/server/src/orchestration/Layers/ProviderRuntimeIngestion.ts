@@ -3027,7 +3027,12 @@ const make = Effect.gen(function* () {
         case "account.rate-limits.updated": {
           // 顺路投喂订阅额度单例（纯同步，不参与编排）；转活动走 runtimeEventToActivities。
           const quotaNow = yield* Clock.currentTimeMillis;
-          accountQuotaStore.update(event.provider, event.payload.rateLimits, quotaNow);
+          accountQuotaStore.update(
+            event.provider,
+            event.payload.rateLimits,
+            quotaNow,
+            event.providerInstanceId,
+          );
           break;
         }
         default:

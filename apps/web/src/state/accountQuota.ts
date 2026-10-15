@@ -27,6 +27,8 @@ export interface EnvironmentAccountQuotaStatus {
   readonly isPending: boolean;
   readonly error: string | null;
   readonly result: AccountQuotaResult | null;
+  /** instanceId → configured display name for per-account labels. */
+  readonly instanceNames: ReadonlyMap<string, string>;
 }
 
 const quotaAtom = Atom.make((get): readonly EnvironmentAccountQuotaStatus[] => {
@@ -35,12 +37,19 @@ const quotaAtom = Atom.make((get): readonly EnvironmentAccountQuotaStatus[] => {
   const statuses: EnvironmentAccountQuotaStatus[] = [];
   for (const [environmentId, presentation] of presentations) {
     const result = get(serverEnvironment.accountQuota({ environmentId, input: {} }));
+    const instanceNames = new Map<string, string>();
+    for (const provider of presentation.serverConfig?.providers ?? []) {
+      if (provider.displayName !== undefined) {
+        instanceNames.set(provider.instanceId, provider.displayName);
+      }
+    }
     statuses.push({
       environmentId,
       label: presentation.entry.target.label,
       isPending: result.waiting,
       error: result._tag === "Failure" ? "This environment could not report quota." : null,
       result: Option.getOrNull(AsyncResult.value(result)),
+      instanceNames,
     });
   }
   return statuses;
@@ -48,6 +57,15 @@ const quotaAtom = Atom.make((get): readonly EnvironmentAccountQuotaStatus[] => {
 
 export interface AccountQuotaView {
   readonly providers: readonly MergedAccountQuotaProvider[];
+  /** Quota reported by one environment only — what /usage-limits answers. */
+  readonly providersForEnvironment: (
+    environmentId: EnvironmentId,
+  ) => readonly MergedAccountQuotaProvider[];
+  /** Configured display name for an instance, else undefined. */
+  readonly instanceLabel: (
+    environmentId: EnvironmentId,
+    instanceId: string | undefined,
+  ) => string | undefined;
   /** True once at least one provider reported any window. */
   readonly hasData: boolean;
   /** True until at least one environment has answered. */
@@ -85,6 +103,22 @@ export function useAccountQuota(): AccountQuotaView {
     [environments],
   );
 
+  const providersForEnvironment = useCallback(
+    (environmentId: EnvironmentId) =>
+      providers.filter((provider) => provider.environmentId === environmentId),
+    [providers],
+  );
+  const instanceLabel = useCallback(
+    (environmentId: EnvironmentId, instanceId: string | undefined) => {
+      if (instanceId === undefined) return undefined;
+      const names = environments.find(
+        (environment) => environment.environmentId === environmentId,
+      )?.instanceNames;
+      return names?.get(instanceId);
+    },
+    [environments],
+  );
+
   const answeredCount = environments.filter((environment) => environment.result !== null).length;
   const stillReporting = environments.filter(
     (environment) => environment.result === null && environment.error === null,
@@ -92,6 +126,8 @@ export function useAccountQuota(): AccountQuotaView {
 
   return {
     providers,
+    providersForEnvironment,
+    instanceLabel,
     hasData: providers.length > 0,
     isPending: answeredCount === 0 && stillReporting > 0,
     environmentsCount: environments.length,

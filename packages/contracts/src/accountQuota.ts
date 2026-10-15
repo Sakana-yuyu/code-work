@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 import { NonNegativeInt } from "./baseSchemas.ts";
-import { ProviderDriverKind } from "./providerInstance.ts";
+import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 
 /**
  * First-party subscription quota as pushed by the provider CLIs themselves
@@ -20,12 +20,24 @@ export const AccountQuotaWindow = Schema.Struct({
   label: Schema.String,
   usedFraction: Schema.optional(Schema.Number),
   resetsAt: Schema.optional(Schema.String),
+  /**
+   * Length of the rolling window in minutes when the provider reports it
+   * (Codex does, Claude does not). Clients derive the "even pace" marker from
+   * `resetsAt - windowDurationMins`; absent means no pace hint.
+   */
+  windowDurationMins: Schema.optional(NonNegativeInt),
   status: AccountQuotaWindowStatus,
 });
 export type AccountQuotaWindow = typeof AccountQuotaWindow.Type;
 
 export const AccountQuotaProviderState = Schema.Struct({
   provider: ProviderDriverKind,
+  /**
+   * Configured instance whose account produced these windows when the runtime
+   * event carried one. Two instances of one driver are two accounts; absent
+   * on older payloads means "the driver's default account".
+   */
+  providerInstanceId: Schema.optional(ProviderInstanceId),
   planName: Schema.optional(Schema.String),
   windows: Schema.Array(AccountQuotaWindow),
   updatedAtUnixMs: NonNegativeInt,

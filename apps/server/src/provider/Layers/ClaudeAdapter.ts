@@ -3679,6 +3679,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     const base = {
       eventId: stamp.eventId,
       provider: PROVIDER,
+      ...(context.session.providerInstanceId !== undefined
+        ? { providerInstanceId: context.session.providerInstanceId }
+        : {}),
       createdAt: stamp.createdAt,
       threadId: context.session.threadId,
       ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),

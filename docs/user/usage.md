@@ -113,10 +113,20 @@ Above the provider breakdown, the page keeps a rolling year of activity:
 ## Personal plan
 
 The **Personal plan** tab leads with **Subscription quota**: the official 5-hour and 7-day rolling
-windows that Codex and Claude Code report for your signed-in subscriptions, with usage bars, reset
-times, and the plan name. The providers publish these windows themselves while threads run, so the
-section appears after the first turn on a subscription account — no credentials are read and no
-billing API is called. The same section is available on the mobile usage screen. Below it:
+windows that Codex and Claude Code report for your signed-in subscriptions, with remaining-percent
+bars, an even-pace marker, reset times, and the plan name. The providers publish these windows
+themselves while threads run, so the section appears after the first turn on a subscription account —
+no credentials are read and no billing API is called. The same section is available on the mobile
+usage screen.
+
+One card is kept per account: connected environments that share the same provider login merge into a
+single report (the freshest wins), while two configured instances of one driver stay separate and
+show their instance names. Codex cards link out to the provider's own ChatGPT usage page.
+
+From a thread composer, `/usage-limits` answers locally with the same numbers for that environment —
+it opens a dismissible panel above the composer and never reaches the agent. The command only appears
+when the environment has reported limits, and the panel closes itself when a new turn or a resolved
+approval makes the snapshot stale. Below it:
 
 - **Subscriptions** gives Claude Code, Codex, and Grok Build one card each with lifetime tokens,
   sessions, active days, and streaks, derived from the same transcript scan as the app-usage tab.

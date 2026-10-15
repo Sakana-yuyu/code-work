@@ -10,7 +10,12 @@
 import type { AccountQuotaWindow } from "@codework/contracts";
 import { RefreshCwIcon } from "lucide-react";
 
-import { formatDateTimeShort, formatPercent } from "@codework/shared/usageFormat";
+import {
+  externalUsageLinkForProvider,
+  quotaWindowElapsedFraction,
+  quotaWindowRemainingPercent,
+} from "@codework/shared/accountQuotaMerge";
+import { formatDateTimeShort } from "@codework/shared/usageFormat";
 import { t, useResolvedLanguage } from "../../i18n";
 import { formatRelativeTimeLabel, formatRelativeTimeUntilLabel } from "../../timestampFormat";
 import { useAccountQuota } from "../../state/accountQuota";
@@ -63,14 +68,20 @@ function planLabel(planName: string): string {
   return expanded.charAt(0).toUpperCase() + expanded.slice(1);
 }
 
-function QuotaWindowRow({ window }: { readonly window: AccountQuotaWindow }) {
+function QuotaWindowRow({
+  window,
+  nowUnixMs,
+}: {
+  readonly window: AccountQuotaWindow;
+  readonly nowUnixMs: number;
+}) {
   const language = useResolvedLanguage();
-  const percent =
-    window.usedFraction === undefined
-      ? null
-      : Math.min(100, Math.max(0, window.usedFraction * 100));
+  const remaining = quotaWindowRemainingPercent(window);
+  // The bar fills with quota left; the tick marks where even spending would be.
+  const elapsedFraction = quotaWindowElapsedFraction(window, nowUnixMs);
+  const pacePercent = elapsedFraction === null ? null : (1 - elapsedFraction) * 100;
   const resetsInFuture =
-    window.resetsAt !== undefined && new Date(window.resetsAt).getTime() > Date.now();
+    window.resetsAt !== undefined && new Date(window.resetsAt).getTime() > nowUnixMs;
   const resetsLabel =
     window.resetsAt === undefined
       ? null
@@ -84,17 +95,34 @@ function QuotaWindowRow({ window }: { readonly window: AccountQuotaWindow }) {
         <span
           className={`shrink-0 text-sm font-semibold tabular-nums ${QUOTA_VALUE_CLASSES[window.status]}`}
         >
-          {percent === null
+          {remaining === null
             ? t("usageAccountQuota.unknown")
-            : `${formatPercent(percent / 100, 0)} ${t("accountQuotaUsedSuffix")}`}
+            : `${remaining}% ${t("usageAccountQuota.leftSuffix")}`}
         </span>
       </div>
-      {percent === null ? null : (
-        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+      {remaining === null ? null : (
+        <div className="relative h-1.5 overflow-visible rounded-full bg-muted">
           <div
             className={`h-full rounded-full ${QUOTA_BAR_CLASSES[window.status]}`}
-            style={{ width: `${percent}%` }}
+            style={{ width: `${remaining}%` }}
           />
+          {pacePercent === null ? null : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    className="absolute inset-y-[-2px] w-px bg-foreground/60"
+                    style={{ left: `${Math.min(100, Math.max(0, pacePercent))}%` }}
+                  />
+                }
+              >
+                <span className="sr-only">{t("usageAccountQuota.paceMarker")}</span>
+              </TooltipTrigger>
+              <TooltipPopup side="top" className="max-w-60 whitespace-nowrap">
+                {t("usageAccountQuota.paceMarker")}
+              </TooltipPopup>
+            </Tooltip>
+          )}
         </div>
       )}
       {window.resetsAt !== undefined ? (
@@ -118,9 +146,16 @@ function QuotaWindowRow({ window }: { readonly window: AccountQuotaWindow }) {
 export function UsageSubscriptionPanel() {
   const language = useResolvedLanguage();
   const quota = useAccountQuota();
+  const nowUnixMs = Date.now();
 
   if (quota.isPending || !quota.hasData) {
     return null;
+  }
+
+  // 同一 driver 跑了多个账号时才需要实例标签消歧。
+  const accountCounts = new Map<string, number>();
+  for (const provider of quota.providers) {
+    accountCounts.set(provider.provider, (accountCounts.get(provider.provider) ?? 0) + 1);
   }
 
   return (
@@ -144,9 +179,16 @@ export function UsageSubscriptionPanel() {
           const presentation = providerPresentation(provider.provider);
           const Mark = presentation?.mark;
           const updatedAtIso = new Date(provider.updatedAtUnixMs).toISOString();
+          const instanceLabel = quota.instanceLabel(
+            provider.environmentId,
+            provider.providerInstanceId,
+          );
+          const showInstance =
+            instanceLabel !== undefined && (accountCounts.get(provider.provider) ?? 0) > 1;
+          const externalUsage = externalUsageLinkForProvider(provider.provider);
           return (
             <div
-              key={`${provider.environmentId}:${provider.provider}`}
+              key={`${provider.environmentId}:${provider.provider}:${provider.providerInstanceId ?? ""}`}
               className="flex flex-col gap-3 rounded-xl border border-border/50 bg-background/60 p-3.5"
             >
               <div className="flex items-center gap-2">
@@ -154,6 +196,11 @@ export function UsageSubscriptionPanel() {
                 <span className="truncate text-[13px] font-medium text-foreground">
                   {presentation?.label ?? provider.provider}
                 </span>
+                {showInstance ? (
+                  <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    {instanceLabel}
+                  </span>
+                ) : null}
                 {provider.planName !== undefined ? (
                   <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                     {planLabel(provider.planName)}
@@ -166,8 +213,18 @@ export function UsageSubscriptionPanel() {
                 ) : null}
               </div>
               {provider.windows.map((window) => (
-                <QuotaWindowRow key={window.id} window={window} />
+                <QuotaWindowRow key={window.id} window={window} nowUnixMs={nowUnixMs} />
               ))}
+              {externalUsage === null ? null : (
+                <a
+                  className="w-fit text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+                  href={externalUsage.url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {externalUsage.label} ↗
+                </a>
+              )}
               <Tooltip>
                 <TooltipTrigger
                   render={<span className="w-fit text-[10px] text-muted-foreground" />}
