@@ -255,6 +255,9 @@ const syncThreadGoalStatus = (
         Effect.mapError((cause) => persistenceError("读取线程 Goal 终态", cause)),
         Effect.flatMap((current) => {
           if (Option.isNone(current)) return Effect.void;
+          // Provider-native goals are authoritative provider-side; a goal-loop
+          // automation run must not mirror its outcome into the mirror row.
+          if (current.value.providerNative === true) return Effect.void;
           if (status === "completed") {
             const markComplete =
               current.value.status === "complete"

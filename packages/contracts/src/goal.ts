@@ -36,6 +36,13 @@ export const ThreadGoal = Schema.Struct({
   timeUsedSeconds: NonNegativeInt,
   tokenBudget: Schema.NullOr(NonNegativeInt),
   tokensUsed: NonNegativeInt,
+  /**
+   * True when a provider-native `/goal` (Codex/Claude) owns this goal's
+   * state and Code Work only mirrors the provider's reports. Own-loop
+   * mechanisms (goal marker instructions, send/interrupt status syncs) must
+   * not drive these goals.
+   */
+  providerNative: Schema.optionalKey(Schema.Boolean),
 });
 export type ThreadGoal = typeof ThreadGoal.Type;
 

@@ -590,6 +590,77 @@ describe("CheckpointReactor", () => {
     ).toBe("v2\n");
   });
 
+  it("does not capture a checkpoint for a synthetic control turn", async () => {
+    const harness = await createHarness({ seedFilesystemCheckpoints: false });
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-set-synthetic"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      }),
+    );
+
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-synthetic-turn-started"),
+      provider: ProviderDriverKind.make("codex"),
+
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("goal-1"),
+    });
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-synthetic-turn-completed"),
+      provider: ProviderDriverKind.make("codex"),
+
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("goal-1"),
+      payload: { state: "completed", synthetic: true },
+    });
+
+    // A real turn afterwards must still land at turn count 1 — the synthetic
+    // reply turn must not inflate the checkpoint count that drives rollback.
+    harness.provider.emit({
+      type: "turn.started",
+      eventId: EventId.make("evt-real-turn-started"),
+      provider: ProviderDriverKind.make("codex"),
+
+      createdAt: "2026-01-01T00:00:02.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-real"),
+    });
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-real-turn-completed"),
+      provider: ProviderDriverKind.make("codex"),
+
+      createdAt: "2026-01-01T00:00:03.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-real"),
+      payload: { state: "completed" },
+    });
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) => entry.checkpoints.length === 1,
+    );
+    expect(thread.checkpoints[0]?.turnId).toBe("turn-real");
+    expect(thread.checkpoints[0]?.checkpointTurnCount).toBe(1);
+  });
+
   it("refreshes local git status state on turn completion using the session cwd", async () => {
     const gitStatusRefreshCalls: string[] = [];
     const harness = await createHarness({

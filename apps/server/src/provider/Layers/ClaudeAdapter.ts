@@ -36,6 +36,7 @@ import {
   ProviderItemId,
   type ProviderRuntimeEvent,
   type ProviderRuntimeTurnStatus,
+  ProviderThreadGoal,
   type ProviderSendTurnInput,
   type ProviderSession,
   type ThreadTokenUsageSnapshot,
@@ -319,6 +320,14 @@ interface ClaudeSessionContext {
   lastKnownTotalProcessedTokens: number | undefined;
   lastAssistantUuid: string | undefined;
   lastThreadStartedId: string | undefined;
+  /**
+   * Provider-native `/goal` mirror: the latest goal reported by synthetic
+   * transcript frames. `undefined` until the first frame says anything about
+   * a goal; `null` means explicitly cleared.
+   */
+  providerGoal: ProviderThreadGoal | null | undefined;
+  /** Turn ids that produced real model output while a goal was active. */
+  readonly goalCheckedTurnIds: Set<string>;
   stopped: boolean;
 }
 
@@ -1444,6 +1453,70 @@ function extractAssistantTextBlocks(message: SDKMessage): Array<string> {
   return fragments;
 }
 
+// In SDK mode Claude reports `/goal` only through the transcript (its
+// `active_goal` event is remote-only): synthetic command output names the
+// goal, and each unmet evaluator check returns as Stop hook feedback.
+const CLAUDE_GOAL_SET_PREFIX = "Goal set: ";
+const CLAUDE_GOAL_ACTIVE = /^Goal active: ([\s\S]+?) \((?:not yet evaluated|(\d+) turns?)\)/u;
+const providerGoalsEqual = Schema.toEquivalence(Schema.NullOr(ProviderThreadGoal));
+
+/**
+ * The goal after one root SDK frame, or undefined when the frame says nothing
+ * about it. Completion has no frame of its own; see completeTurn.
+ */
+export function nextClaudeGoal(
+  current: ProviderThreadGoal | null,
+  message: SDKMessage,
+): ProviderThreadGoal | null | undefined {
+  if (message.type === "assistant") {
+    if (message.parent_tool_use_id !== null || message.message.model !== "<synthetic>") {
+      return undefined;
+    }
+    const text = extractAssistantTextBlocks(message).join("").trim();
+    if (text.startsWith(CLAUDE_GOAL_SET_PREFIX)) {
+      const objective = text.slice(CLAUDE_GOAL_SET_PREFIX.length).trim();
+      return objective.length === 0 ? undefined : { objective, status: "active", checks: 0 };
+    }
+    if (text.startsWith("Goal cleared: ") || text.startsWith("No goal set")) return null;
+    const active = CLAUDE_GOAL_ACTIVE.exec(text);
+    if (active?.[1] === undefined) return undefined;
+    return {
+      ...(current?.objective === active[1] ? current : {}),
+      objective: active[1],
+      status: "active",
+      checks: Number(active[2] ?? 0),
+    };
+  }
+  if (
+    message.type !== "user" ||
+    message.parent_tool_use_id !== null ||
+    message.isSynthetic !== true ||
+    current === null
+  ) {
+    return undefined;
+  }
+  const prefix = `Stop hook feedback:\n[${current.objective}]: `;
+  const content = message.message.content;
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .flatMap((part) => {
+              const block = part as { type?: unknown; text?: unknown };
+              return block.type === "text" && typeof block.text === "string" ? [block.text] : [];
+            })
+            .join("")
+        : "";
+  if (!text.startsWith(prefix)) return undefined;
+  return {
+    ...current,
+    status: "active",
+    checks: (current.checks ?? 0) + 1,
+    lastCheck: text.slice(prefix.length).trim(),
+  };
+}
+
 function extractContentBlockText(block: unknown): string {
   if (!block || typeof block !== "object") {
     return "";
@@ -2121,6 +2194,54 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     });
   });
 
+  const emitProviderGoal = Effect.fn("emitProviderGoal")(function* (
+    context: ClaudeSessionContext,
+    goal: ProviderThreadGoal | null,
+  ) {
+    const stamp = yield* makeEventStamp();
+    yield* offerRuntimeEvent({
+      type: "thread.goal.updated",
+      eventId: stamp.eventId,
+      provider: PROVIDER,
+      createdAt: stamp.createdAt,
+      threadId: context.session.threadId,
+      ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+      payload: { goal },
+      providerRefs: nativeProviderRefs(context),
+      raw: {
+        source: "claude.sdk.message",
+        method: "claude/goal",
+        payload: { goal },
+      },
+    });
+  });
+
+  /**
+   * Applies one root SDK frame's goal signal and emits `thread.goal.updated`
+   * on change. Real (non-synthetic) assistant output while a goal is active
+   * marks the turn goal-checked: a clean turn end afterwards means Claude's
+   * goal Stop hook passed (see completeTurn).
+   */
+  const trackClaudeGoal = Effect.fn("trackClaudeGoal")(function* (
+    context: ClaudeSessionContext,
+    message: SDKMessage,
+  ) {
+    const current = context.providerGoal ?? null;
+    if (
+      current?.status === "active" &&
+      context.turnState !== undefined &&
+      message.type === "assistant" &&
+      message.parent_tool_use_id === null &&
+      message.message.model !== "<synthetic>"
+    ) {
+      context.goalCheckedTurnIds.add(context.turnState.turnId);
+    }
+    const next = nextClaudeGoal(current, message);
+    if (next === undefined || providerGoalsEqual(current, next)) return;
+    context.providerGoal = next;
+    yield* emitProviderGoal(context, next);
+  });
+
   const emitThreadTokenUsage = Effect.fn("emitThreadTokenUsage")(function* (
     context: ClaudeSessionContext,
     usage: ThreadTokenUsageSnapshot | undefined,
@@ -2457,6 +2578,29 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       },
       providerRefs: nativeProviderRefs(context),
     });
+
+    // While a goal is set, Claude ends a turn on its own only after the
+    // goal's Stop hook passes. It defers that check while background work
+    // runs, and a hook that stops the turn reports another reason. SDK mode
+    // does not report an evaluator timeout or an impossible verdict, so those
+    // still read as complete.
+    const goal = context.providerGoal;
+    const goalChecked = context.goalCheckedTurnIds.delete(turnState.turnId);
+    const terminalReason = result?.terminal_reason;
+    if (
+      goal?.status === "active" &&
+      goalChecked &&
+      status === "completed" &&
+      (terminalReason === undefined || terminalReason === "completed") &&
+      context.liveTaskIds.size === 0
+    ) {
+      context.providerGoal = {
+        objective: goal.objective,
+        status: "complete",
+        ...(goal.checks === undefined ? {} : { checks: goal.checks }),
+      };
+      yield* emitProviderGoal(context, context.providerGoal);
+    }
   });
 
   const handleStreamEvent = Effect.fn("handleStreamEvent")(function* (
@@ -3623,9 +3767,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         return;
       case "user":
         yield* handleUserMessage(context, message);
+        yield* trackClaudeGoal(context, message);
         return;
       case "assistant":
         yield* handleAssistantMessage(context, message);
+        yield* trackClaudeGoal(context, message);
         return;
       case "result":
         yield* handleResultMessage(context, message);
@@ -3902,6 +4048,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const pendingTaskModels = new Map<string, string>();
       const workflowMemberFingerprints = new Map<string, string>();
       const liveTaskIds = new Set<string>();
+      const goalCheckedTurnIds = new Set<string>();
 
       const contextRef = yield* Ref.make<ClaudeSessionContext | undefined>(undefined);
 
@@ -4496,6 +4643,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         lastKnownTotalProcessedTokens: undefined,
         lastAssistantUuid: resumeState?.resumeSessionAt,
         lastThreadStartedId: undefined,
+        providerGoal: undefined,
+        goalCheckedTurnIds,
         stopped: false,
       };
       yield* Ref.set(contextRef, context);

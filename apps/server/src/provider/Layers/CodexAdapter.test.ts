@@ -764,6 +764,127 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("turn/completed 透传运行时合成标记，缺省时不产出该字段", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
+        Effect.forkChild,
+      );
+      yield* runtime.emit({
+        id: asEventId("evt-turn-completed-synthetic"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "turn/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("goal-1"),
+        payload: {
+          threadId: "thread-1",
+          turn: { id: "goal-1", status: "completed", error: null, items: [] },
+          synthetic: true,
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-turn-completed-native"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:01:00.000Z",
+        method: "turn/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-2"),
+        payload: {
+          threadId: "thread-1",
+          turn: { id: "turn-2", status: "completed", error: null, items: [] },
+        },
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      NodeAssert.deepStrictEqual(
+        events.map((event) => ({ type: event.type, payload: event.payload })),
+        [
+          { type: "turn.completed", payload: { state: "completed", synthetic: true } },
+          { type: "turn.completed", payload: { state: "completed" } },
+        ],
+      );
+    }),
+  );
+
+  it.effect("maps Codex goal notifications and RPC echoes to thread.goal.updated", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 3)).pipe(
+        Effect.forkChild,
+      );
+
+      yield* runtime.emit({
+        id: asEventId("evt-goal-wire"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "thread/goal/updated",
+        threadId: asThreadId("thread-1"),
+        payload: {
+          threadId: "thread-1",
+          goal: {
+            threadId: "thread-1",
+            objective: "ship the port",
+            status: "active",
+            tokensUsed: 12,
+            timeUsedSeconds: 4,
+            tokenBudget: 500,
+            createdAt: 1,
+            updatedAt: 2,
+          },
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-goal-rpc-echo"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        method: "thread/goal/changed",
+        threadId: asThreadId("thread-1"),
+        payload: {
+          goal: { objective: "ship the port", status: "paused", tokensUsed: 20 },
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-goal-cleared"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:02.000Z",
+        method: "thread/goal/cleared",
+        threadId: asThreadId("thread-1"),
+        payload: { threadId: "thread-1" },
+      });
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      NodeAssert.deepStrictEqual(
+        events.map((event) => ({ type: event.type, payload: event.payload })),
+        [
+          {
+            type: "thread.goal.updated",
+            payload: {
+              goal: {
+                objective: "ship the port",
+                status: "active",
+                tokensUsed: 12,
+                tokenBudget: 500,
+                timeUsedSeconds: 4,
+              },
+            },
+          },
+          {
+            type: "thread.goal.updated",
+            payload: {
+              goal: { objective: "ship the port", status: "paused", tokensUsed: 20 },
+            },
+          },
+          { type: "thread.goal.updated", payload: { goal: null } },
+        ],
+      );
+    }),
+  );
+
   it.effect("does not reactivate an idle child after a parent interaction", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

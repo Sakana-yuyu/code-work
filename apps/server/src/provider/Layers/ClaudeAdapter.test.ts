@@ -38,7 +38,11 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
 import { ProviderAdapterProcessError, ProviderAdapterValidationError } from "../Errors.ts";
 import type { ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
-import { makeClaudeAdapter, type ClaudeAdapterLiveOptions } from "./ClaudeAdapter.ts";
+import {
+  makeClaudeAdapter,
+  nextClaudeGoal,
+  type ClaudeAdapterLiveOptions,
+} from "./ClaudeAdapter.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 
 // Test-local service tag so the rest of the file can keep using `yield* ClaudeAdapter`.
@@ -5205,5 +5209,138 @@ describe("ClaudeAdapterLive", () => {
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
     );
+  });
+
+  it.effect("mirrors Claude `/goal` transcript frames as provider goal updates", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const goalEventsFiber = yield* Stream.filter(
+        adapter.streamEvents,
+        (event) => event.type === "thread.goal.updated",
+      ).pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "/goal ship the port",
+        attachments: [],
+      });
+
+      // Claude answers `/goal` with a synthetic command-output frame.
+      harness.query.emit({
+        type: "assistant",
+        session_id: "sdk-session-goal",
+        uuid: "goal-set-1",
+        parent_tool_use_id: null,
+        message: {
+          id: "goal-set-message-1",
+          model: "<synthetic>",
+          content: [{ type: "text", text: "Goal set: ship the port" }],
+        },
+      } as unknown as SDKMessage);
+
+      // A real model reply while the goal is active marks the turn checked.
+      harness.query.emit({
+        type: "assistant",
+        session_id: "sdk-session-goal",
+        uuid: "assistant-goal-1",
+        parent_tool_use_id: null,
+        message: {
+          id: "assistant-goal-message-1",
+          model: "claude-sonnet-4-5",
+          content: [{ type: "text", text: "All checks pass." }],
+        },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-goal",
+        uuid: "result-goal-1",
+      } as unknown as SDKMessage);
+
+      const goalEvents = yield* Fiber.join(goalEventsFiber);
+      const goals = goalEvents.map((event) =>
+        event.type === "thread.goal.updated" ? event.payload.goal : undefined,
+      );
+      assert.deepEqual(goals, [
+        { objective: "ship the port", status: "active", checks: 0 },
+        { objective: "ship the port", status: "complete", checks: 0 },
+      ]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+});
+
+describe("nextClaudeGoal", () => {
+  const assistantFrame = (text: string, model = "<synthetic>") =>
+    ({
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: { model, content: [{ type: "text", text }] },
+    }) as unknown as SDKMessage;
+
+  it("parses goal set/clear/active synthetic assistant frames", () => {
+    assert.deepEqual(nextClaudeGoal(null, assistantFrame("Goal set: ship it")), {
+      objective: "ship it",
+      status: "active",
+      checks: 0,
+    });
+    assert.equal(nextClaudeGoal(null, assistantFrame("Goal cleared: done")), null);
+    assert.equal(nextClaudeGoal(null, assistantFrame("No goal set")), null);
+    assert.deepEqual(
+      nextClaudeGoal(
+        { objective: "ship it", status: "active", checks: 0 },
+        assistantFrame("Goal active: ship it (3 turns)"),
+      ),
+      { objective: "ship it", status: "active", checks: 3 },
+    );
+  });
+
+  it("ignores child frames and real model output", () => {
+    const childFrame = {
+      ...assistantFrame("Goal set: scoped"),
+      parent_tool_use_id: "task-1",
+    } as unknown as SDKMessage;
+    assert.equal(nextClaudeGoal(null, childFrame), undefined);
+    assert.equal(
+      nextClaudeGoal(null, assistantFrame("Goal set: real", "claude-sonnet-4-5")),
+      undefined,
+    );
+    assert.equal(nextClaudeGoal(null, assistantFrame("ordinary reply")), undefined);
+  });
+
+  it("counts unmet checks from synthetic Stop hook feedback", () => {
+    const current = { objective: "ship it", status: "active" as const, checks: 1 };
+    const feedback = {
+      type: "user",
+      parent_tool_use_id: null,
+      isSynthetic: true,
+      message: {
+        content: [{ type: "text", text: "Stop hook feedback:\n[ship it]: still failing" }],
+      },
+    } as unknown as SDKMessage;
+    assert.deepEqual(nextClaudeGoal(current, feedback), {
+      objective: "ship it",
+      status: "active",
+      checks: 2,
+      lastCheck: "still failing",
+    });
+    const realUser = {
+      ...feedback,
+      isSynthetic: false,
+    } as unknown as SDKMessage;
+    assert.equal(nextClaudeGoal(current, realUser), undefined);
+    assert.equal(nextClaudeGoal(null, feedback), undefined);
   });
 });

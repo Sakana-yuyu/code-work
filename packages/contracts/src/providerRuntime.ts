@@ -187,6 +187,7 @@ const ProviderRuntimeEventType = Schema.Literals([
   "thread.state.changed",
   "thread.metadata.updated",
   "thread.token-usage.updated",
+  "thread.goal.updated",
   "thread.realtime.started",
   "thread.realtime.item-added",
   "thread.realtime.audio.delta",
@@ -238,6 +239,7 @@ const ThreadStartedType = Schema.Literal("thread.started");
 const ThreadStateChangedType = Schema.Literal("thread.state.changed");
 const ThreadMetadataUpdatedType = Schema.Literal("thread.metadata.updated");
 const ThreadTokenUsageUpdatedType = Schema.Literal("thread.token-usage.updated");
+const ThreadGoalUpdatedType = Schema.Literal("thread.goal.updated");
 const ThreadRealtimeStartedType = Schema.Literal("thread.realtime.started");
 const ThreadRealtimeItemAddedType = Schema.Literal("thread.realtime.item-added");
 const ThreadRealtimeAudioDeltaType = Schema.Literal("thread.realtime.audio.delta");
@@ -373,6 +375,36 @@ const ThreadTokenUsageUpdatedPayload = Schema.Struct({
 });
 export type ThreadTokenUsageUpdatedPayload = typeof ThreadTokenUsageUpdatedPayload.Type;
 
+/**
+ * A provider-native `/goal` report (Codex `thread/goal/*`, Claude SDK goal
+ * frames). The provider owns the authoritative state; Code Work mirrors the
+ * latest report onto the thread goal store. Usage fields are
+ * provider-specific.
+ */
+export const ProviderThreadGoal = Schema.Struct({
+  objective: TrimmedNonEmptyStringSchema,
+  status: Schema.Literals([
+    "active",
+    "paused",
+    "blocked",
+    "usageLimited",
+    "budgetLimited",
+    "complete",
+  ]),
+  tokensUsed: Schema.optionalKey(NonNegativeInt),
+  tokenBudget: Schema.optionalKey(Schema.NullOr(NonNegativeInt)),
+  timeUsedSeconds: Schema.optionalKey(NonNegativeInt),
+  /** Claude: evaluator checks that found the goal unmet, and the latest reason. */
+  checks: Schema.optionalKey(NonNegativeInt),
+  lastCheck: Schema.optionalKey(Schema.String),
+});
+export type ProviderThreadGoal = typeof ProviderThreadGoal.Type;
+
+const ThreadGoalUpdatedPayload = Schema.Struct({
+  goal: Schema.NullOr(ProviderThreadGoal),
+});
+export type ThreadGoalUpdatedPayload = typeof ThreadGoalUpdatedPayload.Type;
+
 const ThreadRealtimeStartedPayload = Schema.Struct({
   realtimeSessionId: Schema.optional(TrimmedNonEmptyStringSchema),
 });
@@ -414,6 +446,10 @@ const TurnCompletedPayload = Schema.Struct({
   // Provider-reported turn wall duration (e.g. codex turn/completed
   // turn.durationMs). Optional: only adapters whose protocol reports it set it.
   durationMs: Schema.optional(NonNegativeInt),
+  // Adapter-synthesized control turns (e.g. Codex `/goal` show/pause/clear
+  // replies) ran no provider-native turn. Checkpoint/rollback turn counting
+  // must skip them or the provider-side rollback count drifts.
+  synthetic: Schema.optional(Schema.Boolean),
 });
 export type TurnCompletedPayload = typeof TurnCompletedPayload.Type;
 
@@ -920,6 +956,14 @@ const ProviderRuntimeThreadTokenUsageUpdatedEvent = Schema.Struct({
 export type ProviderRuntimeThreadTokenUsageUpdatedEvent =
   typeof ProviderRuntimeThreadTokenUsageUpdatedEvent.Type;
 
+const ProviderRuntimeThreadGoalUpdatedEvent = Schema.Struct({
+  ...ProviderRuntimeEventBase.fields,
+  type: ThreadGoalUpdatedType,
+  payload: ThreadGoalUpdatedPayload,
+});
+export type ProviderRuntimeThreadGoalUpdatedEvent =
+  typeof ProviderRuntimeThreadGoalUpdatedEvent.Type;
+
 const ProviderRuntimeThreadRealtimeStartedEvent = Schema.Struct({
   ...ProviderRuntimeEventBase.fields,
   type: ThreadRealtimeStartedType,
@@ -1228,6 +1272,7 @@ export const ProviderRuntimeEventV2 = Schema.Union([
   ProviderRuntimeThreadStateChangedEvent,
   ProviderRuntimeThreadMetadataUpdatedEvent,
   ProviderRuntimeThreadTokenUsageUpdatedEvent,
+  ProviderRuntimeThreadGoalUpdatedEvent,
   ProviderRuntimeThreadRealtimeStartedEvent,
   ProviderRuntimeThreadRealtimeItemAddedEvent,
   ProviderRuntimeThreadRealtimeAudioDeltaEvent,

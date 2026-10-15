@@ -52,11 +52,20 @@ export interface ThreadGoalStatusUpdateInput {
   readonly expectedTokensUsed?: number;
 }
 
+/**
+ * Server-side set input: `providerNative` marks a goal whose authoritative
+ * state lives provider-side (Codex/Claude `/goal`); the public write contract
+ * `ThreadGoalSetInput` deliberately excludes it.
+ */
+export interface ThreadGoalStoreSetInput extends ThreadGoalSetInput {
+  readonly providerNative?: boolean;
+}
+
 export interface ThreadGoalStoreShape {
   readonly get: (
     threadId: string,
   ) => Effect.Effect<Option.Option<ThreadGoal>, ThreadGoalStoreError>;
-  readonly set: (input: ThreadGoalSetInput) => Effect.Effect<ThreadGoal, ThreadGoalStoreError>;
+  readonly set: (input: ThreadGoalStoreSetInput) => Effect.Effect<ThreadGoal, ThreadGoalStoreError>;
   readonly pause: (threadId: string) => Effect.Effect<ThreadGoal, ThreadGoalStoreError>;
   readonly resume: (threadId: string) => Effect.Effect<ThreadGoal, ThreadGoalStoreError>;
   readonly setStatus: (

@@ -1,10 +1,4 @@
-import {
-  ThreadGoal,
-  ThreadGoalEvent,
-  ThreadGoalId,
-  ThreadGoalStatus,
-  type ThreadGoalSetInput,
-} from "@codework/contracts";
+import { ThreadGoal, ThreadGoalEvent, ThreadGoalId, ThreadGoalStatus } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -22,6 +16,7 @@ import {
   ThreadGoalStore,
   ThreadGoalStoreDomainError,
   type ThreadGoalStatusUpdateInput,
+  type ThreadGoalStoreSetInput,
   type ThreadGoalStoreShape,
 } from "../Services/ThreadGoalStore.ts";
 
@@ -37,6 +32,7 @@ const ThreadGoalRowSchema = Schema.Struct({
   updatedAtUnixMs: Schema.Number,
   activeStartedAtUnixMs: Schema.NullOr(Schema.Number),
   revision: Schema.Number,
+  providerNative: Schema.Number,
 });
 type ThreadGoalRow = typeof ThreadGoalRowSchema.Type;
 
@@ -48,8 +44,10 @@ const decodeThreadGoalRow = Schema.decodeUnknownEffect(ThreadGoalRowSchema);
 
 const isNonNegativeInteger = (value: number): boolean => Number.isSafeInteger(value) && value >= 0;
 
-const isSameSetInput = (row: ThreadGoalRow, input: ThreadGoalSetInput): boolean =>
-  row.objective === input.objective && row.tokenBudget === (input.tokenBudget ?? null);
+const isSameSetInput = (row: ThreadGoalRow, input: ThreadGoalStoreSetInput): boolean =>
+  row.objective === input.objective &&
+  row.tokenBudget === (input.tokenBudget ?? null) &&
+  row.providerNative === (input.providerNative === true ? 1 : 0);
 
 const makeDomainError = (
   code: ConstructorParameters<typeof ThreadGoalStoreDomainError>[0]["code"],
@@ -79,6 +77,7 @@ const toGoal = (row: ThreadGoalRow, now: number): ThreadGoal => {
     timeUsedSeconds: row.timeUsedSeconds + activeSeconds,
     tokenBudget: row.tokenBudget,
     tokensUsed: row.tokensUsed,
+    providerNative: row.providerNative === 1,
   };
 };
 
@@ -107,7 +106,8 @@ export const ThreadGoalStoreLive = Layer.effect(
           created_at_unix_ms AS "createdAtUnixMs",
           updated_at_unix_ms AS "updatedAtUnixMs",
           active_started_at_unix_ms AS "activeStartedAtUnixMs",
-          revision
+          revision,
+          provider_native AS "providerNative"
         FROM thread_goals
         WHERE thread_id = ${threadId}
         LIMIT 1
@@ -119,12 +119,12 @@ export const ThreadGoalStoreLive = Layer.effect(
         INSERT INTO thread_goals (
           thread_id, goal_id, objective, status, token_budget, tokens_used,
           time_used_seconds, created_at_unix_ms, updated_at_unix_ms,
-          active_started_at_unix_ms, revision
+          active_started_at_unix_ms, revision, provider_native
         ) VALUES (
           ${row.threadId}, ${row.goalId}, ${row.objective}, ${row.status},
           ${row.tokenBudget}, ${row.tokensUsed}, ${row.timeUsedSeconds},
           ${row.createdAtUnixMs}, ${row.updatedAtUnixMs},
-          ${row.activeStartedAtUnixMs}, ${row.revision}
+          ${row.activeStartedAtUnixMs}, ${row.revision}, ${row.providerNative}
         )
         ON CONFLICT (thread_id) DO UPDATE SET
           goal_id = excluded.goal_id,
@@ -136,7 +136,8 @@ export const ThreadGoalStoreLive = Layer.effect(
           created_at_unix_ms = excluded.created_at_unix_ms,
           updated_at_unix_ms = excluded.updated_at_unix_ms,
           active_started_at_unix_ms = excluded.active_started_at_unix_ms,
-          revision = excluded.revision
+          revision = excluded.revision,
+          provider_native = excluded.provider_native
       `,
     });
     const deleteRow = SqlSchema.void({
@@ -177,6 +178,7 @@ export const ThreadGoalStoreLive = Layer.effect(
       withTransaction(
         Effect.gen(function* () {
           const now = yield* Clock.currentTimeMillis;
+          const providerNative = input.providerNative === true ? 1 : 0;
           const existing = yield* readRow(input.threadId);
           if (Option.isSome(existing)) {
             const row = yield* decodeRow("ThreadGoalStore.set.read", existing.value);
@@ -196,6 +198,7 @@ export const ThreadGoalStoreLive = Layer.effect(
               updatedAtUnixMs: now,
               activeStartedAtUnixMs: now,
               revision: row.revision + 1,
+              providerNative,
             };
             yield* query("ThreadGoalStore.set.replace", upsertRow(next));
             return toGoal(next, now);
@@ -213,6 +216,7 @@ export const ThreadGoalStoreLive = Layer.effect(
             updatedAtUnixMs: now,
             activeStartedAtUnixMs: now,
             revision: 1,
+            providerNative,
           };
           yield* query("ThreadGoalStore.set.insert", upsertRow(next));
           return toGoal(next, now);

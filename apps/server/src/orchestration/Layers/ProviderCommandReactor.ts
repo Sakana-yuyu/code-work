@@ -540,6 +540,9 @@ const make = Effect.gen(function* () {
     return Effect.gen(function* () {
       const current = yield* threadGoalStore.value.get(threadId);
       if (Option.isNone(current) || current.value.status === status) return;
+      // Provider-native goals are driven by the provider; the store row is a
+      // mirror and Code Work never flips its status around send/interrupt.
+      if (current.value.providerNative === true) return;
       // 只有 paused 会在新一轮用户输入时自动恢复；usageLimited（预算到限）、
       // blocked（需要处理）与 complete 必须由用户显式恢复或清除。
       if (
@@ -570,6 +573,9 @@ const make = Effect.gen(function* () {
     const goal = yield* threadGoalStore.value.get(threadId);
     if (
       Option.isSome(goal) &&
+      // Provider-native budgets are enforced provider-side; the mirrored
+      // limit must not block ordinary user sends.
+      goal.value.providerNative !== true &&
       (goal.value.status === "usageLimited" ||
         goal.value.status === "budgetLimited" ||
         (goal.value.tokenBudget !== null && goal.value.tokensUsed >= goal.value.tokenBudget))
@@ -1156,7 +1162,7 @@ const make = Effect.gen(function* () {
             Option.match({
               onNone: () => normalizedInput,
               onSome: (goal) =>
-                goal.status === "complete"
+                goal.status === "complete" || goal.providerNative === true
                   ? normalizedInput
                   : formatThreadGoalProviderInput(goal, normalizedInput),
             }),
@@ -1191,9 +1197,12 @@ const make = Effect.gen(function* () {
       input.modelSelection ?? threadModelSelections.get(input.threadId) ?? thread.modelSelection;
     // 原生控制命令不能被 Goal / 工作流说明包裹，否则 CLI 会将其当成普通提示词。
     const nativeCommand =
-      (activeSession?.provider === "codex" && /^\/review(?:\s|$)/i.test(normalizedInput ?? "")) ||
+      (activeSession?.provider === "codex" &&
+        (/^\/review(?:\s|$)/i.test(normalizedInput ?? "") ||
+          /^\/goal(?:\s|$)/i.test(normalizedInput ?? ""))) ||
       (activeSession?.provider === "claudeAgent" &&
-        /^\/compact(?:\s|$)/i.test(normalizedInput ?? "")) ||
+        (/^\/compact(?:\s|$)/i.test(normalizedInput ?? "") ||
+          /^\/goal(?:\s|$)/i.test(normalizedInput ?? ""))) ||
       (activeSession?.provider === "byok" && isByokNativeSlashInput(normalizedInput));
     const turnInput = nativeCommand ? normalizedInput : providerInputWithWorkflow;
     const modelForTurn =

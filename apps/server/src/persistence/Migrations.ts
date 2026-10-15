@@ -91,6 +91,7 @@ import Migration0079 from "./Migrations/079_CompositionTaskRunModelSnapshot.ts";
 import Migration0080 from "./Migrations/080_SpecWorkflowCapabilityFlags.ts";
 import Migration0081 from "./Migrations/081_ProjectionThreadMessageProviderInstance.ts";
 import Migration0082 from "./Migrations/082_ProjectionThreadMessageFirstSequence.ts";
+import Migration0083 from "./Migrations/083_ThreadGoalProviderNative.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -187,6 +188,7 @@ export const migrationEntries = [
   [80, "SpecWorkflowCapabilityFlags", Migration0080],
   [81, "ProjectionThreadMessageProviderInstance", Migration0081],
   [82, "ProjectionThreadMessageFirstSequence", Migration0082],
+  [83, "ThreadGoalProviderNative", Migration0083],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

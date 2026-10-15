@@ -20,6 +20,7 @@ import {
   type OrchestrationThread,
   type OrchestrationThreadActivity,
   type ProviderRuntimeEvent,
+  type ProviderRuntimeThreadGoalUpdatedEvent,
   type SessionConfiguredPayload,
   type SessionExitedPayload,
   type SessionStartedPayload,
@@ -59,7 +60,10 @@ import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
 import { forkParked } from "../../serverActivation.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { canReplaceThreadTitle } from "../threadTitles.ts";
-import { ThreadGoalStore } from "../../persistence/Services/ThreadGoalStore.ts";
+import {
+  ThreadGoalStore,
+  type ThreadGoalStoreError,
+} from "../../persistence/Services/ThreadGoalStore.ts";
 import { SpecWorkflowCapabilityStore } from "../../persistence/Services/SpecWorkflowCapabilityStore.ts";
 import { SpecWorkflowService } from "../../specWorkflow/SpecWorkflowService.ts";
 import {
@@ -1416,6 +1420,11 @@ const make = Effect.gen(function* () {
         Option.match({
           onNone: () => Effect.succeed(Option.none<AssistantGoalTermination>()),
           onSome: (goal) => {
+            // Provider-native goals settle provider-side; marker text in the
+            // transcript must not complete or clear the mirror.
+            if (goal.providerNative === true) {
+              return Effect.succeed(Option.none<AssistantGoalTermination>());
+            }
             const scan = scanGoalMarkers(text);
             if (!scan.complete && !scan.cancelled) {
               return Effect.succeed(Option.none<AssistantGoalTermination>());
@@ -1518,6 +1527,85 @@ const make = Effect.gen(function* () {
           status: termination.status,
           cause: Cause.pretty(cause),
         });
+      }),
+    );
+  };
+
+  // Provider-native Goal 调和（item 21）：Claude/Codex 的 /goal 是 harness 原
+  // 生能力，provider 上报的最新 goal 快照为权威态，镜像进 durable
+  // ThreadGoalStore（goalId/版本校验仍归 store 管，重复上报幂等）。store 拒绝
+  // 的跳变（如 complete 后回 active）只告警不覆盖——不把 provider 噪声升级成
+  // 目标被重置的事故。
+  const reconcileProviderGoalReport = (
+    threadId: ThreadId,
+    event: ProviderRuntimeThreadGoalUpdatedEvent,
+  ): Effect.Effect<void, ThreadGoalStoreError> => {
+    if (Option.isNone(threadGoalStore)) return Effect.void;
+    const store = threadGoalStore.value;
+    const report = event.payload.goal;
+    const usageFields =
+      report === null
+        ? {}
+        : {
+            ...(report.timeUsedSeconds !== undefined
+              ? { timeUsedSeconds: report.timeUsedSeconds }
+              : {}),
+            ...(report.tokensUsed !== undefined ? { tokensUsed: report.tokensUsed } : {}),
+          };
+    const hasUsageReport =
+      report !== null && (report.tokensUsed !== undefined || report.timeUsedSeconds !== undefined);
+    const applyReportToGoal = (goal: ThreadGoal) =>
+      report !== null && (report.status !== "active" || hasUsageReport)
+        ? store
+            .setStatus({
+              threadId,
+              status: report.status,
+              expectedGoalId: goal.goalId,
+              expectedStatus: goal.status,
+              ...usageFields,
+            })
+            .pipe(Effect.asVoid)
+        : Effect.void;
+    const setProviderGoal = (objective: string, tokenBudget: number | null | undefined) =>
+      store
+        .set({
+          threadId,
+          objective,
+          providerNative: true,
+          ...(tokenBudget !== undefined ? { tokenBudget } : {}),
+        })
+        .pipe(Effect.flatMap(applyReportToGoal));
+    return store.get(threadId).pipe(
+      Effect.flatMap((existingOption) => {
+        if (Option.isNone(existingOption)) {
+          if (report === null) return Effect.void;
+          return setProviderGoal(report.objective, report.tokenBudget);
+        }
+        const existing = existingOption.value;
+        if (report === null) {
+          // Provider "cleared" is about its own native goal; a Code
+          // Work-local goal the provider never knew is untouched.
+          if (existing.providerNative !== true) return Effect.void;
+          return store.clear({ threadId, expectedGoalId: existing.goalId }).pipe(Effect.asVoid);
+        }
+        if (existing.objective !== report.objective || existing.providerNative !== true) {
+          return setProviderGoal(report.objective, report.tokenBudget);
+        }
+        const unchanged =
+          existing.status === report.status &&
+          (report.timeUsedSeconds === undefined ||
+            report.timeUsedSeconds === existing.timeUsedSeconds) &&
+          (report.tokensUsed === undefined || report.tokensUsed === existing.tokensUsed);
+        if (unchanged) return Effect.void;
+        return store
+          .setStatus({
+            threadId,
+            status: report.status,
+            expectedGoalId: existing.goalId,
+            expectedStatus: existing.status,
+            ...usageFields,
+          })
+          .pipe(Effect.asVoid);
       }),
     );
   };
@@ -2249,6 +2337,12 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const thread = yield* resolveThreadShell(event.threadId);
       if (!thread) return;
+
+      // Provider-native Goal 快照不参与生命周期/时间线投影，调和后直接返回。
+      if (event.type === "thread.goal.updated") {
+        yield* reconcileProviderGoalReport(thread.id, event);
+        return;
+      }
 
       let loadedThreadDetail: OrchestrationThread | null | undefined;
       const getLoadedThreadDetail = () =>

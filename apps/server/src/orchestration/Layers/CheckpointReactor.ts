@@ -451,6 +451,12 @@ const make = Effect.gen(function* () {
         return;
       }
 
+      // Adapter-synthesized control turns (Codex `/goal` replies) ran no
+      // provider-native turn; counting them would overstate rollback counts.
+      if (event.payload.synthetic === true) {
+        return;
+      }
+
       const thread = yield* resolveThreadDetail(event.threadId);
       if (!thread) {
         return;

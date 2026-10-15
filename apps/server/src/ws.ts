@@ -69,6 +69,7 @@ import {
   type SpecWorkflowErrorCode,
   SpecWorkflowRpcError,
   ThreadGoalRpcError,
+  type ThreadGoalEvent,
   ThreadId,
   type TerminalAttachStreamEvent,
   type TerminalError,
@@ -741,6 +742,53 @@ const makeWsRpcLayer = (
                   }),
                 ),
               onSome: () => Effect.void,
+            }),
+          ),
+        );
+      // Provider-native goals are owned by the provider: pause/resume/clear/set
+      // dispatch a `/goal <verb>` user turn so the provider applies the change
+      // and reports it back through `thread.goal.updated`, which reconciles the
+      // mirror. Returns Some(goal) once the command is queued; None means the
+      // stored goal is local (or absent) and the caller applies the store op.
+      const dispatchProviderNativeGoalCommand = (input: {
+        readonly threadId: ThreadId;
+        readonly text: string;
+      }) =>
+        projectionSnapshotQuery.getThreadShellById(input.threadId).pipe(
+          Effect.mapError(threadGoalError),
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new ThreadGoalRpcError({
+                    code: "thread-not-found",
+                    message: "线程不存在。",
+                  }),
+                ),
+              onSome: (shell) =>
+                Effect.gen(function* () {
+                  if (Option.isNone(threadGoalStore)) return Option.none();
+                  const goal = yield* threadGoalStore.value.get(input.threadId);
+                  if (Option.isNone(goal) || goal.value.providerNative !== true) {
+                    return Option.none();
+                  }
+                  yield* dispatchFromClient({
+                    type: "thread.turn.start",
+                    commandId: yield* serverCommandId("native-goal"),
+                    threadId: input.threadId,
+                    message: {
+                      messageId: yield* randomUUID.pipe(Effect.map((uuid) => MessageId.make(uuid))),
+                      role: "user",
+                      text: input.text,
+                      attachments: [],
+                    },
+                    modelSelection: shell.modelSelection,
+                    runtimeMode: shell.runtimeMode,
+                    interactionMode: shell.interactionMode,
+                    createdAt: yield* nowIso,
+                  });
+                  return Option.some(goal.value);
+                }).pipe(Effect.mapError(threadGoalError)),
             }),
           ),
         );
@@ -2149,8 +2197,16 @@ const makeWsRpcLayer = (
             ORCHESTRATION_WS_METHODS.setThreadGoal,
             Option.isNone(threadGoalStore)
               ? Effect.fail(threadGoalUnavailable())
-              : ensureThreadGoalThread(input.threadId).pipe(
-                  Effect.andThen(threadGoalStore.value.set(input)),
+              : dispatchProviderNativeGoalCommand({
+                  threadId: input.threadId,
+                  text: `/goal ${input.objective}`,
+                }).pipe(
+                  Effect.flatMap(
+                    Option.match({
+                      onNone: () => threadGoalStore.value.set(input),
+                      onSome: (goal) => Effect.succeed(goal),
+                    }),
+                  ),
                   Effect.mapError(threadGoalError),
                 ),
             { "rpc.aggregate": "orchestration" },
@@ -2160,8 +2216,16 @@ const makeWsRpcLayer = (
             ORCHESTRATION_WS_METHODS.pauseThreadGoal,
             Option.isNone(threadGoalStore)
               ? Effect.fail(threadGoalUnavailable())
-              : ensureThreadGoalThread(input.threadId).pipe(
-                  Effect.andThen(threadGoalStore.value.pause(input.threadId)),
+              : dispatchProviderNativeGoalCommand({
+                  threadId: input.threadId,
+                  text: "/goal pause",
+                }).pipe(
+                  Effect.flatMap(
+                    Option.match({
+                      onNone: () => threadGoalStore.value.pause(input.threadId),
+                      onSome: (goal) => Effect.succeed(goal),
+                    }),
+                  ),
                   Effect.mapError(threadGoalError),
                 ),
             { "rpc.aggregate": "orchestration" },
@@ -2171,8 +2235,16 @@ const makeWsRpcLayer = (
             ORCHESTRATION_WS_METHODS.resumeThreadGoal,
             Option.isNone(threadGoalStore)
               ? Effect.fail(threadGoalUnavailable())
-              : ensureThreadGoalThread(input.threadId).pipe(
-                  Effect.andThen(threadGoalStore.value.resume(input.threadId)),
+              : dispatchProviderNativeGoalCommand({
+                  threadId: input.threadId,
+                  text: "/goal resume",
+                }).pipe(
+                  Effect.flatMap(
+                    Option.match({
+                      onNone: () => threadGoalStore.value.resume(input.threadId),
+                      onSome: (goal) => Effect.succeed(goal),
+                    }),
+                  ),
                   Effect.mapError(threadGoalError),
                 ),
             { "rpc.aggregate": "orchestration" },
@@ -2182,8 +2254,20 @@ const makeWsRpcLayer = (
             ORCHESTRATION_WS_METHODS.clearThreadGoal,
             Option.isNone(threadGoalStore)
               ? Effect.fail(threadGoalUnavailable())
-              : ensureThreadGoalThread(input.threadId).pipe(
-                  Effect.andThen(threadGoalStore.value.clear(input)),
+              : dispatchProviderNativeGoalCommand({
+                  threadId: input.threadId,
+                  text: "/goal clear",
+                }).pipe(
+                  Effect.flatMap(
+                    Option.match({
+                      onNone: () => threadGoalStore.value.clear(input),
+                      onSome: (goal) =>
+                        Effect.succeed<ThreadGoalEvent>({
+                          type: "updated",
+                          goal,
+                        }),
+                    }),
+                  ),
                   Effect.mapError(threadGoalError),
                 ),
             { "rpc.aggregate": "orchestration" },

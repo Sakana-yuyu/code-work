@@ -11,6 +11,7 @@ import {
   type ProviderInteractionMode,
   type ProviderRequestKind,
   type ProviderSession,
+  ProviderThreadGoal,
   type ProviderTurnStartResult,
   type ProviderUserInputAnswers,
   RuntimeMode,
@@ -752,6 +753,61 @@ export const openCodexThread = (input: {
     );
 };
 
+export type CodexGoalCommand =
+  | { readonly type: "show" }
+  | { readonly type: "clear" }
+  | { readonly type: "pause" }
+  | { readonly type: "resume" }
+  | { readonly type: "set"; readonly objective: string };
+
+/**
+ * Parses a `/goal` message the way the Codex TUI does: `clear`, `pause` and
+ * `resume` control the current goal, a bare `/goal` shows it, and any other
+ * text becomes the new objective. Returns null for every other message.
+ */
+export function parseCodexGoalCommand(text: string): CodexGoalCommand | null {
+  const match = /^\/goal(?:\s+([\s\S]*))?$/u.exec(text.trim());
+  if (match === null) return null;
+  const argument = (match[1] ?? "").trim();
+  switch (argument.toLowerCase()) {
+    case "":
+    case "edit":
+      return { type: "show" };
+    case "clear":
+      return { type: "clear" };
+    case "pause":
+      return { type: "pause" };
+    case "resume":
+      return { type: "resume" };
+    default:
+      return { type: "set", objective: argument };
+  }
+}
+
+export function providerGoalFromCodex(goal: {
+  readonly objective: string;
+  readonly status: EffectCodexSchema.ServerNotification__ThreadGoalStatus;
+  readonly tokensUsed: number;
+  readonly tokenBudget?: number | null;
+  readonly timeUsedSeconds: number;
+}): ProviderThreadGoal | null {
+  const objective = goal.objective.trim();
+  if (objective.length === 0) return null;
+  return {
+    objective,
+    status: goal.status,
+    tokensUsed: Math.max(0, Math.floor(goal.tokensUsed)),
+    tokenBudget: goal.tokenBudget ?? null,
+    timeUsedSeconds: Math.max(0, Math.floor(goal.timeUsedSeconds)),
+  };
+}
+
+const providerGoalsEqual = Schema.toEquivalence(Schema.NullOr(ProviderThreadGoal));
+
+function describeCodexGoal(goal: ProviderThreadGoal): string {
+  return `Goal ${goal.status}: ${goal.objective}`;
+}
+
 function readNotificationThreadId(notification: CodexServerNotification): string | undefined {
   switch (notification.method) {
     case "thread/started":
@@ -794,6 +850,10 @@ function readNotificationThreadId(notification: CodexServerNotification): string
     case "thread/realtime/sdp":
     case "thread/realtime/error":
     case "thread/realtime/closed":
+      return notification.params.threadId;
+    case "thread/goal/updated":
+      return notification.params.goal.threadId;
+    case "thread/goal/cleared":
       return notification.params.threadId;
     default:
       return undefined;
@@ -1004,6 +1064,8 @@ function shouldSuppressChildConversationNotification(
     method === "turn/started" ||
     method === "turn/completed" ||
     method === "turn/plan/updated" ||
+    method === "thread/goal/updated" ||
+    method === "thread/goal/cleared" ||
     method === "item/plan/delta"
   );
 }
@@ -1050,6 +1112,8 @@ const CHILD_CHATTER_METHODS: ReadonlySet<string> = new Set([
   "turn/diff/updated",
   "thread/name/updated",
   "thread/settings/updated",
+  "thread/goal/updated",
+  "thread/goal/cleared",
   "rawResponseItem/completed",
   // Child-owned thread lifecycle: the parent adapter maps these onto the
   // PARENT thread (archived/compacted state), so a child compacting would
@@ -1159,6 +1223,8 @@ export const makeCodexSessionRuntime = (
     const collabChildAgentsRef = yield* Ref.make(new Map<string, CollabChildAgentState>());
     /** Child provider-thread id → its currently running provider turn id. */
     const collabChildLiveTurnsRef = yield* Ref.make(new Map<string, string>());
+    /** Native `/goal` snapshot per Codex thread id, from wire notifications. */
+    const goalsByNativeThread = new Map<string, ProviderThreadGoal | null>();
     const suppressMemoryConsolidationNotification = makeMemoryConsolidationNotificationFilter();
     const closedRef = yield* Ref.make(false);
 
@@ -1680,6 +1746,15 @@ export const makeCodexSessionRuntime = (
           }
         }
 
+        // Root-thread goal mirror: the wire report is authoritative, so the
+        // cache (interrupt/pause decisions) only updates from here.
+        if (notification.method === "thread/goal/updated") {
+          const goalThreadId = notification.params.goal.threadId;
+          goalsByNativeThread.set(goalThreadId, providerGoalFromCodex(notification.params.goal));
+        } else if (notification.method === "thread/goal/cleared") {
+          goalsByNativeThread.set(notification.params.threadId, null);
+        }
+
         yield* Ref.set(collabReceiverTurnsRef, collabReceiverTurns);
         yield* emitEvent({
           kind: "notification",
@@ -2115,6 +2190,144 @@ export const makeCodexSessionRuntime = (
       return providerThreadId;
     });
 
+    /**
+     * Mirrors an RPC-known goal onto the cached snapshot and surfaces it as a
+     * synthetic `thread/goal/changed` notification event (the adapter maps it
+     * alongside the wire's thread/goal/updated|cleared).
+     */
+    const emitGoalChanged = (goal: ProviderThreadGoal | null) =>
+      Effect.gen(function* () {
+        const providerThreadId = yield* readProviderThreadId;
+        goalsByNativeThread.set(providerThreadId, goal);
+        yield* emitEvent({
+          kind: "notification",
+          threadId: options.threadId,
+          method: "thread/goal/changed",
+          payload: { goal },
+        });
+      });
+
+    /** `/goal` control turns never reach Codex; their only output is a synthesized assistant reply. */
+    const completeGoalCommandTurn = Effect.fn("completeGoalCommandTurn")(function* (
+      turnId: TurnId,
+      providerThreadId: string,
+      text: string,
+    ) {
+      const itemId = `goal-${yield* randomUUIDv4("goal-command")}`;
+      yield* emitEvent({
+        kind: "notification",
+        threadId: options.threadId,
+        method: "turn/started",
+        turnId,
+        payload: { threadId: providerThreadId, turn: { id: turnId } },
+      });
+      yield* emitEvent({
+        kind: "notification",
+        threadId: options.threadId,
+        method: "item/completed",
+        turnId,
+        itemId: ProviderItemId.make(itemId),
+        payload: {
+          threadId: providerThreadId,
+          turnId,
+          completedAtMs: DateTime.toEpochMillis(yield* DateTime.now),
+          item: { id: itemId, type: "agentMessage", text },
+        },
+      });
+      yield* emitEvent({
+        kind: "notification",
+        threadId: options.threadId,
+        method: "turn/completed",
+        turnId,
+        payload: {
+          threadId: providerThreadId,
+          turn: { id: turnId, items: [], status: "completed" },
+          // No Codex turn ran for this reply; rollback must not count it.
+          synthetic: true,
+        },
+      });
+      return {
+        threadId: options.threadId,
+        turnId,
+      } satisfies ProviderTurnStartResult;
+    });
+
+    /**
+     * `/goal` runs against Codex's native goal RPCs (item 21). `set`/`resume`
+     * keep working: they start a real turn first — the goal stays paused
+     * until it is so Codex cannot beat our turn to starting its own — then
+     * flip it active so the app-server owns continuation.
+     */
+    const runGoalCommand = (
+      input: CodexSessionRuntimeSendTurnInput,
+      command: CodexGoalCommand,
+      startNativeTurn: (
+        input: CodexSessionRuntimeSendTurnInput,
+      ) => Effect.Effect<ProviderTurnStartResult, CodexSessionRuntimeError>,
+    ): Effect.Effect<ProviderTurnStartResult, CodexSessionRuntimeError> =>
+      Effect.gen(function* () {
+        const providerThreadId = yield* readProviderThreadId;
+        const { goal: wireGoal } = yield* client.request("thread/goal/get", {
+          threadId: providerThreadId,
+        });
+        const current = wireGoal == null ? null : providerGoalFromCodex(wireGoal);
+        goalsByNativeThread.set(providerThreadId, current);
+
+        const reply = (text: string) =>
+          randomUUIDv4("goal-command").pipe(
+            Effect.flatMap((id) =>
+              completeGoalCommandTurn(TurnId.make(id), providerThreadId, text),
+            ),
+          );
+
+        if (command.type === "show") {
+          return yield* reply(current === null ? "No goal is set." : describeCodexGoal(current));
+        }
+        if (command.type === "clear") {
+          const { cleared } = yield* client.request("thread/goal/clear", {
+            threadId: providerThreadId,
+          });
+          yield* emitGoalChanged(null);
+          return yield* reply(cleared ? "Goal cleared." : "No goal to clear.");
+        }
+        if (current === null && command.type !== "set") {
+          return yield* reply("No goal is set.");
+        }
+        if (command.type === "pause") {
+          const { goal } = yield* client.request("thread/goal/set", {
+            threadId: providerThreadId,
+            status: "paused",
+          });
+          yield* emitGoalChanged(providerGoalFromCodex(goal));
+          return yield* reply("Goal paused. Send /goal resume to continue.");
+        }
+        if (command.type === "set") {
+          // A new objective replaces the goal and its accounting, like the TUI.
+          if (current !== null) {
+            yield* client.request("thread/goal/clear", { threadId: providerThreadId });
+          }
+          const { goal } = yield* client.request("thread/goal/set", {
+            threadId: providerThreadId,
+            objective: command.objective,
+            status: "paused",
+          });
+          yield* emitGoalChanged(providerGoalFromCodex(goal));
+        }
+        const resumeInput: CodexSessionRuntimeSendTurnInput = (() => {
+          const { input: _input, attachments: _attachments, ...rest } = input;
+          return rest;
+        })();
+        const result = yield* startNativeTurn(
+          command.type === "set" ? { ...input, input: command.objective } : resumeInput,
+        );
+        const { goal: activeGoal } = yield* client.request("thread/goal/set", {
+          threadId: providerThreadId,
+          status: "active",
+        });
+        yield* emitGoalChanged(providerGoalFromCodex(activeGoal));
+        return result;
+      });
+
     const close = Effect.gen(function* () {
       const alreadyClosed = yield* Ref.getAndSet(closedRef, true);
       if (alreadyClosed) {
@@ -2139,72 +2352,78 @@ export const makeCodexSessionRuntime = (
     return {
       start,
       getSession: Ref.get(sessionRef),
-      sendTurn: (input) =>
-        Effect.gen(function* () {
-          const providerThreadId = yield* readProviderThreadId;
-          if (hasConfiguredMcpServer(options.appServerArgs)) {
-            yield* client.request("config/mcpServer/reload", undefined).pipe(
-              Effect.catch((cause) =>
-                Effect.logWarning("Failed to refresh Codex MCP tool catalog before turn.", {
-                  cause,
-                }),
+      sendTurn: (input) => {
+        const startNativeTurn = (turnInput: CodexSessionRuntimeSendTurnInput) =>
+          Effect.gen(function* () {
+            const providerThreadId = yield* readProviderThreadId;
+            if (hasConfiguredMcpServer(options.appServerArgs)) {
+              yield* client.request("config/mcpServer/reload", undefined).pipe(
+                Effect.catch((cause) =>
+                  Effect.logWarning("Failed to refresh Codex MCP tool catalog before turn.", {
+                    cause,
+                  }),
+                ),
+              );
+            }
+            const normalizedModel = normalizeCodexModelSlug(
+              turnInput.model ?? (yield* Ref.get(sessionRef)).model,
+            );
+            const params = yield* buildTurnStartParams({
+              threadId: providerThreadId,
+              runtimeMode: options.runtimeMode,
+              ...(turnInput.input ? { prompt: turnInput.input } : {}),
+              ...(turnInput.attachments ? { attachments: turnInput.attachments } : {}),
+              ...(normalizedModel ? { model: normalizedModel } : {}),
+              ...(turnInput.serviceTier ? { serviceTier: turnInput.serviceTier } : {}),
+              ...(turnInput.effort ? { effort: turnInput.effort } : {}),
+              ...(turnInput.interactionMode ? { interactionMode: turnInput.interactionMode } : {}),
+              // Derived from the session's own MCP configuration rather than the
+              // setting, so the prompt describes the tools this turn actually
+              // has even if the setting changed after the session started.
+              browserToolsAvailable: hasConfiguredMcpServer(options.appServerArgs),
+              indexToolsAvailable: options.indexToolsAvailable ?? false,
+              subagentModeEnabled: options.subagentModeEnabled ?? false,
+            });
+            const method = turnInput.reviewTarget ? "review/start" : "turn/start";
+            const rawResponse = turnInput.reviewTarget
+              ? yield* client.request("review/start", {
+                  threadId: providerThreadId,
+                  delivery: "inline",
+                  target: turnInput.reviewTarget,
+                })
+              : yield* client.raw.request("turn/start", params);
+            const response = yield* decodeV2TurnStartResponse(rawResponse).pipe(
+              Effect.mapError((error) =>
+                CodexErrors.CodexAppServerProtocolParseError.fromSchemaError(
+                  "decode-response-payload",
+                  error,
+                  { method },
+                ),
               ),
             );
-          }
-          const normalizedModel = normalizeCodexModelSlug(
-            input.model ?? (yield* Ref.get(sessionRef)).model,
-          );
-          const params = yield* buildTurnStartParams({
-            threadId: providerThreadId,
-            runtimeMode: options.runtimeMode,
-            ...(input.input ? { prompt: input.input } : {}),
-            ...(input.attachments ? { attachments: input.attachments } : {}),
-            ...(normalizedModel ? { model: normalizedModel } : {}),
-            ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
-            ...(input.effort ? { effort: input.effort } : {}),
-            ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
-            // Derived from the session's own MCP configuration rather than the
-            // setting, so the prompt describes the tools this turn actually
-            // has even if the setting changed after the session started.
-            browserToolsAvailable: hasConfiguredMcpServer(options.appServerArgs),
-            indexToolsAvailable: options.indexToolsAvailable ?? false,
-            subagentModeEnabled: options.subagentModeEnabled ?? false,
+            const turnId = TurnId.make(response.turn.id);
+            yield* updateSession(sessionRef, (session) => ({
+              status: "running",
+              // Codex accepts follow-ups while the current turn is still
+              // running. The response contains the queued turn id, but
+              // turn/interrupt only accepts the id that is active now.
+              activeTurnId: session.activeTurnId ?? turnId,
+              ...(!turnInput.reviewTarget && normalizedModel ? { model: normalizedModel } : {}),
+            }));
+            const resumedProviderThreadId = currentProviderThreadId(yield* Ref.get(sessionRef));
+            return {
+              threadId: options.threadId,
+              turnId,
+              ...(resumedProviderThreadId
+                ? { resumeCursor: { threadId: resumedProviderThreadId } }
+                : {}),
+            } satisfies ProviderTurnStartResult;
           });
-          const method = input.reviewTarget ? "review/start" : "turn/start";
-          const rawResponse = input.reviewTarget
-            ? yield* client.request("review/start", {
-                threadId: providerThreadId,
-                delivery: "inline",
-                target: input.reviewTarget,
-              })
-            : yield* client.raw.request("turn/start", params);
-          const response = yield* decodeV2TurnStartResponse(rawResponse).pipe(
-            Effect.mapError((error) =>
-              CodexErrors.CodexAppServerProtocolParseError.fromSchemaError(
-                "decode-response-payload",
-                error,
-                { method },
-              ),
-            ),
-          );
-          const turnId = TurnId.make(response.turn.id);
-          yield* updateSession(sessionRef, (session) => ({
-            status: "running",
-            // Codex accepts follow-ups while the current turn is still
-            // running. The response contains the queued turn id, but
-            // turn/interrupt only accepts the id that is active now.
-            activeTurnId: session.activeTurnId ?? turnId,
-            ...(!input.reviewTarget && normalizedModel ? { model: normalizedModel } : {}),
-          }));
-          const resumedProviderThreadId = currentProviderThreadId(yield* Ref.get(sessionRef));
-          return {
-            threadId: options.threadId,
-            turnId,
-            ...(resumedProviderThreadId
-              ? { resumeCursor: { threadId: resumedProviderThreadId } }
-              : {}),
-          } satisfies ProviderTurnStartResult;
-        }),
+        const goalCommand = parseCodexGoalCommand(input.input ?? "");
+        return goalCommand !== null
+          ? runGoalCommand(input, goalCommand, startNativeTurn)
+          : startNativeTurn(input);
+      },
       interruptTurn: (turnId) =>
         Effect.gen(function* () {
           const providerThreadId = yield* readProviderThreadId;
@@ -2237,6 +2456,18 @@ export const makeCodexSessionRuntime = (
             threadId: providerThreadId,
             turnId: effectiveTurnId,
           });
+          // Stop pauses a native goal: Codex would otherwise start the next
+          // goal turn milliseconds after the interrupted one settles.
+          if (goalsByNativeThread.get(providerThreadId)?.status === "active") {
+            yield* client
+              .request("thread/goal/set", { threadId: providerThreadId, status: "paused" })
+              .pipe(
+                Effect.tap((response) => emitGoalChanged(providerGoalFromCodex(response.goal))),
+                Effect.catch((cause) =>
+                  Effect.logWarning("Failed to pause Codex goal on turn interrupt.", { cause }),
+                ),
+              );
+          }
         }),
       readThread: Effect.gen(function* () {
         const providerThreadId = yield* readProviderThreadId;

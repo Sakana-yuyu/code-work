@@ -1072,6 +1072,39 @@ describe("ProviderCommandReactor", () => {
     }),
   );
 
+  effectIt.effect("有活动 Goal 时 Codex /goal 原样透传给原生 RPC", () =>
+    Effect.gen(function* () {
+      const sent = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          sendTurnEffect: () =>
+            Deferred.succeed(sent, undefined).pipe(
+              Effect.as({ threadId: ThreadId.make("thread-1"), turnId: asTurnId("goal-turn") }),
+            ),
+        }),
+      );
+      const threadId = ThreadId.make("thread-1");
+      yield* harness.goalStore.set({ threadId, objective: "完成开发", tokenBudget: null });
+      yield* harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-goal-native"),
+        threadId,
+        message: {
+          messageId: asMessageId("message-goal-native"),
+          role: "user",
+          text: "/goal 迁移剩余项",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Effect.promise(harness.drain);
+      yield* Deferred.await(sent);
+      expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({ input: "/goal 迁移剩余项" });
+    }),
+  );
+
   it("pauses a Goal when provider turn start fails after Goal activation", async () => {
     const harness = await createHarness({
       sendTurnEffect: () =>

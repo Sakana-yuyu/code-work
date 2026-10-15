@@ -82,6 +82,24 @@ Android 和 iPhone 可在「设置 → 外观 → 强度标签语言」选择中
 
 目标用时只累计执行中的时间；更新目标、刷新页面或暂停时，不会重复累计同一段时间。
 
+## Goals
+
+With Codex and Claude, send `/goal` followed by what "done" means, for example
+`/goal all tests in packages/api pass`. The agent keeps working across turns
+until it judges the goal met, and the thread's goal row shows its progress.
+
+- `/goal` alone shows the current goal. `/goal clear` removes it.
+- Codex also supports `/goal pause` and `/goal resume`. Stopping a Codex goal
+  pauses it; the goal row's pause/resume/clear controls dispatch the same
+  native commands.
+- Stopping Claude ends the current turn, but the goal stays set. Claude checks
+  it again at the end of your next message.
+
+Native goals are owned by the provider and mirrored into the thread's goal
+state, so web, desktop, and mobile show the same status. A goal you set from
+the goal editor on a thread without a provider-native goal stays a Code Work
+goal with its own budget controls.
+
 ## Commands and skills
 
 Type `/` to open the command menu. Type `$` to find and add a skill. Skill rows show their source,

@@ -22,6 +22,8 @@ import {
   isRecoverableThreadResumeError,
   makeMemoryConsolidationNotificationFilter,
   openCodexThread,
+  parseCodexGoalCommand,
+  providerGoalFromCodex,
   toMcpElicitationResponse,
 } from "./CodexSessionRuntime.ts";
 const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
@@ -880,4 +882,62 @@ describe("openCodexThread", () => {
       NodeAssert.equal(error.errorMessage, "timed out waiting for server");
     }),
   );
+});
+
+describe("parseCodexGoalCommand", () => {
+  it("classifies goal subcommands like the Codex TUI", () => {
+    NodeAssert.deepStrictEqual(parseCodexGoalCommand("/goal"), { type: "show" });
+    NodeAssert.deepStrictEqual(parseCodexGoalCommand("  /goal  edit "), { type: "show" });
+    NodeAssert.deepStrictEqual(parseCodexGoalCommand("/goal clear"), { type: "clear" });
+    NodeAssert.deepStrictEqual(parseCodexGoalCommand("/goal PAUSE"), { type: "pause" });
+    NodeAssert.deepStrictEqual(parseCodexGoalCommand("/goal resume"), { type: "resume" });
+    NodeAssert.deepStrictEqual(parseCodexGoalCommand("/goal ship the thing"), {
+      type: "set",
+      objective: "ship the thing",
+    });
+    NodeAssert.deepStrictEqual(parseCodexGoalCommand("/goal 多行\n目标"), {
+      type: "set",
+      objective: "多行\n目标",
+    });
+  });
+
+  it("returns null for non-goal messages", () => {
+    NodeAssert.equal(parseCodexGoalCommand(""), null);
+    NodeAssert.equal(parseCodexGoalCommand("goal x"), null);
+    NodeAssert.equal(parseCodexGoalCommand("/goalship"), null);
+    NodeAssert.equal(parseCodexGoalCommand("/compact"), null);
+  });
+});
+
+describe("providerGoalFromCodex", () => {
+  it("maps the wire snapshot to the provider goal shape", () => {
+    NodeAssert.deepStrictEqual(
+      providerGoalFromCodex({
+        objective: "  finish the port  ",
+        status: "usageLimited",
+        tokensUsed: 4100.9,
+        tokenBudget: 5000,
+        timeUsedSeconds: 61.2,
+      }),
+      {
+        objective: "finish the port",
+        status: "usageLimited",
+        tokensUsed: 4100,
+        tokenBudget: 5000,
+        timeUsedSeconds: 61,
+      },
+    );
+  });
+
+  it("returns null for an empty objective", () => {
+    NodeAssert.equal(
+      providerGoalFromCodex({
+        objective: "   ",
+        status: "active",
+        tokensUsed: 0,
+        timeUsedSeconds: 0,
+      }),
+      null,
+    );
+  });
 });

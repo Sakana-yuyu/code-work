@@ -126,6 +126,31 @@ memoryLayer("ThreadGoalStore", (it) => {
     }),
   );
 
+  it.effect("providerNative 标记参与幂等判定并随读取回传", () =>
+    Effect.gen(function* () {
+      const store = yield* ThreadGoalStore;
+      const local = yield* store.set({ threadId, objective: "同一目标" });
+      assert.notEqual(local.providerNative, true);
+
+      // 同 objective 但来源不同不算同一输入：provider 接管时换新 goalId。
+      const adopted = yield* store.set({
+        threadId,
+        objective: "同一目标",
+        providerNative: true,
+      });
+      assert.notEqual(adopted.goalId, local.goalId);
+      assert.equal(adopted.providerNative, true);
+
+      const replay = yield* store.set({
+        threadId,
+        objective: "同一目标",
+        providerNative: true,
+      });
+      assert.deepEqual(replay, adopted);
+      assert.equal(Option.getOrThrow(yield* store.get(threadId)).providerNative, true);
+    }),
+  );
+
   it.effect("pause/resume 单调推进状态，complete 后拒绝回退", () =>
     Effect.gen(function* () {
       const store = yield* ThreadGoalStore;

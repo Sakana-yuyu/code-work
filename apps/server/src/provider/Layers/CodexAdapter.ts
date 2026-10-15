@@ -15,6 +15,7 @@ import {
   type ProviderEvent,
   ProviderInstanceId,
   type ProviderRuntimeEvent,
+  ProviderThreadGoal,
   type ProviderRequestKind,
   type ThreadTokenUsageSnapshot,
   type ProviderUserInputAnswers,
@@ -62,6 +63,7 @@ import {
   CodexSessionRuntimeThreadIdMissingError,
   describeMcpElicitation,
   makeCodexSessionRuntime,
+  providerGoalFromCodex,
   type CodexSessionRuntimeError,
   type CodexSessionRuntimeOptions,
   type CodexSessionRuntimeShape,
@@ -1090,6 +1092,13 @@ function mapToRuntimeEvents(
       payload.turn.durationMs >= 0
         ? payload.turn.durationMs
         : undefined;
+    // The runtime marks synthesized control replies (e.g. `/goal` show /
+    // pause / clear) outside the wire schema so checkpoint counting can skip
+    // them — they have no provider-native turn to roll back.
+    const synthetic =
+      typeof event.payload === "object" &&
+      event.payload !== null &&
+      (event.payload as { readonly synthetic?: unknown }).synthetic === true;
     return [
       {
         ...runtimeEventBase(event, canonicalThreadId),
@@ -1098,6 +1107,7 @@ function mapToRuntimeEvents(
           state: toTurnStatus(payload.turn.status),
           ...(errorMessage ? { errorMessage } : {}),
           ...(durationMs !== undefined ? { durationMs } : {}),
+          ...(synthetic ? { synthetic: true } : {}),
         },
       },
     ];
@@ -1111,6 +1121,54 @@ function mapToRuntimeEvents(
         payload: {
           reason: event.message ?? "Turn aborted",
         },
+      },
+    ];
+  }
+
+  // Native `/goal` mirror: wire notifications and the runtime's synthetic
+  // `thread/goal/changed` (emitted after goal RPC replies) both report the
+  // provider-authoritative snapshot.
+  if (event.method === "thread/goal/updated") {
+    const payload = readPayload(
+      EffectCodexSchema.ServerNotification__ThreadGoalUpdatedNotification,
+      event.payload,
+    );
+    const goal = payload ? providerGoalFromCodex(payload.goal) : undefined;
+    if (goal === undefined) {
+      return [];
+    }
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "thread.goal.updated",
+        payload: { goal },
+      },
+    ];
+  }
+
+  if (event.method === "thread/goal/cleared") {
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "thread.goal.updated",
+        payload: { goal: null },
+      },
+    ];
+  }
+
+  if (event.method === "thread/goal/changed") {
+    const payload = readPayload(
+      Schema.Struct({ goal: Schema.NullOr(ProviderThreadGoal) }),
+      event.payload,
+    );
+    if (!payload) {
+      return [];
+    }
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "thread.goal.updated",
+        payload: { goal: payload.goal },
       },
     ];
   }
