@@ -119,6 +119,10 @@ import { ComposerPendingElementContexts } from "./ComposerPendingElementContexts
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
 import { ComposerPreviewAnnotationCards } from "./ComposerPreviewAnnotationCards";
 import {
+  AttachmentDocumentPreviewButton,
+  attachmentDocumentKind,
+} from "./AttachmentDocumentPreview";
+import {
   attachmentsToReleaseOnUploadCapabilityLoss,
   classifyComposerAttachmentFile,
   fileAttachmentCapabilityBlockReason,
@@ -4234,6 +4238,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         ? uploadsByImageId[composerFile.id]
                         : undefined;
                       const needsReattach = composerFileNeedsReattach(composerFile);
+                      const documentKind = attachmentDocumentKind(composerFile);
                       return (
                         <div
                           key={composerFile.id}
@@ -4247,6 +4252,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                             {formatAttachmentSize(composerFile.sizeBytes)}
                           </span>
                           <span className="ms-auto flex shrink-0 items-center gap-1">
+                            {documentKind && composerFile.file ? (
+                              <AttachmentDocumentPreviewButton
+                                name={composerFile.name}
+                                kind={documentKind}
+                                source={composerFile.file}
+                              />
+                            ) : null}
                             {needsReattach ? (
                               <>
                                 <span className="text-amber-600">

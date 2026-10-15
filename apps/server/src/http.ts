@@ -51,15 +51,28 @@ const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 const DESKTOP_RENDERER_ORIGINS = ["codework://app", "codework-dev://app"];
 const SVG_CONTENT_SECURITY_POLICY = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+const UNTRUSTED_HTML_CONTENT_SECURITY_POLICY = "sandbox allow-scripts";
 
-export function assetResponseHeaders(filePath: string): Record<string, string> {
+export function assetResponseHeaders(
+  filePath: string,
+  options?: { readonly untrusted?: boolean },
+): Record<string, string> {
   const lowerPath = filePath.toLowerCase();
   return {
     "Cache-Control": "private, max-age=3600",
     "X-Content-Type-Options": "nosniff",
     ...(lowerPath.endsWith(".html") || lowerPath.endsWith(".htm")
-      ? { "Content-Type": "text/html; charset=utf-8" }
+      ? {
+          "Content-Type": "text/html; charset=utf-8",
+          // Uploaded HTML runs sandboxed even when opened directly, so it can
+          // never act with the environment's origin. Workspace pages keep
+          // same-origin features for the integrated browser preview.
+          ...(options?.untrusted
+            ? { "Content-Security-Policy": UNTRUSTED_HTML_CONTENT_SECURITY_POLICY }
+            : {}),
+        }
       : {}),
+    ...(lowerPath.endsWith(".pdf") ? { "Content-Type": "application/pdf" } : {}),
     ...(lowerPath.endsWith(".svg")
       ? { "Content-Security-Policy": SVG_CONTENT_SECURITY_POLICY }
       : {}),
@@ -250,7 +263,7 @@ const serveAsset = Effect.gen(function* () {
   if (headOnly) return HttpServerResponse.empty({ status: 405 });
   return yield* HttpServerResponse.file(asset.path, {
     status: 200,
-    headers: assetResponseHeaders(asset.path),
+    headers: assetResponseHeaders(asset.path, { untrusted: asset.untrusted === true }),
   }).pipe(
     Effect.orElseSucceed(() => HttpServerResponse.text("Internal Server Error", { status: 500 })),
   );

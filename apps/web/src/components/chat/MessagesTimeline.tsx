@@ -60,6 +60,10 @@ import {
   type TurnDiffSummary,
 } from "../../types";
 import {
+  AttachmentDocumentPreviewButton,
+  attachmentDocumentKind,
+} from "./AttachmentDocumentPreview";
+import {
   getRenderablePatch,
   resolveDiffThemeName,
   resolveFileDiffPath,
@@ -1240,14 +1244,24 @@ function MessageAttachmentImages({
         >
           <span className="min-w-0 truncate text-secondary-label">{file.name}</span>
           {"previewUrl" in file && file.previewUrl ? (
-            <a
-              href={file.previewUrl}
-              download={file.name}
-              aria-label={`${t("downloadAttachment")} ${file.name}`}
-              className="shrink-0 text-link hover:underline"
-            >
-              {t("downloadAttachment")}
-            </a>
+            <span className="flex shrink-0 items-center gap-2">
+              {file.type === "file" && attachmentDocumentKind(file) ? (
+                <AttachmentDocumentPreviewButton
+                  name={file.name}
+                  kind={attachmentDocumentKind(file)!}
+                  source={file.previewUrl}
+                  className="h-auto px-1 py-0 text-[11px] sm:h-auto"
+                />
+              ) : null}
+              <a
+                href={file.previewUrl}
+                download={file.name}
+                aria-label={`${t("downloadAttachment")} ${file.name}`}
+                className="text-link hover:underline"
+              >
+                {t("downloadAttachment")}
+              </a>
+            </span>
           ) : (
             <span className="shrink-0 text-secondary-label">{t("fileUnavailable")}</span>
           )}

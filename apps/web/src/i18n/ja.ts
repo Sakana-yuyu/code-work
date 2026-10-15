@@ -1047,6 +1047,8 @@ export const ja: Record<string, string> = {
     "アップロードが中断されました。ファイルをもう一度添付してください。",
   "composer.attachAgain": "もう一度添付",
   "composer.fileIsEmpty": "「{{name}}」は空のファイルです。",
+  "attachmentPreview.open": "プレビュー",
+  "attachmentPreview.openInNewTab": "新しいタブで開く",
   "diff.unsupportedFormatShowingRaw":
     "サポートされていない diff 形式です。生のパッチを表示しています。",
   "diff.parseFailedShowingRaw": "パッチの解析に失敗しました。生のパッチを表示しています。",

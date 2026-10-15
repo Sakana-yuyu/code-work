@@ -318,6 +318,39 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('aria-label="Preview agent-image.png"');
     expect(markup).not.toContain("(empty response)");
   });
+  it("offers an in-app preview for HTML and PDF attachments only", () => {
+    const entry = buildAssistantTimelineEntry("");
+    const file = (name: string, mimeType: string) => ({
+      type: "file" as const,
+      id: `attachment-${name.replace(/\W/g, "-")}`,
+      name,
+      mimeType,
+      sizeBytes: 4,
+      previewUrl: `https://example.com/${name}`,
+    });
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            ...entry,
+            message: {
+              ...entry.message,
+              attachments: [
+                file("report.pdf", "application/pdf"),
+                file("page.html", "text/html"),
+                file("data.zip", "application/zip"),
+              ],
+            },
+          },
+        ]}
+      />,
+    );
+    expect(markup).toContain('aria-label="Preview report.pdf"');
+    expect(markup).toContain('aria-label="Preview page.html"');
+    expect(markup).not.toContain('aria-label="Preview data.zip"');
+    expect(markup).toContain('aria-label="Download data.zip"');
+  });
   it("同一时间线标明不同 Agent 的回复来源", () => {
     const codex = buildAssistantTimelineEntry("Codex 完成设计");
     const claude = buildAssistantTimelineEntry("Claude 继续实现");

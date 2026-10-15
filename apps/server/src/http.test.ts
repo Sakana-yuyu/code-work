@@ -55,4 +55,20 @@ describe("assetResponseHeaders", () => {
       "text/html; charset=utf-8",
     );
   });
+
+  it("sandboxes uploaded HTML but keeps workspace pages same-origin", () => {
+    expect(
+      assetResponseHeaders("/attachments/thread-1-page-html.html", { untrusted: true }),
+    ).toHaveProperty("Content-Security-Policy", "sandbox allow-scripts");
+    expect(assetResponseHeaders("/workspace/page.html")).not.toHaveProperty(
+      "Content-Security-Policy",
+    );
+  });
+
+  it("serves PDFs as PDF documents for the browser viewer", () => {
+    expect(assetResponseHeaders("/attachments/thread-1-report-pdf.PDF")).toHaveProperty(
+      "Content-Type",
+      "application/pdf",
+    );
+  });
 });

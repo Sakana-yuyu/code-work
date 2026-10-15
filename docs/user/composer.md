@@ -24,6 +24,11 @@ Files upload to the environment you are connected to, and the agent receives eac
 location so it can open it with its own tools. Images still show as thumbnails; other files show as
 rows with their size and upload progress.
 
+HTML and PDF attachments have a **Preview** button, both in the composer before sending and on
+messages in the conversation. The file opens in a window inside Code Work; HTML pages run isolated
+from your sign-in and the rest of the app. Use **Open in new tab** if a PDF does not display. On
+iOS and Android, tap a file in the conversation to open it in the system viewer.
+
 Pasting a large block of text (32 KB or more, or more than fits in a message) adds it as a
 `pasted-text.txt` attachment instead of filling the composer. Press Ctrl+Shift+V (Cmd+Shift+V on
 macOS) to paste it as plain text instead.

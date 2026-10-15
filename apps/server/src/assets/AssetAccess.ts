@@ -102,7 +102,12 @@ const AssetClaimsJson = Schema.fromJsonString(AssetClaimsSchema);
 const decodeAssetClaims = Schema.decodeUnknownOption(AssetClaimsJson);
 const encodeAssetClaims = Schema.encodeSync(AssetClaimsJson);
 
-export type ResolvedAsset = { readonly kind: "file"; readonly path: string };
+export type ResolvedAsset = {
+  readonly kind: "file";
+  readonly path: string;
+  /** Uploaded by a client rather than read from a workspace; documents render sandboxed. */
+  readonly untrusted?: true;
+};
 
 function decodeClaims(encodedPayload: string): AssetClaims | null {
   try {
@@ -468,7 +473,7 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
       Effect.orElseSucceed(() => Option.none()),
     );
     return Option.isSome(info) && info.value.type === "File"
-      ? ({ kind: "file", path: attachmentPath } satisfies ResolvedAsset)
+      ? ({ kind: "file", path: attachmentPath, untrusted: true } satisfies ResolvedAsset)
       : null;
   }
 
