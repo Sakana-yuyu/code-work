@@ -7,6 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import {
   formatContextWindowCompactionMessage,
+  canCompactSelectedProvider,
   hasAvailableClaudeCompactionProvider,
   hasDismissedResumeCompaction,
   resolveContextWindowModelDisplayName,
@@ -33,6 +34,15 @@ function claudeProvider(input: {
     skills: [],
   };
 }
+
+describe("canCompactSelectedProvider", () => {
+  it("allows Claude and custom model sessions", () => {
+    expect(canCompactSelectedProvider("claudeAgent")).toBe(true);
+    expect(canCompactSelectedProvider("byok")).toBe(true);
+    expect(canCompactSelectedProvider("codex")).toBe(false);
+    expect(canCompactSelectedProvider(null)).toBe(false);
+  });
+});
 
 describe("hasAvailableClaudeCompactionProvider", () => {
   const originalInstanceId = ProviderInstanceId.make("claude_original");
@@ -179,6 +189,29 @@ describe("shouldOfferResumeCompaction", () => {
         provider: "codex",
         usedTokens: 300_000,
         updatedAt: "2026-08-24T09:00:00.000Z",
+        now,
+      }),
+    ).toBe(false);
+  });
+
+  it("uses the reported prompt cache TTL instead of the fallback", () => {
+    // 5m cache (API key billing): stale well before the 70m fallback.
+    expect(
+      shouldOfferResumeCompaction({
+        provider: "claudeAgent",
+        usedTokens: 150_000,
+        updatedAt: "2026-08-24T11:54:00.000Z",
+        promptCacheTtlMs: 5 * 60_000,
+        now,
+      }),
+    ).toBe(true);
+    // 1h cache (subscription): not stale at 50m even though tokens are large.
+    expect(
+      shouldOfferResumeCompaction({
+        provider: "claudeAgent",
+        usedTokens: 150_000,
+        updatedAt: "2026-08-24T11:10:00.000Z",
+        promptCacheTtlMs: 60 * 60_000,
         now,
       }),
     ).toBe(false);

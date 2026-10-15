@@ -199,7 +199,6 @@ import {
   CheckCircle2Icon,
   ChevronDownIcon,
   GitBranchIcon,
-  Minimize2Icon,
   PaperclipIcon,
   WifiOffIcon,
 } from "lucide-react";
@@ -350,7 +349,6 @@ import {
   deriveLatestContextWindowSnapshot,
   deriveModelResponseCount,
   deriveToolDurationMs,
-  formatContextWindowTokens,
 } from "../lib/contextWindow";
 import { ThreadSyncStatusPill } from "./chat/ThreadSyncStatusPill";
 import {
@@ -391,6 +389,7 @@ import {
   readFileAsDataUrl,
   reconcileMountedTerminalThreadIds,
   resolveBackgroundDraftWorkspaceOptions,
+  resolveCompactBeforeSend,
   resolveQueuedMessageGuard,
   resolveVisibleQueuedMessages,
   resolveDraftHeroState,
@@ -5456,19 +5455,20 @@ function ChatViewContent(props: ChatViewProps) {
   // Session-scoped dismissals, one key per (thread, snapshot). A set rather
   // than a single slot so dismissing the banner on one thread does not
   // resurface it on another thread dismissed earlier.
-  const [dismissedResumeCompactionKeys, setDismissedResumeCompactionKeys] = useState<
-    ReadonlySet<string>
-  >(new Set());
-  const resumeCompactionKey =
-    activeThread && activeContextWindow
-      ? `${activeThread.id}:${activeContextWindow.updatedAt}`
-      : null;
+  const compactProviderReady =
+    selectedProvider === "byok" ||
+    (selectedProvider === "claudeAgent" && compactionProviderAvailable);
+  const activeThreadHasCompactableConversation = timelineMessages.some(
+    (message) =>
+      message.role === "user" &&
+      (message.text.trim().toLowerCase() !== "/compact" || (message.attachments?.length ?? 0) > 0),
+  );
   const compactDisabled =
     !activeThread ||
+    !activeThreadHasCompactableConversation ||
     !activeProject ||
     !isServerThread ||
-    selectedProvider !== "claudeAgent" ||
-    !compactionProviderAvailable ||
+    !compactProviderReady ||
     isWorking ||
     threadDetailLoading ||
     isPreparingWorktree ||
@@ -5476,86 +5476,53 @@ function ChatViewContent(props: ChatViewProps) {
     feedbackUploading ||
     pendingApprovals.length > 0 ||
     pendingUserInputs.length > 0 ||
-    showPlanFollowUpPrompt ||
-    composerHasUnsentContent;
+    showPlanFollowUpPrompt;
   const compactDisabledReason = compactDisabled
-    ? composerHasUnsentContent
-      ? t("compact.reasonSendOrClearDraft")
-      : !activeProject
-        ? t("compact.reasonChooseProject")
-        : !compactionProviderAvailable
+    ? !activeProject
+      ? t("compact.reasonChooseProject")
+      : !compactProviderReady
+        ? selectedProvider === "claudeAgent"
           ? t("compact.reasonEnableClaudeProvider")
           : t("compact.reasonUnavailable")
+        : t("compact.reasonUnavailable")
     : null;
-  const resumeCompactionBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
-    if (
-      !activeThread ||
-      !activeContextWindow ||
-      resumeCompactionKey === null ||
-      dismissedResumeCompactionKeys.has(resumeCompactionKey) ||
-      resumeCompactionPermanentlyDismissed ||
-      nativeResumeCompactionDismissed ||
-      pendingUserInputs.length > 0 ||
-      phase === "running" ||
-      !shouldOfferResumeCompaction({
-        provider: selectedProvider,
-        usedTokens: activeContextWindow.usedTokens,
-        updatedAt: activeContextWindow.updatedAt,
-        now: `${nowMinute}:00.000Z`,
-      })
-    ) {
-      return null;
-    }
-
-    const dismiss = () =>
-      setDismissedResumeCompactionKeys((keys) => new Set(keys).add(resumeCompactionKey));
-    const compactAction = (
-      <Button
-        size="xs"
-        variant="outline"
-        disabled={compactDisabled}
-        onClick={() => {
-          if (compactDisabled) return;
-          composerRef.current?.compactContext();
-        }}
-      >
-        {t("compact")}
-      </Button>
-    );
-    return {
-      id: `resume-compaction:${resumeCompactionKey}`,
-      variant: "info",
-      icon: <Minimize2Icon />,
-      title: t("resumeWithLessContext"),
-      description: t("tokensFromAnOlderSession", {
-        value: formatContextWindowTokens(activeContextWindow.usedTokens),
-      }),
-      actions: compactDisabledReason ? (
-        <Tooltip>
-          <TooltipTrigger render={<span className="inline-flex">{compactAction}</span>} />
-          <TooltipPopup side="top">{compactDisabledReason}</TooltipPopup>
-        </Tooltip>
-      ) : (
-        compactAction
-      ),
-      dismissLabel: t("keepFullHistory"),
-      onDismiss: dismiss,
-    };
-  }, [
-    activeContextWindow,
-    activeThread,
-    compactDisabled,
-    compactDisabledReason,
-    composerRef,
-    dismissedResumeCompactionKeys,
-    nativeResumeCompactionDismissed,
-    nowMinute,
-    pendingUserInputs.length,
-    phase,
-    resumeCompactionKey,
-    resumeCompactionPermanentlyDismissed,
-    selectedProvider,
-  ]);
+  // Tokens a stale Claude session would re-read on its next turn. While set,
+  // the composer shows a Compact chip and Enter compacts first; turning the
+  // chip off sends the next message with full history. Unsent draft text is
+  // deliberately not a blocker here — the chip is about that next send.
+  const resumeCompactionTokens =
+    activeContextWindow &&
+    !resumeCompactionPermanentlyDismissed &&
+    !nativeResumeCompactionDismissed &&
+    !compactDisabled &&
+    shouldOfferResumeCompaction({
+      provider: selectedProvider,
+      usedTokens: activeContextWindow.usedTokens,
+      updatedAt: activeContextWindow.updatedAt,
+      promptCacheTtlMs: activeContextWindow.promptCacheTtlMs,
+      now: `${nowMinute}:00.000Z`,
+    })
+      ? activeContextWindow.usedTokens
+      : null;
+  // Threads whose Compact chip is turned off. A send that starts its turn
+  // clears its thread's entry; a failed send keeps it for the retry.
+  const [fullHistoryThreadKeys, setFullHistoryThreadKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const keepFullHistory = fullHistoryThreadKeys.has(routeThreadKey);
+  const setKeepFullHistory = useCallback((threadKey: string, keep: boolean) => {
+    setFullHistoryThreadKeys((current) => {
+      if (current.has(threadKey) === keep) return current;
+      const next = new Set(current);
+      if (keep) next.add(threadKey);
+      else next.delete(threadKey);
+      return next;
+    });
+  }, []);
+  const toggleKeepFullHistory = useCallback(
+    () => setKeepFullHistory(routeThreadKey, !keepFullHistory),
+    [keepFullHistory, routeThreadKey, setKeepFullHistory],
+  );
   const handleRestoreThreadBranch = useCallback(() => {
     if (gitStatusQuery.data?.hasWorkingTreeChanges) {
       setBranchRestoreConfirmOpen(true);
@@ -6029,6 +5996,77 @@ function ChatViewContent(props: ChatViewProps) {
     ],
   );
 
+  // Manual compact goes straight to the provider as its own turn instead of
+  // injecting "/compact" into the draft, so it stays usable while a draft has
+  // content — the draft is untouched.
+  const handleCompactContext = () => {
+    if (compactDisabled || !activeThread || !isServerThread) return;
+    const sendCtx = composerRef.current?.getSendContext();
+    if (!sendCtx?.providerAvailable) return;
+    const ctxSelectedModelSelection = sendCtx.selectedModelSelection;
+    const ctxSelectedModel = sendCtx.selectedModel;
+    const ctxCapabilities = sendCtx.selectedProviderModels.find(
+      (model) => model.slug === ctxSelectedModelSelection.model,
+    )?.capabilities;
+    const compactInteractionMode = resolveProviderInteractionMode({
+      providers: providerStatuses,
+      instanceId: ctxSelectedModelSelection.instanceId,
+      capabilities: ctxCapabilities,
+      modelSelection: ctxSelectedModelSelection,
+      interactionMode,
+    });
+    const threadId = activeThread.id;
+    const messageId = newMessageId();
+    const createdAt = new Date().toISOString();
+    setOptimisticUserMessages((existing) => [
+      ...existing,
+      {
+        id: messageId,
+        role: "user",
+        text: "/compact",
+        turnId: null,
+        createdAt,
+        updatedAt: createdAt,
+        streaming: false,
+      },
+    ]);
+    scrollToEnd();
+    setThreadError(threadId, null);
+    void (async () => {
+      const settingsResult = await persistThreadSettingsForNextTurn({
+        threadId,
+        createdAt,
+        ...(ctxSelectedModel ? { modelSelection: ctxSelectedModelSelection } : {}),
+        runtimeMode,
+        interactionMode: compactInteractionMode,
+      });
+      const result =
+        settingsResult._tag === "Failure"
+          ? settingsResult
+          : await startThreadTurn({
+              environmentId,
+              input: {
+                threadId,
+                message: {
+                  messageId,
+                  role: "user",
+                  text: "/compact",
+                  attachments: [],
+                },
+                modelSelection: ctxSelectedModelSelection,
+                runtimeMode,
+                interactionMode: compactInteractionMode,
+              },
+            });
+      if (result._tag === "Failure") {
+        setOptimisticUserMessages((existing) =>
+          existing.filter((message) => message.id !== messageId),
+        );
+        setThreadError(threadId, t("compact.failedToCompact"));
+      }
+    })();
+  };
+
   const onSend = async (
     e?: { preventDefault: () => void },
     submissionIntent: ComposerSubmissionIntent = "foreground",
@@ -6342,12 +6380,21 @@ function ChatViewContent(props: ChatViewProps) {
       messageTextWithPreviewAnnotations,
       composerReviewCommentsSnapshot,
     );
+    // A stale Claude session compacts before this message so the turn does not
+    // re-read the old history. The message queues behind the /compact turn,
+    // since steering into it is rejected.
+    const compactBeforeSend = resolveCompactBeforeSend({
+      goalOnlyTurn,
+      resumeCompactionTokens,
+      keepFullHistory,
+      messageText: messageTextForSend,
+    });
     const localPresentation: ChatMessagePresentation | undefined = goalOnlyTurn
       ? {
           kind: "goal",
           summary: composerGoalObjective?.trim() || trimmed,
         }
-      : phase === "running"
+      : phase === "running" || compactBeforeSend
         ? {
             kind: "queue",
             summary: messageTextForSend.trim() || trimmed,
@@ -6624,7 +6671,27 @@ function ChatViewContent(props: ChatViewProps) {
         ...(bootstrap ? { bootstrap } : {}),
         createdAt: messageCreatedAt,
       };
-      if (localPresentation?.kind === "queue") {
+      if (compactBeforeSend) {
+        const compactResult = await startThreadTurn({
+          environmentId,
+          input: {
+            threadId: threadIdForSend,
+            message: {
+              messageId: newMessageId(),
+              role: "user",
+              text: "/compact",
+              attachments: [],
+            },
+            modelSelection: ctxSelectedModelSelection,
+            runtimeMode,
+            interactionMode: sendInteractionMode,
+          },
+        });
+        if (compactResult._tag === "Failure") {
+          failure = compactResult;
+        }
+      }
+      if (failure === null && localPresentation?.kind === "queue") {
         // Queue is now server-side: dispatch the same turn-start command and let
         // the orchestrator park it behind the running turn.
         const startResult = await startThreadTurn({ environmentId, input: turnStartInput });
@@ -6649,7 +6716,7 @@ function ChatViewContent(props: ChatViewProps) {
           }
           acknowledgeActiveThreadWoke();
         }
-      } else {
+      } else if (failure === null) {
         if (backgroundThreadRef) {
           beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
         }
@@ -6666,6 +6733,9 @@ function ChatViewContent(props: ChatViewProps) {
           }
           acknowledgeActiveThreadWoke();
         }
+      }
+      if (turnStartSucceeded) {
+        setKeepFullHistory(routeThreadKey, false);
       }
       if (turnStartSucceeded && backgroundThreadRef) {
         markPromotedDraftThreadByRef(backgroundThreadRef);
@@ -6896,8 +6966,6 @@ function ChatViewContent(props: ChatViewProps) {
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
     const backgroundLivenessItems =
       backgroundLivenessBannerItem === null ? [] : [backgroundLivenessBannerItem];
-    const resumeCompactionItems =
-      resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
     const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
     const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
@@ -6905,7 +6973,6 @@ function ChatViewContent(props: ChatViewProps) {
         ...urgentSystemItems,
         ...backgroundLivenessItems,
         ...calmSystemItems,
-        ...resumeCompactionItems,
         ...wokeThreadItems,
         ...parkedThreadItems,
       ];
@@ -6914,7 +6981,6 @@ function ChatViewContent(props: ChatViewProps) {
       ...urgentSystemItems,
       ...backgroundLivenessItems,
       ...calmSystemItems,
-      ...resumeCompactionItems,
       ...wokeThreadItems,
       {
         id: `branch-mismatch:${activeBranchMismatchKey}`,
@@ -6966,7 +7032,6 @@ function ChatViewContent(props: ChatViewProps) {
     isRestoringThreadBranch,
     localCheckoutBranchMismatch,
     parkedThreadBannerItem,
-    resumeCompactionBannerItem,
     showBranchMismatchBanner,
     systemComposerBannerItems,
     wokeThreadBannerItem,
@@ -8410,6 +8475,10 @@ function ChatViewContent(props: ChatViewProps) {
                             activeContextWindow={activeContextWindow}
                             compactDisabled={compactDisabled}
                             compactDisabledReason={compactDisabledReason}
+                            onCompactContext={handleCompactContext}
+                            resumeCompactionTokens={resumeCompactionTokens}
+                            keepFullHistory={keepFullHistory}
+                            onToggleKeepFullHistory={toggleKeepFullHistory}
                             resolvedTheme={resolvedTheme}
                             settings={settings}
                             keybindings={keybindings}

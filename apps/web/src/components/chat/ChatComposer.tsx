@@ -139,7 +139,10 @@ import {
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import { ContextWindowMeter } from "./ContextWindowMeter";
-import { resolveContextWindowModelDisplayName } from "./ContextWindowMeter.logic";
+import {
+  canCompactSelectedProvider,
+  resolveContextWindowModelDisplayName,
+} from "./ContextWindowMeter.logic";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { basenameOfPath } from "../../pierre-icons";
 import { cn, randomUUID } from "~/lib/utils";
@@ -451,6 +454,9 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
   showSendWhileRunning?: boolean;
+  resumeCompactionTokens?: number | null;
+  keepFullHistory?: boolean;
+  onToggleKeepFullHistory?: () => void;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => Promise<boolean> | boolean;
   onImplementPlanInNewThread: () => void;
@@ -477,6 +483,9 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         hasSendableContent={props.hasSendableContent}
         preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown ?? false}
         showSendWhileRunning={props.showSendWhileRunning ?? false}
+        resumeCompactionTokens={props.resumeCompactionTokens}
+        keepFullHistory={props.keepFullHistory}
+        onToggleKeepFullHistory={props.onToggleKeepFullHistory}
         onPreviousPendingQuestion={props.onPreviousPendingQuestion}
         onInterrupt={props.onInterrupt}
         onImplementPlanInNewThread={props.onImplementPlanInNewThread}
@@ -619,6 +628,12 @@ export interface ChatComposerProps {
   activeContextWindow: ContextWindowSnapshot | null;
   compactDisabled: boolean;
   compactDisabledReason: string | null;
+  /** Dispatches a standalone `/compact` turn; the draft is untouched. */
+  onCompactContext: () => void;
+  /** Tokens a stale session would re-read; shows the Compact chip and compacts on send. */
+  resumeCompactionTokens: number | null;
+  keepFullHistory: boolean;
+  onToggleKeepFullHistory: () => void;
 
   // Misc
   resolvedTheme: "light" | "dark";
@@ -829,6 +844,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeContextWindow,
     compactDisabled,
     compactDisabledReason,
+    onCompactContext,
+    resumeCompactionTokens,
+    keepFullHistory,
+    onToggleKeepFullHistory,
     resolvedTheme,
     settings,
     keybindings,
@@ -2502,7 +2521,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (
       compactDisabled ||
       noProviderAvailable ||
-      hasSendableComposerContent ||
       activePendingApproval !== null ||
       pendingUserInputs.length > 0 ||
       phase === "running" ||
@@ -2512,43 +2530,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ) {
       return;
     }
-    // The compact buttons cannot see the compression counter (it lives in
-    // a ref), so they render enabled during a paste; toast instead of
-    // silently ignoring the click.
-    if ((pendingImageCompressionsRef.current.get(activeThreadId) ?? 0) > 0) {
-      toastManager.add({
-        type: "info",
-        title: t("stillCompressingAPastedImage"),
-        description: t("compactAgainOnceItsThumbnailAppears"),
-      });
-      return;
-    }
-
-    promptRef.current = "/compact";
-    setComposerDraftPrompt(composerDraftTarget, "/compact");
-    submitComposer();
-    // A blocked dispatch (busy send ref, provider preflight rejection)
-    // would leave the injected "/compact" behind as if the user typed it.
-    // Clearing here is safe even when the send did dispatch: the send
-    // snapshots its prompt synchronously and clears the draft itself.
-    if (promptRef.current === "/compact") {
-      promptRef.current = "";
-      setComposerDraftPrompt(composerDraftTarget, "");
-    }
+    onCompactContext();
   }, [
     activePendingApproval,
     activeThreadId,
     compactDisabled,
-    composerDraftTarget,
-    hasSendableComposerContent,
     isConnecting,
     isSendBusy,
     noProviderAvailable,
+    onCompactContext,
     pendingUserInputs.length,
     phase,
-    promptRef,
-    setComposerDraftPrompt,
-    submitComposer,
   ]);
   const expandMobileComposer = useCallback(() => {
     if (composerBlurFrameRef.current !== null) {
@@ -4109,7 +4101,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     usage={activeContextWindow}
                     modelDisplayName={activeThreadModelDisplayName}
                     accountQuota={accountQuota}
-                    {...(selectedProvider === "claudeAgent"
+                    {...(canCompactSelectedProvider(selectedProvider)
                       ? {
                           onCompact: compactThreadContext,
                           compactDisabled:
@@ -4234,6 +4226,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     hasSendableContent={hasSendableComposerContent}
                     preserveComposerFocusOnPointerDown={isMobileViewport}
                     showSendWhileRunning
+                    resumeCompactionTokens={resumeCompactionTokens}
+                    keepFullHistory={keepFullHistory}
+                    onToggleKeepFullHistory={onToggleKeepFullHistory}
                     onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                     onInterrupt={handleInterruptPrimaryAction}
                     onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}

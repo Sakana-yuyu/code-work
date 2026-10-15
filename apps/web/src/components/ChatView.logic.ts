@@ -776,3 +776,23 @@ export function resolveQueuedMessageGuard<
       submissionMessageId !== undefined && input.dispatchingMessageId === submissionMessageId,
   };
 }
+
+/**
+ * A stale Claude thread (old + large context) sends a synthetic `/compact`
+ * turn first so the resumed session does not re-read full history. The real
+ * message queues behind it. Explicit `/compact` messages, goal-only turns, and
+ * threads where the user toggled the chip off never compact first.
+ */
+export function resolveCompactBeforeSend(input: {
+  readonly goalOnlyTurn: boolean;
+  readonly resumeCompactionTokens: number | null;
+  readonly keepFullHistory: boolean;
+  readonly messageText: string;
+}): boolean {
+  return (
+    !input.goalOnlyTurn &&
+    input.resumeCompactionTokens !== null &&
+    !input.keepFullHistory &&
+    input.messageText.trim().toLowerCase() !== "/compact"
+  );
+}

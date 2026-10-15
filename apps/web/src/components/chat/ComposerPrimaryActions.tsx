@@ -1,11 +1,13 @@
 import { memo, type PointerEventHandler } from "react";
-import { ChevronDownIcon, ChevronLeftIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronLeftIcon, Minimize2Icon } from "lucide-react";
 import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
+import { formatContextWindowTokens } from "../../lib/contextWindow";
 import { StageBackdropButtonArt, useSidebarStageBackdropVariant } from "../SidebarStageBackdrop";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { t } from "~/i18n";
 
 interface PendingActionState {
@@ -37,6 +39,11 @@ interface ComposerPrimaryActionsProps {
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
+  /** Tokens a stale session would re-read. When set, a Compact chip shows the count and send compacts first. */
+  resumeCompactionTokens?: number | null | undefined;
+  /** The Compact chip is turned off, so the next send keeps full history. */
+  keepFullHistory?: boolean | undefined;
+  onToggleKeepFullHistory?: (() => void) | undefined;
 }
 
 export const formatPendingPrimaryActionLabel = (input: {
@@ -81,6 +88,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   onPreviousPendingQuestion,
   onInterrupt,
   onImplementPlanInNewThread,
+  resumeCompactionTokens = null,
+  keepFullHistory = false,
+  onToggleKeepFullHistory,
 }: ComposerPrimaryActionsProps) {
   const pointerFocusProps = preserveComposerFocusOnPointerDown
     ? { onPointerDown: preventPointerFocus }
@@ -229,6 +239,42 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     );
   }
 
+  const compactTokens =
+    resumeCompactionTokens !== null ? formatContextWindowTokens(resumeCompactionTokens) : null;
+  const compactsBeforeSend = compactTokens !== null && !keepFullHistory;
+  const compactChip =
+    compactTokens === null ? null : (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              className={cn(
+                "flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-xs tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64 [&_svg]:pointer-events-none [&_svg]:size-3.5",
+                keepFullHistory
+                  ? "border-border text-muted-foreground hover:text-foreground"
+                  : "border-warning/40 text-warning hover:bg-warning/8",
+              )}
+              {...pointerFocusProps}
+              aria-pressed={!keepFullHistory}
+              aria-label={t("compactTokensBeforeSending", { tokens: compactTokens })}
+              disabled={isEnvironmentUnavailable}
+              onClick={onToggleKeepFullHistory}
+            />
+          }
+        >
+          <Minimize2Icon aria-hidden="true" />
+          {keepFullHistory ? t("full") : t("compact")}
+          <span>{compactTokens}</span>
+        </TooltipTrigger>
+        <TooltipPopup>
+          {keepFullHistory
+            ? t("nextSendKeepsTokensClickToCompact", { tokens: compactTokens })
+            : t("summarizeTokensOfHistoryThenSend", { tokens: compactTokens })}
+        </TooltipPopup>
+      </Tooltip>
+    );
+
   const sendButton = (
     <button
       type="submit"
@@ -263,7 +309,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                     ? t("preparingWorktree")
                     : isSendBusy
                       ? t("sending2")
-                      : t("sendMessage")
+                      : compactsBeforeSend
+                        ? t("compactAndSend")
+                        : t("sendMessage")
       }
     >
       {stageBackdropVariant ? (
@@ -288,11 +336,19 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   );
 
   if (!isRunning) {
-    return sendButton;
+    return compactChip === null ? (
+      sendButton
+    ) : (
+      <div data-chat-composer-compact-send="true" className="flex items-center gap-2">
+        {compactChip}
+        {sendButton}
+      </div>
+    );
   }
 
   return (
     <>
+      {compactChip}
       {renderStopGenerationButton(false)}
       {showSendWhileRunning && hasSendableContent ? sendButton : null}
     </>

@@ -35,6 +35,7 @@ import {
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
   resolveBackgroundDraftWorkspaceOptions,
+  resolveCompactBeforeSend,
   resolveDraftPromotionNavigationTarget,
   resolveQueuedMessageGuard,
   resolveVisibleQueuedMessages,
@@ -1170,5 +1171,35 @@ describe("resolveVisibleQueuedMessages", () => {
         latestTurnRequestedAt: null,
       }),
     ).toEqual([]);
+  });
+});
+
+describe("resolveCompactBeforeSend", () => {
+  const base = {
+    goalOnlyTurn: false,
+    resumeCompactionTokens: 150_000,
+    keepFullHistory: false,
+    messageText: "fix the flaky test",
+  };
+
+  it("compacts first when a stale-session offer is active", () => {
+    expect(resolveCompactBeforeSend(base)).toBe(true);
+  });
+
+  it("sends full history when the user toggled the chip off", () => {
+    expect(resolveCompactBeforeSend({ ...base, keepFullHistory: true })).toBe(false);
+  });
+
+  it("does not compact when no offer is active", () => {
+    expect(resolveCompactBeforeSend({ ...base, resumeCompactionTokens: null })).toBe(false);
+  });
+
+  it("does not compact an explicit /compact message", () => {
+    expect(resolveCompactBeforeSend({ ...base, messageText: "/compact" })).toBe(false);
+    expect(resolveCompactBeforeSend({ ...base, messageText: "  /Compact  " })).toBe(false);
+  });
+
+  it("does not compact goal-only turns", () => {
+    expect(resolveCompactBeforeSend({ ...base, goalOnlyTurn: true })).toBe(false);
   });
 });

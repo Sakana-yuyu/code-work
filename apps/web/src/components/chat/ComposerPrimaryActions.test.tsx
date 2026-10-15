@@ -320,3 +320,58 @@ describe("ComposerPrimaryActions", () => {
     expect(markup).not.toContain(`aria-label="${t("sendMessage")}"`);
   });
 });
+
+function renderCompactChip(options: {
+  resumeCompactionTokens: number | null;
+  keepFullHistory?: boolean;
+}) {
+  return renderToStaticMarkup(
+    createElement(ComposerPrimaryActions, {
+      compact: true,
+      pendingAction: null,
+      isRunning: false,
+      showPlanFollowUpPrompt: false,
+      promptHasText: true,
+      isSendBusy: false,
+      sendDisabledReason: null,
+      isConnecting: false,
+      isEnvironmentUnavailable: false,
+      projectSelectionRequired: false,
+      noProviderAvailable: false,
+      isPreparingWorktree: false,
+      hasSendableContent: true,
+      onPreviousPendingQuestion: () => {},
+      onInterrupt: () => {},
+      onImplementPlanInNewThread: () => {},
+      resumeCompactionTokens: options.resumeCompactionTokens,
+      keepFullHistory: options.keepFullHistory ?? false,
+      onToggleKeepFullHistory: () => {},
+    }),
+  );
+}
+
+describe("compact-before-send chip", () => {
+  it("renders a Compact chip with the token count when the resume offer applies", () => {
+    const markup = renderCompactChip({ resumeCompactionTokens: 150_000 });
+
+    expect(markup).toContain('data-chat-composer-compact-send="true"');
+    expect(markup).toContain(t("compact"));
+    expect(markup).toContain("150k");
+    expect(markup).toContain(`aria-label="${t("compactAndSend")}"`);
+  });
+
+  it("shows Full and the plain send label when the chip is toggled off", () => {
+    const markup = renderCompactChip({ resumeCompactionTokens: 150_000, keepFullHistory: true });
+
+    expect(markup).toContain(t("full"));
+    expect(markup).toContain("150k");
+    expect(markup).toContain('aria-pressed="false"');
+    expect(markup).toContain(`aria-label="${t("sendMessage")}"`);
+  });
+
+  it("renders no chip without a resume offer", () => {
+    const markup = renderCompactChip({ resumeCompactionTokens: null });
+
+    expect(markup).not.toContain("data-chat-composer-compact-send");
+  });
+});

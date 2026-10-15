@@ -522,6 +522,24 @@ function claudeUsageOutputTokens(usage: Record<string, unknown>): number {
   return finiteNonNegativeInteger(usage.output_tokens) ?? 0;
 }
 
+// Claude Code writes 1h cache entries on a subscription within its limits and
+// 5m entries otherwise (API key, Bedrock, Vertex, extra usage). A response
+// that wrote nothing leaves the TTL unknown.
+function claudePromptCacheTtlMs(usage: Record<string, unknown>): number | undefined {
+  const cacheCreation = usage.cache_creation;
+  if (!cacheCreation || typeof cacheCreation !== "object" || Array.isArray(cacheCreation)) {
+    return undefined;
+  }
+  const record = cacheCreation as Record<string, unknown>;
+  if ((finiteNonNegativeInteger(record.ephemeral_1h_input_tokens) ?? 0) > 0) {
+    return 60 * 60_000;
+  }
+  if ((finiteNonNegativeInteger(record.ephemeral_5m_input_tokens) ?? 0) > 0) {
+    return 5 * 60_000;
+  }
+  return undefined;
+}
+
 function lastClaudeUsageIteration(
   value: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
@@ -556,6 +574,7 @@ function makeClaudeTokenUsageSnapshot(input: {
   readonly lastUsedTokens?: number;
   readonly compactsAutomatically?: boolean;
   readonly autoCompactThreshold?: number;
+  readonly promptCacheTtlMs?: number;
 }): ThreadTokenUsageSnapshot | undefined {
   const activeTokens = finiteNonNegativeInteger(input.activeTokens);
   if (activeTokens === undefined || activeTokens <= 0) {
@@ -586,6 +605,7 @@ function makeClaudeTokenUsageSnapshot(input: {
     ...(input.autoCompactThreshold !== undefined
       ? { autoCompactThreshold: input.autoCompactThreshold }
       : {}),
+    ...(input.promptCacheTtlMs !== undefined ? { promptCacheTtlMs: input.promptCacheTtlMs } : {}),
   };
 }
 
@@ -607,10 +627,12 @@ function normalizeClaudeActiveTokenUsage(
     return undefined;
   }
 
+  const promptCacheTtlMs = claudePromptCacheTtlMs(activeUsage);
   return makeClaudeTokenUsageSnapshot({
     activeTokens,
     inputTokens,
     outputTokens,
+    ...(promptCacheTtlMs !== undefined ? { promptCacheTtlMs } : {}),
     ...(contextWindow !== undefined ? { contextWindow } : {}),
     ...(totalProcessedTokens !== undefined ? { totalProcessedTokens } : {}),
   });

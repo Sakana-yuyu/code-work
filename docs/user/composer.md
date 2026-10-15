@@ -93,6 +93,13 @@ same `$name` skill token to your message. The original skill name remains search
 also reports that skill as a native slash command, Code Work hides the duplicate native entry and keeps
 the `/skill:Skill Name` label.
 
+When you return to a large Claude thread whose prompt cache has expired, the composer shows a
+**Compact** chip with the thread's token count next to the send button. While it is on, sending
+summarizes the conversation first so the resumed session does not re-read the full history. Click
+the chip to switch it to **Full** and keep the full history for that send. The same summarization
+is available anytime from **Compact context** in the context meter, or by sending `/compact`
+yourself on Claude and custom-model providers.
+
 On desktop, press `Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux from a new thread to
 start it in the background. Code Work opens another new thread and shows an **Open** action for the
 thread that started. The new thread keeps the selected workspace mode and base branch. If **New

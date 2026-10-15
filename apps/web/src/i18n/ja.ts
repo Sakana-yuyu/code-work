@@ -469,11 +469,11 @@ export const ja: Record<string, string> = {
   "scripts.failedToRunScript": "スクリプト「{{name}}」の実行に失敗しました。",
   "scripts.scriptNotFound": "スクリプトが見つかりません。",
   "backgroundWork.failedToStop": "バックグラウンド処理を停止できませんでした。",
-  "compact.reasonSendOrClearDraft": "コンパクト化する前に、下書きを送信するかクリアしてください",
   "compact.reasonChooseProject": "コンパクト化する前に、プロジェクトを選択してください",
   "compact.reasonEnableClaudeProvider":
     "コンパクト化する前に、Claude プロバイダーを有効にしてください",
   "compact.reasonUnavailable": "現在コンパクト化を利用できません",
+  "compact.failedToCompact": "コンテキストのコンパクト化に失敗しました。",
   "checkpoint.failedToRevert": "スレッドの状態を元に戻せませんでした。",
   "feedback.codexThreadIdCopyTarget": "Codex フィードバックスレッド ID",
   "modelPicker.startNewThreadToUseModel":
@@ -1511,6 +1511,7 @@ export const ja: Record<string, string> = {
   fontSmoothing: "フォントスムージング",
   forward: "進む",
   fromSshConfigAndKnownHosts: "SSH configとknown hostsから",
+  full: "フル",
   gemini: "Gemini",
   general: "一般",
   gitActionOptions: "Gitアクションのオプション",
@@ -1699,6 +1700,8 @@ export const ja: Record<string, string> = {
   next: "次へ",
   nextImage: "次の画像",
   nextQuestion: "次の質問",
+  nextSendKeepsTokensClickToCompact:
+    "次回の送信では {{tokens}} トークンをすべて保持します。クリックで先に圧縮",
   noActiveThread: "アクティブなスレッドがありません",
   noNewSshHostsWereDiscovered: "新しい SSH ホストは見つかりませんでした。",
   noPairingLinksOrClientSessions: "ペアリングリンクまたはクライアントセッションはありません。",
@@ -2152,6 +2155,7 @@ export const ja: Record<string, string> = {
   submitAnswers: "回答を送信",
   submitting: "送信中...",
   suggestedHosts: "候補のホスト",
+  summarizeTokensOfHistoryThenSend: "履歴 {{tokens}} トークンを圧縮してから送信",
   summarizeYourReviewOptional: "レビューの概要（省略可）",
   switchesTheHostedAppReleaseChannel: "ホストアプリのリリースチャンネルを切り替えます。",
   systemDefaultFollowsYourBrowserOrOsClockPreference:
@@ -4691,7 +4695,9 @@ export const ja: Record<string, string> = {
   commit: "コミット {{value1}}",
   compact: "圧縮",
   compactAgainOnceItsThumbnailAppears: "サムネイルが表示されたら、もう一度圧縮してください。",
+  compactAndSend: "圧縮して送信",
   compactContext: "コンテキストを圧縮",
+  compactTokensBeforeSending: "送信前に履歴 {{tokens}} トークンを圧縮",
   completed: "完了",
   conflictsWith: "{{baseBranch}} と競合しています",
   connectingToThroughCodeWorkConnect: "Code Work Connect 経由で {{label}} に接続しています。",
