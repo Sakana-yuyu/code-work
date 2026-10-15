@@ -82,6 +82,7 @@ import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTermin
 import { formatProviderSkillDisplayName } from "@codework/client-runtime/providerSkills";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { registerComposerInlineTokenPaste } from "./composerInlineTokenPaste";
+import { registerComposerPasteHandler, type ComposerPasteEvent } from "./composerPasteHandler";
 
 const COMPOSER_EDITOR_HMR_KEY = `composer-editor-${Math.random().toString(36).slice(2)}`;
 const SURROUND_SYMBOLS: [string, string][] = [
@@ -897,7 +898,7 @@ interface ComposerPromptEditorProps {
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
     event: KeyboardEvent,
   ) => boolean;
-  onPaste: React.ClipboardEventHandler<HTMLElement>;
+  onPaste: (event: ComposerPasteEvent) => void;
   editorRef: React.RefObject<ComposerPromptEditorHandle | null>;
 }
 
@@ -1256,6 +1257,15 @@ function ComposerInlineTokenPastePlugin() {
       }),
     [editor],
   );
+
+  return null;
+}
+
+function ComposerPasteHandlerPlugin(props: { onPaste: (event: ComposerPasteEvent) => void }) {
+  const [editor] = useLexicalComposerContext();
+  const { onPaste } = props;
+
+  useEffect(() => registerComposerPasteHandler(editor, onPaste), [editor, onPaste]);
 
   return null;
 }
@@ -1760,7 +1770,6 @@ function ComposerPromptEditorInner({
               data-testid="composer-editor"
               aria-placeholder={placeholder}
               placeholder={<span />}
-              onPaste={onPaste}
             />
           }
           placeholder={
@@ -1779,6 +1788,7 @@ function ComposerPromptEditorInner({
         <ComposerInlineTokenArrowPlugin />
         <ComposerInlineTokenSelectionNormalizePlugin />
         <ComposerInlineTokenBackspacePlugin />
+        <ComposerPasteHandlerPlugin onPaste={onPaste} />
         <ComposerInlineTokenPastePlugin />
         <ComposerChipSelectionPlugin />
         <HistoryPlugin />

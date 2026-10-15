@@ -11,6 +11,7 @@ import {
 } from "lexical";
 
 import { registerComposerInlineTokenPaste } from "./composerInlineTokenPaste";
+import { registerComposerPasteHandler } from "./composerPasteHandler";
 
 class TestClipboardEvent extends Event {
   readonly clipboardData: DataTransfer;
@@ -148,5 +149,82 @@ describe("registerComposerInlineTokenPaste", () => {
     expect(editor.getEditorState().read(() => $getRoot().getTextContent())).toBe(
       "<mention:@scope/pkg/sub> ",
     );
+  });
+});
+
+describe("registerComposerPasteHandler", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("stops the plain-text insert when the paste is taken as an attachment", () => {
+    vi.stubGlobal("ClipboardEvent", TestClipboardEvent);
+    const editor = createEditor();
+    const plainTextFallback = vi.fn(() => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) return false;
+      selection.insertText("should not be inserted");
+      return true;
+    });
+    const onPaste = vi.fn((event: { preventDefault: () => void }) => {
+      event.preventDefault();
+    });
+
+    editor.update(
+      () => {
+        $getRoot().append($createParagraphNode());
+      },
+      { discrete: true },
+    );
+    registerComposerPasteHandler(editor, onPaste);
+    editor.registerCommand(PASTE_COMMAND, plainTextFallback, COMMAND_PRIORITY_EDITOR);
+
+    const event = new TestClipboardEvent("x".repeat(40_000));
+    let handled = false;
+    editor.update(
+      () => {
+        handled = editor.dispatchCommand(PASTE_COMMAND, event as ClipboardEvent);
+      },
+      { discrete: true },
+    );
+
+    expect(onPaste).toHaveBeenCalledTimes(1);
+    expect(handled).toBe(true);
+    expect(plainTextFallback).not.toHaveBeenCalled();
+    expect(editor.getEditorState().read(() => $getRoot().getTextContent())).toBe("");
+  });
+
+  it("leaves ordinary pastes to the plain-text insert", () => {
+    vi.stubGlobal("ClipboardEvent", TestClipboardEvent);
+    const editor = createEditor();
+    const plainTextFallback = vi.fn(() => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) return false;
+      selection.insertText("hello");
+      return true;
+    });
+
+    editor.update(
+      () => {
+        const paragraph = $createParagraphNode();
+        $getRoot().append(paragraph);
+        paragraph.selectEnd();
+      },
+      { discrete: true },
+    );
+    registerComposerPasteHandler(editor, () => {});
+    editor.registerCommand(PASTE_COMMAND, plainTextFallback, COMMAND_PRIORITY_EDITOR);
+
+    const event = new TestClipboardEvent("hello");
+    editor.update(
+      () => {
+        editor.dispatchCommand(PASTE_COMMAND, event as ClipboardEvent);
+      },
+      { discrete: true },
+    );
+
+    expect(plainTextFallback).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(false);
+    expect(editor.getEditorState().read(() => $getRoot().getTextContent())).toBe("hello");
   });
 });

@@ -134,6 +134,7 @@ import {
   shouldUseCompactComposerFooter,
 } from "../composerFooterLayout";
 import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../ComposerPromptEditor";
+import type { ComposerPasteEvent } from "../composerPasteHandler";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
@@ -3464,7 +3465,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     pasteAsTextRef.current = isPasteAsTextShortcut(event, isMacPlatform(navigator.platform));
   };
 
-  const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
+  const onComposerPaste = (event: ComposerPasteEvent) => {
     const bypassAutoAttachment = pasteAsTextRef.current;
     pasteAsTextRef.current = false;
     const files = Array.from(event.clipboardData.files);
