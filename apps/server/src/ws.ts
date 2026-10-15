@@ -115,6 +115,7 @@ import {
 } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ThreadVisibility from "./orchestration/Services/ThreadVisibility.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -576,6 +577,7 @@ const makeWsRpcLayer = (
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
       const providerService = yield* ProviderService.ProviderService;
+      const threadVisibility = yield* ThreadVisibility.ThreadVisibility;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const byokModelDiscovery = yield* ByokModelDiscovery.make;
       const byokBalance = yield* ByokBalance.make;
@@ -1981,6 +1983,24 @@ const makeWsRpcLayer = (
           observeRpcStreamEffect(
             ORCHESTRATION_WS_METHODS.subscribeThread,
             Effect.gen(function* () {
+              // The subscription lifetime is the "user is viewing this thread"
+              // signal: hold the visibility lease so the session reaper leaves
+              // it alone, and prewarm any resumable provider session in the
+              // background so the next turn does not pay session startup.
+              // The warmup is detached rather than scope-bound: interrupting an
+              // adapter mid-start could orphan a spawned process, while a
+              // completed-but-unviewed session is collected by the reaper.
+              yield* threadVisibility.trackViewing(input.threadId);
+              yield* providerService.prepareSession(input.threadId).pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("provider.session.prepare-failed", {
+                    threadId: input.threadId,
+                    detail: Cause.pretty(cause),
+                  }),
+                ),
+                Effect.forkDetach,
+              );
+
               const isThisThreadDetailEvent = (event: OrchestrationEvent) =>
                 event.aggregateKind === "thread" &&
                 event.aggregateId === input.threadId &&

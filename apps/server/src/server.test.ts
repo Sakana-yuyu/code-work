@@ -122,6 +122,7 @@ import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import { OrchestrationListenerCallbackError } from "./orchestration/Errors.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ThreadVisibilityLive } from "./orchestration/Services/ThreadVisibility.ts";
 import { makeSqlitePersistenceLive } from "./persistence/Layers/Sqlite.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
 import * as ProviderEventLoggers from "./provider/Layers/ProviderEventLoggers.ts";
@@ -656,6 +657,7 @@ const buildAppUnderTest = (options?: {
       makeRoutesLayer.pipe(
         Layer.provide(serviceLauncherClientLayer),
         Layer.provide(PreviewAutomationBroker.layer.pipe(Layer.provide(NodeServices.layer))),
+        Layer.provideMerge(ThreadVisibilityLive),
         Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
         // 上游 #8227 起 Claude/Codex 驱动需要 ModelManifest；测试用内置数据版避免联网。
         Layer.provideMerge(ModelManifest.layerTest),

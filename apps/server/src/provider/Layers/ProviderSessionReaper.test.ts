@@ -18,6 +18,10 @@ import * as Stream from "effect/Stream";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import {
+  ThreadVisibility,
+  ThreadVisibilityLive,
+} from "../../orchestration/Services/ThreadVisibility.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
 import * as ProviderSessionRuntime from "../../persistence/ProviderSessionRuntime.ts";
 import { ProviderValidationError } from "../Errors.ts";
@@ -121,7 +125,9 @@ function makeReadModel(
 
 describe("ProviderSessionReaper", () => {
   let runtime: ManagedRuntime.ManagedRuntime<
-    ProviderSessionReaper | ProviderSessionRuntime.ProviderSessionRuntimeRepository,
+    | ProviderSessionReaper
+    | ProviderSessionRuntime.ProviderSessionRuntimeRepository
+    | ThreadVisibility,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -147,6 +153,7 @@ describe("ProviderSessionReaper", () => {
 
   async function createHarness(input: {
     readonly readModel: ReturnType<typeof makeReadModel>;
+    readonly sweepIntervalMs?: number;
     readonly stopSessionImplementation?: (input: {
       readonly threadId: ThreadId;
     }) => ReturnType<ProviderServiceShape["stopSession"]>;
@@ -163,6 +170,7 @@ describe("ProviderSessionReaper", () => {
 
     const providerService: ProviderServiceShape = {
       rememberExternalSession: () => unsupported(),
+      prepareSession: () => unsupported(),
       startSession: () => unsupported(),
       sendTurn: () => unsupported(),
       interruptTurn: () => unsupported(),
@@ -201,9 +209,10 @@ describe("ProviderSessionReaper", () => {
     );
     const layer = makeProviderSessionReaperLive({
       inactivityThresholdMs: 1_000,
-      sweepIntervalMs: 60_000,
+      sweepIntervalMs: input.sweepIntervalMs ?? 60_000,
     }).pipe(
       Layer.provideMerge(providerSessionDirectoryLayer),
+      Layer.provideMerge(ThreadVisibilityLive),
       Layer.provideMerge(runtimeRepositoryLayer),
       Layer.provideMerge(Layer.succeed(ProviderService, providerService)),
       Layer.provideMerge(
@@ -640,5 +649,59 @@ describe("ProviderSessionReaper", () => {
       defectThreadId,
       reapedThreadId,
     ]);
+  });
+
+  it("keeps a stale session alive while its thread detail is visible, reaps after release", async () => {
+    const threadId = ThreadId.make("thread-reaper-visible");
+    const now = "2026-01-01T00:00:00.000Z";
+    const harness = await createHarness({
+      sweepIntervalMs: 50,
+      readModel: makeReadModel([
+        {
+          id: threadId,
+          session: {
+            threadId,
+            status: "ready",
+            providerName: "claudeAgent",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: now,
+          },
+        },
+      ]),
+    });
+    const repository = await runtime!.runPromise(
+      Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),
+    );
+    const visibility = await runtime!.runPromise(Effect.service(ThreadVisibility));
+
+    await runtime!.runPromise(
+      repository.upsert({
+        threadId,
+        providerName: "claudeAgent",
+        providerInstanceId: null,
+        adapterKey: "claudeAgent",
+        runtimeMode: "full-access",
+        status: "running",
+        lastSeenAt: "2026-04-14T00:00:00.000Z",
+        resumeCursor: {
+          opaque: "resume-visible",
+        },
+        runtimePayload: null,
+      }),
+    );
+
+    const leaseScope = await Effect.runPromise(Scope.make("sequential"));
+    await Effect.runPromise(visibility.trackViewing(threadId).pipe(Scope.provide(leaseScope)));
+
+    await startReaper();
+    // Several 50ms sweeps pass while the lease is held; the session must survive them all.
+    await Effect.runPromise(Effect.sleep("200 millis"));
+    expect(harness.stopSession).not.toHaveBeenCalled();
+
+    await Effect.runPromise(Scope.close(leaseScope, Exit.void));
+    await waitFor(() => harness.stopSession.mock.calls.length === 1);
+    expect(harness.stopSession.mock.calls[0]?.[0]).toEqual({ threadId });
   });
 });

@@ -1729,6 +1729,99 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  it.effect("prepareSession resumes a stopped binding with its persisted cursor and cwd", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      const initial = yield* provider.startSession(asThreadId("thread-prepare-resume"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-prepare-resume"),
+        cwd: "/tmp/project-prepare-resume",
+        runtimeMode: "full-access",
+      });
+      yield* provider.stopSession({ threadId: initial.threadId });
+      routing.codex.startSession.mockClear();
+
+      yield* provider.prepareSession(asThreadId("thread-prepare-resume"));
+
+      assert.equal(routing.codex.startSession.mock.calls.length, 1);
+      const resumedStartInput = routing.codex.startSession.mock.calls[0]?.[0];
+      assert.equal(typeof resumedStartInput === "object" && resumedStartInput !== null, true);
+      if (resumedStartInput && typeof resumedStartInput === "object") {
+        const startPayload = resumedStartInput as {
+          provider?: string;
+          cwd?: string;
+          resumeCursor?: unknown;
+          threadId?: string;
+        };
+        assert.equal(startPayload.provider, "codex");
+        assert.equal(startPayload.cwd, "/tmp/project-prepare-resume");
+        assert.deepEqual(startPayload.resumeCursor, initial.resumeCursor);
+        assert.equal(startPayload.threadId, initial.threadId);
+      }
+      assert.equal(
+        yield* routing.codex.adapter.hasSession(asThreadId("thread-prepare-resume")),
+        true,
+      );
+    }),
+  );
+
+  it.effect("prepareSession is a no-op without a persisted binding", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      routing.codex.startSession.mockClear();
+
+      yield* provider.prepareSession(asThreadId("thread-prepare-no-binding"));
+
+      assert.equal(routing.codex.startSession.mock.calls.length, 0);
+    }),
+  );
+
+  it.effect("prepareSession leaves cursor-less bindings for the history-seeded turn start", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+      const threadId = asThreadId("thread-prepare-no-cursor");
+
+      yield* runtimeRepository.upsert({
+        threadId,
+        providerName: "codex",
+        providerInstanceId: codexInstanceId,
+        adapterKey: "codex",
+        runtimeMode: "full-access",
+        status: "stopped",
+        lastSeenAt: "2026-04-14T00:00:00.000Z",
+        resumeCursor: null,
+        runtimePayload: null,
+      });
+      routing.codex.startSession.mockClear();
+
+      yield* provider.prepareSession(threadId);
+
+      assert.equal(routing.codex.startSession.mock.calls.length, 0);
+      assert.equal(yield* routing.codex.adapter.hasSession(threadId), false);
+    }),
+  );
+
+  it.effect("prepareSession keeps an already-active session without restarting it", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      const initial = yield* provider.startSession(asThreadId("thread-prepare-active"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-prepare-active"),
+        runtimeMode: "full-access",
+      });
+      routing.codex.startSession.mockClear();
+
+      yield* provider.prepareSession(initial.threadId);
+
+      assert.equal(routing.codex.startSession.mock.calls.length, 0);
+    }),
+  );
+
   it.effect("routes explicit claudeAgent provider session starts to the claude adapter", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;

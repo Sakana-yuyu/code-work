@@ -53,6 +53,14 @@ export interface ProviderServiceShape {
     readonly resumeCursor: unknown;
   }) => Effect.Effect<void, ProviderServiceError>;
   /**
+   * Prewarm a visible thread's provider session: recover the persisted binding
+   * when it carries a native resume cursor, otherwise leave the session for the
+   * next turn to start with seeded conversation history. No-op when there is
+   * nothing resumable.
+   */
+  readonly prepareSession: (threadId: ThreadId) => Effect.Effect<void, ProviderServiceError>;
+
+  /**
    * Start a provider session.
    */
   readonly startSession: (

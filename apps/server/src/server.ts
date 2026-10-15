@@ -180,6 +180,7 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers/ProjectionSnapshotQuery.ts";
+import { ThreadVisibilityLive } from "./orchestration/Services/ThreadVisibility.ts";
 import * as CodeIndex from "./codeIndex/CodeIndexService.ts";
 import {
   clearPersistedServerRuntimeState,
@@ -720,6 +721,7 @@ const CloudManagedEndpointRuntimeLive = Layer.mergeAll(
 );
 
 const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
+  Layer.provideMerge(ThreadVisibilityLive),
   Layer.provideMerge(ProviderLayerLive),
   Layer.provideMerge(OrchestrationLayerLive),
 );

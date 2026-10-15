@@ -115,6 +115,7 @@ function createProviderServiceHarness(
       : Effect.succeed([] as ReadonlyArray<ProviderSession>);
   const service: ProviderServiceShape = {
     rememberExternalSession: () => unsupported(),
+    prepareSession: () => unsupported(),
     startSession: () => unsupported(),
     sendTurn: () => unsupported(),
     interruptTurn: () => unsupported(),

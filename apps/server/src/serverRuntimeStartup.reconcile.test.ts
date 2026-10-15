@@ -47,6 +47,7 @@ const makeThread = (
 const makeProviderService = (liveThreadIds: ReadonlyArray<ThreadId> = []) =>
   ({
     rememberExternalSession: () => Effect.die("unused"),
+    prepareSession: () => Effect.die("unused"),
     startSession: () => Effect.die("unused"),
     sendTurn: () => Effect.die("unused"),
     interruptTurn: () => Effect.die("unused"),

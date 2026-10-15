@@ -6,6 +6,7 @@ import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ThreadVisibility } from "../../orchestration/Services/ThreadVisibility.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
 import {
   ProviderSessionReaper,
@@ -27,6 +28,7 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
     const providerService = yield* ProviderService;
     const directory = yield* ProviderSessionDirectory;
     const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+    const threadVisibility = yield* ThreadVisibility;
 
     const inactivityThresholdMs = Math.max(
       1,
@@ -41,6 +43,17 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
 
       for (const binding of bindings) {
         if (binding.status === "stopped") {
+          continue;
+        }
+
+        // A client is looking at this thread's detail view right now; the
+        // lease is held for the subscription lifetime, so leave the session
+        // warm even if it has been quiet past the inactivity threshold.
+        if (yield* threadVisibility.isVisible(binding.threadId)) {
+          yield* Effect.logDebug("provider.session.reaper.skipped-visible", {
+            threadId: binding.threadId,
+            provider: binding.provider,
+          });
           continue;
         }
 

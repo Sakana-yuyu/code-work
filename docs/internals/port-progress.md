@@ -59,7 +59,7 @@
 | 12  | steer 全契约与排队/steer UI                                 | 完成                                                                                                                      | ProviderAdapter / ProviderService / reactor / 三端 composer                                                                                                | reactor 73 项全绿（含 5 项新契约用例）；能力矩阵 6 声明/4 不声明；Web/Mobile 能力门                                                                                         |
 | 13  | 规范消息身份与回显对账                                      | 完成（核验：规范身份已就位；回显结构性不能建行等价于仅对账；无全局文本去重）                                              | thread.message-sent / projector id-upsert / runtimeTurnItems user_message 旁路 / isReplay 门                                                               | 第91主题：全链路身份审计，B19 缺口结论——显式对账无观测效果                                                                                                                  |
 | 14  | 细化 rewind/streaming/reasoning/MCP/persistence/切模型能力  | 完成（全部声明落地为真实适配器能力并透出快照）                                                                            | ProviderAdapterCapabilities / ServerProvider 快照 / ProviderService MCP 门控 / 三端控制                                                                    | 第63主题模式控制；第79主题 rewind 三态；第80主题切模型三态与两端确认；第81主题四项能力声明与 MCP 凭据门控                                                                   |
-| 15  | prepare/release/dispose 完全停止                            | 部分实现（`stopped` 契约落地并验证；prepare/release 可见性驱动生命周期仍开放）                                            | ProviderAdapter.stopSession 契约 / AntigravityAdapter / ProviderSessionReaper                                                                              | 第89主题：停止等待真实退出，确定性回归证明顺序；可见性回收由 B18 另行跟踪                                                                                                   |
+| 15  | prepare/release/dispose 完全停止                            | 已实现（`stopped` 契约第89主题；B18 可见性驱动 prepare/release 第94主题落地并定向验证；实机三端/连接验收矩阵仍开放）      | ThreadVisibility / ProviderService.prepareSession / subscribeThread 流 scope 租约 / ProviderSessionReaper 可见性跳过                                       | 第89主题：停止等待真实退出；第94主题：订阅≈可见性，可见预热恢复、不可见空闲回收、per-thread 启动锁防并发双开；剩余为实机验收                                                |
 | 16  | managed-process registry 身份核验与启动对账                 | 完成（账本+平台身份核验+启动对账落地，登记点覆盖全部直接句柄会话传输与 helper server）                                    | ManagedProcessRegistry / spawn 点 owner 透传 / reconcileProviderSessions                                                                                   | 第88主题：10例测试全绿；身份不匹配只删不杀、检查/终止失败保留记录                                                                                                           |
 | 17  | ACP 配置驱动收敛与 help flags                               | 完成（核验：配置驱动已就位且超出上游 def 模型；help 探测为有意不适用，能力在协议握手层）                                  | GenericAcpDriver / AcpRegistryCatalog / AcpSessionRuntime initialize / 声明式实例能力                                                                      | 第90主题：flag 清单审计——无可安全省略类 flag；ACP initialize 握手即能力协商层                                                                                               |
 | 18  | 草稿无 session、MCP 失败关闭、options/profile 深度合并      | 完成（第86主题落地 MCP 失败关闭；其余两子项核对为已有等价/有意不适用）                                                    | ProviderService / McpSessionRegistry / deepMerge / providerInstance config blob                                                                            | 草稿无 session 见第43主题；MCP 凭据签发失败现在拒绝启动（ProviderAdapterProcessError）；深合并经 deepMerge+不透明 config blob 等价成立                                      |
@@ -1602,3 +1602,23 @@ help 探测：有意不适用，经全量 flag 清单审计。会话 flag 分三
 剩余开放（纯验收，无代码缺口）：① Grok 显式共享可写 home 的并发会话/文本生成写入顺序独立验收——服务端写面只含 `config.toml`（`acquireGrokHomeAccess` 串行）与登录 PTY 流 `auth.json`（用户驱动，与上游同约束），会话文件由 CLI 按 sessionId 各自写入；② 完整入口×三端×连接（本地/远程/隧道）实机验收矩阵——设置/新任务/命令面板/快捷键入口已由第78/82主题静态链路收敛，缺真实客户端运行证据（浏览器/设备需授权）。
 
 验证：本轮为读取核对，无测试/类型新增；`grep` 清单见上文各入口证据。第11项保持进行中，全部39项与comparison额外范围继续。
+
+## 94. 第 15 项 B18——可见性驱动的 provider 会话 prepare/release 生命周期
+
+基线含第93主题提交（台账核验记录，无代码）。对照 B18"对话显示时提前 prepare、空闲且不可见时 release、再用时重启"逐项落地。
+
+可见性信号：`subscribeThread` 是线程详情订阅的唯一客户端调用点（`packages/client-runtime/src/state/threads.ts`，详情态 Atom 生命周期内 `forkScoped` 挂载，detail 视图卸载即关流；preview/后台路径均不订阅）——订阅流 scope ≡ 线程可见期。ws.ts 该 handler 的 `Stream.unwrap` gen 在流 scope 内执行，既有 `forkScoped` live-buffer 为证。
+
+新服务 `ThreadVisibility`（orchestration/Services）：`acquire(threadId)` 返回 scope 租约——注册线程可见并在 scope 关闭时自动注销；`isVisible(threadId)` 供 reaper 查询。单例存在于 `ProviderRuntimeLayerLive`（server.ts provideMerge），ws 路由经 `provideMerge` 共享同实例。
+
+预热（prepare）：`ProviderService.prepareSession(threadId)`——查持久化绑定；无绑定或无 `resumeCursor` 直接返回（不造无根会话）；`resolveRoutableSession({allowRecovery:true})` 复用既有恢复路径：活跃则直通，已停则由 `recoverSessionForThread` 恢复持久化 cwd/model/runtimeMode/resumeCursor（adapter `supportsSessionRestore` 时先 adopt，否则 startSession 带游标）。`subscribeThread` handler 在租约建立后 `forkDetach`（非 forkScoped——取消订阅不打断 adapter.startSession 中途，避免留无绑定孤儿进程；离开后由 reaper 空闲兜底）触发预热，失败记 warn 不炸订阅。
+
+释放（release）：`ProviderSessionReaper` sweep 在 `stopped` 过滤后、idle 阈值判定前查 `isVisible`——可见即跳过，不可见且超阈值照旧 `stopSession`。活动回合与后台存活（active turn / liveness）的既有跳过逻辑不变，次序在可见性之后。
+
+并发防护：`ProviderService` 新增 per-thread 启动锁（Semaphore 模式同 GrokAdapter/CursorAdapter 先例），包裹 `startSession` 主体与 `resolveRoutableSession` 恢复分支——预热 fiber 与 `sendTurn` 的 `ensureSessionForThread` 不可并发双开同一线程会话；锁内不重入，无死锁。
+
+三端与连接面：信号在服务端 ws 层，web/desktop/mobile 共用同一 `subscribeThread` 契约，无需逐端改动；本地/远程/隧道同语义（订阅即连接内流）。无协议字段变更。性能：预热发生在详情打开瞬间（用户即将发话的时点），恢复的 CLI 进程常驻但无流量开销；reaper 每 sweep 一次 Map 查询，零成本。
+
+验证：`ThreadVisibility.test.ts` 新 2 例（租约注册/释放、多租约同线程全部释放才不可见）；`ProviderService.test.ts` 新 4 例（无绑定不建会话、有游标恢复并持久化、缺游标拒绝、已活跃直通）；`ProviderSessionReaper.test.ts` 新例（可见线程租约期间 sweep 跳过、释放后下轮即回收）+ harness 接 `ThreadVisibilityLive`；红对照：摘除 reaper 可见性检查→新测试按预期失败（可见线程被误回收），恢复后绿。目标测试：ThreadVisibility 2/2、reaper 24/24、ProviderService 53/53、CommandReactor/CheckpointReactor/Ingestion/reconcile 触及文件单跑全绿（336/336）；成批跑时 Ingestion 与 .t3 快照同名单测因机器负载超时（改动前旧代码副本同样超时，负载抖动非回归）。ws 路由层运行时供给经 server.test.ts 同构 `provideMerge` 验证链路存在；server.test.ts 全部 ws 升级测试当前返回 500——改动前的 `.t3` 快照副本同样 500（含不经 subscribeThread 的用例），判定为本环境既有 ws 升级故障而非本主题引入。tsgo：forkDaemon→forkDetach 修正后 ws.ts/服务/测试文件零新增诊断；server.test.ts 残余 `ByokCatalog|ThreadVisibility` missing-context 与既有 ByokCatalog 缺口同类（运行时经 provideMerge 供给）。
+
+边界：可见性语义以"详情视图挂载"为准——会话列表浏览不预热；移动端路由驻留期间保持可见（订阅存活）。实机三端验收（真实 provider CLI 的预热延迟观感、离开后回收时点）待实机矩阵补。全部39项与comparison额外范围继续。
