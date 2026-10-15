@@ -103,6 +103,9 @@ const SAME_VALUE_EXEMPTIONS = new Set([
   ...SOURCE_EXEMPTIONS,
   "Code Work IDE",
   "Google Gemini",
+  // Apple hardware names stay untranslated in zh and ja.
+  "Mac mini",
+  "Mac Studio",
   "Git URL",
   "IDE Profile",
   "Session ID",
