@@ -24,8 +24,8 @@ import {
 } from "@codework/contracts";
 import * as Schema from "effect/Schema";
 
-import { DraftComposerImageAttachmentSchema } from "../lib/composer-image-schema";
-import type { DraftComposerImageAttachment } from "../lib/composerImages";
+import { DraftComposerAttachmentSchema } from "../lib/composer-image-schema";
+import type { DraftComposerAttachment } from "../lib/composerImages";
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { buildModelOptions, resolveThreadModelOption } from "../lib/modelOptions";
 
@@ -51,7 +51,7 @@ export const QueuedThreadMessageSchema = Schema.Struct({
   messageId: MessageId,
   commandId: CommandId,
   text: Schema.String,
-  attachments: Schema.Array(DraftComposerImageAttachmentSchema),
+  attachments: Schema.Array(DraftComposerAttachmentSchema),
   modelSelection: Schema.optional(ModelSelection),
   runtimeMode: Schema.optional(RuntimeMode),
   interactionMode: Schema.optional(ProviderInteractionMode),
@@ -80,7 +80,7 @@ export interface QueuedThreadMessage {
   readonly messageId: MessageId;
   readonly commandId: CommandId;
   readonly text: string;
-  readonly attachments: ReadonlyArray<DraftComposerImageAttachment>;
+  readonly attachments: ReadonlyArray<DraftComposerAttachment>;
   readonly modelSelection?: ModelSelectionType;
   readonly runtimeMode?: RuntimeModeType;
   readonly interactionMode?: ProviderInteractionModeType;

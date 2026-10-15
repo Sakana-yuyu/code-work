@@ -33,6 +33,7 @@ import {
 } from "../../components/ComposerToolbar";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
+import { ControlPillMenu } from "../../components/ControlPill";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { SymbolView } from "../../components/AppSymbol";
@@ -45,6 +46,11 @@ import {
 
 import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
 import { convertPastedImagesToAttachments, pickComposerImages } from "../../lib/composerImages";
+import {
+  composerFileUploadLimit,
+  deleteOwnedComposerFiles,
+  pickComposerFiles,
+} from "../../lib/composerFiles";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
@@ -633,6 +639,22 @@ export function NewTaskDraftScreen(props: {
     }
   }
 
+  async function handlePickFiles(): Promise<void> {
+    if (isIncomingShareTransferPending || !selectedProject) {
+      return;
+    }
+    const result = await pickComposerFiles({
+      existingCount: flow.attachments.length,
+      maxBytes: composerFileUploadLimit(selectedProject.environmentId),
+    });
+    if (result.files.length > 0) {
+      flow.appendAttachments(result.files);
+    }
+    if (result.error) {
+      Alert.alert(t("composer.attachFiles"), result.error);
+    }
+  }
+
   const handleNativePasteImages = useCallback(
     async (uris: ReadonlyArray<string>) => {
       try {
@@ -782,6 +804,8 @@ export function NewTaskDraftScreen(props: {
       return;
     }
 
+    // The turn now references the uploaded copies; the local ones are spent.
+    void deleteOwnedComposerFiles(draft.attachments);
     if (editingPendingTask) {
       try {
         await removeThreadOutboxMessage(editingPendingTask);
@@ -1029,13 +1053,32 @@ export function NewTaskDraftScreen(props: {
             fadeTransparent={sheetFadeTransparent}
             contentPaddingRight={8}
           >
-            <ComposerToolbarButton
-              accessibilityLabel={t("addAttachment")}
-              disabled={isIncomingShareTransferPending}
-              icon="plus"
-              onPress={() => void handlePickImages()}
-              showChevron={false}
-            />
+            <ControlPillMenu
+              title={t("addAttachment")}
+              actions={[
+                {
+                  id: "photos",
+                  title: t("composer.attachPhotos"),
+                  attributes: { disabled: isIncomingShareTransferPending },
+                },
+                {
+                  id: "files",
+                  title: t("composer.attachFiles"),
+                  attributes: { disabled: isIncomingShareTransferPending },
+                },
+              ]}
+              onPressAction={({ nativeEvent }) => {
+                if (nativeEvent.event === "photos") void handlePickImages();
+                if (nativeEvent.event === "files") void handlePickFiles();
+              }}
+            >
+              <ComposerToolbarButton
+                accessibilityLabel={t("addAttachment")}
+                disabled={isIncomingShareTransferPending}
+                icon="plus"
+                showChevron={false}
+              />
+            </ControlPillMenu>
             <ComposerInlineControl
               accessibilityLabel={t("modelAndReasoningSettings")}
               disabled={isIncomingShareTransferPending}

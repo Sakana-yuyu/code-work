@@ -55,6 +55,7 @@ import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/re
 import { scopedThreadKey } from "../../lib/scopedEntities";
 
 import { AppText as Text } from "../../components/AppText";
+import { SymbolView } from "../../components/AppSymbol";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
 import { GlassSurface } from "../../components/GlassSurface";
 import {
@@ -70,7 +71,7 @@ import {
 } from "../../components/ComposerToolbar";
 import { ControlPill } from "../../components/ControlPill";
 import { ProviderIcon } from "../../components/ProviderIcon";
-import type { DraftComposerImageAttachment } from "../../lib/composerImages";
+import type { DraftComposerAttachment } from "../../lib/composerImages";
 import {
   buildModelOptions,
   getThreadProviderGroups,
@@ -116,7 +117,7 @@ export const COMPOSER_EXPANDED_CHROME = 156;
 
 export interface ThreadComposerProps {
   readonly draftMessage: string;
-  readonly draftAttachments: ReadonlyArray<DraftComposerImageAttachment>;
+  readonly draftAttachments: ReadonlyArray<DraftComposerAttachment>;
   readonly placeholder: string;
   readonly contentMaxWidth?: number;
   readonly bottomInset?: number;
@@ -138,6 +139,7 @@ export interface ThreadComposerProps {
   readonly editorRef?: RefObject<ComposerEditorHandle | null>;
   readonly onChangeDraftMessage: (value: string) => void;
   readonly onPickDraftImages: () => Promise<void>;
+  readonly onPickDraftFiles: () => Promise<void>;
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
   readonly onStopThread: () => void;
@@ -1070,15 +1072,33 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           </View>
           {!isExpanded && props.draftAttachments.length > 0 ? (
             <View className="flex-row gap-1 pl-1">
-              {props.draftAttachments.slice(0, 3).map((image) => (
-                <Pressable key={image.id} onPress={() => onPressImage(image.previewUri)}>
-                  <Image
-                    source={{ uri: image.previewUri }}
-                    className="size-[30px] rounded-lg bg-subtle"
-                    resizeMode="cover"
-                  />
-                </Pressable>
-              ))}
+              {props.draftAttachments.slice(0, 3).map((attachment) =>
+                attachment.type === "image" ? (
+                  <Pressable
+                    key={attachment.id}
+                    onPress={() => onPressImage(attachment.previewUri)}
+                  >
+                    <Image
+                      source={{ uri: attachment.previewUri }}
+                      className="size-[30px] rounded-lg bg-subtle"
+                      resizeMode="cover"
+                    />
+                  </Pressable>
+                ) : (
+                  <View
+                    key={attachment.id}
+                    accessibilityLabel={attachment.name}
+                    className="size-[30px] items-center justify-center rounded-lg bg-subtle"
+                  >
+                    <SymbolView
+                      name="doc.text"
+                      size={14}
+                      tintColor={foregroundColor}
+                      type="monochrome"
+                    />
+                  </View>
+                ),
+              )}
               {props.draftAttachments.length > 3 ? (
                 <View className="size-[30px] items-center justify-center rounded-lg bg-subtle-strong">
                   <Text className="text-foreground-muted text-2xs font-codework-bold">
@@ -1113,6 +1133,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   controller={specWorkflow}
                   disabled={workflowDisabled}
                   includeAttachments={() => void props.onPickDraftImages()}
+                  includeFiles={() => void props.onPickDraftFiles()}
                 >
                   <ComposerToolbarButton
                     accessibilityLabel={t("addAttachment")}

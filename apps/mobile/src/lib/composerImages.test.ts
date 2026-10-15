@@ -39,13 +39,13 @@ vi.mock("./uuid", () => ({
 import {
   convertPastedImagesToAttachments,
   isOwnedPastedImageUri,
-  toUploadChatImageAttachments,
+  toTurnAttachments,
 } from "./composerImages";
 
-describe("toUploadChatImageAttachments", () => {
+describe("toTurnAttachments", () => {
   it("strips client draft id and previewUri for the startTurn wire shape", () => {
     expect(
-      toUploadChatImageAttachments([
+      toTurnAttachments([
         {
           id: "client-draft-id",
           type: "image",
@@ -65,6 +65,46 @@ describe("toUploadChatImageAttachments", () => {
         dataUrl: "data:image/png;base64,AA==",
       },
     ]);
+  });
+
+  it("references uploaded files by their upload id", () => {
+    expect(
+      toTurnAttachments([
+        {
+          id: "client-file-id",
+          type: "file",
+          name: "report.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 4,
+          fileUri: "file:///documents/codework-composer-files/report.pdf",
+          uploadedAttachmentId: "pending-1-pdf",
+          uploadEnvironmentId: "environment-1",
+        },
+      ]),
+    ).toEqual([
+      {
+        type: "file",
+        id: "pending-1-pdf",
+        name: "report.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 4,
+      },
+    ]);
+  });
+
+  it("refuses to send a file that never finished uploading", () => {
+    expect(() =>
+      toTurnAttachments([
+        {
+          id: "client-file-id",
+          type: "file",
+          name: "report.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 4,
+          fileUri: "file:///documents/codework-composer-files/report.pdf",
+        },
+      ]),
+    ).toThrow("report.pdf");
   });
 });
 

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { ProjectId, ProviderInstanceId } from "@codework/contracts";
 
 vi.mock("./composerImages", () => ({
-  toUploadChatImageAttachments: (attachments: ReadonlyArray<unknown>) => attachments,
+  toTurnAttachments: (attachments: ReadonlyArray<unknown>) => attachments,
 }));
 
 import { buildProjectThreadStartTurnInput } from "./projectThreadStartTurn";

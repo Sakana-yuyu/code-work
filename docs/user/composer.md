@@ -31,7 +31,12 @@ macOS) to paste it as plain text instead.
 Drafts keep their files across reloads once the upload has finished. If a reload interrupts an
 upload, the file row asks you to attach it again. File attachments need a server version that
 supports them; on older servers the composer asks you to remove the files before sending. Stashing a
-prompt keeps attached files in the composer. Mobile does not attach files yet.
+prompt keeps attached files in the composer.
+
+On iOS and Android, tap **+** in the composer and choose **Files** (or **Photos** for the photo
+library). Files keep a copy on the device and upload when the message is sent, so a message written
+offline waits in the queue and sends its files once the server is reachable. Large pastes are not
+turned into attachments on mobile.
 
 ## 对话自动标题
 

@@ -31,6 +31,9 @@ const harness = vi.hoisted(() => ({
   editing: {} as Record<string, boolean>,
   finished: null as (() => void) | null,
   registry: new Map<unknown, unknown>(),
+  prepareFiles: vi.fn(),
+  persist: vi.fn(),
+  deleteFiles: vi.fn(),
 }));
 
 vi.mock("react", () => ({
@@ -94,9 +97,14 @@ vi.mock("./thread-outbox", () => ({
   ensureThreadOutboxLoaded: vi.fn(),
   confirmThreadOutboxMessageQueued: (...args: unknown[]) => harness.confirm(...args),
   removeThreadOutboxMessage: (...args: unknown[]) => harness.remove(...args),
+  updateThreadOutboxMessage: (...args: unknown[]) => harness.persist(...args),
 }));
 vi.mock("../lib/composerImages", () => ({
-  toUploadChatImageAttachments: (attachments: unknown) => attachments,
+  toTurnAttachments: (attachments: unknown) => attachments,
+}));
+vi.mock("../lib/composerFiles", () => ({
+  prepareComposerFileUploads: (...args: unknown[]) => harness.prepareFiles(...args),
+  deleteOwnedComposerFiles: (...args: unknown[]) => harness.deleteFiles(...args),
 }));
 vi.mock("../lib/uuid", () => ({ randomHex: () => "fixture" }));
 vi.mock("../i18n/runtime", () => ({ t: (key: string) => key }));
@@ -165,6 +173,11 @@ beforeEach(() => {
   for (const command of [harness.start, harness.update, harness.runtime, harness.mode])
     command.mockResolvedValue({ _tag: "Success", value: undefined });
   harness.readConfig.mockImplementation(async () => ({ _tag: "Success", value: harness.config }));
+  harness.prepareFiles.mockImplementation(
+    async (input: { attachments: unknown }) => input.attachments,
+  );
+  harness.persist.mockResolvedValue(true);
+  harness.deleteFiles.mockResolvedValue(undefined);
 });
 
 describe("手机队列实际派发入口", () => {
@@ -286,4 +299,60 @@ describe("手机队列实际派发入口", () => {
       expect(harness.remove).toHaveBeenCalledOnce();
     });
   }
+
+  const file = {
+    id: "draft-file",
+    type: "file" as const,
+    name: "report.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 4,
+    fileUri: "file:///documents/codework-composer-files/draft-file-report.pdf",
+  };
+
+  it("上传文件后带上传 id 发送，记录 id 供重试复用，送达后清理本地副本", async () => {
+    harness.confirm.mockResolvedValue(true);
+    harness.config = config;
+    const uploaded = {
+      ...file,
+      uploadedAttachmentId: "pending-1-pdf",
+      uploadEnvironmentId: "target",
+    };
+    harness.prepareFiles.mockResolvedValue([uploaded]);
+    harness.queued = { "target:thread": [{ ...queued, attachments: [file] }] };
+    let complete!: () => void;
+    const delivered = new Promise<void>((resolve) => (complete = resolve));
+    harness.remove.mockImplementation(async () => complete());
+    useThreadOutboxDrain();
+    for (const effect of harness.effects) effect();
+    await delivered;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(harness.prepareFiles).toHaveBeenCalledExactlyOnceWith({
+      environmentId: "target",
+      attachments: [file],
+    });
+    expect(harness.persist.mock.calls[0]![0]).toMatchObject({ attachments: [uploaded] });
+    expect(harness.start.mock.calls[0]![0].input.message.attachments).toEqual([uploaded]);
+    expect(harness.deleteFiles).toHaveBeenCalledExactlyOnceWith([file]);
+  });
+
+  it("文件无法上传时不派发、不删除，留待退避重试", async () => {
+    harness.confirm.mockResolvedValue(true);
+    harness.config = config;
+    let rejected!: () => void;
+    const attempted = new Promise<void>((resolve) => (rejected = resolve));
+    harness.prepareFiles.mockImplementation(async () => {
+      rejected();
+      throw new Error("upload failed");
+    });
+    harness.queued = { "target:thread": [{ ...queued, attachments: [file] }] };
+    useThreadOutboxDrain();
+    for (const effect of harness.effects) effect();
+    await attempted;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(harness.start).not.toHaveBeenCalled();
+    expect(harness.remove).not.toHaveBeenCalled();
+    expect(harness.deleteFiles).not.toHaveBeenCalled();
+  });
 });

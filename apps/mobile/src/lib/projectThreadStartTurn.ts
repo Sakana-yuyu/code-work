@@ -10,7 +10,7 @@ import {
 } from "@codework/contracts";
 
 import { t } from "../i18n/runtime";
-import { toUploadChatImageAttachments, type DraftComposerImageAttachment } from "./composerImages";
+import { toTurnAttachments, type DraftComposerAttachment } from "./composerImages";
 
 export function deriveThreadTitleFromPrompt(value: string): string {
   const trimmed = value.trim();
@@ -30,7 +30,7 @@ export interface ProjectThreadStartTurnSpec {
   readonly messageId: string;
   readonly createdAt: string;
   readonly text: string;
-  readonly attachments: ReadonlyArray<DraftComposerImageAttachment>;
+  readonly attachments: ReadonlyArray<DraftComposerAttachment>;
   /** Already-uploaded attachments reused when re-sending a server-owned prompt. */
   readonly uploadedAttachments?: ReadonlyArray<ChatAttachment>;
   readonly modelSelection: ModelSelection;
@@ -61,10 +61,7 @@ export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpe
       messageId: MessageId.make(spec.messageId),
       role: "user" as const,
       text: spec.text,
-      attachments: [
-        ...toUploadChatImageAttachments(spec.attachments),
-        ...(spec.uploadedAttachments ?? []),
-      ],
+      attachments: [...toTurnAttachments(spec.attachments), ...(spec.uploadedAttachments ?? [])],
     },
     modelSelection: spec.modelSelection,
     titleSeed: title,

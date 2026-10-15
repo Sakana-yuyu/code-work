@@ -1,10 +1,12 @@
 import {
+  type ChatFileAttachment,
   isProviderSendTurnSupportedImageMimeType,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type UploadChatImageAttachment,
 } from "@codework/contracts";
 import { t } from "../i18n/runtime";
+import type { DraftComposerFileAttachmentSchema } from "./composer-image-schema";
 import { estimateBase64ByteSize } from "./base64";
 import { beginForegroundHandoff } from "./foreground-handoff";
 import { uuidv4 } from "./uuid";
@@ -14,17 +16,45 @@ export interface DraftComposerImageAttachment extends UploadChatImageAttachment 
   readonly previewUri: string;
 }
 
-/** Wire shape for startTurn: pure uploads without client draft id / previewUri. */
-export function toUploadChatImageAttachments(
-  attachments: ReadonlyArray<DraftComposerImageAttachment>,
-): ReadonlyArray<UploadChatImageAttachment> {
-  return attachments.map((attachment) => ({
-    type: attachment.type,
-    name: attachment.name,
-    mimeType: attachment.mimeType,
-    sizeBytes: attachment.sizeBytes,
-    dataUrl: attachment.dataUrl,
-  }));
+export type DraftComposerFileAttachment = typeof DraftComposerFileAttachmentSchema.Type;
+
+export type DraftComposerAttachment = DraftComposerImageAttachment | DraftComposerFileAttachment;
+
+export function isDraftComposerImageAttachment(
+  attachment: DraftComposerAttachment,
+): attachment is DraftComposerImageAttachment {
+  return attachment.type === "image";
+}
+
+/**
+ * Wire shape for startTurn: images travel inline, files as references to their
+ * upload. Callers upload files first (`prepareComposerFileUploads`); a file
+ * still without an upload id fails the send instead of dropping the file.
+ */
+export function toTurnAttachments(
+  attachments: ReadonlyArray<DraftComposerAttachment>,
+): ReadonlyArray<UploadChatImageAttachment | ChatFileAttachment> {
+  return attachments.map((attachment) => {
+    if (attachment.type === "image") {
+      return {
+        type: attachment.type,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        dataUrl: attachment.dataUrl,
+      };
+    }
+    if (attachment.uploadedAttachmentId === undefined) {
+      throw new Error(t("composer.fileDidNotFinishUploading", { name: attachment.name }));
+    }
+    return {
+      type: "file",
+      id: attachment.uploadedAttachmentId,
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+    };
+  });
 }
 
 const OWNED_PASTED_IMAGE_DIRECTORY = "codework-composer-paste";

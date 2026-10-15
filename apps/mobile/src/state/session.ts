@@ -1,10 +1,11 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createEnvironmentSessionAtoms } from "@codework/client-runtime/state/session";
-import type { EnvironmentId } from "@codework/contracts";
+import type { AuthEnvironmentScope, EnvironmentId } from "@codework/contracts";
 import * as Option from "effect/Option";
 import { Atom } from "effect/unstable/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
+import { appAtomRegistry } from "./atom-registry";
 
 export const environmentSession = createEnvironmentSessionAtoms(connectionAtomRuntime);
 
@@ -18,4 +19,23 @@ export function usePreparedConnection(environmentId: EnvironmentId | null) {
       ? EMPTY_PREPARED_CONNECTION_ATOM
       : environmentSession.preparedConnectionValueAtom(environmentId),
   );
+}
+
+export function readPreparedConnection(environmentId: EnvironmentId) {
+  return Option.getOrNull(
+    appAtomRegistry.get(environmentSession.preparedConnectionValueAtom(environmentId)),
+  );
+}
+
+/**
+ * Whether this client's session on one environment carries the given scope,
+ * denied until the session state resolves and grants it. Used by imperative
+ * call sites such as attachment uploads.
+ */
+export function readEnvironmentScope(
+  environmentId: EnvironmentId,
+  scope: AuthEnvironmentScope,
+): boolean {
+  const session = appAtomRegistry.get(environmentSession.sessionStateValueAtom(environmentId));
+  return session !== null && session.authenticated && (session.scopes?.includes(scope) ?? false);
 }

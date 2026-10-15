@@ -38,6 +38,7 @@ export function SpecWorkflowMobilePicker(props: {
   readonly disabled: boolean;
   readonly children?: ReactNode;
   readonly includeAttachments?: () => void;
+  readonly includeFiles?: () => void;
 }) {
   const { controller } = props;
   const actions = SpecWorkflowIntentName.literals.map((intent) => ({
@@ -63,7 +64,8 @@ export function SpecWorkflowMobilePicker(props: {
       actions={
         props.includeAttachments
           ? [
-              { id: "attachments", title: t("addAttachment") },
+              { id: "attachments", title: t("composer.attachPhotos") },
+              ...(props.includeFiles ? [{ id: "files", title: t("composer.attachFiles") }] : []),
               {
                 id: "workflow-steps",
                 title: t("specWorkflowMobile.title"),
@@ -80,6 +82,10 @@ export function SpecWorkflowMobilePicker(props: {
       onPressAction={({ nativeEvent }) => {
         if (nativeEvent.event === "attachments") {
           props.includeAttachments?.();
+          return;
+        }
+        if (nativeEvent.event === "files") {
+          props.includeFiles?.();
           return;
         }
         if (nativeEvent.event.startsWith("flag:")) {

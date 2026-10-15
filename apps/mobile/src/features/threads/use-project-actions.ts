@@ -14,8 +14,9 @@ import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 
 import { threadEnvironment } from "../../state/threads";
-import type { DraftComposerImageAttachment } from "../../lib/composerImages";
+import type { DraftComposerAttachment } from "../../lib/composerImages";
 import { makeTurnCommandMetadata, type TurnCommandMetadata } from "../../lib/commandMetadata";
+import { prepareComposerFileUploads } from "../../lib/composerFiles";
 import { buildProjectThreadStartTurnInput } from "../../lib/projectThreadStartTurn";
 import { randomHex } from "../../lib/uuid";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -37,7 +38,7 @@ export function useCreateProjectThread() {
       readonly runtimeMode: RuntimeMode;
       readonly interactionMode: ProviderInteractionMode;
       readonly initialMessageText: string;
-      readonly initialAttachments: ReadonlyArray<DraftComposerImageAttachment>;
+      readonly initialAttachments: ReadonlyArray<DraftComposerAttachment>;
       /** Reuse identifiers from a queued pending task instead of minting new ones. */
       readonly turnMetadata?: TurnCommandMetadata;
     }) => {
@@ -57,6 +58,19 @@ export function useCreateProjectThread() {
         return AsyncResult.failure(Cause.fail(validationError));
       }
 
+      let initialAttachments: ReadonlyArray<DraftComposerAttachment>;
+      try {
+        initialAttachments = await prepareComposerFileUploads({
+          environmentId: input.project.environmentId,
+          attachments: input.initialAttachments,
+        });
+      } catch (error) {
+        setPendingConnectionError(
+          error instanceof Error ? error.message : t("theTaskCouldNotBeStarted"),
+        );
+        return AsyncResult.failure(Cause.fail(error));
+      }
+
       const result = await startTurn({
         environmentId: input.project.environmentId,
         input: buildProjectThreadStartTurnInput({
@@ -67,7 +81,7 @@ export function useCreateProjectThread() {
           messageId: metadata.messageId,
           createdAt: metadata.createdAt,
           text: initialMessageText,
-          attachments: input.initialAttachments,
+          attachments: initialAttachments,
           modelSelection: input.modelSelection,
           runtimeMode: input.runtimeMode,
           interactionMode: input.interactionMode,

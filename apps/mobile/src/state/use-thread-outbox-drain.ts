@@ -18,7 +18,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { buildProjectThreadStartTurnInput } from "../lib/projectThreadStartTurn";
-import { toUploadChatImageAttachments } from "../lib/composerImages";
+import { toTurnAttachments } from "../lib/composerImages";
+import { deleteOwnedComposerFiles, prepareComposerFileUploads } from "../lib/composerFiles";
 import { randomHex } from "../lib/uuid";
 import { appAtomRegistry } from "./atom-registry";
 import { useProjects, useThreadShells } from "./entities";
@@ -26,6 +27,7 @@ import {
   confirmThreadOutboxMessageQueued,
   ensureThreadOutboxLoaded,
   removeThreadOutboxMessage,
+  updateThreadOutboxMessage,
 } from "./thread-outbox";
 import {
   isQueuedThreadCreationSendable,
@@ -107,6 +109,47 @@ function queuedMessageCatalog(
   };
 }
 
+/**
+ * Uploads the message's generic files before its turn starts and records the
+ * upload ids on the queued message, so a retry after a failed start or a crash
+ * reuses the server copies. Returns null when the files cannot be uploaded
+ * yet; the caller backs off and retries like any other delivery failure.
+ */
+async function prepareQueuedMessageAttachments(
+  queuedMessage: QueuedThreadMessage,
+): Promise<QueuedThreadMessage | null> {
+  if (!queuedMessage.attachments.some((attachment) => attachment.type === "file")) {
+    return queuedMessage;
+  }
+  let attachments: QueuedThreadMessage["attachments"];
+  try {
+    attachments = await prepareComposerFileUploads({
+      environmentId: queuedMessage.environmentId,
+      attachments: queuedMessage.attachments,
+    });
+  } catch (error) {
+    console.warn("[thread-outbox] queued message attachments could not be uploaded", {
+      environmentId: queuedMessage.environmentId,
+      threadId: queuedMessage.threadId,
+      messageId: queuedMessage.messageId,
+      error,
+    });
+    return null;
+  }
+  if (attachments === queuedMessage.attachments) {
+    return queuedMessage;
+  }
+  const prepared = { ...queuedMessage, attachments };
+  await updateThreadOutboxMessage(prepared).catch((error: unknown) => {
+    // Only crash recovery loses here: the in-memory send still uses the ids.
+    console.warn("[thread-outbox] failed to persist uploaded attachment ids", {
+      messageId: queuedMessage.messageId,
+      error,
+    });
+  });
+  return prepared;
+}
+
 export function useThreadOutboxDrain(): void {
   const readConfig = useAtomCommand(serverEnvironment.readConfig, { reportFailure: false });
   const startTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
@@ -174,6 +217,7 @@ export function useThreadOutboxDrain(): void {
 
       try {
         await removeThreadOutboxMessage(queuedMessage);
+        void deleteOwnedComposerFiles(queuedMessage.attachments);
         return true;
       } catch (error) {
         console.warn("[thread-outbox] failed to remove delivered queued message", {
@@ -255,6 +299,8 @@ export function useThreadOutboxDrain(): void {
         }
       }
 
+      const prepared = await prepareQueuedMessageAttachments(queuedMessage);
+      if (prepared === null) return false;
       const deliveryResult = await startTurn({
         environmentId: queuedMessage.environmentId,
         input: {
@@ -264,7 +310,7 @@ export function useThreadOutboxDrain(): void {
             messageId: queuedMessage.messageId,
             role: "user",
             text: queuedMessage.text,
-            attachments: toUploadChatImageAttachments(queuedMessage.attachments),
+            attachments: toTurnAttachments(prepared.attachments),
           },
           modelSelection: settings.modelSelection,
           runtimeMode: settings.runtimeMode,
@@ -314,6 +360,8 @@ export function useThreadOutboxDrain(): void {
         queuedMessageCatalog(queuedMessage, configResult.value, false),
       );
       if (!settings) return false;
+      const prepared = await prepareQueuedMessageAttachments(queuedMessage);
+      if (prepared === null) return false;
       const deliveryResult = await startTurn({
         environmentId: queuedMessage.environmentId,
         input: buildProjectThreadStartTurnInput({
@@ -324,7 +372,7 @@ export function useThreadOutboxDrain(): void {
           messageId: queuedMessage.messageId,
           createdAt: queuedMessage.createdAt,
           text: queuedMessage.text.trim(),
-          attachments: queuedMessage.attachments,
+          attachments: prepared.attachments,
           modelSelection: settings.modelSelection,
           runtimeMode: settings.runtimeMode,
           interactionMode: settings.interactionMode,

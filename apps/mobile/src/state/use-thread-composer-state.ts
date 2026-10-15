@@ -28,7 +28,12 @@ import {
   pasteComposerClipboard,
   pickComposerImages,
 } from "../lib/composerImages";
-import type { DraftComposerImageAttachment } from "../lib/composerImages";
+import type { DraftComposerAttachment } from "../lib/composerImages";
+import {
+  composerFileUploadLimit,
+  deleteOwnedComposerFiles,
+  pickComposerFiles,
+} from "../lib/composerFiles";
 import { scopedThreadKey } from "../lib/scopedEntities";
 import { copyTextWithHaptic } from "../lib/copyTextWithHaptic";
 import { createThreadFeedSelector } from "../lib/threadFeedSelectors";
@@ -61,7 +66,7 @@ export function appendReviewCommentToDraft(input: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly text: string;
-  readonly attachments?: ReadonlyArray<DraftComposerImageAttachment>;
+  readonly attachments?: ReadonlyArray<DraftComposerAttachment>;
 }): void {
   const threadKey = scopedThreadKey(input.environmentId, input.threadId);
   const existing = appAtomRegistry.get(composerDraftsAtom)[threadKey]?.text ?? "";
@@ -340,6 +345,24 @@ export function useThreadComposerState() {
     }
   }, [composerDrafts, selectedThreadShell]);
 
+  const onPickDraftFiles = useCallback(async () => {
+    if (!selectedThreadShell) {
+      return;
+    }
+
+    const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
+    const result = await pickComposerFiles({
+      existingCount: composerDrafts[threadKey]?.attachments.length ?? 0,
+      maxBytes: composerFileUploadLimit(selectedThreadShell.environmentId),
+    });
+    if (result.files.length > 0) {
+      appendComposerDraftAttachments(threadKey, result.files);
+    }
+    if (result.error) {
+      setPendingConnectionError(result.error);
+    }
+  }, [composerDrafts, selectedThreadShell]);
+
   const onPasteIntoDraft = useCallback(async () => {
     if (!selectedThreadShell) {
       return;
@@ -394,9 +417,13 @@ export function useThreadComposerState() {
       }
 
       const threadKey = scopedThreadKey(selectedThreadShell.environmentId, selectedThreadShell.id);
+      const removed = composerDrafts[threadKey]?.attachments.find(
+        (attachment) => attachment.id === imageId,
+      );
       removeComposerDraftAttachment(threadKey, imageId);
+      if (removed) void deleteOwnedComposerFiles([removed]);
     },
-    [selectedThreadShell],
+    [composerDrafts, selectedThreadShell],
   );
 
   const onUpdateModelSelection = useCallback(
@@ -440,6 +467,7 @@ export function useThreadComposerState() {
     interactionMode,
     onChangeDraftMessage,
     onPickDraftImages,
+    onPickDraftFiles,
     onPasteIntoDraft,
     onNativePasteImages,
     onRemoveDraftImage,
