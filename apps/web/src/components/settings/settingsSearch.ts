@@ -193,6 +193,18 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
   },
   {
+    id: "thread-notifications",
+    title: "settings.threadNotifications",
+    to: "/settings/general",
+    keywords: ["notifications", "alerts", "sound", "badge", "通知", "提醒"],
+  },
+  {
+    id: "in-app-notifications",
+    title: "settings.inAppNotifications",
+    to: "/settings/general",
+    keywords: ["notifications", "toast", "alerts", "通知", "提醒"],
+  },
+  {
     id: "hide-whitespace-changes",
     title: "settings.hideWhitespaceChanges",
     to: "/settings/general",

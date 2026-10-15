@@ -136,6 +136,14 @@ export const DEFAULT_TERMINAL_FONT_SIZE: TerminalFontSize = 12;
 export const LanguagePreference = Schema.Literals(["system", "zh-CN", "en", "ja"]);
 export type LanguagePreference = typeof LanguagePreference.Type;
 export const DEFAULT_LANGUAGE_PREFERENCE: LanguagePreference = "zh-CN";
+
+export const NotificationMode = Schema.Literals([
+  "off",
+  "notifications",
+  "sound",
+  "notifications-and-sound",
+]);
+export type NotificationMode = typeof NotificationMode.Type;
 export const EffortLabelLanguage = Schema.Literals(["en", "zh-CN"]);
 
 export const EnvironmentIdentificationMode = Schema.Literals(["artwork", "pill", "none"]);
@@ -218,6 +226,10 @@ export const ClientSettingsSchema = Schema.Struct({
   effortLabelLanguage: EffortLabelLanguage.pipe(
     Schema.withDecodingDefault(Effect.succeed("en" as const)),
   ),
+  notificationMode: NotificationMode.pipe(
+    Schema.withDecodingDefault(Effect.succeed("off" as const)),
+  ),
+  inAppNotificationsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   glassOpacity: GlassOpacity.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_GLASS_OPACITY)),
   ),
@@ -1820,6 +1832,8 @@ export const ClientSettingsPatch = Schema.Struct({
   confirmQuit: Schema.optionalKey(Schema.Boolean),
   confirmThreadArchive: Schema.optionalKey(Schema.Boolean),
   confirmThreadDelete: Schema.optionalKey(Schema.Boolean),
+  notificationMode: Schema.optionalKey(NotificationMode),
+  inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
   diffIgnoreWhitespace: Schema.optionalKey(Schema.Boolean),
   environmentIdentificationMode: Schema.optionalKey(EnvironmentIdentificationMode),
   language: Schema.optionalKey(LanguagePreference),

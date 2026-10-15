@@ -2687,6 +2687,25 @@ export const ja: Record<string, string> = {
   "settings.terminalFont": "ターミナルフォント",
   "settings.textGenerationModel": "バックグラウンドテキストモデル",
   "settings.timeFormat": "時刻形式",
+  "settings.threadNotifications": "スレッド通知",
+  "settings.threadNotificationsDescription":
+    "スレッドが完了・失敗したとき、または入力や承認が必要なときにシステム通知を送ります。Code Work を開いている間、このデバイスに適用されます。",
+  "settings.threadNotificationsUnsupported":
+    "通知には HTTPS 対応ブラウザまたはデスクトップアプリが必要です。サウンドのみは引き続き利用できます。",
+  "settings.threadNotificationsDenied":
+    "ブラウザまたはシステム設定で通知を許可してから、このオプションを再度選択してください。サウンドのみは引き続き利用できます。",
+  "settings.notificationMode.off": "オフ",
+  "settings.notificationMode.notifications": "通知のみ",
+  "settings.notificationMode.sound": "サウンドのみ",
+  "settings.notificationMode.notifications-and-sound": "通知とサウンド",
+  "settings.inAppNotifications": "アプリ内通知",
+  "settings.inAppNotificationsDescription":
+    "このアプリがフォーカスされている間に、他のスレッドが完了・失敗したとき、または入力や承認が必要になったときにトーストを表示します。",
+  "notifications.threadCompleted": "スレッドが完了しました",
+  "notifications.approvalNeeded": "承認が必要です",
+  "notifications.threadFailed": "スレッドが失敗しました",
+  "notifications.inputNeeded": "入力が必要です",
+  "notifications.openThread": "スレッドを開く",
   "settings.runtime": "エージェントの実行",
   "settings.delegation": "バックグラウンドタスク",
   "delegationWorkspace.tab": "委任",

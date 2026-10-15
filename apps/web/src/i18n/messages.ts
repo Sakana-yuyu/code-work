@@ -2641,6 +2641,25 @@ export const en: Record<string, string> = {
   "settings.terminalFont": "Terminal font",
   "settings.textGenerationModel": "Background text model",
   "settings.timeFormat": "Time format",
+  "settings.threadNotifications": "Thread notifications",
+  "settings.threadNotificationsDescription":
+    "System alerts when a thread finishes, fails, or needs input or approval. Applies to this device while Code Work is open.",
+  "settings.threadNotificationsUnsupported":
+    "Notifications need a supported browser over HTTPS, or the desktop app. Sound only is still available.",
+  "settings.threadNotificationsDenied":
+    "Allow notifications in your browser or system settings, then choose this option again. Sound only is still available.",
+  "settings.notificationMode.off": "Off",
+  "settings.notificationMode.notifications": "Notifications only",
+  "settings.notificationMode.sound": "Sound only",
+  "settings.notificationMode.notifications-and-sound": "Notifications with sound",
+  "settings.inAppNotifications": "In-app notifications",
+  "settings.inAppNotificationsDescription":
+    "Show a toast when another thread finishes, fails, or needs input or approval while this app has focus.",
+  "notifications.threadCompleted": "Thread completed",
+  "notifications.approvalNeeded": "Approval needed",
+  "notifications.threadFailed": "Thread failed",
+  "notifications.inputNeeded": "Input needed",
+  "notifications.openThread": "Open thread",
   "settings.runtime": "Run agents",
   "settings.delegation": "Background tasks",
   "delegationWorkspace.tab": "Delegate",
@@ -8867,6 +8886,25 @@ export const zhCN: Record<string, string> = {
   "settings.terminalFont": "终端字体",
   "settings.textGenerationModel": "后台文本模型",
   "settings.timeFormat": "时间格式",
+  "settings.threadNotifications": "线程通知",
+  "settings.threadNotificationsDescription":
+    "当线程完成、失败或需要输入或批准时发送系统提醒。在 Code Work 打开期间对本设备生效。",
+  "settings.threadNotificationsUnsupported":
+    "通知需要支持 HTTPS 的浏览器或桌面应用。仅声音仍然可用。",
+  "settings.threadNotificationsDenied":
+    "请在浏览器或系统设置中允许通知，然后再次选择此选项。仅声音仍然可用。",
+  "settings.notificationMode.off": "关闭",
+  "settings.notificationMode.notifications": "仅通知",
+  "settings.notificationMode.sound": "仅声音",
+  "settings.notificationMode.notifications-and-sound": "通知与声音",
+  "settings.inAppNotifications": "应用内通知",
+  "settings.inAppNotificationsDescription":
+    "当其他线程完成、失败或需要输入或批准时，在本应用获得焦点期间显示提示。",
+  "notifications.threadCompleted": "线程已完成",
+  "notifications.approvalNeeded": "需要批准",
+  "notifications.threadFailed": "线程失败",
+  "notifications.inputNeeded": "需要输入",
+  "notifications.openThread": "打开线程",
   "settings.runtime": "运行 Agent",
   "settings.delegation": "后台任务",
   "delegationWorkspace.tab": "委派",

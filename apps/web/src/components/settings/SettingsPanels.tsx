@@ -154,6 +154,7 @@ import {
   SettingsSection,
   useSettingsSearchTargetId,
 } from "./settingsLayout";
+import { NotificationSettings } from "./NotificationSettings";
 import { searchableSetting } from "./settingsSearch";
 import { ResponseStreamingModeControl } from "./ResponseStreamingModeControl";
 import { ProjectFavicon } from "../ProjectFavicon";
@@ -2146,6 +2147,22 @@ export function GeneralSettingsPanel() {
                 </SelectItem>
               </SelectPopup>
             </Select>
+          }
+        />
+
+        <NotificationSettings />
+
+        <SettingsRow
+          {...searchableSetting("in-app-notifications")}
+          description={t("settings.inAppNotificationsDescription")}
+          control={
+            <Switch
+              checked={settings.inAppNotificationsEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ inAppNotificationsEnabled: Boolean(checked) })
+              }
+              aria-label={t("settings.inAppNotifications")}
+            />
           }
         />
 

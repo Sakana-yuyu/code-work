@@ -1175,6 +1175,12 @@ export interface DesktopBridge {
   probeRemoteEditors?: () => Promise<readonly EditorId[]>;
   /** Optional while older desktop shells can host a newer web client. */
   updateTrayRecents?: (items: readonly DesktopTrayRecentItem[]) => Promise<void>;
+  /** Optional while older desktop shells can host a newer web client. */
+  getClientPlatform?: () => string;
+  /** Optional: older desktop builds lack badge/overlay notification support. */
+  setNotificationBadge?: (badge: { count: number; image: string | null }) => Promise<void>;
+  /** Optional: fired when the native side clears badges (focus, quit, disposal). */
+  onNotificationBadgeClear?: (listener: () => void) => () => void;
   onMenuAction: (listener: (action: string) => void) => () => void;
   /**
    * Hold-to-quit hint pushes: "down" when the quit shortcut is first pressed,

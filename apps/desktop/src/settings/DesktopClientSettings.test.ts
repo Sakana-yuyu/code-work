@@ -37,6 +37,8 @@ const clientSettings: ClientSettings = {
   fontSizeTerminal: 12,
   fontSmoothing: true,
   glassOpacity: 80,
+  inAppNotificationsEnabled: false,
+  notificationMode: "off",
   planModeEnabled: false,
   showSkillsInSlashMenu: false,
   providerModelPreferences: {},

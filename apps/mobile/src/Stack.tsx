@@ -510,7 +510,6 @@ function RootStackLayout(props: {
   const navigation = useNavigation();
   const { pendingShare } = useIncomingShare();
   const sharePresentationRef = useRef(EMPTY_INCOMING_SHARE_PRESENTATION_STATE);
-  useAgentNotificationNavigation();
   // Presents the Code Work Connect onboarding sheet after an in-session sign-in.
   useConnectOnboardingNavigation();
   // Launcher app shortcuts: routes shortcut taps and tracks opened threads.
@@ -535,6 +534,8 @@ function RootStackLayout(props: {
   const path = getPathFromState(props.state, navigationPathConfig);
   const pathname = path.startsWith("/") ? path : `/${path}`;
   const workspacePathname = workspacePathFromState(props.state);
+  // Notification suppression follows the thread beneath overlay sheets.
+  useAgentNotificationNavigation(workspacePathname);
 
   return (
     <HardwareKeyboardCommandProvider pathname={pathname}>
