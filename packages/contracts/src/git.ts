@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
 import { NonNegativeInt, PositiveInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { WorktreeSubmodules } from "./environment.ts";
 import { SourceControlProviderError, SourceControlProviderInfo } from "./sourceControl.ts";
 import { VcsDriverKind } from "./vcs.ts";
 
@@ -146,6 +147,19 @@ export const VcsCreateWorktreeInput = Schema.Struct({
   newRefName: Schema.optional(TrimmedNonEmptyStringSchema),
   baseRefName: Schema.optional(TrimmedNonEmptyStringSchema),
   path: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  /**
+   * Settings-tier submodule init preferences the caller already resolved:
+   * project override, then environment value. When `project` is null the
+   * driver reads the new worktree's own `t3.json` before falling back to
+   * `environment`, then the built-in "recursive". Absent entirely means no
+   * caller resolution — file tier still applies.
+   */
+  submodules: Schema.optional(
+    Schema.Struct({
+      project: Schema.NullOr(WorktreeSubmodules),
+      environment: Schema.NullOr(WorktreeSubmodules),
+    }),
+  ),
 });
 export type VcsCreateWorktreeInput = typeof VcsCreateWorktreeInput.Type;
 

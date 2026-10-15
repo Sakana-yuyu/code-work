@@ -8,8 +8,10 @@ import {
   type DesktopUpdateChannel,
   ProviderDriverKind,
   resolveResponseStreamingMode,
+  type RuntimeMode,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
+  type WorktreeSubmodules,
 } from "@codework/contracts";
 import { scopeThreadRef } from "@codework/client-runtime/environment";
 import {
@@ -197,6 +199,19 @@ const BACKGROUND_ACTIVITY_PROFILE_DESCRIPTIONS: Record<BackgroundActivityProfile
 const ADVANCED_BACKGROUND_ACTIVITY_DESCRIPTION = "backgroundActivityAdvancedDescription";
 
 const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("codex");
+
+const RUNTIME_MODE_SETTING_LABEL_KEYS: Record<RuntimeMode, string> = {
+  "approval-required": "chat.supervised",
+  "auto-accept-edits": "chat.autoAcceptEdits",
+  auto: "chat.auto",
+  "full-access": "chat.fullAccess",
+};
+
+const WORKTREE_SUBMODULES_SETTING_LABEL_KEYS: Record<WorktreeSubmodules, string> = {
+  recursive: "projectSettings.submodulesRecursive",
+  "top-level": "projectSettings.submodulesTopLevel",
+  none: "projectSettings.submodulesNone",
+};
 const BACKGROUND_ACTIVITY_BOOLEAN_OVERRIDES: ReadonlyArray<{
   readonly key:
     | "pauseWhenHostLocked"
@@ -2367,6 +2382,113 @@ export function GeneralSettingsPanel() {
             }
           />
         ) : null}
+
+        {settings.defaultThreadEnvMode === "worktree" ? (
+          <SettingsRow
+            className="bg-muted/20 sm:pl-9"
+            {...searchableSetting("worktree-submodules")}
+            description={t("settings.worktreeSubmodulesDescription")}
+            resetAction={
+              settings.worktreeSubmodules !== DEFAULT_UNIFIED_SETTINGS.worktreeSubmodules ? (
+                <SettingResetButton
+                  label={t("settings.worktreeSubmodules")}
+                  onClick={() =>
+                    updateSettings({
+                      worktreeSubmodules: DEFAULT_UNIFIED_SETTINGS.worktreeSubmodules,
+                    })
+                  }
+                />
+              ) : null
+            }
+            control={
+              <Select
+                value={settings.worktreeSubmodules ?? "default"}
+                onValueChange={(value) => {
+                  if (value === "default") {
+                    updateSettings({ worktreeSubmodules: null });
+                  } else if (value === "recursive" || value === "top-level" || value === "none") {
+                    updateSettings({ worktreeSubmodules: value });
+                  }
+                }}
+              >
+                <SelectTrigger
+                  className="w-full sm:w-44"
+                  aria-label={t("settings.worktreeSubmodules")}
+                >
+                  <SelectValue>
+                    {settings.worktreeSubmodules === null
+                      ? t("settings.worktreeSubmodulesDefault")
+                      : t(WORKTREE_SUBMODULES_SETTING_LABEL_KEYS[settings.worktreeSubmodules])}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem hideIndicator value="default">
+                    {t("settings.worktreeSubmodulesDefault")}
+                  </SelectItem>
+                  <SelectItem hideIndicator value="recursive">
+                    {t("projectSettings.submodulesRecursive")}
+                  </SelectItem>
+                  <SelectItem hideIndicator value="top-level">
+                    {t("projectSettings.submodulesTopLevel")}
+                  </SelectItem>
+                  <SelectItem hideIndicator value="none">
+                    {t("projectSettings.submodulesNone")}
+                  </SelectItem>
+                </SelectPopup>
+              </Select>
+            }
+          />
+        ) : null}
+
+        <SettingsRow
+          {...searchableSetting("default-permissions")}
+          description={t("settings.defaultPermissionsDescription")}
+          resetAction={
+            settings.defaultRuntimeMode !== DEFAULT_UNIFIED_SETTINGS.defaultRuntimeMode ? (
+              <SettingResetButton
+                label={t("settings.defaultPermissions")}
+                onClick={() =>
+                  updateSettings({
+                    defaultRuntimeMode: DEFAULT_UNIFIED_SETTINGS.defaultRuntimeMode,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.defaultRuntimeMode}
+              onValueChange={(value) => {
+                if (
+                  value === "approval-required" ||
+                  value === "auto-accept-edits" ||
+                  value === "auto" ||
+                  value === "full-access"
+                ) {
+                  updateSettings({ defaultRuntimeMode: value });
+                }
+              }}
+            >
+              <SelectTrigger
+                className="w-full sm:w-44"
+                aria-label={t("settings.defaultPermissions")}
+              >
+                <SelectValue>
+                  {t(RUNTIME_MODE_SETTING_LABEL_KEYS[settings.defaultRuntimeMode])}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                {(
+                  ["approval-required", "auto-accept-edits", "auto", "full-access"] as RuntimeMode[]
+                ).map((mode) => (
+                  <SelectItem key={mode} hideIndicator value={mode}>
+                    {t(RUNTIME_MODE_SETTING_LABEL_KEYS[mode])}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          }
+        />
 
         <SettingsRow
           {...searchableSetting("add-project-starts-in")}

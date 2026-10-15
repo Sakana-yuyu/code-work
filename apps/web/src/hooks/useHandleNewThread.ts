@@ -4,7 +4,7 @@ import {
   scopeProjectRef,
   scopeThreadRef,
 } from "@codework/client-runtime/environment";
-import { DEFAULT_RUNTIME_MODE, type ScopedProjectRef, type ThreadId } from "@codework/contracts";
+import { type ScopedProjectRef, type ThreadId } from "@codework/contracts";
 import { useParams, useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 import {
@@ -23,10 +23,12 @@ import {
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import { resolveDefaultThreadEnvMode } from "@codework/shared/threadEnvMode";
+import { resolveProjectRuntimeMode } from "@codework/shared/projectSettings";
 import { readThreadShell, useProjects, useThread } from "../state/entities";
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
 import { readCodeworkProjectFileDefaultThreadEnvMode } from "../lib/codeworkProjectFileDefaults";
-import { primaryServerSettingsAtom } from "../state/server";
+import { appAtomRegistry } from "../rpc/atomRegistry";
+import { primaryServerSettingsAtom, serverEnvironment } from "../state/server";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useClientSettings } from "./useSettings";
@@ -161,6 +163,15 @@ export function useNewThreadHandler() {
           candidate.id === projectRef.projectId &&
           candidate.environmentId === projectRef.environmentId,
       );
+      // Per-project overrides live in the owning environment's settings; fall
+      // back to the primary settings until that environment's config lands.
+      const projectEnvironmentSettings =
+        appAtomRegistry.get(serverEnvironment.settingsValueAtom(projectRef.environmentId)) ??
+        primaryServerSettings;
+      const defaultRuntimeMode = resolveProjectRuntimeMode(
+        projectEnvironmentSettings,
+        projectRef.projectId,
+      );
       // The shared resolver owns the priority order. The t3.json read is
       // skipped entirely when a higher-priority source decides, and its
       // query atom caches per project after the first call.
@@ -273,7 +284,7 @@ export function useNewThreadHandler() {
           if (workspaceContext) {
             setDraftThreadContext(emptyStoredDraftThread.draftId, {
               ...workspaceContext,
-              ...(carryRuntimeMode ? { runtimeMode: carryRuntimeMode } : {}),
+              runtimeMode: carryRuntimeMode ?? defaultRuntimeMode,
               ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
             });
             if (carryModelSelection) {
@@ -296,7 +307,7 @@ export function useNewThreadHandler() {
             {
               threadId: emptyStoredDraftThread.threadId,
               ...workspaceContext,
-              ...(carryRuntimeMode ? { runtimeMode: carryRuntimeMode } : {}),
+              runtimeMode: carryRuntimeMode ?? defaultRuntimeMode,
               ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
             },
           );
@@ -408,7 +419,7 @@ export function useNewThreadHandler() {
               envMode: initialEnvMode,
               newWorktreesStartFromOrigin: primaryServerSettings.newWorktreesStartFromOrigin,
             }),
-          runtimeMode: carryRuntimeMode ?? DEFAULT_RUNTIME_MODE,
+          runtimeMode: carryRuntimeMode ?? defaultRuntimeMode,
           ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
         });
         applyStickyState(draftId);

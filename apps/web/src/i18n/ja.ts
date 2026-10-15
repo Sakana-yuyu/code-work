@@ -703,6 +703,22 @@ export const ja: Record<string, string> = {
   "projectSettings.failedUpdateNewThreadWorkspace":
     "新規スレッドのワークスペースの更新に失敗しました",
   "projectSettings.failedUpdateProjectIcon": "プロジェクトアイコンの更新に失敗しました",
+  "projectSettings.defaultPermissions": "デフォルトの権限",
+  "projectSettings.defaultPermissionsDescription":
+    "このプロジェクトの新規スレッドが開始される権限モード。グローバル設定を上書きします。",
+  "projectSettings.failedUpdateDefaultPermissions": "デフォルト権限の更新に失敗しました",
+  "projectSettings.worktreeSubmodules": "ワークツリーのサブモジュール",
+  "projectSettings.worktreeSubmodulesDescription":
+    "このプロジェクトの新規ワークツリーが git サブモジュールをどこまで初期化するか。t3.json とグローバル設定を上書きします。",
+  "projectSettings.failedUpdateWorktreeSubmodules":
+    "ワークツリーのサブモジュール設定の更新に失敗しました",
+  "projectSettings.submodulesRecursive": "再帰",
+  "projectSettings.submodulesTopLevel": "最上位のみ",
+  "projectSettings.submodulesNone": "初期化しない",
+  "projectSettings.source.t3Json": "t3.json",
+  "projectSettings.source.global": "グローバル",
+  "projectSettings.source.builtIn": "組み込み",
+  "projectSettings.defaultEachEnvironmentSetting": "デフォルト（各環境の設定）",
   "projectSettings.scriptSaveInProgress":
     "別のスクリプトの変更を保存中です。もう一度お試しください。",
   "projectSettings.failedSaveScripts": "スクリプトの保存に失敗しました",
@@ -2601,6 +2617,13 @@ export const ja: Record<string, string> = {
   "settings.sourceControl": "ソース管理",
   "settings.sourceControlSetting": "ソース管理",
   "settings.startFromOrigin": "origin から開始",
+  "settings.worktreeSubmodules": "ワークツリーのサブモジュール",
+  "settings.worktreeSubmodulesDescription":
+    "新規ワークツリーが git サブモジュールをどこまで初期化するか。プロジェクトの t3.json や設定で上書きできます。",
+  "settings.worktreeSubmodulesDefault": "デフォルト（再帰）",
+  "settings.defaultPermissions": "デフォルトの権限",
+  "settings.defaultPermissionsDescription":
+    "スレッドやプロジェクトが上書きしない限り、新規スレッドが開始される権限モード。",
   "settings.streamTokenByTokenLegacy": "トークンごとのストリーミング（レガシー）",
   "settings.responseStreamingMode": "応答の表示方法",
   "settings.responseStreaming.turn": "応答全体",

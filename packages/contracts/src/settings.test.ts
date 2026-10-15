@@ -3,6 +3,8 @@ import * as Schema from "effect/Schema";
 
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import { CompositionMcpServerId } from "./compositionRuntime.ts";
+import { ProjectId } from "./baseSchemas.ts";
+import { DEFAULT_RUNTIME_MODE } from "./orchestration.ts";
 import {
   ByokDelegationConfig,
   ClientSettingsSchema,
@@ -201,6 +203,54 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
     expect(
       Schema.decodeUnknownSync(ServerSettingsPatch)({ codeGraphEnabled: false }).codeGraphEnabled,
     ).toBe(false);
+  });
+
+  it("defaults project-scoped settings and decodes overrides", () => {
+    const decoded = decodeServerSettings({});
+    expect(decoded.defaultRuntimeMode).toBe(DEFAULT_RUNTIME_MODE);
+    expect(decoded.worktreeSubmodules).toBeNull();
+    expect(decoded.projectSettingsOverrides).toEqual({});
+
+    const projectA = ProjectId.make("project-1");
+    const projectB = ProjectId.make("project-2");
+    const withOverrides = decodeServerSettings({
+      projectSettingsOverrides: {
+        "project-1": {
+          defaultRuntimeMode: "auto",
+          worktreeSubmodules: "none",
+          defaultModelSelection: null,
+        },
+      },
+    });
+    expect(withOverrides.projectSettingsOverrides[projectA]).toEqual({
+      defaultRuntimeMode: "auto",
+      worktreeSubmodules: "none",
+      defaultModelSelection: null,
+    });
+
+    // A literal this build does not know decodes to undefined (optional) or
+    // null (nullable) instead of failing the whole settings read.
+    const fromTheFuture = decodeServerSettings({
+      worktreeSubmodules: "shallow-future-mode",
+      projectSettingsOverrides: {
+        "project-1": { worktreeSubmodules: "shallow-future-mode" },
+      },
+    });
+    expect(fromTheFuture.worktreeSubmodules).toBeNull();
+    expect(fromTheFuture.projectSettingsOverrides[projectA]?.worktreeSubmodules).toBeUndefined();
+
+    const patch = decodeServerSettingsPatch({
+      defaultRuntimeMode: "auto-accept-edits",
+      worktreeSubmodules: "top-level",
+      projectSettingsOverrides: {
+        "project-1": { defaultRuntimeMode: "full-access" },
+        "project-2": null,
+      },
+    });
+    expect(patch.defaultRuntimeMode).toBe("auto-accept-edits");
+    expect(patch.worktreeSubmodules).toBe("top-level");
+    expect(patch.projectSettingsOverrides?.[projectB]).toBeNull();
+    expect(decodeServerSettingsPatch({}).projectSettingsOverrides).toBeUndefined();
   });
 
   it("defaults text generation to Luna at low reasoning effort", () => {

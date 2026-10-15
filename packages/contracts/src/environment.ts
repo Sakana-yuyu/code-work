@@ -26,6 +26,18 @@ export const ExecutionEnvironmentPlatform = Schema.Struct({
  */
 export const ThreadEnvMode = Schema.Literals(["local", "worktree"]);
 export type ThreadEnvMode = typeof ThreadEnvMode.Type;
+
+/**
+ * How deeply a newly created worktree initializes git submodules.
+ *
+ * - `"recursive"`: initialize every declared submodule, including nested ones.
+ * - `"top-level"`: initialize only the submodules declared at the worktree
+ *   root; nested submodule directories stay empty.
+ * - `"none"`: leave all submodules empty so repository setup scripts can
+ *   decide what to populate.
+ */
+export const WorktreeSubmodules = Schema.Literals(["recursive", "top-level", "none"]);
+export type WorktreeSubmodules = typeof WorktreeSubmodules.Type;
 export type ExecutionEnvironmentPlatform = typeof ExecutionEnvironmentPlatform.Type;
 
 /** How a server can replace itself with another version when asked over RPC.

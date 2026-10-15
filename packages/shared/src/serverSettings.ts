@@ -133,6 +133,9 @@ export function applyServerSettingsPatch(
     backgroundActivityProfile,
     backgroundActivity,
     multicaProviderInstancePreconditions: _multicaProviderInstancePreconditions,
+    // `null` entries are delete markers, not partial overrides — keep them
+    // out of deepMerge; the explicit merge below owns this key.
+    projectSettingsOverrides,
     ...patchForMerge
   } = patch;
   const currentBackgroundActivity = normalizeServerBackgroundActivitySettings(current);
@@ -224,6 +227,26 @@ export function applyServerSettingsPatch(
       : {}),
     ...(patch.providerInstances !== undefined
       ? { providerInstances: patch.providerInstances }
+      : {}),
+    ...(projectSettingsOverrides !== undefined
+      ? {
+          // Per-project entries replace wholesale; `null` removes a project's
+          // overrides entirely. deepMerge would resurrect keys a client meant
+          // to drop, so this cannot ride the generic merge.
+          projectSettingsOverrides: Object.fromEntries(
+            (() => {
+              const merged = new Map(Object.entries(current.projectSettingsOverrides));
+              for (const [projectId, entry] of Object.entries(projectSettingsOverrides)) {
+                if (entry === null) {
+                  merged.delete(projectId);
+                } else {
+                  merged.set(projectId, entry);
+                }
+              }
+              return merged;
+            })(),
+          ),
+        }
       : {}),
     ...(patch.mcpServers !== undefined ? { mcpServers: patch.mcpServers } : {}),
     ...(patch.sourceControlWriterModelSelection !== undefined

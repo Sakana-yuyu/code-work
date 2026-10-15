@@ -26,9 +26,12 @@ import {
   type ReviewDiffPreviewSource,
   type VcsRef,
 } from "@codework/contracts";
+import { CODEWORK_PROJECT_FILE_NAME } from "@codework/contracts";
+import { parseCodeworkProjectFile } from "@codework/shared/codeworkProjectFile";
 import { dedupeRemoteBranchesWithLocalMatches, normalizeGitRemoteUrl } from "@codework/shared/git";
 import { compactTraceAttributes } from "@codework/shared/observability";
 import { isCodeworkCanvasArtifactPath } from "@codework/shared/path";
+import { resolveProjectFileBackedSetting } from "@codework/shared/projectSettings";
 import { decodeJsonResult } from "@codework/shared/schemaJson";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observability/Metrics.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
@@ -2849,19 +2852,38 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       .exists(path.join(worktreePath, ".gitmodules"))
       .pipe(Effect.orElseSucceed(() => false));
     if (hasSubmodules) {
-      yield* runGit("GitVcsDriver.createWorktree.updateSubmodules", worktreePath, [
-        "submodule",
-        "update",
-        "--init",
-        "--recursive",
-      ]).pipe(
-        Effect.catch((cause) =>
-          Effect.logWarning("worktree submodule checkout failed; submodule paths are empty", {
-            worktreePath,
-            cause,
-          }),
-        ),
-      );
+      // Resolve project override → the worktree's own checked-out t3.json →
+      // the environment value → "recursive". Reading the file from the
+      // worktree (not `input.cwd`) honors the branch being checked out.
+      const projectFile = yield* fileSystem
+        .readFileString(path.join(worktreePath, CODEWORK_PROJECT_FILE_NAME))
+        .pipe(
+          Effect.map((contents) => parseCodeworkProjectFile(contents)),
+          Effect.orElseSucceed(() => null),
+        );
+      const submodules = resolveProjectFileBackedSetting(
+        "worktreeSubmodules",
+        {
+          project: input.submodules?.project ?? null,
+          environment: input.submodules?.environment ?? null,
+        },
+        projectFile,
+      ).value;
+      if (submodules !== "none") {
+        yield* runGit("GitVcsDriver.createWorktree.updateSubmodules", worktreePath, [
+          "submodule",
+          "update",
+          "--init",
+          ...(submodules === "recursive" ? ["--recursive"] : []),
+        ]).pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("worktree submodule checkout failed; submodule paths are empty", {
+              worktreePath,
+              cause,
+            }),
+          ),
+        );
+      }
     }
 
     if (input.newRefName && input.baseRefName) {

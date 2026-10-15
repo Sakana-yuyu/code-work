@@ -4,8 +4,15 @@ A permission mode controls how much the agent does on its own and when it stops 
 
 The mode is set per thread, from the mode control in the message composer. Changing it in one
 thread does not change any other thread. A thread created from inside another thread keeps that
-thread's mode; otherwise new threads start in **Full access** unless you pick something else
-before sending.
+thread's mode; otherwise new threads start in the configured default permission mode — **Full
+access** until you change it — or whatever you pick before sending.
+
+## Defaults
+
+Settings → General → **Default permissions** sets the mode every new thread starts in. A project
+can override it: Settings → Projects → select a project → **Default permissions** picks a mode for
+threads created in that project while leaving the global default untouched. The project entry's
+"Default" choice follows the global setting again.
 
 ## The Modes
 

@@ -2,6 +2,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { StaticScreenProps } from "@react-navigation/native";
 import {
   CODEWORK_PROJECT_FILE_NAME,
+  DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
   MAX_SCRIPT_ID_LENGTH,
   SCRIPT_RUN_COMMAND_PATTERN,
@@ -13,10 +14,16 @@ import {
   type ProjectScriptIcon,
   type ProjectReadFileResult,
   type ResolvedKeybindingsConfig,
+  type RuntimeMode,
   type ThreadEnvMode,
+  type WorktreeSubmodules,
 } from "@codework/contracts";
 import { parseCodeworkProjectFile } from "@codework/shared/codeworkProjectFile";
 import { parseKeybindingShortcut, shortcutToKeybindingInput } from "@codework/shared/keybindings";
+import {
+  hasAnyProjectSettingsOverride,
+  withProjectSettingsOverride,
+} from "@codework/shared/projectSettings";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Alert, Platform, Pressable, ScrollView, Switch, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -101,6 +108,76 @@ const WORKSPACE_MODE_OPTIONS: ReadonlyArray<{
   },
 ];
 
+const RUNTIME_MODE_OPTIONS: ReadonlyArray<{
+  readonly id: string;
+  readonly value: RuntimeMode | null;
+  readonly labelKey: string;
+  readonly descriptionKey: string;
+}> = [
+  {
+    id: "inherit",
+    value: null,
+    labelKey: "projectSettingsMobile.inheritPermissions",
+    descriptionKey: "projectSettingsMobile.inheritPermissionsDescription",
+  },
+  {
+    id: "approval-required",
+    value: "approval-required",
+    labelKey: "chat.supervised",
+    descriptionKey: "chat.supervisedDescription",
+  },
+  {
+    id: "auto-accept-edits",
+    value: "auto-accept-edits",
+    labelKey: "chat.autoAcceptEdits",
+    descriptionKey: "chat.autoAcceptEditsDescription",
+  },
+  {
+    id: "auto",
+    value: "auto",
+    labelKey: "chat.auto",
+    descriptionKey: "chat.autoDescription",
+  },
+  {
+    id: "full-access",
+    value: "full-access",
+    labelKey: "chat.fullAccess",
+    descriptionKey: "chat.fullAccessDescription",
+  },
+];
+
+const WORKTREE_SUBMODULES_OPTIONS: ReadonlyArray<{
+  readonly id: string;
+  readonly value: WorktreeSubmodules | null;
+  readonly labelKey: string;
+  readonly descriptionKey: string;
+}> = [
+  {
+    id: "inherit",
+    value: null,
+    labelKey: "projectSettingsMobile.inheritSubmodules",
+    descriptionKey: "projectSettingsMobile.inheritSubmodulesDescription",
+  },
+  {
+    id: "recursive",
+    value: "recursive",
+    labelKey: "projectSettingsMobile.submodulesRecursive",
+    descriptionKey: "projectSettingsMobile.submodulesRecursiveDescription",
+  },
+  {
+    id: "top-level",
+    value: "top-level",
+    labelKey: "projectSettingsMobile.submodulesTopLevel",
+    descriptionKey: "projectSettingsMobile.submodulesTopLevelDescription",
+  },
+  {
+    id: "none",
+    value: "none",
+    labelKey: "projectSettingsMobile.submodulesNone",
+    descriptionKey: "projectSettingsMobile.submodulesNoneDescription",
+  },
+];
+
 function upsertProjectScript(
   scripts: ReadonlyArray<ProjectScript>,
   nextScript: ProjectScript,
@@ -143,6 +220,9 @@ export function ProjectSettingsRouteScreen(props: ProjectSettingsRouteProps) {
   const project = useProject({ environmentId, projectId });
   const serverConfig = useEnvironmentServerConfig(environmentId);
   const updateProject = useAtomCommand(projectEnvironment.update, { reportFailure: false });
+  const saveSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    reportFailure: false,
+  });
   const deleteProject = useAtomCommand(projectEnvironment.delete, { reportFailure: false });
   const upsertKeybinding = useAtomCommand(serverEnvironment.upsertKeybinding, {
     reportFailure: false,
@@ -181,6 +261,11 @@ export function ProjectSettingsRouteScreen(props: ProjectSettingsRouteProps) {
     ? `${project.defaultModelSelection.instanceId}:${project.defaultModelSelection.model}`
     : null;
   const currentWorkspaceMode = project?.defaultThreadEnvMode ?? null;
+  const settings = serverConfig?.settings ?? DEFAULT_SERVER_SETTINGS;
+  const overrideEntry =
+    project === null ? undefined : settings.projectSettingsOverrides[project.id];
+  const currentRuntimeMode = overrideEntry?.defaultRuntimeMode ?? null;
+  const currentSubmodules = overrideEntry?.worktreeSubmodules ?? null;
   const projectFileScripts = useMemo(() => {
     const data = projectFileQuery.data as ProjectReadFileResult | null;
     if (data === null || data.truncated) return [] as ReadonlyArray<CodeworkProjectFileScript>;
@@ -220,6 +305,44 @@ export function ProjectSettingsRouteScreen(props: ProjectSettingsRouteProps) {
     }
     setNotice(t("projectSettingsMobile.saved"));
     return true;
+  };
+
+  // Project-scoped server settings live in `projectSettingsOverrides` on the
+  // owning environment's settings — the same store the web/desktop panel
+  // writes. An entry replaces wholesale; removing its last key deletes it.
+  const saveSettingOverride = async (
+    key: "defaultRuntimeMode" | "worktreeSubmodules",
+    value: RuntimeMode | WorktreeSubmodules | null,
+  ) => {
+    if (project === null) return;
+    setPendingAction(key);
+    setError(null);
+    setNotice(null);
+    const nextEntry = withProjectSettingsOverride(
+      settings?.projectSettingsOverrides[project.id] ?? {},
+      key,
+      value,
+    );
+    const hasValues = hasAnyProjectSettingsOverride(nextEntry);
+    const result = await saveSettings({
+      environmentId,
+      input: {
+        patch: {
+          projectSettingsOverrides: { [project.id]: hasValues ? nextEntry : null },
+        },
+      },
+    });
+    setPendingAction(null);
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        setError(
+          failure instanceof Error ? failure.message : t("projectSettingsMobile.saveFailed"),
+        );
+      }
+      return;
+    }
+    setNotice(t("projectSettingsMobile.saved"));
   };
 
   const saveTitle = () => {
@@ -549,6 +672,46 @@ export function ProjectSettingsRouteScreen(props: ProjectSettingsRouteProps) {
                 onSelect={(id) => {
                   const option = WORKSPACE_MODE_OPTIONS.find((candidate) => candidate.id === id);
                   if (option) void saveProject("workspace", { defaultThreadEnvMode: option.value });
+                }}
+              />
+            </SettingsSection>
+
+            <SettingsSection title={t("projectSettingsMobile.defaultPermissions")} card>
+              <ChoiceList
+                values={RUNTIME_MODE_OPTIONS.map((option) => ({
+                  id: option.id,
+                  label: t(option.labelKey),
+                  detail: t(option.descriptionKey),
+                }))}
+                selectedId={
+                  RUNTIME_MODE_OPTIONS.find((option) => option.value === currentRuntimeMode)?.id ??
+                  "inherit"
+                }
+                disabled={pendingAction !== null}
+                onSelect={(id) => {
+                  const option = RUNTIME_MODE_OPTIONS.find((candidate) => candidate.id === id);
+                  if (option) void saveSettingOverride("defaultRuntimeMode", option.value);
+                }}
+              />
+            </SettingsSection>
+
+            <SettingsSection title={t("projectSettingsMobile.worktreeSubmodules")} card>
+              <ChoiceList
+                values={WORKTREE_SUBMODULES_OPTIONS.map((option) => ({
+                  id: option.id,
+                  label: t(option.labelKey),
+                  detail: t(option.descriptionKey),
+                }))}
+                selectedId={
+                  WORKTREE_SUBMODULES_OPTIONS.find((option) => option.value === currentSubmodules)
+                    ?.id ?? "inherit"
+                }
+                disabled={pendingAction !== null}
+                onSelect={(id) => {
+                  const option = WORKTREE_SUBMODULES_OPTIONS.find(
+                    (candidate) => candidate.id === id,
+                  );
+                  if (option) void saveSettingOverride("worktreeSubmodules", option.value);
                 }}
               />
             </SettingsSection>

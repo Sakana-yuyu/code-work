@@ -4,6 +4,7 @@ import {
   LocalAccountId,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ProjectId,
   type ServerProvider,
 } from "@codework/contracts";
 import * as Duration from "effect/Duration";
@@ -614,5 +615,48 @@ describe("serverSettings helpers", () => {
     });
 
     expect(resolved.pauseWhenOnBattery).toBe(false);
+  });
+
+  it("replaces a project's override entry wholesale and deletes it on null", () => {
+    const projectA = "project-a" as ProjectId;
+    const projectB = "project-b" as ProjectId;
+    const seeded = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      projectSettingsOverrides: {
+        [projectA]: { defaultRuntimeMode: "full-access", worktreeSubmodules: "none" },
+      },
+    });
+    expect(seeded.projectSettingsOverrides[projectA]).toEqual({
+      defaultRuntimeMode: "full-access",
+      worktreeSubmodules: "none",
+    });
+
+    // A listed entry replaces wholesale: the omitted key does not survive.
+    const replaced = applyServerSettingsPatch(seeded, {
+      projectSettingsOverrides: {
+        [projectA]: { worktreeSubmodules: "top-level" },
+        [projectB]: { defaultRuntimeMode: "auto" },
+      },
+    });
+    expect(replaced.projectSettingsOverrides[projectA]).toEqual({
+      worktreeSubmodules: "top-level",
+    });
+    expect(replaced.projectSettingsOverrides[projectB]).toEqual({
+      defaultRuntimeMode: "auto",
+    });
+
+    // null deletes only the listed project's entry.
+    const deleted = applyServerSettingsPatch(replaced, {
+      projectSettingsOverrides: { [projectA]: null },
+    });
+    expect(deleted.projectSettingsOverrides[projectA]).toBeUndefined();
+    expect(deleted.projectSettingsOverrides[projectB]).toEqual({
+      defaultRuntimeMode: "auto",
+    });
+
+    // A patch that never mentions the key leaves the map untouched.
+    const untouched = applyServerSettingsPatch(replaced, {
+      defaultRuntimeMode: "auto-accept-edits",
+    });
+    expect(untouched.projectSettingsOverrides).toEqual(replaced.projectSettingsOverrides);
   });
 });

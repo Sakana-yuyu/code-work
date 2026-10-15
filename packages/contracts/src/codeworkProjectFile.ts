@@ -1,7 +1,7 @@
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
-import { ThreadEnvMode } from "./environment.ts";
+import { ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import { ProjectScriptIcon } from "./orchestration.ts";
 
 /** File name of the checked-in Code Work project file, resolved at the workspace root. */
@@ -86,6 +86,12 @@ export const CodeworkProjectFile = Schema.Struct({
         description: "Project scripts shared with everyone who opens this repository in Code Work.",
       })
       .check(Schema.isMaxLength(CODEWORK_PROJECT_FILE_MAX_SCRIPTS)),
+  ),
+  worktreeSubmodules: Schema.optionalKey(
+    WorktreeSubmodules.annotate({
+      description:
+        'How deeply new worktrees initialize git submodules. "recursive" initializes nested submodules too, "top-level" initializes only the declared top-level submodules, and "none" leaves all submodules empty for setup scripts. A project or environment setting overrides this.',
+    }),
   ),
 }).annotate({
   title: "Code Work project file",

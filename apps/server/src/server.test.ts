@@ -125,6 +125,7 @@ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSna
 import { ThreadVisibilityLive } from "./orchestration/Services/ThreadVisibility.ts";
 import { makeSqlitePersistenceLive } from "./persistence/Layers/Sqlite.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
+import { ProjectionProjectRepository } from "./persistence/Services/ProjectionProjects.ts";
 import * as ProviderEventLoggers from "./provider/Layers/ProviderEventLoggers.ts";
 import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
@@ -611,6 +612,16 @@ const buildAppUnderTest = (options?: {
       Layer.provideMerge(vcsDriverRegistryLayer),
       Layer.provideMerge(gitVcsDriverLayer),
       Layer.provideMerge(gitManagerLayer),
+      Layer.provideMerge(
+        Layer.mock(ServerSettings.ServerSettingsService)({
+          getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.mock(ProjectionProjectRepository)({
+          listAll: () => Effect.succeed([]),
+        }),
+      ),
     );
     const vcsProvisioningLayer = VcsProvisioningService.layer.pipe(
       Layer.provide(vcsDriverRegistryLayer),

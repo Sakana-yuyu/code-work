@@ -2,12 +2,14 @@ import { assert, describe, expect, it, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { VcsRepositoryDetectionError } from "@codework/contracts";
+import { DEFAULT_SERVER_SETTINGS, VcsRepositoryDetectionError } from "@codework/contracts";
 
 import * as GitManager from "./GitManager.ts";
 import * as GitWorkflowService from "./GitWorkflowService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
+import { ProjectionProjectRepository } from "../persistence/Services/ProjectionProjects.ts";
+import * as ServerSettings from "../serverSettings.ts";
 
 function makeLayer(input: {
   readonly detect: VcsDriverRegistry.VcsDriverRegistry["Service"]["detect"];
@@ -20,6 +22,16 @@ function makeLayer(input: {
     ),
     Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
     Layer.provide(Layer.mock(GitManager.GitManager)({})),
+    Layer.provide(
+      Layer.mock(ServerSettings.ServerSettingsService)({
+        getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
+      }),
+    ),
+    Layer.provide(
+      Layer.mock(ProjectionProjectRepository)({
+        listAll: () => Effect.succeed([]),
+      }),
+    ),
   );
 }
 
@@ -98,6 +110,16 @@ describe("GitWorkflowService", () => {
           localStatus,
           remoteStatus,
           status,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(ServerSettings.ServerSettingsService)({
+          getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(ProjectionProjectRepository)({
+          listAll: () => Effect.succeed([]),
         }),
       ),
     );

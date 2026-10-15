@@ -2,14 +2,20 @@ import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
-import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
-import { ThreadEnvMode } from "./environment.ts";
+import {
+  ForwardCompatibleNullable,
+  ForwardCompatibleOptional,
+  ProjectId,
+  TrimmedNonEmptyString,
+  TrimmedString,
+} from "./baseSchemas.ts";
+import { ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import {
   DEFAULT_TEXT_GENERATION_MODEL,
   DEFAULT_TEXT_GENERATION_REASONING_EFFORT,
   ProviderOptionSelections,
 } from "./model.ts";
-import { ModelSelection } from "./orchestration.ts";
+import { DEFAULT_RUNTIME_MODE, ModelSelection, RuntimeMode } from "./orchestration.ts";
 import {
   DEFAULT_PREVIEW_APPEARANCE,
   DEFAULT_PREVIEW_ZOOM_FACTOR,
@@ -277,7 +283,50 @@ export const DEFAULT_CLIENT_SETTINGS: ClientSettings = Schema.decodeSync(ClientS
 
 // Moved to environment.ts so orchestration contracts can use it without an
 // import cycle; re-exported here for compatibility with deep imports.
-export { ThreadEnvMode } from "./environment.ts";
+export { ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
+
+/**
+ * Server setting keys a project may override. The project tier lives in
+ * `ServerSettings.projectSettingsOverrides`; the project record's own
+ * `defaultModelSelection`/`defaultThreadEnvMode` fields predate the map and
+ * are folded in by `resolveProjectSettings` as lower-priority project-tier
+ * inputs. File-backed keys (`PROJECT_FILE_BACKED_SETTINGS`) additionally read
+ * the repository's `t3.json` between the project and environment tiers.
+ */
+export const PROJECT_SCOPED_SERVER_SETTING_KEYS = [
+  "defaultModelSelection",
+  "defaultRuntimeMode",
+  "defaultThreadEnvMode",
+  "worktreeSubmodules",
+] as const;
+export type ProjectScopedServerSettingKey = (typeof PROJECT_SCOPED_SERVER_SETTING_KEYS)[number];
+
+/**
+ * One project's overrides. An absent key inherits the environment value;
+ * `null` is a real value where the environment type is nullable (no default
+ * model). Clients writing a project override treat `null` for every other
+ * key as a request to remove the override, so a picker's "Inherit" item and
+ * the row's reset do the same thing.
+ */
+export const ProjectSettingsOverrides = Schema.Struct({
+  defaultModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
+  defaultRuntimeMode: Schema.optionalKey(RuntimeMode),
+  defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
+  worktreeSubmodules: ForwardCompatibleOptional(WorktreeSubmodules),
+} satisfies Record<ProjectScopedServerSettingKey, unknown>);
+export type ProjectSettingsOverrides = typeof ProjectSettingsOverrides.Type;
+
+/**
+ * Whether `null` is a stored override value for this key rather than "unset".
+ */
+export function isNullableProjectSettingsOverride(key: ProjectScopedServerSettingKey): boolean {
+  return NULLABLE_PROJECT_SETTINGS_OVERRIDES.has(key);
+}
+const NULLABLE_PROJECT_SETTINGS_OVERRIDES: ReadonlySet<ProjectScopedServerSettingKey> = new Set<
+  {
+    [K in ProjectScopedServerSettingKey]: null extends ProjectSettingsOverrides[K] ? K : never;
+  }[ProjectScopedServerSettingKey]
+>(["defaultModelSelection"]);
 
 const makeBinaryPathSetting = (fallback: string) =>
   TrimmedString.pipe(
@@ -1252,6 +1301,30 @@ export const ServerSettings = Schema.Struct({
   defaultThreadEnvMode: ThreadEnvMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("local" as const satisfies ThreadEnvMode)),
   ),
+  /**
+   * Permission mode new threads start in when the draft does not carry one
+   * over from the thread being viewed. Per-project override via
+   * `projectSettingsOverrides` (`defaultRuntimeMode`).
+   */
+  defaultRuntimeMode: RuntimeMode.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE)),
+  ),
+  /**
+   * How deeply newly created worktrees initialize git submodules. Null means
+   * inherit: the project's `t3.json` decides, then the built-in "recursive".
+   */
+  worktreeSubmodules: ForwardCompatibleNullable(WorktreeSubmodules).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  /**
+   * Per-project overrides of the keys in `PROJECT_SCOPED_SERVER_SETTING_KEYS`.
+   * The source of truth for project-scoped settings; the project record's
+   * `defaultModelSelection`/`defaultThreadEnvMode` fields remain readable as
+   * legacy-tier inputs that a map entry outranks.
+   */
+  projectSettingsOverrides: Schema.Record(ProjectId, ProjectSettingsOverrides).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   newWorktreesStartFromOrigin: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
@@ -1527,6 +1600,16 @@ export const ServerSettingsPatch = Schema.Struct({
   providerHealthRefreshInterval: Schema.optionalKey(Schema.DurationFromMillis),
   backgroundActivityProfile: Schema.optionalKey(BackgroundActivityProfile),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
+  defaultRuntimeMode: Schema.optionalKey(RuntimeMode),
+  worktreeSubmodules: Schema.optionalKey(Schema.NullOr(WorktreeSubmodules)),
+  /**
+   * Per-project merge, same contract as `providerInstances`: each listed
+   * project id replaces that project's whole override entry, and `null`
+   * removes it. Entries are complete, not key-merged.
+   */
+  projectSettingsOverrides: Schema.optionalKey(
+    Schema.Record(ProjectId, Schema.NullOr(ProjectSettingsOverrides)),
+  ),
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),

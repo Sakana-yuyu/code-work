@@ -316,6 +316,23 @@ export const ja: Record<string, string> = {
   "projectSettingsMobile.worktreeWorkspace": "新しいワークツリー",
   "projectSettingsMobile.worktreeWorkspaceDescription":
     "対応している場合、別の Git ワークツリーで新しいスレッドを開始します。",
+  "projectSettingsMobile.defaultPermissions": "新しいスレッドのデフォルト権限",
+  "projectSettingsMobile.inheritPermissions": "サーバーのデフォルトを使用",
+  "projectSettingsMobile.inheritPermissionsDescription":
+    "新しいスレッドの作成時にサーバー設定に従います。",
+  "projectSettingsMobile.worktreeSubmodules": "ワークツリーのサブモジュール",
+  "projectSettingsMobile.inheritSubmodules": "t3.json またはサーバーのデフォルトを使用",
+  "projectSettingsMobile.inheritSubmodulesDescription":
+    "リポジトリの t3.json を優先し、次にサーバー設定に従います。",
+  "projectSettingsMobile.submodulesRecursive": "再帰",
+  "projectSettingsMobile.submodulesRecursiveDescription":
+    "ネストされたものを含むすべてのサブモジュールを初期化します。",
+  "projectSettingsMobile.submodulesTopLevel": "トップレベルのみ",
+  "projectSettingsMobile.submodulesTopLevelDescription":
+    "ワークツリーのルートで宣言されたサブモジュールのみを初期化します。",
+  "projectSettingsMobile.submodulesNone": "なし",
+  "projectSettingsMobile.submodulesNoneDescription":
+    "すべてのサブモジュールを空のままにし、セットアップスクリプトに任せます。",
   "projectSettingsMobile.scripts": "プロジェクトスクリプト",
   "projectSettingsMobile.noScripts": "このプロジェクトには保存されたスクリプトがありません。",
   "projectSettingsMobile.importScripts": "t3.json からのスクリプト",

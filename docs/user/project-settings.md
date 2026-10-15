@@ -14,3 +14,21 @@ Code Work supports SVG, PNG, ICO, JPEG, GIF, AVIF, and WebP files. The selected 
 each checkout in the project group and appears on your connected clients.
 
 To use automatic detection again, select **Automatic**.
+
+# Project defaults
+
+Settings → Projects → select a project also controls what new threads in that project start
+with:
+
+- **Default model** — the provider model new threads use before you pick one in the composer.
+- **New-thread workspace** — whether threads start in the project's current checkout or a new
+  Git worktree.
+- **Default permissions** — the permission mode new threads start in, overriding the global
+  default under Settings → General.
+- **Worktree submodules** — how deeply a new worktree initializes git submodules: recursive,
+  top-level only, or none (left for setup scripts).
+
+Each project setting can be left on its "Default" choice, which inherits the server-wide value —
+or, for workspace mode and submodules, the value declared in the repository's `t3.json` file
+(`defaultThreadEnvMode` and `worktreeSubmodules`), so a checked-in default follows every checkout
+of the project.

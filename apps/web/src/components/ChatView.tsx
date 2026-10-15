@@ -59,6 +59,7 @@ import {
 } from "@codework/shared/model";
 import { CHAT_LIST_ANCHOR_OFFSET } from "@codework/shared/chatList";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@codework/shared/projectScripts";
+import { resolveProjectModelSelection } from "@codework/shared/projectSettings";
 import { truncate } from "@codework/shared/String";
 import {
   getTerminalLabel,
@@ -1707,10 +1708,14 @@ function ChatViewContent(props: ChatViewProps) {
         ? buildLocalDraftThread(
             threadId,
             draftThread,
-            fallbackDraftProject?.defaultModelSelection ?? NO_PROVIDER_MODEL_SELECTION,
+            resolveProjectModelSelection(
+              settings,
+              fallbackDraftProject?.id ?? null,
+              fallbackDraftProject,
+            ) ?? NO_PROVIDER_MODEL_SELECTION,
           )
         : undefined,
-    [draftThread, fallbackDraftProject?.defaultModelSelection, threadId],
+    [draftThread, fallbackDraftProject, settings, threadId],
   );
   // Promotion is data-driven: the draft route keeps rendering while the
   // server thread (same pre-allocated ref) starts, so live state must not
@@ -1943,6 +1948,11 @@ function ChatViewContent(props: ChatViewProps) {
     [activeThread?.environmentId, activeThread?.projectId],
   );
   const activeProject = useProject(activeProjectRef);
+  // The overrides map outranks the record field; a stored null stays null.
+  const activeProjectModelSelection = useMemo(
+    () => resolveProjectModelSelection(settings, activeProject?.id ?? null, activeProject),
+    [settings, activeProject],
+  );
   const handleNewThreadInActiveProject = useCallback(() => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
   }, [activeProjectRef, handleNewThread]);
@@ -2229,9 +2239,7 @@ function ChatViewContent(props: ChatViewProps) {
 
   const selectedProviderByThreadId = composerActiveProvider ?? null;
   const threadProvider =
-    activeThread?.modelSelection.instanceId ??
-    activeProject?.defaultModelSelection?.instanceId ??
-    null;
+    activeThread?.modelSelection.instanceId ?? activeProjectModelSelection?.instanceId ?? null;
   const lockedProvider = deriveLockedProvider({
     thread: activeThread,
     selectedProvider: selectedProviderByThreadId,
@@ -3060,7 +3068,7 @@ function ChatViewContent(props: ChatViewProps) {
     selectedProviderInstanceId ??
     activeThread?.session?.providerInstanceId ??
     activeThread?.modelSelection.instanceId ??
-    activeProject?.defaultModelSelection?.instanceId ??
+    activeProjectModelSelection?.instanceId ??
     null;
   const compactionProviderAvailable = useMemo(
     () =>
@@ -6576,7 +6584,7 @@ function ChatViewContent(props: ChatViewProps) {
     const title = truncate(titleSeed);
     const threadCreateModelSelection = createModelSelection(
       ctxSelectedModelSelection.instanceId,
-      ctxSelectedModel || activeProject.defaultModelSelection?.model || DEFAULT_MODEL,
+      ctxSelectedModel || activeProjectModelSelection?.model || DEFAULT_MODEL,
       ctxSelectedModelSelection.options,
     );
 
@@ -8468,9 +8476,7 @@ function ChatViewContent(props: ChatViewProps) {
                             interactionMode={interactionMode}
                             lockedProvider={lockedProvider}
                             providerStatuses={providerStatuses as ServerProvider[]}
-                            activeProjectDefaultModelSelection={
-                              activeProject?.defaultModelSelection
-                            }
+                            activeProjectDefaultModelSelection={activeProjectModelSelection}
                             activeThreadModelSelection={activeThread?.modelSelection}
                             activeContextWindow={activeContextWindow}
                             compactDisabled={compactDisabled}

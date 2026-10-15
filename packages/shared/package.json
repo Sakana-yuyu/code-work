@@ -115,6 +115,10 @@
       "types": "./src/threadEnvMode.ts",
       "import": "./src/threadEnvMode.ts"
     },
+    "./projectSettings": {
+      "types": "./src/projectSettings.ts",
+      "import": "./src/projectSettings.ts"
+    },
     "./codeworkProjectFile": {
       "types": "./src/codeworkProjectFile.ts",
       "import": "./src/codeworkProjectFile.ts"

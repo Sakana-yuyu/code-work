@@ -58,4 +58,12 @@ describe("CodeworkProjectFile", () => {
     expect(decode({ defaultThreadEnvMode: "local" }).defaultThreadEnvMode).toBe("local");
     expect(() => decode({ defaultThreadEnvMode: "remote" })).toThrow();
   });
+
+  it("decodes worktreeSubmodules and rejects unknown modes", () => {
+    expect(decode({ worktreeSubmodules: "recursive" }).worktreeSubmodules).toBe("recursive");
+    expect(decode({ worktreeSubmodules: "top-level" }).worktreeSubmodules).toBe("top-level");
+    expect(decode({ worktreeSubmodules: "none" }).worktreeSubmodules).toBe("none");
+    expect(decode({}).worktreeSubmodules).toBeUndefined();
+    expect(() => decode({ worktreeSubmodules: "all" })).toThrow();
+  });
 });

@@ -18,9 +18,17 @@ import type {
   ProviderDriverKind,
   SidebarProjectGroupingMode,
   CodeworkProjectFileScript,
+  RuntimeMode,
   ThreadEnvMode,
+  WorktreeSubmodules,
 } from "@codework/contracts";
+import { DEFAULT_SERVER_SETTINGS } from "@codework/contracts";
 import { resolveEnvModeLabel } from "../BranchToolbar.logic";
+import {
+  hasAnyProjectSettingsOverride,
+  resolveProjectSettings,
+  withProjectSettingsOverride,
+} from "@codework/shared/projectSettings";
 import { createModelSelection } from "@codework/shared/model";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@codework/shared/keybindings";
 import { useCanGoBack, useNavigate } from "@tanstack/react-router";
@@ -48,6 +56,7 @@ import { shortcutLabelForCommand } from "../../keybindings";
 import { keybindingValueForCommand } from "../../lib/projectScriptKeybindings";
 import { releaseProjectDraftUploads } from "../../lib/composerDraftUploads";
 import { readLocalApi } from "../../localApi";
+import { appAtomRegistry } from "../../rpc/atomRegistry";
 import {
   buildProjectScript,
   commandForProjectScript,
@@ -115,6 +124,25 @@ import {
 } from "./ProjectFaviconPickerDialog";
 import { t } from "~/i18n";
 import { projectGroupTitleNeedsUpdate } from "./ProjectSettingsPanel.logic";
+
+const RUNTIME_MODE_LABEL_KEYS: Record<RuntimeMode, string> = {
+  "approval-required": "chat.supervised",
+  "auto-accept-edits": "chat.autoAcceptEdits",
+  auto: "chat.auto",
+  "full-access": "chat.fullAccess",
+};
+
+const WORKTREE_SUBMODULES_LABEL_KEYS: Record<WorktreeSubmodules, string> = {
+  recursive: "projectSettings.submodulesRecursive",
+  "top-level": "projectSettings.submodulesTopLevel",
+  none: "projectSettings.submodulesNone",
+};
+
+const PROJECT_SETTING_SOURCE_LABEL_KEYS = {
+  "t3.json": "projectSettings.source.t3Json",
+  global: "projectSettings.source.global",
+  builtIn: "projectSettings.source.builtIn",
+} as const;
 
 export const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   get repository() {
@@ -462,6 +490,63 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
     [updateAllMembers],
   );
 
+  // ----- project-scoped server settings -----
+  // Overrides live in `ServerSettings.projectSettingsOverrides` of the
+  // member's owning environment, so an edit fans out per environment the
+  // same way `updateAllMembers` does for record fields. Each entry replaces
+  // wholesale; removing the last key deletes the entry.
+  const persistEnvironmentSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    reportFailure: false,
+  });
+  const representativeEnvSettings = useAtomValue(
+    serverEnvironment.settingsValueAtom(representative.environmentId),
+  );
+  const overrideEntry = representativeEnvSettings?.projectSettingsOverrides[representative.id];
+  const updateProjectSettingOverride = useCallback(
+    async (
+      key: "defaultRuntimeMode" | "worktreeSubmodules",
+      value: RuntimeMode | WorktreeSubmodules | null,
+      failureTitle: string,
+    ): Promise<AtomCommandResult<void, unknown>> => {
+      for (const member of group.memberProjects) {
+        const memberSettings =
+          appAtomRegistry.get(serverEnvironment.settingsValueAtom(member.environmentId)) ??
+          DEFAULT_SERVER_SETTINGS;
+        const nextEntry = withProjectSettingsOverride(
+          memberSettings.projectSettingsOverrides[member.id] ?? {},
+          key,
+          value,
+        );
+        const hasValues = hasAnyProjectSettingsOverride(nextEntry);
+        const result = mapAtomCommandResult(
+          await persistEnvironmentSettings({
+            environmentId: member.environmentId,
+            input: {
+              patch: {
+                projectSettingsOverrides: { [member.id]: hasValues ? nextEntry : null },
+              },
+            },
+          }),
+          () => undefined,
+        );
+        if (result._tag === "Failure") {
+          reportFailure(
+            group.memberProjects.length > 1
+              ? t("projectSettings.failureOnEnvironment", {
+                  message: failureTitle,
+                  environment:
+                    member.environmentLabel ?? t("projectSettings.theCurrentEnvironment"),
+                })
+              : failureTitle,
+            result,
+          );
+          return result;
+        }
+      }
+      return AsyncResult.success(undefined);
+    },
+    [group.memberProjects, persistEnvironmentSettings, reportFailure],
+  );
   // ----- favicon -----
   const [faviconPickerOpen, setFaviconPickerOpen] = useState(false);
   const [isSavingFavicon, setIsSavingFavicon] = useState(false);
@@ -505,6 +590,24 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   const inheritedEnvMode = codeworkFile.file?.defaultThreadEnvMode ?? settings.defaultThreadEnvMode;
   const inheritedEnvModeSource =
     codeworkFile.file?.defaultThreadEnvMode != null ? "t3.json" : "global";
+  const storedRuntimeMode = overrideEntry?.defaultRuntimeMode ?? null;
+  const storedSubmodules = overrideEntry?.worktreeSubmodules ?? null;
+  // The shared resolver owns the precedence chain; the panel only needs the
+  // folded value and its source for the "inherit" labels.
+  const resolvedProjectSettings = resolveProjectSettings(
+    representativeEnvSettings ?? DEFAULT_SERVER_SETTINGS,
+    representative.id,
+    representative,
+    codeworkFile.file ?? null,
+  );
+  const inheritedRuntimeMode = resolvedProjectSettings.values.defaultRuntimeMode;
+  const inheritedSubmodules = resolvedProjectSettings.values.worktreeSubmodules;
+  const inheritedSubmodulesSource =
+    resolvedProjectSettings.sources.worktreeSubmodules === "t3.json"
+      ? "t3.json"
+      : representativeEnvSettings?.worktreeSubmodules != null
+        ? "global"
+        : "builtIn";
   const importableScripts = useMemo(
     () =>
       codeworkFile.scripts.filter(
@@ -953,6 +1056,137 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   </SelectItem>
                   <SelectItem value="worktree">{resolveEnvModeLabel("worktree")}</SelectItem>
                   <SelectItem value="local">{resolveEnvModeLabel("local")}</SelectItem>
+                </SelectPopup>
+              </Select>
+            }
+          />
+          <SettingsRow
+            title={t("projectSettings.defaultPermissions")}
+            description={t("projectSettings.defaultPermissionsDescription")}
+            resetAction={
+              storedRuntimeMode !== null ? (
+                <SettingResetButton
+                  label={t("projectSettings.defaultPermissions")}
+                  onClick={() =>
+                    void updateProjectSettingOverride(
+                      "defaultRuntimeMode",
+                      null,
+                      t("projectSettings.failedUpdateDefaultPermissions"),
+                    )
+                  }
+                />
+              ) : null
+            }
+            control={
+              <Select
+                value={storedRuntimeMode ?? "inherit"}
+                onValueChange={(value) => {
+                  const mode = value === "inherit" ? null : (value as RuntimeMode);
+                  void updateProjectSettingOverride(
+                    "defaultRuntimeMode",
+                    mode,
+                    t("projectSettings.failedUpdateDefaultPermissions"),
+                  );
+                }}
+              >
+                <SelectTrigger aria-label={t("projectSettings.defaultPermissions")}>
+                  <SelectValue>
+                    {storedRuntimeMode === null
+                      ? group.memberProjects.length > 1
+                        ? t("defaultPerCheckout")
+                        : t("default4", {
+                            value1: t(RUNTIME_MODE_LABEL_KEYS[inheritedRuntimeMode]).toLowerCase(),
+                          })
+                      : t(RUNTIME_MODE_LABEL_KEYS[storedRuntimeMode])}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem value="inherit">
+                    {group.memberProjects.length > 1
+                      ? t("projectSettings.defaultEachEnvironmentSetting")
+                      : t("default5", {
+                          inheritedEnvModeSource: t(PROJECT_SETTING_SOURCE_LABEL_KEYS.global),
+                          value2: t(RUNTIME_MODE_LABEL_KEYS[inheritedRuntimeMode]).toLowerCase(),
+                        })}
+                  </SelectItem>
+                  {(
+                    [
+                      "approval-required",
+                      "auto-accept-edits",
+                      "auto",
+                      "full-access",
+                    ] as RuntimeMode[]
+                  ).map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {t(RUNTIME_MODE_LABEL_KEYS[mode])}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+            }
+          />
+          <SettingsRow
+            title={t("projectSettings.worktreeSubmodules")}
+            description={t("projectSettings.worktreeSubmodulesDescription")}
+            resetAction={
+              storedSubmodules !== null ? (
+                <SettingResetButton
+                  label={t("projectSettings.worktreeSubmodules")}
+                  onClick={() =>
+                    void updateProjectSettingOverride(
+                      "worktreeSubmodules",
+                      null,
+                      t("projectSettings.failedUpdateWorktreeSubmodules"),
+                    )
+                  }
+                />
+              ) : null
+            }
+            control={
+              <Select
+                value={storedSubmodules ?? "inherit"}
+                onValueChange={(value) => {
+                  const mode = value === "inherit" ? null : (value as WorktreeSubmodules);
+                  void updateProjectSettingOverride(
+                    "worktreeSubmodules",
+                    mode,
+                    t("projectSettings.failedUpdateWorktreeSubmodules"),
+                  );
+                }}
+              >
+                <SelectTrigger aria-label={t("projectSettings.worktreeSubmodules")}>
+                  <SelectValue>
+                    {storedSubmodules === null
+                      ? group.memberProjects.length > 1
+                        ? t("defaultPerCheckout")
+                        : t("default4", {
+                            value1: t(
+                              WORKTREE_SUBMODULES_LABEL_KEYS[inheritedSubmodules],
+                            ).toLowerCase(),
+                          })
+                      : t(WORKTREE_SUBMODULES_LABEL_KEYS[storedSubmodules])}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem value="inherit">
+                    {group.memberProjects.length > 1
+                      ? t("defaultEachCheckoutST3JsonOrGlobalSetting")
+                      : t("default5", {
+                          inheritedEnvModeSource: t(
+                            PROJECT_SETTING_SOURCE_LABEL_KEYS[inheritedSubmodulesSource],
+                          ),
+                          value2: t(
+                            WORKTREE_SUBMODULES_LABEL_KEYS[inheritedSubmodules],
+                          ).toLowerCase(),
+                        })}
+                  </SelectItem>
+                  <SelectItem value="recursive">
+                    {t("projectSettings.submodulesRecursive")}
+                  </SelectItem>
+                  <SelectItem value="top-level">
+                    {t("projectSettings.submodulesTopLevel")}
+                  </SelectItem>
+                  <SelectItem value="none">{t("projectSettings.submodulesNone")}</SelectItem>
                 </SelectPopup>
               </Select>
             }

@@ -290,6 +290,23 @@ export const en: Record<string, string> = {
   "projectSettingsMobile.worktreeWorkspace": "New worktree",
   "projectSettingsMobile.worktreeWorkspaceDescription":
     "Start new threads in a separate Git worktree when supported.",
+  "projectSettingsMobile.defaultPermissions": "Default permissions for new threads",
+  "projectSettingsMobile.inheritPermissions": "Use the server default",
+  "projectSettingsMobile.inheritPermissionsDescription":
+    "Follow the server setting when a new thread is created.",
+  "projectSettingsMobile.worktreeSubmodules": "Worktree submodules",
+  "projectSettingsMobile.inheritSubmodules": "Use t3.json or the server default",
+  "projectSettingsMobile.inheritSubmodulesDescription":
+    "Follow the repository's t3.json, then the server setting.",
+  "projectSettingsMobile.submodulesRecursive": "Recursive",
+  "projectSettingsMobile.submodulesRecursiveDescription":
+    "Initialize every submodule, including nested ones.",
+  "projectSettingsMobile.submodulesTopLevel": "Top-level only",
+  "projectSettingsMobile.submodulesTopLevelDescription":
+    "Initialize only the submodules declared at the worktree root.",
+  "projectSettingsMobile.submodulesNone": "None",
+  "projectSettingsMobile.submodulesNoneDescription":
+    "Leave all submodules empty for setup scripts.",
   "projectSettingsMobile.scripts": "Project scripts",
   "projectSettingsMobile.noScripts": "This project has no saved scripts.",
   "projectSettingsMobile.importScripts": "Scripts from t3.json",
@@ -3025,6 +3042,18 @@ export const zhCN: Record<string, string> = {
   "projectSettingsMobile.localWorkspaceDescription": "在项目当前检出目录中创建新线程。",
   "projectSettingsMobile.worktreeWorkspace": "新建工作树",
   "projectSettingsMobile.worktreeWorkspaceDescription": "在支持时为新线程创建独立 Git 工作树。",
+  "projectSettingsMobile.defaultPermissions": "新线程的默认权限",
+  "projectSettingsMobile.inheritPermissions": "使用服务器默认设置",
+  "projectSettingsMobile.inheritPermissionsDescription": "新建线程时跟随服务器设置。",
+  "projectSettingsMobile.worktreeSubmodules": "工作树子模块",
+  "projectSettingsMobile.inheritSubmodules": "使用 t3.json 或服务器默认设置",
+  "projectSettingsMobile.inheritSubmodulesDescription": "先跟随仓库的 t3.json，再跟随服务器设置。",
+  "projectSettingsMobile.submodulesRecursive": "递归",
+  "projectSettingsMobile.submodulesRecursiveDescription": "初始化所有子模块（含嵌套子模块）。",
+  "projectSettingsMobile.submodulesTopLevel": "仅顶层",
+  "projectSettingsMobile.submodulesTopLevelDescription": "只初始化工作树根目录声明的子模块。",
+  "projectSettingsMobile.submodulesNone": "不初始化",
+  "projectSettingsMobile.submodulesNoneDescription": "保留所有子模块为空，交由初始化脚本处理。",
   "projectSettingsMobile.scripts": "项目脚本",
   "projectSettingsMobile.noScripts": "此项目没有已保存的脚本。",
   "projectSettingsMobile.importScripts": "来自 t3.json 的脚本",

@@ -219,6 +219,17 @@ export const SETTINGS_SEARCH_ITEMS = [
     targetId: "new-threads",
   },
   {
+    id: "worktree-submodules",
+    title: "settings.worktreeSubmodules",
+    to: "/settings/general",
+    targetId: "new-threads",
+  },
+  {
+    id: "default-permissions",
+    title: "settings.defaultPermissions",
+    to: "/settings/general",
+  },
+  {
     id: "add-project-starts-in",
     title: "settings.addProjectStartsIn",
     to: "/settings/general",

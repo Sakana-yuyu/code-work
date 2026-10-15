@@ -23,6 +23,7 @@ import {
   isDefaultThreadEnvModeSettled,
   resolveDefaultThreadEnvMode,
 } from "@codework/shared/threadEnvMode";
+import { resolveProjectRuntimeMode } from "@codework/shared/projectSettings";
 import * as Arr from "effect/Array";
 import { pipe } from "effect/Function";
 
@@ -408,7 +409,13 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     draftStartFromOrigin ??
     selectedEnvironmentServerConfig?.settings.newWorktreesStartFromOrigin ??
     true;
-  const runtimeMode = selectedProjectDraft.runtimeMode ?? DEFAULT_RUNTIME_MODE;
+  const defaultRuntimeMode = selectedEnvironmentServerConfig
+    ? resolveProjectRuntimeMode(
+        selectedEnvironmentServerConfig.settings,
+        selectedProject?.id ?? null,
+      )
+    : DEFAULT_RUNTIME_MODE;
+  const runtimeMode = selectedProjectDraft.runtimeMode ?? defaultRuntimeMode;
   const legacyInteractionMode = planModeEnabled
     ? (selectedProjectDraft.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE)
     : DEFAULT_PROVIDER_INTERACTION_MODE;
@@ -914,7 +921,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
         text,
         attachments: draft.attachments,
         modelSelection: modelSettings.modelSelection,
-        runtimeMode: draft.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+        runtimeMode: draft.runtimeMode ?? defaultRuntimeMode,
         interactionMode: modelSettings.interactionMode,
         creation: {
           projectId: selectedProject.id,

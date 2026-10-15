@@ -30,9 +30,13 @@ import {
   type VcsStatusResult,
 } from "@codework/contracts";
 
+import { normalizeProjectPathForComparison } from "@codework/shared/path";
+
 import * as GitManager from "./GitManager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
+import { ProjectionProjectRepository } from "../persistence/Services/ProjectionProjects.ts";
+import * as ServerSettings from "../serverSettings.ts";
 
 export class GitWorkflowService extends Context.Service<
   GitWorkflowService,
@@ -146,6 +150,38 @@ export const make = Effect.gen(function* () {
   const registry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
+  const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const projects = yield* ProjectionProjectRepository;
+
+  /**
+   * The settings-tier submodule preferences for the checkout being
+   * worktree'd: project override, then environment value. Both null lets the
+   * driver fall through to the new worktree's own `t3.json`, then the
+   * built-in "recursive". Best-effort: a settings or projection read failure
+   * leaves `submodules` unset rather than blocking worktree creation.
+   */
+  const resolveWorktreeSubmodules = Effect.fnUntraced(function* (cwd: string) {
+    const settings = yield* serverSettings.getSettings.pipe(Effect.orElseSucceed(() => null));
+    if (settings === null) return undefined;
+    const normalizedCwd = normalizeProjectPathForComparison(cwd);
+    const projectId = yield* projects.listAll().pipe(
+      Effect.map(
+        (rows) =>
+          rows.find(
+            (row) =>
+              row.deletedAt === null &&
+              normalizeProjectPathForComparison(row.workspaceRoot) === normalizedCwd,
+          )?.projectId ?? null,
+      ),
+      Effect.orElseSucceed(() => null),
+    );
+    const project =
+      projectId === null
+        ? null
+        : (settings.projectSettingsOverrides[projectId]?.worktreeSubmodules ?? null);
+    const environment = settings.worktreeSubmodules;
+    return project === null && environment === null ? undefined : { project, environment };
+  });
 
   const ensureGit = Effect.fn("GitWorkflowService.ensureGit")(function* (
     operation: string,
@@ -313,7 +349,14 @@ export const make = Effect.gen(function* () {
       ),
     createWorktree: (input) =>
       ensureGitCommand("GitWorkflowService.createWorktree", input.cwd).pipe(
-        Effect.andThen(git.createWorktree(input)),
+        Effect.andThen(
+          Effect.gen(function* () {
+            const submodules = input.submodules ?? (yield* resolveWorktreeSubmodules(input.cwd));
+            return yield* git.createWorktree(
+              submodules === undefined ? input : { ...input, submodules },
+            );
+          }),
+        ),
       ),
     fetchRemote: (input) =>
       ensureGitCommand("GitWorkflowService.fetchRemote", input.cwd).pipe(

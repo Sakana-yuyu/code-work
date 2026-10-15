@@ -2157,6 +2157,21 @@ export const make = Effect.gen(function* () {
         cwd: input.cwd,
         refName: localPullRequestBranch,
         path: null,
+        // Best effort: a settings read failure falls back to the checkout's
+        // t3.json, then the built-in "recursive".
+        ...(yield* serverSettingsService.getSettings.pipe(
+          Effect.map((settings) =>
+            settings.worktreeSubmodules === null
+              ? {}
+              : {
+                  submodules: {
+                    project: null,
+                    environment: settings.worktreeSubmodules,
+                  },
+                },
+          ),
+          Effect.orElseSucceed(() => ({}) as const),
+        )),
       });
       yield* ensureExistingWorktreeUpstream(worktree.worktree.path);
       yield* maybeRunSetupScript(worktree.worktree.path);

@@ -122,6 +122,21 @@ describe("searchSettings", () => {
     expect(searchSettings("远程").map((item) => item.id)).toContain("remote-environments");
   });
 
+  it("indexes the new general settings entries", () => {
+    expect(SETTINGS_SEARCH_ITEMS).toContainEqual(
+      expect.objectContaining({
+        id: "worktree-submodules",
+        title: "settings.worktreeSubmodules",
+      }),
+    );
+    expect(SETTINGS_SEARCH_ITEMS).toContainEqual(
+      expect.objectContaining({
+        id: "default-permissions",
+        title: "settings.defaultPermissions",
+      }),
+    );
+  });
+
   it("indexes the Automation Center route", () => {
     expect(SETTINGS_SEARCH_ITEMS).toContainEqual(
       expect.objectContaining({
