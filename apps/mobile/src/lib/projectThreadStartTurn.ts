@@ -2,6 +2,7 @@ import {
   CommandId,
   MessageId,
   ThreadId,
+  type ChatAttachment,
   type ModelSelection,
   type ProjectId,
   type ProviderInteractionMode,
@@ -30,6 +31,8 @@ export interface ProjectThreadStartTurnSpec {
   readonly createdAt: string;
   readonly text: string;
   readonly attachments: ReadonlyArray<DraftComposerImageAttachment>;
+  /** Already-uploaded attachments reused when re-sending a server-owned prompt. */
+  readonly uploadedAttachments?: ReadonlyArray<ChatAttachment>;
   readonly modelSelection: ModelSelection;
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
@@ -58,7 +61,10 @@ export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpe
       messageId: MessageId.make(spec.messageId),
       role: "user" as const,
       text: spec.text,
-      attachments: toUploadChatImageAttachments(spec.attachments),
+      attachments: [
+        ...toUploadChatImageAttachments(spec.attachments),
+        ...(spec.uploadedAttachments ?? []),
+      ],
     },
     modelSelection: spec.modelSelection,
     titleSeed: title,

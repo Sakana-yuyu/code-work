@@ -41,6 +41,7 @@ import {
   parseRemoteRefWithRemoteNames,
 } from "../git/remoteRefs.ts";
 import { ServerConfig } from "../config.ts";
+import { resolveWorktreesDirectory } from "../worktreesDirectory.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 // `git worktree add` checks out the full tree, so on large repositories it can
@@ -155,6 +156,23 @@ interface ExecuteGitOptions {
   maxOutputBytes?: number | undefined;
   appendTruncationMarker?: boolean | undefined;
   progress?: GitVcsDriver.ExecuteGitProgress | undefined;
+}
+
+const GIT_CHECKOUT_PROGRESS_LINE = /Updating files:\s+(\d+)%\s+\((\d+)\/(\d+)\)/;
+
+/** Parses `Updating files:  78% (2104/2700)` from git's stderr progress output. */
+export function parseGitCheckoutProgressLine(
+  line: string,
+): { percent: number; completed: number; total: number } | null {
+  const match = GIT_CHECKOUT_PROGRESS_LINE.exec(line);
+  if (!match) return null;
+  const percent = Number(match[1]);
+  const completed = Number(match[2]);
+  const total = Number(match[3]);
+  if (!Number.isFinite(percent) || !Number.isFinite(completed) || !Number.isFinite(total)) {
+    return null;
+  }
+  return { percent: Math.max(0, Math.min(100, percent)), completed, total };
 }
 
 function parseBranchAb(value: string): { ahead: number; behind: number } {
@@ -2829,19 +2847,63 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
   const createWorktree: GitVcsDriver.GitVcsDriver["Service"]["createWorktree"] = Effect.fn(
     "createWorktree",
-  )(function* (input) {
+  )(function* (input, options) {
     const targetBranch = input.newRefName ?? input.refName;
     const sanitizedBranch = targetBranch.replace(/\//g, "-");
     const repoName = path.basename(input.cwd);
-    const worktreePath = input.path ?? path.join(worktreesDir, repoName, sanitizedBranch);
+    let worktreePath = input.path;
+    if (worktreePath === null) {
+      const parentDir = resolveWorktreesDirectory(
+        options?.worktreesDirectory ?? "",
+        worktreesDir,
+        path,
+      );
+      if (parentDir === null) {
+        return yield* new GitCommandError({
+          operation: "GitVcsDriver.createWorktree",
+          command: "git worktree add",
+          cwd: input.cwd,
+          detail: `The worktree location "${options?.worktreesDirectory}" must be an absolute folder on this machine, not a drive root. Change it in Settings → Storage.`,
+        });
+      }
+      worktreePath = path.join(parentDir, repoName, sanitizedBranch);
+    }
     const args = input.newRefName
       ? ["worktree", "add", "-b", input.newRefName, worktreePath, input.refName]
       : ["worktree", "add", worktreePath, input.refName];
+    const progress = options?.progress;
+    const onCheckoutProgress = progress?.onCheckoutProgress;
 
-    yield* executeGit("GitVcsDriver.createWorktree", input.cwd, args, {
-      fallbackErrorDetail: "git worktree add failed",
-      timeoutMs: WORKTREE_ADD_TIMEOUT_MS,
-    });
+    const checkoutWorkers =
+      (yield* readConfigValue(input.cwd, "checkout.workers").pipe(
+        Effect.orElseSucceed(() => null),
+      )) ?? "0";
+    yield* executeGit(
+      "GitVcsDriver.createWorktree",
+      input.cwd,
+      ["-c", `checkout.workers=${checkoutWorkers}`, ...args],
+      {
+        fallbackErrorDetail: "git worktree add failed",
+        timeoutMs: WORKTREE_ADD_TIMEOUT_MS,
+        ...(onCheckoutProgress
+          ? {
+              // Git only prints checkout progress when stderr is a tty or the
+              // delay elapsed. GIT_PROGRESS_DELAY=0 forces it through the pipe.
+              env: { GIT_PROGRESS_DELAY: "0", LC_ALL: "C" },
+              progress: {
+                onStderrLine: (line) => {
+                  const parsed = parseGitCheckoutProgressLine(line);
+                  return parsed ? onCheckoutProgress(parsed) : Effect.void;
+                },
+              },
+            }
+          : {}),
+      },
+    );
+
+    if (progress?.onWorktreeClaimed) {
+      yield* progress.onWorktreeClaimed(worktreePath);
+    }
 
     // `git worktree add` leaves submodules empty, so a repo that keeps agent
     // skills, tooling or source in one gets a worktree that is quietly missing
@@ -2861,27 +2923,57 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           Effect.map((contents) => parseCodeworkProjectFile(contents)),
           Effect.orElseSucceed(() => null),
         );
-      const submodules = resolveProjectFileBackedSetting(
+      const submoduleMode = resolveProjectFileBackedSetting(
         "worktreeSubmodules",
         {
           project: input.submodules?.project ?? null,
           environment: input.submodules?.environment ?? null,
         },
         projectFile,
-      ).value;
-      if (submodules !== "none") {
-        yield* runGit("GitVcsDriver.createWorktree.updateSubmodules", worktreePath, [
-          "submodule",
-          "update",
-          "--init",
-          ...(submodules === "recursive" ? ["--recursive"] : []),
-        ]).pipe(
-          Effect.catch((cause) =>
-            Effect.logWarning("worktree submodule checkout failed; submodule paths are empty", {
-              worktreePath,
-              cause,
-            }),
-          ),
+      );
+      if (submoduleMode.value === "none" && progress?.onSubmodulesDisabled) {
+        yield* progress.onSubmodulesDisabled({
+          source: submoduleMode.source === "t3.json" ? "t3.json" : "settings",
+        });
+      }
+      if (submoduleMode.value !== "none") {
+        if (progress?.onSubmodulesStarted) {
+          yield* progress.onSubmodulesStarted();
+        }
+        const onSubmoduleLine = progress?.onSubmoduleLine;
+        yield* runGit(
+          "GitVcsDriver.createWorktree.updateSubmodules",
+          worktreePath,
+          [
+            "submodule",
+            "update",
+            "--init",
+            ...(submoduleMode.value === "recursive" ? ["--recursive"] : []),
+          ],
+          onSubmoduleLine
+            ? {
+                env: { LC_ALL: "C" },
+                progress: { onStdoutLine: onSubmoduleLine, onStderrLine: onSubmoduleLine },
+              }
+            : {},
+        ).pipe(
+          Effect.matchEffect({
+            onFailure: (cause) =>
+              Effect.logWarning("worktree submodule checkout failed; submodule paths are empty", {
+                worktreePath,
+                cause,
+              }).pipe(
+                Effect.andThen(
+                  progress?.onSubmodulesFinished
+                    ? progress.onSubmodulesFinished({ ok: false, detail: cause.message })
+                    : Effect.void,
+                ),
+              ),
+            onSuccess: () =>
+              progress?.onSubmodulesFinished
+                ? progress.onSubmodulesFinished({ ok: true, detail: null })
+                : Effect.void,
+          }),
         );
       }
     }

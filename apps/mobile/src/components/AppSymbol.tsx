@@ -18,6 +18,7 @@ import IconBox from "@tabler/icons-react-native/IconBox";
 import IconCamera from "@tabler/icons-react-native/IconCamera";
 import IconChartBar from "@tabler/icons-react-native/IconChartBar";
 import IconCheck from "@tabler/icons-react-native/IconCheck";
+import IconCircle from "@tabler/icons-react-native/IconCircle";
 import IconChevronDown from "@tabler/icons-react-native/IconChevronDown";
 import IconCode from "@tabler/icons-react-native/IconCode";
 import IconChevronLeft from "@tabler/icons-react-native/IconChevronLeft";
@@ -107,6 +108,7 @@ const ANDROID_ICON_BY_SF_SYMBOL: Partial<Record<SFSymbol, Icon>> = {
   "chart.bar.xaxis": IconChartBar,
   checkmark: IconCheck,
   "checkmark.circle": IconCircleCheck,
+  circle: IconCircle,
   clock: IconClock,
   cloud: IconCloud,
   cube: IconBox,
@@ -124,6 +126,7 @@ const ANDROID_ICON_BY_SF_SYMBOL: Partial<Record<SFSymbol, Icon>> = {
   ellipsis: IconDots,
   moon: IconMoon,
   "ellipsis.circle": IconDotsCircleHorizontal,
+  "exclamationmark.circle": IconAlertCircle,
   "exclamationmark.triangle": IconAlertTriangle,
   eye: IconEye,
   folder: IconFolder,
@@ -135,6 +138,7 @@ const ANDROID_ICON_BY_SF_SYMBOL: Partial<Record<SFSymbol, Icon>> = {
   "line.3.horizontal.decrease.circle": IconFilter,
   "line.3.horizontal.decrease.circle.fill": IconFilter,
   magnifyingglass: IconSearch,
+  minus: IconMinus,
   paintbrush: IconPalette,
   "person.crop.circle": IconUserCircle,
   pin: IconPin,

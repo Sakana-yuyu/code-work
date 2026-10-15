@@ -55,6 +55,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeResourceTelemetry
   | typeof WS_METHODS.previewAutomationConnect
   | typeof WS_METHODS.subscribeVcsStatus
+  | typeof WS_METHODS.subscribeWorktreeSetup
   | typeof WS_METHODS.terminalAttach
   | typeof WS_METHODS.sshTerminalAttach;
 

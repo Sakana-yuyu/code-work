@@ -134,6 +134,12 @@ import {
 } from "./provider.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
+  WorktreeSetupCancelInput,
+  WorktreeSetupCancelResult,
+  WorktreeSetupStreamEvent,
+  WorktreeSetupSubscribeInput,
+} from "./worktreeSetup.ts";
+import {
   PullRequestActionInput,
   PullRequestActivity,
   PullRequestCommentInput,
@@ -641,6 +647,8 @@ export const WS_METHODS = {
   subscribeAuthAccess: "subscribeAuthAccess",
   subscribeBackgroundPolicy: "subscribeBackgroundPolicy",
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
+  subscribeWorktreeSetup: "subscribeWorktreeSetup",
+  worktreeSetupCancel: "worktreeSetup.cancel",
 } as const;
 
 export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -1656,6 +1664,19 @@ export const WsGitRunStackedActionRpc = Rpc.make(WS_METHODS.gitRunStackedAction,
   stream: true,
 });
 
+export const WsSubscribeWorktreeSetupRpc = Rpc.make(WS_METHODS.subscribeWorktreeSetup, {
+  payload: WorktreeSetupSubscribeInput,
+  success: WorktreeSetupStreamEvent,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+export const WsWorktreeSetupCancelRpc = Rpc.make(WS_METHODS.worktreeSetupCancel, {
+  payload: WorktreeSetupCancelInput,
+  success: WorktreeSetupCancelResult,
+  error: EnvironmentAuthorizationError,
+});
+
 export const WsGitGenerateCommitMessageRpc = Rpc.make(WS_METHODS.gitGenerateCommitMessage, {
   payload: GitGenerateCommitMessageInput,
   success: GitGenerateCommitMessageResult,
@@ -2289,6 +2310,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,
   WsGitRunStackedActionRpc,
+  WsSubscribeWorktreeSetupRpc,
+  WsWorktreeSetupCancelRpc,
   WsGitGenerateCommitMessageRpc,
   WsGitResolvePullRequestRpc,
   WsGitPreparePullRequestThreadRpc,

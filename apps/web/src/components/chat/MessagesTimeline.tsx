@@ -1,7 +1,9 @@
 import {
   deriveStableCanvasReferences,
+  worktreeSetupAgentStarted,
   type TimelineCanvasReferences,
 } from "./MessagesTimeline.logic";
+import { WorktreeSetupCard } from "./WorktreeSetupCard";
 import {
   type CanvasReference,
   type EnvironmentId,
@@ -12,6 +14,7 @@ import {
   type ThreadCheckpointRevertScope,
   type ThreadId,
   type TurnId,
+  type WorktreeSetupSnapshot,
 } from "@codework/contracts";
 import { parseScopedThreadKey } from "@codework/client-runtime/environment";
 import type { AgentPanelModel } from "@codework/client-runtime/state/subagentRuntime";
@@ -82,6 +85,8 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { Spinner } from "../ui/spinner";
 import { LocalPluginTimelineRow } from "../localPlugins/LocalPluginTimelineRow";
 import type { EnabledLocalPluginTimelineEntry } from "~/localPlugins/adapters/localPluginTimelineAdapter";
 
@@ -183,6 +188,12 @@ interface TimelineRowSharedState {
   onOpenCanvas: (canvas: CanvasReference) => void;
   canvasReferences: ReadonlyArray<CanvasReference>;
   canvasReferencesByTurnId: ReadonlyMap<TurnId, CanvasReference>;
+  /** Interrupts the worktree bootstrap; null when no setup is cancellable. */
+  onCancelWorktreeSetup: (() => void) | null;
+  /** Cancels the bootstrap and resends the message in the project checkout. */
+  onWorktreeSetupWorkLocally: (() => void) | null;
+  /** Reveals the setup script's terminal tab. */
+  onOpenWorktreeSetupTerminal: ((terminalId: string) => void) | null;
 }
 
 interface TimelineRowActivityState {
@@ -191,6 +202,10 @@ interface TimelineRowActivityState {
   latestTurnId: TurnId | null;
   /** Current plan step label for the working row, when the turn has a plan. */
   workingStepLabel: string | null;
+  /** The worktree bootstrap owns the working header's slot. */
+  isPreparingWorktree: boolean;
+  /** Setup still running after the agent took over — shown as a chip. */
+  backgroundWorktreeSetup: WorktreeSetupSnapshot | null;
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
@@ -284,6 +299,11 @@ interface MessagesTimelineProps {
   topFadeEnabled?: boolean;
   /** Non-null when older turns exist beyond the loaded window. */
   loadEarlier?: { readonly loading: boolean; readonly onLoadEarlier: () => void } | null;
+  /** The thread's worktree bootstrap state, while a card should render for it. */
+  worktreeSetup?: WorktreeSetupSnapshot | null;
+  onCancelWorktreeSetup?: (() => void) | null;
+  onWorktreeSetupWorkLocally?: (() => void) | null;
+  onOpenWorktreeSetupTerminal?: ((terminalId: string) => void) | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -327,6 +347,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   hideEmptyPlaceholder = false,
   topFadeEnabled = false,
   loadEarlier = null,
+  worktreeSetup = null,
+  onCancelWorktreeSetup = null,
+  onWorktreeSetupWorkLocally = null,
+  onOpenWorktreeSetupTerminal = null,
 }: MessagesTimelineProps) {
   const responseTextPacing = isTextRevealEnabled(
     useAtomValue(serverEnvironment.configValueAtom(activeThreadEnvironmentId)),
@@ -476,6 +500,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         expandedNarrationGroupIds,
         isWorking,
         activeTurnStartedAt,
+        worktreeSetup,
         turnDiffSummaryByAssistantMessageId,
         revertTurnCountByUserMessageId,
       },
@@ -493,6 +518,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     expandedNarrationGroupIds,
     isWorking,
     activeTurnStartedAt,
+    worktreeSetup,
     turnDiffSummaryByAssistantMessageId,
     revertTurnCountByUserMessageId,
   ]);
@@ -611,6 +637,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onOpenCanvas,
       canvasReferences,
       canvasReferencesByTurnId,
+      onCancelWorktreeSetup,
+      onWorktreeSetupWorkLocally,
+      onOpenWorktreeSetupTerminal,
     }),
     [
       responseTextPacing,
@@ -635,6 +664,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onOpenCanvas,
       canvasReferences,
       canvasReferencesByTurnId,
+      onCancelWorktreeSetup,
+      onWorktreeSetupWorkLocally,
+      onOpenWorktreeSetupTerminal,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -643,8 +675,24 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
       workingStepLabel,
+      isPreparingWorktree:
+        worktreeSetup?.phase === "running" && !worktreeSetupAgentStarted(worktreeSetup),
+      backgroundWorktreeSetup:
+        worktreeSetup !== null &&
+        worktreeSetup.phase === "running" &&
+        worktreeSetupAgentStarted(worktreeSetup) &&
+        latestTurn?.startedAt != null
+          ? worktreeSetup
+          : null,
     }),
-    [isRevertingCheckpoint, isWorking, latestTurn?.turnId, workingStepLabel],
+    [
+      isRevertingCheckpoint,
+      isWorking,
+      latestTurn?.turnId,
+      latestTurn?.startedAt,
+      workingStepLabel,
+      worktreeSetup,
+    ],
   );
 
   // Stable renderItem — no closure deps. Row components read shared state
@@ -1049,6 +1097,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                   row.kind === "work" ||
                   row.kind === "work-live" ||
                   row.kind === "work-toggle" ||
+                  row.kind === "worktree-setup" ||
                   row.kind === "turn-plan" ||
                   row.kind === "reasoning-summary"
                 ? "pb-2"
@@ -1079,6 +1128,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "turn-plan" ? <TurnPlanTimelineRow row={row} /> : null}
       {row.kind === "reasoning-summary" ? <ReasoningSummaryTimelineRow row={row} /> : null}
       {row.kind === "local-plugin-timeline" ? <LocalPluginTimelineRow entry={row.entry} /> : null}
+      {row.kind === "worktree-setup" ? <WorktreeSetupTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
     </div>
   );
@@ -1778,21 +1828,52 @@ const ReasoningSummaryTimelineRow = memo(function ReasoningSummaryTimelineRow({
   );
 });
 
+function WorktreeSetupTimelineRow({
+  row,
+}: {
+  row: Extract<MessagesTimelineRow, { kind: "worktree-setup" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const terminalId = row.snapshot.setupScript?.terminalId ?? null;
+  const openTerminal = ctx.onOpenWorktreeSetupTerminal;
+  const onOpenTerminal = useMemo(
+    () => (openTerminal && terminalId ? () => openTerminal(terminalId) : null),
+    [openTerminal, terminalId],
+  );
+  return (
+    <WorktreeSetupCard
+      snapshot={row.snapshot}
+      embedded={row.embedded}
+      onCancel={row.embedded ? null : ctx.onCancelWorktreeSetup}
+      onWorkLocally={
+        !row.embedded && row.snapshot.phase === "running" ? ctx.onWorktreeSetupWorkLocally : null
+      }
+      onOpenTerminal={onOpenTerminal}
+    />
+  );
+}
+
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
-  const { workingStepLabel } = use(TimelineRowActivityCtx);
+  const { workingStepLabel, isPreparingWorktree, backgroundWorktreeSetup } =
+    use(TimelineRowActivityCtx);
   return (
     <div>
       <div className="border-b border-border/60 pb-2 pt-1">
-        <div className="px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
-          {row.createdAt ? (
+        <div className="flex h-6 min-w-0 items-center gap-2 px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
+          {isPreparingWorktree ? (
+            t("settingUpWorktree")
+          ) : row.createdAt ? (
             <>
               {t("workingFor")} <WorkingTimer createdAt={row.createdAt} />
             </>
           ) : (
             t("working3")
           )}
-          {workingStepLabel ? (
+          {workingStepLabel && !isPreparingWorktree ? (
             <span className="ml-2 text-muted-foreground/55">· {workingStepLabel}</span>
+          ) : null}
+          {backgroundWorktreeSetup ? (
+            <BackgroundWorktreeSetupChip snapshot={backgroundWorktreeSetup} />
           ) : null}
         </div>
       </div>
@@ -1802,6 +1883,49 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Trailing chip in the working header while a setup script still runs after
+ * the agent started. Opens the stage list and live output in a popover; the
+ * chip leaves with the script, so nothing lingers in the timeline.
+ */
+function BackgroundWorktreeSetupChip({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
+  const ctx = use(TimelineRowCtx);
+  const terminalId = snapshot.setupScript?.terminalId ?? null;
+  const openTerminal = ctx.onOpenWorktreeSetupTerminal;
+  const onOpenTerminal = useMemo(
+    () => (openTerminal && terminalId ? () => openTerminal(terminalId) : null),
+    [openTerminal, terminalId],
+  );
+  const scriptName = snapshot.setupScript?.name ?? t("worktreeSetup.scriptFallback");
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost-muted"
+            size="xs"
+            className="ml-auto min-w-0 shrink-0"
+            aria-label={t("worktreeSetup.chipAriaLabel", { name: scriptName })}
+          />
+        }
+      >
+        <Spinner className="size-3 shrink-0" />
+        <span className="truncate">{scriptName}</span>
+      </PopoverTrigger>
+      <PopoverPopup side="bottom" align="end" className="w-[28rem] max-w-[calc(100vw-2rem)] p-2">
+        <WorktreeSetupCard
+          snapshot={snapshot}
+          embedded
+          onCancel={null}
+          onWorkLocally={null}
+          onOpenTerminal={onOpenTerminal}
+        />
+      </PopoverPopup>
+    </Popover>
   );
 }
 

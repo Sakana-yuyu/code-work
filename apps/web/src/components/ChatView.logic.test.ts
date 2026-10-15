@@ -10,6 +10,7 @@ import {
   ProviderInstanceId,
   ThreadId,
   TurnId,
+  type WorktreeSetupSnapshot,
 } from "@codework/contracts";
 import { DEFAULT_UNIFIED_SETTINGS } from "@codework/contracts/settings";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -28,6 +29,7 @@ import {
   deriveLockedProvider,
   dismissBranchMismatchForSession,
   ENVIRONMENT_RECONNECT_WARNING_GRACE_MS,
+  findRecordedWorktreeSetup,
   getStartedThreadModelChangeBlockReason,
   hasEnvironmentReconnectWarningGraceElapsed,
   hasServerAcknowledgedLocalDispatch,
@@ -39,6 +41,8 @@ import {
   resolveDraftPromotionNavigationTarget,
   resolveQueuedMessageGuard,
   resolveVisibleQueuedMessages,
+  resolveVisibleWorktreeSetup,
+  resolveWorktreeSetupProgress,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   resolveDraftHeroState,
@@ -1201,5 +1205,166 @@ describe("resolveCompactBeforeSend", () => {
 
   it("does not compact goal-only turns", () => {
     expect(resolveCompactBeforeSend({ ...base, goalOnlyTurn: true })).toBe(false);
+  });
+});
+
+describe("worktree setup visibility", () => {
+  const stage = (
+    id: "fetch" | "checkout" | "submodules" | "setup-script" | "agent",
+    status: "done" | "running" | "failed" | "pending" | "skipped",
+  ) => ({
+    id,
+    status,
+    startedAt: now,
+    endedAt: status === "running" || status === "pending" ? null : now,
+    percent: null,
+    detail: null,
+    tail: [],
+  });
+  const base: WorktreeSetupSnapshot = {
+    threadId,
+    phase: "running",
+    startedAt: now,
+    endedAt: null,
+    branch: "feature",
+    baseRef: "main",
+    worktreePath: null,
+    setupScript: null,
+    stages: [stage("checkout", "running"), stage("agent", "pending")],
+    error: null,
+    sequence: 1,
+  };
+  const settledDone: WorktreeSetupSnapshot = {
+    ...base,
+    phase: "done",
+    endedAt: now,
+    stages: [stage("checkout", "done"), stage("setup-script", "done"), stage("agent", "done")],
+  };
+
+  it("keeps setup presentation continuous until the provider handoff", () => {
+    const progress = (
+      localPreparing: boolean,
+      latest: WorktreeSetupSnapshot | null,
+      held: WorktreeSetupSnapshot | null = null,
+    ) => resolveWorktreeSetupProgress({ threadId, localPreparing, latest, held });
+
+    // The local send and the live stream arrive separately.
+    expect(progress(true, null).isPreparingWorktree).toBe(true);
+    expect(progress(false, base).snapshot).toBe(base);
+    expect(progress(false, base).isPreparingWorktree).toBe(true);
+    const handedOff: WorktreeSetupSnapshot = {
+      ...base,
+      sequence: 2,
+      stages: [stage("setup-script", "running"), stage("agent", "done")],
+    };
+    expect(progress(false, handedOff, base)).toEqual({
+      snapshot: handedOff,
+      isPreparingWorktree: false,
+    });
+    expect(progress(false, null, handedOff).snapshot).toBe(handedOff);
+  });
+
+  it("uses streamed setup progress immediately without reverting to an older held snapshot", () => {
+    const newest: WorktreeSetupSnapshot = { ...settledDone, sequence: 9 };
+    const resolve = (latest: WorktreeSetupSnapshot | null, held: WorktreeSetupSnapshot | null) =>
+      resolveWorktreeSetupProgress({ threadId, localPreparing: false, latest, held });
+    expect(resolve(newest, base)).toEqual({ snapshot: newest, isPreparingWorktree: false });
+    expect(resolve(base, newest)).toEqual({ snapshot: newest, isPreparingWorktree: false });
+    const other: WorktreeSetupSnapshot = { ...base, threadId: ThreadId.make("another-thread") };
+    expect(resolve(other, other)).toEqual({ snapshot: null, isPreparingWorktree: false });
+  });
+
+  it.each(["failed", "cancelled"] as const)(
+    "does not keep %s setup in the preparing state",
+    (phase) => {
+      const snapshot: WorktreeSetupSnapshot = { ...base, phase };
+      expect(
+        resolveWorktreeSetupProgress({
+          threadId,
+          localPreparing: false,
+          latest: snapshot,
+          held: base,
+        }),
+      ).toEqual({ snapshot, isPreparingWorktree: false });
+    },
+  );
+
+  it("reads the settled snapshot back from the thread's activities", () => {
+    const activities = [
+      { kind: "setup-script.started", payload: {} },
+      { kind: "worktree-setup", payload: settledDone },
+      { kind: "worktree-setup", payload: { not: "a snapshot" } },
+    ];
+    expect(findRecordedWorktreeSetup(activities, threadId)).toEqual(settledDone);
+    expect(findRecordedWorktreeSetup(activities, ThreadId.make("other"))).toBeNull();
+  });
+
+  it("shows a running setup and drops a clean one once the turn started", () => {
+    const visible = (snapshot: WorktreeSetupSnapshot | null, turnStarted: boolean) =>
+      resolveVisibleWorktreeSetup({
+        live: null,
+        recorded: snapshot,
+        turnStarted,
+        followUpSent: false,
+      });
+    expect(
+      resolveVisibleWorktreeSetup({
+        live: base,
+        recorded: null,
+        turnStarted: false,
+        followUpSent: false,
+      }),
+    ).toEqual(base);
+    expect(visible(settledDone, false)).toEqual(settledDone);
+    expect(visible(settledDone, true)).toBeNull();
+    expect(visible(null, true)).toBeNull();
+  });
+
+  it("keeps a failed script, a failed setup, and a cancelled setup visible", () => {
+    const scriptFailed: WorktreeSetupSnapshot = {
+      ...settledDone,
+      stages: [stage("checkout", "done"), stage("setup-script", "failed"), stage("agent", "done")],
+    };
+    const visible = (snapshot: WorktreeSetupSnapshot, followUpSent = false) =>
+      resolveVisibleWorktreeSetup({
+        live: null,
+        recorded: snapshot,
+        turnStarted: true,
+        followUpSent,
+      });
+    expect(visible(scriptFailed)).toEqual(scriptFailed);
+    const failed: WorktreeSetupSnapshot = {
+      ...settledDone,
+      phase: "failed",
+      error: "git exploded",
+    };
+    expect(visible(failed)).toEqual(failed);
+    const cancelled: WorktreeSetupSnapshot = { ...settledDone, phase: "cancelled" };
+    expect(visible(cancelled)).toEqual(cancelled);
+
+    // The setup belongs to the first turn. A follow-up send retires every
+    // settled outcome; only a script that is still running stays.
+    expect(visible(scriptFailed, true)).toBeNull();
+    expect(visible(failed, true)).toBeNull();
+    expect(visible(cancelled, true)).toBeNull();
+    expect(visible(settledDone, true)).toBeNull();
+    const stillRunning: WorktreeSetupSnapshot = {
+      ...base,
+      stages: [stage("checkout", "done"), stage("setup-script", "running"), stage("agent", "done")],
+    };
+    expect(visible(stillRunning, true)).toEqual(stillRunning);
+  });
+
+  it("prefers whichever snapshot is newer by sequence", () => {
+    const pick = (live: WorktreeSetupSnapshot | null, recorded: WorktreeSetupSnapshot | null) =>
+      resolveVisibleWorktreeSetup({ live, recorded, turnStarted: false, followUpSent: false });
+    expect(pick({ ...base, sequence: 3 }, { ...settledDone, sequence: 7 })).toEqual({
+      ...settledDone,
+      sequence: 7,
+    });
+    expect(pick({ ...settledDone, sequence: 9 }, { ...base, sequence: 1 })).toEqual({
+      ...settledDone,
+      sequence: 9,
+    });
   });
 });

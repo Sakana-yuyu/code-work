@@ -70,6 +70,7 @@ import {
 } from "../../hooks/useTheme";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
+import { usePrimaryEnvironment } from "../../state/environments";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import {
@@ -1913,6 +1914,10 @@ function ResponseStreamingSection() {
 export function GeneralSettingsPanel() {
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
+  const primaryEnvironment = usePrimaryEnvironment();
+  const supportsWorktreesDirectory =
+    primaryEnvironment?.serverConfig?.environment.capabilities.worktreesDirectory === true;
+  const worktreesDirectoryEdited = useRef(false);
   const [backgroundActivityDialogOpen, setBackgroundActivityDialogOpen] = useState(false);
   const lastEnabledProjectGroupingMode = useRef<SidebarProjectGroupingMode>(
     readLastEnabledProjectGroupingMode(),
@@ -2436,6 +2441,47 @@ export function GeneralSettingsPanel() {
                   </SelectItem>
                 </SelectPopup>
               </Select>
+            }
+          />
+        ) : null}
+
+        {settings.defaultThreadEnvMode === "worktree" && supportsWorktreesDirectory ? (
+          <SettingsRow
+            className="bg-muted/20 sm:pl-9"
+            {...searchableSetting("worktrees-directory")}
+            description={t("settings.worktreesDirectoryDescription")}
+            resetAction={
+              settings.worktreesDirectory !== DEFAULT_UNIFIED_SETTINGS.worktreesDirectory ? (
+                <SettingResetButton
+                  label={t("settings.worktreesDirectory")}
+                  onClick={() =>
+                    updateSettings({
+                      worktreesDirectory: DEFAULT_UNIFIED_SETTINGS.worktreesDirectory,
+                    })
+                  }
+                />
+              ) : null
+            }
+            control={
+              <Input
+                key={settings.worktreesDirectory}
+                className="w-full sm:w-44"
+                aria-label={t("settings.worktreesDirectory")}
+                autoCapitalize="none"
+                spellCheck={false}
+                placeholder={t("settings.worktreesDirectoryPlaceholder")}
+                defaultValue={settings.worktreesDirectory}
+                onChange={() => {
+                  worktreesDirectoryEdited.current = true;
+                }}
+                onBlur={(event) => {
+                  const value = event.target.value.trim();
+                  if (worktreesDirectoryEdited.current && value !== settings.worktreesDirectory) {
+                    updateSettings({ worktreesDirectory: value });
+                  }
+                  worktreesDirectoryEdited.current = false;
+                }}
+              />
             }
           />
         ) : null}

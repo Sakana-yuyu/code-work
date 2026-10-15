@@ -62,6 +62,9 @@ import {
 } from "../terminal/terminalLaunchContext";
 import { terminalDebugLog } from "../terminal/terminalDebugLog";
 import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
+import { buildProjectThreadStartTurnInput } from "../../lib/projectThreadStartTurn";
+import { worktreeSetupAgentStarted } from "@codework/client-runtime/worktree-setup";
+import { useWorktreeSetup } from "./use-worktree-setup";
 import { ThreadDetailScreen } from "./ThreadDetailScreen";
 import { SpecWorkflowMobileControls } from "./SpecWorkflowMobileControls";
 import {
@@ -778,6 +781,86 @@ function ThreadRouteContent(
     });
   }, [interruptThreadTurn, selectedThread]);
 
+  const setupTurnStartedAt = composer.activeWorkStartedAt;
+  const { snapshot: worktreeSetupSnapshot, visible: worktreeSetup } = useWorktreeSetup({
+    environmentId: selectedThread?.environmentId ?? null,
+    threadId: selectedThread?.id ?? null,
+    preparing:
+      selectedThread !== null &&
+      (selectedThread.latestTurn === null || selectedThread.worktreePath !== null),
+    turnStarted: setupTurnStartedAt !== null,
+    followUpSent:
+      composer.selectedThreadFeed.filter(
+        (entry) => entry.type === "message" && entry.message.role === "user",
+      ).length +
+        composer.selectedThreadQueueCount >
+      1,
+  });
+  const awaitingBootstrapTurn =
+    worktreeSetup !== null &&
+    worktreeSetup.phase === "running" &&
+    !worktreeSetupAgentStarted(worktreeSetup);
+  const cancelWorktreeSetup = useAtomCommand(vcsEnvironment.cancelWorktreeSetup);
+  const handleCancelWorktreeSetup = useCallback(() => {
+    if (!selectedThread) return;
+    void cancelWorktreeSetup({
+      environmentId: selectedThread.environmentId,
+      input: { threadId: selectedThread.id },
+    });
+  }, [cancelWorktreeSetup, selectedThread]);
+  const localResendBusy = useRef(false);
+  const setupMessage = selectedThreadDetail?.messages.find((message) => message.role === "user");
+  const handleWorkLocally = useCallback(async () => {
+    if (!selectedThread || !selectedThreadProject || !setupMessage || localResendBusy.current)
+      return;
+    localResendBusy.current = true;
+    try {
+      const result = await cancelWorktreeSetup({
+        environmentId: selectedThread.environmentId,
+        input: { threadId: selectedThread.id },
+      });
+      if (result._tag !== "Success" || !result.value.cancelled) return;
+      // The server owns the original prompt, so re-sending it under a local
+      // workspace never re-uploads or re-words the request.
+      const metadata = makeTurnCommandMetadata();
+      const launched = await startThreadTurn({
+        environmentId: selectedThread.environmentId,
+        input: buildProjectThreadStartTurnInput({
+          ...metadata,
+          projectId: selectedThread.projectId,
+          projectCwd: selectedThreadProject.workspaceRoot,
+          text: setupMessage.text,
+          attachments: [],
+          ...(setupMessage.attachments ? { uploadedAttachments: setupMessage.attachments } : {}),
+          modelSelection: selectedThread.modelSelection,
+          runtimeMode: selectedThread.runtimeMode,
+          interactionMode: selectedThread.interactionMode,
+          workspaceMode: "local",
+          branch: null,
+          worktreePath: null,
+          startFromOrigin: false,
+          worktreeBranchName: "",
+        }),
+      });
+      if (launched._tag !== "Success") return;
+      navigation.dispatch(
+        StackActions.replace("Thread", {
+          environmentId: String(selectedThread.environmentId),
+          threadId: metadata.threadId,
+        }),
+      );
+    } finally {
+      localResendBusy.current = false;
+    }
+  }, [
+    cancelWorktreeSetup,
+    navigation,
+    selectedThread,
+    selectedThreadProject,
+    setupMessage,
+    startThreadTurn,
+  ]);
+
   const handleCancelQueuedMessage = useCallback(
     (messageId: MessageId) => {
       if (!selectedThread) return;
@@ -1147,6 +1230,29 @@ function ThreadRouteContent(
           environmentId={selectedThread.environmentId}
           projectWorkspaceRoot={selectedThreadProject?.workspaceRoot ?? null}
           threadCwd={selectedThreadCwd}
+          worktreeSetup={
+            worktreeSetup
+              ? {
+                  snapshot: worktreeSetup,
+                  turnStartedAt: setupTurnStartedAt,
+                  working: composer.activeWorkStartedAt !== null,
+                  turnStarted: setupTurnStartedAt !== null,
+                  onCancel: handleCancelWorktreeSetup,
+                  onWorkLocally: setupMessage && selectedThreadProject ? handleWorkLocally : null,
+                }
+              : null
+          }
+          setupWorkingStartedAt={
+            worktreeSetup === null &&
+            worktreeSetupSnapshot !== null &&
+            composer.activeWorkStartedAt !== null &&
+            composer.selectedThreadFeed.filter(
+              (entry) => entry.type === "message" && entry.message.role === "user",
+            ).length <= 1
+              ? composer.activeWorkStartedAt
+              : null
+          }
+          forceStopAction={awaitingBootstrapTurn}
           selectedThreadQueueCount={composer.selectedThreadQueueCount}
           layoutVariant={layout.variant}
           usesAutomaticContentInsets={usesNativeHeaderGlass}
@@ -1161,7 +1267,7 @@ function ThreadRouteContent(
           onNativePasteImages={composer.onNativePasteImages}
           onRemoveDraftImage={composer.onRemoveDraftImage}
           serverConfig={serverConfig}
-          onStopThread={handleStopThread}
+          onStopThread={awaitingBootstrapTurn ? handleCancelWorktreeSetup : handleStopThread}
           onSendMessage={composer.onSendMessage}
           onReconnectEnvironment={handleReconnectEnvironment}
           onUpdateThreadModelSelection={composer.onUpdateModelSelection}

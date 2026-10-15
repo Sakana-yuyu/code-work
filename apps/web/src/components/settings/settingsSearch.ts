@@ -225,6 +225,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     targetId: "new-threads",
   },
   {
+    id: "worktrees-directory",
+    title: "settings.worktreesDirectory",
+    to: "/settings/general",
+    targetId: "new-threads",
+    keywords: ["worktree", "directory", "folder", "location", "path", "工作树", "目录"],
+  },
+  {
     id: "default-permissions",
     title: "settings.defaultPermissions",
     to: "/settings/general",

@@ -59,6 +59,7 @@ const makeTerminalManagerLayer = (
     clear: () => Effect.void,
     restart: () => Effect.die(new Error("unused")),
     close: () => Effect.void,
+    closeIdle: () => Effect.void,
     kill: () => Effect.void,
     inspectSession: () => Effect.succeed("missing"),
     inspectSessionReceipt: () => Effect.succeed({ inspection: "missing", snapshot: null }),

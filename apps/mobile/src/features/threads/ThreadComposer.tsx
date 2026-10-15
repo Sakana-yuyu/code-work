@@ -141,6 +141,8 @@ export interface ThreadComposerProps {
   readonly onNativePasteImages: (uris: ReadonlyArray<string>) => Promise<void>;
   readonly onRemoveDraftImage: (imageId: string) => void;
   readonly onStopThread: () => void;
+  /** Pre-turn stop affordance (e.g. cancelling a running worktree setup). */
+  readonly forceStopAction?: boolean;
   readonly onSendMessage: () => Promise<MessageId | null>;
   readonly onUpdateModelSelection: (modelSelection: ModelSelection) => void;
   readonly onUpdateRuntimeMode: (runtimeMode: RuntimeMode) => void;
@@ -384,6 +386,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     onEditorFocusChange?.(false);
   }, [onEditorFocusChange]);
   const showStopAction =
+    props.forceStopAction === true ||
     props.selectedThread.session?.status === "running" ||
     props.selectedThread.session?.status === "starting";
 

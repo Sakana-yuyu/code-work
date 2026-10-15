@@ -73,6 +73,7 @@ export class GitWorkflowService extends Context.Service<
     ) => Effect.Effect<VcsListRefsResult, GitCommandError>;
     readonly createWorktree: (
       input: VcsCreateWorktreeInput,
+      options?: GitVcsDriver.CreateWorktreeOptions,
     ) => Effect.Effect<VcsCreateWorktreeResult, GitCommandError>;
     readonly fetchRemote: (input: {
       readonly cwd: string;
@@ -182,6 +183,16 @@ export const make = Effect.gen(function* () {
     const environment = settings.worktreeSubmodules;
     return project === null && environment === null ? undefined : { project, environment };
   });
+
+  /**
+   * The `worktreesDirectory` setting verbatim — the driver validates and
+   * resolves it (empty means the built-in `<home>/worktrees`). Best-effort:
+   * a settings read failure leaves the built-in in charge.
+   */
+  const readWorktreesDirectory = serverSettings.getSettings.pipe(
+    Effect.map((settings) => settings.worktreesDirectory),
+    Effect.orElseSucceed(() => ""),
+  );
 
   const ensureGit = Effect.fn("GitWorkflowService.ensureGit")(function* (
     operation: string,
@@ -347,13 +358,16 @@ export const make = Effect.gen(function* () {
           isGitRepository ? git.listRefs(input) : Effect.succeed(nonRepositoryListRefs()),
         ),
       ),
-    createWorktree: (input) =>
+    createWorktree: (input, options) =>
       ensureGitCommand("GitWorkflowService.createWorktree", input.cwd).pipe(
         Effect.andThen(
           Effect.gen(function* () {
             const submodules = input.submodules ?? (yield* resolveWorktreeSubmodules(input.cwd));
+            const worktreesDirectory =
+              options?.worktreesDirectory ?? (yield* readWorktreesDirectory);
             return yield* git.createWorktree(
               submodules === undefined ? input : { ...input, submodules },
+              { worktreesDirectory, ...options },
             );
           }),
         ),

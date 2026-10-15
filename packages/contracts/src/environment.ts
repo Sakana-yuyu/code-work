@@ -131,6 +131,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       setting. Older servers drop the key on write, so clients show the
       picker inert rather than offering a choice that would never stick. */
   environmentIcon: Schema.optionalKey(Schema.Boolean),
+  /** Server honors the `worktreesDirectory` setting. */
+  worktreesDirectory: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

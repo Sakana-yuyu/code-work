@@ -15,9 +15,13 @@ import {
   type MessageId,
   type OrchestrationLatestTurn,
   type TurnId,
+  type WorktreeSetupSnapshot,
 } from "@codework/contracts";
+import { worktreeSetupAgentStarted } from "@codework/client-runtime/worktree-setup";
 import { t } from "~/i18n/runtime";
 import type { EnabledLocalPluginTimelineEntry } from "~/localPlugins/adapters/localPluginTimelineAdapter";
+
+export { worktreeSetupAgentStarted } from "@codework/client-runtime/worktree-setup";
 
 export const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
 export const TIMELINE_MINIMAP_ITEM_SPACING = 8;
@@ -223,6 +227,13 @@ export type TimelineLatestTurn = Pick<
 
 export type MessagesTimelineRow =
   | {
+      kind: "worktree-setup";
+      id: string;
+      createdAt: string | null;
+      snapshot: WorktreeSetupSnapshot;
+      embedded: boolean;
+    }
+  | {
       kind: "work";
       id: string;
       createdAt: string;
@@ -322,6 +333,8 @@ export type MessagesTimelineRow =
       createdAt: string | null;
       showThinking: boolean;
     };
+
+const WORKTREE_SETUP_ROW_ID = "worktree-setup-row";
 
 export interface StableMessagesTimelineRowsState {
   byId: Map<string, MessagesTimelineRow>;
@@ -885,6 +898,8 @@ export interface MessagesTimelineRowsInput {
   expandedNarrationGroupIds?: ReadonlySet<string>;
   isWorking: boolean;
   activeTurnStartedAt: string | null;
+  /** The thread's worktree bootstrap state, while a card should render for it. */
+  worktreeSetup?: WorktreeSetupSnapshot | null;
   turnDiffSummaryByAssistantMessageId: ReadonlyMap<MessageId, TurnDiffSummary>;
   revertTurnCountByUserMessageId: ReadonlyMap<MessageId, number | null>;
 }
@@ -1330,7 +1345,64 @@ export function deriveMessagesTimelineRows(
     });
   }
 
-  if (input.isWorking && activeTurnHeaderIndex === timelineEntries.length) {
+  // The worktree setup card renders under the working row while the
+  // bootstrap prepares the checkout, and stays there through the handoff so
+  // nothing in the timeline moves when the agent takes over. "Handed off"
+  // means the turn is in the timeline, not just that the server dispatched
+  // it: the card must not vanish in the gap between. Once the turn is live
+  // the stage list leaves the timeline; a script that is still running is
+  // surfaced by the working header itself. A failed or cancelled setup stays
+  // under the send so its outcome and actions remain reachable.
+  const setupHandedOff =
+    input.worktreeSetup != null &&
+    worktreeSetupAgentStarted(input.worktreeSetup) &&
+    input.latestTurn?.startedAt != null;
+  // A finished setup keeps the slot until the turn is live, so the card does
+  // not jump above the working header in the gap before the turn starts.
+  const setupOwnsWorkingSlot =
+    !setupHandedOff &&
+    (input.worktreeSetup?.phase === "running" || input.worktreeSetup?.phase === "done");
+  if (input.worktreeSetup && (!setupHandedOff || input.worktreeSetup.phase !== "running")) {
+    const setupRow = {
+      kind: "worktree-setup",
+      id: WORKTREE_SETUP_ROW_ID,
+      createdAt: input.worktreeSetup.startedAt,
+      snapshot: input.worktreeSetup,
+      embedded: setupHandedOff,
+    } as const;
+    const firstUserRowIndex = nextRows.findIndex(
+      (row) => row.kind === "message" && row.message.role === "user",
+    );
+    // While the setup runs, the working header leads the card in the same
+    // slot it keeps once the agent's own turn takes over. The main pass may
+    // already have placed that header (a bootstrap counts as working).
+    const workingRowIndex = setupOwnsWorkingSlot
+      ? nextRows.findIndex((row) => row.kind === "working")
+      : -1;
+    if (workingRowIndex >= 0) {
+      nextRows.splice(workingRowIndex + 1, 0, setupRow);
+    } else {
+      const insertAt = firstUserRowIndex >= 0 ? firstUserRowIndex + 1 : nextRows.length;
+      nextRows.splice(
+        insertAt,
+        0,
+        ...(setupOwnsWorkingSlot
+          ? [
+              {
+                kind: "working",
+                id: "working-indicator-row",
+                createdAt: input.worktreeSetup.startedAt,
+                showThinking: false,
+              } as const,
+              setupRow,
+            ]
+          : [setupRow]),
+      );
+    }
+  }
+
+  const hasWorkingRow = nextRows.some((row) => row.kind === "working");
+  if (input.isWorking && !hasWorkingRow && activeTurnHeaderIndex === timelineEntries.length) {
     appendWorkingRow();
   }
 
@@ -1567,6 +1639,13 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return (
         a.createdAt === (b as typeof a).createdAt && a.showThinking === (b as typeof a).showThinking
       );
+
+    case "worktree-setup": {
+      const bs = b as typeof a;
+      return (
+        a.createdAt === bs.createdAt && a.embedded === bs.embedded && a.snapshot === bs.snapshot
+      );
+    }
 
     case "turn-fold": {
       const bf = b as typeof a;

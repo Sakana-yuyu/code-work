@@ -137,6 +137,7 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
 import * as ModelGateway from "./provider/byok/modelGateway.ts";
+import * as ByokCatalog from "./provider/byok/ByokCatalog.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import { SshLayerLive } from "./server.ts";
@@ -409,6 +410,7 @@ const buildAppUnderTest = (options?: {
   config?: Partial<ServerConfig.ServerConfig["Service"]>;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
+    byokCatalog?: Partial<ByokCatalog.ByokCatalog["Service"]>;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
     providerService?: Partial<ProviderService.ProviderService["Service"]>;
     serverSettings?: Partial<ServerSettings.ServerSettingsService["Service"]>;
@@ -633,6 +635,11 @@ const buildAppUnderTest = (options?: {
       : ReviewService.layer.pipe(
           Layer.provideMerge(gitVcsDriverLayer),
           Layer.provide(vcsDriverRegistryLayer),
+          Layer.provide(
+            Layer.mock(ServerSettings.ServerSettingsService)({
+              getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
+            }),
+          ),
         );
     const vcsStatusBroadcasterLayer = options?.layers?.vcsStatusBroadcaster
       ? Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({
@@ -696,6 +703,10 @@ const buildAppUnderTest = (options?: {
       ),
       Layer.provide(
         Layer.mergeAll(
+          Layer.mock(ByokCatalog.ByokCatalog)({
+            fetchCatalog: () => Effect.die("BYOK catalog fetch is not stubbed in this test"),
+            ...options?.layers?.byokCatalog,
+          }),
           Layer.mock(ProviderRegistry.ProviderRegistry)({
             getProviders: Effect.succeed([]),
             refresh: () => Effect.succeed([]),
@@ -8255,8 +8266,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               status: "started" as const,
               scriptId: "setup",
               scriptName: "Setup",
+              scriptCommand: "echo setup",
               terminalId: "setup-setup",
               cwd: "/tmp/bootstrap-worktree",
+              async: true,
             }),
         );
 
@@ -8359,7 +8372,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           "resolve-remote-commit",
           "create-worktree",
         ]);
-        assert.deepEqual(runForThread.mock.calls[0]?.[0], {
+        const runForThreadInput = runForThread.mock.calls[0]?.[0];
+        assert.isFunction(runForThreadInput?.observeCompletion?.onOutputLine);
+        const { observeCompletion: _observeCompletion, ...runForThreadInputRest } =
+          runForThreadInput ?? {};
+        assert.deepEqual(runForThreadInputRest, {
           threadId: ThreadId.make("thread-bootstrap"),
           projectId: defaultProjectId,
           projectCwd: "/tmp/project",
@@ -8614,8 +8631,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             status: "started" as const,
             scriptId: "setup",
             scriptName: "Setup",
+            scriptCommand: "echo setup",
             terminalId: "setup-setup",
             cwd: "/tmp/bootstrap-worktree",
+            async: true,
           }),
       );
       let setupActivityAppendAttempt = 0;

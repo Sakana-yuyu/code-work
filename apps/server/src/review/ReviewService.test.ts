@@ -5,7 +5,9 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
 
+import { DEFAULT_SERVER_SETTINGS } from "@codework/contracts";
 import { ServerConfig } from "../config.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as ReviewService from "./ReviewService.ts";
@@ -13,6 +15,8 @@ import * as ReviewService from "./ReviewService.ts";
 function makeLayer(input: {
   readonly workspaceRoot: string;
   readonly baseDir: string;
+  readonly worktreesDirectory?: string;
+  readonly previousWorktreesDirectories?: ReadonlyArray<string>;
   readonly detectCalls?: Array<{ readonly cwd: string }>;
 }) {
   return ReviewService.layer.pipe(
@@ -28,6 +32,15 @@ function makeLayer(input: {
       }),
     ),
     Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+    Layer.provide(
+      Layer.mock(ServerSettings.ServerSettingsService)({
+        getSettings: Effect.succeed({
+          ...DEFAULT_SERVER_SETTINGS,
+          worktreesDirectory: input.worktreesDirectory ?? "",
+          previousWorktreesDirectories: [...(input.previousWorktreesDirectories ?? [])],
+        }),
+      }),
+    ),
     Layer.provide(ServerConfig.layerTest(input.workspaceRoot, input.baseDir)),
     Layer.provideMerge(NodeServices.layer),
   );
@@ -111,6 +124,58 @@ describe("ReviewService", () => {
       assert.strictEqual(result.cwd, workspaceRoot);
       assert.deepStrictEqual(result.sources, []);
       assert.deepStrictEqual(detectCalls, [{ cwd: workspaceRoot }]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("allows cwd inside a configured or previous worktrees directory", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* fs.makeTempDirectoryScoped({
+        prefix: "codework-review-workspace-",
+      });
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "codework-review-base-" });
+      const customDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "codework-review-custom-wt-",
+      });
+      const previous = yield* fs.makeTempDirectoryScoped({ prefix: "codework-review-prev-wt-" });
+
+      const configured = yield* Effect.gen(function* () {
+        const review = yield* ReviewService.ReviewService;
+        return yield* review.getDiffPreview({ cwd: customDir });
+      }).pipe(Effect.provide(makeLayer({ workspaceRoot, baseDir, worktreesDirectory: customDir })));
+      assert.strictEqual(configured.cwd, customDir);
+
+      const result = yield* Effect.gen(function* () {
+        const review = yield* ReviewService.ReviewService;
+        return yield* review.getDiffPreview({ cwd: previous });
+      }).pipe(
+        Effect.provide(
+          makeLayer({
+            workspaceRoot,
+            baseDir,
+            worktreesDirectory: "/",
+            previousWorktreesDirectories: [previous],
+          }),
+        ),
+      );
+      assert.strictEqual(result.cwd, previous);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("rejects outside cwd when the configured worktrees directory resolves to a root", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* fs.makeTempDirectoryScoped({
+        prefix: "codework-review-workspace-",
+      });
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "codework-review-base-" });
+      const outsideRoot = yield* fs.makeTempDirectoryScoped({ prefix: "codework-review-outside-" });
+
+      const error = yield* Effect.gen(function* () {
+        const review = yield* ReviewService.ReviewService;
+        return yield* review.getDiffPreview({ cwd: outsideRoot }).pipe(Effect.flip);
+      }).pipe(Effect.provide(makeLayer({ workspaceRoot, baseDir, worktreesDirectory: "/" })));
+      assert.strictEqual(error._tag, "VcsRepositoryDetectionError");
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 

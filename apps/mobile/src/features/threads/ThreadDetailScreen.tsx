@@ -83,6 +83,7 @@ import {
   ThreadComposer,
 } from "./ThreadComposer";
 import { ThreadFeed } from "./ThreadFeed";
+import type { WorktreeSetupCardProps } from "./worktree-setup-card";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
 import { resolveThreadFeedSubmissionAnchor } from "./thread-feed-live-follow";
 import { t } from "../../i18n";
@@ -153,6 +154,12 @@ export interface ThreadDetailScreenProps {
   readonly onSteerQueuedMessage?: (messageId: MessageId) => void;
   /** Withdraw a server-queued message before the provider reads it. */
   readonly onCancelQueuedMessage?: (messageId: MessageId) => void;
+  /** Pre-turn stop affordance (e.g. cancelling a running worktree setup). */
+  readonly forceStopAction?: boolean;
+  /** Live worktree setup card, rendered at the feed's first-message anchor. */
+  readonly worktreeSetup?: WorktreeSetupCardProps | null;
+  /** Retired setup's handoff timer — keeps a "Working for …" row at the anchor. */
+  readonly setupWorkingStartedAt?: string | null;
   readonly showContent?: boolean;
 }
 
@@ -679,6 +686,8 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
             onEditUserMessage={props.onEditUserMessage}
             skills={selectedProviderSkills}
             loadEarlier={props.loadEarlier ?? null}
+            worktreeSetup={props.worktreeSetup}
+            setupWorkingStartedAt={props.setupWorkingStartedAt}
           />
         </View>
       ) : (
@@ -822,6 +831,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 onNativePasteImages={props.onNativePasteImages}
                 onRemoveDraftImage={props.onRemoveDraftImage}
                 onStopThread={props.onStopThread}
+                forceStopAction={props.forceStopAction}
                 onSendMessage={handleSendMessage}
                 onReconnectEnvironment={props.onReconnectEnvironment}
                 onUpdateModelSelection={props.onUpdateThreadModelSelection}

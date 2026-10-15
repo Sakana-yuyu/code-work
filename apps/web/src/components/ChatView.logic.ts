@@ -10,6 +10,7 @@ import {
   type ScopedThreadRef,
   type ThreadId,
   type TurnId,
+  type WorktreeSetupSnapshot,
 } from "@codework/contracts";
 import { startedSessionModelChangeGate } from "@codework/client-runtime/providerModels";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadShell } from "../types";
@@ -81,7 +82,12 @@ export function resolveDraftHeroState(input: {
   isWorking: boolean;
   draftHeroDockRequested: boolean;
   backgroundSubmissionPending: boolean;
+  /** A worktree setup card is on the timeline, so the timeline must stay visible. */
+  hasWorktreeSetupCard?: boolean;
 }): boolean {
+  if (input.hasWorktreeSetupCard) {
+    return false;
+  }
   if (input.backgroundSubmissionPending) {
     return true;
   }
@@ -91,6 +97,32 @@ export function resolveDraftHeroState(input: {
     !input.isWorking &&
     !input.draftHeroDockRequested
   );
+}
+
+import { worktreeSetupAgentStarted } from "@codework/client-runtime/worktree-setup";
+
+export {
+  findRecordedWorktreeSetup,
+  resolveVisibleWorktreeSetup,
+  worktreeSetupAgentStarted,
+} from "@codework/client-runtime/worktree-setup";
+
+/** Keep setup visible across local dispatch, durable preparation, and the live stream. */
+export function resolveWorktreeSetupProgress(input: {
+  threadId: ThreadId;
+  localPreparing: boolean;
+  latest: WorktreeSetupSnapshot | null | undefined;
+  held: WorktreeSetupSnapshot | null;
+}) {
+  const latest = input.latest?.threadId === input.threadId ? input.latest : null;
+  const held = input.held?.threadId === input.threadId ? input.held : null;
+  const snapshot = latest && (!held || latest.sequence >= held.sequence) ? latest : held;
+  return {
+    snapshot,
+    isPreparingWorktree:
+      input.localPreparing ||
+      (snapshot?.phase === "running" && !worktreeSetupAgentStarted(snapshot)),
+  };
 }
 
 export function resolveDraftPromotionNavigationTarget(input: {

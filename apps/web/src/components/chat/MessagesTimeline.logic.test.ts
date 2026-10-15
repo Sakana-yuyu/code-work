@@ -1,4 +1,4 @@
-import { MessageId, type TurnId } from "@codework/contracts";
+import { MessageId, ThreadId, type TurnId, type WorktreeSetupSnapshot } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { setCurrentLanguage } from "~/i18n/runtime";
 import type { TimelineEntry } from "../../session-logic";
@@ -2353,6 +2353,149 @@ describe("deriveMessagesTimelineRows", () => {
       });
     },
   );
+
+  it("keeps the working header in place across worktree setup handoff", () => {
+    const snapshot: WorktreeSetupSnapshot = {
+      threadId: ThreadId.make("thread-setup"),
+      phase: "running",
+      startedAt: "2026-01-01T00:00:00Z",
+      endedAt: null,
+      branch: "feature",
+      baseRef: "main",
+      worktreePath: null,
+      setupScript: null,
+      stages: [],
+      error: null,
+      sequence: 3,
+    };
+    const userEntry = {
+      id: "user-entry",
+      kind: "message",
+      createdAt: "2026-01-01T00:00:00Z",
+      message: {
+        id: "user-1" as never,
+        role: "user",
+        text: "Build it",
+        turnId: null,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+        streaming: false,
+      },
+    } as const;
+    const assistantEntry = {
+      id: "assistant-entry",
+      kind: "message",
+      createdAt: "2026-01-01T00:00:30Z",
+      message: {
+        id: "assistant-1" as never,
+        role: "assistant",
+        text: "On it",
+        turnId: "turn-1" as never,
+        createdAt: "2026-01-01T00:00:30Z",
+        updatedAt: "2026-01-01T00:00:30Z",
+        streaming: true,
+      },
+    } as const;
+    const baseInput = {
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    };
+
+    // No messages yet: the setup owns the working slot, so a synthetic
+    // working header leads the card.
+    const withoutMessages = deriveMessagesTimelineRows({
+      ...baseInput,
+      timelineEntries: [],
+      worktreeSetup: snapshot,
+    });
+    expect(withoutMessages.map((row) => row.kind)).toEqual(["working", "worktree-setup"]);
+    expect(withoutMessages[1]).toMatchObject({
+      kind: "worktree-setup",
+      createdAt: snapshot.startedAt,
+      snapshot,
+      embedded: false,
+    });
+
+    // A failed setup never handed off, so the card stays under the send.
+    const withMessages = deriveMessagesTimelineRows({
+      ...baseInput,
+      timelineEntries: [userEntry, assistantEntry],
+      worktreeSetup: { ...snapshot, phase: "failed" },
+    });
+    expect(withMessages.map((row) => row.kind)).toEqual([
+      "message",
+      "worktree-setup",
+      "working",
+      "message",
+    ]);
+
+    // Once the agent stage is done the setup script may still be running in
+    // the background: the header owns its progress chip, so no setup row remains.
+    const stage = (id: "agent" | "setup-script", status: "done" | "running") =>
+      ({
+        id,
+        status,
+        startedAt: "2026-01-01T00:00:10Z",
+        endedAt: status === "done" ? "2026-01-01T00:00:11Z" : null,
+        percent: null,
+        detail: null,
+        tail: [],
+      }) as const;
+    const asyncSnapshot: WorktreeSetupSnapshot = {
+      ...snapshot,
+      stages: [stage("setup-script", "running"), stage("agent", "done")],
+    };
+    const liveTurn: TimelineLatestTurn = {
+      turnId: "turn-1" as never,
+      state: "running",
+      startedAt: "2026-01-01T00:00:11Z",
+      completedAt: null,
+    };
+    const asyncRows = deriveMessagesTimelineRows({
+      ...baseInput,
+      timelineEntries: [userEntry],
+      latestTurn: liveTurn,
+      worktreeSetup: asyncSnapshot,
+    });
+    expect(asyncRows.map((row) => row.kind)).toEqual(["message", "working"]);
+
+    // Dispatched but not yet visible as a turn: the full card stays put so
+    // nothing collapses during the handoff.
+    const handoffRows = deriveMessagesTimelineRows({
+      ...baseInput,
+      timelineEntries: [userEntry],
+      worktreeSetup: asyncSnapshot,
+    });
+    expect(handoffRows.map((row) => row.kind)).toEqual(["message", "working", "worktree-setup"]);
+    expect(handoffRows[2]).toMatchObject({ kind: "worktree-setup", embedded: false });
+
+    // A clean finish before the turn is live keeps that same layout, so the
+    // card does not jump above the header in the gap before the turn starts.
+    const settledRows = deriveMessagesTimelineRows({
+      ...baseInput,
+      timelineEntries: [userEntry],
+      worktreeSetup: {
+        ...snapshot,
+        phase: "done",
+        stages: [stage("setup-script", "done"), stage("agent", "done")],
+      },
+    });
+    expect(settledRows.map((row) => row.kind)).toEqual(["message", "working", "worktree-setup"]);
+
+    // A script that already finished has nothing left to show once the turn is live.
+    const finishedRows = deriveMessagesTimelineRows({
+      ...baseInput,
+      timelineEntries: [userEntry],
+      latestTurn: liveTurn,
+      worktreeSetup: {
+        ...asyncSnapshot,
+        stages: [stage("setup-script", "done"), stage("agent", "done")],
+      },
+    });
+    expect(finishedRows.map((row) => row.kind)).toEqual(["message", "working"]);
+  });
 });
 
 describe("computeStableMessagesTimelineRows", () => {

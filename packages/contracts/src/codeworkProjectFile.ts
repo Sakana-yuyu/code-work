@@ -42,6 +42,18 @@ export const CodeworkProjectFileScript = Schema.Struct({
         "When true, the script runs automatically after a worktree is created for a new thread.",
     }),
   ),
+  runOnSettle: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "When true, the script runs in the thread's worktree each time the thread settles, for example to delete build output. Threads without their own worktree skip it.",
+    }),
+  ),
+  async: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Only for runOnWorktreeCreate scripts. When true (the default), the agent starts while the script is still running. Set false to hold the agent until the script exits.",
+    }),
+  ),
   previewUrl: Schema.optionalKey(
     trimmedNonEmpty({
       description:

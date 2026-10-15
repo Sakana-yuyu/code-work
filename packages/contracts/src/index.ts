@@ -38,6 +38,7 @@ export * from "./git.ts";
 export * from "./vcs.ts";
 export * from "./sourceControl.ts";
 export * from "./pullRequest.ts";
+export * from "./worktreeSetup.ts";
 export * from "./orchestration.ts";
 export * from "./goal.ts";
 export * from "./specWorkflow.ts";

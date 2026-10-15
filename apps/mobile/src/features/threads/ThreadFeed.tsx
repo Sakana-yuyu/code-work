@@ -134,6 +134,11 @@ import {
 } from "./thread-work-log";
 import { useMarkdownCodeHighlight } from "./markdownCodeHighlightState";
 import { resolveThreadFeedCellIdentity } from "./thread-feed-recycling";
+import {
+  WorktreeSetupCard,
+  WorktreeWorkingHeader,
+  type WorktreeSetupCardProps,
+} from "./worktree-setup-card";
 import { useAssetUrlState } from "../../state/assets";
 import { MessageAttachmentMedia } from "./MessageAttachmentMedia";
 import { resolveWorkspaceRelativeFilePath } from "../files/filePath";
@@ -207,6 +212,10 @@ export interface ThreadFeedProps {
     readonly loading: boolean;
     readonly onLoadEarlier: () => void;
   } | null;
+  /** Live worktree setup card, anchored under the first user message. */
+  readonly worktreeSetup?: WorktreeSetupCardProps | null;
+  /** Retired setup's handoff timer — keeps a "Working for …" row at the anchor. */
+  readonly setupWorkingStartedAt?: string | null;
 }
 
 function ThreadMarkdownImageView(props: {
@@ -1860,6 +1869,8 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       reviewCommentColors,
       userBubbleColor,
       viewportWidth,
+      worktreeSetup: props.worktreeSetup,
+      setupWorkingStartedAt: props.setupWorkingStartedAt,
     }),
     [
       copiedRowId,
@@ -1873,6 +1884,8 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       reviewCommentColors,
       userBubbleColor,
       viewportWidth,
+      props.worktreeSetup,
+      props.setupWorkingStartedAt,
     ],
   );
   const reportHeaderMaterialVisibility = useCallback(
@@ -2240,6 +2253,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     [expandedWorkRows, workingRowHeight, appearance.baseFontSize],
   );
 
+  const setupAnchorIndex = useMemo(
+    () =>
+      presentedFeed.findIndex((entry) => entry.type === "message" && entry.message.role === "user"),
+    [presentedFeed],
+  );
   const renderItem = useCallback(
     (info: { item: ThreadFeedEntry; index: number }) => {
       const identity = resolveThreadFeedCellIdentity(
@@ -2279,12 +2297,21 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             userBubbleMaxWidth,
             skills: props.skills,
           })}
+          {props.worktreeSetup && info.index === setupAnchorIndex ? (
+            <WorktreeSetupCard key={props.threadId} {...props.worktreeSetup} />
+          ) : props.setupWorkingStartedAt && info.index === setupAnchorIndex ? (
+            <WorktreeWorkingHeader startedAt={props.setupWorkingStartedAt} />
+          ) : null}
         </Fragment>
       );
     },
     [
       historicalCutoffMs,
       responseTextPacing,
+      setupAnchorIndex,
+      props.worktreeSetup,
+      props.setupWorkingStartedAt,
+      props.threadId,
       textSelection.selectText,
       copiedRowId,
       expandedWorkRows,
@@ -2452,6 +2479,9 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             ListHeaderComponent={
               <>
                 {usesNativeAutomaticInsets ? null : <View style={{ height: topContentInset }} />}
+                {setupAnchorIndex < 0 && props.worktreeSetup ? (
+                  <WorktreeSetupCard key={props.threadId} {...props.worktreeSetup} />
+                ) : null}
                 {props.loadEarlier != null ? (
                   <Pressable
                     onPress={props.loadEarlier.onLoadEarlier}
@@ -2472,6 +2502,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           />
         </View>
         {props.feed.length === 0 &&
+        !props.worktreeSetup &&
         props.activeWorkStartedAt === null &&
         props.contentPresentation.kind === "ready" ? (
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
