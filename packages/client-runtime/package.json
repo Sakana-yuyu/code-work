@@ -75,6 +75,10 @@
       "types": "./src/providerSkills.ts",
       "default": "./src/providerSkills.ts"
     },
+    "./providerUpdateRequiredModels": {
+      "types": "./src/providerUpdateRequiredModels.ts",
+      "default": "./src/providerUpdateRequiredModels.ts"
+    },
     "./relay": {
       "types": "./src/relay/index.ts",
       "default": "./src/relay/index.ts"

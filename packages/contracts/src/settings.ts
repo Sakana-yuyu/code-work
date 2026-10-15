@@ -158,6 +158,26 @@ export type FontFamilyPreference = typeof FontFamilyPreference.Type;
 export const DEFAULT_BROWSER_VIEWPORT: PreviewViewportSetting = FILL_PREVIEW_VIEWPORT;
 export const DEFAULT_BROWSER_AUTO_SHOW_FLOATING_PREVIEW = true;
 
+/** Preferences shared by clients connected to the same environment. */
+export const ModelFavorite = Schema.Struct({
+  // The historical field name is retained; default instance ids also decode old provider-kind favorites.
+  provider: ProviderInstanceId,
+  model: TrimmedNonEmptyString,
+});
+export type ModelFavorite = typeof ModelFavorite.Type;
+export const ModelFavorites = Schema.Array(ModelFavorite);
+export const ProviderModelPreferences = Schema.Record(
+  ProviderInstanceId,
+  Schema.Struct({
+    hiddenModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+    modelOrder: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  }),
+);
+export type ModelPreferences = {
+  readonly favorites: typeof ModelFavorites.Type;
+  readonly providerModelPreferences: typeof ProviderModelPreferences.Type;
+};
+
 export const ClientSettingsSchema = Schema.Struct({
   appearanceContrast: AppearanceContrast.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_APPEARANCE_CONTRAST)),
@@ -230,21 +250,12 @@ export const ClientSettingsSchema = Schema.Struct({
   // default instance for their kind (because `defaultInstanceIdForDriver(kind)`
   // uses the same slug). The field name is kept as `provider` for storage
   // stability; new call sites should treat the value as an instance id.
-  favorites: Schema.Array(
-    Schema.Struct({
-      provider: ProviderInstanceId,
-      model: TrimmedNonEmptyString,
-    }),
-  ).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
-  providerModelPreferences: Schema.Record(
-    ProviderInstanceId,
-    Schema.Struct({
-      hiddenModels: Schema.Array(Schema.String).pipe(
-        Schema.withDecodingDefault(Effect.succeed([])),
-      ),
-      modelOrder: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
-    }),
-  ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Legacy client-local values retained as the migration source for the
+  // connected environment's server-owned preferences.
+  favorites: ModelFavorites.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  providerModelPreferences: ProviderModelPreferences.pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   // Legacy plan mode. The composer's Build/Plan toggle was removed from the
   // default UI; this beta flag restores it (plus the /plan and /default slash
   // commands) for users who still rely on the old workflow.
@@ -1264,6 +1275,12 @@ export function resolveResponseStreamingMode(settings: {
 }
 
 export const ServerSettings = Schema.Struct({
+  // Null means no client has migrated this preference yet; an empty value is
+  // authoritative so another device cannot resurrect cleared preferences.
+  favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  providerModelPreferences: Schema.NullOr(ProviderModelPreferences).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
   /** 在支持的客户端平滑显示新增文字；缺省启用，存储与复制始终保留全文。 */
   responseTextPacing: Schema.optionalKey(Schema.Boolean),
@@ -1603,6 +1620,26 @@ const ByokSettingsPatch = Schema.Struct({
 
 export const ServerSettingsPatch = Schema.Struct({
   // Server settings
+  setModelFavorites: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ ...ModelFavorite.fields, favorite: Schema.Boolean })),
+  ),
+  setModelsHidden: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ ...ModelFavorite.fields, hidden: Schema.Boolean })),
+  ),
+  setProviderModelOrder: Schema.optionalKey(
+    Schema.Struct({ provider: ProviderInstanceId, modelOrder: Schema.Array(TrimmedString) }),
+  ),
+  // `null` is a no-op: the settings object itself is a valid patch in updater
+  // callbacks, and its unset preference fields must not clear stored values.
+  favorites: Schema.optionalKey(Schema.NullOr(ModelFavorites)),
+  providerModelPreferences: Schema.optionalKey(Schema.NullOr(ProviderModelPreferences)),
+  // Applied under the settings service's write lock, only while still unset.
+  migrateModelPreferences: Schema.optionalKey(
+    Schema.Struct({
+      favorites: Schema.optionalKey(ModelFavorites),
+      providerModelPreferences: Schema.optionalKey(ProviderModelPreferences),
+    }),
+  ),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
   responseTextPacing: Schema.optionalKey(Schema.Boolean),
   enableLegacyTokenStreaming: Schema.optionalKey(Schema.Boolean),
@@ -1797,27 +1834,8 @@ export const ClientSettingsPatch = Schema.Struct({
   fontFamilySans: Schema.optionalKey(FontFamilyPreference),
   fontFamilyTerminal: Schema.optionalKey(FontFamilyPreference),
   fontSmoothing: Schema.optionalKey(Schema.Boolean),
-  favorites: Schema.optionalKey(
-    Schema.Array(
-      Schema.Struct({
-        provider: ProviderInstanceId,
-        model: TrimmedNonEmptyString,
-      }),
-    ),
-  ),
-  providerModelPreferences: Schema.optionalKey(
-    Schema.Record(
-      ProviderInstanceId,
-      Schema.Struct({
-        hiddenModels: Schema.Array(Schema.String).pipe(
-          Schema.withDecodingDefault(Effect.succeed([])),
-        ),
-        modelOrder: Schema.Array(Schema.String).pipe(
-          Schema.withDecodingDefault(Effect.succeed([])),
-        ),
-      }),
-    ),
-  ),
+  favorites: Schema.optionalKey(ModelFavorites),
+  providerModelPreferences: Schema.optionalKey(ProviderModelPreferences),
   planModeEnabled: Schema.optionalKey(Schema.Boolean),
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),
   sidebarAutoSettleAfterDays: Schema.optionalKey(Schema.NullOr(SidebarAutoSettleAfterDays)),

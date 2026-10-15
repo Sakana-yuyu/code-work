@@ -972,6 +972,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
               resolvedSelection && activeEntry ? (
                 <div className="flex flex-wrap items-center justify-end gap-1.5">
                   <ProviderModelPicker
+                    environmentId={representative.environmentId}
                     activeInstanceId={resolvedSelection.instanceId}
                     model={resolvedSelection.model}
                     lockedProvider={null}

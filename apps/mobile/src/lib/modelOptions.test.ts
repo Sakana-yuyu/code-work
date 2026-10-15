@@ -646,3 +646,135 @@ describe("mobile model options", () => {
     expect(resolveDefaultableModelSelection(null, legacy)).toBe(legacy);
   });
 });
+
+describe("synchronized mobile model visibility", () => {
+  const provider = ProviderInstanceId.make("codex_work");
+  const other = ProviderInstanceId.make("codex_personal");
+  const models = [
+    { slug: "hidden", name: "Hidden", isCustom: false, capabilities: null },
+    { slug: "first", name: "First", isCustom: false, capabilities: null },
+    { slug: "second", name: "Second", isCustom: false, capabilities: null },
+    { slug: "custom", name: "Custom", isCustom: true, capabilities: null },
+  ];
+  const config = {
+    settings: {
+      providerModelPreferences: {
+        [provider]: {
+          hiddenModels: ["hidden", "custom", "missing"],
+          modelOrder: ["second", "first"],
+        },
+      },
+    },
+    providers: [provider, other].map((instanceId) => ({
+      instanceId,
+      driver: "codex",
+      enabled: true,
+      installed: true,
+      auth: { status: "authenticated" },
+      models,
+    })),
+  } as unknown as ServerConfig;
+
+  it("applies server visibility and ordering independently to each provider instance", () => {
+    const options = buildModelOptions(config, null);
+    expect(
+      options
+        .filter((option) => option.providerKey === provider)
+        .map((option) => option.selection.model),
+    ).toEqual(["second", "first", "custom"]);
+    expect(
+      options
+        .filter((option) => option.providerKey === other)
+        .map((option) => option.selection.model),
+    ).toEqual(["hidden", "first", "second", "custom"]);
+  });
+
+  it("exposes hidden built-ins for management without offering custom visibility controls", () => {
+    const options = buildModelOptions(config, { instanceId: provider, model: "hidden" }, [], true);
+    const providerModels = options.filter((option) => option.providerKey === provider);
+    expect(providerModels.map((option) => option.selection.model)).toEqual([
+      "second",
+      "first",
+      "hidden",
+      "custom",
+    ]);
+    expect(providerModels.find((option) => option.selection.model === "hidden")).toMatchObject({
+      isHidden: true,
+      canHide: true,
+    });
+    expect(providerModels.find((option) => option.selection.model === "custom")).toMatchObject({
+      isHidden: false,
+      canHide: false,
+    });
+  });
+
+  it.each(["hidden", "missing"])("does not resurrect the hidden fallback %s", (model) => {
+    expect(
+      buildModelOptions(config, { instanceId: provider, model })
+        .filter((option) => option.providerKey === provider)
+        .map((option) => option.selection.model),
+    ).toEqual(["second", "first", "custom"]);
+  });
+
+  it("keeps custom models visible and restores built-in models when the server clears hidden models", () => {
+    expect(
+      buildModelOptions(config, { instanceId: provider, model: "custom" })
+        .filter((option) => option.providerKey === provider)
+        .map((option) => option.selection.model),
+    ).toContain("custom");
+    const cleared = {
+      ...config,
+      settings: { ...config.settings, providerModelPreferences: {} },
+    } as unknown as ServerConfig;
+    expect(
+      buildModelOptions(cleared, null)
+        .filter((option) => option.providerKey === provider)
+        .map((option) => option.selection.model),
+    ).toEqual(["hidden", "first", "second", "custom"]);
+  });
+
+  it("carries update-required models onto each option's provider group", () => {
+    const gated = {
+      settings: {},
+      providers: [
+        {
+          instanceId: provider,
+          driver: "claudeAgent",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          models: [{ slug: "opus", name: "Opus", isCustom: false, capabilities: null }],
+          updateRequiredModels: [{ slug: "opus-8", name: "Claude Opus 8", minVersion: "9.9.9" }],
+        },
+      ],
+    } as unknown as ServerConfig;
+
+    const [group] = groupByProvider(buildModelOptions(gated, null));
+    expect(group?.updateRequired).toMatchObject({
+      driver: "claudeAgent",
+      updateRequiredModels: [{ slug: "opus-8" }],
+    });
+  });
+
+  it("marks a gated fallback selection unavailable without dropping it", () => {
+    const gated = {
+      providers: [
+        {
+          instanceId: provider,
+          driver: "claudeAgent",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          models: [{ slug: "opus", name: "Opus", isCustom: false, capabilities: null }],
+          updateRequiredModels: [{ slug: "opus-8", name: "Claude Opus 8", minVersion: "9.9.9" }],
+        },
+      ],
+    } as unknown as ServerConfig;
+    const selection = { instanceId: provider, model: "opus-8" };
+
+    const option = buildModelOptions(gated, selection).find(
+      (candidate) => candidate.selection.model === "opus-8",
+    );
+    expect(option).toMatchObject({ isUnavailable: true });
+  });
+});

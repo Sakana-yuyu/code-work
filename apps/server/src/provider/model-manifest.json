@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
   "currentModels": {
     "codex": [
       "gpt-5.6-luna",
@@ -9,5 +10,572 @@
       "gpt-daybreak-red-latest"
     ],
     "claudeAgent": ["claude-fable-5", "claude-opus-5", "claude-sonnet-5"]
+  },
+  "providers": {
+    "claudeAgent": {
+      "profiles": {
+        "fable-5": {
+          "capabilities": {
+            "optionDescriptors": [
+              {
+                "id": "effort",
+                "label": "Reasoning",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "low",
+                    "label": "Low"
+                  },
+                  {
+                    "id": "medium",
+                    "label": "Medium"
+                  },
+                  {
+                    "id": "high",
+                    "label": "High",
+                    "isDefault": true
+                  },
+                  {
+                    "id": "xhigh",
+                    "label": "Extra High"
+                  },
+                  {
+                    "id": "max",
+                    "label": "Max"
+                  },
+                  {
+                    "id": "ultracode",
+                    "label": "Ultracode",
+                    "description": "xhigh effort plus multi-agent workflow orchestration"
+                  },
+                  {
+                    "id": "ultrathink",
+                    "label": "Ultrathink"
+                  }
+                ],
+                "promptInjectedValues": ["ultrathink"]
+              },
+              {
+                "id": "contextWindow",
+                "label": "Context Window",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "200k",
+                    "label": "200k"
+                  },
+                  {
+                    "id": "1m",
+                    "label": "1M",
+                    "isDefault": true
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "opus-5": {
+          "capabilities": {
+            "optionDescriptors": [
+              {
+                "id": "effort",
+                "label": "Reasoning",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "low",
+                    "label": "Low"
+                  },
+                  {
+                    "id": "medium",
+                    "label": "Medium"
+                  },
+                  {
+                    "id": "high",
+                    "label": "High",
+                    "isDefault": true
+                  },
+                  {
+                    "id": "xhigh",
+                    "label": "Extra High"
+                  },
+                  {
+                    "id": "max",
+                    "label": "Max"
+                  },
+                  {
+                    "id": "ultracode",
+                    "label": "Ultracode",
+                    "description": "xhigh effort plus multi-agent workflow orchestration"
+                  },
+                  {
+                    "id": "ultrathink",
+                    "label": "Ultrathink"
+                  }
+                ],
+                "promptInjectedValues": ["ultrathink"]
+              },
+              {
+                "id": "fastMode",
+                "label": "Fast Mode",
+                "type": "boolean"
+              },
+              {
+                "id": "contextWindow",
+                "label": "Context Window",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "200k",
+                    "label": "200k"
+                  },
+                  {
+                    "id": "1m",
+                    "label": "1M",
+                    "isDefault": true
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "opus-4-8": {
+          "capabilities": {
+            "optionDescriptors": [
+              {
+                "id": "effort",
+                "label": "Reasoning",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "low",
+                    "label": "Low"
+                  },
+                  {
+                    "id": "medium",
+                    "label": "Medium"
+                  },
+                  {
+                    "id": "high",
+                    "label": "High",
+                    "isDefault": true
+                  },
+                  {
+                    "id": "xhigh",
+                    "label": "Extra High"
+                  },
+                  {
+                    "id": "max",
+                    "label": "Max"
+                  },
+                  {
+                    "id": "ultracode",
+                    "label": "Ultracode",
+                    "description": "xhigh effort plus multi-agent workflow orchestration"
+                  },
+                  {
+                    "id": "ultrathink",
+                    "label": "Ultrathink"
+                  }
+                ],
+                "promptInjectedValues": ["ultrathink"]
+              },
+              {
+                "id": "fastMode",
+                "label": "Fast Mode",
+                "type": "boolean"
+              }
+            ]
+          }
+        },
+        "opus-4-7": {
+          "capabilities": {
+            "optionDescriptors": [
+              {
+                "id": "effort",
+                "label": "Reasoning",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "low",
+                    "label": "Low"
+                  },
+                  {
+                    "id": "medium",
+                    "label": "Medium"
+                  },
+                  {
+                    "id": "high",
+                    "label": "High"
+                  },
+                  {
+                    "id": "xhigh",
+                    "label": "Extra High",
+                    "isDefault": true
+                  },
+                  {
+                    "id": "max",
+                    "label": "Max"
+                  },
+                  {
+                    "id": "ultrathink",
+                    "label": "Ultrathink"
+                  }
+                ],
+                "promptInjectedValues": ["ultrathink"]
+              },
+              {
+                "id": "fastMode",
+                "label": "Fast Mode",
+                "type": "boolean"
+              }
+            ]
+          }
+        },
+        "opus-4-6": {
+          "capabilities": {
+            "optionDescriptors": [
+              {
+                "id": "effort",
+                "label": "Reasoning",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "low",
+                    "label": "Low"
+                  },
+                  {
+                    "id": "medium",
+                    "label": "Medium"
+                  },
+                  {
+                    "id": "high",
+                    "label": "High",
+                    "isDefault": true
+                  },
+                  {
+                    "id": "max",
+                    "label": "Max"
+                  },
+                  {
+                    "id": "ultrathink",
+                    "label": "Ultrathink"
+                  }
+                ],
+                "promptInjectedValues": ["ultrathink"]
+              },
+              {
+                "id": "fastMode",
+                "label": "Fast Mode",
+                "type": "boolean"
+              },
+              {
+                "id": "contextWindow",
+                "label": "Context Window",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "200k",
+                    "label": "200k"
+                  },
+                  {
+                    "id": "1m",
+                    "label": "1M",
+                    "isDefault": true
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "opus-4-5": {
+          "capabilities": {
+            "optionDescriptors": [
+              {
+                "id": "effort",
+                "label": "Reasoning",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "low",
+                    "label": "Low"
+                  },
+                  {
+                    "id": "medium",
+                    "label": "Medium"
+                  },
+                  {
+                    "id": "high",
+                    "label": "High",
+                    "isDefault": true
+                  },
+                  {
+                    "id": "max",
+                    "label": "Max"
+                  }
+                ]
+              },
+              {
+                "id": "fastMode",
+                "label": "Fast Mode",
+                "type": "boolean"
+              }
+            ]
+          }
+        },
+        "sonnet-5": {
+          "capabilities": {
+            "optionDescriptors": [
+              {
+                "id": "effort",
+                "label": "Reasoning",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "low",
+                    "label": "Low"
+                  },
+                  {
+                    "id": "medium",
+                    "label": "Medium"
+                  },
+                  {
+                    "id": "high",
+                    "label": "High",
+                    "isDefault": true
+                  },
+                  {
+                    "id": "xhigh",
+                    "label": "Extra High"
+                  },
+                  {
+                    "id": "max",
+                    "label": "Max"
+                  },
+                  {
+                    "id": "ultrathink",
+                    "label": "Ultrathink"
+                  }
+                ],
+                "promptInjectedValues": ["ultrathink"]
+              },
+              {
+                "id": "contextWindow",
+                "label": "Context Window",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "200k",
+                    "label": "200k",
+                    "isDefault": true
+                  },
+                  {
+                    "id": "1m",
+                    "label": "1M"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "sonnet-4-6": {
+          "capabilities": {
+            "optionDescriptors": [
+              {
+                "id": "effort",
+                "label": "Reasoning",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "low",
+                    "label": "Low"
+                  },
+                  {
+                    "id": "medium",
+                    "label": "Medium"
+                  },
+                  {
+                    "id": "high",
+                    "label": "High",
+                    "isDefault": true
+                  },
+                  {
+                    "id": "max",
+                    "label": "Max"
+                  },
+                  {
+                    "id": "ultrathink",
+                    "label": "Ultrathink"
+                  }
+                ],
+                "promptInjectedValues": ["ultrathink"]
+              },
+              {
+                "id": "contextWindow",
+                "label": "Context Window",
+                "type": "select",
+                "options": [
+                  {
+                    "id": "200k",
+                    "label": "200k",
+                    "isDefault": true
+                  },
+                  {
+                    "id": "1m",
+                    "label": "1M"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "haiku-4-5": {
+          "capabilities": {
+            "optionDescriptors": [
+              {
+                "id": "thinking",
+                "label": "Thinking",
+                "type": "boolean"
+              }
+            ]
+          }
+        }
+      },
+      "models": [
+        {
+          "slug": "claude-fable-5",
+          "name": "Claude Fable 5",
+          "status": "current",
+          "profile": "fable-5",
+          "adapter": {
+            "claudeCode": {
+              "minVersion": "2.1.169"
+            }
+          }
+        },
+        {
+          "slug": "claude-opus-5",
+          "name": "Claude Opus 5",
+          "status": "current",
+          "profile": "opus-5",
+          "adapter": {
+            "claudeCode": {
+              "minVersion": "2.1.219"
+            }
+          }
+        },
+        {
+          "slug": "claude-opus-4-8",
+          "name": "Claude Opus 4.8",
+          "status": "legacy",
+          "profile": "opus-4-8",
+          "adapter": {
+            "claudeCode": {
+              "minVersion": "2.1.154"
+            }
+          }
+        },
+        {
+          "slug": "claude-opus-4-7",
+          "name": "Claude Opus 4.7",
+          "status": "legacy",
+          "profile": "opus-4-7",
+          "adapter": {
+            "claudeCode": {
+              "minVersion": "2.1.111"
+            }
+          }
+        },
+        {
+          "slug": "claude-opus-4-6",
+          "name": "Claude Opus 4.6",
+          "status": "legacy",
+          "profile": "opus-4-6"
+        },
+        {
+          "slug": "claude-opus-4-5",
+          "name": "Claude Opus 4.5",
+          "status": "legacy",
+          "profile": "opus-4-5"
+        },
+        {
+          "slug": "claude-sonnet-5",
+          "name": "Claude Sonnet 5",
+          "status": "current",
+          "profile": "sonnet-5"
+        },
+        {
+          "slug": "claude-sonnet-4-6",
+          "name": "Claude Sonnet 4.6",
+          "status": "legacy",
+          "profile": "sonnet-4-6"
+        },
+        {
+          "slug": "claude-haiku-4-5",
+          "name": "Claude Haiku 4.5",
+          "status": "legacy",
+          "profile": "haiku-4-5"
+        }
+      ]
+    },
+    "codex": {
+      "models": [
+        {
+          "slug": "gpt-6.1-sol",
+          "name": "GPT-6.1 Sol",
+          "status": "current",
+          "adapter": {
+            "codex": {
+              "minVersion": "0.153.0"
+            }
+          }
+        },
+        {
+          "slug": "gpt-6-astra",
+          "name": "GPT-6 Astra",
+          "status": "current",
+          "adapter": {
+            "codex": {
+              "minVersion": "0.153.0"
+            }
+          }
+        },
+        {
+          "slug": "gpt-6-luna",
+          "name": "GPT-6 Luna",
+          "status": "current",
+          "adapter": {
+            "codex": {
+              "minVersion": "0.155.0"
+            }
+          }
+        },
+        {
+          "slug": "gpt-6-sol",
+          "name": "GPT-6 Sol",
+          "status": "legacy"
+        },
+        {
+          "slug": "gpt-5.6-sol",
+          "name": "GPT-5.6 Sol",
+          "status": "legacy"
+        },
+        {
+          "slug": "gpt-5.6-terra",
+          "name": "GPT-5.6 Terra",
+          "status": "legacy"
+        },
+        {
+          "slug": "gpt-5.6-luna",
+          "name": "GPT-5.6 Luna",
+          "status": "legacy"
+        },
+        {
+          "slug": "gpt-5.5",
+          "name": "GPT-5.5",
+          "status": "legacy"
+        }
+      ]
+    }
   }
 }

@@ -8,12 +8,14 @@ import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import {
+  applyModelManifest,
   BUNDLED_MODEL_MANIFEST,
   classifyModels,
   isLegacyModel,
   make,
   type ModelManifestData,
 } from "./ModelManifest.ts";
+import { buildServerProvider, type ServerProviderDraft } from "./providerSnapshot.ts";
 
 const CODEX = ProviderDriverKind.make("codex");
 const CLAUDE = ProviderDriverKind.make("claudeAgent");
@@ -101,6 +103,169 @@ const REMOTE_MANIFEST: ModelManifestData = {
     claudeAgent: ["claude-fable-5"],
   },
 };
+
+const draft = (input: {
+  readonly enabled?: boolean;
+  readonly installed?: boolean;
+  readonly version?: string | null;
+  readonly status?: "ready" | "warning" | "error";
+  readonly models?: ReadonlyArray<ServerProviderModel>;
+  readonly message?: string;
+}): ServerProviderDraft =>
+  buildServerProvider({
+    presentation: { displayName: "manifest-apply-test" },
+    enabled: input.enabled ?? true,
+    checkedAt: "2026-10-13T00:00:00.000Z",
+    models: input.models ?? [],
+    probe: {
+      installed: input.installed ?? true,
+      version: input.version === undefined ? "2.1.219" : input.version,
+      status: input.status ?? "ready",
+      auth: { status: "authenticated" },
+      ...(input.message ? { message: input.message } : {}),
+    },
+  });
+
+describe("applyModelManifest (claudeAgent catalog)", () => {
+  const claudeDraft = (version: string | null) =>
+    draft({
+      installed: true,
+      version,
+      models: [
+        model({ slug: "claude-sonnet-5", name: "Claude Sonnet 5" }),
+        model({ slug: "my-own-model", name: "my-own-model", isCustom: true }),
+      ],
+    });
+
+  it("gates current models above the installed version into updateRequiredModels", () => {
+    const applied = applyModelManifest(claudeDraft("2.1.150"), BUNDLED_MODEL_MANIFEST, CLAUDE);
+    const slugs = new Set(applied.models.map((entry) => entry.slug));
+    // 2.1.150 clears opus-4-7 (2.1.111) but not opus-4-8 (2.1.154),
+    // fable-5 (2.1.169), or opus-5 (2.1.219). Legacy entries gate out
+    // silently; only current models reach updateRequiredModels.
+    assert.isTrue(slugs.has("claude-opus-4-7"));
+    assert.isFalse(slugs.has("claude-opus-4-8"));
+    assert.isFalse(slugs.has("claude-fable-5"));
+    assert.isFalse(slugs.has("claude-opus-5"));
+    assert.isTrue(slugs.has("my-own-model"));
+    assert.deepStrictEqual(
+      applied.updateRequiredModels?.map((entry) => [entry.slug, entry.minVersion]),
+      [
+        ["claude-fable-5", "2.1.169"],
+        ["claude-opus-5", "2.1.219"],
+      ],
+    );
+    assert.strictEqual(
+      applied.message,
+      "Update Claude Code to v2.1.169 or newer to use Claude Fable 5.",
+    );
+  });
+
+  it("keeps the full catalog when every gate is satisfied", () => {
+    const applied = applyModelManifest(claudeDraft("2.1.220"), BUNDLED_MODEL_MANIFEST, CLAUDE);
+    assert.isTrue(applied.models.some((entry) => entry.slug === "claude-opus-5"));
+    assert.isTrue(applied.models.some((entry) => entry.slug === "claude-fable-5"));
+    assert.strictEqual(applied.updateRequiredModels, undefined);
+    assert.strictEqual(applied.message, undefined);
+  });
+
+  it("keeps the full catalog for a never-probed draft", () => {
+    const applied = applyModelManifest(
+      draft({ enabled: false, installed: false, version: null, models: [] }),
+      BUNDLED_MODEL_MANIFEST,
+      CLAUDE,
+    );
+    assert.strictEqual(applied.models.length, 9);
+    assert.strictEqual(applied.updateRequiredModels, undefined);
+    assert.strictEqual(applied.message, undefined);
+  });
+
+  it("drops gated models silently when an installed CLI reports no version", () => {
+    const applied = applyModelManifest(claudeDraft(null), BUNDLED_MODEL_MANIFEST, CLAUDE);
+    assert.isFalse(applied.models.some((entry) => entry.slug === "claude-opus-5"));
+    assert.strictEqual(applied.updateRequiredModels, undefined);
+    assert.strictEqual(applied.message, undefined);
+  });
+
+  it("resolves profile capabilities and marks legacy via catalog status", () => {
+    const applied = applyModelManifest(claudeDraft("2.1.220"), BUNDLED_MODEL_MANIFEST, CLAUDE);
+    const opus = applied.models.find((entry) => entry.slug === "claude-opus-5");
+    assert.isTrue(
+      opus?.capabilities?.optionDescriptors?.some((descriptor) => descriptor.id === "effort") ??
+        false,
+    );
+    const sonnet46 = applied.models.find((entry) => entry.slug === "claude-sonnet-4-6");
+    assert.strictEqual(sonnet46?.isLegacy, true);
+  });
+
+  it("does not overwrite an existing probe message", () => {
+    const applied = applyModelManifest(
+      draft({
+        installed: true,
+        version: "2.1.150",
+        status: "warning",
+        message: "preexisting",
+        models: [],
+      }),
+      BUNDLED_MODEL_MANIFEST,
+      CLAUDE,
+    );
+    assert.strictEqual(applied.message, "preexisting");
+  });
+});
+
+describe("applyModelManifest (codex catalog)", () => {
+  const codexDraft = (version: string | null, slugs: ReadonlyArray<string>) =>
+    draft({
+      installed: true,
+      version,
+      models: slugs.map((slug) => model({ slug, name: slug })),
+    });
+
+  it("announces current catalog models the installed CLI cannot run yet", () => {
+    const applied = applyModelManifest(
+      codexDraft("0.152.0", ["gpt-5.5"]),
+      BUNDLED_MODEL_MANIFEST,
+      CODEX,
+    );
+    assert.deepStrictEqual(
+      applied.updateRequiredModels?.map((entry) => [entry.slug, entry.minVersion]),
+      [
+        ["gpt-6.1-sol", "0.153.0"],
+        ["gpt-6-astra", "0.153.0"],
+        ["gpt-6-luna", "0.155.0"],
+      ],
+    );
+    // The CLI-reported models stay untouched besides legacy classification.
+    assert.deepStrictEqual(
+      applied.models.map((entry) => entry.slug),
+      ["gpt-5.5"],
+    );
+  });
+
+  it("stops announcing models the CLI already reports or can run", () => {
+    const discovered = applyModelManifest(
+      codexDraft("0.152.0", ["gpt-5.5", "gpt-6.1-sol"]),
+      BUNDLED_MODEL_MANIFEST,
+      CODEX,
+    );
+    assert.deepStrictEqual(
+      discovered.updateRequiredModels?.map((entry) => entry.slug),
+      ["gpt-6-astra", "gpt-6-luna"],
+    );
+    const newEnough = applyModelManifest(codexDraft("0.156.0", []), BUNDLED_MODEL_MANIFEST, CODEX);
+    assert.strictEqual(newEnough.updateRequiredModels, undefined);
+  });
+
+  it("announces nothing when the CLI was never probed", () => {
+    const applied = applyModelManifest(
+      draft({ enabled: false, installed: false, version: null, models: [] }),
+      BUNDLED_MODEL_MANIFEST,
+      CODEX,
+    );
+    assert.strictEqual(applied.updateRequiredModels, undefined);
+  });
+});
 
 const httpClientLayer = (handler: () => Response) =>
   Layer.succeed(

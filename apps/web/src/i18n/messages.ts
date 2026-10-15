@@ -296,6 +296,8 @@ export const en: Record<string, string> = {
   "teamRuntime.reload": "Reload latest configuration",
   "settings.localSaveFailed":
     "Changes are applied in this window but could not be saved. Retry to keep them after restarting.",
+  "settings.modelPreferencesSaveFailed": "Model preferences not saved",
+  "settings.modelPreferencesLoadFailed": "Could not load saved model preferences. Try again.",
   "themeMedia.lowContrast":
     "Estimated text contrast is {{ratio}}:1, below 4.5:1. Change the background or reset this region. Image and video backgrounds may vary.",
   "themeMedia.videoBrief":
@@ -566,6 +568,7 @@ export const en: Record<string, string> = {
   "modelPicker.openProviderSettings": "Open provider settings",
   "pullRequests.updateEnvironmentServer":
     "Update this environment's Code Work server to browse pull requests.",
+  "modelPicker.providerSettingsLink": "Provider settings",
   "modelSwitch.restartContinueTitle": "Switch model and restart this session?",
   "modelSwitch.restartContinueDescription":
     "{{model}} requires restarting the provider session. Your conversation continues from where it left off.",
@@ -6748,6 +6751,8 @@ export const zhCN: Record<string, string> = {
   "teamRuntime.conflict": "此团队已被其他设备修改，当前草稿已保留。请重新加载最新配置后再编辑。",
   "teamRuntime.reload": "重新加载最新配置",
   "settings.localSaveFailed": "修改已在当前窗口生效，但未能保存。请重试，避免重启后丢失。",
+  "settings.modelPreferencesSaveFailed": "模型偏好未保存",
+  "settings.modelPreferencesLoadFailed": "无法加载已保存的模型偏好，请重试。",
   "themeMedia.lowContrast":
     "预计文字对比度为 {{ratio}}:1，低于 4.5:1。请调整底色或恢复此区域；图片和视频背景的实际效果可能变化。",
   "themeMedia.videoBrief": "视频默认静音，会增加显卡占用和耗电；声音需主动开启（≤200 MB）。",
@@ -6999,6 +7004,7 @@ export const zhCN: Record<string, string> = {
   "modelPicker.noAvailableModelsDescription":
     "请先在设置中的“供应商”里添加或启用连接，再回来选择模型。",
   "modelPicker.openProviderSettings": "打开供应商设置",
+  "modelPicker.providerSettingsLink": "供应商设置",
   "modelPicker.unavailable": "不可用",
   "modelPicker.limited": "受限",
   "modelPicker.notReady": "未就绪",

@@ -14,7 +14,13 @@
  * before publishing, so every path that produces models (pending, probe,
  * error fallbacks) is classified the same way.
  */
-import type { ProviderDriverKind, ServerProviderModel } from "@codework/contracts";
+import {
+  ModelCapabilities,
+  ProviderDriverKind,
+  TrimmedNonEmptyString,
+  type ServerProviderModel,
+  type ServerProviderUpdateRequiredModel,
+} from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -25,6 +31,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
+import { compareSemverVersions, parseSemver } from "@codework/shared/semver";
 import { ServerConfig } from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import bundledManifestJson from "./model-manifest.json" with { type: "json" };
@@ -43,14 +50,72 @@ const MANIFEST_RETRY_MS = 5 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 10_000;
 
 /**
+ * Model catalog metadata. `current` models stay in the picker's primary
+ * section; `legacy` models move to the legacy section. Driver-specific
+ * compatibility (`adapter.claudeCode.minVersion`, `adapter.codex.minVersion`)
+ * marks a catalog model as usable only once the installed CLI is new enough —
+ * such models surface through `updateRequiredModels` instead of the picker.
+ * `maxVersionExclusive` retires an announcement once the CLI bundles the
+ * model directly.
+ */
+const ManifestModelStatus = Schema.Literals(["current", "legacy"]);
+export type ManifestModelStatus = typeof ManifestModelStatus.Type;
+
+/** Runtime metadata a catalog model can inherit via `profile`. */
+const ManifestModelProfile = Schema.Struct({
+  capabilities: Schema.optional(ModelCapabilities),
+});
+export type ManifestModelProfile = typeof ManifestModelProfile.Type;
+
+const ManifestClaudeCodeCompatibility = Schema.Struct({
+  minVersion: Schema.optional(Schema.String),
+  maxVersionExclusive: Schema.optional(Schema.String),
+});
+export type ManifestClaudeCodeCompatibility = typeof ManifestClaudeCodeCompatibility.Type;
+
+const ManifestCodexCompatibility = Schema.Struct({
+  minVersion: Schema.optional(Schema.String),
+});
+export type ManifestCodexCompatibility = typeof ManifestCodexCompatibility.Type;
+
+const ManifestModelAdapters = Schema.Struct({
+  claudeCode: Schema.optional(ManifestClaudeCodeCompatibility),
+  codex: Schema.optional(ManifestCodexCompatibility),
+});
+export type ManifestModelAdapters = typeof ManifestModelAdapters.Type;
+
+const ManifestProviderModel = Schema.Struct({
+  slug: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  shortName: Schema.optional(TrimmedNonEmptyString),
+  subProvider: Schema.optional(TrimmedNonEmptyString),
+  aliases: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  status: Schema.optional(ManifestModelStatus),
+  badge: Schema.optional(Schema.Literal("new")),
+  profile: Schema.optional(Schema.String),
+  adapter: Schema.optional(ManifestModelAdapters),
+});
+export type ManifestProviderModel = typeof ManifestProviderModel.Type;
+
+const ManifestProviderCatalog = Schema.Struct({
+  models: Schema.optional(Schema.Array(ManifestProviderModel)),
+  profiles: Schema.optional(Schema.Record(Schema.String, ManifestModelProfile)),
+  defaults: Schema.optional(Schema.Struct({ chat: Schema.optional(Schema.String) })),
+});
+export type ManifestProviderCatalog = typeof ManifestProviderCatalog.Type;
+
+/**
  * `version` gates breaking schema changes: a build only accepts remote
  * manifests whose version it understands, and keeps its bundled copy
  * otherwise. `currentModels` is keyed by driver kind; kinds absent from the
- * map have no legacy concept and their models are left unflagged.
+ * map have no legacy concept and their models are left unflagged. `providers`
+ * carries the remote-refreshable model catalog per driver kind.
  */
 const ModelManifestSchema = Schema.Struct({
   version: Schema.Literal(1),
+  updatedAt: Schema.optional(Schema.String),
   currentModels: Schema.Record(Schema.String, Schema.Array(Schema.String)),
+  providers: Schema.optional(Schema.Record(ProviderDriverKind, ManifestProviderCatalog)),
 });
 export type ModelManifestData = typeof ModelManifestSchema.Type;
 
@@ -87,14 +152,240 @@ export function isLegacyModel(
 }
 
 /**
- * Reclassifies every built-in model on a snapshot draft against the manifest.
- * Custom models are user-defined and never reclassified.
+ * Decoded catalog section for one driver kind; `null` when the manifest
+ * carries no catalog for the kind. Profile resolution happens here so every
+ * consumer sees capabilities already applied.
+ */
+export interface ResolvedManifestCatalogModel {
+  readonly entry: ManifestProviderModel;
+  readonly capabilities: ModelCapabilities | null;
+}
+
+export function providerCatalog(
+  manifest: ModelManifestData,
+  driverKind: ProviderDriverKind,
+): ManifestProviderCatalog | null {
+  return manifest.providers?.[driverKind] ?? null;
+}
+
+function resolveCatalogModels(
+  catalog: ManifestProviderCatalog,
+): ReadonlyArray<ResolvedManifestCatalogModel> {
+  return (catalog.models ?? []).map((entry) => ({
+    entry,
+    capabilities:
+      (entry.profile ? catalog.profiles?.[entry.profile]?.capabilities : undefined) ?? null,
+  }));
+}
+
+/** True when `version` satisfies the compatibility window; a null version
+ * satisfies a model without a `minVersion` gate so unknown-version providers
+ * keep their full catalog rather than losing every gated model. */
+function versionSatisfies(
+  version: string | null | undefined,
+  minVersion: string | undefined,
+  maxVersionExclusive: string | undefined,
+): boolean {
+  if (minVersion !== undefined) {
+    if (!version || parseSemver(version) === null) return false;
+    if (compareSemverVersions(version, minVersion) < 0) return false;
+  }
+  if (
+    maxVersionExclusive !== undefined &&
+    version !== null &&
+    version !== undefined &&
+    parseSemver(version) !== null &&
+    compareSemverVersions(version, maxVersionExclusive) >= 0
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function catalogEntryToServerModel(
+  { entry, capabilities }: ResolvedManifestCatalogModel,
+  defaultChatSlug: string | undefined,
+): ServerProviderModel {
+  return {
+    slug: entry.slug,
+    name: entry.name,
+    ...(entry.shortName !== undefined ? { shortName: entry.shortName } : {}),
+    ...(entry.subProvider !== undefined ? { subProvider: entry.subProvider } : {}),
+    ...(entry.aliases !== undefined && entry.aliases.length > 0 ? { aliases: entry.aliases } : {}),
+    ...(entry.badge !== undefined ? { badge: entry.badge } : {}),
+    isCustom: false,
+    ...(defaultChatSlug === entry.slug ? { isDefault: true } : {}),
+    ...(entry.status === "legacy" ? { isLegacy: true } : {}),
+    capabilities,
+  };
+}
+
+/**
+ * Lowest minimum version across the gated models — the version a user must
+ * reach before the whole blocked set unlocks, surfaced in the upgrade
+ * message and the picker's update-required notice.
+ */
+function lowestRequiredVersion(gated: ReadonlyArray<{ minVersion: string }>): string {
+  return gated.reduce(
+    (lowest, { minVersion }) =>
+      compareSemverVersions(minVersion, lowest) < 0 ? minVersion : lowest,
+    gated[0]!.minVersion,
+  );
+}
+
+/**
+ * Normalizes a Codex model slug into its product family so a catalog
+ * announcement does not double-list a model the CLI already reports under a
+ * different label (e.g. `gpt-5.3-codex-spark` vs `gpt-5.3 Codex Spark`).
+ */
+export function codexModelFamily(slug: string): string {
+  return slug.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+interface CatalogApplyResult {
+  readonly models: ReadonlyArray<ServerProviderModel>;
+  readonly updateRequiredModels: ReadonlyArray<ServerProviderUpdateRequiredModel>;
+  readonly versionUpgradeMessage: string | null;
+}
+
+function applyClaudeCatalog(
+  draft: ServerProviderDraft,
+  catalog: ManifestProviderCatalog,
+): CatalogApplyResult {
+  const resolved = resolveCatalogModels(catalog);
+  // A draft that never probed the CLI (disabled or still pending) has no
+  // version to gate on; it keeps the full catalog so the settings preview
+  // is not degraded. An installed CLI with an unparsable version keeps the
+  // historical behavior: gated models drop out silently.
+  const version = draft.installed ? draft.version : undefined;
+  const gated: Array<{ entry: ManifestProviderModel; minVersion: string }> = [];
+  const available: ResolvedManifestCatalogModel[] = [];
+  for (const model of resolved) {
+    const compat = model.entry.adapter?.claudeCode;
+    if (
+      version !== undefined &&
+      !versionSatisfies(version, compat?.minVersion, compat?.maxVersionExclusive)
+    ) {
+      // Only current-generation models are announced as update targets;
+      // legacy models gate out silently.
+      if (model.entry.status !== "legacy" && compat?.minVersion !== undefined && version !== null) {
+        gated.push({ entry: model.entry, minVersion: compat.minVersion });
+      }
+      continue;
+    }
+    available.push(model);
+  }
+
+  const customSlugs = new Set(
+    draft.models.filter((model) => model.isCustom).map((model) => model.slug),
+  );
+  const defaultChatSlug = catalog.defaults?.chat;
+  const catalogModels = available
+    .filter((model) => !customSlugs.has(model.entry.slug))
+    .map((model) => catalogEntryToServerModel(model, defaultChatSlug));
+  const customModels = draft.models.filter((model) => model.isCustom);
+
+  // `updateRequiredModels` only exists once a concrete version proves the
+  // CLI is too old; a versionless draft cannot announce a required update.
+  const updateRequiredModels: ServerProviderUpdateRequiredModel[] =
+    version != null
+      ? gated.map(({ entry, minVersion }) => ({
+          slug: entry.slug,
+          name: entry.name,
+          ...(entry.badge !== undefined ? { badge: entry.badge } : {}),
+          minVersion,
+        }))
+      : [];
+
+  // The probe message names the model gated at the lowest required CLI
+  // version — the first model a user unlocks by upgrading. The picker
+  // notice lists every gated model.
+  const versionUpgradeMessage = (() => {
+    if (gated.length === 0 || draft.status !== "ready" || version == null) return null;
+    const lowest = lowestRequiredVersion(gated);
+    const model = gated.find(({ minVersion }) => minVersion === lowest);
+    if (!model) return null;
+    return `Update Claude Code to v${lowest} or newer to use ${model.entry.name}.`;
+  })();
+
+  return {
+    models: [...catalogModels, ...customModels],
+    updateRequiredModels,
+    versionUpgradeMessage,
+  };
+}
+
+function applyCodexCatalog(
+  draft: ServerProviderDraft,
+  catalog: ManifestProviderCatalog,
+): Pick<CatalogApplyResult, "updateRequiredModels"> {
+  // Codex models come from the CLI itself; the manifest only announces
+  // newer ones. A draft without a probed version cannot claim an update
+  // is required.
+  if (!draft.installed || draft.version == null) {
+    return { updateRequiredModels: [] };
+  }
+  const version = draft.version;
+  const discovered = new Set(draft.models.map((model) => codexModelFamily(model.slug)));
+  const updateRequiredModels: ServerProviderUpdateRequiredModel[] = [];
+  for (const entry of catalog.models ?? []) {
+    if (entry.status !== "current") continue;
+    const minVersion = entry.adapter?.codex?.minVersion;
+    if (minVersion === undefined) continue;
+    if (discovered.has(codexModelFamily(entry.slug))) continue;
+    if (versionSatisfies(version, minVersion, undefined)) continue;
+    updateRequiredModels.push({
+      slug: entry.slug,
+      name: entry.name,
+      ...(entry.badge !== undefined ? { badge: entry.badge } : {}),
+      minVersion,
+    });
+  }
+  return { updateRequiredModels };
+}
+
+/**
+ * Applies the manifest to a provider snapshot draft. For drivers with a
+ * manifest catalog (`claudeAgent`), the catalog replaces the built-in list:
+ * entries gated by `adapter.<driver>.minVersion` above the installed CLI
+ * version move to `updateRequiredModels` and set the probe upgrade message.
+ * For drivers without a catalog (`codex`), the CLI-reported list stands and
+ * current-status announcements the CLI cannot run yet become
+ * `updateRequiredModels`. Custom models are never reclassified or dropped.
  */
 export function applyModelManifest(
   draft: ServerProviderDraft,
   manifest: ModelManifestData,
   driverKind: ProviderDriverKind,
 ): ServerProviderDraft {
+  const catalog = providerCatalog(manifest, driverKind);
+  if (catalog === null || (catalog.models ?? []).length === 0) {
+    return { ...draft, models: classifyModels(draft.models, manifest, driverKind) };
+  }
+
+  if (driverKind === "claudeAgent") {
+    const applied = applyClaudeCatalog(draft, catalog);
+    return {
+      ...draft,
+      ...(applied.versionUpgradeMessage !== null && draft.message === undefined
+        ? { message: applied.versionUpgradeMessage }
+        : {}),
+      models: applied.models,
+      ...(applied.updateRequiredModels.length > 0
+        ? { updateRequiredModels: applied.updateRequiredModels }
+        : {}),
+    };
+  }
+
+  if (driverKind === "codex") {
+    const { updateRequiredModels } = applyCodexCatalog(draft, catalog);
+    return {
+      ...draft,
+      models: classifyModels(draft.models, manifest, driverKind),
+      ...(updateRequiredModels.length > 0 ? { updateRequiredModels } : {}),
+    };
+  }
+
   return { ...draft, models: classifyModels(draft.models, manifest, driverKind) };
 }
 

@@ -42,7 +42,6 @@ const makeNativeInput = () => {
     counts: () => ({ probes, scans }),
     input: {
       executablePath: "/bin/claude",
-      version: "2.1.219",
       environment: { CLAUDE_CONFIG_DIR: "/test/config" },
       cwd: "/test/workspace",
       capabilities: Effect.sync(() => {
@@ -103,7 +102,7 @@ it.effect("手动刷新与到期重新读取技能，普通刷新复用目录", 
   }),
 );
 
-it.effect("执行位置、配置目录、路由环境、版本、命令和自定义模型改变时重建目录", () =>
+it.effect("执行位置、配置目录、路由环境、命令和自定义模型改变时重建目录", () =>
   Effect.gen(function* () {
     const catalog = yield* makeCliProviderCatalog();
     const fixture = makeNativeInput();
@@ -115,15 +114,12 @@ it.effect("执行位置、配置目录、路由环境、版本、命令和自定
       {
         environment: { ...fixture.input.environment, ANTHROPIC_BASE_URL: "http://127.0.0.1:12345" },
       },
-      { version: "2.1.111" },
     ]) {
       const changed = yield* fetchClaudeCatalog({ customModels: [] }, catalog, {
         ...fixture.input,
         ...patch,
       });
       expect(changed.catalog).not.toBe(first.catalog);
-      if (patch.version)
-        expect(changed.catalog.models.some((model) => model.slug === "claude-opus-5")).toBe(false);
     }
     fixture.setCommand("inspect");
     const commandChanged = yield* fetchClaudeCatalog({ customModels: [] }, catalog, fixture.input);
@@ -138,7 +134,7 @@ it.effect("执行位置、配置目录、路由环境、版本、命令和自定
       fixture.input,
     );
     expect(customChanged.catalog.models.at(-1)?.slug).toBe("custom");
-    expect(fixture.counts()).toEqual({ probes: 8, scans: 8 });
+    expect(fixture.counts()).toEqual({ probes: 7, scans: 7 });
   }),
 );
 
@@ -279,7 +275,9 @@ it.layer(NodeServices.layer)("Claude 状态入口", (it) => {
       version = "2.1.111";
       const upgraded = yield* read();
       expect(upgraded.version).toBe(version);
-      expect(upgraded.models.some((model) => model.slug === "claude-opus-5")).toBe(false);
+      // Model gating moved to `applyModelManifest` at the driver boundary;
+      // the status check itself returns the full catalog.
+      expect(upgraded.models).toBe(first.models);
       const disabled = yield* read({ ...settings, enabled: false });
       expect(disabled.enabled).toBe(false);
       expect(disabled.auth.status).toBe("unknown");

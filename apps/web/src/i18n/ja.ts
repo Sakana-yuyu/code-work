@@ -169,6 +169,9 @@ export const ja: Record<string, string> = {
     "BYOK がモデル呼び出しの上限 {{maxRounds}} 回に達したため停止しました。ツールの実行結果を確認してから、続きのメッセージを送信してください。",
   "settings.localSaveFailed":
     "変更はこのウィンドウでは反映されていますが、保存できませんでした。再試行すると再起動後も保持されます。",
+  "settings.modelPreferencesSaveFailed": "モデル設定を保存できませんでした",
+  "settings.modelPreferencesLoadFailed":
+    "保存済みのモデル設定を読み込めませんでした。もう一度お試しください。",
   "supplierRegistry.title": "サプライヤーレジストリ",
   "supplierRegistry.description":
     "各プロバイダーインスタンスのアカウント紐付けと派生エージェントプロファイルの読み取り専用ビュー。",
@@ -490,6 +493,7 @@ export const ja: Record<string, string> = {
   "modelPicker.openProviderSettings": "プロバイダー設定を開く",
   "pullRequests.updateEnvironmentServer":
     "プルリクエストを閲覧するには、この環境の Code Work サーバーを更新してください。",
+  "modelPicker.providerSettingsLink": "プロバイダー設定",
   "modelSwitch.restartContinueTitle": "モデルを切り替えてセッションを再起動しますか？",
   "modelSwitch.restartContinueDescription":
     "{{model}} への切り替えにはプロバイダーセッションの再起動が必要です。会話は現在の位置から続きます。",

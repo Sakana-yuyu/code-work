@@ -2,6 +2,7 @@ import {
   isProviderDriverKind,
   isProviderAvailable,
   resolveProviderInstanceEnabled,
+  type ModelPreferences,
   type ModelSelection,
   type ProviderDriverKind,
   type ServerProvider,
@@ -128,6 +129,12 @@ export function applyServerSettingsPatch(
 ): ServerSettings {
   const selectionPatch = patch.textGenerationModelSelection;
   const {
+    migrateModelPreferences,
+    setModelFavorites,
+    setModelsHidden,
+    setProviderModelOrder,
+    favorites: patchFavorites,
+    providerModelPreferences,
     automaticGitFetchInterval,
     providerHealthRefreshInterval,
     backgroundActivityProfile,
@@ -173,6 +180,52 @@ export function applyServerSettingsPatch(
             },
           }
         : undefined;
+  const initialFavorites =
+    patchFavorites ?? current.favorites ?? migrateModelPreferences?.favorites ?? null;
+  const favorites =
+    setModelFavorites?.reduce((current, change) => {
+      const exists = current.some(
+        (favorite) => favorite.provider === change.provider && favorite.model === change.model,
+      );
+      return change.favorite
+        ? exists
+          ? current
+          : [...current, { provider: change.provider, model: change.model }]
+        : current.filter(
+            (favorite) => favorite.provider !== change.provider || favorite.model !== change.model,
+          );
+    }, initialFavorites ?? []) ?? initialFavorites;
+  const initialModelPreferences =
+    providerModelPreferences ??
+    current.providerModelPreferences ??
+    migrateModelPreferences?.providerModelPreferences ??
+    null;
+  let nextModelPreferences = initialModelPreferences;
+  for (const change of setModelsHidden ?? []) {
+    const preferences = nextModelPreferences?.[change.provider] ?? {
+      hiddenModels: [],
+      modelOrder: [],
+    };
+    const hiddenModels = preferences.hiddenModels.filter((model) => model !== change.model);
+    if (change.hidden) hiddenModels.push(change.model);
+    nextModelPreferences = {
+      ...nextModelPreferences,
+      [change.provider]: { ...preferences, hiddenModels },
+    };
+  }
+  if (setProviderModelOrder) {
+    const preferences = nextModelPreferences?.[setProviderModelOrder.provider] ?? {
+      hiddenModels: [],
+      modelOrder: [],
+    };
+    nextModelPreferences = {
+      ...nextModelPreferences,
+      [setProviderModelOrder.provider]: {
+        ...preferences,
+        modelOrder: [...setProviderModelOrder.modelOrder],
+      },
+    };
+  }
   // 新旧客户端可交替修改；旧开关的明确写入也必须覆盖已经保存的三态选择。
   const streamingMode =
     patch.responseStreamingMode ??
@@ -211,6 +264,8 @@ export function applyServerSettingsPatch(
   };
   const nextWithReplacementsBase = {
     ...next,
+    favorites,
+    providerModelPreferences: nextModelPreferences,
     localAccountPool,
     ...(backgroundActivity !== undefined
       ? {
@@ -299,4 +354,40 @@ export function applyServerSettingsPatch(
     ...nextWithReplacements,
     textGenerationModelSelection: createModelSelection(instanceId, model, options),
   };
+}
+
+/** Resolve legacy local preferences only until the environment has a saved value. */
+export function resolveModelPreferences(
+  settings: Pick<ServerSettings, "favorites" | "providerModelPreferences">,
+  legacy: Partial<ModelPreferences> = {},
+): ModelPreferences {
+  return {
+    favorites: settings.favorites ?? legacy.favorites ?? [],
+    providerModelPreferences:
+      settings.providerModelPreferences ?? legacy.providerModelPreferences ?? {},
+  };
+}
+
+/** Empty legacy values do not claim ownership before another client can migrate its saved list. */
+export function modelPreferencesMigrationPatch(
+  settings: Pick<ServerSettings, "favorites" | "providerModelPreferences">,
+  legacy: Partial<ModelPreferences>,
+): ServerSettingsPatch | null {
+  const favorites =
+    settings.favorites === null && (legacy.favorites?.length ?? 0) > 0
+      ? legacy.favorites
+      : undefined;
+  const providerModelPreferences =
+    settings.providerModelPreferences === null &&
+    Object.keys(legacy.providerModelPreferences ?? {}).length > 0
+      ? legacy.providerModelPreferences
+      : undefined;
+  return favorites === undefined && providerModelPreferences === undefined
+    ? null
+    : {
+        migrateModelPreferences: {
+          ...(favorites === undefined ? {} : { favorites }),
+          ...(providerModelPreferences === undefined ? {} : { providerModelPreferences }),
+        },
+      };
 }

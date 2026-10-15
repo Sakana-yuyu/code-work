@@ -42,7 +42,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { isDesktopLocalConnectionTarget } from "../../connection/desktopLocal";
 import { isElectron } from "../../env";
 import { usePrimarySessionState } from "../../environments/primary";
-import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
+import {
+  useEnvironmentSettings,
+  useUpdateEnvironmentModelPreferences,
+  useUpdateEnvironmentSettings,
+} from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { resolveAppModelSelectionState } from "../../modelSelection";
 import {
@@ -124,11 +128,12 @@ function withoutProviderInstanceKey<V>(
   return next;
 }
 
-function withoutProviderInstanceFavorites(
-  favorites: ReadonlyArray<{ readonly provider: ProviderInstanceId; readonly model: string }>,
-  instanceId: ProviderInstanceId,
-) {
-  return favorites.filter((favorite) => favorite.provider !== instanceId);
+function modelListChanges(current: ReadonlyArray<string>, next: ReadonlyArray<string>) {
+  const currentSet = new Set(current);
+  const nextSet = new Set(next.map((model) => model.trim()).filter(Boolean));
+  return [...new Set([...currentSet, ...nextSet])]
+    .filter((model) => currentSet.has(model) !== nextSet.has(model))
+    .map((model) => ({ model, selected: nextSet.has(model) }));
 }
 
 const PROVIDER_SETTINGS = DRIVER_OPTIONS.map((definition) => ({
@@ -492,6 +497,7 @@ export function EnvironmentProviderSettings({
     );
   }, []);
   const updateSettings = useUpdateEnvironmentSettings(environmentId, reportSettingsUpdateFailure);
+  const updateModelPreferences = useUpdateEnvironmentModelPreferences(environmentId);
   const providerEditOwner = useRef<{
     environmentId: EnvironmentId;
     queue: ReturnType<typeof makeProviderInstanceEditQueue>;
@@ -812,27 +818,34 @@ export function EnvironmentProviderSettings({
     });
   };
 
-  const updateProviderModelPreferences = (
+  const updateProviderHiddenModels = (
     instanceId: ProviderInstanceId,
-    next: {
-      readonly hiddenModels: ReadonlyArray<string>;
-      readonly modelOrder: ReadonlyArray<string>;
-    },
+    nextHiddenModels: ReadonlyArray<string>,
   ) => {
-    const hiddenModels = [...new Set(next.hiddenModels.filter((slug) => slug.trim().length > 0))];
-    const modelOrder = [...new Set(next.modelOrder.filter((slug) => slug.trim().length > 0))];
-    const rest = withoutProviderInstanceKey(settings.providerModelPreferences, instanceId);
-    updateSettings({
-      providerModelPreferences:
-        hiddenModels.length === 0 && modelOrder.length === 0
-          ? rest
-          : {
-              ...rest,
-              [instanceId]: {
-                hiddenModels,
-                modelOrder,
-              },
-            },
+    const hidden = new Set(nextHiddenModels.map((slug) => slug.trim()).filter(Boolean));
+    const changes = modelListChanges(
+      settings.providerModelPreferences?.[instanceId]?.hiddenModels ?? [],
+      nextHiddenModels,
+    );
+    if (changes.length === 0) return;
+    void updateModelPreferences({
+      setModelsHidden: changes.map(({ model }) => ({
+        provider: instanceId,
+        model,
+        hidden: hidden.has(model),
+      })),
+    });
+  };
+
+  const updateProviderModelOrder = (
+    instanceId: ProviderInstanceId,
+    modelOrder: ReadonlyArray<string>,
+  ) => {
+    void updateModelPreferences({
+      setProviderModelOrder: {
+        provider: instanceId,
+        modelOrder: [...new Set(modelOrder.map((slug) => slug.trim()).filter(Boolean))],
+      },
     });
   };
 
@@ -848,11 +861,19 @@ export function EnvironmentProviderSettings({
         }),
       ),
     ];
-    updateSettings({
-      favorites: [
-        ...withoutProviderInstanceFavorites(settings.favorites ?? [], instanceId),
-        ...favoriteModels.map((model) => ({ provider: instanceId, model })),
-      ],
+    const changes = modelListChanges(
+      Arr.filterMap(settings.favorites ?? [], (favorite) =>
+        favorite.provider === instanceId ? Result.succeed(favorite.model) : Result.failVoid,
+      ),
+      favoriteModels,
+    );
+    if (changes.length === 0) return;
+    void updateModelPreferences({
+      setModelFavorites: changes.map(({ model, selected }) => ({
+        provider: instanceId,
+        model,
+        favorite: selected,
+      })),
     });
   };
 
@@ -997,18 +1018,10 @@ export function EnvironmentProviderSettings({
         favoriteModels={favoriteModels}
         modelOrder={modelPreferences.modelOrder}
         onHiddenModelsChange={(hiddenModels) =>
-          updateProviderModelPreferences(row.instanceId, {
-            ...modelPreferences,
-            hiddenModels,
-          })
+          updateProviderHiddenModels(row.instanceId, hiddenModels)
         }
         onFavoriteModelsChange={(next) => updateProviderFavoriteModels(row.instanceId, next)}
-        onModelOrderChange={(modelOrder) =>
-          updateProviderModelPreferences(row.instanceId, {
-            ...modelPreferences,
-            modelOrder,
-          })
-        }
+        onModelOrderChange={(modelOrder) => updateProviderModelOrder(row.instanceId, modelOrder)}
         onRunUpdate={
           mode === "editor" && showInlineUpdateButton && updateCandidate
             ? () => {

@@ -2659,6 +2659,7 @@ export function GeneralSettingsPanel() {
           control={
             <div className="flex flex-wrap items-center justify-end gap-1.5">
               <ProviderModelPicker
+                environmentId={primaryEnvironment?.environmentId ?? null}
                 activeInstanceId={textGenInstanceId}
                 model={textGenModel}
                 lockedProvider={null}

@@ -4172,6 +4172,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   ) : (
                     <ProviderModelPicker
                       compact={isComposerFooterCompact}
+                      environmentId={environmentId}
                       activeInstanceId={selectedInstanceId}
                       model={selectedModelForPickerWithCustomFallback}
                       lockedProvider={lockedProvider}

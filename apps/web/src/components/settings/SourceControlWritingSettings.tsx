@@ -6,6 +6,7 @@ import { createModelSelection } from "@codework/shared/model";
 import { resolveSourceControlWriterModelSelection } from "@codework/shared/serverSettings";
 
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
+import { usePrimaryEnvironment } from "../../state/environments";
 import {
   applyProviderInstanceSettings,
   deriveProviderInstanceEntries,
@@ -54,6 +55,7 @@ const MODE_OPTIONS: Record<SourceControlWritingStyleMode, { label: string; descr
 export function SourceControlWritingSettingsSection() {
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
+  const primaryEnvironment = usePrimaryEnvironment();
   const serverProviders = useAtomValue(primaryServerProvidersAtom);
   const customInstructionsRef = useRef<HTMLTextAreaElement>(null);
   const style = settings.sourceControlWritingStyle;
@@ -186,6 +188,7 @@ export function SourceControlWritingSettingsSection() {
           <div className="flex flex-wrap items-center justify-end gap-2">
             {usesDedicatedModel ? (
               <ProviderModelPicker
+                environmentId={primaryEnvironment?.environmentId ?? null}
                 activeInstanceId={activeSelection.instanceId}
                 model={activeSelection.model}
                 lockedProvider={null}

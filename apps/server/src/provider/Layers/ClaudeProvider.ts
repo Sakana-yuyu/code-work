@@ -26,7 +26,6 @@ import {
   getProviderOptionDescriptors,
 } from "@codework/shared/model";
 import { resolveSpawnCommand } from "@codework/shared/shell";
-import { compareSemverVersions } from "@codework/shared/semver";
 import {
   query as claudeQuery,
   type Options as ClaudeQueryOptions,
@@ -68,10 +67,6 @@ const CLAUDE_PRESENTATION = {
   displayName: "Claude",
   showInteractionModeToggle: true,
 } as const;
-const MINIMUM_CLAUDE_OPUS_5_VERSION = "2.1.219";
-const MINIMUM_CLAUDE_FABLE_5_VERSION = "2.1.169";
-const MINIMUM_CLAUDE_OPUS_4_8_VERSION = "2.1.154";
-const MINIMUM_CLAUDE_OPUS_4_7_VERSION = "2.1.111";
 
 const CLAUDE_MODEL_CATALOG: ReadonlyArray<ServerProviderModel> = [
   {
@@ -338,65 +333,10 @@ const CLAUDE_MODEL_CATALOG: ReadonlyArray<ServerProviderModel> = [
   },
 ];
 
-// Legacy classification happens at the driver boundary via `applyModelManifest`,
-// so the catalog itself carries no `isLegacy` flags.
+// Legacy classification and CLI-version gating happen at the driver boundary
+// via `applyModelManifest`, so the catalog itself carries no `isLegacy` flags
+// and no per-model version checks.
 const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = CLAUDE_MODEL_CATALOG;
-
-function supportsClaudeOpus5(version: string | null | undefined): boolean {
-  return version ? compareSemverVersions(version, MINIMUM_CLAUDE_OPUS_5_VERSION) >= 0 : false;
-}
-
-function supportsClaudeFable5(version: string | null | undefined): boolean {
-  return version ? compareSemverVersions(version, MINIMUM_CLAUDE_FABLE_5_VERSION) >= 0 : false;
-}
-
-function supportsClaudeOpus48(version: string | null | undefined): boolean {
-  return version ? compareSemverVersions(version, MINIMUM_CLAUDE_OPUS_4_8_VERSION) >= 0 : false;
-}
-
-function supportsClaudeOpus47(version: string | null | undefined): boolean {
-  return version ? compareSemverVersions(version, MINIMUM_CLAUDE_OPUS_4_7_VERSION) >= 0 : false;
-}
-
-function getBuiltInClaudeModelsForVersion(
-  version: string | null | undefined,
-): ReadonlyArray<ServerProviderModel> {
-  return BUILT_IN_MODELS.filter((model) => {
-    if (model.slug === "claude-opus-5") {
-      return supportsClaudeOpus5(version);
-    }
-    if (model.slug === "claude-fable-5") {
-      return supportsClaudeFable5(version);
-    }
-    if (model.slug === "claude-opus-4-8") {
-      return supportsClaudeOpus48(version);
-    }
-    if (model.slug === "claude-opus-4-7") {
-      return supportsClaudeOpus47(version);
-    }
-    return true;
-  });
-}
-
-function formatClaudeOpus5UpgradeMessage(version: string | null): string {
-  const versionLabel = version ? `v${version}` : "the installed version";
-  return `Claude Code ${versionLabel} is too old for Claude Opus 5. Upgrade to v${MINIMUM_CLAUDE_OPUS_5_VERSION} or newer to access it.`;
-}
-
-function formatClaudeFable5UpgradeMessage(version: string | null): string {
-  const versionLabel = version ? `v${version}` : "the installed version";
-  return `Claude Code ${versionLabel} is too old for Claude Fable 5. Upgrade to v${MINIMUM_CLAUDE_FABLE_5_VERSION} or newer to access it.`;
-}
-
-function formatClaudeOpus48UpgradeMessage(version: string | null): string {
-  const versionLabel = version ? `v${version}` : "the installed version";
-  return `Claude Code ${versionLabel} is too old for Claude Opus 4.8. Upgrade to v${MINIMUM_CLAUDE_OPUS_4_8_VERSION} or newer to access it.`;
-}
-
-function formatClaudeOpus47UpgradeMessage(version: string | null): string {
-  const versionLabel = version ? `v${version}` : "the installed version";
-  return `Claude Code ${versionLabel} is too old for Claude Opus 4.7. Upgrade to v${MINIMUM_CLAUDE_OPUS_4_7_VERSION} or newer to access it.`;
-}
 
 export function getClaudeModelCapabilities(model: string | null | undefined): ModelCapabilities {
   const slug = model?.trim();
@@ -846,7 +786,6 @@ const probeClaudeCapabilities = Effect.fn("probeClaudeCapabilities")(function* (
 });
 
 interface ClaudeNativeCatalogInput<RCapabilities, RSkills> {
-  readonly version: string | null;
   readonly executablePath: string;
   readonly environment: NodeJS.ProcessEnv;
   readonly cwd: string;
@@ -864,7 +803,7 @@ export const fetchClaudeCatalog = Effect.fn("fetchClaudeCatalog")(function* <
   catalog?: CliProviderCatalog,
   native?: ClaudeNativeCatalogInput<RCapabilities, RSkills>,
 ) {
-  const builtInModels = native ? getBuiltInClaudeModelsForVersion(native.version) : BUILT_IN_MODELS;
+  const builtInModels = BUILT_IN_MODELS;
   const customModels = providerCustomModelSlugs(builtInModels, settings.customModels);
   // SDK 将账户与命令合并在 initialize 响应中，读取当前账户必然也会收到当前命令。
   const capabilities = native ? yield* native.capabilities : undefined;
@@ -896,9 +835,7 @@ export const fetchClaudeCatalog = Effect.fn("fetchClaudeCatalog")(function* <
               operation: native ? "native-directory" : "configured-models",
               config: {
                 customModels,
-                ...(native
-                  ? { binaryPath: native.executablePath, version: native.version, slashCommands }
-                  : {}),
+                ...(native ? { binaryPath: native.executablePath, slashCommands } : {}),
               },
               ...(native ? { cwd: native.cwd, environment: native.environment } : {}),
             }),
@@ -1062,21 +999,10 @@ const checkResolvedClaudeProviderStatus = Effect.fn("checkResolvedClaudeProvider
     });
   }
 
-  const versionUpgradeMessage = supportsClaudeOpus5(parsedVersion)
-    ? undefined
-    : supportsClaudeFable5(parsedVersion)
-      ? formatClaudeOpus5UpgradeMessage(parsedVersion)
-      : supportsClaudeOpus48(parsedVersion)
-        ? formatClaudeFable5UpgradeMessage(parsedVersion)
-        : supportsClaudeOpus47(parsedVersion)
-          ? formatClaudeOpus48UpgradeMessage(parsedVersion)
-          : formatClaudeOpus47UpgradeMessage(parsedVersion);
-
   const {
     catalog: { models, skills, slashCommands },
     account: capabilities,
   } = yield* fetchClaudeCatalog(claudeSettings, catalog, {
-    version: parsedVersion,
     executablePath,
     environment: resolvedEnvironment,
     cwd: resolvedCwd,
@@ -1126,7 +1052,6 @@ const checkResolvedClaudeProviderStatus = Effect.fn("checkResolvedClaudeProvider
         ...(capabilities.email ? { email: capabilities.email } : {}),
         ...(authMetadata ? authMetadata : {}),
       },
-      ...(versionUpgradeMessage ? { message: versionUpgradeMessage } : {}),
     },
   });
 });
@@ -1181,9 +1106,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       ...initial,
       installed: progress.installed,
       version: progress.version,
-      models: progress.installed
-        ? getBuiltInClaudeModelsForVersion(progress.version)
-        : initial.models,
+      models: progress.installed ? BUILT_IN_MODELS : initial.models,
       status: "error",
       message: "Claude 原生刷新超时；版本、初始化与技能扫描共用 30 秒预算。",
     }),

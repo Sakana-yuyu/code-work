@@ -54,6 +54,7 @@ const codexOptions: ReadonlyArray<ModelEsque> = [
 function renderPickerTrigger(model: string, options: ReadonlyArray<ModelEsque>): string {
   return renderToStaticMarkup(
     <ProviderModelPicker
+      environmentId={null}
       activeInstanceId={codexId}
       model={model}
       lockedProvider={null}
@@ -71,6 +72,7 @@ function renderPickerContent(input: {
 }): string {
   return renderToStaticMarkup(
     <ModelPickerContent
+      environmentId={null}
       activeInstanceId={input.activeInstanceId ?? codexId}
       model="gpt-5.4"
       lockedProvider={null}

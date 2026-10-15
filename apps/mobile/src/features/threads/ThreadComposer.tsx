@@ -816,6 +816,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const settingsOwnerId = scopedThreadKey(props.environmentId, props.selectedThread.id);
   const settingsRouteSession = useMemo<ExistingThreadSettingsRouteSession>(
     () => ({
+      environmentId: props.environmentId,
       ownerId: settingsOwnerId,
       providerGroups: threadProviderGroups,
       agentLocked,

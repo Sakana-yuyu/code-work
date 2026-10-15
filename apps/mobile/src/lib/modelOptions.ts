@@ -25,14 +25,25 @@ export type ModelOption = {
   readonly providerDriver: string;
   readonly isDefault: boolean;
   readonly isLegacy: boolean;
+  readonly isUnavailable?: boolean;
+  readonly isHidden?: boolean;
+  readonly canHide?: boolean;
   readonly capabilities: ModelCapabilities | null;
   readonly selection: ModelSelection;
+  readonly providerUpdateRequired?: ProviderUpdateRequired;
 };
+
+type ProviderUpdateRequired = Pick<
+  CodeworkServerConfig["providers"][number],
+  "driver" | "updateRequiredModels"
+>;
 
 export type ProviderGroup = {
   readonly providerKey: string;
   readonly providerLabel: string;
   readonly models: ReadonlyArray<ModelOption>;
+  /** The provider fields that name announced models its CLI is too old to run. */
+  readonly updateRequired?: ProviderUpdateRequired;
 };
 
 function providerDisplayLabel(provider: {
@@ -143,6 +154,7 @@ export function buildModelOptions(
   config: CodeworkServerConfig | null | undefined,
   fallbackModelSelection: ModelSelection | null,
   activities: ReadonlyArray<OrchestrationThreadActivity> = [],
+  includeHidden = false,
 ): ReadonlyArray<ModelOption> {
   const options = new Map<string, ModelOption>();
   const providers = applySessionModelCatalogs(config?.providers ?? [], activities);
@@ -161,7 +173,18 @@ export function buildModelOptions(
     }
 
     const providerLabel = providerDisplayLabel(provider);
-    for (const model of provider.models) {
+    const updateRequired = provider.updateRequiredModels?.length
+      ? { driver: provider.driver, updateRequiredModels: provider.updateRequiredModels }
+      : undefined;
+    const preferences = config?.settings?.providerModelPreferences?.[provider.instanceId];
+    const hiddenModels = new Set(preferences?.hiddenModels ?? []);
+    const order = new Map((preferences?.modelOrder ?? []).map((slug, index) => [slug, index]));
+    const models = provider.models.filter(
+      (model) => includeHidden || model.isCustom || !hiddenModels.has(model.slug),
+    );
+    if (order.size > 0)
+      models.sort((a, b) => (order.get(a.slug) ?? Infinity) - (order.get(b.slug) ?? Infinity));
+    for (const model of models) {
       const key = `${provider.instanceId}:${model.slug}`;
       options.set(key, {
         key,
@@ -170,8 +193,11 @@ export function buildModelOptions(
         providerKey: provider.instanceId,
         providerLabel,
         providerDriver: provider.driver,
+        isHidden: !model.isCustom && hiddenModels.has(model.slug),
+        canHide: !model.isCustom,
         isDefault: model.isDefault === true,
         isLegacy: model.isLegacy === true,
+        ...(updateRequired ? { providerUpdateRequired: updateRequired } : {}),
         capabilities: model.capabilities,
         selection: normalizeSelectionOptions(
           {
@@ -187,7 +213,13 @@ export function buildModelOptions(
   if (
     !selectionRemoved &&
     fallbackModelSelection &&
-    resolveSelectableModelSelection(config, fallbackModelSelection)
+    resolveSelectableModelSelection(config, fallbackModelSelection) &&
+    (!config?.settings?.providerModelPreferences?.[
+      fallbackModelSelection.instanceId
+    ]?.hiddenModels.includes(fallbackModelSelection.model) ||
+      config?.providers
+        .find((provider) => provider.instanceId === fallbackModelSelection.instanceId)
+        ?.models.find((model) => model.slug === fallbackModelSelection.model)?.isCustom)
   ) {
     const key = `${fallbackModelSelection.instanceId}:${fallbackModelSelection.model}`;
     const existing = options.get(key);
@@ -197,17 +229,32 @@ export function buildModelOptions(
         selection: normalizeSelectionOptions(fallbackModelSelection, existing.capabilities),
       });
     } else {
+      const provider = config?.providers.find(
+        (candidate) => candidate.instanceId === fallbackModelSelection.instanceId,
+      );
       const providerLabel = fallbackModelSelection.instanceId;
+      const providerDriver = provider?.driver ?? fallbackModelSelection.instanceId;
       options.set(key, {
         key,
-        label: fallbackModelSelection.model,
+        label:
+          provider?.models.find((model) => model.slug === fallbackModelSelection.model)?.name ??
+          fallbackModelSelection.model,
         subtitle: providerLabel,
         providerKey: fallbackModelSelection.instanceId,
         providerLabel,
-        providerDriver: fallbackModelSelection.instanceId,
+        providerDriver,
         isDefault: false,
-        isLegacy: false,
-        capabilities: null,
+        isLegacy:
+          provider?.models.find((model) => model.slug === fallbackModelSelection.model)
+            ?.isLegacy === true,
+        ...(provider?.updateRequiredModels?.some(
+          (gated) => gated.slug === fallbackModelSelection.model,
+        )
+          ? { isUnavailable: true }
+          : {}),
+        capabilities:
+          provider?.models.find((model) => model.slug === fallbackModelSelection.model)
+            ?.capabilities ?? null,
         selection: fallbackModelSelection,
       });
     }
@@ -288,15 +335,24 @@ export function resolveModelInteractionSettings(
 }
 
 export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyArray<ProviderGroup> {
-  const groups = new Map<string, { providerLabel: string; models: ModelOption[] }>();
+  const groups = new Map<
+    string,
+    {
+      providerLabel: string;
+      models: ModelOption[];
+      updateRequired: ProviderUpdateRequired | undefined;
+    }
+  >();
   for (const option of options) {
     const existing = groups.get(option.providerKey);
     if (existing) {
       existing.models.push(option);
+      existing.updateRequired ??= option.providerUpdateRequired;
     } else {
       groups.set(option.providerKey, {
         providerLabel: option.providerLabel,
         models: [option],
+        updateRequired: option.providerUpdateRequired,
       });
     }
   }
@@ -305,6 +361,7 @@ export function groupByProvider(options: ReadonlyArray<ModelOption>): ReadonlyAr
     providerKey,
     providerLabel: group.providerLabel,
     models: group.models,
+    ...(group.updateRequired ? { updateRequired: group.updateRequired } : {}),
   }));
 }
 
