@@ -10,7 +10,7 @@ import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import { ServerConfig } from "../config.ts";
-import { ProcessRunner } from "../processRunner.ts";
+import { ProcessRunner, layer as processRunnerLayer } from "../processRunner.ts";
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 
 /**
@@ -506,4 +506,4 @@ export const layer = Layer.effect(
     const terminate = makeTerminateByPid({ platform, runner });
     return yield* makeManagedProcessRegistry({ directory, table, fileSystem, path, terminate });
   }),
-);
+).pipe(Layer.provide(processRunnerLayer));
