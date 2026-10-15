@@ -53,7 +53,10 @@ import { t } from "~/i18n/runtime";
 
 const CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE = "[CLIENT_SETTINGS]";
 
-type UnifiedSettingsPatch = ServerSettingsPatch & ClientSettingsPatch;
+// Keys both schemas define (model preferences) route to the server in
+// `splitPatch`, so the server patch shape is the one callers must satisfy.
+type UnifiedSettingsPatch = Omit<ClientSettingsPatch, keyof ServerSettingsPatch> &
+  ServerSettingsPatch;
 
 const clientSettingsListeners = new Set<() => void>();
 const clientSettingsHydrationListeners = new Set<() => void>();
