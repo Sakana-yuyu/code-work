@@ -43,6 +43,9 @@ const lastPendingSweepByDirectory = new Map<string, number>();
 const AttachmentUploadClaims = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("attachment-upload"),
+  type: Schema.Literals(["image", "file"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("image" as const)),
+  ),
   attachmentId: Schema.String,
   name: Schema.String,
   mimeType: Schema.String,
@@ -91,12 +94,18 @@ export const issueAttachmentUploadUrl = Effect.fn("AttachmentUpload.issueUrl")(f
     }
   }
 
-  const attachmentId = createPendingAttachmentId();
+  const attachmentType = input.type ?? "image";
+  const attachmentId = createPendingAttachmentId(
+    attachmentType === "file"
+      ? inferAttachmentExtension({ mimeType: input.mimeType, fileName: input.name })
+      : undefined,
+  );
   const expiresAt = nowMs + ATTACHMENT_UPLOAD_URL_TTL_MS;
   const encodedPayload = base64UrlEncode(
     encodeAttachmentUploadClaims({
       version: 1,
       kind: "attachment-upload",
+      type: attachmentType,
       attachmentId,
       name: input.name,
       mimeType: input.mimeType,
@@ -142,9 +151,11 @@ export type StoreAttachmentUploadResult =
   | { readonly ok: false; readonly status: number; readonly detail: string };
 
 export const storeAttachmentUpload = Effect.fn("AttachmentUpload.store")(function* (
-  claims: Pick<AttachmentUploadClaims, "attachmentId" | "name" | "mimeType" | "sizeBytes">,
+  claims: Pick<AttachmentUploadClaims, "attachmentId" | "name" | "mimeType" | "sizeBytes"> & {
+    readonly type?: ChatAttachment["type"];
+  },
   bytes: Uint8Array,
-  type: ChatAttachment["type"] = "image",
+  type?: ChatAttachment["type"],
 ) {
   if (bytes.byteLength !== claims.sizeBytes) {
     return {
@@ -154,9 +165,12 @@ export const storeAttachmentUpload = Effect.fn("AttachmentUpload.store")(functio
     } satisfies StoreAttachmentUploadResult;
   }
 
+  const storedType = type ?? claims.type ?? "image";
   const config = yield* ServerConfig.ServerConfig;
-  const inferExtension = type === "image" ? inferImageExtension : inferAttachmentExtension;
-  const extension = inferExtension({ mimeType: claims.mimeType, fileName: claims.name });
+  const extension =
+    storedType === "image"
+      ? inferImageExtension({ mimeType: claims.mimeType, fileName: claims.name })
+      : inferAttachmentExtension({ mimeType: claims.mimeType, fileName: claims.name });
   const relativePath = `${claims.attachmentId}${extension}`;
   const finalPath = resolveAttachmentRelativePath({
     attachmentsDir: config.attachmentsDir,

@@ -22,6 +22,7 @@ import {
   PlusIcon,
   QuoteIcon,
   ShieldCheckIcon,
+  UploadIcon,
   SparklesIcon,
   WorkflowIcon,
   XIcon,
@@ -84,6 +85,8 @@ export interface ComposerAddMenuProps {
   readonly goalErrorMessage: string | null;
   readonly pluginItems: ReadonlyArray<ComposerAddMenuPluginItem>;
   readonly onAddFileReference: () => boolean;
+  /** Opens the device file picker; omitted where uploads are not wired. */
+  readonly onAttachFiles?: () => void;
   readonly onAddSkillReference: () => boolean;
   readonly onAddThreadReference: () => void;
   readonly onTogglePlanMode: () => void;
@@ -649,6 +652,18 @@ export function ComposerAddMenuBody(props: ComposerAddMenuBodyProps) {
           if (props.onAddFileReference()) props.onDismiss();
         }}
       />
+      {props.onAttachFiles ? (
+        <ComposerAddMenuItem
+          icon={<UploadIcon className="size-4" />}
+          title={t("composer.attachFiles")}
+          description={t("composer.attachFilesDescription")}
+          disabled={props.disabled}
+          onClick={() => {
+            props.onAttachFiles?.();
+            props.onDismiss();
+          }}
+        />
+      ) : null}
       <ComposerAddMenuItem
         icon={<SparklesIcon className="size-4" />}
         title={t("composer.addSkill")}

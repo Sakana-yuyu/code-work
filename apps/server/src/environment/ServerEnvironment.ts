@@ -1,4 +1,8 @@
-import { EnvironmentId, type ExecutionEnvironmentDescriptor } from "@codework/contracts";
+import {
+  EnvironmentId,
+  type ExecutionEnvironmentDescriptor,
+  PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+} from "@codework/contracts";
 import { HostProcessArchitecture, HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -152,6 +156,7 @@ export const make = Effect.gen(function* () {
       repositoryIdentity: true,
       connectionProbe: true,
       attachmentUploads: true,
+      fileAttachments: { maxUploadBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES },
       pullRequests: true,
       threadSettlement: true,
       threadSnooze: true,

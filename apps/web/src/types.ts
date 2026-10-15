@@ -2,6 +2,7 @@ import type {
   ChatAudioAttachment as ContractChatAudioAttachment,
   ChatFileAttachment as ContractChatFileAttachment,
   ChatImageAttachment as ContractChatImageAttachment,
+  ChatUnknownAttachment as ContractChatUnknownAttachment,
   OrchestrationCheckpointFile,
   OrchestrationCheckpointSummary,
   OrchestrationLatestTurn,
@@ -45,7 +46,21 @@ export interface ChatFileAttachment extends ContractChatFileAttachment {
   readonly previewUrl?: string;
 }
 
-export type ChatAttachment = ChatImageAttachment | ChatAudioAttachment | ChatFileAttachment;
+/** A type from a newer server or client; renders as a generic file row. */
+export type ChatUnknownAttachment = ContractChatUnknownAttachment;
+
+export type ChatAttachment =
+  | ChatImageAttachment
+  | ChatAudioAttachment
+  | ChatFileAttachment
+  | ChatUnknownAttachment;
+
+/** Narrows past {@link ChatUnknownAttachment}, whose `type` is any string. */
+export function isChatImageAttachment(
+  attachment: ChatAttachment,
+): attachment is ChatImageAttachment {
+  return attachment.type === "image";
+}
 
 /** 仅用于本地时间线展示，不会写入服务端消息协议。 */
 export type ChatMessagePresentation =

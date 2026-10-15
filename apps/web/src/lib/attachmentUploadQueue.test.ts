@@ -5,20 +5,53 @@ setCurrentLanguage("en");
 import { EnvironmentId } from "@codework/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import type { ComposerImageAttachment } from "../composerDraftStore";
+import type { ComposerFileAttachment, ComposerImageAttachment } from "../composerDraftStore";
 
 const mocks = vi.hoisted(() => ({
   createUploadUrl: Symbol("create-upload-url"),
   removeUpload: Symbol("remove-upload"),
+  createAssetUrl: Symbol("create-asset-url"),
   runAtomCommand: vi.fn(),
   readPreparedConnection: vi.fn(),
+  readEnvironmentScope: vi.fn(),
+  verifyPersistedAttachmentUpload: vi.fn(),
 }));
 
-vi.mock("@codework/client-runtime/state/runtime", () => ({
+vi.mock("@codework/client-runtime/state/runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@codework/client-runtime/state/runtime")>()),
   runAtomCommand: mocks.runAtomCommand,
 }));
 
-vi.mock("../rpc/atomRegistry", () => ({ appAtomRegistry: {} }));
+vi.mock("@codework/client-runtime/state/attachments", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@codework/client-runtime/state/attachments")>()),
+  verifyPersistedAttachmentUpload: mocks.verifyPersistedAttachmentUpload,
+}));
+
+vi.mock("../rpc/atomRegistry", async () => {
+  const { AsyncResult } = await import("effect/unstable/reactivity");
+  return {
+    appAtomRegistry: {
+      get: () => AsyncResult.success({ phase: "connected" }),
+      subscribe: () => () => {},
+    },
+  };
+});
+
+// Only background completions with a draft target touch the draft store.
+vi.mock("../composerDraftStore", () => ({
+  DraftId: { make: (key: string) => key },
+  useComposerDraftStore: {
+    getState: () => ({ draftsByThreadKey: {}, draftThreadsByThreadKey: {} }),
+  },
+}));
+
+vi.mock("../connection/catalog", () => ({
+  environmentCatalog: { stateAtom: () => Symbol("connection-state") },
+}));
+
+vi.mock("../state/assets", () => ({
+  assetEnvironment: { createUrl: mocks.createAssetUrl },
+}));
 
 vi.mock("../state/attachments", () => ({
   attachmentEnvironment: {
@@ -29,6 +62,7 @@ vi.mock("../state/attachments", () => ({
 
 vi.mock("../state/session", () => ({
   readPreparedConnection: mocks.readPreparedConnection,
+  readEnvironmentScope: mocks.readEnvironmentScope,
 }));
 
 import {
@@ -36,7 +70,8 @@ import {
   getUploadedAttachments,
   readAttachmentUpload,
   releaseAttachmentUpload,
-  releaseAttachmentUploads,
+  releaseDraftAttachment,
+  releaseDraftAttachments,
   retryAttachmentUpload,
   startAttachmentUpload,
   useAttachmentUploadStore,
@@ -101,6 +136,19 @@ class TestXmlHttpRequest {
 const firstEnvironment = EnvironmentId.make("environment-1");
 const secondEnvironment = EnvironmentId.make("environment-2");
 
+function makeFile(id: string, extra: Partial<ComposerFileAttachment> = {}): ComposerFileAttachment {
+  const file = new File([new Uint8Array([1, 2, 3, 4])], `${id}.pdf`, { type: "application/pdf" });
+  return {
+    type: "file",
+    id,
+    name: file.name,
+    mimeType: file.type,
+    sizeBytes: file.size,
+    file,
+    ...extra,
+  };
+}
+
 function makeImage(id: string): ComposerImageAttachment {
   const file = new File([new Uint8Array([1, 2, 3])], `${id}.png`, { type: "image/png" });
   return {
@@ -120,6 +168,9 @@ describe("attachmentUploadQueue", () => {
     mocks.runAtomCommand.mockReset();
     mocks.readPreparedConnection.mockReset();
     mocks.readPreparedConnection.mockReturnValue({ httpBaseUrl: "https://environment.test/" });
+    mocks.readEnvironmentScope.mockReset();
+    mocks.readEnvironmentScope.mockReturnValue(true);
+    mocks.verifyPersistedAttachmentUpload.mockReset();
     mocks.runAtomCommand.mockImplementation(
       async (
         _registry: unknown,
@@ -180,7 +231,7 @@ describe("attachmentUploadQueue", () => {
       },
     ]);
 
-    releaseAttachmentUploads([image]);
+    releaseDraftAttachments([image]);
     expect(readAttachmentUpload(image.id)).toBeUndefined();
     expect(mocks.runAtomCommand).toHaveBeenCalledWith(
       expect.anything(),
@@ -306,5 +357,101 @@ describe("attachmentUploadQueue", () => {
     await Promise.resolve();
     TestXmlHttpRequest.requests[4]!.complete();
     await awaitAttachmentUploads([images[3]!.id]);
+  });
+
+  it("uploads generic files as file attachments and keeps the pasted-text source", async () => {
+    const file = makeFile("notes", { source: { _tag: "pasted-text" } });
+    startAttachmentUpload({ environmentId: firstEnvironment, image: file });
+    await Promise.resolve();
+
+    expect(mocks.runAtomCommand).toHaveBeenCalledWith(
+      expect.anything(),
+      mocks.createUploadUrl,
+      {
+        environmentId: firstEnvironment,
+        input: { type: "file", name: "notes.pdf", mimeType: "application/pdf", sizeBytes: 4 },
+      },
+      expect.anything(),
+    );
+    const request = TestXmlHttpRequest.requests[0]!;
+    expect(request.headers.get("Content-Type")).toBe("application/pdf");
+    const settled = awaitAttachmentUploads([file.id]);
+    request.complete();
+    await settled;
+
+    expect(getUploadedAttachments({ environmentId: firstEnvironment, images: [file] })).toEqual([
+      {
+        type: "file",
+        id: "pending-environment-1-notes.pdf",
+        name: "notes.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 4,
+        source: { _tag: "pasted-text" },
+      },
+    ]);
+  });
+
+  it("verifies a persisted draft upload instead of uploading the bytes again", async () => {
+    mocks.verifyPersistedAttachmentUpload.mockResolvedValue({ status: "verified" });
+    const file = makeFile("hydrated", {
+      file: null,
+      uploadedAttachmentId: "pending-persisted",
+      uploadEnvironmentId: firstEnvironment,
+    });
+    startAttachmentUpload({ environmentId: firstEnvironment, image: file });
+    await awaitAttachmentUploads([file.id]);
+
+    expect(TestXmlHttpRequest.requests).toEqual([]);
+    expect(readAttachmentUpload(file.id)).toEqual({
+      status: "ready",
+      environmentId: firstEnvironment,
+      attachmentId: "pending-persisted",
+    });
+  });
+
+  it("asks for the file again when a persisted upload expired and no bytes remain", async () => {
+    mocks.verifyPersistedAttachmentUpload.mockResolvedValue({ status: "missing" });
+    const file = makeFile("expired", {
+      file: null,
+      uploadedAttachmentId: "pending-expired",
+      uploadEnvironmentId: firstEnvironment,
+    });
+    startAttachmentUpload({ environmentId: firstEnvironment, image: file });
+    await awaitAttachmentUploads([file.id]);
+
+    expect(TestXmlHttpRequest.requests).toEqual([]);
+    expect(readAttachmentUpload(file.id)).toMatchObject({
+      status: "failed",
+      reason: "Upload expired. Attach the file again.",
+    });
+    // The failed state must not claim the persisted id; retry and release
+    // only delete ids the queue minted itself.
+    expect(readAttachmentUpload(file.id)).not.toHaveProperty("attachmentId");
+  });
+
+  it("deletes a persisted draft upload when the draft file is discarded", () => {
+    const file = makeFile("discarded", {
+      file: null,
+      uploadedAttachmentId: "pending-discarded",
+      uploadEnvironmentId: secondEnvironment,
+    });
+    releaseDraftAttachment(file);
+
+    expect(mocks.runAtomCommand).toHaveBeenCalledWith(
+      expect.anything(),
+      mocks.removeUpload,
+      { environmentId: secondEnvironment, input: { attachmentId: "pending-discarded" } },
+      expect.anything(),
+    );
+  });
+
+  it("does not upload over a connection without the operate scope", async () => {
+    mocks.readEnvironmentScope.mockReturnValue(false);
+    const file = makeFile("read-only");
+    startAttachmentUpload({ environmentId: firstEnvironment, image: file });
+    await Promise.resolve();
+
+    expect(TestXmlHttpRequest.requests).toEqual([]);
+    expect(readAttachmentUpload(file.id)).toBeUndefined();
   });
 });

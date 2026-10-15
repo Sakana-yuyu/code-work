@@ -176,7 +176,7 @@ export const normalizeDispatchCommand = (command: ClientOrchestrationCommand) =>
             });
             if (expectedPath !== claim.finalPath) {
               return yield* new OrchestrationDispatchCommandError({
-                message: `Attachment '${attachment.name}' cannot be sent: image type does not match the upload.`,
+                message: `Attachment '${attachment.name}' cannot be sent: ${attachment.type === "image" ? "image" : "file"} type does not match the upload.`,
               });
             }
 

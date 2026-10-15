@@ -315,4 +315,44 @@ describe("normalizeDispatchCommand attachments", () => {
       expect(mismatchedType.message).toContain("image type");
     }).pipe(Effect.provide(testLayer)),
   );
+
+  it.effect("claims an uploaded generic file under its source extension", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const bytes = Buffer.from("%PDF-1.7");
+      const pendingId = `pending-${attachmentUuid}-pdf`;
+      NodeFS.writeFileSync(NodePath.join(config.attachmentsDir, `${pendingId}.pdf`), bytes);
+
+      const command = turnStartCommand({ attachments: [] });
+      if (command.type !== "thread.turn.start") {
+        throw new Error("Expected a thread.turn.start command.");
+      }
+      const normalized = yield* normalizeDispatchCommand({
+        ...command,
+        message: {
+          ...command.message,
+          attachments: [
+            {
+              type: "file",
+              id: pendingId,
+              name: "report.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: bytes.byteLength,
+              source: { _tag: "pasted-text" },
+            },
+          ],
+        },
+      });
+      if (normalized.type !== "thread.turn.start") {
+        throw new Error("Expected a thread.turn.start command.");
+      }
+
+      const attachment = normalized.message.attachments[0]!;
+      expect(attachment).toMatchObject({ type: "file", source: { _tag: "pasted-text" } });
+      expect(attachment.id).toMatch(/^thread-1-[0-9a-f-]{36}-pdf$/);
+      expect(
+        NodeFS.readFileSync(NodePath.join(config.attachmentsDir, `${attachment.id}.pdf`)),
+      ).toEqual(bytes);
+    }).pipe(Effect.provide(testLayer)),
+  );
 });

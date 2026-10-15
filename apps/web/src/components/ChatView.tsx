@@ -136,6 +136,7 @@ import {
   DEFAULT_RUNTIME_MODE,
   DEFAULT_THREAD_TERMINAL_ID,
   MAX_TERMINALS_PER_GROUP,
+  isChatImageAttachment,
   type ChatMessage,
   type ChatMessagePresentation,
   type SessionPhase,
@@ -251,6 +252,7 @@ import {
   beginBackgroundDraftSubmissionByRef,
   clearBackgroundDraftSubmissionByRef,
   composerDraftHasUserContent,
+  type ComposerFileAttachment,
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
   finalizePromotedDraftThreadByRef,
@@ -416,7 +418,7 @@ import { useEnabledLocalPluginTimelineEntries } from "../localPlugins/useLocalPl
 import {
   awaitAttachmentUploads,
   getUploadedAttachments,
-  releaseAttachmentUploads,
+  releaseDraftAttachments,
   startAttachmentUpload,
 } from "../lib/attachmentUploadQueue";
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
@@ -452,7 +454,7 @@ import {
 } from "~/lib/localizedConnectionStatus";
 
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
-  "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
+  "[User attached one or more files without additional text. Respond using the conversation context and the attached file(s).]";
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
@@ -477,7 +479,7 @@ interface QueuedTurnSubmission {
   readonly environmentId: EnvironmentId;
   readonly input: StartThreadTurnInput;
   readonly createdAt: string;
-  readonly images: ReadonlyArray<ComposerImageAttachment>;
+  readonly attachments: ReadonlyArray<ComposerImageAttachment | ComposerFileAttachment>;
 }
 function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
   const transitionGroupRef = useRef<HTMLDivElement | null>(null);
@@ -1473,6 +1475,7 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
+  const addComposerDraftFiles = useComposerDraftStore((store) => store.addFiles);
   const setComposerDraftTerminalContexts = useComposerDraftStore(
     (store) => store.setTerminalContexts,
   );
@@ -2262,6 +2265,8 @@ function ChatViewContent(props: ChatViewProps) {
   const attachmentUploadsCapabilityKnown = attachmentEnvironmentConfig !== null;
   const supportsAttachmentUploads =
     attachmentEnvironmentConfig?.environment.capabilities.attachmentUploads === true;
+  const maxFileAttachmentBytes =
+    attachmentEnvironmentConfig?.environment.capabilities.fileAttachments?.maxUploadBytes ?? null;
   const versionMismatch = resolveServerConfigVersionMismatch(serverConfig);
   const versionMismatchDismissKey =
     versionMismatch && activeThread
@@ -2769,7 +2774,7 @@ function ChatViewContent(props: ChatViewProps) {
       }
 
       const serverPreviewUrls = serverMessage.attachments.flatMap((attachment) =>
-        attachment.type === "image" && attachment.previewUrl ? [attachment.previewUrl] : [],
+        isChatImageAttachment(attachment) && attachment.previewUrl ? [attachment.previewUrl] : [],
       );
       if (
         serverPreviewUrls.length === 0 ||
@@ -2852,7 +2857,7 @@ function ChatViewContent(props: ChatViewProps) {
             let changed = false;
             let imageIndex = 0;
             const attachments = message.attachments.map((attachment) => {
-              if (attachment.type !== "image") {
+              if (!isChatImageAttachment(attachment)) {
                 return attachment;
               }
               const handoffPreviewUrl = handoffPreviewUrls[imageIndex];
@@ -5021,7 +5026,7 @@ function ChatViewContent(props: ChatViewProps) {
         for (const message of removed) revokeUserMessagePreviewUrls(message);
         return existing.filter((message) => String(message.id) !== rawMessageId);
       });
-      if (supportsAttachmentUploads && queued) releaseAttachmentUploads(queued.images);
+      if (supportsAttachmentUploads && queued) releaseDraftAttachments(queued.attachments);
     },
     [
       activeThread?.id,
@@ -5173,7 +5178,7 @@ function ChatViewContent(props: ChatViewProps) {
             return existing.filter((message) => message.id !== messageId);
           });
         } else {
-          if (supportsAttachmentUploads) releaseAttachmentUploads(queued.images);
+          if (supportsAttachmentUploads) releaseDraftAttachments(queued.attachments);
           acknowledgeActiveThreadWoke();
         }
         setQueuedTurnSubmissions((existing) =>
@@ -6231,6 +6236,7 @@ function ChatViewContent(props: ChatViewProps) {
     }
     const {
       images: sendContextImages,
+      files: composerFiles,
       terminalContexts: composerTerminalContexts,
       elementContexts: composerElementContexts,
       previewAnnotations: sendContextPreviewAnnotations,
@@ -6279,7 +6285,7 @@ function ChatViewContent(props: ChatViewProps) {
       hasSendableContent,
     } = deriveComposerSendState({
       prompt: promptForSend,
-      imageCount: composerImages.length,
+      imageCount: composerImages.length + composerFiles.length,
       terminalContexts: composerTerminalContexts,
       elementContextCount:
         composerElementContexts.length +
@@ -6293,6 +6299,7 @@ function ChatViewContent(props: ChatViewProps) {
     const feedbackCommand =
       ctxSelectedProvider === "codex" &&
       composerImages.length === 0 &&
+      composerFiles.length === 0 &&
       sendableComposerTerminalContexts.length === 0 &&
       composerElementContexts.length === 0 &&
       composerPreviewAnnotations.length === 0 &&
@@ -6416,6 +6423,7 @@ function ChatViewContent(props: ChatViewProps) {
         selectedCapabilities,
       ) &&
       composerImages.length === 0 &&
+      composerFiles.length === 0 &&
       sendableComposerTerminalContexts.length === 0 &&
       composerElementContexts.length === 0 &&
       composerPreviewAnnotations.length === 0 &&
@@ -6472,6 +6480,8 @@ function ChatViewContent(props: ChatViewProps) {
     }
 
     const composerImagesSnapshot = [...composerImages];
+    const composerFilesSnapshot = [...composerFiles];
+    const composerAttachmentsSnapshot = [...composerImagesSnapshot, ...composerFilesSnapshot];
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
     const composerElementContextsSnapshot = [...composerElementContexts];
     const composerPreviewAnnotationsSnapshot = [...composerPreviewAnnotations];
@@ -6519,13 +6529,23 @@ function ChatViewContent(props: ChatViewProps) {
       return;
     }
 
+    // Generic files only travel as uploads. The composer blocks send while the
+    // server cannot take them; this guards the direct-send paths too.
+    if (!supportsAttachmentUploads && composerFilesSnapshot.length > 0) {
+      setThreadError(threadIdForSend, t("composer.serverRejectsFiles"));
+      return;
+    }
     sendInFlightRef.current = true;
-    if (supportsAttachmentUploads && composerImagesSnapshot.length > 0) {
-      for (const image of composerImagesSnapshot) {
-        startAttachmentUpload({ environmentId, image });
+    if (supportsAttachmentUploads && composerAttachmentsSnapshot.length > 0) {
+      for (const attachment of composerAttachmentsSnapshot) {
+        startAttachmentUpload({
+          environmentId,
+          image: attachment,
+          draftTarget: composerDraftTarget,
+        });
       }
-      await awaitAttachmentUploads(composerImagesSnapshot.map((image) => image.id));
-      if (getUploadedAttachments({ environmentId, images: composerImagesSnapshot }) === null) {
+      await awaitAttachmentUploads(composerAttachmentsSnapshot.map((attachment) => attachment.id));
+      if (getUploadedAttachments({ environmentId, images: composerAttachmentsSnapshot }) === null) {
         sendInFlightRef.current = false;
         setThreadError(threadIdForSend, t("composer.retryOrRemoveFailedUploads"));
         return;
@@ -6588,8 +6608,8 @@ function ChatViewContent(props: ChatViewProps) {
             ],
       );
     }
-    const turnAttachmentsPromise = Promise.all(
-      composerImagesSnapshot.map(async (image) => {
+    const turnAttachmentsPromise = Promise.all([
+      ...composerImagesSnapshot.map(async (image) => {
         if (supportsAttachmentUploads) {
           const uploaded = getUploadedAttachments({ environmentId, images: [image] })?.[0];
           if (!uploaded) {
@@ -6605,15 +6625,32 @@ function ChatViewContent(props: ChatViewProps) {
           dataUrl: await readFileAsDataUrl(image.file),
         };
       }),
-    );
-    const optimisticAttachments = composerImagesSnapshot.map((image) => ({
-      type: "image" as const,
-      id: image.id,
-      name: image.name,
-      mimeType: image.mimeType,
-      sizeBytes: image.sizeBytes,
-      previewUrl: image.previewUrl,
-    }));
+      ...composerFilesSnapshot.map(async (file) => {
+        const uploaded = getUploadedAttachments({ environmentId, images: [file] })?.[0];
+        if (!uploaded) {
+          throw new Error(t("composer.fileDidNotFinishUploading", { name: file.name }));
+        }
+        return uploaded;
+      }),
+    ]);
+    const optimisticAttachments = [
+      ...composerImagesSnapshot.map((image) => ({
+        type: "image" as const,
+        id: image.id,
+        name: image.name,
+        mimeType: image.mimeType,
+        sizeBytes: image.sizeBytes,
+        previewUrl: image.previewUrl,
+      })),
+      ...composerFilesSnapshot.map((file) => ({
+        type: "file" as const,
+        id: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        sizeBytes: file.sizeBytes,
+        ...(file.source ? { source: file.source } : {}),
+      })),
+    ];
     const shouldAnchorFirstMessage =
       activeThread.latestTurn === null &&
       !timelineMessages.some((message) => message.role === "user");
@@ -6682,6 +6719,8 @@ function ChatViewContent(props: ChatViewProps) {
     if (!titleSeed) {
       if (firstComposerImageName) {
         titleSeed = `Image: ${firstComposerImageName}`;
+      } else if (composerFilesSnapshot[0]) {
+        titleSeed = `File: ${composerFilesSnapshot[0].name}`;
       } else if (composerTerminalContextsSnapshot.length > 0) {
         titleSeed = formatTerminalContextLabel(composerTerminalContextsSnapshot[0]!);
       } else if (composerElementContextsSnapshot.length > 0) {
@@ -6825,11 +6864,11 @@ function ChatViewContent(props: ChatViewProps) {
               environmentId,
               input: turnStartInput,
               createdAt: messageCreatedAt,
-              images: composerImagesSnapshot,
+              attachments: composerAttachmentsSnapshot,
             },
           ]);
           if (supportsAttachmentUploads) {
-            releaseAttachmentUploads(composerImagesSnapshot);
+            releaseDraftAttachments(composerAttachmentsSnapshot);
           }
           acknowledgeActiveThreadWoke();
         }
@@ -6846,7 +6885,7 @@ function ChatViewContent(props: ChatViewProps) {
         } else {
           turnStartSucceeded = true;
           if (supportsAttachmentUploads) {
-            releaseAttachmentUploads(composerImagesSnapshot);
+            releaseDraftAttachments(composerAttachmentsSnapshot);
           }
           acknowledgeActiveThreadWoke();
         }
@@ -6912,6 +6951,8 @@ function ChatViewContent(props: ChatViewProps) {
       if (
         promptRef.current.length === 0 &&
         composerImagesRef.current.length === 0 &&
+        (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.files.length ??
+          0) === 0 &&
         composerTerminalContextsRef.current.length === 0 &&
         composerElementContextsRef.current.length === 0 &&
         (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.previewAnnotations
@@ -6940,6 +6981,7 @@ function ChatViewContent(props: ChatViewProps) {
         composerElementContextsRef.current = composerElementContextsSnapshot;
         setComposerDraftPrompt(composerDraftTarget, promptForSend);
         addComposerDraftImages(composerDraftTarget, retryComposerImages);
+        addComposerDraftFiles(composerDraftTarget, composerFilesSnapshot);
         setComposerDraftTerminalContexts(composerDraftTarget, composerTerminalContextsSnapshot);
         setComposerDraftElementContexts(composerDraftTarget, composerElementContextsSnapshot);
         setComposerDraftPreviewAnnotations(composerDraftTarget, composerPreviewAnnotationsSnapshot);
@@ -8652,6 +8694,7 @@ function ChatViewContent(props: ChatViewProps) {
                             environmentId={environmentId}
                             attachmentUploadsCapabilityKnown={attachmentUploadsCapabilityKnown}
                             supportsAttachmentUploads={supportsAttachmentUploads}
+                            maxFileAttachmentBytes={maxFileAttachmentBytes}
                             routeKind={routeKind}
                             routeThreadRef={routeThreadRef}
                             draftId={draftId}

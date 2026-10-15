@@ -6,10 +6,10 @@ import { toastManager } from "../components/ui/toast";
 import { DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { useThreadUndoNotice } from "../hooks/showThreadUndoNotice";
 import { t } from "~/i18n/runtime";
-import { releaseAttachmentUploads } from "./attachmentUploadQueue";
+import { releaseDraftAttachments } from "./attachmentUploadQueue";
 import { discardComposerDraft } from "./discardComposerDraft";
 
-vi.mock("./attachmentUploadQueue", () => ({ releaseAttachmentUploads: vi.fn() }));
+vi.mock("./attachmentUploadQueue", () => ({ releaseDraftAttachments: vi.fn() }));
 
 const environmentId = EnvironmentId.make("environment-local");
 const projectRef = scopeProjectRef(environmentId, ProjectId.make("project-1"));
@@ -56,7 +56,7 @@ describe("discardComposerDraft", () => {
       before.logicalProjectDraftThreadKeyByLogicalProjectKey,
     );
     vi.runAllTimers();
-    expect(releaseAttachmentUploads).not.toHaveBeenCalled();
+    expect(releaseDraftAttachments).not.toHaveBeenCalled();
   });
 
   it("clears a thread draft for good and releases its uploads once undo expires", async () => {
@@ -65,11 +65,11 @@ describe("discardComposerDraft", () => {
     discardComposerDraft(threadRef);
     const notice = undoNotice();
     expect(useComposerDraftStore.getState().getComposerDraft(threadRef)?.prompt ?? "").toBe("");
-    expect(releaseAttachmentUploads).not.toHaveBeenCalled();
+    expect(releaseDraftAttachments).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(5_000);
     expect(useThreadUndoNotice.getState().notice).toBeNull();
-    expect(releaseAttachmentUploads).toHaveBeenCalledOnce();
+    expect(releaseDraftAttachments).toHaveBeenCalledOnce();
     await notice.undo();
     expect(useComposerDraftStore.getState().getComposerDraft(threadRef)?.prompt ?? "").toBe("");
   });
@@ -82,7 +82,7 @@ describe("discardComposerDraft", () => {
 
     await undoNotice().undo();
     expect(useComposerDraftStore.getState().getComposerDraft(threadRef)?.prompt).toBe("new reply");
-    expect(releaseAttachmentUploads).toHaveBeenCalledOnce();
+    expect(releaseDraftAttachments).toHaveBeenCalledOnce();
     expect(addToast).toHaveBeenCalledWith(
       expect.objectContaining({ title: t("threadUndo.failedToRestoreDraft") }),
     );

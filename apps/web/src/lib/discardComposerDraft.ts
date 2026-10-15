@@ -10,7 +10,7 @@ import {
 import { showThreadUndoNotice } from "../hooks/showThreadUndoNotice";
 import * as ThreadUndo from "../hooks/threadUndo";
 import { t } from "~/i18n/runtime";
-import { releaseAttachmentUploads } from "./attachmentUploadQueue";
+import { releaseDraftAttachments } from "./attachmentUploadQueue";
 
 /**
  * Discards a draft's unsent content behind the sidebar undo notice. A new-thread
@@ -42,7 +42,7 @@ export function discardComposerDraft(target: ComposerThreadTarget): void {
     undo: async () => {
       const current = useComposerDraftStore.getState().draftsByThreadKey[key];
       if (current && composerDraftHasUserContent(current)) {
-        releaseAttachmentUploads(draft.images);
+        releaseDraftAttachments([...draft.images, ...draft.files]);
         return AsyncResult.failure(Cause.fail(new Error(t("threadUndo.draftHasNewContent"))));
       }
       useComposerDraftStore.setState((state) => {
@@ -75,6 +75,6 @@ export function discardComposerDraft(target: ComposerThreadTarget): void {
       });
       return AsyncResult.success(undefined);
     },
-    commit: () => releaseAttachmentUploads(draft.images),
+    commit: () => releaseDraftAttachments([...draft.images, ...draft.files]),
   });
 }

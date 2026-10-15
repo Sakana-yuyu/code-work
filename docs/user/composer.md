@@ -16,6 +16,23 @@ becomes available after every upload finishes. Failed uploads can be retried or 
 On web and desktop, HEIC and HEIF photos are automatically converted to JPEG when you drag them into
 the composer or paste them into a message.
 
+## Attaching files
+
+On web and desktop, choose **Attach files** from the composer's **+** menu, or drag or paste files
+into the composer. Any file type up to 50 MB can be attached, with up to 8 attachments per message.
+Files upload to the environment you are connected to, and the agent receives each file's saved
+location so it can open it with its own tools. Images still show as thumbnails; other files show as
+rows with their size and upload progress.
+
+Pasting a large block of text (32 KB or more, or more than fits in a message) adds it as a
+`pasted-text.txt` attachment instead of filling the composer. Press Ctrl+Shift+V (Cmd+Shift+V on
+macOS) to paste it as plain text instead.
+
+Drafts keep their files across reloads once the upload has finished. If a reload interrupts an
+upload, the file row asks you to attach it again. File attachments need a server version that
+supports them; on older servers the composer asks you to remove the files before sending. Stashing a
+prompt keeps attached files in the composer. Mobile does not attach files yet.
+
 ## 对话自动标题
 
 首条消息发送后，Code Work 会使用“设置 → 通用 → 后台文本模型”生成左侧列表的简短标题，与聊天使用的 Agent 独立。所有 Agent 共用这条生成链路；手动修改的标题不会被自动覆盖。

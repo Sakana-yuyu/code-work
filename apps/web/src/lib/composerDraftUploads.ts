@@ -1,12 +1,12 @@
 import type { ScopedProjectRef, ScopedThreadRef } from "@codework/contracts";
 
 import { type DraftId, useComposerDraftStore } from "../composerDraftStore";
-import { releaseAttachmentUploads } from "./attachmentUploadQueue";
+import { releaseDraftAttachments } from "./attachmentUploadQueue";
 
 export function releaseComposerDraftUploads(target: ScopedThreadRef | DraftId): void {
   const draft = useComposerDraftStore.getState().getComposerDraft(target);
   if (draft) {
-    releaseAttachmentUploads(draft.images);
+    releaseDraftAttachments([...draft.images, ...draft.files]);
   }
 }
 
@@ -17,7 +17,8 @@ export function releaseProjectDraftUploads(projectRef: ScopedProjectRef): void {
       session.environmentId === projectRef.environmentId &&
       session.projectId === projectRef.projectId
     ) {
-      releaseAttachmentUploads(store.draftsByThreadKey[draftKey]?.images ?? []);
+      const draft = store.draftsByThreadKey[draftKey];
+      if (draft) releaseDraftAttachments([...draft.images, ...draft.files]);
     }
   }
 }

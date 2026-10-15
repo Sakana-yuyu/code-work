@@ -30,18 +30,63 @@ const ATTACHMENT_EXTENSION_BY_MIME_TYPE: Record<string, string> = {
   "application/zip": ".zip",
   "application/x-zip-compressed": ".zip",
   "application/json": ".json",
+  "application/jsonl": ".jsonl",
+  "application/x-ndjson": ".jsonl",
+  "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/vnd.ms-excel": ".xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+  "application/vnd.ms-powerpoint": ".ppt",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+  "application/vnd.oasis.opendocument.text": ".odt",
+  "application/vnd.oasis.opendocument.spreadsheet": ".ods",
+  "application/vnd.oasis.opendocument.presentation": ".odp",
+  "application/rtf": ".rtf",
+  "application/epub+zip": ".epub",
+  "application/x-tar": ".tar",
+  "application/gzip": ".gz",
+  "application/x-gzip": ".gz",
+  "application/x-bzip2": ".bz2",
+  "application/x-xz": ".xz",
+  "application/x-7z-compressed": ".7z",
+  "application/vnd.rar": ".rar",
+  "application/x-rar-compressed": ".rar",
+  "application/zstd": ".zst",
+  "application/xml": ".xml",
+  "application/x-yaml": ".yaml",
+  "application/toml": ".toml",
+  "application/sql": ".sql",
+  "application/x-sqlite3": ".sqlite",
+  "application/wasm": ".wasm",
   "text/plain": ".txt",
+  "text/markdown": ".md",
+  "text/csv": ".csv",
+  "text/tab-separated-values": ".tsv",
+  "text/xml": ".xml",
+  "text/html": ".html",
+  "text/x-yaml": ".yaml",
+  "text/yaml": ".yaml",
+  "image/svg+xml": ".svg",
 };
+// Filename extensions kept verbatim for stored files. Unlisted suffixes fall
+// back to the mime-derived extension or ".bin"; executables and opaque
+// suffixes are deliberately not preserved.
 const ATTACHMENT_FILENAME_EXTENSIONS = new Set([
   ...SAFE_IMAGE_FILE_EXTENSIONS,
   ...Object.values(ATTACHMENT_EXTENSION_BY_MIME_TYPE),
+  ".markdown",
+  ".ini",
+  ".log",
+  ".cfg",
+  ".ipynb",
   ".bin",
 ]);
 const ATTACHMENT_ID_THREAD_SEGMENT_MAX_CHARS = 80;
 const ATTACHMENT_ID_THREAD_SEGMENT_PATTERN = "[a-z0-9_]+(?:-[a-z0-9_]+)*";
 const ATTACHMENT_ID_UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const ATTACHMENT_ID_FILE_EXTENSION_PATTERN = "[a-z0-9]{1,10}";
 const ATTACHMENT_ID_PATTERN = new RegExp(
-  `^(${ATTACHMENT_ID_THREAD_SEGMENT_PATTERN})-(${ATTACHMENT_ID_UUID_PATTERN})$`,
+  `^(${ATTACHMENT_ID_THREAD_SEGMENT_PATTERN})-(${ATTACHMENT_ID_UUID_PATTERN})(?:-(${ATTACHMENT_ID_FILE_EXTENSION_PATTERN}))?$`,
   "i",
 );
 
@@ -64,8 +109,18 @@ export function toSafeThreadAttachmentSegment(threadId: string): string | null {
   return segment === PENDING_ATTACHMENT_THREAD_SEGMENT ? "_pending" : segment;
 }
 
-export function createPendingAttachmentId(): string {
-  return `${PENDING_ATTACHMENT_THREAD_SEGMENT}-${NodeCrypto.randomUUID()}`;
+function attachmentIdExtensionSuffix(extension: string | undefined): string {
+  if (!extension) {
+    return "";
+  }
+  const normalized = extension.replace(/^\./, "").toLowerCase();
+  return new RegExp(`^${ATTACHMENT_ID_FILE_EXTENSION_PATTERN}$`).test(normalized)
+    ? `-${normalized}`
+    : "-bin";
+}
+
+export function createPendingAttachmentId(extension?: string): string {
+  return `${PENDING_ATTACHMENT_THREAD_SEGMENT}-${NodeCrypto.randomUUID()}${attachmentIdExtensionSuffix(extension)}`;
 }
 
 export function parseAttachmentUuid(attachmentId: string): string | null {
@@ -76,12 +131,20 @@ export function parseAttachmentUuid(attachmentId: string): string | null {
   return normalizedId.match(ATTACHMENT_ID_PATTERN)?.[2]?.toLowerCase() ?? null;
 }
 
-export function createAttachmentId(threadId: string): string | null {
+export function parseAttachmentFileExtension(attachmentId: string): string | null {
+  const normalizedId = normalizeAttachmentRelativePath(attachmentId);
+  if (!normalizedId || normalizedId.includes("/") || normalizedId.includes(".")) {
+    return null;
+  }
+  return normalizedId.match(ATTACHMENT_ID_PATTERN)?.[3]?.toLowerCase() ?? null;
+}
+
+export function createAttachmentId(threadId: string, extension?: string): string | null {
   const threadSegment = toSafeThreadAttachmentSegment(threadId);
   if (!threadSegment) {
     return null;
   }
-  return `${threadSegment}-${NodeCrypto.randomUUID()}`;
+  return `${threadSegment}-${NodeCrypto.randomUUID()}${attachmentIdExtensionSuffix(extension)}`;
 }
 
 export function parseThreadSegmentFromAttachmentId(attachmentId: string): string | null {
@@ -128,15 +191,24 @@ export function resolveAttachmentPath(input: {
   if (!resolved || input.attachment.type === "image" || NodeFS.existsSync(resolved)) {
     return resolved;
   }
-  const legacyExtension = inferImageExtension({
-    mimeType: input.attachment.mimeType,
-    fileName: input.attachment.name,
-  });
-  const legacyPath = resolveAttachmentRelativePath({
-    attachmentsDir: input.attachmentsDir,
-    relativePath: `${input.attachment.id}${legacyExtension}`,
-  });
-  return legacyPath && NodeFS.existsSync(legacyPath) ? legacyPath : resolved;
+  // File attachments stored before ids carried the source extension live under
+  // the mime-derived extension; older media may sit under the image table too.
+  for (const fallbackExtension of [
+    inferAttachmentExtension({
+      mimeType: input.attachment.mimeType,
+      fileName: input.attachment.name,
+    }),
+    inferImageExtension({ mimeType: input.attachment.mimeType, fileName: input.attachment.name }),
+  ]) {
+    const fallbackPath = resolveAttachmentRelativePath({
+      attachmentsDir: input.attachmentsDir,
+      relativePath: `${input.attachment.id}${fallbackExtension}`,
+    });
+    if (fallbackPath && NodeFS.existsSync(fallbackPath)) {
+      return fallbackPath;
+    }
+  }
+  return resolved;
 }
 
 export function resolveAttachmentPathById(input: {
@@ -146,6 +218,14 @@ export function resolveAttachmentPathById(input: {
   const normalizedId = normalizeAttachmentRelativePath(input.attachmentId);
   if (!normalizedId || normalizedId.includes("/") || normalizedId.includes(".")) {
     return null;
+  }
+  const fileExtension = parseAttachmentFileExtension(normalizedId);
+  if (fileExtension) {
+    const filePath = resolveAttachmentRelativePath({
+      attachmentsDir: input.attachmentsDir,
+      relativePath: `${normalizedId}.${fileExtension.toLowerCase()}`,
+    });
+    return filePath && NodeFS.existsSync(filePath) ? filePath : null;
   }
   for (const extension of ATTACHMENT_FILENAME_EXTENSIONS) {
     const maybePath = resolveAttachmentRelativePath({
@@ -193,7 +273,8 @@ export function planAttachmentClaim(input: {
   if (!currentPath) {
     return { ok: false, reason: "attachment not found (removed or expired)" };
   }
-  const finalId = createAttachmentId(input.threadId);
+  const fileExtension = parseAttachmentFileExtension(input.attachmentId) ?? undefined;
+  const finalId = createAttachmentId(input.threadId, fileExtension);
   if (!finalId) {
     return { ok: false, reason: "failed to create attachment id" };
   }

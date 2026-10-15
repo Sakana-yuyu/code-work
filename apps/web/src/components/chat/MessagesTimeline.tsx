@@ -50,7 +50,15 @@ import {
   workEntryDisplayIndicatesToolFailure,
   workLogEntryIsToolLike,
 } from "../../session-logic";
-import { type ChatMessagePresentation, type TurnDiffSummary } from "../../types";
+import {
+  type ChatAudioAttachment,
+  type ChatFileAttachment,
+  type ChatImageAttachment,
+  type ChatMessagePresentation,
+  type ChatUnknownAttachment,
+  isChatImageAttachment,
+  type TurnDiffSummary,
+} from "../../types";
 import {
   getRenderablePatch,
   resolveDiffThemeName,
@@ -1141,9 +1149,17 @@ function MessageAttachmentImages({
 }) {
   const ctx = use(TimelineRowCtx);
   const [failedUrls, setFailedUrls] = useState<Record<string, string>>({});
-  const imageAttachments = images.filter((attachment) => attachment.type === "image");
-  const audioAttachments = images.filter((attachment) => attachment.type === "audio");
-  const fileAttachments = images.filter((attachment) => attachment.type === "file");
+  const imageAttachments = images.filter(
+    (attachment): attachment is ChatImageAttachment => attachment.type === "image",
+  );
+  const audioAttachments = images.filter(
+    (attachment): attachment is ChatAudioAttachment => attachment.type === "audio",
+  );
+  // Types from a newer peer have no renderer here; they list as plain files.
+  const fileAttachments = images.filter(
+    (attachment): attachment is ChatFileAttachment | ChatUnknownAttachment =>
+      attachment.type !== "image" && attachment.type !== "audio",
+  );
   if (
     imageAttachments.length === 0 &&
     audioAttachments.length === 0 &&
@@ -1223,7 +1239,7 @@ function MessageAttachmentImages({
           className="flex items-center justify-between gap-2 rounded-lg border border-border/80 bg-background/70 px-3 py-2 text-[11px]"
         >
           <span className="min-w-0 truncate text-secondary-label">{file.name}</span>
-          {file.previewUrl ? (
+          {"previewUrl" in file && file.previewUrl ? (
             <a
               href={file.previewUrl}
               download={file.name}
@@ -1265,7 +1281,9 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     ...displayedUserMessage.elementContexts,
     ...elementContextState.contexts,
   ];
-  const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
+  const previewImages = userImages
+    .filter(isChatImageAttachment)
+    .filter((image) => image.name.startsWith("preview-annotation-"));
   const regularImages = userImages.filter((image) => !image.name.startsWith("preview-annotation-"));
   const canEditUserMessage = row.revertTurnCount !== undefined;
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
@@ -2367,7 +2385,7 @@ const UserMessageElementContextChip = memo(function UserMessageElementContextChi
 
 function UserMessagePreviewAnnotationCard(props: {
   annotation: ParsedPreviewAnnotation;
-  image: NonNullable<TimelineMessage["attachments"]>[number] | null;
+  image: ChatImageAttachment | null;
 }) {
   const ctx = use(TimelineRowCtx);
   return (

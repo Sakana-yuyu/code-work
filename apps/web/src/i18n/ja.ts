@@ -430,7 +430,7 @@ export const ja: Record<string, string> = {
   "composer.selectBaseBranchForWorktree":
     "新規ワークツリーモードで送信する前に、ベースブランチを選択してください。",
   "composer.retryOrRemoveFailedUploads":
-    "送信する前に、失敗した画像のアップロードを再試行するか削除してください。",
+    "送信する前に、失敗したアップロードを再試行するか削除してください。",
   "composer.imageDidNotFinishUploading": "画像「{{name}}」のアップロードが完了していません。",
   "composer.failedToSendMessage": "メッセージの送信に失敗しました。",
   "composer.failedToInterruptTurn": "現在のターンを中断できませんでした。",
@@ -448,7 +448,7 @@ export const ja: Record<string, string> = {
   "composer.unsupportedFileType":
     "「{{name}}」はサポートされていないファイル形式です。画像ファイルのみ添付できます。",
   "composer.maxAttachmentsPerMessage":
-    "1 つのメッセージに添付できる画像は {{countValue}} 枚までです。",
+    "1 つのメッセージに添付できるファイルは {{countValue}} 個までです。",
   "composer.imageNotReadable": "「{{name}}」を画像として読み取れませんでした。",
   "composer.imageTooLarge": "「{{name}}」は圧縮後も大きすぎて添付できません。",
   "teamRuntime.conflict":
@@ -1020,6 +1020,33 @@ export const ja: Record<string, string> = {
   "upload.retryOrRemoveFailedImage_plural": "失敗した画像を再試行するか削除してください",
   "upload.imageStillUploading": "画像がまだアップロード中です",
   "upload.imageStillUploading_plural": "画像がまだアップロード中です",
+  "upload.retryOrRemoveFailedAttachment": "失敗した添付ファイルを再試行するか削除してください",
+  "upload.retryOrRemoveFailedAttachment_plural":
+    "失敗した添付ファイルを再試行するか削除してください",
+  "upload.attachmentStillUploading": "添付ファイルをアップロード中です",
+  "upload.attachmentStillUploading_plural": "添付ファイルをアップロード中です",
+  "upload.connectionCannotUpload": "この接続では添付ファイルをアップロードできません",
+  "upload.uploadExpiredReattach":
+    "アップロードの有効期限が切れました。ファイルをもう一度添付してください。",
+  "upload.verificationFailed": "アップロードを確認できませんでした。再試行してください。",
+  "upload.originalFileUnavailable":
+    "元のファイルは利用できなくなりました。もう一度添付してください。",
+  "composer.attachFiles": "ファイルを添付",
+  "composer.attachFilesDescription":
+    "このデバイスのファイルをアップロードしてエージェントに読ませます",
+  "composer.reattachInterruptedFile": "中断したファイルをもう一度添付するか削除してください",
+  "composer.reattachInterruptedFile_plural": "中断したファイルをもう一度添付するか削除してください",
+  "composer.serverRejectsFiles":
+    "このサーバーは現在ファイル添付を受け付けていません。送信するにはファイルを削除してください。",
+  "composer.waitingForFileUploads": "ファイル添付を送信できるまでサーバーを待っています",
+  "composer.fileTooLarge": "「{{name}}」は添付ファイルの上限 {{limit}} を超えています。",
+  "composer.unsupportedImageFile":
+    "「{{name}}」はサポートされていない画像形式です。GIF、HEIC、HEIF、JPEG、PNG、WebP の画像を添付してください。",
+  "composer.fileDidNotFinishUploading": "「{{name}}」のアップロードが完了していません。",
+  "composer.fileNeedsReattach":
+    "アップロードが中断されました。ファイルをもう一度添付してください。",
+  "composer.attachAgain": "もう一度添付",
+  "composer.fileIsEmpty": "「{{name}}」は空のファイルです。",
   "diff.unsupportedFormatShowingRaw":
     "サポートされていない diff 形式です。生のパッチを表示しています。",
   "diff.parseFailedShowingRaw": "パッチの解析に失敗しました。生のパッチを表示しています。",

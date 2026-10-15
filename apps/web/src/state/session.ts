@@ -28,6 +28,20 @@ export function readPreparedConnection(environmentId: EnvironmentId) {
 }
 
 /**
+ * Non-hook variant of `useEnvironmentScope` for upload-queue and other
+ * imperative call sites: whether this client's session on one environment
+ * carries the given scope, denied until the session state resolves and
+ * grants it.
+ */
+export function readEnvironmentScope(
+  environmentId: EnvironmentId,
+  scope: AuthEnvironmentScope,
+): boolean {
+  const session = appAtomRegistry.get(environmentSession.sessionStateValueAtom(environmentId));
+  return session !== null && session.authenticated && (session.scopes?.includes(scope) ?? false);
+}
+
+/**
  * This client's authenticated session on one environment, as reported by that
  * environment's `/api/auth/session` endpoint. `data` stays populated across
  * SWR revalidations; `isPending` is only meaningful before the first resolve.
