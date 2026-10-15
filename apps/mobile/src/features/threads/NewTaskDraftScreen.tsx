@@ -22,6 +22,7 @@ import {
   squashAtomCommandFailure,
 } from "@codework/client-runtime/state/runtime";
 import { canUseProviderInteractionModes } from "@codework/client-runtime/providerModels";
+import { resolveEnvironmentMachineKind } from "@codework/contracts";
 
 import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
 import {
@@ -32,6 +33,7 @@ import {
 } from "../../components/ComposerToolbar";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
+import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
@@ -297,6 +299,7 @@ export function NewTaskDraftScreen(props: {
   }, [props.pendingTaskId, cancelEditingPendingTask]);
 
   const foregroundColor = useThemeColor("--color-foreground");
+  const iconMutedColor = useThemeColor("--color-icon-muted");
   const sheetColor = String(useThemeColor("--color-sheet"));
   const projectUnderlineColor = useThemeColor("--color-foreground-muted");
   const regularFontFamily = useFontFamily("regular");
@@ -924,7 +927,13 @@ export function NewTaskDraftScreen(props: {
         })}
         chevronDirection="right"
         disabled={isIncomingShareTransferPending}
-        icon="desktopcomputer"
+        iconNode={
+          <EnvironmentMachineSymbol
+            kind={resolveEnvironmentMachineKind(selectedEnvironmentServerConfig)}
+            size={16}
+            tintColor={iconMutedColor}
+          />
+        }
         label={t("on", { selectedEnvironmentLabel: selectedEnvironmentLabel })}
         maxWidth={260}
         onPress={

@@ -35,6 +35,7 @@ import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { useThreadSearch } from "../../state/queries";
 import { useThreadListV2Enabled } from "../threads/use-thread-list-v2-enabled";
+import { useEnvironmentMachines } from "../../state/presentation";
 import { environmentServerConfigsAtom } from "../../state/server";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import {
@@ -542,6 +543,7 @@ export function HomeScreen(props: HomeScreenProps) {
   // Threads on servers without the settlement capability never classify as
   // settled (the user could neither un-settle nor pin them).
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
+  const machineByEnvironmentId = useEnvironmentMachines();
   const settlementEnvironmentIds = useMemo(() => {
     const supported = new Set<EnvironmentId>();
     for (const [environmentId, config] of serverConfigs) {
@@ -720,6 +722,11 @@ export function HomeScreen(props: HomeScreenProps) {
                     ?.environmentLabel ?? null)
                 : null
             }
+            environmentMachine={
+              Object.keys(props.savedConnectionsById).length > 1
+                ? machineByEnvironmentId.get(item.pendingTask.message.environmentId)
+                : undefined
+            }
             showPendingDivider={item.showPendingDivider}
             showTrailingDivider={showTrailingDivider}
             onSelectPendingTask={props.onSelectPendingTask}
@@ -777,6 +784,11 @@ export function HomeScreen(props: HomeScreenProps) {
               ? (props.savedConnectionsById[thread.environmentId]?.environmentLabel ?? null)
               : null
           }
+          environmentMachine={
+            Object.keys(props.savedConnectionsById).length > 1
+              ? machineByEnvironmentId.get(thread.environmentId)
+              : undefined
+          }
           searchMatch={threadSearchMatchByKey.get(
             threadSearchMatchKey({
               environmentId: thread.environmentId,
@@ -828,6 +840,7 @@ export function HomeScreen(props: HomeScreenProps) {
       handleSwipeableClose,
       handleSwipeableWillOpen,
       handleUnsettleThread,
+      machineByEnvironmentId,
       pinningEnvironmentIds,
       pinReorderEnvironmentIds,
       projectByKey,

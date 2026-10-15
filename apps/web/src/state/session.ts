@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createEnvironmentSessionAtoms } from "@codework/client-runtime/state/session";
-import type { EnvironmentId } from "@codework/contracts";
+import type { AuthEnvironmentScope, AuthSessionState, EnvironmentId } from "@codework/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
@@ -39,4 +39,27 @@ export function useEnvironmentSessionState(environmentId: EnvironmentId) {
     hasError: result._tag === "Failure",
     isPending: result.waiting,
   };
+}
+
+const EMPTY_SESSION_STATE_ATOM = Atom.make(AsyncResult.initial<AuthSessionState>()).pipe(
+  Atom.withLabel("web-session-state:empty"),
+);
+
+/**
+ * Whether this client's session on one environment carries the given scope.
+ * Denied until the session state resolves and grants it, so scope-gated
+ * controls stay inert instead of flashing enabled.
+ */
+export function useEnvironmentScope(
+  environmentId: EnvironmentId | null,
+  scope: AuthEnvironmentScope,
+): boolean {
+  const result = useAtomValue(
+    environmentId === null
+      ? EMPTY_SESSION_STATE_ATOM
+      : environmentSession.sessionStateAtom(environmentId),
+  );
+  if (result._tag === "Failure") return false;
+  const session = Option.getOrNull(AsyncResult.value(result));
+  return session !== null && session.authenticated && (session.scopes?.includes(scope) ?? false);
 }

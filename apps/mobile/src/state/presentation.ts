@@ -29,3 +29,7 @@ export function useEnvironmentPresentation(environmentId: EnvironmentId | null) 
     presentation,
   };
 }
+
+export function useEnvironmentMachines() {
+  return useAtomValue(environmentPresentations.machineByIdAtom);
+}

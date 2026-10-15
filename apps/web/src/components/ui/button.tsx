@@ -81,4 +81,42 @@ function Button({ className, variant, size, render, ...props }: ButtonProps) {
   });
 }
 
+// buttonVariants is exported for other components/ui modules only; app code
+// renders a Button (with `render` for other elements) instead.
 export { Button, buttonVariants };
+
+const inlineButtonVariants = cva(
+  "inline-flex shrink-0 cursor-pointer items-center gap-0.5 font-medium underline-offset-2 [text-align:var(--inline-button-text-align,center)] [white-space:var(--inline-button-white-space,nowrap)] hover:underline focus-visible:outline-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-64",
+  {
+    defaultVariants: { tone: "default" },
+    variants: {
+      tone: {
+        default: "text-foreground",
+        muted: "text-muted-foreground hover:text-foreground",
+        destructive: "text-destructive/80 hover:text-destructive",
+        /** Opens a menu from inside a sentence; the dotted underline marks it as a choice. */
+        picker:
+          "gap-1.5 text-foreground underline decoration-foreground/30 decoration-dotted decoration-from-font underline-offset-4 hover:decoration-foreground hover:decoration-solid data-popup-open:decoration-foreground data-popup-open:decoration-solid",
+      },
+    },
+  },
+);
+
+/** An inline text action. Set --inline-button-white-space to normal in wrapping prose containers. */
+export function InlineButton({
+  className,
+  tone,
+  render,
+  ...props
+}: useRender.ComponentProps<"button"> & VariantProps<typeof inlineButtonVariants>) {
+  const defaultProps = {
+    className: cn(inlineButtonVariants({ tone }), className),
+    "data-slot": "inline-button",
+    type: render ? undefined : ("button" as const),
+  };
+  return useRender({
+    defaultTagName: "button",
+    props: mergeProps<"button">(defaultProps, props),
+    render,
+  });
+}

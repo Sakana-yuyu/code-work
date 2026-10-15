@@ -60,6 +60,10 @@ export function usePrimaryEnvironmentId(): EnvironmentId | null {
   return useAtomValue(primaryEnvironmentIdAtom);
 }
 
+export function useEnvironmentMachines() {
+  return useAtomValue(environmentPresentations.machineByIdAtom);
+}
+
 export function useEnvironment(
   environmentId: EnvironmentId | null,
 ): EnvironmentPresentation | null {

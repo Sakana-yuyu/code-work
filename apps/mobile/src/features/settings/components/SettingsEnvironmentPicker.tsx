@@ -2,7 +2,10 @@ import type { EnvironmentId } from "@codework/contracts";
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../../components/AppText";
+import { EnvironmentMachineSymbol } from "../../../components/EnvironmentMachineSymbol";
+import { useThemeColor } from "../../../lib/useThemeColor";
 import type { EnvironmentPresentation } from "../../../state/environments";
+import { useEnvironmentMachines } from "../../../state/presentation";
 import { t } from "../../../i18n";
 import { SettingsSection } from "./SettingsSection";
 
@@ -12,6 +15,8 @@ export function SettingsEnvironmentPicker(props: {
   readonly disabled?: boolean;
   readonly onSelect: (environmentId: EnvironmentId) => void;
 }) {
+  const machineByEnvironmentId = useEnvironmentMachines();
+  const foregroundColor = useThemeColor("--color-foreground");
   if (props.environments.length <= 1) return null;
   return (
     <SettingsSection title={t("environment")} card>
@@ -31,9 +36,16 @@ export function SettingsEnvironmentPicker(props: {
                   : "rounded-[16px] bg-subtle px-3 py-3"
               }
             >
-              <Text className="text-sm text-foreground" numberOfLines={1}>
-                {environment.label}
-              </Text>
+              <View className="flex-row items-center gap-1.5">
+                <EnvironmentMachineSymbol
+                  kind={machineByEnvironmentId.get(environment.environmentId) ?? "server"}
+                  size={13}
+                  tintColor={foregroundColor}
+                />
+                <Text className="shrink text-sm text-foreground" numberOfLines={1}>
+                  {environment.label}
+                </Text>
+              </View>
               {environment.displayUrl === null ? null : (
                 <Text className="mt-1 text-xs text-foreground-muted" numberOfLines={1}>
                   {environment.displayUrl}

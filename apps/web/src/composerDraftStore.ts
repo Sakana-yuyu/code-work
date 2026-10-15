@@ -361,7 +361,7 @@ interface ProjectDraftSession extends DraftSessionState {
  * Raw `ThreadId` is intentionally excluded so callers cannot drop environment
  * identity for real threads.
  */
-type ComposerThreadTarget = ScopedThreadRef | DraftId;
+export type ComposerThreadTarget = ScopedThreadRef | DraftId;
 
 /**
  * Persisted store for composer content plus draft-session metadata.
@@ -1318,7 +1318,7 @@ function normalizeComposerTarget(
   return target;
 }
 
-function resolveComposerDraftKey(
+export function resolveComposerDraftKey(
   state: ComposerThreadLookupState,
   target: ComposerThreadTarget,
 ): string | null {
@@ -3739,6 +3739,17 @@ export function useComposerThreadDraft(threadRef: ComposerThreadTarget): Compose
   return useComposerDraftStore((state) => {
     return getComposerDraftState(state, threadRef) ?? EMPTY_THREAD_DRAFT;
   });
+}
+
+/**
+ * True when a real thread's composer holds unsent user content. Selects a
+ * boolean so the sidebar row that reads it re-renders only when the draft
+ * appears or disappears, not on every keystroke.
+ */
+export function useThreadHasUnsentDraft(threadRef: ScopedThreadRef): boolean {
+  return useComposerDraftStore((state) =>
+    composerDraftHasUserContent(getComposerDraftState(state, threadRef)),
+  );
 }
 
 export function useComposerDraftModelState(

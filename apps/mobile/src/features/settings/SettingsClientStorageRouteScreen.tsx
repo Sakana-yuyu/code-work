@@ -6,7 +6,9 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, View } from "react-nat
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/AppText";
+import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { useThemeColor } from "../../lib/useThemeColor";
+import { useEnvironmentMachines } from "../../state/presentation";
 import {
   clearClientCacheAtom,
   clientCacheSummaryAtom,
@@ -179,6 +181,7 @@ function CacheEnvironmentRow(props: {
   readonly onClear: () => void;
 }) {
   const iconColor = useThemeColor("--color-icon");
+  const machineByEnvironmentId = useEnvironmentMachines();
   return (
     <View
       className={
@@ -187,12 +190,10 @@ function CacheEnvironmentRow(props: {
           : "border-t border-border flex-row items-center gap-3 p-4"
       }
     >
-      <SymbolView
-        name="desktopcomputer"
+      <EnvironmentMachineSymbol
+        kind={machineByEnvironmentId.get(props.environment.environmentId) ?? "server"}
         size={22}
         tintColor={iconColor}
-        type="monochrome"
-        weight="regular"
       />
       <Text className="min-w-0 flex-1 text-base text-foreground" numberOfLines={1}>
         {props.environmentLabel}

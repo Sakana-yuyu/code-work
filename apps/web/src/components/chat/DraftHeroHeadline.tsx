@@ -1,4 +1,5 @@
-import type { ScopedProjectRef } from "@codework/contracts";
+import type { EnvironmentId, EnvironmentMachineKind, ScopedProjectRef } from "@codework/contracts";
+import { resolveEnvironmentMachineKind } from "@codework/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@codework/client-runtime/environment";
 import { FolderPlusIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
@@ -10,7 +11,9 @@ import { selectProjectGroupingSettings } from "~/logicalProject";
 import {
   buildSidebarProjectPickerEntries,
   buildSidebarProjectSnapshots,
+  projectGroupsSpanEnvironments,
 } from "~/sidebarProjectGrouping";
+import { ProjectEnvironmentBadge } from "../ProjectEnvironmentBadge";
 import { useProjects, useThreadShells } from "~/state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
 import { sortLogicalProjectsForSidebar } from "../Sidebar.logic";
@@ -88,6 +91,26 @@ export function DraftHeroHeadline({
     () => new Map(projectPickerEntries.map((entry) => [entry.group.projectKey, entry] as const)),
     [projectPickerEntries],
   );
+  // Same-named projects on two machines are only told apart by where they
+  // live, so rows on another machine carry its icon once the catalog spans
+  // more than one environment; a single-machine catalog stays as it was.
+  const showProjectEnvironments = useMemo(
+    () => projectGroupsSpanEnvironments(projectGroups),
+    [projectGroups],
+  );
+  const environmentMachineById = useMemo(
+    () =>
+      new Map<EnvironmentId, EnvironmentMachineKind>(
+        environments.map(
+          (environment) =>
+            [
+              environment.environmentId,
+              resolveEnvironmentMachineKind(environment.serverConfig),
+            ] as const,
+        ),
+      ),
+    [environments],
+  );
   const activeProjectGroup =
     activeProjectRef === null
       ? null
@@ -149,6 +172,13 @@ export function DraftHeroHeadline({
                     {group.displayName}
                   </TooltipPopup>
                 </Tooltip>
+                {showProjectEnvironments ? (
+                  <ProjectEnvironmentBadge
+                    group={group}
+                    primaryEnvironmentId={primaryEnvironmentId}
+                    machineByEnvironmentId={environmentMachineById}
+                  />
+                ) : null}
               </MenuRadioItem>
             );
           })}

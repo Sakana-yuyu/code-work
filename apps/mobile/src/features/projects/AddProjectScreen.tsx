@@ -28,11 +28,17 @@ import {
   inferProjectTitleFromPath,
   isWindowsPlatform,
 } from "@codework/client-runtime/state/projects";
-import { CommandId, type EnvironmentId, ProjectId } from "@codework/contracts";
+import {
+  CommandId,
+  type EnvironmentId,
+  type EnvironmentMachineKind,
+  ProjectId,
+  resolveEnvironmentMachineKind,
+} from "@codework/contracts";
 import { CommonActions, StackActions, useNavigation } from "@react-navigation/native";
 import { SymbolView } from "../../components/AppSymbol";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Arr from "effect/Array";
 import * as Cause from "effect/Cause";
@@ -47,6 +53,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { sourceControlEnvironment } from "../../state/sourceControl";
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { ErrorBanner } from "../../components/ErrorBanner";
+import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { SourceControlIcon } from "../../components/SourceControlIcon";
 import { useThemeColor } from "../../lib/useThemeColor";
 import { uuidv4 } from "../../lib/uuid";
@@ -65,6 +72,7 @@ interface EnvironmentOption {
   readonly environmentId: EnvironmentId;
   readonly label: string;
   readonly platform: string;
+  readonly machine: EnvironmentMachineKind;
   readonly baseDirectory: string | null;
   readonly connectionState: EnvironmentConnectionPhase;
   readonly connectionError: string | null;
@@ -351,6 +359,7 @@ function useEnvironmentOptions(): ReadonlyArray<EnvironmentOption> {
         environmentId: connection.environmentId,
         label: connection.environmentLabel,
         platform: platformFromOs(config?.environment.platform.os ?? null),
+        machine: resolveEnvironmentMachineKind(config ?? null),
         baseDirectory: config?.settings.addProjectBaseDirectory ?? null,
         connectionState: runtime?.connectionState ?? "available",
         connectionError: runtime?.connectionError ?? null,
@@ -501,11 +510,10 @@ export function AddProjectSourceScreen() {
                       })
                 }
                 icon={
-                  <SymbolView
-                    name="server.rack"
-                    size={17}
+                  <EnvironmentMachineSymbol
+                    kind={environment.machine}
+                    size={Platform.OS === "android" ? 24 : 17}
                     tintColor={iconColor}
-                    type="monochrome"
                   />
                 }
                 selected={environment.environmentId === selectedEnvironment?.environmentId}

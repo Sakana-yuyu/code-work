@@ -1,5 +1,6 @@
 import {
   ChevronsLeftRightEllipsisIcon,
+  EllipsisIcon,
   PlusIcon,
   QrCodeIcon,
   RefreshCwIcon,
@@ -27,6 +28,7 @@ import {
   type DesktopServerExposureState,
   type DesktopWslState,
   type EnvironmentId,
+  resolveEnvironmentMachineKind,
 } from "@codework/contracts";
 import { localizedConnectionStatusText } from "~/lib/localizedConnectionStatus";
 import {
@@ -82,7 +84,9 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Menu, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Button } from "../ui/button";
+import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { AnimatedHeight } from "../AnimatedHeight";
 import { Textarea } from "../ui/textarea";
@@ -130,6 +134,7 @@ import { ConnectionStatusDot } from "../ConnectionStatusDot";
 import { ServerUpdateAction, ServerUpdateProgress } from "../ServerUpdateAction";
 import { CloudEnvironmentConnectRows } from "../cloud/CloudEnvironmentConnectList";
 import { ITEM_ROW_CLASSNAME, ITEM_ROW_INNER_CLASSNAME } from "./itemRows";
+import { EnvironmentIconMenu } from "./EnvironmentIconPicker";
 import { t } from "~/i18n";
 
 const DEFAULT_TAILSCALE_SERVE_PORT = 443;
@@ -1463,6 +1468,7 @@ function SavedBackendListRow({
   // environment you connect to or remove here — its lifecycle is driven by the
   // WSL on/off + distro picker on this page.
   const isWslEnvironment = isDesktopLocalConnectionTarget(environment.entry.target);
+  const machineKind = resolveEnvironmentMachineKind(environment.serverConfig);
 
   return (
     <div className={ITEM_ROW_CLASSNAME}>
@@ -1477,6 +1483,11 @@ function SavedBackendListRow({
                   ? "bg-warning/60 duration-2000"
                   : null
               }
+            />
+            <EnvironmentMachineIcon
+              aria-hidden
+              kind={machineKind}
+              className="size-3.5 shrink-0 text-muted-foreground"
             />
             <h3 className="text-sm font-medium text-foreground">{environment.label}</h3>
           </div>
@@ -1578,6 +1589,26 @@ function SavedBackendListRow({
               </Button>
             </>
           )}
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost-muted"
+                  size="icon-xs"
+                  aria-label={t("moreActionsForEnvironment", { label: environment.label })}
+                />
+              }
+            >
+              <EllipsisIcon className="size-3.5" />
+            </MenuTrigger>
+            <MenuPopup align="end">
+              <EnvironmentIconMenu
+                environmentId={environmentId}
+                serverConfig={environment.serverConfig}
+              />
+            </MenuPopup>
+          </Menu>
         </div>
       </div>
     </div>
@@ -3081,7 +3112,44 @@ export function ConnectionsSettings() {
     <SettingsPageContainer>
       {canManageLocalBackend ? (
         <>
-          <SettingsSection title={t("thisEnvironment")}>
+          <SettingsSection
+            title={t("thisEnvironment")}
+            icon={
+              <EnvironmentMachineIcon
+                aria-hidden
+                kind={
+                  primaryServerConfig
+                    ? resolveEnvironmentMachineKind(primaryServerConfig)
+                    : "desktop"
+                }
+                className="size-4"
+              />
+            }
+            headerAction={
+              primaryEnvironmentId !== null ? (
+                <Menu>
+                  <MenuTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost-muted"
+                        size="icon-xs"
+                        aria-label={t("moreActionsForThisMachine")}
+                      />
+                    }
+                  >
+                    <EllipsisIcon className="size-3.5" />
+                  </MenuTrigger>
+                  <MenuPopup align="end">
+                    <EnvironmentIconMenu
+                      environmentId={primaryEnvironmentId}
+                      serverConfig={primaryServerConfig}
+                    />
+                  </MenuPopup>
+                </Menu>
+              ) : null
+            }
+          >
             {primaryVersionMismatch || primaryServerUpdateState.status !== "idle" ? (
               <SettingsRow
                 title={

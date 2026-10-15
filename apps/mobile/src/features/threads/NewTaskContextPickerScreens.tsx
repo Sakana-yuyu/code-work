@@ -23,12 +23,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
+import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { ThemedSwitch } from "../../components/ThemedSwitch";
 import { cn } from "../../lib/cn";
 import { useFontFamily } from "../../lib/useFontFamily";
 import { useThemeColor } from "../../lib/useThemeColor";
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useEnvironmentMachines } from "../../state/presentation";
 import { gitEnvironment } from "../../state/git";
 import { useEnvironmentQuery } from "../../state/query";
 import { vcsEnvironment } from "../../state/vcs";
@@ -43,6 +45,7 @@ import { t } from "../../i18n";
 
 function SelectionRow(props: {
   readonly icon?: "arrow.triangle.branch" | "desktopcomputer";
+  readonly iconNode?: ReactNode;
   readonly onPress: () => void;
   readonly disabled?: boolean;
   readonly selected: boolean;
@@ -66,7 +69,9 @@ function SelectionRow(props: {
       onPress={props.onPress}
       style={{ opacity: props.disabled ? 0.45 : 1 }}
     >
-      {props.icon ? (
+      {props.iconNode ? (
+        props.iconNode
+      ) : props.icon ? (
         <SymbolView name={props.icon} size={17} tintColor={iconColor} type="monochrome" />
       ) : null}
       <View className="min-w-0 flex-1 gap-0.5">
@@ -153,6 +158,8 @@ export function NewTaskEnvironmentPickerRouteScreen() {
   const flow = useNewTaskFlow();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const machineByEnvironmentId = useEnvironmentMachines();
+  const iconMutedColor = useThemeColor("--color-icon-muted");
 
   return (
     <View className="flex-1 bg-sheet" collapsable={false}>
@@ -178,7 +185,13 @@ export function NewTaskEnvironmentPickerRouteScreen() {
           {flow.environments.map((environment, index) => (
             <SelectionRow
               key={String(environment.environmentId)}
-              icon="desktopcomputer"
+              iconNode={
+                <EnvironmentMachineSymbol
+                  kind={machineByEnvironmentId.get(environment.environmentId) ?? "server"}
+                  size={Platform.OS === "android" ? 24 : 17}
+                  tintColor={iconMutedColor}
+                />
+              }
               isLast={index === flow.environments.length - 1}
               onPress={() => {
                 void Haptics.selectionAsync();

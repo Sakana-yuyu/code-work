@@ -26,8 +26,10 @@ import IconChevronUp from "@tabler/icons-react-native/IconChevronUp";
 import IconCircleCheck from "@tabler/icons-react-native/IconCircleCheck";
 import IconCircleXFilled from "@tabler/icons-react-native/IconCircleXFilled";
 import IconClock from "@tabler/icons-react-native/IconClock";
+import IconCloud from "@tabler/icons-react-native/IconCloud";
 import IconCopy from "@tabler/icons-react-native/IconCopy";
 import IconDeviceDesktop from "@tabler/icons-react-native/IconDeviceDesktop";
+import IconDeviceLaptop from "@tabler/icons-react-native/IconDeviceLaptop";
 import IconDots from "@tabler/icons-react-native/IconDots";
 import IconDotsCircleHorizontal from "@tabler/icons-react-native/IconDotsCircleHorizontal";
 import IconEdit from "@tabler/icons-react-native/IconEdit";
@@ -106,6 +108,7 @@ const ANDROID_ICON_BY_SF_SYMBOL: Partial<Record<SFSymbol, Icon>> = {
   checkmark: IconCheck,
   "checkmark.circle": IconCircleCheck,
   clock: IconClock,
+  cloud: IconCloud,
   cube: IconBox,
   "chevron.down": IconChevronDown,
   "chevron.left": IconChevronLeft,
@@ -113,6 +116,9 @@ const ANDROID_ICON_BY_SF_SYMBOL: Partial<Record<SFSymbol, Icon>> = {
   "chevron.right": IconChevronRight,
   "chevron.up": IconChevronUp,
   desktopcomputer: IconDeviceDesktop,
+  laptopcomputer: IconDeviceLaptop,
+  macmini: IconServer,
+  macstudio: IconDeviceDesktop,
   "doc.on.doc": IconCopy,
   "doc.text": IconFileText,
   ellipsis: IconDots,

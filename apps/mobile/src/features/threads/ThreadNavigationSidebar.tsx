@@ -33,6 +33,7 @@ import { mobilePreferencesAtom } from "../../state/preferences";
 import { useThreadSearch } from "../../state/queries";
 import { useThreadListV2Enabled } from "./use-thread-list-v2-enabled";
 import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-preferences";
+import { useEnvironmentMachines } from "../../state/presentation";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { usePendingNewTasks } from "../../state/use-pending-new-tasks";
 import { useWorkspaceState } from "../../state/workspace";
@@ -158,6 +159,7 @@ function ThreadNavigationSidebarPane(
   const threads = useThreadShells();
   const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const { savedConnectionsById } = useSavedRemoteConnections();
+  const machineByEnvironmentId = useEnvironmentMachines();
   const searchInputRef = useRef<TextInput>(null);
   const searchBarRef = useRef<SearchBarCommands>(null);
   const openSwipeableRef = useRef<SwipeableMethods | null>(null);
@@ -877,6 +879,11 @@ function ThreadNavigationSidebarPane(
                       ?.environmentLabel ?? null)
                   : null
               }
+              environmentMachine={
+                Object.keys(savedConnectionsById).length > 1
+                  ? machineByEnvironmentId.get(item.pendingTask.message.environmentId)
+                  : undefined
+              }
               pane="sidebar"
               showPendingDivider={item.showPendingDivider}
               onSelectPendingTask={openPendingTask}
@@ -910,6 +917,11 @@ function ThreadNavigationSidebarPane(
                 Object.keys(savedConnectionsById).length > 1
                   ? (savedConnectionsById[thread.environmentId]?.environmentLabel ?? null)
                   : null
+              }
+              environmentMachine={
+                Object.keys(savedConnectionsById).length > 1
+                  ? machineByEnvironmentId.get(thread.environmentId)
+                  : undefined
               }
               searchMatch={threadSearchMatchByKey.get(
                 threadSearchMatchKey({
@@ -1082,6 +1094,7 @@ function ThreadNavigationSidebarPane(
       handleSelectThread,
       handleSwipeableClose,
       handleSwipeableWillOpen,
+      machineByEnvironmentId,
       movePinnedThread,
       openPendingTask,
       pinReorderEnvironmentIds,

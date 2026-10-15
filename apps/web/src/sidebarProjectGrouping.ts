@@ -31,6 +31,24 @@ export interface SidebarProjectPickerEntry {
   isPreferred: boolean;
 }
 
+/**
+ * Whether any project group has members living on more than one
+ * environment — the precondition for drawing per-environment icons, which
+ * would only add noise on a single-machine catalog.
+ */
+export function projectGroupsSpanEnvironments(
+  groups: ReadonlyArray<Pick<SidebarProjectSnapshot, "memberProjects">>,
+): boolean {
+  const environmentIds = new Set<EnvironmentId>();
+  for (const group of groups) {
+    for (const member of group.memberProjects) {
+      environmentIds.add(member.environmentId);
+      if (environmentIds.size > 1) return true;
+    }
+  }
+  return false;
+}
+
 export function buildPhysicalToLogicalProjectKeyMap(input: {
   projects: ReadonlyArray<Project>;
   settings: ProjectGroupingSettings;

@@ -1,6 +1,7 @@
 import { SymbolView } from "../../components/AppSymbol";
 import type { AtomCommandResult } from "@codework/client-runtime/state/runtime";
-import type { EnvironmentId } from "@codework/contracts";
+import { resolveEnvironmentMachineKind, type EnvironmentId } from "@codework/contracts";
+import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { useCallback, useState } from "react";
@@ -9,6 +10,8 @@ import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanim
 import { useThemeColor } from "../../lib/useThemeColor";
 
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
+import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
+import { serverEnvironment } from "../../state/server";
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import type { ConnectedEnvironmentSummary } from "../../state/remote-runtime-types";
@@ -37,6 +40,9 @@ export function ConnectionEnvironmentRow(props: {
 }) {
   const [label, setLabel] = useState(props.environment.environmentLabel);
   const [url, setUrl] = useState(props.environment.displayUrl);
+  const serverConfig = useAtomValue(
+    serverEnvironment.configValueAtom(props.environment.environmentId),
+  );
 
   const mutedColor = useThemeColor("--color-icon-subtle");
   const primaryFg = useThemeColor("--color-primary-foreground");
@@ -78,12 +84,19 @@ export function ConnectionEnvironmentRow(props: {
         />
 
         <View className="flex-1 gap-0.5">
-          <Text
-            className="text-base font-codework-bold leading-snug text-foreground"
-            numberOfLines={1}
-          >
-            {props.environment.environmentLabel}
-          </Text>
+          <View className="flex-row items-center gap-1.5">
+            <EnvironmentMachineSymbol
+              kind={resolveEnvironmentMachineKind(serverConfig)}
+              size={14}
+              tintColor={mutedColor}
+            />
+            <Text
+              className="min-w-0 flex-shrink text-base font-codework-bold leading-snug text-foreground"
+              numberOfLines={1}
+            >
+              {props.environment.environmentLabel}
+            </Text>
+          </View>
           <Text className="text-xs text-foreground-muted" numberOfLines={1}>
             {props.environment.displayUrl}
           </Text>

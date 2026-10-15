@@ -1,4 +1,5 @@
-import type { EnvironmentId, ServerConfig } from "@codework/contracts";
+import type { EnvironmentId, EnvironmentMachineKind, ServerConfig } from "@codework/contracts";
+import { resolveEnvironmentMachineKind } from "@codework/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
@@ -63,8 +64,22 @@ export function createEnvironmentPresentationAtoms<E>(input: {
     return previous;
   }).pipe(Atom.withLabel("environment-presentations"));
 
+  let previousMachines: ReadonlyMap<EnvironmentId, EnvironmentMachineKind> = new Map();
+  const machineByIdAtom = Atom.make((get) => {
+    const next = new Map<EnvironmentId, EnvironmentMachineKind>();
+    for (const [environmentId, presentation] of get(presentationsAtom)) {
+      next.set(environmentId, resolveEnvironmentMachineKind(presentation.serverConfig));
+    }
+    if (mapsEqual(previousMachines, next)) {
+      return previousMachines;
+    }
+    previousMachines = next;
+    return previousMachines;
+  }).pipe(Atom.withLabel("environment-machines"));
+
   return {
     presentationAtom,
     presentationsAtom,
+    machineByIdAtom,
   };
 }

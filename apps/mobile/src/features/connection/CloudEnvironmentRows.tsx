@@ -1,7 +1,8 @@
 import { useAuth } from "@clerk/expo";
 import { SymbolView } from "../../components/AppSymbol";
 import type { EnvironmentConnectionPhase } from "@codework/client-runtime/connection";
-import type { EnvironmentId } from "@codework/contracts";
+import type { EnvironmentId, EnvironmentMachineKind } from "@codework/contracts";
+import { resolveEnvironmentMachineKind } from "@codework/contracts";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,11 +13,13 @@ import {
 } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
+import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { ThemedSwitch } from "../../components/ThemedSwitch";
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useThemeColor } from "../../lib/useThemeColor";
 import type { ConnectedEnvironmentSummary } from "../../state/remote-runtime-types";
+import { useEnvironmentMachines } from "../../state/presentation";
 import { availableCloudEnvironmentPresentation } from "../cloud/cloudEnvironmentPresentation";
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
@@ -208,6 +211,7 @@ function ConnectedCloudEnvironmentRow(props: {
   readonly onDisconnect: () => void;
   readonly onToggleError: () => void;
 }) {
+  const machineByEnvironmentId = useEnvironmentMachines();
   return (
     <CloudEnvironmentRowShell
       borderTop={props.borderTop}
@@ -216,6 +220,7 @@ function ConnectedCloudEnvironmentRow(props: {
       connectionState={props.environment.connectionState}
       errorExpanded={props.errorExpanded}
       label={props.environment.environmentLabel}
+      machine={machineByEnvironmentId.get(props.environment.environmentId) ?? "server"}
       onValueChange={(enabled) => {
         if (enabled) {
           props.onConnect();
@@ -251,6 +256,11 @@ function CloudEnvironmentRow(props: {
       connectionState={presentation.connectionState}
       errorExpanded={props.errorExpanded}
       label={props.environment.environment.label}
+      machine={resolveEnvironmentMachineKind(
+        props.environment.status?.descriptor === undefined
+          ? null
+          : { environment: props.environment.status.descriptor },
+      )}
       onValueChange={(enabled) => {
         if (enabled) {
           props.onConnect();
@@ -271,12 +281,14 @@ function CloudEnvironmentRowShell(props: {
   readonly disabled?: boolean;
   readonly errorExpanded: boolean;
   readonly label: string;
+  readonly machine: EnvironmentMachineKind;
   readonly onToggleError: () => void;
   readonly onValueChange: (enabled: boolean) => void;
   readonly statusText?: string;
   readonly value: boolean;
 }) {
   const chevron = useThemeColor("--color-chevron");
+  const foregroundMutedColor = useThemeColor("--color-foreground-muted");
   const isRetrying =
     props.connectionState === "connecting" || props.connectionState === "reconnecting";
   const shouldPulse = isRetrying;
@@ -329,6 +341,11 @@ function CloudEnvironmentRowShell(props: {
       <View className="min-w-0 flex-1 gap-0.5">
         <View className="min-w-0 flex-row items-center gap-2">
           <ConnectionStatusDot state={props.connectionState} pulse={shouldPulse} size={7} />
+          <EnvironmentMachineSymbol
+            kind={props.machine}
+            size={14}
+            tintColor={foregroundMutedColor}
+          />
           <Text
             className="min-w-0 flex-shrink text-base font-codework-bold leading-snug text-foreground"
             numberOfLines={1}

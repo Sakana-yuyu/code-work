@@ -32,6 +32,8 @@ export interface ShortcutMatchContext {
   terminalOpen: boolean;
   previewFocus: boolean;
   previewOpen: boolean;
+  /** A text-editing element owns the keyboard (mod+z must type into it). */
+  editableFocus?: boolean;
   [key: string]: boolean;
 }
 
