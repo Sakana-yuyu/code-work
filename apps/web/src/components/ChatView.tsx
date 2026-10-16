@@ -266,6 +266,7 @@ import {
   type TerminalContextDraft,
   type TerminalContextSelection,
 } from "../lib/terminalContext";
+import { materializeInlineAttachmentPrompt } from "../lib/inlineAttachment";
 import {
   appendElementContextsToPrompt,
   type ElementContextDraft,
@@ -6238,6 +6239,7 @@ function ChatViewContent(props: ChatViewProps) {
       images: sendContextImages,
       files: composerFiles,
       terminalContexts: composerTerminalContexts,
+      attachmentRefs: composerAttachmentRefs,
       elementContexts: composerElementContexts,
       previewAnnotations: sendContextPreviewAnnotations,
       reviewComments: composerReviewComments,
@@ -6486,8 +6488,17 @@ function ChatViewContent(props: ChatViewProps) {
     const composerElementContextsSnapshot = [...composerElementContexts];
     const composerPreviewAnnotationsSnapshot = [...composerPreviewAnnotations];
     const composerReviewCommentsSnapshot: ReviewCommentContext[] = [...composerReviewComments];
+    // In-sentence attachment markers become bracketed names so the model sees
+    // where each file was referenced; the trailing path block still applies.
+    const promptForSendWithAttachments = materializeInlineAttachmentPrompt(
+      promptForSend,
+      composerAttachmentRefs,
+    );
     const messageTextWithContexts = appendElementContextsToPrompt(
-      appendTerminalContextsToPrompt(promptForSend, composerTerminalContextsSnapshot),
+      appendTerminalContextsToPrompt(
+        promptForSendWithAttachments,
+        composerTerminalContextsSnapshot,
+      ),
       composerElementContextsSnapshot,
     );
     const messageTextWithPreviewAnnotations = composerPreviewAnnotationsSnapshot.reduce(

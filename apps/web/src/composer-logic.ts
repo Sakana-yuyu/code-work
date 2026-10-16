@@ -89,7 +89,8 @@ const isInlineTokenSegment = (
     | { type: "text"; text: string }
     | { type: "mention" }
     | { type: "skill" }
-    | { type: "terminal-context" },
+    | { type: "terminal-context" }
+    | { type: "attachment" },
 ): boolean => segment.type !== "text";
 
 function clampCursor(text: string, cursor: number): number {
@@ -144,7 +145,7 @@ export function expandCollapsedComposerCursor(text: string, cursorInput: number)
       expandedCursor += expandedLength;
       continue;
     }
-    if (segment.type === "terminal-context") {
+    if (segment.type === "terminal-context" || segment.type === "attachment") {
       if (remaining <= 1) {
         return expandedCursor + remaining;
       }
@@ -169,7 +170,8 @@ function collapsedSegmentLength(
     | { type: "text"; text: string }
     | { type: "mention" }
     | { type: "skill" }
-    | { type: "terminal-context" },
+    | { type: "terminal-context" }
+    | { type: "attachment" },
 ): number {
   if (segment.type === "text") {
     return segment.text.length;
@@ -183,6 +185,7 @@ function clampCollapsedComposerCursorForSegments(
     | { type: "mention" }
     | { type: "skill" }
     | { type: "terminal-context" }
+    | { type: "attachment" }
   >,
   cursorInput: number,
 ): number {
@@ -238,7 +241,7 @@ export function collapseExpandedComposerCursor(text: string, cursorInput: number
       collapsedCursor += 1;
       continue;
     }
-    if (segment.type === "terminal-context") {
+    if (segment.type === "terminal-context" || segment.type === "attachment") {
       if (remaining <= 1) {
         return collapsedCursor + remaining;
       }

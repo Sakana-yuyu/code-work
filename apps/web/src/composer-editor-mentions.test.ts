@@ -5,6 +5,20 @@ import {
   splitPromptIntoComposerSegments,
 } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
+import { INLINE_ATTACHMENT_PLACEHOLDER } from "./lib/inlineAttachment";
+import { ThreadId } from "@codework/contracts";
+import type { TerminalContextDraft } from "./lib/terminalContext";
+
+const makeTerminalContextFixture = (): TerminalContextDraft => ({
+  id: "t1",
+  threadId: ThreadId.make("thread"),
+  createdAt: "",
+  terminalId: "term",
+  terminalLabel: "shell",
+  lineStart: 1,
+  lineEnd: 2,
+  text: "",
+});
 
 describe("splitPromptIntoComposerSegments", () => {
   it("splits mention tokens followed by whitespace into mention segments", () => {
@@ -148,6 +162,27 @@ describe("splitPromptIntoComposerSegments", () => {
       { type: "terminal-context", context: null },
       { type: "terminal-context", context: null },
       { type: "text", text: "tail" },
+    ]);
+  });
+
+  it("interleaves attachment placeholders with text and terminal contexts", () => {
+    expect(
+      splitPromptIntoComposerSegments(
+        `see ${INLINE_ATTACHMENT_PLACEHOLDER} then ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} and ${INLINE_ATTACHMENT_PLACEHOLDER}done`,
+        [makeTerminalContextFixture()],
+        [
+          { id: "img1", kind: "image", name: "shot.png" },
+          { id: "f1", kind: "file", name: "spec.pdf" },
+        ],
+      ),
+    ).toEqual([
+      { type: "text", text: "see " },
+      { type: "attachment", attachment: { id: "img1", kind: "image", name: "shot.png" } },
+      { type: "text", text: " then " },
+      { type: "terminal-context", context: makeTerminalContextFixture() },
+      { type: "text", text: " and " },
+      { type: "attachment", attachment: { id: "f1", kind: "file", name: "spec.pdf" } },
+      { type: "text", text: "done" },
     ]);
   });
 

@@ -2,6 +2,7 @@ import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
 } from "./lib/terminalContext";
+import { INLINE_ATTACHMENT_PLACEHOLDER, type ComposerAttachmentRef } from "./lib/inlineAttachment";
 import {
   collectComposerInlineTokens,
   type ComposerInlineToken,
@@ -24,6 +25,10 @@ export type ComposerPromptSegment =
   | {
       type: "terminal-context";
       context: TerminalContextDraft | null;
+    }
+  | {
+      type: "attachment";
+      attachment: (ComposerAttachmentRef & { name?: string }) | null;
     };
 
 function rangeIncludesIndex(start: number, end: number, index: number): boolean {
@@ -52,13 +57,19 @@ function forEachPromptSegmentSlice(
       | {
           type: "terminal-context";
           promptOffset: number;
+        }
+      | {
+          type: "attachment";
+          promptOffset: number;
         },
   ) => boolean | void,
 ): boolean {
   let textCursor = 0;
 
   for (let index = 0; index < prompt.length; index += 1) {
-    if (prompt[index] !== INLINE_TERMINAL_CONTEXT_PLACEHOLDER) {
+    const isTerminalContext = prompt[index] === INLINE_TERMINAL_CONTEXT_PLACEHOLDER;
+    const isAttachment = prompt[index] === INLINE_ATTACHMENT_PLACEHOLDER;
+    if (!isTerminalContext && !isAttachment) {
       continue;
     }
 
@@ -72,7 +83,12 @@ function forEachPromptSegmentSlice(
     ) {
       return true;
     }
-    if (visitor({ type: "terminal-context", promptOffset: index }) === true) {
+    if (
+      visitor({
+        type: isTerminalContext ? "terminal-context" : "attachment",
+        promptOffset: index,
+      }) === true
+    ) {
       return true;
     }
     textCursor = index + 1;
@@ -198,6 +214,7 @@ export function selectionTouchesMentionBoundary(
 export function splitPromptIntoComposerSegments(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft> = [],
+  attachments: ReadonlyArray<ComposerAttachmentRef & { name?: string }> = [],
 ): ComposerPromptSegment[] {
   if (!prompt) {
     return [];
@@ -205,9 +222,19 @@ export function splitPromptIntoComposerSegments(
 
   const segments: ComposerPromptSegment[] = [];
   let terminalContextIndex = 0;
+  let attachmentIndex = 0;
   forEachPromptSegmentSlice(prompt, (slice) => {
     if (slice.type === "text") {
       segments.push(...splitPromptTextIntoComposerSegments(slice.text));
+      return false;
+    }
+
+    if (slice.type === "attachment") {
+      segments.push({
+        type: "attachment",
+        attachment: attachments[attachmentIndex] ?? null,
+      });
+      attachmentIndex += 1;
       return false;
     }
 

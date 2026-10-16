@@ -113,6 +113,11 @@ import {
   insertInlineTerminalContextPlaceholder,
   removeInlineTerminalContextPlaceholder,
 } from "../../lib/terminalContext";
+import {
+  type ComposerAttachmentRef,
+  INLINE_ATTACHMENT_PLACEHOLDER,
+  insertInlineAttachmentPlaceholder,
+} from "../../lib/inlineAttachment";
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
 import { type ElementContextDraft } from "../../lib/elementContext";
 import { ComposerPendingElementContexts } from "./ComposerPendingElementContexts";
@@ -551,6 +556,7 @@ export interface ChatComposerHandle {
     images: ComposerImageAttachment[];
     files: ComposerFileAttachment[];
     terminalContexts: TerminalContextDraft[];
+    attachmentRefs: ReadonlyArray<ComposerAttachmentRef & { name: string }>;
     elementContexts: ElementContextDraft[];
     previewAnnotations: PreviewAnnotationPayload[];
     reviewComments: ReviewCommentContext[];
@@ -920,6 +926,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerImages = composerDraft.images;
   const composerFiles = composerDraft.files;
   const composerTerminalContexts = composerDraft.terminalContexts;
+  const composerAttachmentRefs = composerDraft.attachmentRefs;
+  /** Ordered in-sentence markers resolved against live rows for chip labels. */
+  const composerInlineAttachments = useMemo(
+    () =>
+      composerAttachmentRefs.flatMap((ref) => {
+        const attachment =
+          ref.kind === "image"
+            ? composerImages.find((image) => image.id === ref.id)
+            : composerFiles.find((file) => file.id === ref.id);
+        return attachment ? [{ id: ref.id, kind: ref.kind, name: attachment.name }] : [];
+      }),
+    [composerAttachmentRefs, composerFiles, composerImages],
+  );
   const composerElementContexts = composerDraft.elementContexts;
   const composerPreviewAnnotations = composerDraft.previewAnnotations;
   const composerReviewComments = composerDraft.reviewComments;
@@ -1114,6 +1133,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const setComposerDraftTerminalContexts = useComposerDraftStore(
     (store) => store.setTerminalContexts,
+  );
+  const insertComposerDraftAttachmentRefs = useComposerDraftStore(
+    (store) => store.insertAttachmentRefs,
+  );
+  const reconcileComposerDraftAttachmentRefs = useComposerDraftStore(
+    (store) => store.reconcileAttachmentRefs,
   );
   const removeComposerDraftElementContext = useComposerDraftStore(
     (store) => store.removeElementContext,
@@ -2252,6 +2277,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       expandedCursor: number,
       cursorAdjacentToMention: boolean,
       terminalContextIds: string[],
+      attachmentRefs: ComposerAttachmentRef[],
     ) => {
       if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
         setComposerCursor(nextCursor);
@@ -2281,6 +2307,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           composerDraftTarget,
           syncTerminalContextsByIds(composerTerminalContexts, terminalContextIds),
         );
+      }
+      // A chip the user deleted (backspace, cut selection) drops its
+      // attachment row too; the store hands the removed rows back so their
+      // uploads can be released.
+      const removedAttachments = reconcileComposerDraftAttachmentRefs(
+        composerDraftTarget,
+        nextPrompt,
+        attachmentRefs,
+      );
+      for (const removed of removedAttachments) {
+        if (removed.kind === "image") {
+          releaseAttachmentUpload(removed.id);
+        } else {
+          const file = composerFilesRef.current.find((entry) => entry.id === removed.id);
+          if (file) releaseDraftAttachment(file);
+        }
       }
       setComposerCursor(nextCursor);
       setComposerTrigger(
@@ -2952,7 +2994,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const stashCurrentPrompt = useCallback(async () => {
     // Terminal-context placeholders reference live sessions the stash can't
     // round-trip, so they are stripped from the stashed prompt.
-    const prompt = promptRef.current.split(INLINE_TERMINAL_CONTEXT_PLACEHOLDER).join("").trim();
+    const prompt = promptRef.current
+      .split(INLINE_TERMINAL_CONTEXT_PLACEHOLDER)
+      .join("")
+      .split(INLINE_ATTACHMENT_PLACEHOLDER)
+      .join("")
+      .trim();
     const images = [...composerImagesRef.current];
     if (prompt.length === 0 && images.length === 0) {
       setIsStashMenuOpen((open) => !open);
@@ -3387,6 +3434,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const threadId = activeThreadId;
     const imageFiles: File[] = [];
     const stagedFiles: ComposerFileAttachment[] = [];
+    // Rows present before this add must not gain a second in-sentence marker.
+    const previousAttachmentIds = new Set([
+      ...composerImagesRef.current.map((image) => image.id),
+      ...composerFilesRef.current.map((file) => file.id),
+    ]);
     let error: string | null = null;
     for (const file of files) {
       const kind = classifyComposerAttachmentFile(file);
@@ -3443,6 +3495,46 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
       }
     }
+    // Pasted, dropped, or button-picked attachments land at the cursor as
+    // in-sentence chips (IDE-3); the tray row keeps upload state and removal.
+    const draftAfterAdd = getComposerDraft(composerDraftTarget);
+    const newRefs: ComposerAttachmentRef[] = [
+      ...(draftAfterAdd?.images ?? [])
+        .filter((image) => !previousAttachmentIds.has(image.id))
+        .map((image) => ({ id: image.id, kind: "image" as const })),
+      ...(draftAfterAdd?.files ?? [])
+        .filter((file) => !previousAttachmentIds.has(file.id))
+        .map((file) => ({ id: file.id, kind: "file" as const })),
+    ];
+    if (newRefs.length > 0) {
+      const snapshot = readComposerSnapshot();
+      let nextPrompt = snapshot.value;
+      let nextCursor = snapshot.expandedCursor;
+      let firstIndex = -1;
+      for (const _ref of newRefs) {
+        const insertion = insertInlineAttachmentPlaceholder(nextPrompt, nextCursor);
+        nextPrompt = insertion.prompt;
+        nextCursor = insertion.cursor;
+        if (firstIndex === -1) {
+          firstIndex = insertion.attachmentIndex;
+        }
+      }
+      const inserted = insertComposerDraftAttachmentRefs(
+        composerDraftTarget,
+        nextPrompt,
+        newRefs,
+        firstIndex,
+      );
+      if (inserted) {
+        promptRef.current = nextPrompt;
+        const nextCollapsedCursor = collapseExpandedComposerCursor(nextPrompt, nextCursor);
+        setComposerCursor(nextCollapsedCursor);
+        setComposerTrigger(detectComposerTrigger(nextPrompt, nextCursor));
+        window.requestAnimationFrame(() => {
+          composerEditorRef.current?.focusAt(nextCollapsedCursor);
+        });
+      }
+    }
     // Only failures are reported: success must not clear an error that other
     // work (the image path, a failed send) set meanwhile.
     if (error !== null) {
@@ -3454,6 +3546,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const removeComposerFile = (fileToRemove: ComposerFileAttachment) => {
     releaseDraftAttachment(fileToRemove);
     removeComposerDraftFile(composerDraftTarget, fileToRemove.id);
+  };
+
+  // Backspacing an in-sentence chip removes the attachment row the same way
+  // the tray button does: the draft action also drops the ref and its
+  // placeholder from the stored prompt.
+  const removeComposerAttachmentRef = (attachment: ComposerAttachmentRef) => {
+    if (attachment.kind === "image") {
+      removeComposerImageFromDraft(attachment.id);
+      return;
+    }
+    const file = composerFilesRef.current.find((entry) => entry.id === attachment.id);
+    if (file) {
+      removeComposerFile(file);
+    }
   };
 
   // ------------------------------------------------------------------
@@ -3659,6 +3765,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           cursor: composerCursor,
           expandedCursor: expandCollapsedComposerCursor(promptRef.current, composerCursor),
           terminalContextIds: composerTerminalContexts.map((context) => context.id),
+          attachmentRefs: composerAttachmentRefs.map((ref) => ({ id: ref.id, kind: ref.kind })),
         };
         const insertion = insertInlineTerminalContextPlaceholder(
           snapshot.value,
@@ -3692,6 +3799,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         images: composerImagesRef.current,
         files: composerFilesRef.current,
         terminalContexts: composerTerminalContextsRef.current,
+        attachmentRefs: composerInlineAttachments,
         elementContexts: composerElementContextsRef.current,
         previewAnnotations: composerPreviewAnnotations,
         reviewComments: composerReviewComments,
@@ -3720,6 +3828,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerDraftTarget,
       composerCursor,
       composerTerminalContexts,
+      composerInlineAttachments,
+      insertComposerDraftAttachmentRefs,
       insertComposerDraftTerminalContext,
       promptRef,
       composerImagesRef,
@@ -4361,9 +4471,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       ? composerTerminalContexts
                       : []
                   }
+                  attachments={
+                    !isComposerApprovalState &&
+                    pendingUserInputs.length === 0 &&
+                    !isGoalComposerActive
+                      ? composerInlineAttachments
+                      : []
+                  }
                   skills={selectedProviderStatus?.skills ?? []}
                   {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
                   onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
+                  onRemoveAttachment={removeComposerAttachmentRef}
                   onChange={onPromptChange}
                   onCommandKeyDown={onComposerCommandKey}
                   onPaste={onComposerPaste}

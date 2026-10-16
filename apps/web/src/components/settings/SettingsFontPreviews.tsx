@@ -15,6 +15,7 @@ import { t } from "~/i18n";
 // exactly what the app renders.
 
 const EMPTY_TERMINAL_CONTEXTS: ReadonlyArray<never> = [];
+const EMPTY_ATTACHMENTS: ReadonlyArray<never> = [];
 const EMPTY_SKILLS: ReadonlyArray<never> = [];
 
 // Serialized the way the composer stores inline tokens: the $skill and the
@@ -43,11 +44,13 @@ export function PromptFontPreview() {
         value={prompt}
         cursor={cursor}
         terminalContexts={EMPTY_TERMINAL_CONTEXTS}
+        attachments={EMPTY_ATTACHMENTS}
         skills={EMPTY_SKILLS}
         disabled={false}
         placeholder={DISCONNECTED_COMPOSER_PLACEHOLDER()}
         className="max-h-40 min-h-12"
         onRemoveTerminalContext={noop}
+        onRemoveAttachment={noop}
         onChange={onChange}
         onPaste={noop}
       />

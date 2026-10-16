@@ -49,6 +49,11 @@ import {
   stripInlineTerminalContextPlaceholders,
 } from "./lib/terminalContext";
 import {
+  type ComposerAttachmentRef,
+  ensureInlineAttachmentPlaceholders,
+  removeInlineAttachmentPlaceholder,
+} from "./lib/inlineAttachment";
+import {
   type ElementContextDraft,
   type ElementContextSelection,
   elementContextDedupKey,
@@ -212,6 +217,16 @@ const PersistedComposerThreadDraftState = Schema.Struct({
   attachments: Schema.Array(PersistedComposerImageAttachment),
   files: Schema.optionalKey(Schema.Array(PersistedComposerFileAttachment)),
   terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
+  // Ordered `{id, kind}` markers matching INLINE_ATTACHMENT_PLACEHOLDER chars in
+  // `prompt` — the in-sentence position of each pasted/dropped attachment.
+  attachmentRefs: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        kind: Schema.Literals(["image", "file"]),
+      }),
+    ),
+  ),
   elementContexts: Schema.optionalKey(Schema.Array(PersistedElementContextDraft)),
   previewAnnotations: Schema.optionalKey(Schema.Array(PreviewAnnotationPayloadSchema)),
   reviewComments: Schema.optionalKey(Schema.Array(ReviewCommentContextSchema)),
@@ -338,6 +353,13 @@ export interface ComposerThreadDraftState {
   nonPersistedImageIds: string[];
   persistedAttachments: PersistedComposerImageAttachment[];
   terminalContexts: TerminalContextDraft[];
+  /**
+   * Ordered `{id, kind}` markers matching the INLINE_ATTACHMENT_PLACEHOLDER
+   * chars in `prompt`: each pasted/dropped attachment keeps an in-sentence
+   * chip at the position it landed. Entries always point at a `images`/`files`
+   * row; removing the row removes the ref (and the placeholder in `prompt`).
+   */
+  attachmentRefs: ComposerAttachmentRef[];
   /**
    * Element-pick attachments captured from the in-app preview browser. The
    * full payload (selector / html / styles / source frame) is persisted
@@ -600,6 +622,28 @@ interface ComposerDraftStoreState {
     context: TerminalContextDraft,
     index: number,
   ) => boolean;
+  /**
+   * Record inline attachment markers at `index` positions into `attachmentRefs`
+   * alongside a `prompt` that already contains the matching placeholders. Used
+   * when attachments land at the cursor instead of the tray-only path.
+   */
+  insertAttachmentRefs: (
+    threadRef: ComposerThreadTarget,
+    prompt: string,
+    refs: ComposerAttachmentRef[],
+    index: number,
+  ) => boolean;
+  /**
+   * Rebuild `attachmentRefs` from the chips that survived an editor change.
+   * Refs whose placeholder vanished are dropped together with their
+   * image/file row; the removed entries are returned so the caller can
+   * release their uploads.
+   */
+  reconcileAttachmentRefs: (
+    threadRef: ComposerThreadTarget,
+    prompt: string,
+    keptRefs: ReadonlyArray<ComposerAttachmentRef>,
+  ) => ComposerAttachmentRef[];
   addTerminalContext: (threadRef: ComposerThreadTarget, context: TerminalContextDraft) => void;
   addTerminalContexts: (threadRef: ComposerThreadTarget, contexts: TerminalContextDraft[]) => void;
   removeTerminalContext: (threadRef: ComposerThreadTarget, contextId: string) => void;
@@ -729,6 +773,7 @@ const EMPTY_FILES: ComposerFileAttachment[] = [];
 const EMPTY_IDS: string[] = [];
 const EMPTY_PERSISTED_ATTACHMENTS: PersistedComposerImageAttachment[] = [];
 const EMPTY_TERMINAL_CONTEXTS: TerminalContextDraft[] = [];
+const EMPTY_ATTACHMENT_REFS: ComposerAttachmentRef[] = [];
 const EMPTY_ELEMENT_CONTEXTS: ElementContextDraft[] = [];
 const EMPTY_PREVIEW_ANNOTATIONS: PreviewAnnotationPayload[] = [];
 const EMPTY_REVIEW_COMMENTS: ReviewCommentContext[] = [];
@@ -754,6 +799,7 @@ const EMPTY_THREAD_DRAFT = Object.freeze<ComposerThreadDraftState>({
   nonPersistedImageIds: EMPTY_IDS,
   persistedAttachments: EMPTY_PERSISTED_ATTACHMENTS,
   terminalContexts: EMPTY_TERMINAL_CONTEXTS,
+  attachmentRefs: EMPTY_ATTACHMENT_REFS,
   elementContexts: EMPTY_ELEMENT_CONTEXTS,
   previewAnnotations: EMPTY_PREVIEW_ANNOTATIONS,
   reviewComments: EMPTY_REVIEW_COMMENTS,
@@ -778,6 +824,7 @@ export function createEmptyThreadDraft(): ComposerThreadDraftState {
     nonPersistedImageIds: [],
     persistedAttachments: [],
     terminalContexts: [],
+    attachmentRefs: [],
     elementContexts: [],
     previewAnnotations: [],
     reviewComments: [],
@@ -864,6 +911,30 @@ function normalizeTerminalContextsForThread(
   }
 
   return normalizedContexts;
+}
+
+/**
+ * Removing an attachment row also removes its in-sentence marker: the chip
+ * disappears because its placeholder leaves `prompt`, and the ref comes off
+ * `attachmentRefs`. No-op for rows that were never placed inline.
+ */
+function dropAttachmentRef(
+  draft: ComposerThreadDraftState,
+  kind: ComposerAttachmentRef["kind"],
+  attachmentId: string,
+): { prompt: string; attachmentRefs: ComposerAttachmentRef[] } {
+  const refIndex = draft.attachmentRefs.findIndex(
+    (ref) => ref.kind === kind && ref.id === attachmentId,
+  );
+  if (refIndex === -1) {
+    return { prompt: draft.prompt, attachmentRefs: draft.attachmentRefs };
+  }
+  return {
+    prompt: removeInlineAttachmentPlaceholder(draft.prompt, refIndex).prompt,
+    attachmentRefs: draft.attachmentRefs.filter(
+      (ref) => !(ref.kind === kind && ref.id === attachmentId),
+    ),
+  };
 }
 
 function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
@@ -1852,6 +1923,25 @@ function normalizePersistedDraftsByThreadId(
           return normalized ? [normalized] : [];
         })
       : [];
+    const attachmentIds = new Set(attachments.map((attachment) => attachment.id));
+    const fileIds = new Set(
+      Array.isArray(draftCandidate.files)
+        ? draftCandidate.files.flatMap((entry) =>
+            entry && typeof entry === "object" && typeof entry.id === "string" ? [entry.id] : [],
+          )
+        : [],
+    );
+    const attachmentRefs = Array.isArray(draftCandidate.attachmentRefs)
+      ? draftCandidate.attachmentRefs.flatMap((entry) =>
+          entry &&
+          typeof entry === "object" &&
+          typeof entry.id === "string" &&
+          (entry.kind === "image" || entry.kind === "file") &&
+          (entry.kind === "image" ? attachmentIds.has(entry.id) : fileIds.has(entry.id))
+            ? [{ id: entry.id, kind: entry.kind }]
+            : [],
+        )
+      : [];
     const elementContexts = Array.isArray(draftCandidate.elementContexts)
       ? draftCandidate.elementContexts.flatMap((entry) => {
           const normalized = normalizePersistedElementContextDraft(entry);
@@ -1868,9 +1958,9 @@ function normalizePersistedDraftsByThreadId(
       draftCandidate.interactionMode === "plan" || draftCandidate.interactionMode === "default"
         ? draftCandidate.interactionMode
         : null;
-    const prompt = ensureInlineTerminalContextPlaceholders(
-      promptCandidate,
-      terminalContexts.length,
+    const prompt = ensureInlineAttachmentPlaceholders(
+      ensureInlineTerminalContextPlaceholders(promptCandidate, terminalContexts.length),
+      attachmentRefs.length,
     );
     // If the draft already has the v3 shape, use it directly
     const legacyDraftCandidate = draftValue as LegacyPersistedComposerThreadDraftState;
@@ -1950,6 +2040,7 @@ function normalizePersistedDraftsByThreadId(
       ...(goalObjectiveCandidate.length > 0 ? { goalObjective: goalObjectiveCandidate } : {}),
       attachments,
       ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
+      ...(attachmentRefs.length > 0 ? { attachmentRefs } : {}),
       ...(elementContexts.length > 0 ? { elementContexts } : {}),
       ...(reviewComments.length > 0 ? { reviewComments } : {}),
       ...(hasModelData
@@ -2102,6 +2193,14 @@ function partializeComposerDraftStoreState(
               terminalLabel: context.terminalLabel,
               lineStart: context.lineStart,
               lineEnd: context.lineEnd,
+            })),
+          }
+        : {}),
+      ...(draft.attachmentRefs.length > 0
+        ? {
+            attachmentRefs: draft.attachmentRefs.map((ref) => ({
+              id: ref.id,
+              kind: ref.kind,
             })),
           }
         : {}),
@@ -2368,9 +2467,19 @@ function toHydratedThreadDraft(
   const modelSelectionByProvider: Partial<Record<ProviderInstanceId, ModelSelection>> =
     persistedDraft.modelSelectionByProvider ?? {};
   const activeProvider = normalizeProviderInstanceId(persistedDraft.activeProvider) ?? null;
+  // Inline markers only survive for attachments whose payload rows still
+  // exist; a marker without a row decodes to nothing in the editor anyway.
+  const attachmentRefs =
+    persistedDraft.attachmentRefs
+      ?.map((ref) => ({ id: ref.id, kind: ref.kind }))
+      .filter((ref) =>
+        ref.kind === "image"
+          ? persistedDraft.attachments.some((attachment) => attachment.id === ref.id)
+          : (persistedDraft.files ?? []).some((file) => file.id === ref.id),
+      ) ?? [];
 
   return {
-    prompt: persistedDraft.prompt,
+    prompt: ensureInlineAttachmentPlaceholders(persistedDraft.prompt, attachmentRefs.length),
     goalObjective: persistedDraft.goalObjective?.trim() || null,
     images: hydrateImagesFromPersisted(persistedDraft.attachments),
     files:
@@ -2393,6 +2502,7 @@ function toHydratedThreadDraft(
         ...context,
         text: "",
       })) ?? [],
+    attachmentRefs,
     elementContexts:
       persistedDraft.elementContexts?.map((context) => ({
         ...context,
@@ -3266,6 +3376,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               persistedAttachments: current.persistedAttachments.filter(
                 (attachment) => attachment.id !== imageId,
               ),
+              ...dropAttachmentRef(current, "image", imageId),
             };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
             if (shouldRemoveDraft(nextDraft)) {
@@ -3356,6 +3467,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             const nextDraft: ComposerThreadDraftState = {
               ...current,
               files: current.files.filter((file) => file.id !== fileId),
+              ...dropAttachmentRef(current, "file", fileId),
             };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
             if (shouldRemoveDraft(nextDraft)) {
@@ -3479,6 +3591,110 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             };
           });
           return inserted;
+        },
+        insertAttachmentRefs: (threadRef, prompt, refs, index) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          if (!threadKey || refs.length === 0) {
+            return false;
+          }
+          let inserted = false;
+          set((state) => {
+            const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
+            const imageIds = new Set(existing.images.map((image) => image.id));
+            const fileIds = new Set(existing.files.map((file) => file.id));
+            const knownRefs = new Set(
+              existing.attachmentRefs.map((ref) => `${ref.kind}:${ref.id}`),
+            );
+            const accepted = refs.filter(
+              (ref) =>
+                !knownRefs.has(`${ref.kind}:${ref.id}`) &&
+                (ref.kind === "image" ? imageIds.has(ref.id) : fileIds.has(ref.id)),
+            );
+            if (accepted.length === 0) {
+              return state;
+            }
+            inserted = true;
+            const boundedIndex = Math.max(0, Math.min(existing.attachmentRefs.length, index));
+            const nextDraft: ComposerThreadDraftState = {
+              ...existing,
+              prompt,
+              attachmentRefs: [
+                ...existing.attachmentRefs.slice(0, boundedIndex),
+                ...accepted,
+                ...existing.attachmentRefs.slice(boundedIndex),
+              ],
+            };
+            return {
+              draftsByThreadKey: {
+                ...state.draftsByThreadKey,
+                [threadKey]: nextDraft,
+              },
+            };
+          });
+          return inserted;
+        },
+        reconcileAttachmentRefs: (threadRef, prompt, keptRefs) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          const removed: ComposerAttachmentRef[] = [];
+          if (!threadKey) {
+            return removed;
+          }
+          set((state) => {
+            const current = state.draftsByThreadKey[threadKey];
+            if (!current || current.attachmentRefs.length === 0) {
+              if (current && current.prompt !== prompt) {
+                return {
+                  draftsByThreadKey: {
+                    ...state.draftsByThreadKey,
+                    [threadKey]: { ...current, prompt },
+                  },
+                };
+              }
+              return state;
+            }
+            const keptKeys = new Set(keptRefs.map((ref) => `${ref.kind}:${ref.id}`));
+            const existingKeys = new Set(
+              current.attachmentRefs.map((ref) => `${ref.kind}:${ref.id}`),
+            );
+            // Ref order follows the surviving chips' document order, not the
+            // previous store order.
+            const nextRefs = keptRefs.filter((ref) => existingKeys.has(`${ref.kind}:${ref.id}`));
+            for (const ref of current.attachmentRefs) {
+              if (!keptKeys.has(`${ref.kind}:${ref.id}`)) {
+                removed.push(ref);
+              }
+            }
+            if (removed.length === 0 && current.prompt === prompt) {
+              return state;
+            }
+            const removedImageIds = new Set(
+              removed.filter((ref) => ref.kind === "image").map((ref) => ref.id),
+            );
+            const removedFileIds = new Set(
+              removed.filter((ref) => ref.kind === "file").map((ref) => ref.id),
+            );
+            const nextDraft: ComposerThreadDraftState = {
+              ...current,
+              prompt,
+              attachmentRefs: nextRefs,
+              images: current.images.filter((image) => !removedImageIds.has(image.id)),
+              files: current.files.filter((file) => !removedFileIds.has(file.id)),
+              nonPersistedImageIds: current.nonPersistedImageIds.filter(
+                (id) => !removedImageIds.has(id),
+              ),
+              persistedAttachments: current.persistedAttachments.filter(
+                (attachment) => !removedImageIds.has(attachment.id),
+              ),
+            };
+            const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
+            if (shouldRemoveDraft(nextDraft)) {
+              delete nextDraftsByThreadKey[threadKey];
+            } else {
+              nextDraftsByThreadKey[threadKey] = nextDraft;
+            }
+            return { draftsByThreadKey: nextDraftsByThreadKey };
+          });
+          return removed;
         },
         addTerminalContext: (threadRef, context) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef);
@@ -3844,6 +4060,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               nonPersistedImageIds: [],
               persistedAttachments: [],
               terminalContexts: [],
+              attachmentRefs: [],
               elementContexts: [],
               previewAnnotations: [],
               reviewComments: [],
@@ -3870,10 +4087,17 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             for (const image of current.images) {
               revokeObjectPreviewUrl(image.previewUrl);
             }
+            // Image markers go with their rows; file markers survive the stash
+            // and re-anchor at the front of the fresh prompt.
+            const keptAttachmentRefs = current.attachmentRefs.filter((ref) => ref.kind !== "image");
             const nextDraft: ComposerThreadDraftState = {
               ...current,
-              prompt: ensureInlineTerminalContextPlaceholders("", current.terminalContexts.length),
+              prompt: ensureInlineAttachmentPlaceholders(
+                ensureInlineTerminalContextPlaceholders("", current.terminalContexts.length),
+                keptAttachmentRefs.length,
+              ),
               images: [],
+              attachmentRefs: keptAttachmentRefs,
               // Stash entries hold only prompt and images; generic files stay
               // in the composer instead of being dropped with their uploads.
               nonPersistedImageIds: [],
@@ -3947,12 +4171,30 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               });
             const movedFileIds = new Set(movedFiles.map((file) => file.id));
             const retainedFiles = source.files.filter((file) => !movedFileIds.has(file.id));
+            // Attachment markers split with their rows: placeholders for the
+            // moved rows stay inside the moved prompt, markers for retained
+            // rows are re-anchored at the front of the reset source prompt.
+            const movedRefs = source.attachmentRefs.filter(
+              (ref) =>
+                (ref.kind === "image" && movedImageIds.has(ref.id)) ||
+                (ref.kind === "file" && movedFileIds.has(ref.id)),
+            );
+            const retainedRefs = source.attachmentRefs.filter(
+              (ref) =>
+                !(
+                  (ref.kind === "image" && movedImageIds.has(ref.id)) ||
+                  (ref.kind === "file" && movedFileIds.has(ref.id))
+                ),
+            );
             // Inline placeholders reference the source's terminal contexts,
             // which stay behind; re-anchor the moved prompt to whatever
             // contexts the destination already holds.
-            const movedPrompt = ensureInlineTerminalContextPlaceholders(
-              stripInlineTerminalContextPlaceholders(source.prompt),
-              destination.terminalContexts.length,
+            const movedPrompt = ensureInlineAttachmentPlaceholders(
+              ensureInlineTerminalContextPlaceholders(
+                stripInlineTerminalContextPlaceholders(source.prompt),
+                destination.terminalContexts.length,
+              ),
+              destination.attachmentRefs.length + movedRefs.length,
             );
             const nextDestination: ComposerThreadDraftState = {
               ...destination,
@@ -3960,6 +4202,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               prompt: movedPrompt,
               images: [...destination.images, ...movedImages],
               files: [...destination.files, ...movedFiles],
+              attachmentRefs: [...destination.attachmentRefs, ...movedRefs],
               nonPersistedImageIds: [
                 ...destination.nonPersistedImageIds,
                 ...source.nonPersistedImageIds.filter((imageId) => movedImageIds.has(imageId)),
@@ -3977,9 +4220,13 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             const nextSource: ComposerThreadDraftState = {
               ...source,
               goalObjective: null,
-              prompt: ensureInlineTerminalContextPlaceholders("", source.terminalContexts.length),
+              prompt: ensureInlineAttachmentPlaceholders(
+                ensureInlineTerminalContextPlaceholders("", source.terminalContexts.length),
+                retainedRefs.length,
+              ),
               images: retainedImages,
               files: retainedFiles,
+              attachmentRefs: retainedRefs,
               nonPersistedImageIds: source.nonPersistedImageIds.filter(
                 (imageId) => !movedImageIds.has(imageId),
               ),

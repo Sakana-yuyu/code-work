@@ -86,6 +86,10 @@ import {
   insertInlineTerminalContextPlaceholder,
   type TerminalContextDraft,
 } from "./lib/terminalContext";
+import {
+  INLINE_ATTACHMENT_PLACEHOLDER,
+  insertInlineAttachmentPlaceholder,
+} from "./lib/inlineAttachment";
 import { createDebouncedStorage } from "./lib/storage";
 
 function makeImage(input: {
@@ -608,6 +612,151 @@ describe("composerDraftStore terminal contexts", () => {
     expect(mergedState.draftsByThreadKey[threadKeyFor(threadId)]).toBeUndefined();
     expect(mergedState.draftThreadsByThreadKey).toEqual({});
     expect(mergedState.logicalProjectDraftThreadKeyByLogicalProjectKey).toEqual({});
+  });
+});
+
+describe("composerDraftStore inline attachment refs", () => {
+  const threadId = ThreadId.make("thread-attachment-refs");
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+
+  const makeFile = (input: { id: string; name?: string }) => ({
+    type: "file" as const,
+    id: input.id,
+    name: input.name ?? "notes.txt",
+    mimeType: "text/plain",
+    sizeBytes: 12,
+    file: new File([new Uint8Array(12).fill(1)], input.name ?? "notes.txt", {
+      type: "text/plain",
+    }),
+  });
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("inserts refs at the cursor-derived index so markers map in order", () => {
+    useComposerDraftStore.getState().addFiles(threadRef, [makeFile({ id: "f-1" })]);
+    useComposerDraftStore
+      .getState()
+      .addImages(threadRef, [makeImage({ id: "img-1", previewUrl: "blob:one" })]);
+
+    const firstInsertion = insertInlineAttachmentPlaceholder("alpha beta", 6);
+    const secondInsertion = insertInlineAttachmentPlaceholder(firstInsertion.prompt, 0);
+
+    expect(
+      useComposerDraftStore
+        .getState()
+        .insertAttachmentRefs(
+          threadRef,
+          firstInsertion.prompt,
+          [{ id: "f-1", kind: "file" }],
+          firstInsertion.attachmentIndex,
+        ),
+    ).toBe(true);
+    expect(
+      useComposerDraftStore
+        .getState()
+        .insertAttachmentRefs(
+          threadRef,
+          secondInsertion.prompt,
+          [{ id: "img-1", kind: "image" }],
+          secondInsertion.attachmentIndex,
+        ),
+    ).toBe(true);
+
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(draft?.prompt).toBe(
+      `${INLINE_ATTACHMENT_PLACEHOLDER} alpha ${INLINE_ATTACHMENT_PLACEHOLDER} beta`,
+    );
+    expect(draft?.attachmentRefs).toEqual([
+      { id: "img-1", kind: "image" },
+      { id: "f-1", kind: "file" },
+    ]);
+  });
+
+  it("rejects refs that point at rows the draft does not hold", () => {
+    useComposerDraftStore.getState().addFiles(threadRef, [makeFile({ id: "f-1" })]);
+    const insertion = insertInlineAttachmentPlaceholder("see x", 4);
+    expect(
+      useComposerDraftStore
+        .getState()
+        .insertAttachmentRefs(
+          threadRef,
+          insertion.prompt,
+          [{ id: "ghost", kind: "file" }],
+          insertion.attachmentIndex,
+        ),
+    ).toBe(false);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.attachmentRefs).toEqual([]);
+  });
+
+  it("drops the row and ref when its placeholder leaves the prompt", () => {
+    useComposerDraftStore
+      .getState()
+      .addImages(threadRef, [makeImage({ id: "img-1", previewUrl: "blob:a" })]);
+    useComposerDraftStore.getState().addFiles(threadRef, [makeFile({ id: "f-1" })]);
+    const insertion = insertInlineAttachmentPlaceholder("a b", 2);
+    useComposerDraftStore.getState().insertAttachmentRefs(
+      threadRef,
+      insertion.prompt,
+      [
+        { id: "img-1", kind: "image" },
+        { id: "f-1", kind: "file" },
+      ],
+      insertion.attachmentIndex,
+    );
+
+    // Simulate the editor after the image chip was backspaced: one marker is
+    // gone, and only the file ref survives in document order.
+    const removed = useComposerDraftStore
+      .getState()
+      .reconcileAttachmentRefs(threadRef, "a b", [{ id: "f-1", kind: "file" }]);
+
+    expect(removed).toEqual([{ id: "img-1", kind: "image" }]);
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(draft?.images).toEqual([]);
+    expect(draft?.files.map((file) => file.id)).toEqual(["f-1"]);
+    expect(draft?.attachmentRefs).toEqual([{ id: "f-1", kind: "file" }]);
+  });
+
+  it("removing a row also removes its ref and placeholder", () => {
+    useComposerDraftStore.getState().addFiles(threadRef, [makeFile({ id: "f-1" })]);
+    const insertion = insertInlineAttachmentPlaceholder("a b", 2);
+    useComposerDraftStore
+      .getState()
+      .insertAttachmentRefs(threadRef, insertion.prompt, [{ id: "f-1", kind: "file" }], 0);
+
+    useComposerDraftStore.getState().removeFile(threadRef, "f-1");
+
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(draft?.files).toEqual([]);
+    expect(draft?.attachmentRefs).toEqual([]);
+    expect(draft?.prompt).not.toContain(INLINE_ATTACHMENT_PLACEHOLDER);
+  });
+
+  it("clearing prompt and images keeps file rows and re-anchors their markers", () => {
+    useComposerDraftStore
+      .getState()
+      .addImages(threadRef, [makeImage({ id: "img-1", previewUrl: "blob:x" })]);
+    useComposerDraftStore.getState().addFiles(threadRef, [makeFile({ id: "f-1" })]);
+    const insertion = insertInlineAttachmentPlaceholder("a b", 2);
+    useComposerDraftStore.getState().insertAttachmentRefs(
+      threadRef,
+      insertion.prompt,
+      [
+        { id: "img-1", kind: "image" },
+        { id: "f-1", kind: "file" },
+      ],
+      0,
+    );
+
+    useComposerDraftStore.getState().clearComposerPromptAndImages(threadRef);
+
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(draft?.images).toEqual([]);
+    expect(draft?.files.map((file) => file.id)).toEqual(["f-1"]);
+    expect(draft?.attachmentRefs).toEqual([{ id: "f-1", kind: "file" }]);
+    expect(draft?.prompt).toBe(INLINE_ATTACHMENT_PLACEHOLDER);
   });
 });
 
