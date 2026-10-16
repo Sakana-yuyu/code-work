@@ -3098,6 +3098,12 @@ export const ja: Record<string, string> = {
   "byokFeatures.promptTemplateChinese": "Software-Chinese 応答ポリシー",
   "byokFeatures.promptTemplateCustom": "カスタムプロンプト",
   "byokFeatures.promptTemplateCustomPlaceholder": "カスタムシステムプロンプトのテキスト…",
+  "byok.slash.compact": "古いターンを要約してコンテキストを解放",
+  "byok.slash.mcp": "このセッションに接続された MCP ツールを一覧表示",
+  "byok.slash.skill": "スキル（SKILL.md）を一覧またはプレビュー",
+  "byok.slash.memory": "エージェントメモリを一覧または追記",
+  "byok.slash.hooks": "エージェント hooks を一覧",
+  "byok.slash.searchEngine": "ウェブ検索エンジンを表示または切り替え",
   "byokFeatures.delegationTitle": "委譲",
   "byokFeatures.delegationDescription":
     "このインスタンスの委譲状態のスナップショットです。委譲設定はすべて委譲ページにあります。",
