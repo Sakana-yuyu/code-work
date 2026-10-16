@@ -1557,6 +1557,7 @@ export const ja: Record<string, string> = {
   "serverSettingsMobile.runtimeTitle": "ランタイムの動作",
   "serverSettingsMobile.providerUpdates": "プロバイダーの更新を確認",
   "serverSettingsMobile.agentBrowser": "エージェントによるブラウザーの使用を許可",
+  "serverSettingsMobile.continueThreads": "サーバー更新後もスレッドを継続",
   "serverSettingsMobile.legacyStreaming": "アシスタントの出力をトークン単位でストリーミング",
   "serverSettingsMobile.responseStreamingMode": "応答の表示方法",
   "serverSettingsMobile.responseStreaming.turn": "応答全体",

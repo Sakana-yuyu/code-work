@@ -321,6 +321,7 @@ export const PROJECT_SCOPED_SERVER_SETTING_KEYS = [
   "defaultRuntimeMode",
   "defaultThreadEnvMode",
   "worktreeSubmodules",
+  "continueThreadsAfterServerUpdate",
 ] as const;
 export type ProjectScopedServerSettingKey = (typeof PROJECT_SCOPED_SERVER_SETTING_KEYS)[number];
 
@@ -336,6 +337,7 @@ export const ProjectSettingsOverrides = Schema.Struct({
   defaultRuntimeMode: Schema.optionalKey(RuntimeMode),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
   worktreeSubmodules: ForwardCompatibleOptional(WorktreeSubmodules),
+  continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
 } satisfies Record<ProjectScopedServerSettingKey, unknown>);
 export type ProjectSettingsOverrides = typeof ProjectSettingsOverrides.Type;
 
@@ -1356,6 +1358,15 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   /**
+   * Continue provider threads that a server update or restart cut short.
+   * Environment-owned by default; `projectSettingsOverrides` can opt a single
+   * project in or out. Off by default: a restart never spawns provider work
+   * the user did not ask for.
+   */
+  continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
+  /**
    * Per-project overrides of the keys in `PROJECT_SCOPED_SERVER_SETTING_KEYS`.
    * The source of truth for project-scoped settings; the project record's
    * `defaultModelSelection`/`defaultThreadEnvMode` fields remain readable as
@@ -1674,6 +1685,7 @@ export const ServerSettingsPatch = Schema.Struct({
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
   defaultRuntimeMode: Schema.optionalKey(RuntimeMode),
   worktreeSubmodules: Schema.optionalKey(Schema.NullOr(WorktreeSubmodules)),
+  continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   /**
    * Per-project merge, same contract as `providerInstances`: each listed
    * project id replaces that project's whole override entry, and `null`

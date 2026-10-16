@@ -9,8 +9,10 @@ import {
   ProviderSession,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ServerSettings as ServerSettingsShape,
 } from "@codework/contracts";
 import { createModelSelection } from "@codework/shared/model";
+import { type DeepPartial } from "@codework/shared/Struct";
 import {
   ApprovalRequestId,
   CommandId,
@@ -41,6 +43,9 @@ import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import * as ProviderSessionRuntime from "../../persistence/ProviderSessionRuntime.ts";
+import { ProviderSessionDirectoryLive } from "../../provider/Layers/ProviderSessionDirectory.ts";
+import { ProviderSessionDirectory } from "../../provider/Services/ProviderSessionDirectory.ts";
 import { ThreadGoalStoreLive } from "../../persistence/Layers/ThreadGoalStore.ts";
 import { ThreadGoalStore } from "../../persistence/Services/ThreadGoalStore.ts";
 import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
@@ -108,7 +113,8 @@ describe("ProviderCommandReactor", () => {
     | ProjectionSnapshotQuery
     | ThreadGoalStore
     | ProjectionTurnRepository
-    | WorkspaceOperationLock.WorkspaceOperationLock,
+    | WorkspaceOperationLock.WorkspaceOperationLock
+    | ProviderSessionDirectory,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -252,6 +258,7 @@ describe("ProviderCommandReactor", () => {
     readonly startSessionEffect?: (
       session: ProviderSession,
     ) => Effect.Effect<ProviderSession, ProviderAdapterRequestError>;
+    readonly serverSettingsOverrides?: DeepPartial<ServerSettingsShape>;
   }) {
     const now = "2026-01-01T00:00:00.000Z";
     const baseDir =
@@ -534,6 +541,12 @@ describe("ProviderCommandReactor", () => {
           Layer.provide(NodeServices.layer),
         ),
       ),
+      Layer.provideMerge(
+        ProviderSessionDirectoryLive.pipe(
+          Layer.provide(ProviderSessionRuntime.layer),
+          Layer.provide(SqlitePersistenceMemory),
+        ),
+      ),
       Layer.provideMerge(Layer.succeed(ProviderService, service)),
       Layer.provideMerge(makeProviderRegistryLayer(providerSnapshots as never)),
       Layer.provideMerge(
@@ -558,7 +571,7 @@ describe("ProviderCommandReactor", () => {
           generateThreadTitle,
         }),
       ),
-      Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(ServerSettingsService.layerTest(input?.serverSettingsOverrides)),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
       Layer.provideMerge(NodeServices.layer),
     );
@@ -569,6 +582,9 @@ describe("ProviderCommandReactor", () => {
     const reactor = await runtime.runPromise(Effect.service(ProviderCommandReactor));
     const goalStore = await runtime.runPromise(Effect.service(ThreadGoalStore));
     const turns = await runtime.runPromise(Effect.service(ProjectionTurnRepository));
+    const providerSessionDirectory = await runtime.runPromise(
+      Effect.service(ProviderSessionDirectory),
+    );
     const workspaceLock = await runtime.runPromise(
       Effect.service(WorkspaceOperationLock.WorkspaceOperationLock),
     );
@@ -662,6 +678,9 @@ describe("ProviderCommandReactor", () => {
       runEffect,
       goalStore,
       turns,
+      providerSessionDirectory,
+      reactor,
+      scope: () => scope,
       workspaceLock,
       get titleRegenerationCompletionDispatchAttempts() {
         return titleRegenerationCompletionDispatchAttempts;
@@ -4394,5 +4413,119 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.providerInstanceId).toBe(ProviderInstanceId.make("codex_work"));
     expect(thread?.session?.activeTurnId).toBeNull();
+  });
+
+  describe("restart continuation recovery", () => {
+    const deadNow = "2026-01-01T00:00:00.000Z";
+    const deadTurnId = asTurnId("turn-dead");
+
+    const markDeadSession = (harness: Awaited<ReturnType<typeof createHarness>>) =>
+      harness.runEffect(
+        harness.engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make("cmd-session-dead"),
+          threadId: ThreadId.make("thread-1"),
+          session: {
+            threadId: ThreadId.make("thread-1"),
+            status: "running",
+            providerName: "codex",
+            providerInstanceId: ProviderInstanceId.make("codex"),
+            runtimeMode: "approval-required",
+            activeTurnId: deadTurnId,
+            lastError: null,
+            updatedAt: deadNow,
+          },
+          createdAt: deadNow,
+        }),
+      );
+
+    const markIntent = (
+      harness: Awaited<ReturnType<typeof createHarness>>,
+      intent: unknown,
+      overrides?: Record<string, unknown>,
+    ) =>
+      harness.providerSessionDirectory.upsert({
+        threadId: ThreadId.make("thread-1"),
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: ProviderInstanceId.make("codex"),
+        status: "stopped",
+        resumeCursor: { token: "resume-1" },
+        runtimePayload: { restartContinuation: intent, ...overrides },
+      });
+
+    const runRecovery = (harness: Awaited<ReturnType<typeof createHarness>>) =>
+      harness.runEffect(
+        harness.reactor
+          .recoverRestartedSession(ThreadId.make("thread-1"))
+          .pipe(Scope.provide(harness.scope()!)),
+      );
+
+    effectIt.effect("标记意图的线程修复死会话、按原模型补发续接轮次并清意图", () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            serverSettingsOverrides: { continueThreadsAfterServerUpdate: true },
+          }),
+        );
+        yield* Effect.promise(() => markDeadSession(harness));
+        yield* Effect.promise(() =>
+          harness.runEffect(markIntent(harness, { deadTurnId, requestedAt: deadNow })),
+        );
+
+        yield* Effect.promise(() => runRecovery(harness));
+        yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+
+        // 续接轮次用确定性 messageId 派发、走正常 sendTurn 通路并恢复 provider 会话。
+        expect(harness.startSession.mock.calls.length).toBe(1);
+        const binding = yield* harness.providerSessionDirectory.getBinding(
+          ThreadId.make("thread-1"),
+        );
+        const payload =
+          Option.isSome(binding) && typeof binding.value.runtimePayload === "object"
+            ? (binding.value.runtimePayload as Record<string, unknown>)
+            : {};
+        expect(payload["restartContinuation"]).toBeNull();
+
+        const thread = (yield* Effect.promise(harness.readModel)).threads.find(
+          (entry) => entry.id === ThreadId.make("thread-1"),
+        );
+        const continuationMessage = thread?.messages.find(
+          (message) => message.id === "restart-continuation:thread-1:turn-dead",
+        );
+        expect(continuationMessage?.text).toBe("Continue where you left off.");
+        expect(thread?.session?.lastError).toBeNull();
+      }),
+    );
+
+    effectIt.effect("意图已清除或偏好关闭时不派发且不重复恢复", () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            serverSettingsOverrides: { continueThreadsAfterServerUpdate: false },
+          }),
+        );
+        yield* Effect.promise(() => markDeadSession(harness));
+        yield* Effect.promise(() =>
+          harness.runEffect(markIntent(harness, { deadTurnId, requestedAt: deadNow })),
+        );
+
+        yield* Effect.promise(() => runRecovery(harness));
+        yield* Effect.promise(harness.drain);
+        // 偏好关闭 → 退回 orphan 结算，绝不发送。
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        const thread = (yield* Effect.promise(harness.readModel)).threads.find(
+          (entry) => entry.id === ThreadId.make("thread-1"),
+        );
+        expect(thread?.session?.status).toBe("error");
+        expect(thread?.session?.lastError).toBe(
+          "Provider session did not survive a server restart. Send a new message to continue.",
+        );
+
+        // 第二次运行是无操作（意图已清）。
+        yield* Effect.promise(() => runRecovery(harness));
+        yield* Effect.promise(harness.drain);
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+      }),
+    );
   });
 });

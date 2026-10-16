@@ -9,6 +9,7 @@
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
+import type { ThreadId } from "@codework/contracts";
 
 /**
  * ProviderCommandReactorShape - Service API for provider command reactors.
@@ -24,6 +25,14 @@ export interface ProviderCommandReactorShape {
    * processing.
    */
   readonly start: () => Effect.Effect<void, never, Scope.Scope>;
+
+  /**
+   * Resumes one provider thread whose session was marked for restart
+   * continuation by startup reconciliation. Runs after activation so the hot
+   * event stream is already subscribed; settlement retries instead of failing
+   * so a transient projection failure keeps the continuation intent alive.
+   */
+  readonly recoverRestartedSession: (threadId: ThreadId) => Effect.Effect<void, never, Scope.Scope>;
 
   /**
    * Resolves when the internal processing queue is empty and idle.

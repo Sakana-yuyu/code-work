@@ -2246,6 +2246,34 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
+          {...searchableSetting("continue-threads-after-update")}
+          description={t("continueThreadsAfterUpdateDescription")}
+          resetAction={
+            settings.continueThreadsAfterServerUpdate !==
+            DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate ? (
+              <SettingResetButton
+                label={t("continueThreadsAfterUpdate")}
+                onClick={() =>
+                  updateSettings({
+                    continueThreadsAfterServerUpdate:
+                      DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.continueThreadsAfterServerUpdate}
+              onCheckedChange={(checked) =>
+                updateSettings({ continueThreadsAfterServerUpdate: Boolean(checked) })
+              }
+              aria-label={t("continueThreadsAfterUpdate")}
+            />
+          }
+        />
+
+        <SettingsRow
           title={
             <span className="inline-flex items-center gap-1.5">
               {t("backgroundActivity")}

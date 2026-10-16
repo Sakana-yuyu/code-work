@@ -32,6 +32,14 @@ import * as ManagedProcessRegistry from "./process/ManagedProcessRegistry.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as OrchestrationReactor from "./orchestration/Services/OrchestrationReactor.ts";
+import { ProviderCommandReactor } from "./orchestration/Services/ProviderCommandReactor.ts";
+import {
+  evaluateRestartContinuationEligibility,
+  isRestartDeadProviderSession,
+  ORPHANED_PROVIDER_SESSION_ERROR,
+  RESTART_CONTINUATION_PAYLOAD_KEY,
+  restartDeadTurnId,
+} from "./orchestration/restartContinuation.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
@@ -522,15 +530,17 @@ export const watchRunStartRecoveryTargets = <EProvider, RProvider>(
     yield* Queue.offer(changes, undefined);
   });
 
-const ORPHANED_PROVIDER_SESSION_ERROR =
-  "Provider session did not survive a server restart. Send a new message to continue.";
-
 export const reconcileProviderSessions = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
   const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
   const providerService = yield* ProviderService.ProviderService;
   const threadGoalStore = yield* Effect.serviceOption(ThreadGoalStore);
+  const providerCommandReactor = yield* Effect.serviceOption(ProviderCommandReactor);
+  const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
+  const restartContinuationSettings = Option.isSome(serverSettings)
+    ? yield* serverSettings.value.getSettings.pipe(Effect.orElseSucceed(() => null))
+    : null;
   const query = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
 
   // Reap provider helper processes left behind by the previous run before
@@ -560,11 +570,7 @@ export const reconcileProviderSessions = Effect.gen(function* () {
     if (liveThreadIds.has(thread.id)) continue;
 
     const session = thread.session;
-    const shouldReconcileSession =
-      session !== null &&
-      (session.status === "starting" ||
-        session.status === "running" ||
-        session.activeTurnId !== null);
+    const shouldReconcileSession = isRestartDeadProviderSession(session);
     let shouldPauseGoal = false;
 
     if (Option.isSome(threadGoalStore)) {
@@ -591,15 +597,54 @@ export const reconcileProviderSessions = Effect.gen(function* () {
     }
 
     let sessionReconciled = true;
+    let continuationMarked = false;
     if (shouldReconcileSession) {
       const directoryExit = yield* Effect.exit(
         Effect.gen(function* () {
-          const binding = yield* directory.getBinding(thread.id);
-          if (Option.isSome(binding)) {
-            yield* directory.upsert({
-              ...binding.value,
-              status: "stopped",
-              runtimePayload: { activeTurnId: null },
+          const bindingOption = yield* directory.getBinding(thread.id);
+          if (Option.isNone(bindingOption)) return;
+          const binding = bindingOption.value;
+          const deadTurnId = restartDeadTurnId(session, thread.latestTurn);
+          const hasDeadWork =
+            deadTurnId !== null ||
+            session.status === "starting" ||
+            (thread.queuedMessages?.length ?? 0) > 0;
+          const eligibility =
+            restartContinuationSettings === null ||
+            !hasDeadWork ||
+            Option.isNone(providerCommandReactor)
+              ? null
+              : evaluateRestartContinuationEligibility({
+                  settings: restartContinuationSettings,
+                  thread,
+                  session,
+                  latestTurn: thread.latestTurn,
+                  binding,
+                });
+          if (eligibility !== null && !eligibility.allowed) {
+            yield* Effect.logInfo("restart continuation declined at reconcile", {
+              threadId: thread.id,
+              rejection: eligibility.rejection,
+            });
+          }
+          continuationMarked = eligibility?.allowed === true;
+          const requestedAt = DateTime.formatIso(yield* DateTime.now);
+          yield* directory.upsert({
+            ...binding,
+            status: "stopped",
+            runtimePayload: {
+              activeTurnId: null,
+              // 合格线程把续接意图写进绑定（合并保留 cwd/model 等既有键），
+              // 供激活后的恢复例程认领；不合格线程清掉残留标记。
+              [RESTART_CONTINUATION_PAYLOAD_KEY]: continuationMarked
+                ? { deadTurnId, requestedAt }
+                : null,
+            },
+          });
+          if (continuationMarked) {
+            yield* Effect.logInfo("marked provider session for restart continuation", {
+              threadId: thread.id,
+              deadTurnId,
             });
           }
         }),
@@ -619,7 +664,12 @@ export const reconcileProviderSessions = Effect.gen(function* () {
         );
       }
 
-      if (sessionReconciled) {
+      if (sessionReconciled && continuationMarked && Option.isSome(providerCommandReactor)) {
+        // 续接在激活后进行：热事件流订阅先就位，恢复例程再决定补发
+        // continuation 轮次或退回 orphan 错误结算。
+        yield* forkParked(providerCommandReactor.value.recoverRestartedSession(thread.id));
+      }
+      if (sessionReconciled && !continuationMarked) {
         const projectionExit = yield* Effect.exit(
           Effect.gen(function* () {
             const reconciledAt = DateTime.formatIso(yield* DateTime.now);
@@ -651,7 +701,8 @@ export const reconcileProviderSessions = Effect.gen(function* () {
       }
     }
 
-    if (shouldPauseGoal && Option.isSome(threadGoalStore)) {
+    // 被标记续接的线程会继续执行，不暂停其活动目标。
+    if (shouldPauseGoal && !continuationMarked && Option.isSome(threadGoalStore)) {
       const goalExit = yield* Effect.exit(threadGoalStore.value.pause(thread.id));
       if (Exit.isFailure(goalExit)) {
         if (Cause.hasInterrupts(goalExit.cause)) {

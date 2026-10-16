@@ -2707,6 +2707,7 @@ export const ja: Record<string, string> = {
     "組み込みローカルアカウントプール、CPA 方式のルート、BYOK ルーティングを管理します。",
   "settings.openCliProxy": "アカウントプール設定を開く",
   "settings.providerUpdateChecks": "プロバイダーのアップデート確認",
+  "settings.continueThreadsAfterUpdate": "サーバー更新後もスレッドを継続",
   "settings.remoteEnvironments": "リモート環境",
   settingsSaveFailed: "設定を保存できませんでした",
   settingsSaveTryAgain: "接続を確認して、もう一度お試しください。",
@@ -3379,6 +3380,9 @@ export const ja: Record<string, string> = {
   hideWhitespaceChangesByDefault: "デフォルトで空白の変更を非表示",
   showSkillsInSlashMenu: "スラッシュメニューにスキルを表示",
   checkProviderVersions: "プロバイダーのバージョンを確認",
+  continueThreadsAfterUpdate: "サーバー更新後もスレッドを継続",
+  continueThreadsAfterUpdateDescription:
+    "サーバーの再起動または更新時に実行中だったエージェントスレッドを再開します。",
   confirmThreadArchiving: "スレッドのアーカイブ時に確認",
   confirmThreadDeletion: "スレッドの削除時に確認",
   holdToQuit: "長押しで終了",

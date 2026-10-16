@@ -31,6 +31,7 @@ export interface ResolvedProjectSettings {
   readonly defaultRuntimeMode: RuntimeMode;
   readonly defaultThreadEnvMode: ThreadEnvMode;
   readonly worktreeSubmodules: WorktreeSubmodules;
+  readonly continueThreadsAfterServerUpdate: boolean;
 }
 
 export interface ResolvedProjectSettingsResult {
@@ -140,23 +141,39 @@ export function resolveProjectRuntimeMode(
 }
 
 /**
+ * Resolved `continueThreadsAfterServerUpdate` for one project: overrides map,
+ * then the environment value (non-null, decoding-defaulted).
+ */
+export function resolveProjectContinueThreadsAfterServerUpdate(
+  settings: Pick<ServerSettings, "projectSettingsOverrides" | "continueThreadsAfterServerUpdate">,
+  projectId: ProjectId | null,
+): boolean {
+  const entry = projectId === null ? undefined : settings.projectSettingsOverrides[projectId];
+  return entry?.continueThreadsAfterServerUpdate ?? settings.continueThreadsAfterServerUpdate;
+}
+
+/**
  * Set or remove one key on a project overrides entry. `null` removes the key;
  * the caller decides whether an all-empty entry becomes a `null` patch value
  * (delete) via `hasAnyOverrideValue`.
  */
 export function withProjectSettingsOverride(
   entry: ProjectSettingsOverrides,
-  key: "defaultRuntimeMode" | "worktreeSubmodules",
-  value: RuntimeMode | WorktreeSubmodules | null,
+  key: "defaultRuntimeMode" | "worktreeSubmodules" | "continueThreadsAfterServerUpdate",
+  value: RuntimeMode | WorktreeSubmodules | boolean | null,
 ): ProjectSettingsOverrides {
   const next = { ...entry };
   if (value === null) {
     delete next[key];
     return next;
   }
-  return key === "defaultRuntimeMode"
-    ? { ...next, defaultRuntimeMode: value as RuntimeMode }
-    : { ...next, worktreeSubmodules: value as WorktreeSubmodules };
+  if (key === "defaultRuntimeMode") {
+    return { ...next, defaultRuntimeMode: value as RuntimeMode };
+  }
+  if (key === "worktreeSubmodules") {
+    return { ...next, worktreeSubmodules: value as WorktreeSubmodules };
+  }
+  return { ...next, continueThreadsAfterServerUpdate: value as boolean };
 }
 
 /** Whether an overrides entry carries at least one set key. */
@@ -175,6 +192,7 @@ export function resolveProjectSettings(
     | "defaultRuntimeMode"
     | "defaultThreadEnvMode"
     | "worktreeSubmodules"
+    | "continueThreadsAfterServerUpdate"
     | "projectSettingsOverrides"
   >,
   projectId: ProjectId | null,
@@ -217,6 +235,8 @@ export function resolveProjectSettings(
       defaultRuntimeMode: overrides.defaultRuntimeMode ?? settings.defaultRuntimeMode,
       defaultThreadEnvMode: threadEnvMode.value,
       worktreeSubmodules: submodules.value,
+      continueThreadsAfterServerUpdate:
+        overrides.continueThreadsAfterServerUpdate ?? settings.continueThreadsAfterServerUpdate,
     },
     sources: {
       defaultModelSelection:
@@ -224,6 +244,8 @@ export function resolveProjectSettings(
       defaultRuntimeMode: overrides.defaultRuntimeMode !== undefined ? "project" : "environment",
       defaultThreadEnvMode: threadEnvMode.source,
       worktreeSubmodules: submodules.source,
+      continueThreadsAfterServerUpdate:
+        overrides.continueThreadsAfterServerUpdate !== undefined ? "project" : "environment",
     },
     overrides,
   };

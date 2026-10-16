@@ -21,6 +21,7 @@ import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@codework/sha
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
@@ -39,6 +40,7 @@ import type { ProviderServiceError } from "../../provider/Errors.ts";
 import { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { ProviderRegistry } from "../../provider/Services/ProviderRegistry.ts";
+import { ProviderSessionDirectory } from "../../provider/Services/ProviderSessionDirectory.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import {
@@ -59,6 +61,17 @@ import { SpecWorkflowService } from "../../specWorkflow/SpecWorkflowService.ts";
 import { formatSpecWorkflowSelectedInput } from "../../specWorkflow/SpecWorkflowAgentProtocol.ts";
 import { WorkspaceOperationLock } from "../WorkspaceOperationLock.ts";
 import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
+import {
+  evaluateRestartContinuationEligibility,
+  isRestartDeadProviderSession,
+  ORPHANED_PROVIDER_SESSION_ERROR,
+  readRestartContinuationIntent,
+  RESTART_CONTINUATION_PAYLOAD_KEY,
+  RESTART_CONTINUATION_PROMPT,
+  restartContinuationCommandId,
+  restartContinuationMessageId,
+  restartContinuationSessionSetCommandId,
+} from "../restartContinuation.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 class ThreadGoalBudgetExhaustedError extends Schema.TaggedErrorClass<ThreadGoalBudgetExhaustedError>()(
@@ -438,6 +451,7 @@ const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerService = yield* ProviderService;
+  const providerSessionDirectory = yield* ProviderSessionDirectory;
   const workspaceLock = yield* WorkspaceOperationLock;
   const threadGoalStore = yield* Effect.serviceOption(ThreadGoalStore);
   const providerRegistry = yield* ProviderRegistry;
@@ -2103,22 +2117,27 @@ const make = Effect.gen(function* () {
         }
       }
     }
-    // Drain the earliest surviving entry: it becomes its own turn. Cancelled
-    // or otherwise dropped entries are skipped in the same pass so a dead
-    // head cannot pin the queue; survivors drain one per completed turn.
+    yield* drainHeldTurnStarts(event.payload.threadId);
+  });
+
+  // Drain the earliest surviving entry: it becomes its own turn. Cancelled
+  // or otherwise dropped entries are skipped in the same pass so a dead
+  // head cannot pin the queue; survivors drain one per completed turn.
+  const drainHeldTurnStarts = Effect.fn("drainHeldTurnStarts")(function* (threadId: ThreadId) {
     let delivered = false;
     while (!delivered) {
-      const next = held.entries().next().value;
-      if (next === undefined) {
-        heldTurnStarts.delete(event.payload.threadId);
+      const held = heldTurnStarts.get(threadId);
+      const next = held?.entries().next().value;
+      if (held === undefined || next === undefined) {
+        heldTurnStarts.delete(threadId);
         return;
       }
       const [messageId, entry] = next;
       held.delete(messageId);
-      if (held.size === 0) heldTurnStarts.delete(event.payload.threadId);
+      if (held.size === 0) heldTurnStarts.delete(threadId);
       // Untrack first so the in-flight check does not count this entry
       // against itself when it re-enters the turn-start path.
-      untrackPendingSteer(event.payload.threadId, messageId);
+      untrackPendingSteer(threadId, messageId);
       if (cancelledTurnStartMessageIds.has(messageId)) {
         continue;
       }
@@ -2137,8 +2156,8 @@ const make = Effect.gen(function* () {
       // A handled entry is either back in-flight (tracked again) or parked
       // by the busy re-check; a dropped one lets the next entry try.
       delivered =
-        pendingSteerMessageIds.get(event.payload.threadId)?.has(messageId) === true ||
-        heldTurnStarts.get(event.payload.threadId)?.has(messageId) === true;
+        pendingSteerMessageIds.get(threadId)?.has(messageId) === true ||
+        heldTurnStarts.get(threadId)?.has(messageId) === true;
     }
   });
 
@@ -2226,6 +2245,276 @@ const make = Effect.gen(function* () {
 
   const worker = yield* makeDrainableWorker(processDomainEventSafely);
 
+  // 重启续接：reconcile 在绑定上写下 restartContinuation 意图后，本例程在激活后
+  // （或运行时再次 reconcile 时）认领它——修复死会话行、补发续接轮次、把持久化
+  // 的排队输入重新挂回进程内 held 队列。派发使用确定性 command/message id，
+  // 命令回执使跨重启重试成为 no-op。
+  const recoverRestartedSession: ProviderCommandReactorShape["recoverRestartedSession"] = Effect.fn(
+    "ProviderCommandReactor.recoverRestartedSession",
+  )(function* (threadId: ThreadId) {
+    const binding = Option.getOrUndefined(
+      yield* providerSessionDirectory
+        .getBinding(threadId)
+        .pipe(Effect.orElseSucceed(() => Option.none())),
+    );
+    const intent = readRestartContinuationIntent(binding?.runtimePayload);
+    if (binding === undefined || intent === null) return;
+
+    const settings = yield* serverSettingsService.getSettings.pipe(
+      Effect.orElseSucceed(() => null),
+    );
+    const thread = yield* resolveThread(threadId).pipe(Effect.orElseSucceed(() => undefined));
+    const session = thread?.session ?? null;
+    const queuedMessages = thread?.queuedMessages ?? [];
+    const liveThreadIds = new Set(
+      (yield* providerService.listSessions().pipe(Effect.orElseSucceed(() => []))).map(
+        (providerSession) => providerSession.threadId,
+      ),
+    );
+    const deadTurnId = intent.deadTurnId;
+    // 陈旧源：标记后已有更新的轮次接管（线程详情里 latestTurn 不再是死轮次），
+    // 或会话行挂着别的在途轮次——用户已经手动续上，意图作废但不清算会话。
+    const staleSource = deadTurnId !== null && thread?.latestTurn?.turnId !== deadTurnId;
+    const sessionHoldsOtherWork =
+      session !== null && session.activeTurnId !== null && session.activeTurnId !== deadTurnId;
+    const sessionCanResume =
+      session !== null &&
+      session.status !== "stopped" &&
+      session.status !== "interrupted" &&
+      !sessionHoldsOtherWork;
+    const eligibility =
+      liveThreadIds.has(threadId) ||
+      settings === null ||
+      thread === undefined ||
+      session === null ||
+      staleSource ||
+      sessionHoldsOtherWork
+        ? null
+        : evaluateRestartContinuationEligibility({
+            settings,
+            thread,
+            session,
+            latestTurn: thread.latestTurn,
+            binding,
+          });
+    if (eligibility !== null && !eligibility.allowed) {
+      yield* Effect.logInfo("restart continuation declined", {
+        threadId,
+        rejection: eligibility.rejection,
+      });
+    }
+    const eligible =
+      eligibility?.allowed === true &&
+      sessionCanResume &&
+      (deadTurnId !== null || queuedMessages.length > 0);
+
+    const clearIntent = providerSessionDirectory
+      .upsert({
+        ...binding,
+        runtimePayload: {
+          ...(typeof binding.runtimePayload === "object" &&
+          binding.runtimePayload !== null &&
+          !Array.isArray(binding.runtimePayload)
+            ? binding.runtimePayload
+            : {}),
+          activeTurnId: null,
+          [RESTART_CONTINUATION_PAYLOAD_KEY]: null,
+        },
+      })
+      .pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("failed to clear restart continuation intent", {
+            threadId,
+            detail: String(error),
+          }),
+        ),
+      );
+
+    if (!eligible) {
+      yield* clearIntent;
+      if (
+        thread !== undefined &&
+        session !== null &&
+        (session.status === "starting" ||
+          session.status === "running" ||
+          session.activeTurnId !== null) &&
+        !sessionHoldsOtherWork
+      ) {
+        const settledAt = DateTime.formatIso(yield* DateTime.now);
+        yield* orchestrationEngine
+          .dispatch({
+            type: "thread.session.set",
+            commandId: restartContinuationSessionSetCommandId(threadId, deadTurnId),
+            threadId,
+            session: {
+              ...session,
+              status: "error",
+              activeTurnId: null,
+              lastError: ORPHANED_PROVIDER_SESSION_ERROR,
+              updatedAt: settledAt,
+            },
+            createdAt: settledAt,
+          })
+          .pipe(
+            Effect.catch((error) =>
+              Effect.logWarning("failed to settle declined restart continuation", {
+                threadId,
+                detail: String(error),
+              }),
+            ),
+          );
+      }
+      return;
+    }
+    if (thread === undefined || session === null) {
+      yield* clearIntent;
+      return;
+    }
+
+    const now = DateTime.formatIso(yield* DateTime.now);
+    // 先把死会话行修复成可派遣状态；会话离开 running 的同时把仍在 running 的
+    // 旧回合行结算为 completed，排队行保留（ready 不删除 pending turn start）。
+    const healed = yield* orchestrationEngine
+      .dispatch({
+        type: "thread.session.set",
+        commandId: restartContinuationSessionSetCommandId(threadId, deadTurnId),
+        threadId,
+        session: {
+          ...session,
+          status: "ready",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      })
+      .pipe(Effect.orElseSucceed(() => null));
+    if (healed === null) {
+      // 修复失败时保留意图，下一次启动可重试。
+      return;
+    }
+
+    const continuationMessageId = restartContinuationMessageId(threadId, deadTurnId);
+    const alreadyRequested = thread.messages.some(
+      (message) => message.id === continuationMessageId,
+    );
+    const needsContinuationDispatch = deadTurnId !== null && !alreadyRequested;
+    if (needsContinuationDispatch) {
+      const dispatched = yield* orchestrationEngine
+        .dispatch({
+          type: "thread.turn.start",
+          commandId: restartContinuationCommandId(threadId, deadTurnId),
+          threadId,
+          message: {
+            messageId: continuationMessageId,
+            role: "user" as const,
+            text: RESTART_CONTINUATION_PROMPT,
+            attachments: [],
+          },
+          modelSelection: thread.modelSelection,
+          runtimeMode: thread.runtimeMode,
+          interactionMode: thread.interactionMode,
+          createdAt: now,
+        })
+        .pipe(Effect.orElseSucceed(() => null));
+      if (dispatched === null) {
+        return;
+      }
+    }
+
+    const project = yield* resolveProject(thread.projectId).pipe(
+      Effect.orElseSucceed(() => undefined),
+    );
+    const cwd =
+      resolveThreadWorkspaceCwd({ thread, projects: project ? [project] : [] }) ?? process.cwd();
+    const syntheticTurnStart = (
+      messageId: MessageId,
+      createdAt: string,
+      commandId: CommandId | null,
+    ): Extract<ProviderIntentEvent, { type: "thread.turn-start-requested" }> => ({
+      sequence: 0,
+      eventId: EventId.make(`restart-recovery:${threadId}:${messageId}`),
+      aggregateKind: "thread" as const,
+      aggregateId: threadId,
+      occurredAt: createdAt,
+      commandId,
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+      type: "thread.turn-start-requested" as const,
+      payload: {
+        threadId,
+        messageId,
+        runtimeMode: thread.runtimeMode,
+        interactionMode: thread.interactionMode,
+        createdAt,
+      },
+    });
+
+    if (needsContinuationDispatch) {
+      // 先把续接请求送进 worker 并等它落地：热流里迟到的那条真事件按同一
+      // commandId 被判重，先处理者胜出。等待 drain 保证它已记为在途，排在其后
+      // 的排队轮次才会被挂到 held 队列尾部而不是反超。
+      yield* worker.enqueue(
+        syntheticTurnStart(
+          continuationMessageId,
+          now,
+          restartContinuationCommandId(threadId, deadTurnId),
+        ),
+      );
+      yield* worker.drain;
+    }
+
+    // 已持久化的排队回合在进程内 held 队列里重挂；逐个按回合结束排空。续接消息
+    // 自身的 pending 行（上次启动已派发但未送达的场景）排在最前以保持顺序。
+    if (queuedMessages.length > 0) {
+      const orderedQueued = [...queuedMessages].sort((a, b) =>
+        a.messageId === continuationMessageId ? -1 : b.messageId === continuationMessageId ? 1 : 0,
+      );
+      const held = heldTurnStarts.get(threadId) ?? new Map();
+      for (const queued of orderedQueued) {
+        if (held.has(queued.messageId)) continue;
+        held.set(queued.messageId, {
+          event: syntheticTurnStart(queued.messageId, queued.createdAt, null),
+          cwd,
+        });
+        trackPendingSteer(threadId, queued.messageId);
+      }
+      heldTurnStarts.set(threadId, held);
+      if (!needsContinuationDispatch) {
+        yield* drainHeldTurnStarts(threadId).pipe(
+          Effect.catchCause((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.interrupt
+              : Effect.logWarning("failed to drain re-armed queued turns after restart", {
+                  threadId,
+                  cause: Cause.pretty(cause),
+                }),
+          ),
+        );
+      }
+    }
+    yield* clearIntent;
+    yield* Effect.logInfo("resumed provider thread after server restart", {
+      threadId,
+      deadTurnId,
+      queuedTurnStarts: queuedMessages.length,
+      dispatchedContinuation: needsContinuationDispatch,
+    });
+  });
+
+  const recoverMarkedRestartContinuations = Effect.fn(
+    "ProviderCommandReactor.recoverMarkedRestartContinuations",
+  )(function* () {
+    const bindings = yield* providerSessionDirectory
+      .listBindings()
+      .pipe(Effect.orElseSucceed(() => []));
+    for (const binding of bindings) {
+      if (readRestartContinuationIntent(binding.runtimePayload) === null) continue;
+      yield* recoverRestartedSession(binding.threadId);
+    }
+  });
+
   const start: ProviderCommandReactorShape["start"] = Effect.fn("start")(function* () {
     const interruptedTitleRegenerations = yield* findInterruptedThreadTitleRegenerations().pipe(
       Effect.catchCause((cause) => {
@@ -2275,15 +2564,27 @@ const make = Effect.gen(function* () {
       }),
     );
     const activation = yield* ServerActivation;
+    const recoverRestarted = recoverMarkedRestartContinuations().pipe(
+      Effect.catchCause((cause) => {
+        if (Cause.hasInterruptsOnly(cause)) {
+          return Effect.interrupt;
+        }
+        return Effect.logWarning("provider command reactor failed to recover restarted sessions", {
+          cause: Cause.pretty(cause),
+        });
+      }),
+    );
     if (activation === undefined) {
       yield* clearInterrupted;
+      yield* recoverRestarted;
     } else {
-      yield* forkParked(clearInterrupted);
+      yield* forkParked(Effect.andThen(clearInterrupted, recoverRestarted));
     }
   });
 
   return {
     start,
+    recoverRestartedSession,
     drain: Effect.gen(function* () {
       yield* worker.drain;
       yield* threadTitleRegenerationWorker.drain;

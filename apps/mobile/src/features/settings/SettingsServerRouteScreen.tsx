@@ -298,6 +298,12 @@ export function SettingsServerRouteScreen() {
                 disabled={pending}
                 onValueChange={(value) => void persist({ enableAgentBrowserAccess: value })}
               />
+              <SwitchRow
+                label={t("serverSettingsMobile.continueThreads")}
+                value={settings.continueThreadsAfterServerUpdate}
+                disabled={pending}
+                onValueChange={(value) => void persist({ continueThreadsAfterServerUpdate: value })}
+              />
               <View className="gap-3 p-4">
                 <Field label={t("serverSettingsMobile.responseStreamingMode")}>
                   <ChoiceGroup

@@ -1,12 +1,18 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
+  MessageId,
   type OrchestrationCommand,
+  type OrchestrationLatestTurn,
+  type OrchestrationQueuedTurn,
   ProviderDriverKind,
   ProviderInstanceId,
+  type ProjectId,
+  type ServerSettings as ServerSettingsShape,
   ThreadId,
   TurnId,
 } from "@codework/contracts";
 import { assert, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
@@ -14,10 +20,13 @@ import * as Stream from "effect/Stream";
 import { OrchestrationCommandInvariantError } from "./orchestration/Errors.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ProviderCommandReactor } from "./orchestration/Services/ProviderCommandReactor.ts";
+import { RESTART_CONTINUATION_PAYLOAD_KEY } from "./orchestration/restartContinuation.ts";
 import { ProviderSessionDirectoryPersistenceError } from "./provider/Errors.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
 import * as ThreadGoalStore from "./persistence/Services/ThreadGoalStore.ts";
+import * as ServerSettings from "./serverSettings.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 
 const providerInstanceId = ProviderInstanceId.make("codex");
@@ -28,10 +37,23 @@ const makeThread = (
   status: "starting" | "running" | "ready" | "stopped" | "error",
   activeTurnId: TurnId | null = null,
   archivedAt: string | null = null,
+  extra?: {
+    readonly projectId?: ProjectId;
+    readonly modelSelection?: { readonly instanceId: ProviderInstanceId; readonly model: string };
+    readonly latestTurn?: OrchestrationLatestTurn | null;
+    readonly queuedMessages?: ReadonlyArray<OrchestrationQueuedTurn>;
+  },
 ) => ({
   id: ThreadId.make(id),
+  projectId: extra?.projectId,
   archivedAt,
   deletedAt: null,
+  modelSelection: extra?.modelSelection ?? {
+    instanceId: providerInstanceId,
+    model: "gpt-5-codex",
+  },
+  latestTurn: extra?.latestTurn ?? null,
+  queuedMessages: extra?.queuedMessages ?? [],
   session: {
     threadId: ThreadId.make(id),
     status,
@@ -77,8 +99,13 @@ const runReconciliation = (input: {
   readonly directory: ProviderSessionDirectory.ProviderSessionDirectory["Service"];
   readonly goalStore?: ThreadGoalStore.ThreadGoalStore["Service"];
   readonly dispatch: OrchestrationEngine.OrchestrationEngineService["Service"]["dispatch"];
+  readonly serverSettings?: Pick<
+    ServerSettingsShape,
+    "continueThreadsAfterServerUpdate" | "projectSettingsOverrides"
+  >;
+  readonly commandReactor?: Pick<ProviderCommandReactor["Service"], "recoverRestartedSession">;
 }) => {
-  const effect = ServerRuntimeStartup.reconcileProviderSessions.pipe(
+  let effect = ServerRuntimeStartup.reconcileProviderSessions.pipe(
     Effect.provideService(
       ProjectionSnapshotQuery.ProjectionSnapshotQuery,
       queryWithThreads(input.threads),
@@ -96,6 +123,22 @@ const runReconciliation = (input: {
     }),
     Effect.provide(NodeServices.layer),
   );
+  if (input.serverSettings) {
+    effect = effect.pipe(
+      Effect.provideService(ServerSettings.ServerSettingsService, {
+        getSettings: Effect.succeed(input.serverSettings as ServerSettingsShape),
+      } as unknown as ServerSettings.ServerSettingsService["Service"]),
+    );
+  }
+  if (input.commandReactor) {
+    effect = effect.pipe(
+      Effect.provideService(ProviderCommandReactor, {
+        start: () => Effect.void,
+        recoverRestartedSession: input.commandReactor.recoverRestartedSession,
+        drain: Effect.void,
+      }),
+    );
+  }
   return input.goalStore
     ? effect.pipe(Effect.provideService(ThreadGoalStore.ThreadGoalStore, input.goalStore))
     : effect;
@@ -169,7 +212,10 @@ it.effect("reconciles multiple active and archived orphans but skips live sessio
         assert.equal(upserts.length, orphanIds.length);
         for (const binding of upserts) {
           assert.equal(binding.status, "stopped");
-          assert.deepStrictEqual(binding.runtimePayload, { activeTurnId: null });
+          assert.deepStrictEqual(binding.runtimePayload, {
+            activeTurnId: null,
+            [RESTART_CONTINUATION_PAYLOAD_KEY]: null,
+          });
           assert.deepStrictEqual(binding.resumeCursor, { cursor: binding.threadId });
         }
       }),
@@ -399,3 +445,301 @@ it.effect("does not fail startup when the live provider session inventory cannot
     ),
   );
 });
+
+const enabledContinuationSettings = {
+  continueThreadsAfterServerUpdate: true,
+  projectSettingsOverrides: {},
+} satisfies Pick<
+  ServerSettingsShape,
+  "continueThreadsAfterServerUpdate" | "projectSettingsOverrides"
+>;
+
+const makeMarkedBinding = (
+  candidate: ThreadId,
+  overrides?: Partial<ProviderSessionDirectory.ProviderRuntimeBinding>,
+): ProviderSessionDirectory.ProviderRuntimeBinding => ({
+  threadId: candidate,
+  provider: ProviderDriverKind.make("codex"),
+  providerInstanceId,
+  status: "running" as const,
+  resumeCursor: { cursor: candidate },
+  ...overrides,
+});
+
+const directoryRecording = (
+  upserts: ProviderSessionDirectory.ProviderRuntimeBinding[],
+  bindingFor?: (candidate: ThreadId) => ProviderSessionDirectory.ProviderRuntimeBinding | undefined,
+): ProviderSessionDirectory.ProviderSessionDirectory["Service"] => ({
+  getBinding: (candidate) => {
+    const binding = bindingFor ? bindingFor(candidate) : makeMarkedBinding(candidate);
+    return Effect.succeed(binding === undefined ? Option.none() : Option.some(binding));
+  },
+  upsert: (binding) => Effect.sync(() => upserts.push(binding)),
+  getProvider: () => Effect.die("unused"),
+  listThreadIds: () => Effect.die("unused"),
+  listBindings: () => Effect.die("unused"),
+});
+
+it.effect("重启续接：合格 orphan 标记持久意图、跳过 orphan 结算且交给恢复例程", () =>
+  Effect.gen(function* () {
+    const deadTurnId = TurnId.make("turn-dead");
+    const thread = makeThread("thread-continued", "running", deadTurnId, null, {
+      latestTurn: {
+        turnId: deadTurnId,
+        state: "running",
+        requestedAt: updatedAt,
+        startedAt: updatedAt,
+        completedAt: null,
+        assistantMessageId: null,
+      },
+    });
+    const upserts: ProviderSessionDirectory.ProviderRuntimeBinding[] = [];
+    const dispatched: OrchestrationCommand[] = [];
+    const recovered = yield* Deferred.make<ThreadId>();
+
+    const reconciled = yield* runReconciliation({
+      threads: [thread],
+      directory: directoryRecording(upserts),
+      dispatch: (command) =>
+        Effect.sync(() => dispatched.push(command)).pipe(
+          Effect.as({ sequence: dispatched.length }),
+        ),
+      serverSettings: enabledContinuationSettings,
+      commandReactor: {
+        recoverRestartedSession: (threadId) => Deferred.succeed(recovered, threadId),
+      },
+    });
+    assert.equal(yield* Deferred.await(recovered), thread.id);
+
+    assert.isTrue(reconciled);
+    assert.equal(upserts.length, 1);
+    const payload = upserts[0]!.runtimePayload as Record<string, unknown>;
+    const intent = payload[RESTART_CONTINUATION_PAYLOAD_KEY] as {
+      deadTurnId: TurnId | null;
+      requestedAt: string;
+    };
+    assert.equal(intent.deadTurnId, deadTurnId);
+    assert.isString(intent.requestedAt);
+    assert.equal(payload.activeTurnId, null);
+    // 未派发 error 结算——线程留给恢复例程。
+    assert.deepStrictEqual(dispatched, []);
+  }),
+);
+
+it.effect("重启续接：偏好关闭时退回 orphan 错误结算并清掉残留标记", () =>
+  Effect.gen(function* () {
+    const thread = makeThread("thread-pref-off", "running", TurnId.make("turn-pref-off"), null, {
+      latestTurn: {
+        turnId: TurnId.make("turn-pref-off"),
+        state: "running",
+        requestedAt: updatedAt,
+        startedAt: updatedAt,
+        completedAt: null,
+        assistantMessageId: null,
+      },
+    });
+    const upserts: ProviderSessionDirectory.ProviderRuntimeBinding[] = [];
+    const dispatched: OrchestrationCommand[] = [];
+    let recovered = false;
+
+    const reconciled = yield* runReconciliation({
+      threads: [thread],
+      directory: directoryRecording(upserts, (candidate) => ({
+        ...makeMarkedBinding(candidate),
+        runtimePayload: { [RESTART_CONTINUATION_PAYLOAD_KEY]: { deadTurnId: "old" } },
+      })),
+      dispatch: (command) =>
+        Effect.sync(() => dispatched.push(command)).pipe(
+          Effect.as({ sequence: dispatched.length }),
+        ),
+      serverSettings: {
+        continueThreadsAfterServerUpdate: false,
+        projectSettingsOverrides: {},
+      },
+      commandReactor: {
+        recoverRestartedSession: () =>
+          Effect.sync(() => {
+            recovered = true;
+          }),
+      },
+    });
+
+    assert.isTrue(reconciled);
+    assert.isFalse(recovered);
+    assert.equal(
+      (upserts[0]!.runtimePayload as Record<string, unknown>)[RESTART_CONTINUATION_PAYLOAD_KEY],
+      null,
+    );
+    assert.deepStrictEqual(
+      dispatched.map((command) => command.type === "thread.session.set" && command.session.status),
+      ["error"],
+    );
+  }),
+);
+
+it.effect("重启续接：用户中断/归档/实例漂移/无 resumeCursor 全部拒绝", () =>
+  Effect.gen(function* () {
+    const deadTurnId = TurnId.make("turn-declined");
+    const userStopped = makeThread("thread-user-stopped", "running", deadTurnId, null, {
+      latestTurn: {
+        turnId: deadTurnId,
+        state: "interrupted",
+        requestedAt: updatedAt,
+        startedAt: updatedAt,
+        completedAt: updatedAt,
+        assistantMessageId: null,
+      },
+    });
+    const archived = makeThread("thread-archived-decline", "running", deadTurnId, updatedAt, {
+      latestTurn: {
+        turnId: deadTurnId,
+        state: "running",
+        requestedAt: updatedAt,
+        startedAt: updatedAt,
+        completedAt: null,
+        assistantMessageId: null,
+      },
+    });
+    const mismatched = makeThread("thread-instance-mismatch", "running", deadTurnId, null, {
+      modelSelection: {
+        instanceId: ProviderInstanceId.make("claude"),
+        model: "opus",
+      },
+      latestTurn: {
+        turnId: deadTurnId,
+        state: "running",
+        requestedAt: updatedAt,
+        startedAt: updatedAt,
+        completedAt: null,
+        assistantMessageId: null,
+      },
+    });
+    const noCursor = makeThread("thread-no-cursor", "running", deadTurnId, null, {
+      latestTurn: {
+        turnId: deadTurnId,
+        state: "running",
+        requestedAt: updatedAt,
+        startedAt: updatedAt,
+        completedAt: null,
+        assistantMessageId: null,
+      },
+    });
+    const upserts: ProviderSessionDirectory.ProviderRuntimeBinding[] = [];
+    const dispatched: OrchestrationCommand[] = [];
+
+    const reconciled = yield* runReconciliation({
+      threads: [userStopped, archived, mismatched, noCursor],
+      directory: directoryRecording(upserts, (candidate) =>
+        candidate === noCursor.id
+          ? { ...makeMarkedBinding(candidate), resumeCursor: undefined }
+          : makeMarkedBinding(candidate),
+      ),
+      dispatch: (command) =>
+        Effect.sync(() => dispatched.push(command)).pipe(
+          Effect.as({ sequence: dispatched.length }),
+        ),
+      serverSettings: enabledContinuationSettings,
+      commandReactor: {
+        recoverRestartedSession: () => Effect.die("declined threads must not recover"),
+      },
+    });
+
+    assert.isTrue(reconciled);
+    assert.equal(upserts.length, 4);
+    for (const binding of upserts) {
+      assert.equal(
+        (binding.runtimePayload as Record<string, unknown>)[RESTART_CONTINUATION_PAYLOAD_KEY],
+        null,
+      );
+    }
+    assert.deepStrictEqual(
+      dispatched.map((command) =>
+        command.type === "thread.session.set"
+          ? { threadId: command.threadId, status: command.session.status }
+          : null,
+      ),
+      [userStopped, archived, mismatched, noCursor].map((thread) => ({
+        threadId: thread.id,
+        status: "error" as const,
+      })),
+    );
+  }),
+);
+
+it.effect("重启续接：无死轮次但仍有排队输入的 starting 会话同样标记意图", () =>
+  Effect.gen(function* () {
+    const thread = makeThread("thread-queued-only", "starting", null, null, {
+      queuedMessages: [
+        {
+          messageId: MessageId.make("queued-1"),
+          text: "queued while starting",
+          createdAt: updatedAt,
+        },
+      ],
+    });
+    const upserts: ProviderSessionDirectory.ProviderRuntimeBinding[] = [];
+    const dispatched: OrchestrationCommand[] = [];
+
+    const reconciled = yield* runReconciliation({
+      threads: [thread],
+      directory: directoryRecording(upserts),
+      dispatch: (command) =>
+        Effect.sync(() => dispatched.push(command)).pipe(
+          Effect.as({ sequence: dispatched.length }),
+        ),
+      serverSettings: enabledContinuationSettings,
+      commandReactor: { recoverRestartedSession: () => Effect.void },
+    });
+
+    assert.isTrue(reconciled);
+    assert.equal(upserts.length, 1);
+    const intent = (upserts[0]!.runtimePayload as Record<string, unknown>)[
+      RESTART_CONTINUATION_PAYLOAD_KEY
+    ];
+    assert.isNotNull(intent);
+    assert.equal((intent as { deadTurnId: TurnId | null }).deadTurnId, null);
+    assert.deepStrictEqual(dispatched, []);
+  }),
+);
+
+it.effect("重启续接：active Goal 线程被标记续接时不暂停", () =>
+  Effect.gen(function* () {
+    const deadTurnId = TurnId.make("turn-goal");
+    const thread = makeThread("thread-goal-continued", "running", deadTurnId, null, {
+      latestTurn: {
+        turnId: deadTurnId,
+        state: "running",
+        requestedAt: updatedAt,
+        startedAt: updatedAt,
+        completedAt: null,
+        assistantMessageId: null,
+      },
+    });
+    const paused: ThreadId[] = [];
+    const goalStore = {
+      get: () => Effect.succeed(Option.some({ status: "active" } as never)),
+      pause: (threadId: ThreadId) =>
+        Effect.sync(() => {
+          paused.push(threadId);
+          return {} as never;
+        }),
+      set: () => Effect.die("unused") as never,
+      resume: () => Effect.die("unused") as never,
+      setStatus: () => Effect.die("unused") as never,
+      clear: () => Effect.die("unused") as never,
+      subscribe: () => Effect.succeed(Stream.empty),
+    } as unknown as ThreadGoalStore.ThreadGoalStore["Service"];
+
+    const reconciled = yield* runReconciliation({
+      threads: [thread],
+      directory: directoryRecording([]),
+      goalStore,
+      dispatch: () => Effect.succeed({ sequence: 1 }),
+      serverSettings: enabledContinuationSettings,
+      commandReactor: { recoverRestartedSession: () => Effect.void },
+    });
+
+    assert.isTrue(reconciled);
+    assert.deepStrictEqual(paused, []);
+  }),
+);

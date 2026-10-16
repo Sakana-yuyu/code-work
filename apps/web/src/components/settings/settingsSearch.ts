@@ -220,6 +220,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
   },
   {
+    id: "continue-threads-after-update",
+    title: "settings.continueThreadsAfterUpdate",
+    to: "/settings/general",
+    keywords: ["restart", "resume", "continue", "threads", "重启", "续接", "恢复"],
+  },
+  {
     id: "new-threads",
     title: "settings.newThreads",
     to: "/settings/general",
