@@ -273,6 +273,7 @@ export const ja: Record<string, string> = {
   "connection.connectingTo": "{{environmentLabel}} に接続中...",
   "connection.reconnectingTo": "{{environmentLabel}} に再接続中",
   "connection.reconnectingEnvironments": "{{count}} 個の環境に再接続中",
+  threadsAwaitingAttention: "{{count}} 件が確認待ち",
   "connection.environmentUnavailable": "{{environmentLabel}} は利用できません",
   "connection.environmentDisconnected": "{{environmentLabel}} は切断されています",
   "connection.retryingAutomatically": "アプリは自動的に再試行を続けます。{{error}}",

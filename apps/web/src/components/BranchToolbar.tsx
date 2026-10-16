@@ -190,6 +190,16 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
                       <span className="flex min-w-0 items-center gap-1.5">
                         <Icon className="size-3" />
                         <span className="min-w-0 truncate">{env.label}</span>
+                        {(env.attentionCount ?? 0) > 0 ? (
+                          <span
+                            className="ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 px-1 font-mono text-[10px] font-medium text-foreground"
+                            aria-label={t("environmentAttentionCount", {
+                              count: env.attentionCount ?? 0,
+                            })}
+                          >
+                            {env.attentionCount}
+                          </span>
+                        ) : null}
                       </span>
                     </MenuRadioItem>
                   );

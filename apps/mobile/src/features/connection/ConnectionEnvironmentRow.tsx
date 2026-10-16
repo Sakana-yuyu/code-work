@@ -4,13 +4,14 @@ import { resolveEnvironmentMachineKind, type EnvironmentId } from "@codework/con
 import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Alert, Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import { useThemeColor } from "../../lib/useThemeColor";
 
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
+import { environmentThreadShells } from "../../state/threads";
 import { serverEnvironment } from "../../state/server";
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
@@ -43,6 +44,30 @@ export function ConnectionEnvironmentRow(props: {
   const serverConfig = useAtomValue(
     serverEnvironment.configValueAtom(props.environment.environmentId),
   );
+  // IDE-8: badge environments whose threads are awaiting the user. Reuses the
+  // same shell subscription the thread lists already hold — no extra sockets.
+  const environmentThreads = useAtomValue(
+    environmentThreadShells.environmentThreadsAtom(props.environment.environmentId),
+  );
+  const attentionCount = useMemo(() => {
+    let count = 0;
+    for (const thread of environmentThreads) {
+      if (thread.archivedAt !== null) continue;
+      const snoozedUntil = thread.snoozedUntil;
+      if (snoozedUntil !== null && snoozedUntil !== undefined) {
+        const snoozedAt = Date.parse(snoozedUntil);
+        if (!Number.isNaN(snoozedAt) && snoozedAt > Date.now()) continue;
+      }
+      if (
+        thread.hasPendingApprovals ||
+        thread.hasPendingUserInput ||
+        thread.session?.status === "error"
+      ) {
+        count += 1;
+      }
+    }
+    return count;
+  }, [environmentThreads]);
 
   const mutedColor = useThemeColor("--color-icon-subtle");
   const primaryFg = useThemeColor("--color-primary-foreground");
@@ -96,6 +121,16 @@ export function ConnectionEnvironmentRow(props: {
             >
               {props.environment.environmentLabel}
             </Text>
+            {attentionCount > 0 ? (
+              <View
+                accessibilityLabel={t("threadsAwaitingAttention", { count: attentionCount })}
+                className="h-4 min-w-4 items-center justify-center rounded-full bg-primary/15 px-1"
+              >
+                <Text className="font-mono text-[10px] font-medium text-foreground">
+                  {attentionCount}
+                </Text>
+              </View>
+            ) : null}
           </View>
           <Text className="text-xs text-foreground-muted" numberOfLines={1}>
             {props.environment.displayUrl}

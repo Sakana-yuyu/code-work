@@ -3519,6 +3519,8 @@ export const ja: Record<string, string> = {
   "chat.fullAccessDescription": "コマンドと編集を確認なしで許可します。",
   "workspace.label": "ワークスペース",
   "workspace.runOn": "実行先",
+  environmentAttentionCount: "{{count}} 件のスレッドが確認待ち",
+  environmentAttentionCount_plural: "{{count}} 件のスレッドが確認待ち",
   "workspace.currentCheckout": "現在のチェックアウト",
   "workspace.currentWorktree": "現在のワークツリー",
   "workspace.worktree": "ワークツリー",

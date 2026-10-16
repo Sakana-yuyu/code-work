@@ -92,7 +92,7 @@ import {
 } from "@codework/client-runtime/state/runtime";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { terminalDisplayLabel } from "../terminal/displayLabel";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
@@ -247,6 +247,7 @@ import {
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
+import { threadNeedsAttention } from "./Sidebar.logic";
 import { buildDraftThreadRouteParams, buildThreadRouteParams } from "../threadRoutes";
 import {
   beginBackgroundDraftSubmissionByRef,
@@ -288,7 +289,7 @@ import {
 } from "../state/server";
 import { terminalEnvironment } from "../state/terminal";
 import { sshTerminalEnvironment } from "../state/ssh";
-import { threadEnvironment, useEnvironmentThread } from "../state/threads";
+import { environmentThreadShells, threadEnvironment, useEnvironmentThread } from "../state/threads";
 import {
   requestOlderThreadTurns,
   threadHasOlderTurns,
@@ -2133,6 +2134,52 @@ function ChatViewContent(props: ChatViewProps) {
     return envs;
   }, [activeProject, allProjects, projectGroupingSettings, primaryEnvironmentId, environmentById]);
   const hasMultipleEnvironments = logicalProjectEnvironments.length > 1;
+  // IDE-8: badge the run-on environment switcher when another environment
+  // owns threads awaiting the user (approval/input/failed/unseen completion).
+  const logicalProjectThreadsAtom = useMemo(
+    () =>
+      Atom.make((get) =>
+        logicalProjectEnvironments.map(
+          (env) =>
+            [
+              env.environmentId,
+              get(environmentThreadShells.environmentThreadsAtom(env.environmentId)),
+            ] as const,
+        ),
+      ),
+    [logicalProjectEnvironments],
+  );
+  const logicalProjectThreadsByEnvironment = useAtomValue(logicalProjectThreadsAtom);
+  const threadLastVisitedAtById = useUiStateStore((store) => store.threadLastVisitedAtById);
+  const environmentAttentionCounts = useMemo(() => {
+    const counts = new Map<EnvironmentId, number>();
+    for (const [environmentId, threads] of logicalProjectThreadsByEnvironment) {
+      let count = 0;
+      for (const thread of threads) {
+        // Archived threads are put away deliberately; a snoozed thread wakes
+        // on its own schedule and must not badge the environment meanwhile.
+        if (thread.archivedAt !== null) continue;
+        const snoozedUntil = thread.snoozedUntil;
+        if (snoozedUntil !== null && snoozedUntil !== undefined) {
+          const snoozedAt = Date.parse(snoozedUntil);
+          if (!Number.isNaN(snoozedAt) && snoozedAt > Date.now()) continue;
+        }
+        const lastVisitedAt =
+          threadLastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, thread.id))];
+        if (threadNeedsAttention({ ...thread, lastVisitedAt })) count += 1;
+      }
+      counts.set(environmentId, count);
+    }
+    return counts;
+  }, [logicalProjectThreadsByEnvironment, threadLastVisitedAtById]);
+  const environmentOptionsWithAttention = useMemo(
+    () =>
+      logicalProjectEnvironments.map((env) => ({
+        ...env,
+        attentionCount: environmentAttentionCounts.get(env.environmentId) ?? 0,
+      })),
+    [logicalProjectEnvironments, environmentAttentionCounts],
+  );
   const activeEnvironmentOption =
     logicalProjectEnvironments.find(
       (environment) => environment.environmentId === activeThread?.environmentId,
@@ -8836,7 +8883,7 @@ function ChatViewContent(props: ChatViewProps) {
                                 ? { onCheckoutPullRequestRequest: openPullRequestDialog }
                                 : {})}
                               {...(hasMultipleEnvironments ? { onEnvironmentChange } : {})}
-                              availableEnvironments={logicalProjectEnvironments}
+                              availableEnvironments={environmentOptionsWithAttention}
                               conversationStats={conversationStats}
                             />
                           </div>

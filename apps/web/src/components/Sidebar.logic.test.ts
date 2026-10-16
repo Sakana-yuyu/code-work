@@ -26,6 +26,7 @@ import {
   resolveThreadRowClassName,
   resolveSidebarThreadStatus,
   resolveThreadStatusPill,
+  threadNeedsAttention,
   resolveWorkingStartedAt,
   searchSidebarThreadsByTitle,
   formatWorkingDurationLabel,
@@ -772,6 +773,54 @@ describe("resolveSidebarThreadStatus", () => {
 
   it("defaults to ready with no session", () => {
     expect(resolveSidebarThreadStatus({ ...idle, session: null })).toBe("ready");
+  });
+});
+
+describe("threadNeedsAttention", () => {
+  const session = {
+    threadId: ThreadId.make("thread-1"),
+    status: "running" as const,
+    providerName: "Codex",
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    runtimeMode: DEFAULT_RUNTIME_MODE,
+    activeTurnId: "turn-1" as never,
+    lastError: null,
+    updatedAt: "2026-03-09T10:00:00.000Z",
+  };
+
+  const base = {
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    hasActionableProposedPlan: false,
+    interactionMode: "default" as const,
+    latestTurn: null,
+    session: null,
+    backgroundLiveness: null,
+    lastVisitedAt: undefined,
+  };
+
+  it("flags approval, input, and failed sessions", () => {
+    expect(threadNeedsAttention({ ...base, hasPendingApprovals: true })).toBe(true);
+    expect(threadNeedsAttention({ ...base, hasPendingUserInput: true })).toBe(true);
+    expect(
+      threadNeedsAttention({ ...base, session: { ...session, status: "error" as const } }),
+    ).toBe(true);
+  });
+
+  it("flags unseen completions but not seen or running work", () => {
+    const latestTurn = {
+      turnId: "turn-1" as never,
+      completedAt: "2026-03-09T11:00:00.000Z",
+      startedAt: "2026-03-09T10:30:00.000Z",
+    } as never;
+    expect(
+      threadNeedsAttention({ ...base, latestTurn, lastVisitedAt: "2026-03-09T10:45:00.000Z" }),
+    ).toBe(true);
+    expect(
+      threadNeedsAttention({ ...base, latestTurn, lastVisitedAt: "2026-03-09T11:30:00.000Z" }),
+    ).toBe(false);
+    expect(threadNeedsAttention({ ...base, session })).toBe(false);
+    expect(threadNeedsAttention(base)).toBe(false);
   });
 });
 

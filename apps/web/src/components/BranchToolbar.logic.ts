@@ -12,6 +12,8 @@ export interface EnvironmentOption {
   projectId: ProjectId;
   label: string;
   isPrimary: boolean;
+  /** Threads in this environment awaiting the user (IDE-8 switcher badge). */
+  attentionCount?: number;
 }
 
 export const EnvMode = Schema.Literals(["local", "worktree"]);

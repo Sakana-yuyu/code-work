@@ -42,6 +42,17 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
     [availableEnvironments],
   );
 
+  // Badge the trigger itself when an environment *other than* the selected one
+  // has threads awaiting the user — the current one's work is already on screen.
+  const otherEnvironmentAttentionCount = useMemo(
+    () =>
+      availableEnvironments.reduce(
+        (sum, env) => (env.environmentId === environmentId ? sum : sum + (env.attentionCount ?? 0)),
+        0,
+      ),
+    [availableEnvironments, environmentId],
+  );
+
   // The static label carries the xs control's height (h-7 sm:h-6) as well as
   // its padding: the composer context strip has no min-height of its own, and
   // the glass seam joining it to the composer assumes a fixed strip height, so
@@ -103,19 +114,39 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
             <SelectValue />
           </span>
         </span>
+        {otherEnvironmentAttentionCount > 0 ? (
+          <span
+            className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 px-1 font-mono text-[10px] font-medium text-foreground"
+            aria-label={t("environmentAttentionCount", {
+              count: otherEnvironmentAttentionCount,
+            })}
+          >
+            {otherEnvironmentAttentionCount}
+          </span>
+        ) : null}
       </SelectTrigger>
       <SelectPopup>
         <SelectGroup>
           <SelectGroupLabel>{t("workspace.runOn")}</SelectGroupLabel>
           {availableEnvironments.map((env) => (
             <SelectItem key={env.environmentId} value={env.environmentId}>
-              <span className="inline-flex items-center gap-1.5">
+              <span className="inline-flex min-w-0 items-center gap-1.5">
                 {env.isPrimary ? (
                   <MonitorIcon className="size-3" />
                 ) : (
                   <CloudIcon className="size-3" />
                 )}
-                {env.label}
+                <span className="min-w-0 truncate">{env.label}</span>
+                {(env.attentionCount ?? 0) > 0 ? (
+                  <span
+                    className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 px-1 font-mono text-[10px] font-medium text-foreground"
+                    aria-label={t("environmentAttentionCount", {
+                      count: env.attentionCount ?? 0,
+                    })}
+                  >
+                    {env.attentionCount}
+                  </span>
+                ) : null}
               </span>
             </SelectItem>
           ))}

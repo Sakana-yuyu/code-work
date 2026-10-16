@@ -559,6 +559,17 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   return "ready";
 }
 
+/** IDE-8: an environment switcher badges other environments that own threads
+    awaiting the user — pending approval/input, a failed session, or a finished
+    turn they have not seen yet. Working and idle threads do not badge. */
+export function threadNeedsAttention(thread: ThreadStatusInput): boolean {
+  const status = resolveSidebarThreadStatus(thread);
+  if (status === "approval" || status === "input" || status === "failed") {
+    return true;
+  }
+  return hasUnseenCompletion(thread);
+}
+
 /** NaN-safe Date.parse for sort comparators: a malformed timestamp must not
     poison the whole ordering, so it sinks to the epoch instead. */
 export function parseTimestampMs(isoDate: string): number {
