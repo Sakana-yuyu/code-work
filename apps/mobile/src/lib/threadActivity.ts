@@ -75,6 +75,11 @@ export interface ThreadFeedActivity {
     | "zap";
   readonly toolLike: boolean;
   readonly status: "success" | "failure" | "inProgress" | "neutral" | null;
+  /**
+   * 所在 activity-group 永不随已结束回合折叠：错误、画布卡片、goal 完成行、
+   * 仍在运行的子 agent/工具（IDE-1 边界，对齐上游 liveSubagent 豁免）。
+   */
+  readonly neverFold?: boolean;
 }
 
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
@@ -1463,7 +1468,19 @@ function deriveThreadFeedTurnFolds(
       entries
         .filter(
           (entry) =>
-            entry.id !== firstAssistantMessageId && entry.id !== terminalAssistantMessageId,
+            entry.id !== firstAssistantMessageId &&
+            entry.id !== terminalAssistantMessageId &&
+            // 失败、画布、goal 完成与仍在运行的子 agent/工具不打断可见性：
+            // 含这些活动的分组留在折叠外（IDE-1，对齐上游 run-fold 豁免）。
+            !(
+              entry.type === "activity-group" &&
+              entry.activities.some(
+                (activity) =>
+                  activity.neverFold === true ||
+                  activity.status === "failure" ||
+                  activity.status === "inProgress",
+              )
+            ),
         )
         .map((entry) => entry.id),
     );
@@ -1920,6 +1937,12 @@ function buildThreadFeedWithEntries(
               icon: workEntryIcon(entry),
               toolLike: workLogEntryIsToolLike(entry),
               status: workEntryStatus(entry),
+              ...(entry.tone === "error" ||
+              entry.canvas !== undefined ||
+              entry.activityKind === "goal.completed" ||
+              entry.toolLifecycleStatus === "inProgress"
+                ? { neverFold: true }
+                : {}),
             },
           };
           activityRows?.set(entry, row);

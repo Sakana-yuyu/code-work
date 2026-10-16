@@ -265,6 +265,8 @@ export type MessagesTimelineRow =
       // carries no signal about a long turn's actual work.
       breakdown: string | null;
       hasFailure: boolean;
+      /** Edits/subagent calls inside the hidden set keep the row out of the running digest. */
+      containsFoldBreakers: boolean;
     }
   | {
       kind: "activity-fold";
@@ -397,6 +399,18 @@ export function toolGroupAction(entry: WorkLogEntry): ToolGroupAction {
   if (workLogEntryIsLocalCodeSearch(entry)) return "code-search";
   if (entry.itemType === "web_search") return "search";
   return "other";
+}
+
+/**
+ * 编辑与子 agent 调用打断运行中折叠（IDE-1）：运行中摘要只收纳读/搜/命令
+ * 类噪音，写入与委派的行保持可见。
+ */
+function workEntryBreaksActivityFold(entry: WorkLogEntry): boolean {
+  return (
+    toolGroupAction(entry) === "edit" ||
+    entry.itemType === "collab_agent_tool_call" ||
+    entry.taskId !== undefined
+  );
 }
 
 function toolGroupActionCount(
@@ -1204,6 +1218,7 @@ export function deriveMessagesTimelineRows(
             summaryKind,
             breakdown: null,
             hasFailure: visibleGroupedEntries.some(workEntryDisplayIndicatesToolFailure),
+            containsFoldBreakers: visibleGroupedEntries.some(workEntryBreaksActivityFold),
           });
           if (expanded) {
             for (const [entryIndex, workEntry] of visibleGroupedEntries.entries()) {
@@ -1271,6 +1286,7 @@ export function deriveMessagesTimelineRows(
               summaryKind: null,
               breakdown: hiddenAllToolLike ? summarizeToolGroup(hiddenEntries) : null,
               hasFailure: hiddenEntries.some(workEntryDisplayIndicatesToolFailure),
+              containsFoldBreakers: hiddenEntries.some(workEntryBreaksActivityFold),
             });
           }
         }
@@ -1428,13 +1444,14 @@ function foldActiveActivityRows(
     const row = rows[index]!;
     if (row.kind === "reasoning-summary") {
       foldedIndexes.push(index);
-    } else if (row.kind === "work-toggle" && !row.hasFailure) {
+    } else if (row.kind === "work-toggle" && !row.hasFailure && !row.containsFoldBreakers) {
       foldedIndexes.push(index);
     } else if (
       row.kind === "work" &&
       row.groupedEntries.every(
         (entry) =>
           workLogEntryIsToolLike(entry) &&
+          !workEntryBreaksActivityFold(entry) &&
           entry.agentSpawn === undefined &&
           entry.canvas === undefined &&
           entry.tone !== "error" &&
@@ -1715,7 +1732,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.summary === bw.summary &&
         a.summaryKind === bw.summaryKind &&
         a.breakdown === bw.breakdown &&
-        a.hasFailure === bw.hasFailure
+        a.hasFailure === bw.hasFailure &&
+        a.containsFoldBreakers === bw.containsFoldBreakers
       );
     }
 

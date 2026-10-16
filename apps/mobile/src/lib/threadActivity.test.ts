@@ -1680,6 +1680,100 @@ describe("buildThreadFeed", () => {
     ]);
   });
 
+  it("keeps failed and still-running activity groups outside a settled turn fold", () => {
+    const turnId = TurnId.make("turn-fold-breakers");
+    const thread = makeThread({
+      id: ThreadId.make("thread-fold-breakers"),
+      projectId: ProjectId.make("project-1"),
+      title: "Fold breakers",
+      latestTurn: {
+        turnId,
+        state: "completed",
+        requestedAt: "2026-04-01T00:00:00.000Z",
+        startedAt: "2026-04-01T00:00:01.000Z",
+        completedAt: "2026-04-01T00:00:18.000Z",
+        assistantMessageId: MessageId.make("assistant-final"),
+      },
+      messages: [
+        {
+          id: MessageId.make("assistant-first"),
+          role: "assistant",
+          text: "Starting.",
+          turnId,
+          streaming: false,
+          createdAt: "2026-04-01T00:00:02.000Z",
+          updatedAt: "2026-04-01T00:00:03.000Z",
+        },
+        {
+          id: MessageId.make("assistant-mid"),
+          role: "assistant",
+          text: "Halfway.",
+          turnId,
+          streaming: false,
+          createdAt: "2026-04-01T00:00:08.000Z",
+          updatedAt: "2026-04-01T00:00:09.000Z",
+        },
+        {
+          id: MessageId.make("assistant-final"),
+          role: "assistant",
+          text: "Done.",
+          turnId,
+          streaming: false,
+          createdAt: "2026-04-01T00:00:17.000Z",
+          updatedAt: "2026-04-01T00:00:18.000Z",
+        },
+      ],
+      activities: [
+        makeActivity({
+          id: EventId.make("tool-quiet"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Read files",
+          createdAt: "2026-04-01T00:00:04.000Z",
+          turnId,
+          payload: { title: "Read files", itemType: "file_read", status: "completed" },
+        }),
+        makeActivity({
+          id: EventId.make("tool-failed"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Edit exploded",
+          createdAt: "2026-04-01T00:00:10.000Z",
+          turnId,
+          payload: { title: "Edit exploded", itemType: "file_change", status: "failed" },
+        }),
+        makeActivity({
+          id: EventId.make("child-live"),
+          kind: "tool.started",
+          tone: "tool",
+          summary: "Subagent still running",
+          createdAt: "2026-04-01T00:00:12.000Z",
+          turnId,
+          payload: {
+            title: "Subagent still running",
+            itemType: "collab_agent_tool_call",
+            status: "inProgress",
+          },
+        }),
+      ],
+    });
+
+    const feed = buildThreadFeed(thread);
+    const collapsed = deriveThreadFeedPresentation(feed, thread.latestTurn, new Set());
+    const ids = collapsed.map((entry) => entry.id);
+    // 安静工具行与中段消息折叠；失败行与仍在运行的子 agent 行保持可见。
+    expect(ids).toEqual([
+      "assistant-first",
+      "turn-fold:turn-fold-breakers",
+      "tool-failed",
+      "child-live",
+      "assistant-final",
+    ]);
+    expect(collapsed[1]).toMatchObject({ type: "turn-fold", expanded: false });
+    expect(collapsed[2]).toMatchObject({ type: "activity-group" });
+    expect(collapsed[3]).toMatchObject({ type: "activity-group" });
+  });
+
   it("folds assistant messages between the first and terminal messages", () => {
     const turnId = TurnId.make("turn-1");
     const thread = makeThread({

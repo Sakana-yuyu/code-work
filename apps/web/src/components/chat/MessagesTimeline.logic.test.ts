@@ -287,6 +287,101 @@ describe("active activity history", () => {
     });
     expect(concurrent.filter((row) => row.kind === "work-live")).toHaveLength(2);
   });
+
+  it("keeps edits and subagent calls out of the running digest (IDE-1 fold breakers)", () => {
+    const turnId = "turn-breakers" as TurnId;
+    const workEntry = (
+      id: string,
+      createdAt: string,
+      entry: Record<string, unknown>,
+    ): TimelineEntry => ({
+      kind: "work",
+      id,
+      createdAt,
+      entry: {
+        id,
+        turnId,
+        createdAt,
+        tone: "tool",
+        toolLifecycleStatus: "completed",
+        ...entry,
+      } as never,
+    });
+    const reasoning = (id: string, createdAt: string): TimelineEntry => ({
+      kind: "reasoning-summary",
+      id,
+      createdAt,
+      summaries: [{ id: `${id}-s`, turnId, createdAt, text: "Thinking" }],
+    });
+    const timelineEntries: TimelineEntry[] = [
+      {
+        kind: "message",
+        id: "user-1",
+        createdAt: "2026-01-01T00:00:00Z",
+        message: {
+          id: "user-1" as never,
+          role: "user",
+          text: "Do the work",
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      reasoning("r-1", "2026-01-01T00:00:01Z"),
+      workEntry("read-1", "2026-01-01T00:00:02Z", {
+        label: "Read a.ts",
+        itemType: "command_execution",
+      }),
+      workEntry("read-2", "2026-01-01T00:00:03Z", {
+        label: "Read b.ts",
+        itemType: "command_execution",
+      }),
+      reasoning("r-2", "2026-01-01T00:00:04Z"),
+      workEntry("edit-1", "2026-01-01T00:00:05Z", {
+        label: "Edit c.ts",
+        itemType: "file_change",
+        changedFiles: ["c.ts"],
+      }),
+      workEntry("subagent-1", "2026-01-01T00:00:06Z", {
+        label: "Task: explore",
+        itemType: "collab_agent_tool_call",
+      }),
+      reasoning("r-3", "2026-01-01T00:00:07Z"),
+      workEntry("read-4", "2026-01-01T00:00:08Z", {
+        label: "Read d.ts",
+        itemType: "command_execution",
+      }),
+      workEntry("current-tool", "2026-01-01T00:00:09Z", {
+        label: "Running tests",
+        toolLifecycleStatus: "inProgress",
+      }),
+    ];
+    const input = {
+      timelineEntries,
+      latestTurn: {
+        turnId,
+        state: "running" as const,
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    };
+
+    const collapsed = deriveMessagesTimelineRows(input);
+    const fold = collapsed.find((row) => row.kind === "activity-fold");
+    expect(fold).toMatchObject({ count: 4, expanded: false });
+    // 含编辑/子 agent 的工具组保持自身折叠行，不进运行中摘要。
+    const breakerToggle = collapsed.find(
+      (row): row is Extract<(typeof collapsed)[number], { kind: "work-toggle" }> =>
+        row.kind === "work-toggle" && row.containsFoldBreakers,
+    );
+    expect(breakerToggle).toBeDefined();
+    expect(collapsed.at(-1)?.kind).toBe("work-live");
+  });
 });
 
 describe("shouldPreserveAssistantLineBreaks", () => {
@@ -2495,6 +2590,103 @@ describe("deriveMessagesTimelineRows", () => {
       },
     });
     expect(finishedRows.map((row) => row.kind)).toEqual(["message", "working"]);
+  });
+});
+
+describe("settled turn folds", () => {
+  it("keeps agent-spawn cards outside their launching turn's fold", () => {
+    const turnId = "turn-spawn" as TurnId;
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          kind: "message",
+          id: "user-1",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-1" as never,
+            role: "user",
+            text: "Ship it",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          kind: "message",
+          id: "assistant-first",
+          createdAt: "2026-01-01T00:00:01Z",
+          message: {
+            id: "assistant-first" as never,
+            role: "assistant",
+            text: "Starting the fleet.",
+            turnId,
+            createdAt: "2026-01-01T00:00:01Z",
+            updatedAt: "2026-01-01T00:00:02Z",
+            streaming: false,
+          },
+        },
+        {
+          kind: "work",
+          id: "read-done",
+          createdAt: "2026-01-01T00:00:03Z",
+          entry: {
+            id: "read-done",
+            turnId,
+            createdAt: "2026-01-01T00:00:03Z",
+            label: "Read a.ts",
+            tone: "tool",
+            itemType: "command_execution",
+            toolLifecycleStatus: "completed",
+          } as never,
+        },
+        {
+          kind: "work",
+          id: "spawn-card",
+          createdAt: "2026-01-01T00:00:04Z",
+          entry: {
+            id: "spawn-card",
+            turnId,
+            createdAt: "2026-01-01T00:00:04Z",
+            label: "Spawned 2 agents",
+            tone: "tool",
+            agentSpawn: { workflowId: "wf-1", agentTaskIds: ["task-1"] },
+          } as never,
+        },
+        {
+          kind: "message",
+          id: "assistant-final",
+          createdAt: "2026-01-01T00:00:10Z",
+          message: {
+            id: "assistant-final" as never,
+            role: "assistant",
+            text: "Done delegating.",
+            turnId,
+            createdAt: "2026-01-01T00:00:10Z",
+            updatedAt: "2026-01-01T00:00:11Z",
+            streaming: false,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId,
+        state: "completed" as const,
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: "2026-01-01T00:00:11Z",
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1",
+      "assistant-first",
+      `turn-fold:${turnId}`,
+      "spawn-card",
+      "assistant-final",
+    ]);
   });
 });
 
