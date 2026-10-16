@@ -32,7 +32,7 @@ import {
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
   AuthAccessStreamError,
-  AuthAccessStreamEvent,
+  AuthAccessStreamEventWire,
   EnvironmentAuthorizationError,
 } from "./auth.ts";
 import {
@@ -107,6 +107,7 @@ import {
   ThreadGoal,
   ThreadGoalClearInput,
   ThreadGoalEvent,
+  ThreadGoalEventWire,
   ThreadGoalGetInput,
   ThreadGoalPauseInput,
   ThreadGoalResumeInput,
@@ -124,7 +125,7 @@ import {
   SpecWorkflowRpcError,
   SpecWorkflowSetInput,
   SpecWorkflowState,
-  SpecWorkflowStateEvent,
+  SpecWorkflowStateEventWire,
   SpecWorkflowStateGetInput,
 } from "./specWorkflow.ts";
 import {
@@ -192,12 +193,12 @@ import {
 } from "./project.ts";
 import {
   TerminalAttachInput,
-  TerminalAttachStreamEvent,
+  TerminalAttachStreamEventWire,
   TerminalClearInput,
   TerminalCloseInput,
   TerminalError,
-  TerminalEvent,
-  TerminalMetadataStreamEvent,
+  TerminalEventWire,
+  TerminalMetadataStreamEventWire,
   TerminalOpenInput,
   TerminalResizeInput,
   TerminalRestartInput,
@@ -218,10 +219,10 @@ import {
 } from "./sshServers.ts";
 import {
   SshTerminalAttachInput,
-  SshTerminalAttachStreamEvent,
+  SshTerminalAttachStreamEventWire,
   SshTerminalCloseInput,
   SshTerminalError,
-  SshTerminalEvent,
+  SshTerminalEventWire,
   SshTerminalOpenInput,
   SshTerminalResizeInput,
   SshTerminalSessionSnapshot,
@@ -233,7 +234,7 @@ import {
   PreviewCloseInput,
   PreviewControlInput,
   PreviewError,
-  PreviewEvent,
+  PreviewEventWire,
   PreviewListInput,
   PreviewListResult,
   PreviewNavigateInput,
@@ -254,18 +255,18 @@ import {
   PreviewAutomationStreamEvent,
 } from "./previewAutomation.ts";
 import {
-  ServerConfigStreamEvent,
+  ServerConfigStreamEventWire,
   ServerConfig,
   ServerProviderInstallError,
   ServerProviderUpdateError,
   ServerProviderUpdateInput,
-  ServerLifecycleStreamEvent,
+  ServerLifecycleStreamEventWire,
   ServerRemoveKeybindingInput,
   ServerRemoveKeybindingResult,
   ServerProviderUpdatedPayload,
   ServerSelfUpdateError,
   ServerSelfUpdateInput,
-  ServerSelfUpdateProgressEvent,
+  ServerSelfUpdateProgressEventWire,
   ServerSelfUpdateResult,
   ServerTraceDiagnosticsResult,
   ServerProcessDiagnosticsResult,
@@ -737,7 +738,7 @@ export const WsServerUpdateServerWithProgressRpc = Rpc.make(
   WS_METHODS.serverUpdateServerWithProgress,
   {
     payload: ServerSelfUpdateInput,
-    success: ServerSelfUpdateProgressEvent,
+    success: ServerSelfUpdateProgressEventWire,
     error: Schema.Union([ServerSelfUpdateError, EnvironmentAuthorizationError]),
     stream: true,
   },
@@ -1754,7 +1755,7 @@ export const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, {
 
 export const WsTerminalAttachRpc = Rpc.make(WS_METHODS.terminalAttach, {
   payload: TerminalAttachInput,
-  success: TerminalAttachStreamEvent,
+  success: TerminalAttachStreamEventWire,
   error: Schema.Union([TerminalError, EnvironmentAuthorizationError]),
   stream: true,
 });
@@ -1827,7 +1828,7 @@ export const WsSshTerminalOpenRpc = Rpc.make(WS_METHODS.sshTerminalOpen, {
 
 export const WsSshTerminalAttachRpc = Rpc.make(WS_METHODS.sshTerminalAttach, {
   payload: SshTerminalAttachInput,
-  success: SshTerminalAttachStreamEvent,
+  success: SshTerminalAttachStreamEventWire,
   error: Schema.Union([SshTerminalError, EnvironmentAuthorizationError]),
   stream: true,
 });
@@ -1925,7 +1926,7 @@ export const WsPreviewAutomationFocusHostRpc = Rpc.make(WS_METHODS.previewAutoma
 
 export const WsSubscribePreviewEventsRpc = Rpc.make(WS_METHODS.subscribePreviewEvents, {
   payload: Schema.Struct({}),
-  success: PreviewEvent,
+  success: PreviewEventWire,
   error: EnvironmentAuthorizationError,
   stream: true,
 });
@@ -2039,7 +2040,7 @@ export const WsThreadGoalClearRpc = Rpc.make(ORCHESTRATION_WS_METHODS.clearThrea
 
 export const WsThreadGoalSubscribeRpc = Rpc.make(ORCHESTRATION_WS_METHODS.subscribeThreadGoal, {
   payload: ThreadGoalGetInput,
-  success: ThreadGoalEvent,
+  success: ThreadGoalEventWire,
   error: Schema.Union([ThreadGoalRpcError, EnvironmentAuthorizationError]),
   stream: true,
 });
@@ -2109,7 +2110,7 @@ export const WsSpecWorkflowStateSubscribeRpc = Rpc.make(
   ORCHESTRATION_WS_METHODS.subscribeSpecWorkflowState,
   {
     payload: SpecWorkflowStateGetInput,
-    success: SpecWorkflowStateEvent,
+    success: SpecWorkflowStateEventWire,
     error: Schema.Union([SpecWorkflowRpcError, EnvironmentAuthorizationError]),
     stream: true,
   },
@@ -2117,42 +2118,42 @@ export const WsSpecWorkflowStateSubscribeRpc = Rpc.make(
 
 export const WsSubscribeTerminalEventsRpc = Rpc.make(WS_METHODS.subscribeTerminalEvents, {
   payload: Schema.Struct({}),
-  success: TerminalEvent,
+  success: TerminalEventWire,
   error: EnvironmentAuthorizationError,
   stream: true,
 });
 
 export const WsSubscribeTerminalMetadataRpc = Rpc.make(WS_METHODS.subscribeTerminalMetadata, {
   payload: Schema.Struct({}),
-  success: TerminalMetadataStreamEvent,
+  success: TerminalMetadataStreamEventWire,
   error: EnvironmentAuthorizationError,
   stream: true,
 });
 
 export const WsSubscribeSshTerminalEventsRpc = Rpc.make(WS_METHODS.subscribeSshTerminalEvents, {
   payload: Schema.Struct({}),
-  success: SshTerminalEvent,
+  success: SshTerminalEventWire,
   error: EnvironmentAuthorizationError,
   stream: true,
 });
 
 export const WsSubscribeServerConfigRpc = Rpc.make(WS_METHODS.subscribeServerConfig, {
   payload: Schema.Struct({}),
-  success: ServerConfigStreamEvent,
+  success: ServerConfigStreamEventWire,
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError, EnvironmentAuthorizationError]),
   stream: true,
 });
 
 export const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecycle, {
   payload: Schema.Struct({}),
-  success: ServerLifecycleStreamEvent,
+  success: ServerLifecycleStreamEventWire,
   error: EnvironmentAuthorizationError,
   stream: true,
 });
 
 export const WsSubscribeAuthAccessRpc = Rpc.make(WS_METHODS.subscribeAuthAccess, {
   payload: Schema.Struct({}),
-  success: AuthAccessStreamEvent,
+  success: AuthAccessStreamEventWire,
   error: Schema.Union([AuthAccessStreamError, EnvironmentAuthorizationError]),
   stream: true,
 });

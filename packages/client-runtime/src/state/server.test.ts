@@ -569,12 +569,19 @@ describe("server state projection", () => {
       projectName: "repo",
     } as ServerLifecycleWelcomePayload;
     const [afterWelcome] = projectServerWelcome(Option.none(), {
+      version: 1,
+      sequence: 1,
       type: "welcome",
       payload: welcome,
     });
     const [afterReady, emitted] = projectServerWelcome(afterWelcome, {
+      version: 1,
+      sequence: 2,
       type: "ready",
-      payload: {},
+      payload: {
+        at: "2026-10-15T00:00:00.000Z",
+        environment: welcome.environment,
+      },
     });
 
     expect(Option.getOrThrow(afterReady)).toBe(welcome);

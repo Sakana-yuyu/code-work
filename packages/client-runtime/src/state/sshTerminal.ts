@@ -2,7 +2,11 @@
  * SSH 终端 atoms：镜像本地 terminal.ts 的 attach 流 + 会话命令形状，复用
  * web 端 Ghostty 渲染的接线方式；但缓冲状态由 SSH 事件契约直接驱动。
  */
-import type { SshTerminalAttachStreamEvent, SshTerminalSessionSnapshot } from "@codework/contracts";
+import {
+  isUnknownUnionMember,
+  type SshTerminalAttachStreamEventWire,
+  type SshTerminalSessionSnapshot,
+} from "@codework/contracts";
 import { WS_METHODS } from "@codework/contracts";
 import * as Stream from "effect/Stream";
 import { Atom } from "effect/unstable/reactivity";
@@ -64,9 +68,12 @@ export function sshTerminalBufferStateFromSnapshot(
 
 export function applySshTerminalAttachStreamEvent(
   current: SshTerminalBufferState,
-  event: SshTerminalAttachStreamEvent,
+  event: SshTerminalAttachStreamEventWire,
   maxBufferBytes = DEFAULT_MAX_SSH_TERMINAL_BUFFER_BYTES,
 ): SshTerminalBufferState {
+  if (isUnknownUnionMember(event)) {
+    return current;
+  }
   switch (event.type) {
     case "snapshot":
     case "started":

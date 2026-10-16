@@ -9,7 +9,13 @@
  * @module Preview
  */
 import { Schema } from "effect";
-import { NonNegativeInt, PositiveInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  ForwardCompatibleUnion,
+  NonNegativeInt,
+  PositiveInt,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 
 export const PREVIEW_URL_MAX_LENGTH = 2_048;
 export const PREVIEW_SCREENSHOT_DATA_URL_MAX_LENGTH = 16 * 1024 * 1024;
@@ -483,6 +489,11 @@ export const PreviewEvent = Schema.Union([
   PreviewAnnotationEvent,
 ]);
 export type PreviewEvent = typeof PreviewEvent.Type;
+
+// Server→client wire shape: a `type` member this build does not know decodes to
+// UnknownUnionMember (skipped by the consumer) instead of failing the stream.
+export const PreviewEventWire = ForwardCompatibleUnion(PreviewEvent.members, "type");
+export type PreviewEventWire = typeof PreviewEventWire.Type;
 
 /**
  * A localhost server detected by the port scanner. Used to populate the

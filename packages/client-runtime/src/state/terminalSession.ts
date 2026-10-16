@@ -1,10 +1,11 @@
-import type {
-  EnvironmentId,
-  TerminalAttachStreamEvent,
-  TerminalMetadataStreamEvent,
-  TerminalSessionSnapshot,
-  TerminalSummary,
-  ThreadId,
+import {
+  isUnknownUnionMember,
+  type EnvironmentId,
+  type TerminalAttachStreamEventWire,
+  type TerminalMetadataStreamEventWire,
+  type TerminalSessionSnapshot,
+  type TerminalSummary,
+  type ThreadId,
 } from "@codework/contracts";
 
 export interface TerminalSessionState {
@@ -124,9 +125,12 @@ export function combineTerminalSessionState(
 
 export function applyTerminalAttachStreamEvent(
   current: TerminalBufferState,
-  event: TerminalAttachStreamEvent,
+  event: TerminalAttachStreamEventWire,
   maxBufferBytes = DEFAULT_MAX_TERMINAL_BUFFER_BYTES,
 ): TerminalBufferState {
+  if (isUnknownUnionMember(event)) {
+    return current;
+  }
   switch (event.type) {
     case "snapshot":
     case "restarted":
@@ -174,8 +178,11 @@ export function applyTerminalAttachStreamEvent(
 
 export function applyTerminalMetadataStreamEvent(
   current: ReadonlyArray<TerminalSummary>,
-  event: TerminalMetadataStreamEvent,
+  event: TerminalMetadataStreamEventWire,
 ): ReadonlyArray<TerminalSummary> {
+  if (isUnknownUnionMember(event)) {
+    return current;
+  }
   if (event.type === "snapshot") {
     return event.terminals;
   }

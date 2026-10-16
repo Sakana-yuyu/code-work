@@ -1,12 +1,13 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import type {
-  ScopedThreadRef,
-  SpecWorkflowCapability,
-  SpecWorkflowEvent,
-  SpecWorkflowFlag,
-  SpecWorkflowIntentName,
-  SpecWorkflowState,
-  SpecWorkflowStateEvent,
+import {
+  isUnknownUnionMember,
+  type ScopedThreadRef,
+  type SpecWorkflowCapability,
+  type SpecWorkflowEvent,
+  type SpecWorkflowFlag,
+  type SpecWorkflowIntentName,
+  type SpecWorkflowState,
+  type SpecWorkflowStateEventWire,
 } from "@codework/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
@@ -34,9 +35,9 @@ function resolveCapabilitySnapshot(
 
 function resolveStateSnapshot(
   queryState: SpecWorkflowState | null,
-  event: SpecWorkflowStateEvent | null,
+  event: SpecWorkflowStateEventWire | null,
 ): SpecWorkflowState | null {
-  return event === null ? queryState : event.state;
+  return event === null || isUnknownUnionMember(event) ? queryState : event.state;
 }
 
 export interface SpecWorkflowCapabilityState {
@@ -88,7 +89,7 @@ export function createSpecWorkflowView<R, E>(input: SpecWorkflowViewInput<R, E>)
     AsyncResult.success<SpecWorkflowState | null, never>(null),
   ).pipe(Atom.withLabel(`${input.labelPrefix}-spec-workflow-state:empty`));
   const EMPTY_STATE_EVENT_ATOM = Atom.make(
-    AsyncResult.initial<SpecWorkflowStateEvent, never>(false),
+    AsyncResult.initial<SpecWorkflowStateEventWire, never>(false),
   ).pipe(Atom.withLabel(`${input.labelPrefix}-spec-workflow-state-events:empty`));
 
   function useSpecWorkflowCapability(

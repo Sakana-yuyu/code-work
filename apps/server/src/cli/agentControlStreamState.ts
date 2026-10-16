@@ -1,5 +1,10 @@
 import { applyThreadDetailEvent } from "@codework/client-runtime/state/thread-reducer";
-import type { OrchestrationThread, OrchestrationThreadStreamItem } from "@codework/contracts";
+import {
+  isUnknownOrchestrationEvent,
+  isUnknownUnionMember,
+  type OrchestrationThread,
+  type OrchestrationThreadStreamItemWire,
+} from "@codework/contracts";
 
 import { deriveAgentStatus } from "./agentControlState.ts";
 
@@ -17,8 +22,11 @@ export const initialAgentStreamState: AgentStreamState = {
 
 export function reduceAgentStreamState(
   state: AgentStreamState,
-  item: OrchestrationThreadStreamItem,
+  item: OrchestrationThreadStreamItemWire,
 ): AgentStreamState {
+  if (isUnknownUnionMember(item)) {
+    return state;
+  }
   if (item.kind === "synchronized") {
     return { ...state, synchronized: true };
   }
@@ -29,6 +37,7 @@ export function reduceAgentStreamState(
       deleted: false,
     };
   }
+  if (isUnknownOrchestrationEvent(item.event)) return state;
   if (state.thread === null) return state;
 
   const reduced = applyThreadDetailEvent(state.thread, item.event);

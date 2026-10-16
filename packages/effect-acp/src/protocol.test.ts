@@ -334,9 +334,8 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       "非法 Harn 元数据",
       { sessionId: "session-1", update: { sessionUpdate: "progress", _meta: { harn: null } } },
     ],
-    ["未知更新类型", { sessionId: "session-1", update: { sessionUpdate: "unknown" } }],
   ] as const) {
-    it.effect("非法进度或未知通知仍报协议错误：" + name, () =>
+    it.effect("非法进度通知仍报协议错误：" + name, () =>
       Effect.gen(function* () {
         const { stdio, input } = yield* makeInMemoryStdio();
         const termination = yield* Deferred.make<AcpError.AcpError>();
@@ -357,6 +356,118 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       }),
     );
   }
+
+  it.effect("未知 sessionUpdate 路由为扩展通知，后续标准通知继续解析", () =>
+    Effect.gen(function* () {
+      const { stdio, input } = yield* makeInMemoryStdio();
+      const notifications = yield* Deferred.make<
+        ReadonlyArray<AcpProtocol.AcpIncomingNotification>,
+        AcpError.AcpError
+      >();
+      const transport = yield* AcpProtocol.makeAcpPatchedProtocol({
+        stdio,
+        serverRequestMethods: new Set(),
+        onTermination: (error) => Deferred.fail(notifications, error).pipe(Effect.asVoid),
+      });
+      yield* transport.incoming.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.flatMap((chunk) => Deferred.succeed(notifications, chunk)),
+        Effect.forkScoped,
+      );
+      const unknownParams = {
+        sessionId: "session-1",
+        update: { sessionUpdate: "future_capability_update", capabilities: [] },
+      };
+      for (const params of [
+        unknownParams,
+        {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "still alive" },
+          },
+        },
+      ])
+        yield* Queue.offer(
+          input,
+          encoder.encode(
+            encodeUnknownJsonString({
+              jsonrpc: "2.0",
+              method: "session/update",
+              params,
+            }) + "\n",
+          ),
+        );
+      const [unknown, standard] = yield* Deferred.await(notifications);
+      assert.deepEqual(unknown, {
+        _tag: "ExtNotification",
+        method: "session/update",
+        params: unknownParams,
+      });
+      assert.equal(standard?._tag, "SessionUpdate");
+    }),
+  );
+
+  it.effect("已知 update 内嵌未知 type 成员被丢弃且不终止会话", () =>
+    Effect.gen(function* () {
+      const { stdio, input } = yield* makeInMemoryStdio();
+      const notifications = yield* Deferred.make<
+        ReadonlyArray<AcpProtocol.AcpIncomingNotification>,
+        AcpError.AcpError
+      >();
+      const transport = yield* AcpProtocol.makeAcpPatchedProtocol({
+        stdio,
+        serverRequestMethods: new Set(),
+        onTermination: (error) => Deferred.fail(notifications, error).pipe(Effect.asVoid),
+      });
+      yield* transport.incoming.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.flatMap((chunk) => Deferred.succeed(notifications, chunk)),
+        Effect.forkScoped,
+      );
+      for (const params of [
+        {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "call-1",
+            content: [
+              { type: "future_content_kind", payload: 1 },
+              { type: "content", content: { type: "text", text: "kept" } },
+            ],
+          },
+        },
+        {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "still alive" },
+          },
+        },
+      ])
+        yield* Queue.offer(
+          input,
+          encoder.encode(
+            encodeUnknownJsonString({
+              jsonrpc: "2.0",
+              method: "session/update",
+              params,
+            }) + "\n",
+          ),
+        );
+      const [tolerated, standard] = yield* Deferred.await(notifications);
+      assert.equal(tolerated?._tag, "SessionUpdate");
+      const update =
+        tolerated?._tag === "SessionUpdate"
+          ? (tolerated.params as { update: unknown }).update
+          : null;
+      const content = (update as { content?: ReadonlyArray<unknown> }).content;
+      assert.equal(content?.length, 1);
+      assert.equal(standard?._tag, "SessionUpdate");
+    }),
+  );
 
   it.effect("所有 ACP 通知在线上省略 id，普通请求的空字符串 id 仍需回应", () =>
     Effect.gen(function* () {

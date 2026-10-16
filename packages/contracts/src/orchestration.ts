@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as SchemaGetter from "effect/SchemaGetter";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import * as Struct from "effect/Struct";
@@ -11,6 +12,7 @@ import {
   ClientSurface,
   CommandId,
   EventId,
+  ForwardCompatibleUnion,
   IsoDateTime,
   MessageId,
   NonNegativeInt,
@@ -21,6 +23,7 @@ import {
   TrimmedNonEmptyString,
   TrimmedString,
   TurnId,
+  UnknownUnionMember,
 } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import { ThreadGoalObjective } from "./goal.ts";
@@ -704,6 +707,26 @@ export const OrchestrationShellStreamItem = Schema.Union([
   OrchestrationShellStreamEvent,
 ]);
 export type OrchestrationShellStreamItem = typeof OrchestrationShellStreamItem.Type;
+
+/**
+ * Server→client wire shape of the shell stream. Newer servers may add `kind`
+ * members; clients decode those to `UnknownUnionMember` (and skip them)
+ * instead of failing the subscription. The encoded shape is identical to the
+ * strict union — the member list is flattened so shell events share the same
+ * `kind` tag space as before.
+ */
+export const OrchestrationShellStreamItemWire = ForwardCompatibleUnion(
+  [
+    Schema.Struct({ kind: Schema.Literal("synchronized") }),
+    Schema.Struct({
+      kind: Schema.Literal("snapshot"),
+      snapshot: OrchestrationShellSnapshot,
+    }),
+    ...OrchestrationShellStreamEvent.members,
+  ],
+  "kind",
+);
+export type OrchestrationShellStreamItemWire = typeof OrchestrationShellStreamItemWire.Type;
 
 export const OrchestrationSubscribeShellInput = Schema.Struct({
   /**
@@ -1751,6 +1774,76 @@ export const OrchestrationThreadStreamItem = Schema.Union([
 ]);
 export type OrchestrationThreadStreamItem = typeof OrchestrationThreadStreamItem.Type;
 
+/**
+ * A `thread` stream event whose `type` this build does not know (emitted by a
+ * newer server). Unlike a generic unknown-union marker it keeps `sequence`:
+ * clients advance their per-thread watermark past it so a skipped event does
+ * not wedge an older-page merge waiting on the sequence it carried.
+ */
+export class UnknownOrchestrationEvent extends UnknownUnionMember<"type"> {
+  readonly sequence: number | undefined;
+  constructor(type: string, sequence: number | undefined) {
+    super("type", type);
+    this.sequence = sequence;
+  }
+}
+export const isUnknownOrchestrationEvent = (event: unknown): event is UnknownOrchestrationEvent =>
+  event instanceof UnknownOrchestrationEvent;
+
+const orchestrationEventTypes = new Set(
+  OrchestrationEvent.members.map(
+    (member) => (member.fields.type as { readonly literal: string }).literal,
+  ),
+);
+
+const unknownOrchestrationEventMember = Schema.Struct({
+  type: Schema.String.check(
+    Schema.makeFilter(
+      (value: string) =>
+        !orchestrationEventTypes.has(value) || "A known event type must decode in full.",
+    ),
+  ),
+  sequence: Schema.optional(NonNegativeInt),
+}).pipe(
+  Schema.decodeTo(Schema.instanceOf(UnknownOrchestrationEvent), {
+    decode: SchemaGetter.transform(
+      (raw: { readonly type: string; readonly sequence?: number | undefined }) =>
+        new UnknownOrchestrationEvent(raw.type, raw.sequence),
+    ),
+    encode: SchemaGetter.forbidden(() => "Unknown event types are never sent."),
+  }),
+);
+
+const OrchestrationEventWire = Schema.Union([
+  ...OrchestrationEvent.members,
+  unknownOrchestrationEventMember,
+]);
+export type OrchestrationEventWire = typeof OrchestrationEventWire.Type;
+
+/**
+ * Server→client wire shape of the thread stream. Unknown `kind` members decode
+ * to `UnknownUnionMember` for the client to skip; inside an `event` member, an
+ * `event.type` this build does not know decodes to `UnknownOrchestrationEvent`,
+ * so a newer server cannot kill an older client's subscription with a new
+ * event or item kind. Encoding is unchanged: servers only ever send known
+ * members.
+ */
+export const OrchestrationThreadStreamItemWire = ForwardCompatibleUnion(
+  [
+    Schema.Struct({ kind: Schema.Literal("synchronized") }),
+    Schema.Struct({
+      kind: Schema.Literal("snapshot"),
+      snapshot: OrchestrationThreadDetailSnapshot,
+    }),
+    Schema.Struct({
+      kind: Schema.Literal("event"),
+      event: OrchestrationEventWire,
+    }),
+  ],
+  "kind",
+);
+export type OrchestrationThreadStreamItemWire = typeof OrchestrationThreadStreamItemWire.Type;
+
 export const OrchestrationCommandReceiptStatus = Schema.Literals(["accepted", "rejected"]);
 export type OrchestrationCommandReceiptStatus = typeof OrchestrationCommandReceiptStatus.Type;
 
@@ -1937,11 +2030,11 @@ export const OrchestrationRpcSchemas = {
   },
   subscribeThread: {
     input: OrchestrationSubscribeThreadInput,
-    output: OrchestrationThreadStreamItem,
+    output: OrchestrationThreadStreamItemWire,
   },
   subscribeShell: {
     input: OrchestrationSubscribeShellInput,
-    output: OrchestrationShellStreamItem,
+    output: OrchestrationShellStreamItemWire,
   },
 } as const;
 

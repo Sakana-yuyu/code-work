@@ -1,7 +1,12 @@
 import * as Schema from "effect/Schema";
 import * as HttpApiSchema from "effect/unstable/httpapi/HttpApiSchema";
 
-import { AuthSessionId, ClientSurface, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  AuthSessionId,
+  ClientSurface,
+  ForwardCompatibleUnion,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 
 /**
  * Declares the server's overall authentication posture.
@@ -321,6 +326,14 @@ export const AuthAccessStreamEvent = Schema.Union([
   AuthAccessStreamClientRemovedEvent,
 ]);
 export type AuthAccessStreamEvent = typeof AuthAccessStreamEvent.Type;
+
+// Server→client wire shape: a `type` member this build does not know decodes to
+// UnknownUnionMember (skipped by the consumer) instead of failing the stream.
+export const AuthAccessStreamEventWire = ForwardCompatibleUnion(
+  AuthAccessStreamEvent.members,
+  "type",
+);
+export type AuthAccessStreamEventWire = typeof AuthAccessStreamEventWire.Type;
 
 export const AuthRevokePairingLinkInput = Schema.Struct({
   id: TrimmedNonEmptyString,

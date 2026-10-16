@@ -1,6 +1,11 @@
 import * as Schema from "effect/Schema";
 
-import { NonNegativeInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  ForwardCompatibleUnion,
+  NonNegativeInt,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 
 export const ThreadGoalStatus = Schema.Literals([
   "active",
@@ -89,6 +94,11 @@ export type ThreadGoalUpdatedEvent = typeof ThreadGoalUpdatedEvent.Type;
 
 export const ThreadGoalEvent = Schema.Union([ThreadGoalUpdatedEvent, ThreadGoalClearedEvent]);
 export type ThreadGoalEvent = typeof ThreadGoalEvent.Type;
+
+// Server→client wire shape: a `type` member this build does not know decodes to
+// UnknownUnionMember (skipped by the consumer) instead of failing the stream.
+export const ThreadGoalEventWire = ForwardCompatibleUnion(ThreadGoalEvent.members, "type");
+export type ThreadGoalEventWire = typeof ThreadGoalEventWire.Type;
 
 export const ThreadGoalErrorCode = Schema.Literals([
   "thread-not-found",

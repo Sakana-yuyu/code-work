@@ -3,7 +3,7 @@ import type {
   ScopedThreadRef,
   ThreadGoal,
   ThreadGoalErrorCode,
-  ThreadGoalEvent,
+  ThreadGoalEventWire,
   ThreadGoalRpcError,
 } from "@codework/contracts";
 import * as Cause from "effect/Cause";
@@ -24,7 +24,7 @@ const EMPTY_GOAL_RESULT_ATOM = Atom.make(AsyncResult.success<ThreadGoal | null, 
   Atom.withLabel("mobile-thread-goal:empty"),
 );
 const EMPTY_GOAL_EVENT_ATOM = Atom.make(
-  AsyncResult.success<ThreadGoalEvent, never>(null as never),
+  AsyncResult.success<ThreadGoalEventWire, never>(null as never),
 ).pipe(Atom.withLabel("mobile-thread-goal-events:empty"));
 
 function readThreadGoalErrorCode(cause: Cause.Cause<unknown>): ThreadGoalErrorCode | null {

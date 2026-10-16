@@ -1,10 +1,11 @@
 import { useAtomValue, useAtomRefresh } from "@effect/atom-react";
-import type {
-  ScopedThreadRef,
-  ThreadGoal,
-  ThreadGoalErrorCode,
-  ThreadGoalEvent,
-  ThreadGoalRpcError,
+import {
+  isUnknownUnionMember,
+  type ScopedThreadRef,
+  type ThreadGoal,
+  type ThreadGoalErrorCode,
+  type ThreadGoalEventWire,
+  type ThreadGoalRpcError,
 } from "@codework/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
@@ -21,14 +22,14 @@ const EMPTY_GOAL_RESULT_ATOM = Atom.make(AsyncResult.success<ThreadGoal | null, 
   Atom.withLabel("web-thread-goal:empty"),
 );
 const EMPTY_GOAL_EVENT_ATOM = Atom.make(
-  AsyncResult.success<ThreadGoalEvent, never>(null as never),
+  AsyncResult.success<ThreadGoalEventWire, never>(null as never),
 ).pipe(Atom.withLabel("web-thread-goal-events:empty"));
 
 export function resolveThreadGoalSnapshot(
   queryGoal: ThreadGoal | null,
-  event: ThreadGoalEvent | null,
+  event: ThreadGoalEventWire | null,
 ): ThreadGoal | null {
-  if (event === null) return queryGoal;
+  if (event === null || isUnknownUnionMember(event)) return queryGoal;
   return event.type === "updated" ? event.goal : null;
 }
 

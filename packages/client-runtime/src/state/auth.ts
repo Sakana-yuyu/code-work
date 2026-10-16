@@ -1,9 +1,10 @@
 import type {
   AuthAccessSnapshot,
   AuthAccessStreamEvent,
+  AuthAccessStreamEventWire,
   AuthAccessStreamSnapshotEvent,
 } from "@codework/contracts";
-import { WS_METHODS } from "@codework/contracts";
+import { isUnknownUnionMember, WS_METHODS } from "@codework/contracts";
 import * as Stream from "effect/Stream";
 import { Atom } from "effect/unstable/reactivity";
 
@@ -27,8 +28,11 @@ function upsertByKey<A>(
 
 export function applyAuthAccessStreamEvent(
   current: AuthAccessSnapshot,
-  event: AuthAccessStreamEvent,
+  event: AuthAccessStreamEventWire,
 ): AuthAccessSnapshot {
+  if (isUnknownUnionMember(event)) {
+    return current;
+  }
   switch (event.type) {
     case "snapshot":
       return event.payload;
@@ -63,8 +67,11 @@ export function applyAuthAccessStreamEvent(
 
 export function projectAuthAccessSnapshot(
   current: AuthAccessSnapshot,
-  event: AuthAccessStreamEvent,
+  event: AuthAccessStreamEventWire,
 ): readonly [AuthAccessSnapshot, ReadonlyArray<AuthAccessStreamEvent>] {
+  if (isUnknownUnionMember(event)) {
+    return [current, []];
+  }
   const snapshot = applyAuthAccessStreamEvent(current, event);
   const projected: AuthAccessStreamSnapshotEvent = {
     version: 1,

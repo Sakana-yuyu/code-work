@@ -1,10 +1,12 @@
 import {
+  isUnknownOrchestrationEvent,
+  isUnknownUnionMember,
   ORCHESTRATION_WS_METHODS,
   type EnvironmentId as EnvironmentIdType,
   type OrchestrationThread,
   type OrchestrationThreadDetailPage,
   type OrchestrationThreadDetailSnapshot,
-  type OrchestrationThreadStreamItem,
+  type OrchestrationThreadStreamItemWire,
   type ThreadId as ThreadIdType,
 } from "@codework/contracts";
 import * as Cause from "effect/Cause";
@@ -380,8 +382,14 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
 
   // Body of applyItem, running under applyLock.
   const applyItemLocked = Effect.fn("EnvironmentThreadState.applyItemLocked")(function* (
-    item: OrchestrationThreadStreamItem,
+    item: OrchestrationThreadStreamItemWire,
   ) {
+    // A newer server can stream item kinds this build does not know; they
+    // decode to UnknownUnionMember and are skipped rather than failing the
+    // subscription.
+    if (isUnknownUnionMember(item)) {
+      return;
+    }
     if (item.kind === "synchronized") {
       yield* Ref.set(awaitingCompletion, false);
       yield* SubscriptionRef.update(state, (current) =>
@@ -403,6 +411,15 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       return;
     }
 
+    if (isUnknownOrchestrationEvent(item.event)) {
+      // A newer server emitted an event type this build does not know: skip it
+      // but still advance the watermark past the sequence it carried, so a
+      // parked older page is not left waiting on a gap that never fills.
+      if (item.event.sequence !== undefined) {
+        yield* SubscriptionRef.set(lastSequence, item.event.sequence);
+      }
+      return;
+    }
     const sequence = yield* SubscriptionRef.get(lastSequence);
     if (item.event.sequence <= sequence) {
       return;
@@ -465,7 +482,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
   );
 
   const applyItem = Effect.fn("EnvironmentThreadState.applyItem")(function* (
-    item: OrchestrationThreadStreamItem,
+    item: OrchestrationThreadStreamItemWire,
   ) {
     // 内容和游标在同一应用锁内发布，退出时不会保存“新游标、旧内容”。
     yield* applyLock.withPermits(1)(applyItemLocked(item).pipe(Effect.andThen(remember)));

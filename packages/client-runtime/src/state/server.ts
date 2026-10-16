@@ -1,8 +1,11 @@
 import {
   type EnvironmentId,
+  isUnknownUnionMember,
   type ServerConfig,
   type ServerConfigStreamEvent,
+  type ServerConfigStreamEventWire,
   type ServerLifecycleWelcomePayload,
+  type ServerLifecycleStreamEventWire,
   type ServerLifecycleStreamReadyEvent,
   type ServerSelfUpdateProgressEvent,
   type ServerSelfUpdateResult,
@@ -706,8 +709,11 @@ export interface ServerConfigProjection {
 
 export function applyServerConfigProjection(
   current: Option.Option<ServerConfigProjection>,
-  event: ServerConfigStreamEvent,
+  event: ServerConfigStreamEventWire,
 ): Option.Option<ServerConfigProjection> {
+  if (isUnknownUnionMember(event)) {
+    return current;
+  }
   switch (event.type) {
     case "snapshot":
       return Option.some({
@@ -748,7 +754,7 @@ export function applyServerConfigProjection(
 
 export function projectServerConfig(
   current: Option.Option<ServerConfigProjection>,
-  event: ServerConfigStreamEvent,
+  event: ServerConfigStreamEventWire,
 ): readonly [Option.Option<ServerConfigProjection>, ReadonlyArray<ServerConfigProjection>] {
   const next = applyServerConfigProjection(current, event);
   return [next, Option.toArray(next)];
@@ -877,15 +883,12 @@ export function serverConfigStateChanges(environmentId: EnvironmentId) {
 
 export function projectServerWelcome(
   current: Option.Option<ServerLifecycleWelcomePayload>,
-  event: {
-    readonly type: "welcome" | "ready";
-    readonly payload: unknown;
-  },
+  event: ServerLifecycleStreamEventWire,
 ): readonly [
   Option.Option<ServerLifecycleWelcomePayload>,
   ReadonlyArray<ServerLifecycleWelcomePayload>,
 ] {
-  if (event.type !== "welcome") {
+  if (isUnknownUnionMember(event) || event.type !== "welcome") {
     return [current, []];
   }
   const welcome = event.payload as ServerLifecycleWelcomePayload;
@@ -1015,8 +1018,14 @@ export function createServerEnvironmentAtoms<R, E>(
                       runStream(WS_METHODS.serverUpdateServerWithProgress, target.input),
                     )
                     .pipe(
-                      Stream.runForEach((event) =>
-                        Effect.sync(() => {
+                      Stream.runForEach((event) => {
+                        // A newer server can emit progress event kinds this
+                        // build does not know; skipping keeps the last known
+                        // stage instead of failing the update stream.
+                        if (isUnknownUnionMember(event)) {
+                          return Effect.void;
+                        }
+                        return Effect.sync(() => {
                           currentStage = event.type === "complete" ? "resuming" : event.stage;
                           atomRegistry.set(
                             stateAtom,
@@ -1028,8 +1037,8 @@ export function createServerEnvironmentAtoms<R, E>(
                               ? Ref.set(terminal, Option.some(event.result))
                               : Effect.void,
                           ),
-                        ),
-                      ),
+                        );
+                      }),
                       Effect.exit,
                     );
                   return yield* resolveServerUpdateProgressResult(
@@ -1082,7 +1091,9 @@ export function createServerEnvironmentAtoms<R, E>(
           .pipe(
             Stream.filter(
               (event): event is ServerLifecycleStreamReadyEvent =>
-                event.type === "ready" && matchesServerUpdateReadyEvent(result, event),
+                !isUnknownUnionMember(event) &&
+                event.type === "ready" &&
+                matchesServerUpdateReadyEvent(result, event),
             ),
             Stream.runHead,
             Effect.timeoutOption(SERVER_UPDATE_RESUME_TIMEOUT),

@@ -8,11 +8,12 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopedThreadKey } from "@codework/client-runtime/environment";
 import {
+  isUnknownUnionMember,
   type DesktopPreviewColorScheme,
   type DesktopPreviewFavicon,
   type PreviewAppearancePreference,
   type PreviewControl,
-  type PreviewEvent,
+  type PreviewEventWire,
   type PreviewListResult,
   type PreviewSessionSnapshot,
   type ScopedThreadRef,
@@ -227,7 +228,12 @@ export function subscribeThreadPreviewState(
   });
 }
 
-export function applyPreviewServerEvent(ref: ScopedThreadRef, event: PreviewEvent): void {
+export function applyPreviewServerEvent(ref: ScopedThreadRef, event: PreviewEventWire): void {
+  // A newer server can emit preview event kinds this build does not know;
+  // skipping keeps the last known state instead of failing the stream.
+  if (isUnknownUnionMember(event)) {
+    return;
+  }
   updateThreadPreviewState(ref, (current) => {
     if (current.serverEpoch !== null && event.serverEpoch !== current.serverEpoch) return current;
     if (event.revision < current.serverRevision) return current;

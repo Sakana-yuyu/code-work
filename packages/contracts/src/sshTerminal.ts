@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ForwardCompatibleUnion, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { SshServerId } from "./sshServers.ts";
 
 /**
@@ -110,6 +110,11 @@ export const SshTerminalEvent = Schema.Union([
 ]);
 export type SshTerminalEvent = typeof SshTerminalEvent.Type;
 
+// Server→client wire shape: a `type` member this build does not know decodes to
+// UnknownUnionMember (skipped by the consumer) instead of failing the stream.
+export const SshTerminalEventWire = ForwardCompatibleUnion(SshTerminalEvent.members, "type");
+export type SshTerminalEventWire = typeof SshTerminalEventWire.Type;
+
 const SshTerminalSnapshotStreamEvent = Schema.Struct({
   type: Schema.Literal("snapshot"),
   snapshot: SshTerminalSessionSnapshot,
@@ -124,6 +129,14 @@ export const SshTerminalAttachStreamEvent = Schema.Union([
   SshTerminalErrorEvent,
 ]);
 export type SshTerminalAttachStreamEvent = typeof SshTerminalAttachStreamEvent.Type;
+
+// Server→client wire shape: a `type` member this build does not know decodes to
+// UnknownUnionMember (skipped by the consumer) instead of failing the stream.
+export const SshTerminalAttachStreamEventWire = ForwardCompatibleUnion(
+  SshTerminalAttachStreamEvent.members,
+  "type",
+);
+export type SshTerminalAttachStreamEventWire = typeof SshTerminalAttachStreamEventWire.Type;
 
 export class SshTerminalSessionLookupError extends Schema.TaggedErrorClass<SshTerminalSessionLookupError>()(
   "SshTerminalSessionLookupError",

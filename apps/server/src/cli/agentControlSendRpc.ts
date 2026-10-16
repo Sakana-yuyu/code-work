@@ -1,9 +1,16 @@
 import * as NodeCrypto from "node:crypto";
 
-import { CommandId, MessageId, ORCHESTRATION_WS_METHODS, ThreadId } from "@codework/contracts";
+import {
+  CommandId,
+  isUnknownUnionMember,
+  MessageId,
+  ORCHESTRATION_WS_METHODS,
+  ThreadId,
+} from "@codework/contracts";
 import * as Data from "effect/Data";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Result from "effect/Result";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
@@ -63,8 +70,11 @@ export const sendToAgent = (
           threadId: ThreadId.make(options.agentId),
           requestCompletionMarker: true,
         }).pipe(
-          Stream.filter((item) => item.kind === "snapshot"),
-          Stream.map((item) => item.snapshot.thread),
+          Stream.filterMap((item) =>
+            !isUnknownUnionMember(item) && item.kind === "snapshot"
+              ? Result.succeed(item.snapshot.thread)
+              : Result.failVoid,
+          ),
           Stream.runHead,
           Effect.flatMap(
             Option.match({

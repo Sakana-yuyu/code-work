@@ -8,6 +8,7 @@ import {
 import { ServerAuthDescriptor } from "./auth.ts";
 import {
   ForwardCompatibleArray,
+  ForwardCompatibleUnion,
   IsoDateTime,
   NonNegativeInt,
   PositiveInt,
@@ -603,6 +604,14 @@ export const ServerConfigStreamEvent = Schema.Union([
 ]);
 export type ServerConfigStreamEvent = typeof ServerConfigStreamEvent.Type;
 
+// Server→client wire shape: a `type` member this build does not know decodes to
+// UnknownUnionMember (skipped by the consumer) instead of failing the stream.
+export const ServerConfigStreamEventWire = ForwardCompatibleUnion(
+  ServerConfigStreamEvent.members,
+  "type",
+);
+export type ServerConfigStreamEventWire = typeof ServerConfigStreamEventWire.Type;
+
 /** Terminal selection recorded by the service launcher for one update. */
 export const ServerSelfUpdateOutcome = Schema.Struct({
   id: TrimmedNonEmptyString,
@@ -651,6 +660,14 @@ export const ServerLifecycleStreamEvent = Schema.Union([
   ServerLifecycleStreamReadyEvent,
 ]);
 export type ServerLifecycleStreamEvent = typeof ServerLifecycleStreamEvent.Type;
+
+// Server→client wire shape: a `type` member this build does not know decodes to
+// UnknownUnionMember (skipped by the consumer) instead of failing the stream.
+export const ServerLifecycleStreamEventWire = ForwardCompatibleUnion(
+  ServerLifecycleStreamEvent.members,
+  "type",
+);
+export type ServerLifecycleStreamEventWire = typeof ServerLifecycleStreamEventWire.Type;
 
 export const ServerProviderUpdatedPayload = Schema.Struct({
   providers: ServerProviders,
@@ -720,6 +737,14 @@ export const ServerSelfUpdateProgressEvent = Schema.Union([
   }),
 ]);
 export type ServerSelfUpdateProgressEvent = typeof ServerSelfUpdateProgressEvent.Type;
+
+// Server→client wire shape: a `type` member this build does not know decodes to
+// UnknownUnionMember (skipped by the consumer) instead of failing the stream.
+export const ServerSelfUpdateProgressEventWire = ForwardCompatibleUnion(
+  ServerSelfUpdateProgressEvent.members,
+  "type",
+);
+export type ServerSelfUpdateProgressEventWire = typeof ServerSelfUpdateProgressEventWire.Type;
 
 export class ServerSelfUpdateError extends Schema.TaggedErrorClass<ServerSelfUpdateError>()(
   "ServerSelfUpdateError",

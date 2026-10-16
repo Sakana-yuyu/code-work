@@ -73,6 +73,122 @@ interface AcpPendingRequest {
 }
 
 const decodeSessionUpdate = Schema.decodeUnknownEffect(AcpSchema.SessionNotification);
+
+// The ACP union tags an agent may grow (new spec versions add members). A tag
+// this build does not know is tolerated instead of failing the whole session:
+// unknown `sessionUpdate` values are routed as extension notifications, and
+// unknown `type` members nested inside a known update are neutralized.
+const literalTagSet = (
+  members: ReadonlyArray<{ readonly fields: object }>,
+  field: string,
+): ReadonlySet<string> => {
+  const tags = new Set<string>();
+  for (const member of members) {
+    const entry = (member.fields as Record<string, unknown>)[field] as
+      | { readonly literal?: unknown }
+      | undefined;
+    if (typeof entry?.literal === "string") {
+      tags.add(entry.literal);
+    }
+  }
+  return tags;
+};
+
+const knownSessionUpdateTags = literalTagSet(AcpSchema.SessionUpdate.members, "sessionUpdate");
+const knownNestedTypeTags = new Set([
+  ...literalTagSet(AcpSchema.ContentBlock.members, "type"),
+  ...literalTagSet(AcpSchema.ToolCallContent.members, "type"),
+]);
+
+const payloadSessionUpdateTag = (payload: unknown): string | null => {
+  if (typeof payload !== "object" || payload === null) return null;
+  const update = (payload as { readonly update?: unknown }).update;
+  if (typeof update !== "object" || update === null) return null;
+  const tag = (update as { readonly sessionUpdate?: unknown }).sessionUpdate;
+  return typeof tag === "string" ? tag : null;
+};
+
+// `sessionUpdate` values claimed by proprietary extension decoders (e.g. Harn
+// progress) are not "unknown" for tolerance purposes: a malformed proprietary
+// payload must still surface the strict decode error instead of being re-routed
+// to the extension channel.
+const PROPRIETARY_SESSION_UPDATE_TAGS = new Set(["progress"]);
+
+// The notification envelope must still be well formed before an unknown update
+// is tolerated: a bad `sessionId` or `_meta` is a protocol error regardless of
+// what the update member carries.
+const isSessionUpdateEnvelope = Schema.is(
+  Schema.Struct({ ...AcpSchema.SessionNotification.fields, update: Schema.Unknown }),
+);
+
+const isUnknownSessionUpdatePayload = (payload: unknown): boolean => {
+  const tag = payloadSessionUpdateTag(payload);
+  return (
+    tag !== null &&
+    !knownSessionUpdateTags.has(tag) &&
+    !PROPRIETARY_SESSION_UPDATE_TAGS.has(tag) &&
+    isSessionUpdateEnvelope(payload)
+  );
+};
+
+const isUnknownTypedObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as { readonly type?: unknown }).type === "string" &&
+  !knownNestedTypeTags.has((value as { readonly type: string }).type);
+
+const NEUTRAL_TEXT_BLOCK = { type: "text", text: "" } as const;
+
+// Drops unknown-typed members from arrays (upstream renders them as skipped
+// `_t3_unknown` rows; dropping is the equivalent for our adapter switch) and
+// replaces a scalar slot holding an unknown member with an empty text block so
+// required fields still decode. Returns null when nothing changed.
+const neutralizeUnknownNestedMembers = (value: unknown): unknown => {
+  const walk = (node: unknown, changed: { value: boolean }): unknown => {
+    if (Array.isArray(node)) {
+      return node.flatMap((element) => {
+        if (isUnknownTypedObject(element)) {
+          changed.value = true;
+          return [];
+        }
+        return [walk(element, changed)];
+      });
+    }
+    if (typeof node === "object" && node !== null) {
+      if (isUnknownTypedObject(node)) {
+        changed.value = true;
+        return NEUTRAL_TEXT_BLOCK;
+      }
+      const record: Record<string, unknown> = {};
+      for (const [key, child] of Object.entries(node)) {
+        record[key] = walk(child, changed);
+      }
+      return record;
+    }
+    return node;
+  };
+  const changed = { value: false };
+  const result = walk(value, changed);
+  return changed.value ? result : null;
+};
+
+// A known `sessionUpdate` carrying an unknown nested union member still fails
+// strict decode; retry once on the neutralized payload so a single new content
+// kind cannot terminate the session. A genuinely malformed known update still
+// surfaces the original parse error.
+const decodeSessionUpdateTolerant = (payload: unknown) =>
+  decodeSessionUpdate(payload).pipe(
+    Effect.catch(() => {
+      const neutralized = neutralizeUnknownNestedMembers(
+        (payload as { readonly update?: unknown })?.update,
+      );
+      if (neutralized === null || typeof payload !== "object" || payload === null) {
+        return decodeSessionUpdate(payload);
+      }
+      return decodeSessionUpdate({ ...(payload as object), update: neutralized });
+    }),
+  );
+
 // CodeBuddy 2.159.0 以专有取消原因扩展标准工具状态；其它非法状态仍报协议错误。
 export const CodebuddyCancelledToolNotification = Schema.Struct({
   sessionId: Schema.String.check(Schema.isMinLength(1)),
@@ -315,7 +431,8 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       if (message.tag === CLIENT_METHODS.session_update) {
         if (
           isHarnProgressNotification(message.payload) ||
-          isCodebuddyCancelledToolNotification(message.payload)
+          isCodebuddyCancelledToolNotification(message.payload) ||
+          isUnknownSessionUpdatePayload(message.payload)
         ) {
           return dispatchNotification({
             _tag: "ExtNotification",
@@ -323,7 +440,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
             params: message.payload,
           });
         }
-        return decodeSessionUpdate(message.payload).pipe(
+        return decodeSessionUpdateTolerant(message.payload).pipe(
           Effect.map(
             (params) =>
               ({

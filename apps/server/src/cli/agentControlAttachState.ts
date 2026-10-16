@@ -1,4 +1,8 @@
-import type { OrchestrationMessage, OrchestrationThreadStreamItem } from "@codework/contracts";
+import {
+  isUnknownUnionMember,
+  type OrchestrationMessage,
+  type OrchestrationThreadStreamItemWire,
+} from "@codework/contracts";
 
 import {
   initialAgentStreamState,
@@ -141,11 +145,12 @@ function projectMessageFrames(
 
 export function reduceAgentAttachState(
   state: AgentAttachState,
-  item: OrchestrationThreadStreamItem,
+  item: OrchestrationThreadStreamItemWire,
 ): AgentAttachReduction {
   const stream = reduceAgentStreamState(state.stream, item);
   const thread = stream.thread;
-  const initialSnapshot = !state.initialized && item.kind === "snapshot";
+  const initialSnapshot =
+    !state.initialized && !isUnknownUnionMember(item) && item.kind === "snapshot";
   const messageFrames =
     thread === null ? [] : projectMessageFrames(state.stream.thread, thread, initialSnapshot);
   const status = thread === null ? null : deriveAgentStatus(thread);
@@ -161,15 +166,18 @@ export function reduceAgentAttachState(
         },
       ]
     : [];
-  const unavailableReason = stream.deleted
-    ? "deleted"
-    : item.kind !== "synchronized"
-      ? null
-      : thread === null
-        ? "missing-thread"
-        : thread.latestTurn === null
-          ? "missing-turn"
-          : null;
+  const unavailableReason =
+    stream.deleted || isUnknownUnionMember(item)
+      ? stream.deleted
+        ? "deleted"
+        : null
+      : item.kind !== "synchronized"
+        ? null
+        : thread === null
+          ? "missing-thread"
+          : thread.latestTurn === null
+            ? "missing-turn"
+            : null;
 
   return {
     state: {

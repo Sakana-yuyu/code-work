@@ -33,7 +33,9 @@ import {
   ProviderInstanceId,
   ThreadId,
   WS_METHODS,
+  isUnknownUnionMember,
   type OrchestrationThread,
+  type OrchestrationThreadStreamItem,
 } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -197,7 +199,10 @@ const awaitThread = (
       const state = yield* rpc[ORCHESTRATION_WS_METHODS.subscribeThread]({
         threadId,
       }).pipe(
-        Stream.filter((item) => item.kind === "snapshot"),
+        Stream.filter(
+          (item): item is OrchestrationThreadStreamItem =>
+            !isUnknownUnionMember(item) && item.kind === "snapshot",
+        ),
         Stream.take(1),
         Stream.runFold(
           () => initialAgentStreamState,

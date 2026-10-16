@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ForwardCompatibleUnion, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /**
  * Client-side id for the first shell opened on a thread. Ids are uniformly
@@ -149,6 +149,14 @@ export const TerminalMetadataStreamEvent = Schema.Union([
 ]);
 export type TerminalMetadataStreamEvent = typeof TerminalMetadataStreamEvent.Type;
 
+// Server→client wire shape: a `type` member this build does not know decodes to
+// UnknownUnionMember (skipped by the consumer) instead of failing the stream.
+export const TerminalMetadataStreamEventWire = ForwardCompatibleUnion(
+  TerminalMetadataStreamEvent.members,
+  "type",
+);
+export type TerminalMetadataStreamEventWire = typeof TerminalMetadataStreamEventWire.Type;
+
 const TerminalEventBaseSchema = Schema.Struct({
   threadId: Schema.String.check(Schema.isNonEmpty()),
   terminalId: Schema.String.check(Schema.isNonEmpty()),
@@ -215,6 +223,11 @@ export const TerminalEvent = Schema.Union([
 ]);
 export type TerminalEvent = typeof TerminalEvent.Type;
 
+// Server→client wire shape: a `type` member this build does not know decodes to
+// UnknownUnionMember (skipped by the consumer) instead of failing the stream.
+export const TerminalEventWire = ForwardCompatibleUnion(TerminalEvent.members, "type");
+export type TerminalEventWire = typeof TerminalEventWire.Type;
+
 const TerminalAttachSnapshotEvent = Schema.Struct({
   type: Schema.Literal("snapshot"),
   snapshot: TerminalSessionSnapshot,
@@ -231,6 +244,14 @@ export const TerminalAttachStreamEvent = Schema.Union([
   TerminalActivityEvent,
 ]);
 export type TerminalAttachStreamEvent = typeof TerminalAttachStreamEvent.Type;
+
+// Server→client wire shape: a `type` member this build does not know decodes to
+// UnknownUnionMember (skipped by the consumer) instead of failing the stream.
+export const TerminalAttachStreamEventWire = ForwardCompatibleUnion(
+  TerminalAttachStreamEvent.members,
+  "type",
+);
+export type TerminalAttachStreamEventWire = typeof TerminalAttachStreamEventWire.Type;
 
 export class TerminalCwdNotFoundError extends Schema.TaggedErrorClass<TerminalCwdNotFoundError>()(
   "TerminalCwdNotFoundError",

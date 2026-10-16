@@ -1,7 +1,14 @@
-import { assert, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
+import {
+  ForwardCompatibleUnion,
+  ForwardCompatibleUnionArray,
+  UnknownUnionMember,
+  hasUnknownUnionTag,
+  isUnknownUnionMember,
+} from "./baseSchemas.ts";
 import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
@@ -13,6 +20,9 @@ import {
   OrchestrationGetFullThreadDiffInput,
   OrchestrationGetTurnDiffInput,
   OrchestrationLatestTurn,
+  OrchestrationShellStreamEvent,
+  OrchestrationShellStreamItemWire,
+  OrchestrationThreadStreamItemWire,
   ProjectCreatedPayload,
   ProjectMetaUpdatedPayload,
   OrchestrationProposedPlan,
@@ -28,6 +38,7 @@ import {
   isProviderSendTurnSupportedImageMimeType,
   isProviderAgentSupportedAudioMimeType,
   isProviderAgentSupportedBlobMimeType,
+  isUnknownOrchestrationEvent,
 } from "./orchestration.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
@@ -1056,4 +1067,87 @@ it("isProviderAgentSupportedAudioMimeType and blob helpers gate unsafe types", (
   assert.strictEqual(isProviderAgentSupportedBlobMimeType("application/pdf"), true);
   assert.strictEqual(isProviderAgentSupportedBlobMimeType("image/svg+xml"), false);
   assert.strictEqual(isProviderAgentSupportedBlobMimeType("text/html"), false);
+});
+
+describe("forward-compatible wire streams", () => {
+  const ToyUnion = ForwardCompatibleUnion(
+    [
+      Schema.Struct({ kind: Schema.Literal("alpha"), value: Schema.String }),
+      Schema.Struct({ kind: Schema.Literal("beta") }),
+    ] as const,
+    "kind",
+  );
+  const decodeToy = Schema.decodeUnknownEffect(ToyUnion);
+  const decodeToyArray = Schema.decodeUnknownEffect(
+    ForwardCompatibleUnionArray(
+      [
+        Schema.Struct({ kind: Schema.Literal("alpha"), value: Schema.String }),
+        Schema.Struct({ kind: Schema.Literal("beta") }),
+      ] as const,
+      "kind",
+    ),
+  );
+  const decodeThreadStreamItem = Schema.decodeUnknownEffect(OrchestrationThreadStreamItemWire);
+  const decodeShellStreamItem = Schema.decodeUnknownEffect(OrchestrationShellStreamItemWire);
+
+  it.effect("decodes an unknown tag to UnknownUnionMember and keeps known members strict", () =>
+    Effect.gen(function* () {
+      const unknown = yield* decodeToy({ kind: "future_kind", extra: 1 });
+      assert.isTrue(isUnknownUnionMember(unknown));
+      assert.equal((unknown as UnknownUnionMember).tag, "kind");
+      assert.equal((unknown as UnknownUnionMember).value, "future_kind");
+
+      const known = yield* decodeToy({ kind: "alpha", value: "ok" });
+      assert.deepEqual(known, { kind: "alpha", value: "ok" });
+
+      const broken = yield* Effect.exit(decodeToy({ kind: "alpha" }));
+      assert.isTrue(broken._tag === "Failure");
+    }),
+  );
+
+  it.effect("ForwardCompatibleUnionArray drops unknown members and keeps valid ones", () =>
+    Effect.gen(function* () {
+      const decoded = yield* decodeToyArray([
+        { kind: "alpha", value: "a" },
+        { kind: "future_kind" },
+        { kind: "beta" },
+      ]);
+      assert.deepEqual(decoded, [{ kind: "alpha", value: "a" }, { kind: "beta" }]);
+    }),
+  );
+
+  it("hasUnknownUnionTag reports unknown tags on raw payloads", () => {
+    const check = hasUnknownUnionTag(OrchestrationShellStreamEvent.members, "kind");
+    assert.strictEqual(check({ kind: "future_item" }), true);
+    assert.strictEqual(check({ kind: "project-upserted" }), false);
+    assert.strictEqual(check({}), false);
+  });
+
+  it.effect("thread stream wire decodes unknown item kinds and unknown events with sequence", () =>
+    Effect.gen(function* () {
+      const unknownItem = yield* decodeThreadStreamItem({ kind: "thread.future_item" });
+      assert.isTrue(isUnknownUnionMember(unknownItem));
+
+      const futureEvent = yield* decodeThreadStreamItem({
+        kind: "event",
+        event: { type: "thread.future_event", sequence: 42, payload: { novel: true } },
+      });
+      assert.isFalse(isUnknownUnionMember(futureEvent));
+      if (futureEvent.kind !== "event") assert.fail("expected event item");
+      assert.isTrue(isUnknownOrchestrationEvent(futureEvent.event));
+      assert.equal(futureEvent.event.sequence, 42);
+
+      const broken = yield* Effect.exit(
+        decodeThreadStreamItem({ kind: "event", event: { type: "project.created" } }),
+      );
+      assert.isTrue(broken._tag === "Failure");
+    }),
+  );
+
+  it.effect("shell stream wire decodes unknown item kinds", () =>
+    Effect.gen(function* () {
+      const item = yield* decodeShellStreamItem({ kind: "shell.future_item" });
+      assert.isTrue(isUnknownUnionMember(item));
+    }),
+  );
 });

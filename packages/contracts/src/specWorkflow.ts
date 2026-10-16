@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 
 import {
   NonNegativeInt,
+  ForwardCompatibleUnion,
   PositiveInt,
   ProjectId,
   ThreadId,
@@ -241,6 +242,14 @@ export const SpecWorkflowStateEvent = Schema.Union([
   SpecWorkflowStateChangedEvent,
 ]);
 export type SpecWorkflowStateEvent = typeof SpecWorkflowStateEvent.Type;
+
+// Server→client wire shape: a `type` member this build does not know decodes to
+// UnknownUnionMember (skipped by the consumer) instead of failing the stream.
+export const SpecWorkflowStateEventWire = ForwardCompatibleUnion(
+  SpecWorkflowStateEvent.members,
+  "type",
+);
+export type SpecWorkflowStateEventWire = typeof SpecWorkflowStateEventWire.Type;
 
 /** 由 Server workflow service 接收的阶段意图；具体能否推进仍由 Router/Decider 判断。 */
 export const SpecWorkflowDispatchInput = Schema.Struct({

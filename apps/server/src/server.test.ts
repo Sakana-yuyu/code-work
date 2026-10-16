@@ -17,7 +17,12 @@ import {
   MessageId,
   ExternalLauncherCommandNotFoundError,
   OrchestrationThreadDetailSnapshot,
+  type OrchestrationShellStreamItem,
+  type OrchestrationShellStreamItemWire,
   type OrchestrationThreadStreamItem,
+  type OrchestrationThreadStreamItemWire,
+  isUnknownUnionMember,
+  UnknownUnionMember,
   type OrchestrationThreadShell,
   TerminalNotRunningError,
   type OrchestrationCommand,
@@ -81,6 +86,29 @@ const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 const decodeTransferThreadSnapshot = Schema.decodeUnknownEffect(
   Schema.fromJsonString(OrchestrationThreadDetailSnapshot),
 );
+
+const knownThreadItem = (
+  item: OrchestrationThreadStreamItemWire,
+): OrchestrationThreadStreamItem => {
+  if (isUnknownUnionMember(item)) {
+    throw new Error(`Unexpected unknown thread stream item kind: ${item.value}`);
+  }
+  return item as OrchestrationThreadStreamItem;
+};
+
+const knownShellItem = (item: OrchestrationShellStreamItemWire): OrchestrationShellStreamItem => {
+  if (isUnknownUnionMember(item)) {
+    throw new Error(`Unexpected unknown shell stream item kind: ${item.value}`);
+  }
+  return item as OrchestrationShellStreamItem;
+};
+
+const knownStreamValue = <A>(value: A | UnknownUnionMember<string>): A => {
+  if (isUnknownUnionMember(value)) {
+    throw new Error(`Unexpected unknown stream member: ${value.value}`);
+  }
+  return value;
+};
 
 const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function* <A>(
   queue: Queue.Queue<A>,
@@ -5294,7 +5322,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const wsUrl = yield* getWsServerUrl("/ws");
       const events = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
-          client[WS_METHODS.subscribeServerConfig]({}).pipe(Stream.take(2), Stream.runCollect),
+          client[WS_METHODS.subscribeServerConfig]({}).pipe(
+            Stream.map(knownStreamValue),
+            Stream.take(2),
+            Stream.runCollect,
+          ),
         ),
       );
 
@@ -5378,7 +5410,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const wsUrl = yield* getWsServerUrl("/ws");
       const events = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
-          client[WS_METHODS.subscribeServerConfig]({}).pipe(Stream.take(2), Stream.runCollect),
+          client[WS_METHODS.subscribeServerConfig]({}).pipe(
+            Stream.map(knownStreamValue),
+            Stream.take(2),
+            Stream.runCollect,
+          ),
         ),
       );
 
@@ -5433,7 +5469,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         const wsUrl = yield* getWsServerUrl("/ws");
         const events = yield* Effect.scoped(
           withWsRpcClient(wsUrl, (client) =>
-            client[WS_METHODS.subscribeServerLifecycle]({}).pipe(Stream.take(2), Stream.runCollect),
+            client[WS_METHODS.subscribeServerLifecycle]({}).pipe(
+              Stream.map(knownStreamValue),
+              Stream.take(2),
+              Stream.runCollect,
+            ),
           ),
         );
 
@@ -6814,7 +6854,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const wsUrl = yield* getWsServerUrl("/ws");
       const result = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
-          client[ORCHESTRATION_WS_METHODS.subscribeShell]({}).pipe(Stream.runCollect),
+          client[ORCHESTRATION_WS_METHODS.subscribeShell]({}).pipe(
+            Stream.map(knownShellItem),
+            Stream.runCollect,
+          ),
         ).pipe(Effect.result),
       );
 
@@ -6841,7 +6884,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           client[ORCHESTRATION_WS_METHODS.subscribeShell]({
             afterSequence: 0,
             requestCompletionMarker: true,
-          }).pipe(Stream.runHead),
+          }).pipe(Stream.map(knownShellItem), Stream.runHead),
         ),
       );
 
@@ -6867,7 +6910,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           client[ORCHESTRATION_WS_METHODS.subscribeThread]({
             threadId: defaultThreadId,
             requestCompletionMarker: true,
-          }).pipe(Stream.take(2), Stream.runCollect),
+          }).pipe(Stream.map(knownThreadItem), Stream.take(2), Stream.runCollect),
         ),
       );
 
@@ -6921,7 +6964,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         withWsRpcClient(wsUrl, (client) =>
           client[ORCHESTRATION_WS_METHODS.subscribeShell]({
             requestCompletionMarker: true,
-          }).pipe(Stream.take(3), Stream.runCollect),
+          }).pipe(Stream.map(knownShellItem), Stream.take(3), Stream.runCollect),
         ),
       ).pipe(Effect.timeout("2 seconds"));
 
@@ -6978,7 +7021,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         withWsRpcClient(wsUrl, (client) =>
           client[ORCHESTRATION_WS_METHODS.subscribeThread]({
             threadId: defaultThreadId,
-          }).pipe(Stream.take(2), Stream.runCollect),
+          }).pipe(Stream.map(knownThreadItem), Stream.take(2), Stream.runCollect),
         ),
       ).pipe(Effect.timeout("2 seconds"));
 
@@ -7018,7 +7061,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             threadId: defaultThreadId,
             afterSequence: 5,
             requestCompletionMarker: true,
-          }).pipe(Stream.take(2), Stream.runCollect),
+          }).pipe(Stream.map(knownThreadItem), Stream.take(2), Stream.runCollect),
         ),
       );
 
@@ -7062,7 +7105,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           client[ORCHESTRATION_WS_METHODS.subscribeThread]({
             threadId: defaultThreadId,
             afterSequence: 10,
-          }).pipe(Stream.runHead),
+          }).pipe(Stream.map(knownThreadItem), Stream.runHead),
         ),
       );
 
@@ -7114,7 +7157,12 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             threadId: defaultThreadId,
             afterSequence: 1,
             requestCompletionMarker: true,
-          }).pipe(Stream.take(2), Stream.runCollect, Effect.timeout("3 seconds")),
+          }).pipe(
+            Stream.map(knownThreadItem),
+            Stream.take(2),
+            Stream.runCollect,
+            Effect.timeout("3 seconds"),
+          ),
         ),
       );
       assert.deepEqual(
@@ -7178,7 +7226,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             threadId: defaultThreadId,
             afterSequence: 0,
             requestCompletionMarker: true,
-          }).pipe(Stream.take(2), Stream.runCollect),
+          }).pipe(Stream.map(knownThreadItem), Stream.take(2), Stream.runCollect),
         ),
       );
 
@@ -7239,7 +7287,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           client[ORCHESTRATION_WS_METHODS.subscribeShell]({
             afterSequence: 5,
             requestCompletionMarker: true,
-          }).pipe(Stream.take(2), Stream.runCollect),
+          }).pipe(Stream.map(knownShellItem), Stream.take(2), Stream.runCollect),
         ),
       );
 
@@ -7284,6 +7332,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const first = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
           client[ORCHESTRATION_WS_METHODS.subscribeShell]({ afterSequence: 10 }).pipe(
+            Stream.map(knownShellItem),
+
             Stream.runHead,
           ),
         ),
@@ -7361,7 +7411,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           client[ORCHESTRATION_WS_METHODS.subscribeShell]({
             afterSequence: 0,
             requestCompletionMarker: true,
-          }).pipe(Stream.take(3), Stream.runCollect),
+          }).pipe(Stream.map(knownShellItem), Stream.take(3), Stream.runCollect),
         ),
       );
 
@@ -7440,6 +7490,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             client[ORCHESTRATION_WS_METHODS.subscribeShell]({
               requestCompletionMarker: true,
             }).pipe(
+              Stream.map(knownShellItem),
+
               Stream.tap((item) =>
                 item.kind === "synchronized"
                   ? Deferred.succeed(synchronized, undefined).pipe(Effect.ignore)
@@ -7527,6 +7579,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const items = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
           client[ORCHESTRATION_WS_METHODS.subscribeShell]({ afterSequence: 0 }).pipe(
+            Stream.map(knownShellItem),
+
             Stream.take(1),
             Stream.runCollect,
           ),
@@ -7588,6 +7642,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const items = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
           client[ORCHESTRATION_WS_METHODS.subscribeShell]({ afterSequence: 0 }).pipe(
+            Stream.map(knownShellItem),
+
             Stream.take(1),
             Stream.runCollect,
           ),
@@ -7647,6 +7703,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const items = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
           client[ORCHESTRATION_WS_METHODS.subscribeShell]({ afterSequence: 0 }).pipe(
+            Stream.map(knownShellItem),
+
             Stream.take(1),
             Stream.runCollect,
           ),
@@ -9107,6 +9165,8 @@ it.live(
                       afterSequence: decodedThread.snapshotSequence,
                       requestCompletionMarker: true,
                     }).pipe(
+                      Stream.map(knownThreadItem),
+
                       Stream.runForEach((item) =>
                         Queue.offer(threadItems, item).pipe(Effect.asVoid),
                       ),

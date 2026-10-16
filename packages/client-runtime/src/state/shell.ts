@@ -1,8 +1,9 @@
 import {
+  isUnknownUnionMember,
   ORCHESTRATION_WS_METHODS,
   type EnvironmentId,
   type OrchestrationShellSnapshot,
-  type OrchestrationShellStreamItem,
+  type OrchestrationShellStreamItemWire,
   type ServerConfig,
 } from "@codework/contracts";
 import * as Cause from "effect/Cause";
@@ -137,8 +138,14 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
     );
 
   const applyItem = Effect.fn("EnvironmentShellState.applyItem")(function* (
-    item: OrchestrationShellStreamItem,
+    item: OrchestrationShellStreamItemWire,
   ) {
+    // A newer server can stream shell item kinds this build does not know;
+    // they decode to UnknownUnionMember and are skipped rather than failing
+    // the subscription.
+    if (isUnknownUnionMember(item)) {
+      return;
+    }
     if (item.kind === "synchronized") {
       yield* Ref.set(awaitingCompletion, false);
       yield* SubscriptionRef.update(state, (current) =>
