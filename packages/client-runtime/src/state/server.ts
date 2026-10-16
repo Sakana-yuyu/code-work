@@ -1424,6 +1424,16 @@ export function createServerEnvironmentAtoms<R, E>(
       scheduler: configScheduler,
       concurrency: configConcurrency,
     }),
+    runStorageCleanup: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:run-storage-cleanup",
+      tag: WS_METHODS.serverRunStorageCleanup,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    storageCleanupReport: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:storage-cleanup-report",
+      tag: WS_METHODS.serverGetStorageCleanupReport,
+    }),
     connectMcpServer: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:connect-mcp-server",
       tag: WS_METHODS.serverConnectMcpServer,

@@ -123,6 +123,7 @@ import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus.
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion.ts";
 import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor.ts";
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
+import * as StorageCleanup from "./storageCleanup.ts";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
 import { ThreadSettlementReactorLive } from "./orchestration/Layers/ThreadSettlementReactor.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
@@ -331,6 +332,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(CheckpointReactorLive),
   Layer.provideMerge(ThreadDeletionReactorLive),
   Layer.provideMerge(ThreadSettlementReactorLive),
+  Layer.provideMerge(StorageCleanup.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   Layer.provideMerge(RuntimeReceiptBusLive),
 );
@@ -517,6 +519,8 @@ const CompositionToolBrokerLayerLive = CompositionToolBroker.persistentLayer.pip
   Layer.provideMerge(ByokDelegationServiceLayerLive),
   // ssh.* agent 工具与 RPC 共享同一 SSH 服务实例（Layer 按 identity 记忆化）。
   Layer.provideMerge(SshLayerLive),
+  // memory.* / web.search 工具读写服务器级设置（用户笔记、搜索密钥）。
+  Layer.provideMerge(ServerSettingsLayerLive),
 );
 
 const ProviderInstanceRegistryHydrationWithToolBrokerLive =

@@ -20,6 +20,8 @@ import type {
   CodeworkProjectFileScript,
   RuntimeMode,
   ThreadEnvMode,
+  WorktreeCleanup,
+  WorktreeCleanupRules,
   WorktreeSubmodules,
 } from "@codework/contracts";
 import { DEFAULT_SERVER_SETTINGS } from "@codework/contracts";
@@ -27,6 +29,7 @@ import { resolveEnvModeLabel } from "../BranchToolbar.logic";
 import {
   hasAnyProjectSettingsOverride,
   resolveProjectSettings,
+  resolveWorktreeCleanup,
   withProjectSettingsOverride,
 } from "@codework/shared/projectSettings";
 import { createModelSelection } from "@codework/shared/model";
@@ -103,6 +106,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { Switch } from "../ui/switch";
 import { SidebarInset } from "../ui/sidebar";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -157,6 +161,108 @@ export const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, st
 };
 
 /** Logical project groups for the settings page, sorted by display name. */
+function WorktreeCleanupRulesEditor({
+  rules,
+  onChange,
+}: {
+  readonly rules: WorktreeCleanupRules;
+  readonly onChange: (rules: WorktreeCleanupRules) => void;
+}) {
+  return (
+    <div className="rounded-xl bg-muted/20 px-3 sm:pl-9">
+      <SettingsRow
+        title={t("settings.storageCleanupKeepWhen")}
+        control={
+          <Select
+            value={rules.worktreeKeepWhen}
+            onValueChange={(value) => {
+              if (
+                value === "any-local-files" ||
+                value === "uncommitted-changes" ||
+                value === "tracked-changes"
+              ) {
+                onChange({ ...rules, worktreeKeepWhen: value });
+              }
+            }}
+          >
+            <SelectTrigger
+              className="w-full sm:w-44"
+              aria-label={t("settings.storageCleanupKeepWhen")}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              <SelectItem hideIndicator value="any-local-files">
+                {t("settings.storageCleanupKeepWhenAnyLocalFiles")}
+              </SelectItem>
+              <SelectItem hideIndicator value="uncommitted-changes">
+                {t("settings.storageCleanupKeepWhenUncommittedChanges")}
+              </SelectItem>
+              <SelectItem hideIndicator value="tracked-changes">
+                {t("settings.storageCleanupKeepWhenTrackedChanges")}
+              </SelectItem>
+            </SelectPopup>
+          </Select>
+        }
+      />
+      <SettingsRow
+        title={t("settings.storageCleanupAfterDays")}
+        control={
+          <Select
+            value={rules.worktreeAfterDays === null ? "never" : String(rules.worktreeAfterDays)}
+            onValueChange={(value) =>
+              onChange({
+                ...rules,
+                worktreeAfterDays: value === "never" ? null : Number(value),
+              })
+            }
+          >
+            <SelectTrigger
+              className="w-full sm:w-44"
+              aria-label={t("settings.storageCleanupAfterDays")}
+            >
+              <SelectValue>
+                {rules.worktreeAfterDays === null
+                  ? t("settings.storageCleanupNever")
+                  : t("settings.storageCleanupDays", { days: rules.worktreeAfterDays })}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              <SelectItem hideIndicator value="never">
+                {t("settings.storageCleanupNever")}
+              </SelectItem>
+              {[7, 14, 30, 90].map((days) => (
+                <SelectItem key={days} hideIndicator value={String(days)}>
+                  {t("settings.storageCleanupDays", { days })}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        }
+      />
+      {(
+        [
+          ["worktreeOnMerge", "settings.storageCleanupOnMerge"],
+          ["worktreeOnDelete", "settings.storageCleanupOnDelete"],
+          ["worktreeUnchanged", "settings.storageCleanupUnchanged"],
+        ] as const
+      ).map(([key, labelKey]) => (
+        <SettingsRow
+          key={key}
+          title={t(labelKey)}
+          control={
+            <Switch
+              checked={rules[key]}
+              onCheckedChange={(checked) => onChange({ ...rules, [key]: Boolean(checked) })}
+              aria-label={t(labelKey)}
+            />
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
 export function useSettingsProjectGroups(): SidebarProjectSnapshot[] {
   const projects = useProjects();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
@@ -504,8 +610,8 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   const overrideEntry = representativeEnvSettings?.projectSettingsOverrides[representative.id];
   const updateProjectSettingOverride = useCallback(
     async (
-      key: "defaultRuntimeMode" | "worktreeSubmodules",
-      value: RuntimeMode | WorktreeSubmodules | null,
+      key: "defaultRuntimeMode" | "worktreeSubmodules" | "worktreeCleanup",
+      value: RuntimeMode | WorktreeSubmodules | WorktreeCleanup | null,
       failureTitle: string,
     ): Promise<AtomCommandResult<void, unknown>> => {
       for (const member of group.memberProjects) {
@@ -592,6 +698,13 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
     codeworkFile.file?.defaultThreadEnvMode != null ? "t3.json" : "global";
   const storedRuntimeMode = overrideEntry?.defaultRuntimeMode ?? null;
   const storedSubmodules = overrideEntry?.worktreeSubmodules ?? null;
+  const storedWorktreeCleanup = overrideEntry?.worktreeCleanup ?? null;
+  // Seed a new custom policy with the environment-resolved rules (no project
+  // tier), so switching to Custom starts from what the project already does.
+  const inheritedWorktreeCleanupRules = resolveWorktreeCleanup(
+    representativeEnvSettings ?? DEFAULT_SERVER_SETTINGS,
+    null,
+  );
   // The shared resolver owns the precedence chain; the panel only needs the
   // folded value and its source for the "inherit" labels.
   const resolvedProjectSettings = resolveProjectSettings(
@@ -1192,6 +1305,76 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
               </Select>
             }
           />
+          <SettingsRow
+            title={t("projectSettings.worktreeCleanup")}
+            description={t("projectSettings.worktreeCleanupDescription")}
+            resetAction={
+              storedWorktreeCleanup !== null ? (
+                <SettingResetButton
+                  label={t("projectSettings.worktreeCleanup")}
+                  onClick={() =>
+                    void updateProjectSettingOverride(
+                      "worktreeCleanup",
+                      null,
+                      t("projectSettings.failedUpdateWorktreeCleanup"),
+                    )
+                  }
+                />
+              ) : null
+            }
+            control={
+              <Select
+                value={storedWorktreeCleanup?.mode ?? "inherit"}
+                onValueChange={(value) => {
+                  const policy =
+                    value === "inherit"
+                      ? null
+                      : value === "off"
+                        ? ({ mode: "off" } satisfies WorktreeCleanup)
+                        : ({
+                            mode: "custom",
+                            rules: inheritedWorktreeCleanupRules,
+                          } satisfies WorktreeCleanup);
+                  void updateProjectSettingOverride(
+                    "worktreeCleanup",
+                    policy,
+                    t("projectSettings.failedUpdateWorktreeCleanup"),
+                  );
+                }}
+              >
+                <SelectTrigger aria-label={t("projectSettings.worktreeCleanup")}>
+                  <SelectValue>
+                    {storedWorktreeCleanup === null
+                      ? t("projectSettings.worktreeCleanupInherit")
+                      : storedWorktreeCleanup.mode === "off"
+                        ? t("projectSettings.worktreeCleanupOff")
+                        : t("projectSettings.worktreeCleanupCustom")}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem value="inherit">
+                    {t("projectSettings.worktreeCleanupInherit")}
+                  </SelectItem>
+                  <SelectItem value="off">{t("projectSettings.worktreeCleanupOff")}</SelectItem>
+                  <SelectItem value="custom">
+                    {t("projectSettings.worktreeCleanupCustom")}
+                  </SelectItem>
+                </SelectPopup>
+              </Select>
+            }
+          />
+          {storedWorktreeCleanup?.mode === "custom" ? (
+            <WorktreeCleanupRulesEditor
+              rules={storedWorktreeCleanup.rules}
+              onChange={(rules) =>
+                void updateProjectSettingOverride(
+                  "worktreeCleanup",
+                  { mode: "custom", rules },
+                  t("projectSettings.failedUpdateWorktreeCleanup"),
+                )
+              }
+            />
+          ) : null}
         </SettingsSection>
 
         <SettingsSection

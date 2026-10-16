@@ -137,6 +137,11 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   environmentIcon: Schema.optionalKey(Schema.Boolean),
   /** Server honors the `worktreesDirectory` setting. */
   worktreesDirectory: Schema.optionalKey(Schema.Boolean),
+  /** Server evaluates storage cleanup rules (worktrees, rotated logs)
+      without a client. Absent on older servers. */
+  storageCleanup: Schema.optionalKey(Schema.Boolean),
+  /** Server accepts `server.runStorageCleanup` and streams reports. */
+  storageCleanupRun: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

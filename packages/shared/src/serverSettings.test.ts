@@ -834,3 +834,67 @@ describe("synchronized model preferences", () => {
     });
   });
 });
+
+describe("worktreeCleanup patch merging", () => {
+  const baseRules = {
+    worktreeKeepWhen: "tracked-changes" as const,
+    worktreeAfterDays: 60,
+    worktreeOnMerge: true,
+    worktreeOnDelete: true,
+    worktreeUnchanged: false,
+  };
+
+  it("merges a partial custom rules patch over environment defaults", () => {
+    const next = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      worktreeCleanup: {
+        mode: "custom",
+        rules: { worktreeAfterDays: 14, worktreeUnchanged: true },
+      },
+    });
+    expect(next.worktreeCleanup).toEqual({
+      mode: "custom",
+      rules: {
+        ...(baseRules === undefined ? {} : {}),
+        worktreeKeepWhen: DEFAULT_SERVER_SETTINGS.storageCleanup.worktreeKeepWhen,
+        worktreeAfterDays: 14,
+        worktreeOnMerge: DEFAULT_SERVER_SETTINGS.storageCleanup.worktreeOnMerge,
+        worktreeOnDelete: DEFAULT_SERVER_SETTINGS.storageCleanup.worktreeOnDelete,
+        worktreeUnchanged: true,
+      },
+    });
+  });
+
+  it("merges a partial custom rules patch over an existing custom policy", () => {
+    const current = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      worktreeCleanup: { mode: "custom", rules: baseRules },
+    });
+    const next = applyServerSettingsPatch(current, {
+      worktreeCleanup: { mode: "custom", rules: { worktreeOnMerge: false } },
+    });
+    expect(next.worktreeCleanup).toEqual({
+      mode: "custom",
+      rules: { ...baseRules, worktreeOnMerge: false },
+    });
+  });
+
+  it("replaces the policy with off or inherit", () => {
+    const current = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      worktreeCleanup: { mode: "custom", rules: baseRules },
+    });
+    expect(
+      applyServerSettingsPatch(current, { worktreeCleanup: { mode: "off" } }).worktreeCleanup,
+    ).toEqual({ mode: "off" });
+    expect(applyServerSettingsPatch(current, { worktreeCleanup: null }).worktreeCleanup).toBeNull();
+  });
+
+  it("leaves the policy untouched when the patch omits the key", () => {
+    const current = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      worktreeCleanup: { mode: "custom", rules: baseRules },
+    });
+    const next = applyServerSettingsPatch(current, {
+      storageCleanup: { worktreeAfterDays: 99 },
+    });
+    expect(next.worktreeCleanup).toEqual({ mode: "custom", rules: baseRules });
+    expect(next.storageCleanup.worktreeAfterDays).toBe(99);
+  });
+});

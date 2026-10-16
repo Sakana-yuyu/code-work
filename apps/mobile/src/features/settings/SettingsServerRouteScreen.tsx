@@ -25,7 +25,9 @@ import { AppText as Text, AppTextInput as TextInput } from "../../components/App
 import { buildModelOptions, type ModelOption } from "../../lib/modelOptions";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { t } from "../../i18n";
+import { relativeTime } from "../../lib/time";
 import { useEnvironments } from "../../state/environments";
+import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsEnvironmentPicker } from "./components/SettingsEnvironmentPicker";
@@ -42,6 +44,20 @@ import {
   type BackgroundActivityBooleanSetting,
   type DurationSetting,
 } from "./SettingsServerRouteScreen.logic";
+
+const CLEANUP_DAY_CHOICES: ReadonlyArray<number | null> = [null, 7, 14, 30, 90];
+
+function formatCleanupBytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  const units = ["KB", "MB", "GB", "TB"] as const;
+  let next = value;
+  let unitIndex = -1;
+  do {
+    next /= 1024;
+    unitIndex++;
+  } while (next >= 1024 && unitIndex < units.length - 1);
+  return `${next.toFixed(next >= 100 ? 0 : 1)} ${units[unitIndex]}`;
+}
 
 const EMPTY_SERVER_SETTINGS_ATOM = Atom.make<ServerSettings | null>(null).pipe(
   Atom.withLabel("mobile-server-settings:empty"),
@@ -75,6 +91,19 @@ export function SettingsServerRouteScreen() {
   const saveSettings = useAtomCommand(serverEnvironment.updateSettings, {
     reportFailure: false,
   });
+  const runStorageCleanup = useAtomCommand(serverEnvironment.runStorageCleanup, {
+    reportFailure: false,
+  });
+  const supportsStorageCleanup = serverConfig?.environment.capabilities.storageCleanup === true;
+  const supportsStorageCleanupRun =
+    serverConfig?.environment.capabilities.storageCleanupRun === true;
+  const cleanupReportQuery = useEnvironmentQuery(
+    environmentId === null || !supportsStorageCleanupRun
+      ? null
+      : serverEnvironment.storageCleanupReport({ environmentId, input: {} }),
+  );
+  const cleanupReport = cleanupReportQuery.data ?? null;
+  const [cleanupRunning, setCleanupRunning] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [baseDirectoryDraft, setBaseDirectoryDraft] = useState("");
@@ -503,6 +532,143 @@ export function SettingsServerRouteScreen() {
                 </Field>
               </View>
             </SettingsSection>
+
+            {supportsStorageCleanup ? (
+              <SettingsSection title={t("serverSettingsMobile.storageCleanupTitle")} card>
+                <View className="gap-3 p-4">
+                  <Field label={t("serverSettingsMobile.storageCleanupKeepWhen")}>
+                    <ChoiceGroup
+                      values={(
+                        ["any-local-files", "uncommitted-changes", "tracked-changes"] as const
+                      ).map((id) => ({
+                        id,
+                        label: t(`serverSettingsMobile.storageCleanupKeepWhen.${id}`),
+                      }))}
+                      selectedId={settings.storageCleanup.worktreeKeepWhen}
+                      disabled={pending}
+                      onSelect={(worktreeKeepWhen) =>
+                        void persist({ storageCleanup: { worktreeKeepWhen } })
+                      }
+                    />
+                  </Field>
+                  <Field label={t("serverSettingsMobile.storageCleanupAfterDays")}>
+                    <ChoiceGroup
+                      values={CLEANUP_DAY_CHOICES.map((days) => ({
+                        id: days === null ? "never" : String(days),
+                        label:
+                          days === null
+                            ? t("serverSettingsMobile.storageCleanupNever")
+                            : t("serverSettingsMobile.storageCleanupDays", { days }),
+                      }))}
+                      selectedId={
+                        settings.storageCleanup.worktreeAfterDays === null
+                          ? "never"
+                          : String(settings.storageCleanup.worktreeAfterDays)
+                      }
+                      disabled={pending}
+                      onSelect={(value) =>
+                        void persist({
+                          storageCleanup: {
+                            worktreeAfterDays: value === "never" ? null : Number(value),
+                          },
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label={t("serverSettingsMobile.storageCleanupLogs")}>
+                    <ChoiceGroup
+                      values={CLEANUP_DAY_CHOICES.map((days) => ({
+                        id: days === null ? "never" : String(days),
+                        label:
+                          days === null
+                            ? t("serverSettingsMobile.storageCleanupNever")
+                            : t("serverSettingsMobile.storageCleanupDays", { days }),
+                      }))}
+                      selectedId={
+                        settings.storageCleanup.logsAfterDays === null
+                          ? "never"
+                          : String(settings.storageCleanup.logsAfterDays)
+                      }
+                      disabled={pending}
+                      onSelect={(value) =>
+                        void persist({
+                          storageCleanup: {
+                            logsAfterDays: value === "never" ? null : Number(value),
+                          },
+                        })
+                      }
+                    />
+                  </Field>
+                </View>
+                <SwitchRow
+                  label={t("serverSettingsMobile.storageCleanupOnMerge")}
+                  value={settings.storageCleanup.worktreeOnMerge}
+                  disabled={pending}
+                  onValueChange={(worktreeOnMerge) =>
+                    void persist({ storageCleanup: { worktreeOnMerge } })
+                  }
+                />
+                <SwitchRow
+                  label={t("serverSettingsMobile.storageCleanupOnDelete")}
+                  value={settings.storageCleanup.worktreeOnDelete}
+                  disabled={pending}
+                  onValueChange={(worktreeOnDelete) =>
+                    void persist({ storageCleanup: { worktreeOnDelete } })
+                  }
+                />
+                <SwitchRow
+                  label={t("serverSettingsMobile.storageCleanupUnchanged")}
+                  value={settings.storageCleanup.worktreeUnchanged}
+                  disabled={pending}
+                  onValueChange={(worktreeUnchanged) =>
+                    void persist({ storageCleanup: { worktreeUnchanged } })
+                  }
+                />
+                {supportsStorageCleanupRun ? (
+                  <View className="gap-2 px-4 pb-4">
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={pending || cleanupRunning || environmentId === null}
+                      onPress={() => {
+                        if (environmentId === null) return;
+                        setCleanupRunning(true);
+                        void runStorageCleanup({ environmentId, input: {} }).finally(() =>
+                          setCleanupRunning(false),
+                        );
+                      }}
+                      className={
+                        pending || cleanupRunning || environmentId === null
+                          ? "items-center rounded-full border border-input-border px-3 py-2 opacity-[0.45]"
+                          : "items-center rounded-full bg-accent px-3 py-2"
+                      }
+                    >
+                      <Text
+                        className={
+                          pending || cleanupRunning || environmentId === null
+                            ? "text-xs text-foreground"
+                            : "text-xs font-codework-medium text-accent-foreground"
+                        }
+                      >
+                        {cleanupRunning
+                          ? t("serverSettingsMobile.storageCleanupRunning")
+                          : t("serverSettingsMobile.storageCleanupRun")}
+                      </Text>
+                    </Pressable>
+                    <Text className="text-sm leading-5 text-foreground-muted">
+                      {cleanupReport === null
+                        ? t("serverSettingsMobile.storageCleanupNoReport")
+                        : t("serverSettingsMobile.storageCleanupLastReport", {
+                            when: relativeTime(cleanupReport.finishedAt),
+                            removed: cleanupReport.counts.removed,
+                            kept: cleanupReport.counts.kept,
+                            failed: cleanupReport.counts.failed,
+                            bytes: formatCleanupBytes(cleanupReport.bytesFreed),
+                          })}
+                    </Text>
+                  </View>
+                ) : null}
+              </SettingsSection>
+            ) : null}
           </>
         ) : null}
       </ScrollView>

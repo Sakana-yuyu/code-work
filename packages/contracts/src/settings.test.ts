@@ -17,6 +17,7 @@ import {
   resolveProviderInstanceEnabled,
   ServerSettings,
   ServerSettingsPatch,
+  StorageCleanupReport,
 } from "./settings.ts";
 
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
@@ -679,5 +680,88 @@ describe("ByokDelegationConfig clamps", () => {
       executors: [{ id: "exec-1", command: "run", priority: value }],
     });
     expect(decoded.executors[0]?.priority).toBe(expected);
+  });
+});
+
+describe("storage cleanup settings", () => {
+  const decodeReport = Schema.decodeUnknownSync(StorageCleanupReport);
+
+  it("defaults storageCleanup and worktreeCleanup when absent", () => {
+    const decoded = decodeServerSettings({});
+    expect(decoded.storageCleanup).toEqual(DEFAULT_SERVER_SETTINGS.storageCleanup);
+    expect(decoded.worktreeCleanup).toBeNull();
+  });
+
+  it("decodes a full worktreeCleanup custom policy and patches partial rules", () => {
+    const rules = {
+      worktreeKeepWhen: "tracked-changes",
+      worktreeAfterDays: 30,
+      worktreeOnMerge: true,
+      worktreeOnDelete: false,
+      worktreeUnchanged: true,
+    };
+    expect(
+      decodeServerSettings({ worktreeCleanup: { mode: "custom", rules } }).worktreeCleanup,
+    ).toEqual({ mode: "custom", rules });
+    expect(
+      decodeServerSettingsPatch({
+        worktreeCleanup: { mode: "custom", rules: { worktreeAfterDays: 7 } },
+      }).worktreeCleanup,
+    ).toEqual({ mode: "custom", rules: { worktreeAfterDays: 7 } });
+    expect(decodeServerSettingsPatch({ worktreeCleanup: { mode: "off" } }).worktreeCleanup).toEqual(
+      { mode: "off" },
+    );
+    expect(decodeServerSettingsPatch({ worktreeCleanup: null }).worktreeCleanup).toBeNull();
+    expect(decodeServerSettingsPatch({}).worktreeCleanup).toBeUndefined();
+  });
+
+  it("decodes project-scoped worktreeCleanup overrides and rejects unknown modes", () => {
+    const pid = ProjectId.make("p-1");
+    const decoded = decodeServerSettings({
+      projectSettingsOverrides: {
+        [pid]: { worktreeCleanup: { mode: "off" } },
+      },
+    });
+    expect(decoded.projectSettingsOverrides[pid]?.worktreeCleanup).toEqual({ mode: "off" });
+    expect(() =>
+      decodeServerSettings({
+        projectSettingsOverrides: { "p-2": { worktreeCleanup: { mode: "mystery" } } },
+      }),
+    ).toThrow();
+  });
+
+  it("decodes a cleanup report including legacy entries without new fields", () => {
+    const report = {
+      trigger: "manual",
+      startedAt: "2026-10-01T00:00:00.000Z",
+      finishedAt: "2026-10-01T00:00:01.000Z",
+      entries: [
+        {
+          kind: "worktree",
+          outcome: "removed",
+          reason: "Inactive for 30 of 7 days",
+          path: "/tmp/wt",
+          threadId: null,
+          threadTitle: null,
+          bytes: 1024,
+          files: 3,
+        },
+        {
+          kind: "logs",
+          outcome: "kept",
+          reason: "kept",
+          path: null,
+          threadId: null,
+          threadTitle: null,
+        },
+      ],
+      counts: { removed: 1, kept: 1, failed: 0 },
+      bytesFreed: 1024,
+      omittedCount: 0,
+    };
+    const decoded = decodeReport(report);
+    expect(decoded.counts).toEqual({ removed: 1, kept: 1, failed: 0 });
+    expect(decoded.entries[1]?.kind).toBe("logs");
+    expect(decoded.entries[1]?.bytes).toBeNull();
   });
 });

@@ -289,6 +289,7 @@ import {
   ServerSettingsConflictError,
   ServerSettingsError,
   ServerSettingsPatch,
+  StorageCleanupReport,
 } from "./settings.ts";
 import {
   ByokCatalogModelLookupRequest,
@@ -521,6 +522,8 @@ export const WS_METHODS = {
   serverRemoveKeybinding: "server.removeKeybinding",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
+  serverRunStorageCleanup: "server.runStorageCleanup",
+  serverGetStorageCleanupReport: "server.getStorageCleanupReport",
   serverGetMcpServers: "server.getMcpServers",
   serverConnectMcpServer: "server.connectMcpServer",
   serverDisconnectMcpServer: "server.disconnectMcpServer",
@@ -759,6 +762,21 @@ export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSetting
     EnvironmentAuthorizationError,
   ]),
 });
+
+export const WsServerRunStorageCleanupRpc = Rpc.make(WS_METHODS.serverRunStorageCleanup, {
+  payload: Schema.Struct({}),
+  success: StorageCleanupReport,
+  error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
+});
+export const WsServerGetStorageCleanupReportRpc = Rpc.make(
+  WS_METHODS.serverGetStorageCleanupReport,
+  {
+    payload: Schema.Struct({}),
+    success: Schema.NullOr(StorageCleanupReport),
+    stream: true,
+    error: EnvironmentAuthorizationError,
+  },
+);
 
 const CompositionMcpServerControlInput = Schema.Struct({
   serverId: CompositionMcpServerId,
@@ -2187,6 +2205,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRemoveKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
+  WsServerRunStorageCleanupRpc,
+  WsServerGetStorageCleanupReportRpc,
   WsServerGetMcpServersRpc,
   WsServerConnectMcpServerRpc,
   WsServerDisconnectMcpServerRpc,

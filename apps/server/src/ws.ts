@@ -174,6 +174,7 @@ import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
+import * as StorageCleanup from "./storageCleanup.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as SshServerServiceModule from "./ssh/SshServerService.ts";
 import * as SshTerminalServiceModule from "./ssh/SshTerminalService.ts";
@@ -573,6 +574,7 @@ const makeWsRpcLayer = (
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
+      const storageCleanup = yield* StorageCleanup.StorageCleanup;
       const sshServerService = yield* SshServerServiceModule.SshServerService;
       const sshTerminalService = yield* SshTerminalServiceModule.SshTerminalService;
       const previewManager = yield* PreviewManager.PreviewManager;
@@ -2747,6 +2749,14 @@ const makeWsRpcLayer = (
               "rpc.aggregate": "server",
             },
           ),
+        [WS_METHODS.serverRunStorageCleanup]: (_input) =>
+          observeRpcEffect(WS_METHODS.serverRunStorageCleanup, storageCleanup.runNow, {
+            "rpc.aggregate": "server",
+          }),
+        [WS_METHODS.serverGetStorageCleanupReport]: (_input) =>
+          observeRpcStream(WS_METHODS.serverGetStorageCleanupReport, storageCleanup.reports, {
+            "rpc.aggregate": "server",
+          }),
         [WS_METHODS.serverGetMcpServers]: (_input) =>
           observeRpcEffect(
             WS_METHODS.serverGetMcpServers,

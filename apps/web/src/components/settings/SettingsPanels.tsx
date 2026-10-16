@@ -71,6 +71,9 @@ import {
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
 import { usePrimaryEnvironment } from "../../state/environments";
+import { useEnvironmentQuery } from "../../state/query";
+import { serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import {
@@ -208,6 +211,18 @@ const RUNTIME_MODE_SETTING_LABEL_KEYS: Record<RuntimeMode, string> = {
   auto: "chat.auto",
   "full-access": "chat.fullAccess",
 };
+
+function formatStorageCleanupBytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  const units = ["KB", "MB", "GB", "TB"] as const;
+  let next = value;
+  let unitIndex = -1;
+  do {
+    next /= 1024;
+    unitIndex++;
+  } while (next >= 1024 && unitIndex < units.length - 1);
+  return `${next.toFixed(next >= 100 ? 0 : 1)} ${units[unitIndex]}`;
+}
 
 const WORKTREE_SUBMODULES_SETTING_LABEL_KEYS: Record<WorktreeSubmodules, string> = {
   recursive: "projectSettings.submodulesRecursive",
@@ -1918,6 +1933,22 @@ export function GeneralSettingsPanel() {
   const primaryEnvironment = usePrimaryEnvironment();
   const supportsWorktreesDirectory =
     primaryEnvironment?.serverConfig?.environment.capabilities.worktreesDirectory === true;
+  const supportsStorageCleanup =
+    primaryEnvironment?.serverConfig?.environment.capabilities.storageCleanup === true;
+  const supportsStorageCleanupRun =
+    primaryEnvironment?.serverConfig?.environment.capabilities.storageCleanupRun === true;
+  const primaryEnvironmentId = primaryEnvironment?.environmentId ?? null;
+  const cleanupReportQuery = useEnvironmentQuery(
+    supportsStorageCleanupRun && primaryEnvironmentId !== null
+      ? serverEnvironment.storageCleanupReport({
+          environmentId: primaryEnvironmentId,
+          input: {},
+        })
+      : null,
+  );
+  const cleanupReport = cleanupReportQuery.data ?? null;
+  const runStorageCleanup = useAtomCommand(serverEnvironment.runStorageCleanup);
+  const [storageCleanupRunning, setStorageCleanupRunning] = useState(false);
   const worktreesDirectoryEdited = useRef(false);
   const [backgroundActivityDialogOpen, setBackgroundActivityDialogOpen] = useState(false);
   const lastEnabledProjectGroupingMode = useRef<SidebarProjectGroupingMode>(
@@ -2529,6 +2560,222 @@ export function GeneralSettingsPanel() {
               />
             }
           />
+        ) : null}
+
+        {supportsStorageCleanup ? (
+          <>
+            <SettingsRow
+              {...searchableSetting("storage-cleanup-keep-when")}
+              description={t("settings.storageCleanupKeepWhenDescription")}
+              control={
+                <Select
+                  value={settings.storageCleanup.worktreeKeepWhen}
+                  onValueChange={(value) => {
+                    if (
+                      value === "any-local-files" ||
+                      value === "uncommitted-changes" ||
+                      value === "tracked-changes"
+                    ) {
+                      updateSettings({ storageCleanup: { worktreeKeepWhen: value } });
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    className="w-full sm:w-44"
+                    aria-label={t("settings.storageCleanupKeepWhen")}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectPopup align="end" alignItemWithTrigger={false}>
+                    <SelectItem hideIndicator value="any-local-files">
+                      {t("settings.storageCleanupKeepWhenAnyLocalFiles")}
+                    </SelectItem>
+                    <SelectItem hideIndicator value="uncommitted-changes">
+                      {t("settings.storageCleanupKeepWhenUncommittedChanges")}
+                    </SelectItem>
+                    <SelectItem hideIndicator value="tracked-changes">
+                      {t("settings.storageCleanupKeepWhenTrackedChanges")}
+                    </SelectItem>
+                  </SelectPopup>
+                </Select>
+              }
+            />
+            <SettingsRow
+              title={t("settings.storageCleanupAfterDays")}
+              description={t("settings.storageCleanupAfterDaysDescription")}
+              control={
+                <Select
+                  value={
+                    settings.storageCleanup.worktreeAfterDays === null
+                      ? "never"
+                      : String(settings.storageCleanup.worktreeAfterDays)
+                  }
+                  onValueChange={(value) => {
+                    updateSettings({
+                      storageCleanup: {
+                        worktreeAfterDays: value === "never" ? null : Number(value),
+                      },
+                    });
+                  }}
+                >
+                  <SelectTrigger
+                    className="w-full sm:w-44"
+                    aria-label={t("settings.storageCleanupAfterDays")}
+                  >
+                    <SelectValue>
+                      {settings.storageCleanup.worktreeAfterDays === null
+                        ? t("settings.storageCleanupNever")
+                        : t("settings.storageCleanupDays", {
+                            days: settings.storageCleanup.worktreeAfterDays,
+                          })}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup align="end" alignItemWithTrigger={false}>
+                    <SelectItem hideIndicator value="never">
+                      {t("settings.storageCleanupNever")}
+                    </SelectItem>
+                    {[7, 14, 30, 90].map((days) => (
+                      <SelectItem key={days} hideIndicator value={String(days)}>
+                        {t("settings.storageCleanupDays", { days })}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              }
+            />
+            <SettingsRow
+              title={t("settings.storageCleanupOnMerge")}
+              description={t("settings.storageCleanupOnMergeDescription")}
+              control={
+                <Switch
+                  checked={settings.storageCleanup.worktreeOnMerge}
+                  onCheckedChange={(checked) =>
+                    updateSettings({ storageCleanup: { worktreeOnMerge: Boolean(checked) } })
+                  }
+                  aria-label={t("settings.storageCleanupOnMerge")}
+                />
+              }
+            />
+            <SettingsRow
+              title={t("settings.storageCleanupOnDelete")}
+              description={t("settings.storageCleanupOnDeleteDescription")}
+              control={
+                <Switch
+                  checked={settings.storageCleanup.worktreeOnDelete}
+                  onCheckedChange={(checked) =>
+                    updateSettings({ storageCleanup: { worktreeOnDelete: Boolean(checked) } })
+                  }
+                  aria-label={t("settings.storageCleanupOnDelete")}
+                />
+              }
+            />
+            <SettingsRow
+              title={t("settings.storageCleanupUnchanged")}
+              description={t("settings.storageCleanupUnchangedDescription")}
+              control={
+                <Switch
+                  checked={settings.storageCleanup.worktreeUnchanged}
+                  onCheckedChange={(checked) =>
+                    updateSettings({ storageCleanup: { worktreeUnchanged: Boolean(checked) } })
+                  }
+                  aria-label={t("settings.storageCleanupUnchanged")}
+                />
+              }
+            />
+            <SettingsRow
+              title={t("settings.storageCleanupLogs")}
+              description={t("settings.storageCleanupLogsDescription")}
+              control={
+                <Select
+                  value={
+                    settings.storageCleanup.logsAfterDays === null
+                      ? "never"
+                      : String(settings.storageCleanup.logsAfterDays)
+                  }
+                  onValueChange={(value) => {
+                    updateSettings({
+                      storageCleanup: {
+                        logsAfterDays: value === "never" ? null : Number(value),
+                      },
+                    });
+                  }}
+                >
+                  <SelectTrigger
+                    className="w-full sm:w-44"
+                    aria-label={t("settings.storageCleanupLogs")}
+                  >
+                    <SelectValue>
+                      {settings.storageCleanup.logsAfterDays === null
+                        ? t("settings.storageCleanupNever")
+                        : t("settings.storageCleanupDays", {
+                            days: settings.storageCleanup.logsAfterDays,
+                          })}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup align="end" alignItemWithTrigger={false}>
+                    <SelectItem hideIndicator value="never">
+                      {t("settings.storageCleanupNever")}
+                    </SelectItem>
+                    {[7, 14, 30, 90].map((days) => (
+                      <SelectItem key={days} hideIndicator value={String(days)}>
+                        {t("settings.storageCleanupDays", { days })}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              }
+            />
+          </>
+        ) : null}
+
+        {supportsStorageCleanupRun ? (
+          <SettingsRow
+            title={t("settings.storageCleanupRun")}
+            description={t("settings.storageCleanupRunDescription")}
+            status={
+              cleanupReport === null
+                ? t("settings.storageCleanupNoReport")
+                : t("settings.storageCleanupLastReport", {
+                    when: formatRelativeTimeLabel(cleanupReport.finishedAt),
+                    removed: cleanupReport.counts.removed,
+                    kept: cleanupReport.counts.kept,
+                    failed: cleanupReport.counts.failed,
+                    bytes: formatStorageCleanupBytes(cleanupReport.bytesFreed),
+                  })
+            }
+            control={
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={storageCleanupRunning || primaryEnvironmentId === null}
+                onClick={() => {
+                  if (primaryEnvironmentId === null) return;
+                  setStorageCleanupRunning(true);
+                  void runStorageCleanup({
+                    environmentId: primaryEnvironmentId,
+                    input: {},
+                  }).finally(() => setStorageCleanupRunning(false));
+                }}
+              >
+                {storageCleanupRunning
+                  ? t("settings.storageCleanupRunning")
+                  : t("settings.storageCleanupRun")}
+              </Button>
+            }
+          >
+            {cleanupReport !== null && cleanupReport.counts.failed > 0 ? (
+              <ul className="space-y-1 px-1 pb-2 pt-1 text-xs text-destructive">
+                {cleanupReport.entries
+                  .filter((entry) => entry.outcome === "failed")
+                  .map((entry, index) => (
+                    // oxlint-disable-next-line react/no-array-index-key -- report entries have no stable id; the list is replaced wholesale on each sweep.
+                    <li key={`${entry.kind}-${index}`} className="truncate">
+                      {entry.path ?? entry.kind}: {entry.reason}
+                    </li>
+                  ))}
+              </ul>
+            ) : null}
+          </SettingsRow>
         ) : null}
 
         <SettingsRow

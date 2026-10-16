@@ -14,6 +14,7 @@ import {
   resolveProjectModelSelection,
   resolveProjectRuntimeMode,
   resolveProjectSettings,
+  resolveWorktreeCleanup,
 } from "./projectSettings.ts";
 
 const projectId = ProjectId.make("project-1");
@@ -169,5 +170,60 @@ describe("hasProjectSettingsOverrides", () => {
         }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("resolveWorktreeCleanup", () => {
+  const customRules = {
+    worktreeKeepWhen: "tracked-changes" as const,
+    worktreeAfterDays: 30,
+    worktreeOnMerge: true,
+    worktreeOnDelete: false,
+    worktreeUnchanged: true,
+  };
+
+  it("falls back to the environment storageCleanup fields", () => {
+    const settings = withOverrides({});
+    expect(resolveWorktreeCleanup(settings, projectId)).toEqual({
+      worktreeKeepWhen: settings.storageCleanup.worktreeKeepWhen,
+      worktreeAfterDays: settings.storageCleanup.worktreeAfterDays,
+      worktreeOnMerge: settings.storageCleanup.worktreeOnMerge,
+      worktreeOnDelete: settings.storageCleanup.worktreeOnDelete,
+      worktreeUnchanged: settings.storageCleanup.worktreeUnchanged,
+    });
+  });
+
+  it("lets the environment worktreeCleanup custom policy override storageCleanup fields", () => {
+    const settings = withOverrides({}, { worktreeCleanup: { mode: "custom", rules: customRules } });
+    expect(resolveWorktreeCleanup(settings, projectId)).toEqual(customRules);
+    expect(resolveWorktreeCleanup(settings, null)).toEqual(customRules);
+  });
+
+  it("lets a project custom policy beat the environment policy", () => {
+    const projectRules = { ...customRules, worktreeAfterDays: 3, worktreeOnDelete: true };
+    const settings = withOverrides(
+      { [projectId]: { worktreeCleanup: { mode: "custom", rules: projectRules } } },
+      { worktreeCleanup: { mode: "custom", rules: customRules } },
+    );
+    expect(resolveWorktreeCleanup(settings, projectId)).toEqual(projectRules);
+    expect(resolveWorktreeCleanup(settings, ProjectId.make("other"))).toEqual(customRules);
+  });
+
+  it("treats project mode off as all rules disabled while keeping keepWhen", () => {
+    const settings = withOverrides(
+      { [projectId]: { worktreeCleanup: { mode: "off" } } },
+      { worktreeCleanup: { mode: "custom", rules: customRules } },
+    );
+    const resolved = resolveWorktreeCleanup(settings, projectId);
+    expect(resolved.worktreeAfterDays).toBeNull();
+    expect(resolved.worktreeOnMerge).toBe(false);
+    expect(resolved.worktreeOnDelete).toBe(false);
+    expect(resolved.worktreeUnchanged).toBe(false);
+    expect(resolved.worktreeKeepWhen).toBe(settings.storageCleanup.worktreeKeepWhen);
+  });
+
+  it("treats environment mode off the same way", () => {
+    const settings = withOverrides({}, { worktreeCleanup: { mode: "off" } });
+    expect(resolveWorktreeCleanup(settings, projectId).worktreeAfterDays).toBeNull();
   });
 });

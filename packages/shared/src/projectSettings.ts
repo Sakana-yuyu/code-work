@@ -7,6 +7,8 @@ import type {
   RuntimeMode,
   ServerSettings,
   ThreadEnvMode,
+  WorktreeCleanup,
+  WorktreeCleanupRules,
   WorktreeSubmodules,
 } from "@codework/contracts";
 
@@ -32,6 +34,7 @@ export interface ResolvedProjectSettings {
   readonly defaultThreadEnvMode: ThreadEnvMode;
   readonly worktreeSubmodules: WorktreeSubmodules;
   readonly continueThreadsAfterServerUpdate: boolean;
+  readonly worktreeCleanup: WorktreeCleanup;
 }
 
 export interface ResolvedProjectSettingsResult {
@@ -141,6 +144,44 @@ export function resolveProjectRuntimeMode(
 }
 
 /**
+ * Resolved worktree cleanup rules for one project: project override
+ * (`custom` wins, `off` disables every rule), then the environment
+ * `worktreeCleanup` policy, then the environment `storageCleanup` fields.
+ * A stored `null` on the project tier inherits, matching absent.
+ */
+export function resolveWorktreeCleanup(
+  settings: Pick<ServerSettings, "projectSettingsOverrides" | "worktreeCleanup" | "storageCleanup">,
+  projectId: ProjectId | null,
+): WorktreeCleanupRules {
+  const entry = projectId === null ? undefined : settings.projectSettingsOverrides[projectId];
+  const policy = entry?.worktreeCleanup ?? settings.worktreeCleanup;
+  if (policy?.mode === "custom") return policy.rules;
+  if (policy?.mode === "off") {
+    return {
+      worktreeKeepWhen: settings.storageCleanup.worktreeKeepWhen,
+      worktreeAfterDays: null,
+      worktreeOnMerge: false,
+      worktreeOnDelete: false,
+      worktreeUnchanged: false,
+    };
+  }
+  const {
+    worktreeKeepWhen,
+    worktreeAfterDays,
+    worktreeOnMerge,
+    worktreeOnDelete,
+    worktreeUnchanged,
+  } = settings.storageCleanup;
+  return {
+    worktreeKeepWhen,
+    worktreeAfterDays,
+    worktreeOnMerge,
+    worktreeOnDelete,
+    worktreeUnchanged,
+  };
+}
+
+/**
  * Resolved `continueThreadsAfterServerUpdate` for one project: overrides map,
  * then the environment value (non-null, decoding-defaulted).
  */
@@ -159,8 +200,12 @@ export function resolveProjectContinueThreadsAfterServerUpdate(
  */
 export function withProjectSettingsOverride(
   entry: ProjectSettingsOverrides,
-  key: "defaultRuntimeMode" | "worktreeSubmodules" | "continueThreadsAfterServerUpdate",
-  value: RuntimeMode | WorktreeSubmodules | boolean | null,
+  key:
+    | "defaultRuntimeMode"
+    | "worktreeSubmodules"
+    | "continueThreadsAfterServerUpdate"
+    | "worktreeCleanup",
+  value: RuntimeMode | WorktreeSubmodules | boolean | WorktreeCleanup | null,
 ): ProjectSettingsOverrides {
   const next = { ...entry };
   if (value === null) {
@@ -172,6 +217,9 @@ export function withProjectSettingsOverride(
   }
   if (key === "worktreeSubmodules") {
     return { ...next, worktreeSubmodules: value as WorktreeSubmodules };
+  }
+  if (key === "worktreeCleanup") {
+    return { ...next, worktreeCleanup: value as WorktreeCleanup };
   }
   return { ...next, continueThreadsAfterServerUpdate: value as boolean };
 }
@@ -193,6 +241,7 @@ export function resolveProjectSettings(
     | "defaultThreadEnvMode"
     | "worktreeSubmodules"
     | "continueThreadsAfterServerUpdate"
+    | "worktreeCleanup"
     | "projectSettingsOverrides"
   >,
   projectId: ProjectId | null,
@@ -237,6 +286,7 @@ export function resolveProjectSettings(
       worktreeSubmodules: submodules.value,
       continueThreadsAfterServerUpdate:
         overrides.continueThreadsAfterServerUpdate ?? settings.continueThreadsAfterServerUpdate,
+      worktreeCleanup: overrides.worktreeCleanup ?? settings.worktreeCleanup,
     },
     sources: {
       defaultModelSelection:
@@ -246,6 +296,7 @@ export function resolveProjectSettings(
       worktreeSubmodules: submodules.source,
       continueThreadsAfterServerUpdate:
         overrides.continueThreadsAfterServerUpdate !== undefined ? "project" : "environment",
+      worktreeCleanup: overrides.worktreeCleanup !== undefined ? "project" : "environment",
     },
     overrides,
   };

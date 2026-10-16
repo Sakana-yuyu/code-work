@@ -16,12 +16,14 @@ import {
   type ResolvedKeybindingsConfig,
   type RuntimeMode,
   type ThreadEnvMode,
+  type WorktreeCleanup,
   type WorktreeSubmodules,
 } from "@codework/contracts";
 import { parseCodeworkProjectFile } from "@codework/shared/codeworkProjectFile";
 import { parseKeybindingShortcut, shortcutToKeybindingInput } from "@codework/shared/keybindings";
 import {
   hasAnyProjectSettingsOverride,
+  resolveWorktreeCleanup,
   withProjectSettingsOverride,
 } from "@codework/shared/projectSettings";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -266,6 +268,8 @@ export function ProjectSettingsRouteScreen(props: ProjectSettingsRouteProps) {
     project === null ? undefined : settings.projectSettingsOverrides[project.id];
   const currentRuntimeMode = overrideEntry?.defaultRuntimeMode ?? null;
   const currentSubmodules = overrideEntry?.worktreeSubmodules ?? null;
+  const currentWorktreeCleanup = overrideEntry?.worktreeCleanup ?? null;
+  const inheritedWorktreeCleanupRules = resolveWorktreeCleanup(settings, null);
   const projectFileScripts = useMemo(() => {
     const data = projectFileQuery.data as ProjectReadFileResult | null;
     if (data === null || data.truncated) return [] as ReadonlyArray<CodeworkProjectFileScript>;
@@ -311,8 +315,8 @@ export function ProjectSettingsRouteScreen(props: ProjectSettingsRouteProps) {
   // owning environment's settings — the same store the web/desktop panel
   // writes. An entry replaces wholesale; removing its last key deletes it.
   const saveSettingOverride = async (
-    key: "defaultRuntimeMode" | "worktreeSubmodules",
-    value: RuntimeMode | WorktreeSubmodules | null,
+    key: "defaultRuntimeMode" | "worktreeSubmodules" | "worktreeCleanup",
+    value: RuntimeMode | WorktreeSubmodules | WorktreeCleanup | null,
   ) => {
     if (project === null) return;
     setPendingAction(key);
@@ -714,6 +718,111 @@ export function ProjectSettingsRouteScreen(props: ProjectSettingsRouteProps) {
                   if (option) void saveSettingOverride("worktreeSubmodules", option.value);
                 }}
               />
+            </SettingsSection>
+
+            <SettingsSection title={t("projectSettingsMobile.worktreeCleanup")} card>
+              <ChoiceList
+                values={[
+                  {
+                    id: "inherit",
+                    label: t("projectSettingsMobile.worktreeCleanupInherit"),
+                  },
+                  {
+                    id: "off",
+                    label: t("projectSettingsMobile.worktreeCleanupOff"),
+                  },
+                  {
+                    id: "custom",
+                    label: t("projectSettingsMobile.worktreeCleanupCustom"),
+                  },
+                ]}
+                selectedId={currentWorktreeCleanup?.mode ?? "inherit"}
+                disabled={pendingAction !== null}
+                onSelect={(id) => {
+                  const policy: WorktreeCleanup | null =
+                    id === "inherit"
+                      ? null
+                      : id === "off"
+                        ? { mode: "off" }
+                        : { mode: "custom", rules: inheritedWorktreeCleanupRules };
+                  void saveSettingOverride("worktreeCleanup", policy);
+                }}
+              />
+              {currentWorktreeCleanup?.mode === "custom" ? (
+                <View className="gap-3 border-t border-border-subtle p-4">
+                  <Field label={t("serverSettingsMobile.storageCleanupKeepWhen")}>
+                    <ChoiceList
+                      values={(
+                        ["any-local-files", "uncommitted-changes", "tracked-changes"] as const
+                      ).map((id) => ({
+                        id,
+                        label: t(`serverSettingsMobile.storageCleanupKeepWhen.${id}`),
+                      }))}
+                      selectedId={currentWorktreeCleanup.rules.worktreeKeepWhen}
+                      disabled={pendingAction !== null}
+                      onSelect={(id) =>
+                        void saveSettingOverride("worktreeCleanup", {
+                          mode: "custom",
+                          rules: {
+                            ...currentWorktreeCleanup.rules,
+                            worktreeKeepWhen:
+                              id as (typeof currentWorktreeCleanup.rules)["worktreeKeepWhen"],
+                          },
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label={t("serverSettingsMobile.storageCleanupAfterDays")}>
+                    <ChoiceList
+                      values={[null, 7, 14, 30, 90].map((days) => ({
+                        id: days === null ? "never" : String(days),
+                        label:
+                          days === null
+                            ? t("serverSettingsMobile.storageCleanupNever")
+                            : t("serverSettingsMobile.storageCleanupDays", { days }),
+                      }))}
+                      selectedId={
+                        currentWorktreeCleanup.rules.worktreeAfterDays === null
+                          ? "never"
+                          : String(currentWorktreeCleanup.rules.worktreeAfterDays)
+                      }
+                      disabled={pendingAction !== null}
+                      onSelect={(id) =>
+                        void saveSettingOverride("worktreeCleanup", {
+                          mode: "custom",
+                          rules: {
+                            ...currentWorktreeCleanup.rules,
+                            worktreeAfterDays: id === "never" ? null : Number(id),
+                          },
+                        })
+                      }
+                    />
+                  </Field>
+                  {(
+                    [
+                      ["worktreeOnMerge", "serverSettingsMobile.storageCleanupOnMerge"],
+                      ["worktreeOnDelete", "serverSettingsMobile.storageCleanupOnDelete"],
+                      ["worktreeUnchanged", "serverSettingsMobile.storageCleanupUnchanged"],
+                    ] as const
+                  ).map(([key, labelKey]) => (
+                    <View key={key} className="flex-row items-center justify-between gap-3">
+                      <Text className="min-w-0 flex-1 text-sm text-foreground-muted">
+                        {t(labelKey)}
+                      </Text>
+                      <Switch
+                        value={currentWorktreeCleanup.rules[key]}
+                        disabled={pendingAction !== null}
+                        onValueChange={(checked) =>
+                          void saveSettingOverride("worktreeCleanup", {
+                            mode: "custom",
+                            rules: { ...currentWorktreeCleanup.rules, [key]: checked },
+                          })
+                        }
+                      />
+                    </View>
+                  ))}
+                </View>
+              ) : null}
             </SettingsSection>
 
             <SettingsSection title={t("projectSettingsMobile.scripts")} card>

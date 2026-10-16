@@ -143,6 +143,9 @@ export function applyServerSettingsPatch(
     // `null` entries are delete markers, not partial overrides — keep them
     // out of deepMerge; the explicit merge below owns this key.
     projectSettingsOverrides,
+    // Partial custom rules merge onto the environment's resolved rules so a
+    // client can send only the fields it changed.
+    worktreeCleanup: worktreeCleanupPatch,
     ...patchForMerge
   } = patch;
   const currentBackgroundActivity = normalizeServerBackgroundActivitySettings(current);
@@ -243,6 +246,23 @@ export function applyServerSettingsPatch(
           enableLegacyTokenStreaming: streamingMode === "token",
         }),
   });
+  const mergedWorktreeCleanup =
+    worktreeCleanupPatch === undefined
+      ? undefined
+      : worktreeCleanupPatch?.mode === "custom"
+        ? {
+            mode: "custom" as const,
+            rules: {
+              worktreeKeepWhen: next.storageCleanup.worktreeKeepWhen,
+              worktreeAfterDays: next.storageCleanup.worktreeAfterDays,
+              worktreeOnMerge: next.storageCleanup.worktreeOnMerge,
+              worktreeOnDelete: next.storageCleanup.worktreeOnDelete,
+              worktreeUnchanged: next.storageCleanup.worktreeUnchanged,
+              ...(current.worktreeCleanup?.mode === "custom" ? current.worktreeCleanup.rules : {}),
+              ...worktreeCleanupPatch.rules,
+            },
+          }
+        : worktreeCleanupPatch;
   // settings RPC 回传的本地账号 credentialRef 已脱敏为空串；客户端提交其它设置时，
   // 不能让这份回传快照覆盖服务端仍在使用的 SecretStore 索引。
   // localAccountPool 在契约中是完整替换，不能深合并，否则删除的账号会被当前快照重新带回。
@@ -317,6 +337,7 @@ export function applyServerSettingsPatch(
           ),
         }
       : {}),
+    ...(mergedWorktreeCleanup !== undefined ? { worktreeCleanup: mergedWorktreeCleanup } : {}),
     ...(patch.mcpServers !== undefined ? { mcpServers: patch.mcpServers } : {}),
     ...(patch.sourceControlWriterModelSelection !== undefined
       ? { sourceControlWriterModelSelection: patch.sourceControlWriterModelSelection }

@@ -719,6 +719,14 @@ export const ja: Record<string, string> = {
   "projectSettings.submodulesRecursive": "再帰",
   "projectSettings.submodulesTopLevel": "最上位のみ",
   "projectSettings.submodulesNone": "初期化しない",
+  "projectSettings.worktreeCleanup": "ワークツリーのクリーンアップ",
+  "projectSettings.worktreeCleanupDescription":
+    "このプロジェクトのアイドル状態ワークツリーのクリーンアップ方法。環境のデフォルトを上書きします。",
+  "projectSettings.worktreeCleanupInherit": "環境のデフォルトを継承",
+  "projectSettings.worktreeCleanupOff": "無効",
+  "projectSettings.worktreeCleanupCustom": "カスタム",
+  "projectSettings.failedUpdateWorktreeCleanup":
+    "ワークツリークリーンアップ設定の更新に失敗しました",
   "projectSettings.source.t3Json": "t3.json",
   "projectSettings.source.global": "グローバル",
   "projectSettings.source.builtIn": "組み込み",
@@ -2719,11 +2727,41 @@ export const ja: Record<string, string> = {
   "settings.worktreeSubmodules": "ワークツリーのサブモジュール",
   "settings.worktreesDirectory": "ワークツリーの場所",
   "settings.worktreesDirectoryDescription":
-    "新しいワークツリーを作成するフォルダー。D:\worktrees や ~/worktrees のように任意のドライブを指定できます。既存のワークツリーはそのままです。空欄の場合は Code Work ホームフォルダーを使用します。",
+    "新しいワークツリーを作成するフォルダー。D:worktrees や ~/worktrees のように任意のドライブを指定できます。既存のワークツリーはそのままです。空欄の場合は Code Work ホームフォルダーを使用します。",
   "settings.worktreesDirectoryPlaceholder": "デフォルト",
   "settings.worktreeSubmodulesDescription":
     "新規ワークツリーが git サブモジュールをどこまで初期化するか。プロジェクトの t3.json や設定で上書きできます。",
   "settings.worktreeSubmodulesDefault": "デフォルト（再帰）",
+  "settings.storageCleanupKeepWhen": "保持するファイル",
+  "settings.storageCleanupKeepWhenDescription":
+    "どのローカルファイルがアイドル状態のワークツリーをクリーンアップから守るか。",
+  "settings.storageCleanupKeepWhenAnyLocalFiles": "すべてのローカルファイル",
+  "settings.storageCleanupKeepWhenUncommittedChanges": "未コミットの変更",
+  "settings.storageCleanupKeepWhenTrackedChanges": "追跡ファイルの変更",
+  "settings.storageCleanupAfterDays": "アイドル状態のワークツリーを削除",
+  "settings.storageCleanupAfterDaysDescription":
+    "この期間を超えてアイドル状態のワークツリーは自動的に削除されます。",
+  "settings.storageCleanupNever": "しない",
+  "settings.storageCleanupDays": "{{days}} 日",
+  "settings.storageCleanupOnMerge": "プルリクエストのマージ後",
+  "settings.storageCleanupOnMergeDescription":
+    "ブランチのプルリクエストがマージされたらワークツリーを削除します。",
+  "settings.storageCleanupOnDelete": "スレッド削除時",
+  "settings.storageCleanupOnDeleteDescription":
+    "スレッドが削除されたらそのワークツリーを削除します。",
+  "settings.storageCleanupUnchanged": "ブランチに変更がない場合",
+  "settings.storageCleanupUnchangedDescription":
+    "デフォルトブランチを超えるコミットがないブランチのワークツリーを削除します。",
+  "settings.storageCleanupLogs": "ローテート済みログ",
+  "settings.storageCleanupLogsDescription":
+    "この期間より古いローテート済みログファイルを削除します。",
+  "settings.storageCleanupRun": "今すぐクリーンアップ",
+  "settings.storageCleanupRunDescription":
+    "削除可能なワークツリーと期限切れログを今すぐスキャンします。",
+  "settings.storageCleanupLastReport":
+    "前回 {{when}}：{{removed}} 件削除、{{kept}} 件保持、{{failed}} 件失敗、{{bytes}} 解放。",
+  "settings.storageCleanupNoReport": "クリーンアップはまだ実行されていません。",
+  "settings.storageCleanupRunning": "実行中…",
   "settings.defaultPermissions": "デフォルトの権限",
   "settings.defaultPermissionsDescription":
     "スレッドやプロジェクトが上書きしない限り、新規スレッドが開始される権限モード。",
