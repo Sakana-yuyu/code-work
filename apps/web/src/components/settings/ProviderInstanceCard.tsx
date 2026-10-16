@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertTriangleIcon,
   ArrowUpCircleIcon,
   CopyIcon,
   DownloadIcon,
@@ -506,6 +507,7 @@ interface ProviderInstanceCardProps {
   readonly onFavoriteModelsChange: (next: ReadonlyArray<string>) => void;
   readonly onModelOrderChange: (next: ReadonlyArray<string>) => void;
   readonly onRunUpdate?: (() => void) | undefined;
+  readonly onInstallRecommended?: (() => void) | undefined;
   readonly isUpdating?: boolean | undefined;
   readonly onRunInstall?: (() => void) | undefined;
   readonly isInstalling?: boolean | undefined;
@@ -554,6 +556,7 @@ export function ProviderInstanceCard({
   onFavoriteModelsChange,
   onModelOrderChange,
   onRunUpdate,
+  onInstallRecommended,
   isUpdating = false,
   onRunInstall,
   isInstalling = false,
@@ -570,9 +573,24 @@ export function ProviderInstanceCard({
   const rawSummary = getProviderSummary(liveProvider);
   const summary = enabled ? rawSummary : { headline: t("disabled"), detail: null };
   const showEditorStatus = enabled && (statusKey === "warning" || statusKey === "error");
+  const compatibility = enabled ? liveProvider?.compatibilityAdvisory : undefined;
   const versionLabel = getProviderVersionLabel(liveProvider?.version);
-  const versionAdvisory = getProviderVersionAdvisoryPresentation(liveProvider?.versionAdvisory);
+  const versionAdvisory = getProviderVersionAdvisoryPresentation(
+    liveProvider?.versionAdvisory,
+    compatibility,
+    enabled,
+  );
   const updateCommand = versionAdvisory?.updateCommand ?? null;
+  const hasCompatibilityWarning =
+    compatibility !== undefined &&
+    compatibility.status !== "supported" &&
+    compatibility.status !== "unknown";
+  const VersionAdvisoryIcon = hasCompatibilityWarning ? AlertTriangleIcon : ArrowUpCircleIcon;
+  const onRunVersionAction = readOnly
+    ? undefined
+    : versionAdvisory?.targetVersion
+      ? onInstallRecommended
+      : onRunUpdate;
   const install = resolveProviderInstallAffordance({
     liveProvider,
     readOnly,
@@ -879,9 +897,11 @@ export function ProviderInstanceCard({
                           ? "text-warning hover:text-warning"
                           : "text-update-foreground hover:text-update-foreground",
                       )}
-                      aria-label={t("updateAvailableViewDetails")}
+                      aria-label={t("versionAdvisoryViewDetails", {
+                        title: versionAdvisory.title,
+                      })}
                     >
-                      <ArrowUpCircleIcon className="size-3.5" />
+                      <VersionAdvisoryIcon className="size-3.5" />
                     </Button>
                   }
                 />
@@ -893,7 +913,7 @@ export function ProviderInstanceCard({
                   <div className="grid min-w-0 gap-3">
                     <div className="grid gap-0.5">
                       <p className="text-[13px] font-semibold leading-tight text-foreground">
-                        {t("updateAvailable2")}
+                        {versionAdvisory.title}
                       </p>
                       <p
                         className={cn(
@@ -906,20 +926,28 @@ export function ProviderInstanceCard({
                         {versionAdvisory.detail}
                       </p>
                     </div>
-                    {onRunUpdate ? (
+                    {onRunVersionAction ? (
                       <Button
                         type="button"
                         size="xs"
                         variant="default"
                         className="w-full"
                         disabled={isUpdating}
-                        onClick={onRunUpdate}
+                        onClick={onRunVersionAction}
                       >
                         {isUpdating ? <LoaderIcon className="animate-spin" /> : <DownloadIcon />}
-                        {isUpdating ? t("updating") : t("updateNow")}
+                        {isUpdating
+                          ? t("updating")
+                          : versionAdvisory.targetVersion
+                            ? t("installRecommendedVersion", {
+                                version:
+                                  getProviderVersionLabel(versionAdvisory.targetVersion) ??
+                                  versionAdvisory.targetVersion,
+                              })
+                            : t("updateNow")}
                       </Button>
                     ) : null}
-                    {onRunUpdate && updateCommand ? (
+                    {onRunVersionAction && updateCommand ? (
                       <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                         <span aria-hidden className="h-px flex-1 bg-border" />
                         {t("orUpdateManuallyUsing")}

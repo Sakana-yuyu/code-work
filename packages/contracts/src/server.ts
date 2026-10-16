@@ -154,10 +154,31 @@ export const ServerProviderVersionAdvisory = Schema.Struct({
   latestVersion: Schema.NullOr(TrimmedNonEmptyString),
   updateCommand: Schema.NullOr(TrimmedNonEmptyString),
   canUpdate: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** The updater can pin a specific provider version (not only `latest`). */
+  canInstallVersion: Schema.optionalKey(Schema.Boolean),
   checkedAt: Schema.NullOr(IsoDateTime),
   message: Schema.NullOr(TrimmedNonEmptyString),
 });
 export type ServerProviderVersionAdvisory = typeof ServerProviderVersionAdvisory.Type;
+
+export const ServerProviderCompatibilityStatus = Schema.Literals([
+  "unknown",
+  "supported",
+  "graceful",
+  "unsupported",
+  "broken",
+]);
+export type ServerProviderCompatibilityStatus = typeof ServerProviderCompatibilityStatus.Type;
+
+export const ServerProviderCompatibilityAdvisory = Schema.Struct({
+  status: ServerProviderCompatibilityStatus,
+  /** Compatibility of `versionAdvisory.latestVersion`, when known. */
+  latestVersionStatus: Schema.optionalKey(ServerProviderCompatibilityStatus),
+  message: Schema.NullOr(TrimmedNonEmptyString),
+  recommendedVersion: Schema.NullOr(TrimmedNonEmptyString),
+  recommendedRange: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type ServerProviderCompatibilityAdvisory = typeof ServerProviderCompatibilityAdvisory.Type;
 
 export const ServerProviderUpdateStatus = Schema.Literals([
   "idle",
@@ -225,6 +246,9 @@ export const ServerProvider = Schema.Struct({
   ),
   skills: Schema.Array(ServerProviderSkill).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   versionAdvisory: Schema.optionalKey(ServerProviderVersionAdvisory),
+  // Manifest-declared compatibility of the installed CLI version with this
+  // server release. Absent when the driver declares no policy.
+  compatibilityAdvisory: Schema.optionalKey(ServerProviderCompatibilityAdvisory),
   updateState: Schema.optionalKey(ServerProviderUpdateState),
   // 服务端仅在供应商已启用、检测确认 CLI 缺失或损坏，且当前平台有安装渠道时提供安装入口。
   // 禁用或待检测不代表未安装；兼容旧服务端，字段缺省时不显示按钮。
@@ -676,6 +700,8 @@ export type ServerProviderUpdatedPayload = typeof ServerProviderUpdatedPayload.T
 
 export const ServerProviderUpdateInput = Schema.Struct({
   provider: ProviderDriverKind,
+  /** Pin this exact provider version instead of `latest`. */
+  targetVersion: Schema.optionalKey(TrimmedNonEmptyString),
   instanceId: Schema.optionalKey(ProviderInstanceId),
 });
 export type ServerProviderUpdateInput = typeof ServerProviderUpdateInput.Type;

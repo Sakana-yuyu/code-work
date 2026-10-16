@@ -1,4 +1,8 @@
-import type { ServerProvider, ServerProviderVersionAdvisory } from "@codework/contracts";
+import type {
+  ServerProvider,
+  ServerProviderCompatibilityAdvisory,
+  ServerProviderVersionAdvisory,
+} from "@codework/contracts";
 import { t } from "~/i18n/runtime";
 
 /**
@@ -156,14 +160,55 @@ export function getProviderVersionLabel(version: string | null | undefined) {
   return version.startsWith("v") ? version : `v${version}`;
 }
 
+const COMPATIBILITY_TITLE_KEYS = {
+  graceful: "providerCompatibilityGraceful",
+  unsupported: "providerCompatibilityUnsupported",
+  broken: "providerCompatibilityBroken",
+} as const;
+
+/** Compatibility guidance shares the version popover, with safe install actions. */
 export function getProviderVersionAdvisoryPresentation(
   advisory: ServerProviderVersionAdvisory | undefined,
+  compatibility?: ServerProviderCompatibilityAdvisory | undefined,
+  showCompatibility = true,
 ): {
+  readonly title: string;
   readonly detail: string;
   readonly updateCommand: string | null;
   readonly emphasis: "normal" | "strong";
+  readonly targetVersion: string | null;
 } | null {
-  if (!advisory || advisory.status === "current" || advisory.status === "unknown") {
+  const latestIsIncompatible =
+    compatibility?.latestVersionStatus === "broken" ||
+    compatibility?.latestVersionStatus === "unsupported";
+  if (
+    showCompatibility &&
+    compatibility &&
+    (compatibility.status === "graceful" ||
+      compatibility.status === "unsupported" ||
+      compatibility.status === "broken")
+  ) {
+    const targetVersion = compatibility.recommendedVersion;
+    const recommendation = getProviderVersionLabel(targetVersion) ?? compatibility.recommendedRange;
+    return {
+      title: t(COMPATIBILITY_TITLE_KEYS[compatibility.status]),
+      detail:
+        compatibility.message ??
+        (recommendation
+          ? t("providerCompatibilityUseVersion", { version: recommendation })
+          : t("providerCompatibilityUpdate")),
+      updateCommand:
+        targetVersion || latestIsIncompatible ? null : (advisory?.updateCommand ?? null),
+      emphasis: compatibility.status === "graceful" ? "normal" : "strong",
+      targetVersion,
+    };
+  }
+  if (
+    !advisory ||
+    advisory.status === "current" ||
+    advisory.status === "unknown" ||
+    latestIsIncompatible
+  ) {
     return null;
   }
 
@@ -172,6 +217,7 @@ export function getProviderVersionAdvisoryPresentation(
   const versionLabel = getProviderVersionLabel(version);
 
   return {
+    title: label,
     detail:
       advisory.message ??
       (versionLabel
@@ -179,5 +225,6 @@ export function getProviderVersionAdvisoryPresentation(
         : `${label}: install the latest provider version.`),
     updateCommand: advisory.updateCommand,
     emphasis: "normal" as const,
+    targetVersion: null,
   };
 }

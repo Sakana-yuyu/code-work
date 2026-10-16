@@ -553,7 +553,11 @@ function ProviderCard(props: {
   const dirty = props.draft !== undefined;
   const snapshot = props.snapshot;
   const isInstallable = snapshot?.installed === false && snapshot.canInstall === true;
-  const hasUpdate = snapshot?.versionAdvisory?.canUpdate === true;
+  const latestVersionStatus = snapshot?.compatibilityAdvisory?.latestVersionStatus;
+  const hasUpdate =
+    snapshot?.versionAdvisory?.canUpdate === true &&
+    latestVersionStatus !== "broken" &&
+    latestVersionStatus !== "unsupported";
 
   const changeField = (field: MobileProviderField, value: string | boolean) => {
     props.onChange({
@@ -725,6 +729,18 @@ function ProviderCard(props: {
             {snapshot.models.map((model) => model.slug).join(", ")}
           </Text>
         </View>
+      ) : null}
+      {snapshot?.compatibilityAdvisory?.message ? (
+        <Text
+          selectable
+          className={
+            snapshot.compatibilityAdvisory.status === "broken"
+              ? "text-xs text-danger-foreground"
+              : "text-xs text-foreground-muted"
+          }
+        >
+          {snapshot.compatibilityAdvisory.message}
+        </Text>
       ) : null}
       <View className="flex-row flex-wrap gap-2">
         <ActionButton

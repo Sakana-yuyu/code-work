@@ -38,10 +38,13 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as Semaphore from "effect/Semaphore";
 
 import { ServerConfig } from "../../config.ts";
+import { BUNDLED_MODEL_MANIFEST, ModelManifest, type ModelManifestData } from "../ModelManifest.ts";
+import { applyProviderCompatibility } from "../providerCompatibility.ts";
 import { ProviderInstanceRegistry } from "../Services/ProviderInstanceRegistry.ts";
 import {
   ProviderRegistry,
@@ -313,7 +316,23 @@ export const ProviderRegistryLive = Layer.effect(
         ),
       ),
     );
-    const providersRef = yield* Ref.make<ReadonlyArray<ServerProvider>>(cachedProviders);
+    const manifestService = yield* ModelManifest;
+    const serviceScope = yield* Scope.Scope;
+    const initialManifest = yield* manifestService.current;
+    // A remote manifest policy replaces its matching bundled policy; a driver
+    // absent from the remote manifest keeps the bundled one. Applied at this
+    // aggregation point so every driver gets the advisory, not only the ones
+    // whose probe path already reads the manifest.
+    const classifyCompatibility = (provider: ServerProvider, manifest: ModelManifestData) =>
+      applyProviderCompatibility(
+        provider,
+        provider.driver,
+        manifest.compatibility,
+        BUNDLED_MODEL_MANIFEST.compatibility,
+      );
+    const providersRef = yield* Ref.make<ReadonlyArray<ServerProvider>>(
+      cachedProviders.map((provider) => classifyCompatibility(provider, initialManifest)),
+    );
     const hostPlatform = yield* HostProcessPlatform;
     const maintenanceActionStatesRef = yield* Ref.make<
       ReadonlyMap<
@@ -415,6 +434,7 @@ export const ProviderRegistryLive = Layer.effect(
         readonly replace?: boolean;
       },
     ) {
+      const manifest = yield* manifestService.current;
       const nextProvidersWithUpdateState = yield* Effect.forEach(
         nextProviders,
         applyProviderUpdateState,
@@ -441,7 +461,11 @@ export const ProviderRegistryLive = Layer.effect(
             );
           }
 
-          const providers = orderProviderSnapshots([...mergedProviders.values()]);
+          const providers = orderProviderSnapshots(
+            [...mergedProviders.values()].map((provider) =>
+              classifyCompatibility(provider, manifest),
+            ),
+          );
           const providersToPersist = providers.filter((provider) =>
             updatedKeys.has(snapshotInstanceKey(provider)),
           );
@@ -464,13 +488,24 @@ export const ProviderRegistryLive = Layer.effect(
       return providers;
     });
 
+    const compatibilityRefreshRunning = yield* Ref.make(false);
     const syncProvider = Effect.fn("syncProvider")(function* (
       provider: ServerProvider,
       options?: {
         readonly publish?: boolean;
       },
     ) {
-      return yield* upsertProviders([provider], options);
+      const providers = yield* upsertProviders([provider], options);
+      // Reclassify the current read model after fetching. Never republish the
+      // probe captured before the fetch: a newer health result may have landed.
+      if (!(yield* Ref.getAndSet(compatibilityRefreshRunning, true))) {
+        yield* manifestService.refresh.pipe(
+          Effect.andThen(upsertProviders([], { persist: false })),
+          Effect.ensuring(Ref.set(compatibilityRefreshRunning, false)),
+          Effect.forkIn(serviceScope),
+        );
+      }
+      return providers;
     });
 
     const setProviderMaintenanceActionState = Effect.fn("setProviderMaintenanceActionState")(

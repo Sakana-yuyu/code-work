@@ -43,6 +43,7 @@ import {
 import { checkClaudeProviderStatus } from "./ClaudeProvider.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import * as ModelManifest from "../ModelManifest.ts";
+import { applyProviderCompatibility } from "../providerCompatibility.ts";
 import * as ByokCatalog from "../byok/ByokCatalog.ts";
 import * as OpenCodeRuntime from "../opencodeRuntime.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
@@ -80,6 +81,13 @@ process.env.CODEWORK_CURSOR_ENABLED = "1";
 
 const encoder = new TextEncoder();
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
+const withBundledCompatibility = (snapshot: ServerProvider) =>
+  applyProviderCompatibility(
+    snapshot,
+    snapshot.driver,
+    undefined,
+    ModelManifest.BUNDLED_MODEL_MANIFEST.compatibility,
+  );
 
 const TestHttpClientLive = Layer.succeed(
   HttpClient.HttpClient,
@@ -1027,6 +1035,7 @@ it.layer(
                 }),
               ),
               Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(ModelManifest.layerTest),
             ),
           ).pipe(Scope.provide(scope));
           yield* Effect.gen(function* () {
@@ -1034,10 +1043,10 @@ it.layer(
             assert.strictEqual(yield* Ref.get(refreshCalls), 0);
             const { canInstall: _staleCanInstall, ...expectedProvider } = initialProvider;
             assert.deepStrictEqual(yield* registry.refreshInstance(codexInstanceId), [
-              {
+              withBundledCompatibility({
                 ...expectedProvider,
                 ...(expectedCanInstall ? { canInstall: true } : {}),
-              },
+              }),
             ]);
             assert.strictEqual(yield* Ref.get(refreshCalls), 1);
           }).pipe(Effect.provide(runtimeServices));
@@ -1127,6 +1136,7 @@ it.layer(
             ),
             Layer.provideMerge(BackgroundPolicyAlwaysRunLayer),
             Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(ModelManifest.layerTest),
           ),
         ).pipe(Scope.provide(scope));
 
@@ -1147,7 +1157,7 @@ it.layer(
           yield* nextUpdate;
           const cachedProvider = yield* readProviderStatusCache(filePath);
           assert.deepStrictEqual(cachedProvider, {
-            ...refreshedProvider,
+            ...withBundledCompatibility(refreshedProvider),
             models: [...initialProvider.models],
           });
         }).pipe(Effect.provide(runtimeServices));
@@ -1224,6 +1234,7 @@ it.layer(
             ),
             Layer.provideMerge(BackgroundPolicyAlwaysRunLayer),
             Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(ModelManifest.layerTest),
           ),
         ).pipe(Scope.provide(scope));
 
@@ -1333,6 +1344,7 @@ it.layer(
                 }),
               ),
               Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(ModelManifest.layerTest),
             ),
           ).pipe(Scope.provide(scope));
 
@@ -1426,16 +1438,18 @@ it.layer(
             ),
             Layer.provideMerge(BackgroundPolicyAlwaysRunLayer),
             Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(ModelManifest.layerTest),
           ),
         ).pipe(Scope.provide(scope));
 
         yield* Effect.gen(function* () {
           const registry = yield* ProviderRegistry.ProviderRegistry;
 
-          assert.deepStrictEqual(yield* registry.getProviders, [cachedProvider]);
-          assert.deepStrictEqual(yield* registry.refresh(codexDriver), [cachedProvider]);
+          const expectedProvider = withBundledCompatibility(cachedProvider);
+          assert.deepStrictEqual(yield* registry.getProviders, [expectedProvider]);
+          assert.deepStrictEqual(yield* registry.refresh(codexDriver), [expectedProvider]);
           assert.deepStrictEqual(yield* registry.refreshInstance(codexInstanceId), [
-            cachedProvider,
+            expectedProvider,
           ]);
         }).pipe(Effect.provide(runtimeServices));
       }),
@@ -1534,12 +1548,15 @@ it.layer(
             ),
             Layer.provideMerge(BackgroundPolicyAlwaysRunLayer),
             Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(ModelManifest.layerTest),
           ),
         ).pipe(Scope.provide(scope));
 
         yield* Effect.gen(function* () {
           const registry = yield* ProviderRegistry.ProviderRegistry;
-          assert.deepStrictEqual(yield* registry.getProviders, [codexProvider]);
+          assert.deepStrictEqual(yield* registry.getProviders, [
+            withBundledCompatibility(codexProvider),
+          ]);
 
           yield* Ref.set(failNextList, true);
           yield* PubSub.publish(changes, undefined);

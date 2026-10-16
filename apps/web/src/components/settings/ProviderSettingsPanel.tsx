@@ -598,7 +598,10 @@ export function EnvironmentProviderSettings({
   }, [environmentId, refreshServerProviders]);
 
   const runProviderUpdate = useCallback(
-    async (candidate: ProviderUpdateCandidate) => {
+    async (
+      candidate: Pick<ProviderUpdateCandidate, "driver" | "instanceId">,
+      targetVersion?: string,
+    ) => {
       // Ref-based re-entry guard, mirroring refreshProviders: a state updater
       // may run after this function returns, so it cannot gate the dispatch.
       if (updatingDriversRef.current.has(candidate.driver)) {
@@ -612,6 +615,7 @@ export function EnvironmentProviderSettings({
         input: {
           provider: candidate.driver,
           instanceId: candidate.instanceId,
+          ...(targetVersion ? { targetVersion } : {}),
         },
       });
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
@@ -1022,6 +1026,19 @@ export function EnvironmentProviderSettings({
         }
         onFavoriteModelsChange={(next) => updateProviderFavoriteModels(row.instanceId, next)}
         onModelOrderChange={(modelOrder) => updateProviderModelOrder(row.instanceId, modelOrder)}
+        onInstallRecommended={
+          mode === "editor" &&
+          liveProvider?.compatibilityAdvisory?.message &&
+          liveProvider.compatibilityAdvisory.recommendedVersion &&
+          liveProvider.versionAdvisory?.canInstallVersion
+            ? () => {
+                void runProviderUpdate(
+                  liveProvider,
+                  liveProvider.compatibilityAdvisory?.recommendedVersion ?? undefined,
+                );
+              }
+            : undefined
+        }
         onRunUpdate={
           mode === "editor" && showInlineUpdateButton && updateCandidate
             ? () => {

@@ -25,7 +25,14 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { ProviderRegistry } from "./Services/ProviderRegistry.ts";
 import { makeProviderMaintenanceCommandCoordinator } from "./providerMaintenanceCommandCoordinator.ts";
-import { enrichProviderSnapshotWithVersionAdvisory } from "./providerMaintenance.ts";
+import {
+  enrichProviderSnapshotWithVersionAdvisory,
+  makeTargetedProviderUpdateAction,
+  ProviderVersionCache,
+  resolveLatestProviderVersion,
+} from "./providerMaintenance.ts";
+import { BUNDLED_MODEL_MANIFEST, ModelManifest } from "./ModelManifest.ts";
+import { resolveProviderCompatibility } from "./providerCompatibility.ts";
 import type { ProviderMaintenanceCapabilities } from "./providerMaintenance.ts";
 import { collectUint8StreamText } from "../stream/collectUint8StreamText.ts";
 const isServerProviderUpdateError = Schema.is(ServerProviderUpdateError);
@@ -50,6 +57,7 @@ export interface ProviderMaintenanceRunnerShape {
       | {
           readonly provider: ProviderDriverKind;
           readonly instanceId?: ProviderInstanceId | undefined;
+          readonly targetVersion?: string | undefined;
         },
   ) => Effect.Effect<ServerProviderUpdatedPayload, ServerProviderUpdateError>;
 
@@ -232,6 +240,8 @@ function makeUpdateState(input: {
 
 export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
   const providerRegistry = yield* ProviderRegistry;
+  const manifestService = yield* ModelManifest;
+  const versionCache = yield* ProviderVersionCache;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const httpClient = yield* HttpClient.HttpClient;
   const runMaintenanceCommand = (command: string, args: ReadonlyArray<string>) =>
@@ -292,7 +302,10 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
             enrichProviderSnapshotWithVersionAdvisory(
               refreshedProvider,
               maintenanceCapabilities,
-            ).pipe(Effect.provideService(HttpClient.HttpClient, httpClient)),
+            ).pipe(
+              Effect.provideService(HttpClient.HttpClient, httpClient),
+              Effect.provideService(ProviderVersionCache, versionCache),
+            ),
           {
             concurrency: "unbounded",
           },
@@ -373,7 +386,65 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
               }),
             );
 
-            const result = yield* runMaintenanceCommand(update.executable, update.args);
+            const targetVersion = typeof target === "string" ? undefined : target.targetVersion;
+            // The cached capabilities chose the lock; re-derive ownership now
+            // so the command that runs matches the executable as it is at
+            // click time, not as it was at the last health refresh.
+            yield* providerRegistry.refreshInstance(instanceId);
+            const fresh = yield* providerRegistry.getProviderMaintenanceCapabilitiesForInstance(
+              instanceId,
+              provider,
+            );
+            if (!fresh.update || fresh.update.lockKey !== update.lockKey) {
+              return yield* finish(
+                makeUpdateState({
+                  status: "failed",
+                  startedAt,
+                  finishedAt: yield* nowIso,
+                  message: "Provider installation changed. Refresh and try again.",
+                }),
+              );
+            }
+
+            const manifest = yield* manifestService.current;
+            const candidateVersion =
+              targetVersion ??
+              (yield* resolveLatestProviderVersion(fresh).pipe(
+                Effect.provideService(HttpClient.HttpClient, httpClient),
+                Effect.provideService(ProviderVersionCache, versionCache),
+              ));
+            const advisory =
+              resolveProviderCompatibility(manifest.compatibility, provider, candidateVersion) ??
+              resolveProviderCompatibility(
+                BUNDLED_MODEL_MANIFEST.compatibility,
+                provider,
+                candidateVersion,
+              );
+            const command =
+              targetVersion !== undefined
+                ? makeTargetedProviderUpdateAction(fresh, targetVersion)
+                : fresh.update;
+            const rejected =
+              targetVersion !== undefined
+                ? !command ||
+                  advisory?.recommendedVersion !== targetVersion ||
+                  advisory?.status !== "supported"
+                : advisory?.status === "broken" || advisory?.status === "unsupported";
+            if (rejected || !command) {
+              return yield* finish(
+                makeUpdateState({
+                  status: "failed",
+                  startedAt,
+                  finishedAt: yield* nowIso,
+                  message:
+                    targetVersion !== undefined
+                      ? "This version is no longer recommended or this installer cannot install a specific version. Refresh provider settings."
+                      : "The latest provider version is incompatible with this Code Work release. Review provider settings.",
+                }),
+              );
+            }
+
+            const result = yield* runMaintenanceCommand(command.executable, command.args);
             const finishedAt = yield* nowIso;
             if (result.timedOut || result.exitCode !== 0) {
               return yield* finish(
@@ -395,7 +466,12 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
             const couldNotVerify = verifiedProviders.length === 0;
             const stillOutdated =
               couldNotVerify ||
-              verifiedProviders.some((verifiedProvider) => isOutdatedProvider(verifiedProvider));
+              verifiedProviders.some(
+                (verifiedProvider) =>
+                  (targetVersion !== undefined &&
+                    verifiedProvider.version?.replace(/^v/, "") !== targetVersion) ||
+                  (targetVersion === undefined && isOutdatedProvider(verifiedProvider)),
+              );
             return yield* finish(
               makeUpdateState({
                 status: stillOutdated ? "unchanged" : "succeeded",

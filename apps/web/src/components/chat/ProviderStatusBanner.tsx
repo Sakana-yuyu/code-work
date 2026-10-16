@@ -8,8 +8,28 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { t } from "~/i18n";
 import { localizeProviderMessage } from "../settings/providerStatus";
 
+/** Unsupported and broken versions fail mid-turn, so they warn even when ready. */
+function getIncompatibleVersion(status: ServerProvider) {
+  const compatibility = status.compatibilityAdvisory;
+  if (status.status === "error" && status.auth.status === "unauthenticated") return null;
+  return compatibility?.status === "broken" ||
+    (status.status === "ready" && compatibility?.status === "unsupported")
+    ? compatibility
+    : null;
+}
+
 export function getProviderStatusBannerKey(status: ServerProvider | null): string | null {
-  return !status || status.status === "ready" || status.status === "disabled"
+  if (!status || status.status === "disabled") return null;
+  const incompatible = getIncompatibleVersion(status);
+  if (incompatible) {
+    return [
+      status.instanceId,
+      incompatible.status,
+      status.version ?? "",
+      incompatible.message ?? "",
+    ].join("\u0000");
+  }
+  return status.status === "ready"
     ? null
     : [status.instanceId, status.status, status.auth.status, status.message ?? ""].join("\u0000");
 }
@@ -29,22 +49,36 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   onDismiss: () => void;
   status: ServerProvider | null;
 }) {
-  if (!status || status.status === "ready" || status.status === "disabled") {
+  if (!status || getProviderStatusBannerKey(status) === null) {
     return null;
   }
 
   const providerName = status.displayName?.trim() || formatProviderDriverKindLabel(status.driver);
   const isUnauthenticated = status.status === "error" && status.auth.status === "unauthenticated";
+  const incompatible = getIncompatibleVersion(status);
   const title = isUnauthenticated
     ? t("interface.value-is-unauthenticated", { value1: providerName })
-    : t("interface.value-provider-status", { value1: providerName });
+    : incompatible
+      ? t("providerVersionIncompatibleTitle", {
+          providerName,
+          version: status.version ?? "",
+          state:
+            incompatible.status === "broken"
+              ? t("providerCompatibilityBrokenState")
+              : t("providerCompatibilityUnsupportedState"),
+        })
+      : t("interface.value-provider-status", { value1: providerName });
+  // Broken-version guidance takes precedence over startup failures it can cause.
   const message = isUnauthenticated
     ? t("interface.sign-in-via-the-cli-to-authenticate-again")
-    : (localizeProviderMessage(status.message) ??
-      status.message ??
-      (status.status === "error"
-        ? `${providerName} provider is unavailable.`
-        : `${providerName} provider has limited availability.`));
+    : incompatible?.status === "broken" && incompatible.message
+      ? incompatible.message
+      : (localizeProviderMessage(status.message) ??
+        status.message ??
+        incompatible?.message ??
+        (status.status === "error"
+          ? `${providerName} provider is unavailable.`
+          : `${providerName} provider has limited availability.`));
 
   return (
     <div className="pointer-events-auto mx-auto w-fit max-w-[calc(100%-2rem)] pt-3">

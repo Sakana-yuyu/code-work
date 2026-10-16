@@ -32,6 +32,7 @@ import {
   ProviderVersionCache,
   type ProviderMaintenanceCapabilities,
 } from "./providerMaintenance.ts";
+import * as ModelManifest from "./ModelManifest.ts";
 const isServerProviderUpdateError = Schema.is(ServerProviderUpdateError);
 const isServerProviderInstallError = Schema.is(ServerProviderInstallError);
 
@@ -274,7 +275,33 @@ function makeRegistry(
   });
 }
 
-const makeTestRunner = (registry: ProviderRegistryShape) =>
+const targetedCodexManifest: ModelManifest.ModelManifestData = {
+  version: 1,
+  currentModels: {},
+  compatibility: [
+    {
+      driver: "codex",
+      appVersionRange: ">=1.0.0",
+      recommendedVersion: "0.200.0",
+      ranges: [{ range: ">=0.156.0", status: "supported" }],
+    },
+  ],
+};
+
+const makeTestRunner = (
+  registry: ProviderRegistryShape,
+  // Generic updater fixtures use synthetic versions. Keep their compatibility
+  // unknown so real harness minimums do not bypass the command under test.
+  manifest: ModelManifest.ModelManifestData = {
+    version: 1,
+    currentModels: {},
+    compatibility: [CODEX_DRIVER, CURSOR_DRIVER, GROK_DRIVER, OPENCODE_DRIVER].map((driver) => ({
+      driver,
+      appVersionRange: ">=1.0.0",
+      ranges: [],
+    })),
+  },
+) =>
   Effect.service(ProviderMaintenanceRunner.ProviderMaintenanceRunner).pipe(
     Effect.provide(
       ProviderMaintenanceRunner.layer.pipe(
@@ -282,6 +309,10 @@ const makeTestRunner = (registry: ProviderRegistryShape) =>
           Layer.mergeAll(
             Layer.succeed(ProviderRegistry, registry),
             Layer.succeed(ProviderVersionCache, new Map()),
+            Layer.succeed(ModelManifest.ModelManifest, {
+              ...ModelManifest.BundledOnlyModelManifest,
+              current: Effect.succeed(manifest),
+            }),
           ),
         ),
       ),
@@ -456,7 +487,13 @@ describe("providerMaintenanceRunner", () => {
           args: ["i", "-g", "@openai/codex"],
         },
       ]);
-      assert.deepStrictEqual(refreshedInstanceIds, [personalInstanceId]);
+      // Refresh runs twice — once to re-derive capabilities at click time and
+      // once for post-command verification — and must only touch the target.
+      assert.strictEqual(
+        refreshedInstanceIds.every((instanceId) => instanceId === personalInstanceId) &&
+          refreshedInstanceIds.length > 0,
+        true,
+      );
       assert.strictEqual(result.providers[0]?.instanceId, personalInstanceId);
       assert.strictEqual(result.providers[0]?.updateState?.status, "succeeded");
       assert.strictEqual(result.providers[1]?.instanceId, workInstanceId);
@@ -1031,4 +1068,120 @@ describe("providerMaintenanceRunner installProvider", () => {
       ),
     );
   });
+
+  it.effect("rejects a one-click update when the latest version is known broken", () => {
+    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+    return Effect.gen(function* () {
+      const { registry } = yield* makeRegistry(baseProvider);
+      // Bundled codex policy marks <0.149.0 broken; the registry reports
+      // 0.100.0 as latest, so the update must be refused before spawning.
+      const runner = yield* makeTestRunner(registry, ModelManifest.BUNDLED_MODEL_MANIFEST);
+
+      const result = yield* runner.updateProvider(CODEX_DRIVER);
+
+      assert.deepStrictEqual(calls, []);
+      assert.strictEqual(result.providers[0]?.updateState?.status, "failed");
+      assert.match(
+        result.providers[0]?.updateState?.message ?? "",
+        /incompatible with this Code Work release/,
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.100.0"),
+          mockSpawnerLayer((command, args) => {
+            calls.push({ command, args });
+            return { stdout: "" };
+          }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("installs a recommended targetVersion through the owned package channel", () => {
+    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+    return Effect.gen(function* () {
+      const { registry } = yield* makeRegistry(baseProvider, {
+        refreshProviders: [{ ...baseProvider, version: "0.200.0" }],
+      });
+      const runner = yield* makeTestRunner(registry, targetedCodexManifest);
+
+      const result = yield* runner.updateProvider({
+        provider: CODEX_DRIVER,
+        targetVersion: "0.200.0",
+      });
+
+      assert.deepStrictEqual(calls, [
+        { command: "npm", args: ["install", "-g", "@openai/codex@0.200.0"] },
+      ]);
+      assert.strictEqual(result.providers[0]?.updateState?.status, "succeeded");
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer((command, args) => {
+            calls.push({ command, args });
+            return { stdout: "" };
+          }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("rejects a targetVersion the policy does not recommend", () => {
+    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+    return Effect.gen(function* () {
+      const { registry } = yield* makeRegistry(baseProvider);
+      const runner = yield* makeTestRunner(registry, targetedCodexManifest);
+
+      const result = yield* runner.updateProvider({
+        provider: CODEX_DRIVER,
+        targetVersion: "0.300.0",
+      });
+
+      assert.deepStrictEqual(calls, []);
+      assert.strictEqual(result.providers[0]?.updateState?.status, "failed");
+      assert.match(result.providers[0]?.updateState?.message ?? "", /no longer recommended/);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer((command, args) => {
+            calls.push({ command, args });
+            return { stdout: "" };
+          }),
+        ),
+      ),
+    );
+  });
+
+  it.effect(
+    "marks a targeted update unchanged when re-verification reports another version",
+    () => {
+      return Effect.gen(function* () {
+        const { registry } = yield* makeRegistry(baseProvider, {
+          refreshProviders: [{ ...baseProvider, version: "0.199.0" }],
+        });
+        const runner = yield* makeTestRunner(registry, targetedCodexManifest);
+
+        const result = yield* runner.updateProvider({
+          provider: CODEX_DRIVER,
+          targetVersion: "0.200.0",
+        });
+
+        assert.strictEqual(result.providers[0]?.updateState?.status, "unchanged");
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            NonWindowsPlatform,
+            latestVersionHttpClient("0.0.0"),
+            mockSpawnerLayer(() => ({ stdout: "" })),
+          ),
+        ),
+      );
+    },
+  );
 });

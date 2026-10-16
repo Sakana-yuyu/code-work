@@ -32,6 +32,7 @@ import * as Semaphore from "effect/Semaphore";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import { compareSemverVersions, parseSemver } from "@codework/shared/semver";
+import { ProviderCompatibilityPolicy } from "./providerCompatibility.ts";
 import { ServerConfig } from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import bundledManifestJson from "./model-manifest.json" with { type: "json" };
@@ -116,6 +117,7 @@ const ModelManifestSchema = Schema.Struct({
   updatedAt: Schema.optional(Schema.String),
   currentModels: Schema.Record(Schema.String, Schema.Array(Schema.String)),
   providers: Schema.optional(Schema.Record(ProviderDriverKind, ManifestProviderCatalog)),
+  compatibility: Schema.optional(Schema.Array(ProviderCompatibilityPolicy)),
 });
 export type ModelManifestData = typeof ModelManifestSchema.Type;
 
@@ -354,6 +356,14 @@ function applyCodexCatalog(
  * `updateRequiredModels`. Custom models are never reclassified or dropped.
  */
 export function applyModelManifest(
+  draft: ServerProviderDraft,
+  manifest: ModelManifestData,
+  driverKind: ProviderDriverKind,
+): ServerProviderDraft {
+  return applyManifestModels(draft, manifest, driverKind);
+}
+
+function applyManifestModels(
   draft: ServerProviderDraft,
   manifest: ModelManifestData,
   driverKind: ProviderDriverKind,
