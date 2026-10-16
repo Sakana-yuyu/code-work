@@ -1046,13 +1046,44 @@ const make = Effect.gen(function* () {
       };
     });
 
+  const materializeSecrets = (settings: ServerSettings) =>
+    materializeProviderEnvironmentSecrets(settings).pipe(
+      Effect.flatMap(materializeMcpServerSecrets),
+      Effect.flatMap(materializeByokSecrets),
+      Effect.flatMap(materializeSshServerSecrets),
+    );
+
+  // Readers poll settings constantly (background policy snapshots, provider
+  // health refresh loops), and materializing re-read every sensitive secret
+  // from the secret store on each call. The disk snapshot behind the cache is
+  // reference-stable until a write or watcher invalidation swaps it, so
+  // memoizing on that reference collapses the reads to once per snapshot
+  // generation. Only successes are memoized: failed reads must retry, and
+  // every writer (updateSettings, the watcher) yields a fresh settings object,
+  // so the memo can never outlive the secrets it decoded.
+  let materializedMemo:
+    | { readonly source: ServerSettings; readonly value: ServerSettings }
+    | undefined;
+  const getMaterializedSettings = (
+    source: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.suspend(() => {
+      if (materializedMemo?.source === source) {
+        return Effect.succeed(materializedMemo.value);
+      }
+      return materializeSecrets(source).pipe(
+        Effect.tap((value) =>
+          Effect.sync(() => {
+            materializedMemo = { source, value };
+          }),
+        ),
+      );
+    });
+
   const materializeChanges = (changes: Stream.Stream<ServerSettings>) =>
     changes.pipe(
       Stream.mapEffect((settings) =>
-        materializeProviderEnvironmentSecrets(settings).pipe(
-          Effect.flatMap(materializeMcpServerSecrets),
-          Effect.flatMap(materializeByokSecrets),
-          Effect.flatMap(materializeSshServerSecrets),
+        getMaterializedSettings(settings).pipe(
           Effect.catch((error: ServerSettingsError) =>
             Effect.logWarning("failed to materialize provider environment secrets", {
               operation: error.operation,
@@ -1670,10 +1701,7 @@ const make = Effect.gen(function* () {
     start,
     ready: Deferred.await(startedDeferred),
     getSettings: getSettingsFromCache.pipe(
-      Effect.flatMap(materializeProviderEnvironmentSecrets),
-      Effect.flatMap(materializeMcpServerSecrets),
-      Effect.flatMap(materializeByokSecrets),
-      Effect.flatMap(materializeSshServerSecrets),
+      Effect.flatMap(getMaterializedSettings),
       Effect.map(resolveTextGenerationProvider),
     ),
     updateSettings: (update) =>
@@ -1724,10 +1752,7 @@ const make = Effect.gen(function* () {
               settings: next,
             });
             yield* emitChange(next);
-            const materializedEnvironment = yield* materializeProviderEnvironmentSecrets(next);
-            const materializedMcp = yield* materializeMcpServerSecrets(materializedEnvironment);
-            const materializedByok = yield* materializeByokSecrets(materializedMcp);
-            const materialized = yield* materializeSshServerSecrets(materializedByok);
+            const materialized = yield* getMaterializedSettings(next);
             return resolveTextGenerationProvider(materialized);
           }
         }),

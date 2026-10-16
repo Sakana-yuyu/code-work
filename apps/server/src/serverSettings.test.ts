@@ -2978,4 +2978,179 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.equal((savedSecond.config as { readonly version?: string }).version, "v2");
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
+
+  // 计数/故障包装真实 secret store：get 调用按名字记录，可选择性地让首若干次失败。
+  const buildInstrumentedRuntime = Effect.gen(function* () {
+    const serverConfig = yield* ServerConfig.ServerConfig;
+    const sql = yield* SqlClient.SqlClient;
+    const secretContext = yield* Layer.build(
+      ServerSecretStore.layer.pipe(
+        Layer.provideMerge(Layer.succeed(ServerConfig.ServerConfig, serverConfig)),
+      ),
+    );
+    const baseSecretStore = Context.get(secretContext, ServerSecretStore.ServerSecretStore);
+    const getCalls: string[] = [];
+    const instrumentedStore = ServerSecretStore.ServerSecretStore.of({
+      ...baseSecretStore,
+      get: (name) =>
+        Effect.sync(() => {
+          getCalls.push(name);
+        }).pipe(Effect.andThen(baseSecretStore.get(name))),
+    });
+    const runtime = yield* Layer.build(
+      Layer.fresh(
+        ServerSettingsModule.layer.pipe(
+          Layer.provide(Layer.succeed(ServerSecretStore.ServerSecretStore, instrumentedStore)),
+          Layer.provideMerge(Layer.succeed(SqlClient.SqlClient, sql)),
+          Layer.provideMerge(Layer.succeed(ServerConfig.ServerConfig, serverConfig)),
+        ),
+      ),
+    );
+    return {
+      serverSettings: Context.get(runtime, ServerSettingsModule.ServerSettingsService),
+      getCalls,
+    };
+  });
+
+  it.effect("同一快照代次的重复读取只物化一次 Secret", () =>
+    Effect.gen(function* () {
+      const { serverSettings, getCalls } = yield* buildInstrumentedRuntime;
+      const instanceId = ProviderInstanceId.make("materialize_memo_once");
+      const secretName = providerEnvironmentSecretNameForTest(instanceId, "MEMO_API_TOKEN");
+      yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("codex"),
+            config: {},
+            environment: [{ name: "MEMO_API_TOKEN", value: "memo-secret", sensitive: true }],
+          },
+        },
+      });
+      const readsAfterCreate = getCalls.filter((name) => name === secretName).length;
+
+      for (let index = 0; index < 3; index += 1) {
+        const settings = yield* serverSettings.getSettings;
+        assert.equal(settings.providerInstances[instanceId]?.environment[0]?.value, "memo-secret");
+      }
+      assert.equal(
+        getCalls.filter((name) => name === secretName).length,
+        readsAfterCreate,
+        "repeated getSettings calls must not re-read the secret",
+      );
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("设置写入产出新快照代次并重新物化 Secret", () =>
+    Effect.gen(function* () {
+      const { serverSettings, getCalls } = yield* buildInstrumentedRuntime;
+      const instanceId = ProviderInstanceId.make("materialize_memo_refresh");
+      const secretName = providerEnvironmentSecretNameForTest(instanceId, "MEMO_API_TOKEN");
+      yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("codex"),
+            config: {},
+            environment: [{ name: "MEMO_API_TOKEN", value: "first-secret", sensitive: true }],
+          },
+        },
+      });
+      const readsAfterFirst = getCalls.filter((name) => name === secretName).length;
+      assert.ok(readsAfterFirst >= 1);
+
+      yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("codex"),
+            config: {},
+            environment: [{ name: "MEMO_API_TOKEN", value: "second-secret", sensitive: true }],
+          },
+        },
+      });
+      const settings = yield* serverSettings.getSettings;
+      assert.equal(settings.providerInstances[instanceId]?.environment[0]?.value, "second-secret");
+      const readsAfterSecond = getCalls.filter((name) => name === secretName).length;
+      // 一次写入 = 事务捕获旧值一次 + 新代次物化一次。
+      assert.equal(readsAfterSecond, readsAfterFirst + 2);
+      yield* serverSettings.getSettings;
+      assert.equal(
+        getCalls.filter((name) => name === secretName).length,
+        readsAfterSecond,
+        "a memoized generation must not re-read on subsequent getSettings",
+      );
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("物化失败的读取不驻留，下一个代次照常重试", () =>
+    Effect.gen(function* () {
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const sql = yield* SqlClient.SqlClient;
+      const secretContext = yield* Layer.build(
+        ServerSecretStore.layer.pipe(
+          Layer.provideMerge(Layer.succeed(ServerConfig.ServerConfig, serverConfig)),
+        ),
+      );
+      const baseSecretStore = Context.get(secretContext, ServerSecretStore.ServerSecretStore);
+      const platformCause = PlatformError.systemError({
+        _tag: "PermissionDenied",
+        module: "FileSystem",
+        method: "readFile",
+        pathOrDescriptor: "provider environment secret",
+        description: "Transient secret backend failure.",
+      });
+      const instanceId = ProviderInstanceId.make("materialize_memo_retry");
+      const secretName = providerEnvironmentSecretNameForTest(instanceId, "RETRY_API_TOKEN");
+      let failSecretReads = false;
+      const flakyStore = ServerSecretStore.ServerSecretStore.of({
+        ...baseSecretStore,
+        get: (name) =>
+          name === secretName && failSecretReads
+            ? Effect.fail(
+                new ServerSecretStore.SecretStoreReadError({
+                  resource: name,
+                  cause: platformCause,
+                }),
+              )
+            : baseSecretStore.get(name),
+      });
+      const runtime = yield* Layer.build(
+        Layer.fresh(
+          ServerSettingsModule.layer.pipe(
+            Layer.provide(Layer.succeed(ServerSecretStore.ServerSecretStore, flakyStore)),
+            Layer.provideMerge(Layer.succeed(SqlClient.SqlClient, sql)),
+            Layer.provideMerge(Layer.succeed(ServerConfig.ServerConfig, serverConfig)),
+          ),
+        ),
+      );
+      const serverSettings = Context.get(runtime, ServerSettingsModule.ServerSettingsService);
+      const environment = [{ name: "RETRY_API_TOKEN", value: "retry-secret", sensitive: true }];
+
+      yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: { driver: ProviderDriverKind.make("codex"), config: {}, environment },
+        },
+      });
+      const warm = yield* serverSettings.getSettings;
+      assert.equal(warm.providerInstances[instanceId]?.environment[0]?.value, "retry-secret");
+
+      // 下一个代次的物化失败一次：提交已完成，但物化报错不得钉死 memo，
+      // 恢复后的读取必须重新物化而不是沿用失败或旧值。
+      failSecretReads = true;
+      const failed = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: {
+            [instanceId]: {
+              driver: ProviderDriverKind.make("codex"),
+              config: {},
+              environment,
+            },
+          },
+        }),
+      );
+      assert.equal(failed._tag, "ServerSettingsError");
+
+      failSecretReads = false;
+      const recovered = yield* serverSettings.getSettings;
+      assert.equal(recovered.providerInstances[instanceId]?.environment[0]?.value, "retry-secret");
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
 });
