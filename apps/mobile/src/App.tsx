@@ -10,6 +10,7 @@ import { createStaticNavigation } from "@react-navigation/native";
 
 import { RegistryContext } from "@effect/atom-react";
 import { MOBILE_LINK_PREFIXES } from "./features/connection/pairing";
+import { captureProviderImportLink } from "./lib/providerImportLink";
 import { ConfirmDialogHost } from "./components/ConfirmDialogHost";
 import { NativeFrameScheduler } from "./components/NativeFrameScheduler";
 import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
@@ -45,8 +46,12 @@ const appLinking = {
   // to the NotFound wildcard route on every dev launch.
   // expo-sharing uses a private lifecycle URL only to wake the app. The
   // persisted share inbox below owns navigation once the payload is durable.
-  filter: (url: string) =>
-    !url.includes("expo-development-client") && !url.includes("://expo-sharing"),
+  filter: (url: string) => {
+    // React Navigation trims `#…` before the import route sees it; capture
+    // the raw provider-import link so fragment-carried fields survive.
+    captureProviderImportLink(url);
+    return !url.includes("expo-development-client") && !url.includes("://expo-sharing");
+  },
 };
 
 const Navigation = createStaticNavigation(RootStack);

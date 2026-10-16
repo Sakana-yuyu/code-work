@@ -1181,6 +1181,14 @@ export interface DesktopBridge {
   setNotificationBadge?: (badge: { count: number; image: string | null }) => Promise<void>;
   /** Optional: fired when the native side clears badges (focus, quit, disposal). */
   onNotificationBadgeClear?: (listener: () => void) => () => void;
+  /**
+   * OS-delivered deep links (`codework://provider/import?…` and friends):
+   * pushed once the renderer reports readiness via `signalDeepLinkReady`.
+   * Optional: older desktop builds never emit it.
+   */
+  onDeepLink?: (listener: (url: string) => void) => () => void;
+  /** Optional: tells the native side the renderer can receive deep links. */
+  signalDeepLinkReady?: () => Promise<void>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   /**
    * Hold-to-quit hint pushes: "down" when the quit shortcut is first pressed,

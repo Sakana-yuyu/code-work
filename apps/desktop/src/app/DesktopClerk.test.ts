@@ -27,6 +27,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopClerk from "./DesktopClerk.ts";
+import * as DesktopDeepLinks from "./DesktopDeepLinks.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
 const makeDesktopClerkLayer = (isDevelopment = true, events: string[] = []) => {
@@ -157,7 +158,7 @@ describe("DesktopClerk", () => {
     });
   });
 
-  it.effect("registers the second-instance handler in the primary instance", () => {
+  it.effect("registers the deep-link and second-instance handlers in the primary instance", () => {
     storageMock.mockReturnValue(storageAdapter);
     createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
     const quit = vi.fn();
@@ -170,6 +171,10 @@ describe("DesktopClerk", () => {
         }),
     } as unknown as ElectronApp.ElectronApp["Service"];
     const electronWindow = {} as ElectronWindow.ElectronWindow["Service"];
+    const deepLinks = DesktopDeepLinks.DesktopDeepLinks.of({
+      receive: () => Effect.void,
+      setRendererReady: Effect.void,
+    });
 
     return Effect.gen(function* () {
       const clerk = yield* DesktopClerk.DesktopClerk;
@@ -177,11 +182,74 @@ describe("DesktopClerk", () => {
 
       assert.isTrue(Exit.isSuccess(exit));
       assert.equal(quit.mock.calls.length, 0);
-      assert.deepEqual(registeredEvents, ["second-instance"]);
+      assert.deepEqual(registeredEvents, ["open-url", "second-instance"]);
     }).pipe(
       Effect.provide(makeDesktopClerkLayer()),
       Effect.provideService(ElectronApp.ElectronApp, electronApp),
       Effect.provideService(ElectronWindow.ElectronWindow, electronWindow),
+      Effect.provideService(DesktopDeepLinks.DesktopDeepLinks, deepLinks),
+    );
+  });
+
+  it.effect("dispatches own-scheme deep links to the renderer", () => {
+    storageMock.mockReturnValue(storageAdapter);
+    createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
+    const listeners = new Map<string, (...args: ReadonlyArray<unknown>) => void>();
+    const electronApp = {
+      quit: Effect.void,
+      on: (eventName: string, listener: (...args: ReadonlyArray<unknown>) => void) =>
+        Effect.sync(() => {
+          listeners.set(eventName, listener);
+        }),
+    } as unknown as ElectronApp.ElectronApp["Service"];
+    const electronWindow = {} as ElectronWindow.ElectronWindow["Service"];
+    const received: string[] = [];
+    const deepLinks = DesktopDeepLinks.DesktopDeepLinks.of({
+      receive: (url: string) =>
+        Effect.sync(() => {
+          received.push(url);
+        }),
+      setRendererReady: Effect.void,
+    });
+    const originalArgv = process.argv;
+
+    return Effect.gen(function* () {
+      const clerk = yield* DesktopClerk.DesktopClerk;
+      const exit = yield* Effect.exit(Effect.scoped(clerk.configure));
+
+      assert.isTrue(Exit.isSuccess(exit));
+
+      const openUrl = listeners.get("open-url");
+      assert.isDefined(openUrl);
+      const prevented = vi.fn();
+      openUrl?.({ preventDefault: prevented }, "https://example.com/not-ours");
+      assert.equal(prevented.mock.calls.length, 0);
+      assert.deepEqual(received, []);
+
+      openUrl?.(
+        { preventDefault: prevented },
+        "codework-dev://provider/import?url=https%3A%2F%2Fx.example",
+      );
+      assert.equal(prevented.mock.calls.length, 1);
+      assert.deepEqual(received, ["codework-dev://provider/import?url=https%3A%2F%2Fx.example"]);
+
+      const secondInstance = listeners.get("second-instance");
+      assert.isDefined(secondInstance);
+      secondInstance?.({}, ["electron", "app", "codework-dev://provider/import?key=k"]);
+      assert.deepEqual(received, [
+        "codework-dev://provider/import?url=https%3A%2F%2Fx.example",
+        "codework-dev://provider/import?key=k",
+      ]);
+    }).pipe(
+      Effect.provide(makeDesktopClerkLayer()),
+      Effect.provideService(ElectronApp.ElectronApp, electronApp),
+      Effect.provideService(ElectronWindow.ElectronWindow, electronWindow),
+      Effect.provideService(DesktopDeepLinks.DesktopDeepLinks, deepLinks),
+      Effect.ensuring(
+        Effect.sync(() => {
+          process.argv = originalArgv;
+        }),
+      ),
     );
   });
 
@@ -198,6 +266,10 @@ describe("DesktopClerk", () => {
         }),
     } as unknown as ElectronApp.ElectronApp["Service"];
     const electronWindow = {} as ElectronWindow.ElectronWindow["Service"];
+    const deepLinks = DesktopDeepLinks.DesktopDeepLinks.of({
+      receive: () => Effect.void,
+      setRendererReady: Effect.void,
+    });
 
     return Effect.gen(function* () {
       const clerk = yield* DesktopClerk.DesktopClerk;
@@ -210,6 +282,7 @@ describe("DesktopClerk", () => {
       Effect.provide(makeDesktopClerkLayer()),
       Effect.provideService(ElectronApp.ElectronApp, electronApp),
       Effect.provideService(ElectronWindow.ElectronWindow, electronWindow),
+      Effect.provideService(DesktopDeepLinks.DesktopDeepLinks, deepLinks),
     );
   });
 

@@ -36,6 +36,7 @@ import { Route as SettingsAppearanceRouteImport } from './routes/settings.appear
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ConnectCallbackRouteImport } from './routes/connect_.callback'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
+import { Route as SettingsByokImportRouteImport } from './routes/settings.byok_.import'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 
@@ -174,6 +175,11 @@ const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
   path: '/pull-requests',
   getParentRoute: () => ChatRoute,
 } as any)
+const SettingsByokImportRoute = SettingsByokImportRouteImport.update({
+  id: '/byok_/import',
+  path: '/byok/import',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
   id: '/draft/$draftId',
   path: '/draft/$draftId',
@@ -215,6 +221,7 @@ export interface FileRoutesByFullPath {
   '/settings/workspace-scripts': typeof SettingsWorkspaceScriptsRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/settings/byok/import': typeof SettingsByokImportRoute
 }
 export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
@@ -245,6 +252,7 @@ export interface FileRoutesByTo {
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/settings/byok/import': typeof SettingsByokImportRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -277,6 +285,7 @@ export interface FileRoutesById {
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/settings/byok_/import': typeof SettingsByokImportRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -309,6 +318,7 @@ export interface FileRouteTypes {
     | '/settings/workspace-scripts'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/settings/byok/import'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/connect'
@@ -339,6 +349,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/settings/byok/import'
   id:
     | '__root__'
     | '/_chat'
@@ -370,6 +381,7 @@ export interface FileRouteTypes {
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
+    | '/settings/byok_/import'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -573,6 +585,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatPullRequestsRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/settings/byok_/import': {
+      id: '/settings/byok_/import'
+      path: '/byok/import'
+      fullPath: '/settings/byok/import'
+      preLoaderRoute: typeof SettingsByokImportRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/_chat/draft/$draftId': {
       id: '/_chat/draft/$draftId'
       path: '/draft/$draftId'
@@ -625,6 +644,7 @@ interface SettingsRouteChildren {
   SettingsSourceControlRoute: typeof SettingsSourceControlRoute
   SettingsSquadsRoute: typeof SettingsSquadsRoute
   SettingsWorkspaceScriptsRoute: typeof SettingsWorkspaceScriptsRoute
+  SettingsByokImportRoute: typeof SettingsByokImportRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
@@ -646,6 +666,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsSourceControlRoute: SettingsSourceControlRoute,
   SettingsSquadsRoute: SettingsSquadsRoute,
   SettingsWorkspaceScriptsRoute: SettingsWorkspaceScriptsRoute,
+  SettingsByokImportRoute: SettingsByokImportRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(

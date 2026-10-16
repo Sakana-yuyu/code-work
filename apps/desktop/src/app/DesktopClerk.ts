@@ -12,6 +12,7 @@ import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronProtocol from "../electron/ElectronProtocol.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopAppIdentity from "./DesktopAppIdentity.ts";
+import * as DesktopDeepLinks from "./DesktopDeepLinks.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
 declare const __CODEWORK_BUILD_CLERK_PUBLISHABLE_KEY__: string | undefined;
@@ -48,7 +49,10 @@ export class DesktopClerk extends Context.Service<
     readonly configure: Effect.Effect<
       void,
       never,
-      ElectronApp.ElectronApp | ElectronWindow.ElectronWindow | Scope.Scope
+      | ElectronApp.ElectronApp
+      | ElectronWindow.ElectronWindow
+      | DesktopDeepLinks.DesktopDeepLinks
+      | Scope.Scope
     >;
   }
 >()("@codework/desktop/app/DesktopClerk") {}
@@ -122,6 +126,7 @@ export const make = Effect.gen(function* () {
     configure: Effect.gen(function* () {
       const electronApp = yield* ElectronApp.ElectronApp;
       const electronWindow = yield* ElectronWindow.ElectronWindow;
+      const deepLinks = yield* DesktopDeepLinks.DesktopDeepLinks;
       const context = yield* Effect.context<ElectronWindow.ElectronWindow>();
       const runPromise = Effect.runPromiseWith(context);
 
@@ -135,7 +140,21 @@ export const make = Effect.gen(function* () {
         return yield* Effect.interrupt;
       }
 
-      yield* electronApp.on("second-instance", () => {
+      // Deep links under the app's own schemes (dev/preview and the legacy
+      // t3code aliases) — `codework://provider/import?…` and friends. The OS
+      // delivers them through open-url (macOS), a second instance's argv
+      // (Windows/Linux), or this instance's argv when the link launched it.
+      const deepLinkSchemes = new Set(
+        ElectronProtocol.getDesktopSchemes(environment.isDevelopment),
+      );
+      const asDeepLink = (value: string | undefined): string | null => {
+        if (!value || !URL.canParse(value)) return null;
+        return deepLinkSchemes.has(new URL(value).protocol.replace(/:$/, "")) ? value : null;
+      };
+      const dispatchDeepLink = (url: string) => {
+        void runPromise(deepLinks.receive(url));
+      };
+      const revealMainWindow = () => {
         void runPromise(
           Effect.gen(function* () {
             const mainWindow = yield* electronWindow.currentMainOrFirst;
@@ -144,6 +163,29 @@ export const make = Effect.gen(function* () {
             }
           }),
         );
+      };
+
+      for (const arg of process.argv) {
+        const link = asDeepLink(arg);
+        if (link !== null) dispatchDeepLink(link);
+      }
+
+      yield* electronApp.on("open-url", (event: { preventDefault: () => void }, url: string) => {
+        const link = asDeepLink(url);
+        if (link === null) return;
+        event.preventDefault();
+        dispatchDeepLink(link);
+      });
+
+      yield* electronApp.on("second-instance", (_event: unknown, argv: readonly string[]) => {
+        const links = argv.map(asDeepLink).filter((link) => link !== null);
+        if (links.length === 0) {
+          revealMainWindow();
+          return;
+        }
+        // The deep-link delivery reveals the window once the renderer has
+        // the link; before then it might land on a page that is not there.
+        for (const link of links) dispatchDeepLink(link);
       });
     }).pipe(Effect.withSpan("desktop.clerk.configure")),
   });

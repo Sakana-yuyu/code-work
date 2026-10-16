@@ -30,6 +30,7 @@ import {
   toastManager,
 } from "../components/ui/toast";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
+import { openProviderImportLink } from "../lib/providerImportLink";
 import { I18nProvider, t } from "../i18n";
 import { applyAppearanceFontVariables } from "~/appearanceFonts";
 import { applyAppearanceContrast } from "~/appearanceContrast";
@@ -90,6 +91,26 @@ export const Route = createRootRoute({
   }),
 });
 
+/**
+ * OS deep links (desktop shell): forwards provider-import links into the
+ * import route and reports renderer readiness so queued links flush.
+ */
+function DeepLinkCoordinator() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const bridge = window.desktopBridge;
+    if (!bridge?.onDeepLink) return;
+    const unsubscribe = bridge.onDeepLink((url) => {
+      if (openProviderImportLink(url)) {
+        void navigate({ to: "/settings/byok/import" });
+      }
+    });
+    void bridge.signalDeepLinkReady?.();
+    return unsubscribe;
+  }, [navigate]);
+  return null;
+}
+
 function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
@@ -140,6 +161,7 @@ function RootRouteView() {
           <FontAppearanceSync />
           {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
           <RelayClientInstallDialog />
+          <DeepLinkCoordinator />
           <ConnectOnboardingDialog />
           <SshPasswordPromptDialog />
           <ConfirmDialogHost />

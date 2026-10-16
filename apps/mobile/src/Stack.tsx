@@ -59,6 +59,7 @@ import { NewTaskFlowProvider } from "./features/threads/new-task-flow-provider";
 import { NewTaskRouteScreen } from "./features/threads/NewTaskRouteScreen";
 import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppearanceRouteScreen";
 import { SettingsByokRouteScreen } from "./features/settings/SettingsByokRouteScreen";
+import { SettingsProviderImportRouteScreen } from "./features/settings/SettingsProviderImportRouteScreen";
 import { SettingsProvidersRouteScreen } from "./features/settings/SettingsProvidersRouteScreen";
 import { SettingsServerRouteScreen } from "./features/settings/SettingsServerRouteScreen";
 import { SettingsIdeSessionsRouteScreen } from "./features/settings/SettingsIdeSessionsRouteScreen";
@@ -76,6 +77,7 @@ import { SettingsTeamRuntimeRouteScreen } from "./features/settings/SettingsTeam
 import { SettingsSupplierRegistryRouteScreen } from "./features/settings/SettingsSupplierRegistryRouteScreen";
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
 import { SettingsMcpRouteScreen } from "./features/settings/SettingsMcpRouteScreen";
+import { SettingsAgentToolsRouteScreen } from "./features/settings/SettingsAgentToolsRouteScreen";
 import { SettingsProjectGroupingRouteScreen } from "./features/settings/SettingsProjectGroupingRouteScreen";
 import { SettingsWorkspaceScriptsRouteScreen } from "./features/settings/SettingsWorkspaceScriptsRouteScreen";
 import { SettingsAutomationsRouteScreen } from "./features/settings/SettingsAutomationsRouteScreen";
@@ -278,6 +280,13 @@ const SettingsContentStack = createNativeStackNavigator({
       linking: "mcp",
       options: () => ({
         title: t("mcpMobile.title"),
+      }),
+    }),
+    SettingsAgentTools: createNativeStackScreen({
+      screen: SettingsAgentToolsRouteScreen,
+      linking: "agent-tools",
+      options: () => ({
+        title: t("agentToolsMobile.title"),
       }),
     }),
     SettingsWorkspaceScripts: createNativeStackScreen({
@@ -817,6 +826,14 @@ export const RootStack = createNativeStackNavigator({
               sheetGrabberVisible: true,
             }),
       },
+    }),
+    ProviderImport: createNativeStackScreen({
+      screen: SettingsProviderImportRouteScreen,
+      linking: "provider/import",
+      options: () => ({
+        ...SOLID_HEADER_OPTIONS,
+        title: t("providerImport.title"),
+      }),
     }),
     NotFound: createNativeStackScreen({
       screen: NotFoundScreen,

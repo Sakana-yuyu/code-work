@@ -255,6 +255,10 @@
       "types": "./src/usageStats.ts",
       "import": "./src/usageStats.ts"
     },
+    "./providerImport": {
+      "types": "./src/providerImport.ts",
+      "import": "./src/providerImport.ts"
+    },
     "./byokBalanceMerge": {
       "types": "./src/byokBalanceMerge.ts",
       "import": "./src/byokBalanceMerge.ts"
