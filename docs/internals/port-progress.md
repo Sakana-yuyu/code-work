@@ -1794,3 +1794,19 @@ help 探测：有意不适用，经全量 flag 清单审计。会话 flag 分三
 
 - fix(server) `621920ae8`：`ManagedProcessRegistry.layer` 依赖 ProcessRunner 服务但无人提供，验收实例首次启动即崩（`scratchpad/server-run.log` 存有 `Service not found: codework/processRunner` 原文）；修复为 layer 自带 `Layer.provide(processRunnerLayer)`（与 `cli/service.ts`、`cloud/selfUpdate.ts` 等消费方接线方式一致）。修复后受控重启成功：`[dev-runner] … serverPort=14679 webPort=6639 baseDir=E:\MyProject\code-work\.t3\accept-24`，无该报错，Web HTTP 200，浏览器实测（第 103 节补充）全程在该实例上进行。
 - `externalLauncher.test.ts` "9 个失败"核查：在纯净 HEAD（`420c8f696`，`git checkout -f` 后仅余一个与本测试无关的未跟踪文件）上 `vp test run apps/server/src/process/externalLauncher.test.ts` 结果 **23/23 全绿**（6.2s）。结论：该批失败**不是 HEAD 上的既有问题**，不作为既有缺陷记入台账，也不涉及本次改动；未在带工作区改动的状态下复现，初步猜测与验收会话高负载相关（两个真实 PowerShell 用例约 2.0s，贴近超时线），仅为观察、未定位。
+
+## 106. 第 24 项遗留排查——createUploadUrl 延迟与 trace 滚转归因（2026-10-16，环境因素，非 item 24 代码）
+
+第103主题实机验收留下的两个观察（`attachments.createUploadUrl` 一次端到端数十秒、`server.trace.ndjson` 约 8 分钟滚转 10 MB），按目标用 HEAD 前后对比（`9d33b5d8f` 之前的 `ad16fdd5a` vs 之后的 `90bca42c9`）+ 复制数据目录排查：accept-24 的 723 MB 库经 `VACUUM INTO` 成模板再拷贝两份（home-a/home-b，secrets/settings 同拷），两侧隔离 worktree 执行、同打 `ManagedProcessRegistry` 一行启动补丁（该 bug 由 d67095542 引入，早于 item 24，两侧同病）。
+
+**结论一：mint RPC 的服务端处理不慢，item 24 代码无延迟问题。** 验收轮（HEAD）trace 中全部 7 次 `ws.rpc.attachments.createUploadUrl` span 处理耗时 **0.2–1.7 ms**。唯一一次端到端数十秒（本地 08:08 粘贴 → 08:09:53 span 才开始）是**请求到达服务端之前**的排队（约 70 s）；同一会话后续 3 次（08:12/08:16/08:17）从粘贴到落盘均秒级完成。
+
+**结论二：排队/卡顿是环境与数据级现象，跨版本复现。** 复制数据上实测：页面配对后「新建线程」UI 动作无响应，粘贴附件的 mint 请求 6 分钟以上未到服务端（trace 零 span、磁盘零落盘）；**pre 基线（`ad16fdd5a`，无 item 24）在同一份数据上同样无响应**。同一连接的 `server.reportClientActivity` 心跳（每 25 s）始终被服务端正常处理（0.7–2.6 ms）、`ws.rpc.server.getConfig` 1315 ms 完成——链路与认证正常、用户动作 RPC 未发出，属前端/会话初始化门未放开的环境级卡顿，mint 只是受害者。原始 accept-24 数据（未复制）上同一 HEAD 代码可正常新建线程与发送（第103主题），进一步指向复制数据环境而非代码。723 MB 为真实数据（`VACUUM INTO` 后仍 723,562,496 字节；10.8 万 orchestration_events、10.8 万 command_receipts、7.2 万 thread_activities），非空闲页膨胀。
+
+**结论三：trace 滚转 10 MB 与 item 24 无关，pre 已同速同构。** 同条件（同一份复制数据 + 一个挂机 Web 客户端）约 10 分钟窗口：pre 写 ~7.3 MB（≈12 KB/s，10 MB/14 min），HEAD 写 ~9.1 MB（≈15 KB/s，10 MB/11 min），同量级；span 构成两侧一致——约 **71% 为 `ServerSecretStore.get`**（28 分钟 13,007 次；调用者 83% 为 provider 快照管道 `makeManagedServerProvider` 7,840 次 + `background.policy.make` 3,680 次，分钟级稳定节拍）+ **14% `sql.execute`**，另有 `ProviderCatalogCache.fetchCatalog` 累计 19.4 s（23 次，单次最长 3.9 s）。10 MB 滚转是 `traceMaxBytes` 配置值（10 MB × 10 文件，`config.ts`），高频快照管道才是体量来源。快照管道每分钟读 secrets 上千次的省略空间（缓存签名密钥等）记为后续优化候选，非本轮范围。
+
+**顺带发现（纯净 checkout 启动缺口之二）**：自 `8f6ae84b7`（第21主题）起，已提交的 `ProviderCommandReactor.ts` import 了从未入库的 `apps/server/src/provider/byok/ByokSlashCommands.ts`（主工作树中为未跟踪文件，属 BYOK 批次）。纯净 checkout 的 server 因缺该文件无法启动；本轮实验两侧均从主工作树拷入该文件以对齐条件。与 `ManagedProcessRegistry` 缺 ProcessRunner（621920ae8 已修）同属「未提交批次混入提交」类缺口，未在本轮修复（文件属 BYOK 批次，应由该批次一并提交）。
+
+**未定位（不影响结论）**：脚本直连裸 WS 发送 Effect RPC 帧（形状与页面实测发送帧一致）在 cookie 与 wsTicket 两种认证下均被服务端在首帧后立即断开（close 1005/1006）；trace 显示 `http.server GET /ws` 14 ms 内认证与升级全部成功，疑似 Effect socket 协议对首帧有额外要求，未继续深挖，端到端时序改用 trace span 与磁盘落盘时刻取证。
+
+验证：上述数据来自两侧隔离实例的 `server.trace.ndjson` 与 accept-24 既有 trace 的 span 解析（scratchpad 存档 `pre-trace-profile.txt`）；实例与 worktree 均按启动记录的 PID 关闭并清理。未新增生产代码，无新增测试。
