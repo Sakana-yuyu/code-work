@@ -2,7 +2,7 @@
 
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey, scopedThreadKey } from "@codework/client-runtime/environment";
-import type { ScopedThreadRef } from "@codework/contracts";
+import { isUnknownUnionMember, type ScopedThreadRef } from "@codework/contracts";
 import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
@@ -47,7 +47,10 @@ const previewSessionSyncAtom = Atom.family((threadKey: string) => {
     };
 
     const applyLatestEvent = (result: Atom.Type<typeof eventsAtom>) => {
-      if (!AsyncResult.isSuccess(result) || result.value.threadId !== threadRef.threadId) return;
+      // A newer server can emit preview event kinds this build does not know;
+      // unknown members carry no threadId, so they cannot be routed here anyway.
+      if (!AsyncResult.isSuccess(result) || isUnknownUnionMember(result.value)) return;
+      if (result.value.threadId !== threadRef.threadId) return;
       const currentEpoch = readThreadPreviewState(threadRef).serverEpoch;
       if (currentEpoch !== null && currentEpoch !== result.value.serverEpoch) {
         get.refresh(sessionsAtom);

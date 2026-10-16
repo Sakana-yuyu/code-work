@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   EnvironmentId,
   FILL_PREVIEW_VIEWPORT,
+  isUnknownUnionMember,
   ThreadId,
   type PreviewAppearancePreference,
   type PreviewAnnotationRemoteResult,
@@ -160,7 +161,8 @@ export function ThreadPreviewRouteScreen(props: ThreadPreviewRouteProps) {
   );
 
   useEffect(() => {
-    if (event === null || threadId === null || event.threadId !== threadId) return;
+    if (event === null || threadId === null || isUnknownUnionMember(event)) return;
+    if (event.threadId !== threadId) return;
     if (event.type === "screenshot") {
       setScreenshot({
         tabId: event.tabId,

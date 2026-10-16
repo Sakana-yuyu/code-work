@@ -1132,8 +1132,9 @@ describe("forward-compatible wire streams", () => {
         kind: "event",
         event: { type: "thread.future_event", sequence: 42, payload: { novel: true } },
       });
-      assert.isFalse(isUnknownUnionMember(futureEvent));
-      if (futureEvent.kind !== "event") assert.fail("expected event item");
+      if (isUnknownUnionMember(futureEvent) || futureEvent.kind !== "event") {
+        assert.fail("expected known event item");
+      }
       assert.isTrue(isUnknownOrchestrationEvent(futureEvent.event));
       assert.equal(futureEvent.event.sequence, 42);
 
