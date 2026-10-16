@@ -17,7 +17,8 @@ import { AsyncResult, Atom, type AtomRegistry } from "effect/unstable/reactivity
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { EnvironmentCacheStore } from "../platform/persistence.ts";
-import { runStream } from "../rpc/client.ts";
+import { RpcPermissionGuard, runStream } from "../rpc/client.ts";
+import { createCommandPermissions } from "./commandPermissions.ts";
 import {
   createRuntimeCommand,
   runStreamInEnvironment,
@@ -464,46 +465,55 @@ export function createVcsActionManager<R, E>(
           ...(input.featureBranch ? { featureBranch: true } : {}),
           ...(input.filePaths?.length ? { filePaths: [...input.filePaths] } : {}),
         };
-        return consumeVcsActionProgress(
-          runStreamInEnvironment(
-            target.environmentId,
-            runStream(WS_METHODS.gitRunStackedAction, rpcInput),
-          ),
-          {
-            target,
-            transportActionId,
-            actionId: input.actionId,
-            action: input.action,
-            onProgress: (event) =>
+        return createCommandPermissions(runtime, WS_METHODS.gitRunStackedAction)
+          .authorize(registry, target.environmentId, rpcInput)
+          .pipe(
+            Effect.andThen(() =>
+              consumeVcsActionProgress(
+                runStreamInEnvironment(
+                  target.environmentId,
+                  runStream(WS_METHODS.gitRunStackedAction, rpcInput),
+                ),
+                {
+                  target,
+                  transportActionId,
+                  actionId: input.actionId,
+                  action: input.action,
+                  onProgress: (event) =>
+                    Effect.sync(() => {
+                      const current = registry.get(stateAtom);
+                      if (current.actionId !== input.actionId) {
+                        return;
+                      }
+                      registry.set(stateAtom, applyVcsActionProgressEvent(current, event));
+                      if (input.onProgress !== undefined) {
+                        try {
+                          input.onProgress(event);
+                        } catch {
+                          // Presentation callbacks must not fail the source-control operation.
+                        }
+                      }
+                    }),
+                },
+              ),
+            ),
+            Effect.provideService(RpcPermissionGuard, {
+              authorize: (id, method, payload) =>
+                createCommandPermissions(runtime, method).authorize(registry, id, payload),
+            }),
+            Effect.ensuring(invalidateCachedVcsRefs(registry, target)),
+            Effect.tapError((error) =>
               Effect.sync(() => {
                 const current = registry.get(stateAtom);
-                if (current.actionId !== input.actionId) {
-                  return;
-                }
-                registry.set(stateAtom, applyVcsActionProgressEvent(current, event));
-                if (input.onProgress !== undefined) {
-                  try {
-                    input.onProgress(event);
-                  } catch {
-                    // Presentation callbacks must not fail the source-control operation.
-                  }
+                if (current.actionId === input.actionId && current.isRunning) {
+                  registry.set(
+                    stateAtom,
+                    failVcsActionState("run_change_request", input.actionId, error),
+                  );
                 }
               }),
-          },
-        ).pipe(
-          Effect.ensuring(invalidateCachedVcsRefs(registry, target)),
-          Effect.tapError((error) =>
-            Effect.sync(() => {
-              const current = registry.get(stateAtom);
-              if (current.actionId === input.actionId && current.isRunning) {
-                registry.set(
-                  stateAtom,
-                  failVcsActionState("run_change_request", input.actionId, error),
-                );
-              }
-            }),
-          ),
-        );
+            ),
+          );
       },
     });
     runStackedActionCommands.set(commandKey, command);

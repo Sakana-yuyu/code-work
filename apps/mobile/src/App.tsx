@@ -13,6 +13,7 @@ import { MOBILE_LINK_PREFIXES } from "./features/connection/pairing";
 import { captureProviderImportLink } from "./lib/providerImportLink";
 import { ConfirmDialogHost } from "./components/ConfirmDialogHost";
 import { NativeFrameScheduler } from "./components/NativeFrameScheduler";
+import { PermissionUpdateNotice, navigationRef } from "./components/PermissionUpdateNotice";
 import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
 import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
 import { IncomingShareProvider } from "./features/sharing/IncomingShareProvider";
@@ -105,8 +106,9 @@ function AppContent() {
             {/* Blur target for Android dropdown backdrops — see appBlurTarget.ts. */}
             <BlurTargetView ref={appBlurTargetRef} style={{ flex: 1 }}>
               <IncomingShareProvider>
-                <Navigation linking={appLinking} theme={navigationTheme} />
+                <Navigation linking={appLinking} theme={navigationTheme} ref={navigationRef} />
               </IncomingShareProvider>
+              <PermissionUpdateNotice />
               <ConfirmDialogHost />
             </BlurTargetView>
             {/* Anchored-menu overlays render here — in-window, so the

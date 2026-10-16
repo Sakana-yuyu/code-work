@@ -27,6 +27,11 @@ import {
 } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import { ThreadGoalObjective } from "./goal.ts";
+import {
+  AuthOrchestrationOperateScope,
+  AuthSettingsWriteScope,
+  type AuthEnvironmentScope,
+} from "./auth.ts";
 
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
@@ -1176,6 +1181,20 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadSessionStopCommand,
 ]);
 export type ClientOrchestrationCommand = typeof ClientOrchestrationCommand.Type;
+
+/**
+ * Project scripts run on the host when a worktree is created or a thread
+ * settles, so a project meta update carrying them needs the settings grant on
+ * top of `orchestration:operate`.
+ */
+export function requiredScopesForOrchestrationCommand(
+  command: ClientOrchestrationCommand,
+): ReadonlyArray<AuthEnvironmentScope> {
+  if (command.type === "project.meta.update" && command.scripts !== undefined) {
+    return [AuthOrchestrationOperateScope, AuthSettingsWriteScope];
+  }
+  return [AuthOrchestrationOperateScope];
+}
 
 const ThreadSessionSetCommand = Schema.Struct({
   type: Schema.Literal("thread.session.set"),

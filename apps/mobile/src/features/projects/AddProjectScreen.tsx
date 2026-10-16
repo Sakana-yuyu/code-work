@@ -29,6 +29,8 @@ import {
   isWindowsPlatform,
 } from "@codework/client-runtime/state/projects";
 import {
+  AuthOrchestrationOperateScope,
+  AuthSourceControlWriteScope,
   CommandId,
   type EnvironmentId,
   type EnvironmentMachineKind,
@@ -47,6 +49,7 @@ import { AsyncResult } from "effect/unstable/reactivity";
 import { cn } from "../../lib/cn";
 
 import { useProjects, useServerConfigs } from "../../state/entities";
+import { useEnvironmentScope } from "../../state/session";
 import { filesystemEnvironment } from "../../state/filesystem";
 import { projectEnvironment } from "../../state/projects";
 import { useEnvironmentQuery } from "../../state/query";
@@ -424,6 +427,7 @@ function SourceControlRow(props: {
   readonly ready: boolean;
   readonly hint: string;
   readonly isFirst: boolean;
+  readonly disabled?: boolean;
 }) {
   const navigation = useNavigation();
   const iconColor = useThemeColor("--color-icon");
@@ -445,7 +449,7 @@ function SourceControlRow(props: {
       <SourceControlIcon kind={props.source} size={18} color={String(iconColor)} />
     );
 
-  if (!props.ready) {
+  if (!props.ready || props.disabled) {
     return (
       <ListRow title={title} subtitle={props.hint} icon={icon} disabled isFirst={props.isFirst} />
     );
@@ -475,6 +479,15 @@ export function AddProjectSourceScreen() {
   const iconColor = useThemeColor("--color-icon");
   const { environmentOptions, selectedEnvironment, setSelectedEnvironmentId } =
     useSelectedEnvironment();
+  const canWriteSourceControl = useEnvironmentScope(
+    selectedEnvironment?.environmentId ?? null,
+    AuthSourceControlWriteScope,
+  );
+  const canCreateProject = useEnvironmentScope(
+    selectedEnvironment?.environmentId ?? null,
+    AuthOrchestrationOperateScope,
+  );
+  const canCloneProject = canWriteSourceControl && canCreateProject;
   const discoveryState = useEnvironmentQuery(
     selectedEnvironment === null
       ? null
@@ -551,6 +564,7 @@ export function AddProjectSourceScreen() {
                 />
               }
               isFirst
+              disabled={!canCreateProject}
               onPress={() =>
                 navigation.dispatch(
                   StackActions.push("AddProjectLocal", {
@@ -565,6 +579,7 @@ export function AddProjectSourceScreen() {
                   key={candidate}
                   source={candidate}
                   selectedEnvironmentId={selectedEnvironment.environmentId}
+                  disabled={!canCloneProject}
                   ready={readiness[candidate].ready}
                   hint={
                     readiness[candidate].ready
@@ -844,6 +859,10 @@ function FolderBrowser(props: {
 
 export function AddProjectLocalFolderScreen(props: { readonly environmentId?: string | string[] }) {
   const environment = useEnvironmentFromParam(props.environmentId);
+  const canCreateProject = useEnvironmentScope(
+    environment?.environmentId ?? null,
+    AuthOrchestrationOperateScope,
+  );
   const createProject = useCreateProject(environment);
   const { isBrowseNavigating, navigateToBrowsePath, pathInput, setPathInput } =
     useBrowsePathInput(environment);
@@ -851,7 +870,7 @@ export function AddProjectLocalFolderScreen(props: { readonly environmentId?: st
   const [error, setError] = useState<string | null>(null);
 
   const submitPath = useCallback(async () => {
-    if (!environment || isBrowseNavigating || isSubmitting) return;
+    if (!environment || !canCreateProject || isBrowseNavigating || isSubmitting) return;
     setError(null);
     const resolved = resolveAddProjectPath({
       rawPath: pathInput,
@@ -869,7 +888,7 @@ export function AddProjectLocalFolderScreen(props: { readonly environmentId?: st
       setError(errorMessage(Cause.squash(result.cause)));
     }
     setIsSubmitting(false);
-  }, [createProject, environment, isBrowseNavigating, isSubmitting, pathInput]);
+  }, [canCreateProject, createProject, environment, isBrowseNavigating, isSubmitting, pathInput]);
 
   return (
     <AddProjectShell>
@@ -883,7 +902,7 @@ export function AddProjectLocalFolderScreen(props: { readonly environmentId?: st
           />
           <PrimaryActionButton
             label={t("addProject")}
-            disabled={isBrowseNavigating || isSubmitting}
+            disabled={!canCreateProject || isBrowseNavigating || isSubmitting}
             onPress={() => void submitPath()}
             loading={isSubmitting}
           />
@@ -911,6 +930,15 @@ export function AddProjectDestinationScreen(props: {
     reportFailure: false,
   });
   const environment = useEnvironmentFromParam(props.environmentId);
+  const canWriteSourceControl = useEnvironmentScope(
+    environment?.environmentId ?? null,
+    AuthSourceControlWriteScope,
+  );
+  const canCreateProject = useEnvironmentScope(
+    environment?.environmentId ?? null,
+    AuthOrchestrationOperateScope,
+  );
+  const canCloneProject = canWriteSourceControl && canCreateProject;
   const createProject = useCreateProject(environment);
   const remoteUrl = stringParam(props.remoteUrl);
   const repositoryTitle = stringParam(props.repositoryTitle);
@@ -927,7 +955,8 @@ export function AddProjectDestinationScreen(props: {
   const [error, setError] = useState<string | null>(null);
 
   const submitPath = useCallback(async () => {
-    if (!environment || !remoteUrl || isBrowseNavigating || isSubmitting) return;
+    if (!environment || !remoteUrl || !canCloneProject || isBrowseNavigating || isSubmitting)
+      return;
     setError(null);
     const resolved = resolveAddProjectPath({
       rawPath: pathInput,
@@ -957,6 +986,7 @@ export function AddProjectDestinationScreen(props: {
     }
     setIsSubmitting(false);
   }, [
+    canCloneProject,
     cloneRepository,
     createProject,
     environment,
@@ -986,7 +1016,7 @@ export function AddProjectDestinationScreen(props: {
           />
           <PrimaryActionButton
             label={t("cloneProject")}
-            disabled={isBrowseNavigating || isSubmitting || !remoteUrl}
+            disabled={!canCloneProject || isBrowseNavigating || isSubmitting || !remoteUrl}
             onPress={() => void submitPath()}
             loading={isSubmitting}
           />

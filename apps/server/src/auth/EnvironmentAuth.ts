@@ -3,6 +3,7 @@ import {
   AuthAccessWriteScope,
   AuthAdministrativeScopes,
   AuthStandardClientScopes,
+  authScopeResponse,
   type AuthAccessTokenResult,
   type AuthBrowserSessionResult,
   type AuthClientMetadata,
@@ -643,7 +644,7 @@ export const make = Effect.gen(function* () {
           ({
             authenticated: true,
             auth: descriptor,
-            scopes: session.scopes,
+            ...authScopeResponse(session.scopes),
             sessionMethod: session.method,
             ...(session.expiresAt ? { expiresAt: DateTime.toUtc(session.expiresAt) } : {}),
           }) satisfies AuthSessionState,
@@ -683,7 +684,7 @@ export const make = Effect.gen(function* () {
           ({
             response: {
               authenticated: true,
-              scopes: session.scopes,
+              ...authScopeResponse(session.scopes),
               sessionMethod: session.method,
               expiresAt: DateTime.toUtc(session.expiresAt),
             } satisfies AuthBrowserSessionResult,
@@ -805,6 +806,7 @@ export const make = Effect.gen(function* () {
         ];
         return pairingLinks
           .filter((pairingLink) => !excludedSubjects.includes(pairingLink.subject))
+          .map((link) => ({ ...link, ...authScopeResponse(link.scopes) }))
           .toSorted(
             (left, right) => right.createdAt.epochMilliseconds - left.createdAt.epochMilliseconds,
           );
@@ -890,6 +892,7 @@ export const make = Effect.gen(function* () {
         clientSessions.map(
           (clientSession): AuthClientSession => ({
             ...clientSession,
+            ...authScopeResponse(clientSession.scopes),
             current: clientSession.sessionId === currentSessionId,
           }),
         ),

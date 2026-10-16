@@ -11,17 +11,21 @@ import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
 import type { ConnectionAttemptError } from "../connection/model.ts";
 import { EnvironmentNotRegisteredError, EnvironmentRegistry } from "../connection/registry.ts";
 import {
+  type EnvironmentRpcFailure,
   type EnvironmentRpcInput,
   type EnvironmentRpcStreamFailure,
+  type EnvironmentRpcSuccess,
   type EnvironmentRpcStreamValue,
   type EnvironmentStreamCommandRpcTag,
   type EnvironmentSubscriptionRpcTag,
   type EnvironmentUnaryRpcTag,
   EnvironmentRpcUnavailableError,
+  RpcPermissionGuard,
   request,
   runStream,
   subscribe,
 } from "../rpc/client.ts";
+import { createCommandPermissions } from "./commandPermissions.ts";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 
 interface EnvironmentAtomOptions<Input, A, E, R> {
@@ -667,20 +671,32 @@ export function createEnvironmentRpcSubscriptionAtomFamily<
   });
 }
 
-export function createEnvironmentRpcCommand<R, ER, TTag extends EnvironmentUnaryRpcTag>(
+export function createEnvironmentRpcCommand<
+  R,
+  ER,
+  TTag extends EnvironmentUnaryRpcTag,
+  Input extends EnvironmentRpcInput<TTag> = EnvironmentRpcInput<TTag>,
+>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, ER>,
   options: {
     readonly label: string;
     readonly tag: TTag;
+    readonly execute?: (
+      input: Input,
+    ) => Effect.Effect<
+      EnvironmentRpcSuccess<TTag>,
+      EnvironmentRpcFailure<TTag> | EnvironmentRpcUnavailableError,
+      EnvironmentSupervisor | R
+    >;
     readonly scheduler?: AtomCommandScheduler;
     readonly concurrency?: AtomCommandConcurrency<{
       readonly environmentId: EnvironmentIdType;
-      readonly input: EnvironmentRpcInput<TTag>;
+      readonly input: NoInfer<Input>;
     }>;
     readonly onSuccess?: (
       target: {
         readonly environmentId: EnvironmentIdType;
-        readonly input: EnvironmentRpcInput<TTag>;
+        readonly input: NoInfer<Input>;
       },
       registry: AtomRegistry.AtomRegistry,
     ) => Effect.Effect<void, never, R>;
@@ -693,21 +709,35 @@ export function createEnvironmentRpcCommand<R, ER, TTag extends EnvironmentUnary
     ) => Effect.Effect<void, never, R>;
   },
 ) {
-  return createEnvironmentCommand(runtime, {
+  const permissions = createCommandPermissions(runtime, options.tag);
+  const command = createEnvironmentCommand(runtime, {
     label: options.label,
     ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
     ...(options.concurrency === undefined ? {} : { concurrency: options.concurrency }),
-    execute: (input: EnvironmentRpcInput<TTag>, registry, environmentId) => {
+    execute: (input: Input, registry, environmentId) => {
       const target = {
         environmentId,
         input,
       };
-      return request(options.tag, input).pipe(
+      // Routing requires consent on the origin as well as the actual
+      // destination. The transport check below deliberately checks the
+      // destination again.
+      return permissions.authorize(registry, environmentId, input).pipe(
+        Effect.andThen(() => options.execute?.(input) ?? request(options.tag, input)),
+        Effect.provideService(RpcPermissionGuard, {
+          authorize: (id, method, payload) =>
+            createCommandPermissions(runtime, method).authorize(registry, id, payload),
+        }),
         Effect.tap(() => options.onSuccess?.(target, registry) ?? Effect.void),
         Effect.ensuring(options.onSettled?.(target, registry) ?? Effect.void),
       );
     },
   });
+  return {
+    ...command,
+    requiredScopes: permissions.requiredScopes,
+    permissionAtom: permissions.permissionAtom,
+  };
 }
 
 export function createEnvironmentRpcStreamCommand<

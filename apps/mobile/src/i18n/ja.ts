@@ -2213,6 +2213,9 @@ export const ja: Record<string, string> = {
   disableNotifications: "通知を無効にする",
   disconnectAndForgetOnThisDevice: "このデバイスで {{environmentLabel}} を切断して削除します。",
   dismiss: "閉じる",
+  permissionsChangedForLabel: "{{label}} の権限が変更されました",
+  connectionStillUsesOldPermissionsPairAgainUsingANewLink:
+    "このセッションは古い権限を使用しているため、一部の操作が利用できなくなる可能性があります。必要な権限を持つ新しいリンクで再度ペアリングしてください。",
   dpopUrlIsInvalid: "DPoP URL が無効です。",
   environmentLinkedForLiveActivityUpdates:
     "{{environmentCount}} 件の環境{{value2}}が Live Activity の更新用にリンクされました。",

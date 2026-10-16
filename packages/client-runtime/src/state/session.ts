@@ -1,9 +1,10 @@
 import type { AuthSessionState, EnvironmentId, ServerConfig } from "@codework/contracts";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import type { HttpClient } from "effect/unstable/http";
+import { HttpClient } from "effect/unstable/http";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
 import { EnvironmentRegistry } from "../connection/registry.ts";
@@ -61,8 +62,12 @@ export const fetchEnvironmentSessionState = Effect.fn(
   );
 });
 
+export class SessionHttpClientUnavailable extends Data.TaggedError(
+  "SessionHttpClientUnavailable",
+) {}
+
 export function createEnvironmentSessionAtoms<R, E>(
-  runtime: Atom.AtomRuntime<EnvironmentRegistry | HttpClient.HttpClient | R, E>,
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
   const initialConfigAtom = Atom.family((environmentId: EnvironmentId) =>
     runtime.atom(
@@ -133,8 +138,12 @@ export function createEnvironmentSessionAtoms<R, E>(
           return Effect.never;
         }
         return Effect.gen(function* () {
+          const client = yield* Effect.serviceOption(HttpClient.HttpClient);
+          if (Option.isNone(client)) return yield* new SessionHttpClientUnavailable();
           const signer = yield* Effect.serviceOption(ManagedRelayDpopSigner);
-          return yield* fetchEnvironmentSessionState({ prepared, signer });
+          return yield* fetchEnvironmentSessionState({ prepared, signer }).pipe(
+            Effect.provideService(HttpClient.HttpClient, client.value),
+          );
         });
       })
       .pipe(

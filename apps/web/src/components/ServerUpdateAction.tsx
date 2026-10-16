@@ -1,12 +1,22 @@
+import { useAtomValue } from "@effect/atom-react";
 import { t } from "~/i18n";
-import type { EnvironmentId, ServerSelfUpdateCapability } from "@codework/contracts";
+import {
+  AuthEnvironmentMaintainScope,
+  sessionGrantsScope,
+  type AuthSessionState,
+  type EnvironmentId,
+  type ServerSelfUpdateCapability,
+} from "@codework/contracts";
 import type { ServerUpdateStage, ServerUpdateState } from "@codework/client-runtime/state/server";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@codework/client-runtime/state/runtime";
+import type { AsyncResult } from "effect/unstable/reactivity";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { environmentSession } from "~/state/session";
 import { serverEnvironment } from "~/state/server";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { manualServerUpdateCommand } from "~/versionSkew";
@@ -25,6 +35,11 @@ const UPDATE_STAGE_LABELS: Record<ServerUpdateStage, string> = {
   resuming: "serverUpdate.restarting",
 };
 const pendingUpdateEnvironmentIds = new Set<EnvironmentId>();
+
+function canUpdateServer(result: AsyncResult.AsyncResult<AuthSessionState, unknown>): boolean {
+  if (result._tag !== "Success" || !result.value.authenticated) return false;
+  return sessionGrantsScope(result.value, AuthEnvironmentMaintainScope);
+}
 
 export function serverUpdateStageLabel(stage: ServerUpdateStage): string {
   return t(UPDATE_STAGE_LABELS[stage]);
@@ -87,6 +102,8 @@ export function ServerUpdateAction({
   readonly targetVersion: string;
   readonly label?: string;
 }) {
+  const sessionStateAtom = environmentSession.sessionStateAtom(environmentId);
+  const canUpdate = canUpdateServer(useAtomValue(sessionStateAtom));
   const updateServer = useAtomCommand(serverEnvironment.updateServer, {
     reportFailure: false,
   });
@@ -109,7 +126,10 @@ export function ServerUpdateAction({
   });
 
   const handleUpdate = async () => {
-    if (pendingUpdateEnvironmentIds.has(environmentId)) {
+    if (
+      !canUpdateServer(appAtomRegistry.get(sessionStateAtom)) ||
+      pendingUpdateEnvironmentIds.has(environmentId)
+    ) {
       return;
     }
     pendingUpdateEnvironmentIds.add(environmentId);
@@ -157,7 +177,7 @@ export function ServerUpdateAction({
   }
 
   return (
-    <Button size="xs" onClick={() => void handleUpdate()}>
+    <Button size="xs" disabled={!canUpdate} onClick={() => void handleUpdate()}>
       {label}
     </Button>
   );

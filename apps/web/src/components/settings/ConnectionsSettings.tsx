@@ -1,4 +1,5 @@
 import {
+  ChevronRightIcon,
   ChevronsLeftRightEllipsisIcon,
   EllipsisIcon,
   PlusIcon,
@@ -9,18 +10,17 @@ import {
 import { useAtomValue } from "@effect/atom-react";
 import { type ReactNode, memo, useCallback, useId, useMemo, useState } from "react";
 import {
-  AuthAccessReadScope,
   AuthAccessWriteScope,
   AuthAdministrativeScopes,
-  AuthOrchestrationOperateScope,
+  AuthDiagnosticsReadScope,
+  AuthFilesystemReadScope,
   AuthOrchestrationReadScope,
-  AuthRelayReadScope,
   AuthRelayWriteScope,
-  AuthReviewWriteScope,
   AuthStandardClientScopes,
-  AuthTerminalOperateScope,
+  AuthTerminalReadScope,
   type AuthClientSession,
   type AuthEnvironmentScope,
+  type AuthGrantScope,
   type AuthPairingLink,
   type AdvertisedEndpoint,
   type DesktopDiscoveredSshHost,
@@ -46,7 +46,9 @@ import {
   applyWslEnableSelection,
   isQrShareableEndpoint,
   selectQrEndpointOption,
+  togglePairingScopeSelection,
 } from "./ConnectionsSettings.logic";
+import { AUTH_SCOPE_OPTIONS } from "@codework/shared/authScopeOptions";
 import {
   SettingsPageContainer,
   SettingsRow,
@@ -87,6 +89,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Menu, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Button } from "../ui/button";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
+import { SessionPermissions } from "./SessionPermissions";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
 import { AnimatedHeight } from "../AnimatedHeight";
 import { Textarea } from "../ui/textarea";
@@ -127,7 +130,9 @@ import {
   type EnvironmentPresentation,
   useEnvironments,
   usePrimaryEnvironment,
+  usePrimaryEnvironmentId,
 } from "~/state/environments";
+import { readEnvironmentScope } from "~/state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { serverEnvironment } from "~/state/server";
 import { ConnectionStatusDot } from "../ConnectionStatusDot";
@@ -160,84 +165,15 @@ function formatAccessTimestamp(value: string): string {
   return accessTimestampFormatter.format(parsed);
 }
 
-const PAIRING_SCOPE_OPTIONS: ReadonlyArray<{
-  readonly scope: AuthEnvironmentScope;
-  readonly title: string;
-  readonly description: string;
-}> = [
-  {
-    scope: AuthOrchestrationReadScope,
-    get title() {
-      return t("viewEnvironment");
-    },
-    get description() {
-      return t("readThreadsStatusDiffsAndConfiguration");
-    },
+const PAIRING_SCOPE_OPTIONS = AUTH_SCOPE_OPTIONS.map(({ scope, title, description }) => ({
+  scope,
+  get title() {
+    return t(title);
   },
-  {
-    scope: AuthOrchestrationOperateScope,
-    get title() {
-      return t("operateTasks");
-    },
-    get description() {
-      return t("startTasksAndPerformChangesInTheEnvironment");
-    },
+  get description() {
+    return t(description);
   },
-  {
-    scope: AuthTerminalOperateScope,
-    get title() {
-      return t("useTerminals");
-    },
-    get description() {
-      return t("createTerminalsAndSendInputToRunningShells");
-    },
-  },
-  {
-    scope: AuthReviewWriteScope,
-    get title() {
-      return t("writeReviews");
-    },
-    get description() {
-      return t("createCommentsWhileReviewingChanges");
-    },
-  },
-  {
-    scope: AuthAccessReadScope,
-    get title() {
-      return t("viewAccess");
-    },
-    get description() {
-      return t("inspectPairingLinksAndAuthorizedClients");
-    },
-  },
-  {
-    scope: AuthAccessWriteScope,
-    get title() {
-      return t("manageAccess");
-    },
-    get description() {
-      return t("issueAndRevokeCredentialsForOtherClients");
-    },
-  },
-  {
-    scope: AuthRelayReadScope,
-    get title() {
-      return t("viewRelay");
-    },
-    get description() {
-      return t("inspectManagedRelayConnectivity");
-    },
-  },
-  {
-    scope: AuthRelayWriteScope,
-    get title() {
-      return t("manageRelay");
-    },
-    get description() {
-      return t("changeManagedTunnelConnectivity");
-    },
-  },
-];
+}));
 
 function AccessScopeSummary({
   scopes,
@@ -743,7 +679,10 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
               <TooltipPopup side="top">{expiresAbsolute}</TooltipPopup>
             </Tooltip>
             <span aria-hidden> · </span>
-            <AccessScopeSummary scopes={pairingLink.scopes} label={t("pairingLinkScopes")} />
+            <AccessScopeSummary
+              scopes={pairingLink.permissions ?? pairingLink.scopes}
+              label={t("pairingLinkScopes")}
+            />
           </p>
           {shareablePairingUrl === null ? (
             <p className="text-[11px] text-muted-foreground/70">
@@ -1002,7 +941,10 @@ const ConnectedClientListRow = memo(function ConnectedClientListRow({
                 <span aria-hidden> · </span>
               </>
             ) : null}
-            <AccessScopeSummary scopes={clientSession.scopes} label={t("clientScopes")} />
+            <AccessScopeSummary
+              scopes={clientSession.permissions ?? clientSession.scopes}
+              label={t("clientScopes")}
+            />
           </p>
         </div>
         <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">
@@ -1026,26 +968,39 @@ type AuthorizedClientsHeaderActionProps = {
   clientSessions: ReadonlyArray<ServerClientSessionRecord>;
   isRevokingOtherClients: boolean;
   onRevokeOtherClients: () => void;
+  delegatableScopes: ReadonlyArray<AuthEnvironmentScope>;
 };
 
 const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderAction({
   clientSessions,
   isRevokingOtherClients,
   onRevokeOtherClients,
+  delegatableScopes,
 }: AuthorizedClientsHeaderActionProps) {
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pairingLabel, setPairingLabel] = useState("");
-  const [pairingScopes, setPairingScopes] = useState<ReadonlyArray<AuthEnvironmentScope>>([
+  const [pairingScopes, setPairingScopes] = useState<ReadonlyArray<AuthGrantScope>>([
     ...AuthStandardClientScopes,
   ]);
+  const selectedScopes = pairingScopes.filter((scope) => delegatableScopes.includes(scope));
   const [isCreatingPairingLink, setIsCreatingPairingLink] = useState(false);
 
   const handleCreatePairingLink = useCallback(async () => {
+    if (
+      primaryEnvironmentId === null ||
+      selectedScopes.length === 0 ||
+      !readEnvironmentScope(primaryEnvironmentId, AuthAccessWriteScope) ||
+      !selectedScopes.every((scope) => readEnvironmentScope(primaryEnvironmentId, scope))
+    )
+      return;
     setIsCreatingPairingLink(true);
     try {
-      await createServerPairingCredential({ label: pairingLabel, scopes: pairingScopes });
+      await createServerPairingCredential({ label: pairingLabel, scopes: selectedScopes });
       setPairingLabel("");
-      setPairingScopes([...AuthStandardClientScopes]);
+      setPairingScopes(
+        AuthStandardClientScopes.filter((scope) => delegatableScopes.includes(scope)),
+      );
       setDialogOpen(false);
     } catch (error) {
       const message =
@@ -1060,12 +1015,10 @@ const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderActio
     } finally {
       setIsCreatingPairingLink(false);
     }
-  }, [pairingLabel, pairingScopes]);
+  }, [delegatableScopes, pairingLabel, primaryEnvironmentId, selectedScopes]);
 
-  const togglePairingScope = useCallback((scope: AuthEnvironmentScope, checked: boolean) => {
-    setPairingScopes((current) =>
-      checked ? [...current, scope] : current.filter((currentScope) => currentScope !== scope),
-    );
+  const togglePairingScope = useCallback((scope: AuthGrantScope, checked: boolean) => {
+    setPairingScopes((current) => togglePairingScopeSelection(current, scope, checked));
   }, []);
 
   return (
@@ -1131,7 +1084,16 @@ const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderActio
                     size="xs"
                     variant="outline"
                     disabled={isCreatingPairingLink}
-                    onClick={() => setPairingScopes([AuthOrchestrationReadScope])}
+                    onClick={() =>
+                      setPairingScopes(
+                        [
+                          AuthOrchestrationReadScope,
+                          AuthFilesystemReadScope,
+                          AuthDiagnosticsReadScope,
+                          AuthTerminalReadScope,
+                        ].filter((scope) => delegatableScopes.includes(scope)),
+                      )
+                    }
                   >
                     {t("readOnly")}
                   </Button>
@@ -1139,36 +1101,44 @@ const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderActio
                     size="xs"
                     variant="outline"
                     disabled={isCreatingPairingLink}
-                    onClick={() => setPairingScopes([...AuthStandardClientScopes])}
+                    onClick={() =>
+                      setPairingScopes(
+                        AuthStandardClientScopes.filter((scope) =>
+                          delegatableScopes.includes(scope),
+                        ),
+                      )
+                    }
                   >
                     {t("standard")}
                   </Button>
                 </div>
               </div>
               <div className="divide-y divide-border/60 rounded-lg border border-input bg-muted/25">
-                {PAIRING_SCOPE_OPTIONS.map(({ scope, title, description }) => (
-                  <label
-                    key={scope}
-                    className="flex cursor-pointer items-start gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40"
-                  >
-                    <Checkbox
-                      className="mt-0.5"
-                      checked={pairingScopes.includes(scope)}
-                      disabled={isCreatingPairingLink}
-                      onCheckedChange={(checked) => togglePairingScope(scope, checked === true)}
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-xs font-medium text-foreground">{title}</span>
-                      <span className="block text-xs leading-snug text-muted-foreground">
-                        {description}
+                {PAIRING_SCOPE_OPTIONS.filter(({ scope }) => delegatableScopes.includes(scope)).map(
+                  ({ scope, title, description }) => (
+                    <label
+                      key={scope}
+                      className="flex cursor-pointer items-start gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40"
+                    >
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={pairingScopes.includes(scope)}
+                        disabled={isCreatingPairingLink}
+                        onCheckedChange={(checked) => togglePairingScope(scope, checked === true)}
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-xs font-medium text-foreground">{title}</span>
+                        <span className="block text-xs leading-snug text-muted-foreground">
+                          {description}
+                        </span>
                       </span>
-                    </span>
-                  </label>
-                ))}
+                    </label>
+                  ),
+                )}
               </div>
-              {pairingScopes.length === 0 ? (
+              {selectedScopes.length === 0 ? (
                 <p className="text-xs text-destructive">{t("selectAtLeastOnePermission")}</p>
-              ) : pairingScopes.includes(AuthAccessWriteScope) ? (
+              ) : selectedScopes.includes(AuthAccessWriteScope) ? (
                 <p className="text-xs text-warning">
                   {t("thisClientCanCreateOrRevokeAccessForOtherDevices")}
                 </p>
@@ -1184,7 +1154,7 @@ const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderActio
               {t("cancel")}
             </Button>
             <Button
-              disabled={isCreatingPairingLink || pairingScopes.length === 0}
+              disabled={isCreatingPairingLink || selectedScopes.length === 0}
               onClick={() => void handleCreatePairingLink()}
             >
               {isCreatingPairingLink ? t("creating") : t("createLink")}
@@ -1532,6 +1502,16 @@ function SavedBackendListRow({
               ) : null}
             </p>
           ) : null}
+          <details className="group max-w-md">
+            <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+              {t("permissions")}
+              <ChevronRightIcon
+                aria-hidden
+                className="size-3 transition-transform group-open:rotate-90"
+              />
+            </summary>
+            <SessionPermissions environmentId={environmentId} connected={isConnected} />
+          </details>
         </div>
         <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">
           {versionMismatch &&
@@ -1838,7 +1818,7 @@ export function ConnectionsSettings() {
   const currentSessionScopes = desktopBridge
     ? AuthAdministrativeScopes
     : primarySessionState.data?.authenticated
-      ? (primarySessionState.data.scopes ?? null)
+      ? (primarySessionState.data.permissions ?? primarySessionState.data.scopes ?? null)
       : null;
   const currentAuthPolicy = desktopBridge ? null : (primarySessionState.data?.auth.policy ?? null);
   const savedEnvironments = useMemo(
@@ -3219,6 +3199,7 @@ export function ConnectionsSettings() {
                   clientSessions={desktopClientSessions}
                   isRevokingOtherClients={isRevokingOtherDesktopClients}
                   onRevokeOtherClients={handleRevokeOtherDesktopClients}
+                  delegatableScopes={currentSessionScopes ?? []}
                 />
               }
             >

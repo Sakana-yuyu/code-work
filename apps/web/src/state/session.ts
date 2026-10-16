@@ -1,6 +1,11 @@
 import { useAtomValue } from "@effect/atom-react";
 import { createEnvironmentSessionAtoms } from "@codework/client-runtime/state/session";
-import type { AuthEnvironmentScope, AuthSessionState, EnvironmentId } from "@codework/contracts";
+import {
+  sessionGrantsScope,
+  type AuthEnvironmentScope,
+  type AuthSessionState,
+  type EnvironmentId,
+} from "@codework/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
@@ -38,7 +43,7 @@ export function readEnvironmentScope(
   scope: AuthEnvironmentScope,
 ): boolean {
   const session = appAtomRegistry.get(environmentSession.sessionStateValueAtom(environmentId));
-  return session !== null && session.authenticated && (session.scopes?.includes(scope) ?? false);
+  return session !== null && sessionGrantsScope(session, scope);
 }
 
 /**
@@ -75,5 +80,5 @@ export function useEnvironmentScope(
   );
   if (result._tag === "Failure") return false;
   const session = Option.getOrNull(AsyncResult.value(result));
-  return session !== null && session.authenticated && (session.scopes?.includes(scope) ?? false);
+  return session !== null && sessionGrantsScope(session, scope);
 }

@@ -1,14 +1,23 @@
 import {
+  AuthDiagnosticsReadScope,
+  AuthEnvironmentMaintainScope,
+  AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
+  AuthProvidersManageScope,
   AuthRelayReadScope,
   AuthRelayWriteScope,
+  AuthSettingsWriteScope,
   WS_METHODS,
   WsRpcGroup,
 } from "@codework/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
-import { RPC_REQUIRED_SCOPES, requiredScopeForRpcMethod } from "./RpcAuthorization.ts";
+import {
+  RPC_REQUIRED_SCOPES,
+  requiredScopeForRpcMethod,
+  requiredScopesForRpcCall,
+} from "./RpcAuthorization.ts";
 
 describe("RPC authorization scopes", () => {
   it("declares exactly one scope for every RPC in the server group", () => {
@@ -20,7 +29,7 @@ describe("RPC authorization scopes", () => {
       AuthOrchestrationReadScope,
     );
     expect(requiredScopeForRpcMethod(WS_METHODS.serverReportHostPowerState)).toBe(
-      AuthOrchestrationOperateScope,
+      AuthEnvironmentMaintainScope,
     );
     expect(requiredScopeForRpcMethod(WS_METHODS.serverGetBackgroundPolicy)).toBe(
       AuthOrchestrationReadScope,
@@ -43,9 +52,9 @@ describe("RPC authorization scopes", () => {
     );
   });
 
-  it("requires operate scope for draft model discovery because it carries a request-only API key", () => {
+  it("requires providers:manage for draft model discovery because it carries a request-only API key", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.serverDiscoverByokDraftModels)).toBe(
-      AuthOrchestrationOperateScope,
+      AuthProvidersManageScope,
     );
   });
 
@@ -148,5 +157,70 @@ describe("RPC authorization scopes", () => {
         `RPC method ${method} has no declared authorization scope.`,
       );
     }
+  });
+});
+
+describe("payload-sensitive authorization", () => {
+  it("derives settings patch scopes from the touched fields", () => {
+    expect(
+      requiredScopesForRpcCall(WS_METHODS.serverUpdateSettings, {
+        patch: { worktreesDirectory: "/tmp/wt" },
+      }),
+    ).toEqual([AuthSettingsWriteScope]);
+    expect(
+      requiredScopesForRpcCall(WS_METHODS.serverUpdateSettings, {
+        patch: { providerInstances: {} },
+      }),
+    ).toEqual([AuthProvidersManageScope]);
+    expect(
+      requiredScopesForRpcCall(WS_METHODS.serverUpdateSettings, {
+        patch: { worktreesDirectory: "/tmp/wt", providers: {} },
+      }),
+    ).toEqual([AuthSettingsWriteScope, AuthProvidersManageScope]);
+    expect(requiredScopesForRpcCall(WS_METHODS.serverUpdateSettings, { patch: {} })).toEqual([
+      AuthSettingsWriteScope,
+    ]);
+  });
+
+  it("splits asset URL creation by resource kind", () => {
+    expect(
+      requiredScopesForRpcCall(WS_METHODS.assetsCreateUrl, {
+        resource: { _tag: "workspace-file", threadId: "thread-1", path: "a.png" },
+      }),
+    ).toEqual([AuthFilesystemReadScope]);
+    expect(
+      requiredScopesForRpcCall(WS_METHODS.assetsCreateUrl, {
+        resource: { _tag: "attachment", attachmentId: "att-1" },
+      }),
+    ).toEqual([AuthOrchestrationReadScope]);
+  });
+
+  it("requires diagnostics and maintenance to retry resource telemetry", () => {
+    expect(requiredScopesForRpcCall(WS_METHODS.serverRetryResourceTelemetry, {})).toEqual([
+      AuthEnvironmentMaintainScope,
+      AuthDiagnosticsReadScope,
+    ]);
+  });
+
+  it("adds settings write for project script mutations", () => {
+    const base = {
+      commandId: "cmd-1",
+      projectId: "proj-1",
+      createdAt: "1970-01-01T00:00:00.000Z",
+    };
+    expect(
+      requiredScopesForRpcCall("orchestration.dispatchCommand", {
+        type: "project.meta.update",
+        ...base,
+        title: "x",
+      }),
+    ).toEqual([AuthOrchestrationOperateScope]);
+    expect(
+      requiredScopesForRpcCall("orchestration.dispatchCommand", {
+        type: "project.meta.update",
+        ...base,
+        scripts: [],
+      }),
+    ).toEqual([AuthOrchestrationOperateScope, AuthSettingsWriteScope]);
   });
 });

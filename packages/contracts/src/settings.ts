@@ -37,6 +37,11 @@ import {
 } from "./compositionRuntime.ts";
 import { LocalAccountPoolSettings } from "./localAccount.ts";
 import { SshServerConfig, SshServerId } from "./sshServers.ts";
+import {
+  AuthProvidersManageScope,
+  AuthSettingsWriteScope,
+  type AuthEnvironmentScope,
+} from "./auth.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -1957,6 +1962,35 @@ export const multicaProviderInstanceRevision = (
   instance: ProviderInstanceConfig | undefined,
 ): string | null =>
   instance?.settingsRevision ?? multicaProviderInstanceFingerprint(instanceId, instance);
+
+/**
+ * Granular authorization for `server.updateSettings`: patches that touch the
+ * provider fleet need `providers:manage`; everything else needs
+ * `settings:write`. An empty patch still requires `settings:write`.
+ */
+export function requiredScopesForServerSettingsPatch(
+  patch: ServerSettingsPatch,
+): ReadonlyArray<AuthEnvironmentScope> {
+  let changesProviders = false;
+  let changesSettings = false;
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    if (
+      key === "providers" ||
+      key === "providerInstances" ||
+      key === "localAccountPool" ||
+      key === "multicaProviderInstancePreconditions"
+    ) {
+      changesProviders = true;
+    } else {
+      changesSettings = true;
+    }
+  }
+  return [
+    ...(changesSettings || !changesProviders ? [AuthSettingsWriteScope] : []),
+    ...(changesProviders ? [AuthProvidersManageScope] : []),
+  ];
+}
 
 export const ClientSettingsPatch = Schema.Struct({
   appearanceContrast: Schema.optionalKey(AppearanceContrast),

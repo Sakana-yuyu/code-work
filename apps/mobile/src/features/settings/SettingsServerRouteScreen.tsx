@@ -1,11 +1,13 @@
 import { useAtomValue } from "@effect/atom-react";
-import type {
-  EnvironmentId,
-  ModelSelection,
-  ServerConfig,
-  ServerSelfUpdateCapability,
-  ServerSettings,
-  ServerSettingsPatch,
+import {
+  AuthEnvironmentMaintainScope,
+  AuthSettingsWriteScope,
+  type EnvironmentId,
+  type ModelSelection,
+  type ServerConfig,
+  type ServerSelfUpdateCapability,
+  type ServerSettings,
+  type ServerSettingsPatch,
 } from "@codework/contracts";
 import type { ServerUpdateState } from "@codework/client-runtime/state/server";
 import { RESPONSE_STREAMING_MODES, resolveResponseStreamingMode } from "@codework/contracts";
@@ -27,6 +29,7 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { t } from "../../i18n";
 import { relativeTime } from "../../lib/time";
 import { useEnvironments } from "../../state/environments";
+import { useEnvironmentScope } from "../../state/session";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -105,6 +108,10 @@ export function SettingsServerRouteScreen() {
   const cleanupReport = cleanupReportQuery.data ?? null;
   const [cleanupRunning, setCleanupRunning] = useState(false);
   const [pending, setPending] = useState(false);
+  const canWriteSettings = useEnvironmentScope(environmentId, AuthSettingsWriteScope);
+  const canMaintainEnvironment = useEnvironmentScope(environmentId, AuthEnvironmentMaintainScope);
+  const settingsDisabled = pending || !canWriteSettings;
+  const maintenanceDisabled = pending || !canMaintainEnvironment;
   const [error, setError] = useState<string | null>(null);
   const [baseDirectoryDraft, setBaseDirectoryDraft] = useState("");
   const [customInstructionsDraft, setCustomInstructionsDraft] = useState("");
@@ -153,7 +160,7 @@ export function SettingsServerRouteScreen() {
 
   const persist = useCallback(
     async (patch: ServerSettingsPatch): Promise<boolean> => {
-      if (environmentId === null) return false;
+      if (environmentId === null || !canWriteSettings) return false;
       setPending(true);
       setError(null);
       const result = await saveSettings({ environmentId, input: { patch } });
@@ -220,7 +227,7 @@ export function SettingsServerRouteScreen() {
 
   const selfUpdate = serverConfig?.environment.capabilities.serverSelfUpdate ?? null;
   const runServerUpdate = useCallback(async () => {
-    if (environmentId === null || !canUpdateServer(selfUpdate)) return;
+    if (environmentId === null || !canMaintainEnvironment || !canUpdateServer(selfUpdate)) return;
     const targetVersion = targetVersionDraft.trim();
     if (targetVersion.length === 0) {
       setUpdateError(t("serverUpdateMobile.targetRequired"));
@@ -256,6 +263,7 @@ export function SettingsServerRouteScreen() {
       setUpdateError(failure instanceof Error ? failure.message : t("serverUpdateMobile.failed"));
     }
   }, [
+    canMaintainEnvironment,
     environmentId,
     serverConfig?.environment.serverVersion,
     selfUpdate,
@@ -307,7 +315,7 @@ export function SettingsServerRouteScreen() {
             capability={selfUpdate}
             targetVersion={targetVersionDraft}
             updateState={serverUpdateState}
-            disabled={pending}
+            disabled={maintenanceDisabled}
             onTargetVersionChange={setTargetVersionDraft}
             onUpdate={() => void runServerUpdate()}
           />
@@ -318,19 +326,19 @@ export function SettingsServerRouteScreen() {
               <SwitchRow
                 label={t("serverSettingsMobile.providerUpdates")}
                 value={settings.enableProviderUpdateChecks}
-                disabled={pending}
+                disabled={settingsDisabled}
                 onValueChange={(value) => void persist({ enableProviderUpdateChecks: value })}
               />
               <SwitchRow
                 label={t("serverSettingsMobile.agentBrowser")}
                 value={settings.enableAgentBrowserAccess}
-                disabled={pending}
+                disabled={settingsDisabled}
                 onValueChange={(value) => void persist({ enableAgentBrowserAccess: value })}
               />
               <SwitchRow
                 label={t("serverSettingsMobile.continueThreads")}
                 value={settings.continueThreadsAfterServerUpdate}
-                disabled={pending}
+                disabled={settingsDisabled}
                 onValueChange={(value) => void persist({ continueThreadsAfterServerUpdate: value })}
               />
               <View className="gap-3 p-4">
@@ -361,7 +369,7 @@ export function SettingsServerRouteScreen() {
                   <SwitchRow
                     label={t("serverSettingsMobile.responseTextPacing")}
                     value={settings.responseTextPacing !== false}
-                    disabled={pending}
+                    disabled={settingsDisabled}
                     onValueChange={(responseTextPacing) => void persist({ responseTextPacing })}
                   />
                   <Text className="px-4 pb-4 text-sm leading-5 text-foreground-muted">
@@ -374,7 +382,7 @@ export function SettingsServerRouteScreen() {
             <ModelSelectionSection
               settings={settings}
               modelOptions={modelOptions}
-              disabled={pending}
+              disabled={settingsDisabled}
               onDefaultModelChange={setDefaultModel}
               onSourceControlWriterModelChange={setSourceControlWriterModel}
               onDedicatedSourceControlWriterChange={(enabled) =>
@@ -395,7 +403,7 @@ export function SettingsServerRouteScreen() {
                       { id: "worktree" as const, label: t("serverSettingsMobile.worktree") },
                     ]}
                     selectedId={settings.defaultThreadEnvMode}
-                    disabled={pending}
+                    disabled={settingsDisabled}
                     onSelect={(value) => void persist({ defaultThreadEnvMode: value })}
                   />
                 </Field>
@@ -403,7 +411,7 @@ export function SettingsServerRouteScreen() {
                   <SwitchRow
                     label={t("serverSettingsMobile.startFromOrigin")}
                     value={settings.newWorktreesStartFromOrigin}
-                    disabled={pending}
+                    disabled={settingsDisabled}
                     onValueChange={(value) => void persist({ newWorktreesStartFromOrigin: value })}
                   />
                 ) : null}
@@ -428,7 +436,7 @@ export function SettingsServerRouteScreen() {
             <BackgroundActivitySection
               settings={settings}
               resolved={resolvedBackgroundActivity}
-              disabled={pending}
+              disabled={settingsDisabled}
               onProfileChange={setBackgroundProfile}
               onCustomProfile={setBackgroundCustom}
               onDurationChange={setBackgroundDuration}
@@ -451,7 +459,7 @@ export function SettingsServerRouteScreen() {
                       { id: "custom" as const, label: t("serverSettingsMobile.custom") },
                     ]}
                     selectedId={settings.sourceControlWritingStyle.mode}
-                    disabled={pending}
+                    disabled={settingsDisabled}
                     onSelect={(mode) =>
                       void persist({
                         sourceControlWritingStyle: { mode },
@@ -482,7 +490,7 @@ export function SettingsServerRouteScreen() {
                 <SwitchRow
                   label={t("serverSettingsMobile.followTemplates")}
                   value={settings.sourceControlWritingStyle.followChangeRequestTemplates}
-                  disabled={pending}
+                  disabled={settingsDisabled}
                   onValueChange={(value) =>
                     void persist({
                       sourceControlWritingStyle: { followChangeRequestTemplates: value },
@@ -545,7 +553,7 @@ export function SettingsServerRouteScreen() {
                         label: t(`serverSettingsMobile.storageCleanupKeepWhen.${id}`),
                       }))}
                       selectedId={settings.storageCleanup.worktreeKeepWhen}
-                      disabled={pending}
+                      disabled={settingsDisabled}
                       onSelect={(worktreeKeepWhen) =>
                         void persist({ storageCleanup: { worktreeKeepWhen } })
                       }
@@ -565,7 +573,7 @@ export function SettingsServerRouteScreen() {
                           ? "never"
                           : String(settings.storageCleanup.worktreeAfterDays)
                       }
-                      disabled={pending}
+                      disabled={settingsDisabled}
                       onSelect={(value) =>
                         void persist({
                           storageCleanup: {
@@ -589,7 +597,7 @@ export function SettingsServerRouteScreen() {
                           ? "never"
                           : String(settings.storageCleanup.logsAfterDays)
                       }
-                      disabled={pending}
+                      disabled={settingsDisabled}
                       onSelect={(value) =>
                         void persist({
                           storageCleanup: {
@@ -603,7 +611,7 @@ export function SettingsServerRouteScreen() {
                 <SwitchRow
                   label={t("serverSettingsMobile.storageCleanupOnMerge")}
                   value={settings.storageCleanup.worktreeOnMerge}
-                  disabled={pending}
+                  disabled={settingsDisabled}
                   onValueChange={(worktreeOnMerge) =>
                     void persist({ storageCleanup: { worktreeOnMerge } })
                   }
@@ -611,7 +619,7 @@ export function SettingsServerRouteScreen() {
                 <SwitchRow
                   label={t("serverSettingsMobile.storageCleanupOnDelete")}
                   value={settings.storageCleanup.worktreeOnDelete}
-                  disabled={pending}
+                  disabled={settingsDisabled}
                   onValueChange={(worktreeOnDelete) =>
                     void persist({ storageCleanup: { worktreeOnDelete } })
                   }
@@ -619,7 +627,7 @@ export function SettingsServerRouteScreen() {
                 <SwitchRow
                   label={t("serverSettingsMobile.storageCleanupUnchanged")}
                   value={settings.storageCleanup.worktreeUnchanged}
-                  disabled={pending}
+                  disabled={settingsDisabled}
                   onValueChange={(worktreeUnchanged) =>
                     void persist({ storageCleanup: { worktreeUnchanged } })
                   }
@@ -628,7 +636,7 @@ export function SettingsServerRouteScreen() {
                   <View className="gap-2 px-4 pb-4">
                     <Pressable
                       accessibilityRole="button"
-                      disabled={pending || cleanupRunning || environmentId === null}
+                      disabled={maintenanceDisabled || cleanupRunning || environmentId === null}
                       onPress={() => {
                         if (environmentId === null) return;
                         setCleanupRunning(true);
@@ -637,14 +645,14 @@ export function SettingsServerRouteScreen() {
                         );
                       }}
                       className={
-                        pending || cleanupRunning || environmentId === null
+                        maintenanceDisabled || cleanupRunning || environmentId === null
                           ? "items-center rounded-full border border-input-border px-3 py-2 opacity-[0.45]"
                           : "items-center rounded-full bg-accent px-3 py-2"
                       }
                     >
                       <Text
                         className={
-                          pending || cleanupRunning || environmentId === null
+                          maintenanceDisabled || cleanupRunning || environmentId === null
                             ? "text-xs text-foreground"
                             : "text-xs font-codework-medium text-accent-foreground"
                         }

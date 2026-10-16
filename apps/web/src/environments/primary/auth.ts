@@ -2,6 +2,7 @@ import type {
   AuthBrowserSessionResult,
   AuthClientMetadata,
   AuthEnvironmentScope,
+  AuthGrantScope,
   AuthPairingCredentialResult,
   ServerAuthSessionMethod,
   AuthSessionId,
@@ -125,6 +126,7 @@ export interface ServerPairingLinkRecord {
   readonly id: string;
   readonly credential: string;
   readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
+  readonly permissions?: ReadonlyArray<AuthEnvironmentScope> | undefined;
   readonly subject: string;
   readonly label?: string;
   readonly createdAt: string;
@@ -135,6 +137,7 @@ export interface ServerClientSessionRecord {
   readonly sessionId: AuthSessionId;
   readonly subject: string;
   readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
+  readonly permissions?: ReadonlyArray<AuthEnvironmentScope> | undefined;
   readonly method: ServerAuthSessionMethod;
   readonly client: AuthClientMetadata;
   readonly issuedAt: string;
@@ -364,7 +367,7 @@ export async function submitServerAuthCredential(credential: string): Promise<vo
 
 export async function createServerPairingCredential(input?: {
   readonly label?: string;
-  readonly scopes?: ReadonlyArray<AuthEnvironmentScope>;
+  readonly scopes?: ReadonlyArray<AuthGrantScope>;
 }): Promise<AuthPairingCredentialResult> {
   const trimmedLabel = input?.label?.trim();
   try {
@@ -406,6 +409,7 @@ export async function listServerPairingLinks(): Promise<ReadonlyArray<ServerPair
           id: pairingLink.id,
           credential: pairingLink.credential,
           scopes: pairingLink.scopes,
+          permissions: pairingLink.permissions,
           subject: pairingLink.subject,
           createdAt: timestamps.createdAt,
           expiresAt: timestamps.expiresAt,
@@ -415,6 +419,7 @@ export async function listServerPairingLinks(): Promise<ReadonlyArray<ServerPair
         id: pairingLink.id,
         credential: pairingLink.credential,
         scopes: pairingLink.scopes,
+        permissions: pairingLink.permissions,
         subject: pairingLink.subject,
         label: pairingLink.label,
         createdAt: timestamps.createdAt,
@@ -458,6 +463,7 @@ export async function listServerClientSessions(): Promise<
       sessionId: clientSession.sessionId,
       subject: clientSession.subject,
       scopes: clientSession.scopes,
+      permissions: clientSession.permissions,
       method: clientSession.method,
       client: clientSession.client,
       issuedAt: DateTime.formatIso(clientSession.issuedAt),

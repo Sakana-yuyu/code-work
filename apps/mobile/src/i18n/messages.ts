@@ -2171,6 +2171,9 @@ export const en: Record<string, string> = {
   disableNotifications: "Disable notifications",
   disconnectAndForgetOnThisDevice: "Disconnect and forget {{environmentLabel}} on this device.",
   dismiss: "Dismiss",
+  permissionsChangedForLabel: "Permissions changed for {{label}}",
+  connectionStillUsesOldPermissionsPairAgainUsingANewLink:
+    "This session still uses the old permissions, so some actions may no longer be available. Pair again with a new link that has the permissions you need.",
   dpopUrlIsInvalid: "DPoP URL is invalid.",
   environmentLinkedForLiveActivityUpdates:
     "{{environmentCount}} environment{{value2}} linked for Live Activity updates.",
@@ -4958,6 +4961,9 @@ export const zhCN: Record<string, string> = {
   disableNotifications: "禁用通知",
   disconnectAndForgetOnThisDevice: "断开连接并忘记此设备上的 {{environmentLabel}}。",
   dismiss: "关闭",
+  permissionsChangedForLabel: "{{label}} 的权限已变更",
+  connectionStillUsesOldPermissionsPairAgainUsingANewLink:
+    "此会话仍在使用旧权限，部分操作可能不再可用。请使用具有所需权限的新链接重新配对。",
   dpopUrlIsInvalid: "DPoP URL 无效。",
   environmentLinkedForLiveActivityUpdates:
     "已链接 {{environmentCount}} 个环境{{value2}}用于实时活动更新。",

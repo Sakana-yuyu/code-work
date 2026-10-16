@@ -1384,6 +1384,15 @@ export const ja: Record<string, string> = {
   changedFile: "変更されたファイル",
   changedFiles: "変更されたファイル",
   changeManagedTunnelConnectivity: "管理対象トンネルの接続を変更します。",
+  changeEnvironmentSettings: "環境設定の変更",
+  manageProviders: "プロバイダーの管理",
+  maintainEnvironment: "環境のメンテナンス",
+  controlPreviews: "プレビューの操作",
+  viewDiagnosticsAndUsage: "診断と利用量の表示",
+  viewTerminals: "ターミナルの表示",
+  changeSourceControlScope: "ソース管理の変更",
+  readFilesScope: "ファイルの読み取り",
+  writeFilesScope: "ファイルの書き込み",
   changeRequestTemplates: "変更リクエストのテンプレート",
   changesRequested: "変更リクエストあり",
   checkAgain: "再確認",
@@ -1641,6 +1650,21 @@ export const ja: Record<string, string> = {
   input: "入力",
   inspectManagedRelayConnectivity: "管理対象リレーの接続状態を確認します。",
   inspectPairingLinksAndAuthorizedClients: "ペアリングリンクと認可されたクライアントを確認します。",
+  updateTheServerAndControlEnvironmentProcesses: "サーバーを更新し、環境プロセスを制御します。",
+  editEnvironmentPreferencesAndKeybindings: "環境の設定とキーバインドを編集します。",
+  configureInstallSignInToAndUpdateProvidersAndUsageSources:
+    "プロバイダーと利用量ソースを設定・インストール・サインイン・更新します。",
+  openBrowserPreviewsAndHostBrowserAutomation:
+    "ブラウザープレビューを開き、ブラウザー自動化をホストします。",
+  readProcessDiagnosticsResourceHistoryAndUsageTotals:
+    "プロセス診断、リソース履歴、利用量合計を確認します。",
+  readExistingTerminalOutputAndStatus: "既存ターミナルの出力と状態を確認します。",
+  commitPushManageBranchesAndRepositoriesAndChangePullRequests:
+    "コミット、プッシュ、ブランチとリポジトリの管理、プルリクエストの変更を行います。",
+  browseHostFilesSearchWorkspacesAndInspectLocalChanges:
+    "ホストのファイルを参照し、ワークスペースを検索し、ローカル変更を確認します。",
+  editWorkspaceFilesAndSavePlansToDisk:
+    "ワークスペースのファイルを編集し、プランをディスクに保存します。",
   installRecommendedVersion: "{{version}} をインストール",
   installTheUpdateNowOrReviewProviderSettings:
     "今すぐアップデートをインストールするか、プロバイダー設定を確認してください。",
@@ -1949,6 +1973,15 @@ export const ja: Record<string, string> = {
   openActivityOnHost: "ホスト上でアクティビティを開く",
   opencode: "OpenCode",
   openConnections: "接続を開く",
+  permissionsChangedForLabel: "{{label}} の権限が変更されました",
+  allowed: "許可",
+  notGranted: "未付与",
+  thesePermissionsApplyToThisClientsCurrentConnection:
+    "これらの権限はこのクライアントの現在の接続に適用されます。",
+  permissionsNotCheckedConnectToThisEnvironment:
+    "権限は確認されていません。この環境に接続してこのセッションの権限を確認してください。",
+  connectionStillUsesOldPermissionsPairAgainUsingANewLink:
+    "このセッションは古い権限を使用しているため、一部の操作が利用できなくなる可能性があります。必要な権限を持つ新しいリンクで再度ペアリングしてください。",
   openDiff: "差分を開く",
   openInEditor: "エディターで開く",
   openInSystemBrowser: "システムブラウザーで開く",

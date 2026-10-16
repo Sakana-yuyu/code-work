@@ -44,6 +44,7 @@ export const make = Effect.gen(function* () {
       instanceKey: config.stateDir,
       development: config.devUrl !== undefined,
     }),
+    serverUpdateScope: "environment:maintain",
   };
 
   return EnvironmentAuthPolicy.of({
