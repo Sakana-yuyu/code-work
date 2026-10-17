@@ -27,7 +27,7 @@ import {
   WINDOWS_ICON_SIZES,
 } from "./lib/icon-export.ts";
 
-const DESIGN_GENERATION = 26;
+const DESIGN_GENERATION = 27;
 const ICON_COMPOSER_EXECUTABLE_PARTS = [
   "Contents",
   "Applications",

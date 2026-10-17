@@ -21,14 +21,49 @@ export function resizePng(contents: Buffer, size: number): Buffer {
 
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
-      const sourceX = Math.min(source.width - 1, Math.floor((x + 0.5) * xScale));
-      const sourceY = Math.min(source.height - 1, Math.floor((y + 0.5) * yScale));
-      const sourceIndex = (sourceY * source.width + sourceX) * 4;
       const targetIndex = (y * size + x) * 4;
-      target.data[targetIndex] = source.data[sourceIndex] ?? 0;
-      target.data[targetIndex + 1] = source.data[sourceIndex + 1] ?? 0;
-      target.data[targetIndex + 2] = source.data[sourceIndex + 2] ?? 0;
-      target.data[targetIndex + 3] = source.data[sourceIndex + 3] ?? 0;
+      const sourceLeft = x * xScale;
+      const sourceRight = (x + 1) * xScale;
+      const sourceTop = y * yScale;
+      const sourceBottom = (y + 1) * yScale;
+      const firstSourceX = Math.floor(sourceLeft);
+      const lastSourceX = Math.min(source.width - 1, Math.ceil(sourceRight) - 1);
+      const firstSourceY = Math.floor(sourceTop);
+      const lastSourceY = Math.min(source.height - 1, Math.ceil(sourceBottom) - 1);
+
+      // 按覆盖面积混合，并以预乘 alpha 计算，避免透明边缘把隐藏颜色带进图标。
+      let red = 0;
+      let green = 0;
+      let blue = 0;
+      let alpha = 0;
+      for (let sourceY = firstSourceY; sourceY <= lastSourceY; sourceY += 1) {
+        const overlapY = Math.min(sourceBottom, sourceY + 1) - Math.max(sourceTop, sourceY);
+        if (overlapY <= 0) continue;
+        for (let sourceX = firstSourceX; sourceX <= lastSourceX; sourceX += 1) {
+          const overlapX = Math.min(sourceRight, sourceX + 1) - Math.max(sourceLeft, sourceX);
+          const area = overlapX * overlapY;
+          if (area <= 0) continue;
+          const sourceIndex = (sourceY * source.width + sourceX) * 4;
+          const sourceAlpha = (source.data[sourceIndex + 3] ?? 0) / 255;
+          const weightedAlpha = sourceAlpha * area;
+          red += (source.data[sourceIndex] ?? 0) * weightedAlpha;
+          green += (source.data[sourceIndex + 1] ?? 0) * weightedAlpha;
+          blue += (source.data[sourceIndex + 2] ?? 0) * weightedAlpha;
+          alpha += weightedAlpha;
+        }
+      }
+
+      const outputAlpha = Math.round((alpha / (xScale * yScale)) * 255);
+      target.data[targetIndex + 3] = outputAlpha;
+      if (alpha === 0) {
+        target.data[targetIndex] = 0;
+        target.data[targetIndex + 1] = 0;
+        target.data[targetIndex + 2] = 0;
+      } else {
+        target.data[targetIndex] = Math.round(red / alpha);
+        target.data[targetIndex + 1] = Math.round(green / alpha);
+        target.data[targetIndex + 2] = Math.round(blue / alpha);
+      }
     }
   }
 

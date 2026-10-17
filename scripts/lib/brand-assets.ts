@@ -1,6 +1,6 @@
 export const SAKANA_YUYU_ICON_SOURCE = {
   relativePath: "assets/source/sakana-yuyu-agent-icon-256.png",
-  sha256: "2e8f1c77c1ceaf3250b83ba2af5eec5a1621e67ba99164803618af78a4750b49",
+  sha256: "e29d8c5a39387d09a2d178f04cfb6664bba4d30ddcb27f6ff84eaa48f8f9756a",
   width: 1254,
   height: 1254,
 } as const;
