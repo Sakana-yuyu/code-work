@@ -58,6 +58,7 @@ import { KimiDriver } from "../Drivers/KimiDriver.ts";
 import { AntigravityDriver } from "../Drivers/AntigravityDriver.ts";
 import { OpenCodeDriver } from "../Drivers/OpenCodeDriver.ts";
 import * as ModelManifest from "../ModelManifest.ts";
+import * as ByokCatalog from "../byok/ByokCatalog.ts";
 import { OpenCodeRuntimeLive } from "../opencodeRuntime.ts";
 import { NoOpProviderEventLoggers, ProviderEventLoggers } from "./ProviderEventLoggers.ts";
 import { makeProviderInstanceRegistry } from "./ProviderInstanceRegistryLive.ts";
@@ -357,6 +358,10 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
     Layer.provideMerge(BackgroundPolicyAlwaysRunLayer),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(TestHttpClientLive),
+    // `BuiltInDriversEnv` is the superset every shipped driver may need, so
+    // the slice must supply the BYOK catalog even though it boots no BYOK
+    // instance; the disabled configs never fetch.
+    Layer.provideMerge(ByokCatalog.layer.pipe(Layer.provide(TestHttpClientLive))),
     Layer.provideMerge(Layer.succeed(ProviderEventLoggers, NoOpProviderEventLoggers)),
     Layer.provideMerge(ModelManifest.layerTest),
   );
