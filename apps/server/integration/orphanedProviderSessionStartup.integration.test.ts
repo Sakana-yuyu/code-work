@@ -412,12 +412,17 @@ it.effect(
         newTurnSucceeded: true,
         bindingStatus: "stopped",
         resumeCursor,
-        runtimePayload: { activeTurnId: null, unrelated: "preserve-me" },
+        runtimePayload: {
+          activeTurnId: null,
+          restartContinuation: null,
+          unrelated: "preserve-me",
+        },
         stoppedBindingSessionStatus: "error",
         stoppedBindingStatus: "stopped",
         stoppedBindingResumeCursor,
         stoppedBindingRuntimePayload: {
           activeTurnId: null,
+          restartContinuation: null,
           unrelated: "also-preserve-me",
         },
       });
