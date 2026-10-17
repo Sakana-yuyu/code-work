@@ -78,7 +78,6 @@ import { SettingsTeamRuntimeRouteScreen } from "./features/settings/SettingsTeam
 import { SettingsSupplierRegistryRouteScreen } from "./features/settings/SettingsSupplierRegistryRouteScreen";
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
 import { SettingsMcpRouteScreen } from "./features/settings/SettingsMcpRouteScreen";
-import { SettingsAgentToolsRouteScreen } from "./features/settings/SettingsAgentToolsRouteScreen";
 import { SettingsProjectGroupingRouteScreen } from "./features/settings/SettingsProjectGroupingRouteScreen";
 import { SettingsWorkspaceScriptsRouteScreen } from "./features/settings/SettingsWorkspaceScriptsRouteScreen";
 import { SettingsAutomationsRouteScreen } from "./features/settings/SettingsAutomationsRouteScreen";
@@ -281,13 +280,6 @@ const SettingsContentStack = createNativeStackNavigator({
       linking: "mcp",
       options: () => ({
         title: t("mcpMobile.title"),
-      }),
-    }),
-    SettingsAgentTools: createNativeStackScreen({
-      screen: SettingsAgentToolsRouteScreen,
-      linking: "agent-tools",
-      options: () => ({
-        title: t("agentToolsMobile.title"),
       }),
     }),
     SettingsWorkspaceScripts: createNativeStackScreen({

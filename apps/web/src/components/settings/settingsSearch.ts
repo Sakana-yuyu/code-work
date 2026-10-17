@@ -250,6 +250,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     keywords: ["worktree", "directory", "folder", "location", "path", "工作树", "目录"],
   },
   {
+    id: "storage-cleanup-keep-when",
+    title: "settings.storageCleanupKeepWhen",
+    to: "/settings/general",
+    keywords: ["storage", "cleanup", "worktree", "log", "清理", "存储", "日志"],
+  },
+  {
     id: "default-permissions",
     title: "settings.defaultPermissions",
     to: "/settings/general",
