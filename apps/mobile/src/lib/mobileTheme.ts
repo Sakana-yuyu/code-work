@@ -242,6 +242,7 @@ export function createMobileThemeVariables(
     "--color-danger": c.errorSurface,
     "--color-danger-border": withAlpha(c.error, 0.32),
     "--color-danger-foreground": c.errorForeground,
+    "--color-warning-foreground": c.warningForeground,
     "--color-input": c.surfaceRaised,
     "--color-input-border": c.input,
     "--color-sidebar-search": c.sidebarControlSurface,
