@@ -13,7 +13,12 @@ import type {
   ServerSettings,
 } from "@codework/contracts";
 import { Atom } from "effect/unstable/reactivity";
-import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import {
+  useNavigation,
+  type NavigationProp,
+  type ParamListBase,
+  type StaticScreenProps,
+} from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Platform, Pressable, RefreshControl, ScrollView, Switch, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -276,7 +281,10 @@ function ByokInstanceCard(props: {
   readonly onSave: (instance: ProviderInstanceConfig) => Promise<boolean>;
   readonly onDelete: () => void;
 }) {
-  const navigation = useNavigation();
+  // The card navigates into the settings sheet; type the hook explicitly the
+  // way the sibling settings screens do so the call survives tsgo's view of
+  // the root param list.
+  const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const config = readByokConfigRecord(props.instance.config);
   const adapters = readByokModelAdapters(config);
   const promptTemplate = readByokPromptTemplate(config);
