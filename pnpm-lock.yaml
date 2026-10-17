@@ -285,7 +285,7 @@ importers:
         specifier: 4.2.0
         version: 4.2.0
       '@tabler/icons-react-native':
-        specifier: ^3.44.0
+        specifier: 3.44.0
         version: 3.44.0(patch_hash=755ec65d7d27dd47cc301bef3d6d67a7cc5a46acc774617c26d716e250a17ebb)(react-native-svg@15.15.4(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react@19.2.3)
       clsx:
         specifier: ^2.1.1

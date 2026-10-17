@@ -68,7 +68,7 @@
     "@shikijs/engine-javascript": "4.2.0",
     "@shikijs/langs": "4.2.0",
     "@shikijs/themes": "4.2.0",
-    "@tabler/icons-react-native": "^3.44.0",
+    "@tabler/icons-react-native": "3.44.0",
     "clsx": "^2.1.1",
     "diff": "8.0.3",
     "effect": "catalog:",
