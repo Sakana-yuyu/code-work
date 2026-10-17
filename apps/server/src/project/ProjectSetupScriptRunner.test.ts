@@ -140,8 +140,10 @@ describe("ProjectSetupScriptRunner", () => {
           status: "started",
           scriptId: "setup",
           scriptName: "Setup",
+          scriptCommand: "bun install",
           terminalId: "setup-setup",
           cwd: "/repo/worktrees/a",
+          async: true,
         });
         expect(open).toHaveBeenCalledWith({
           threadId: "thread-1",
@@ -151,6 +153,9 @@ describe("ProjectSetupScriptRunner", () => {
           env: {
             T3CODE_PROJECT_ROOT: "/repo/project",
             CODEWORK_WORKTREE_PATH: "/repo/worktrees/a",
+            COLORTERM: "",
+            NO_COLOR: "1",
+            FORCE_COLOR: "0",
           },
         });
         expect(write).toHaveBeenCalledWith({
