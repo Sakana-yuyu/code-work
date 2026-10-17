@@ -6,6 +6,7 @@ import { HostProcessEnvironment, HostProcessPlatform } from "@codework/shared/ho
 
 import {
   AuthAccessTokenType,
+  AuthAdministrativeScopes,
   AuthEnvironmentBootstrapTokenType,
   AuthTokenExchangeGrantType,
   CommandId,
@@ -1255,9 +1256,7 @@ const exchangeAccessToken = (
         subject_token: credential,
         subject_token_type: AuthEnvironmentBootstrapTokenType,
         requested_token_type: AuthAccessTokenType,
-        scope:
-          options?.scope ??
-          "orchestration:read orchestration:operate terminal:operate review:write relay:read access:read access:write relay:write",
+        scope: options?.scope ?? AuthAdministrativeScopes.join(" "),
         ...(options?.clientMetadata?.label ? { client_label: options.clientMetadata.label } : {}),
         ...(options?.clientMetadata?.deviceType
           ? { client_device_type: options.clientMetadata.deviceType }
@@ -1935,10 +1934,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(tokenResponse.status, 200);
       assert.equal(tokenBody.issued_token_type, AuthAccessTokenType);
       assert.equal(tokenBody.token_type, "Bearer");
-      assert.equal(
-        tokenBody.scope,
-        "orchestration:read orchestration:operate terminal:operate review:write relay:read access:read access:write relay:write",
-      );
+      assert.equal(tokenBody.scope, AuthAdministrativeScopes.join(" "));
       assert.equal(typeof tokenBody.access_token, "string");
 
       const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
@@ -1960,7 +1956,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         "orchestration:read",
         "orchestration:operate",
         "terminal:operate",
-        "review:write",
         "relay:read",
         "access:read",
         "access:write",
@@ -1992,7 +1987,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         headers: {
           "user-agent": "undici",
         },
-        scope: "orchestration:read orchestration:operate terminal:operate review:write",
+        scope: "orchestration:read orchestration:operate terminal:operate",
         clientMetadata: {
           label: "Code Work Mobile",
           deviceType: "mobile",
@@ -2061,7 +2056,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             subject_token: credential.credential,
             subject_token_type: "urn:t3:params:oauth:token-type:environment-bootstrap",
             requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
-            scope: "orchestration:read orchestration:operate terminal:operate review:write",
+            scope: "orchestration:read orchestration:operate terminal:operate",
           }).toString(),
         });
         const token = yield* responseJsonEffect<{
@@ -2141,13 +2136,13 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         headers: {
           dpop: dpop.proof,
         },
-        scope: "orchestration:read orchestration:operate terminal:operate review:write",
+        scope: "orchestration:read orchestration:operate terminal:operate",
       });
       const replayBootstrap = yield* exchangeAccessToken(secondCredential.credential, {
         headers: {
           dpop: dpop.proof,
         },
-        scope: "orchestration:read orchestration:operate terminal:operate review:write",
+        scope: "orchestration:read orchestration:operate terminal:operate",
       });
 
       assert.equal(firstBootstrap.response.status, 200);
@@ -2186,7 +2181,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           dpop: dpop.proof,
           "x-forwarded-host": "environment.example.test",
         },
-        scope: "orchestration:read orchestration:operate terminal:operate review:write",
+        scope: "orchestration:read orchestration:operate terminal:operate",
       });
 
       assert.equal(bootstrap.response.status, 200);
@@ -2223,7 +2218,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           dpop: dpop.proof,
           "x-forwarded-host": spoofedUrl.host,
         },
-        scope: "orchestration:read orchestration:operate terminal:operate review:write",
+        scope: "orchestration:read orchestration:operate terminal:operate",
       });
 
       assert.equal(bootstrap.response.status, 401);
