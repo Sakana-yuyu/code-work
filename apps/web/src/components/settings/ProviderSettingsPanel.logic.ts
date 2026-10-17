@@ -1,10 +1,11 @@
 import type { EnvironmentConnectionPhase } from "@codework/client-runtime/connection";
 import {
-  AuthOrchestrationOperateScope,
-  type AuthSessionState,
+  AuthProvidersManageScope,
+  sessionGrantsScope,
   type EnvironmentId,
   type ProviderInstanceConfig,
   type ServerSettings,
+  type SessionGrantInput,
 } from "@codework/contracts";
 
 export interface ProviderEnvironmentOptionLike {
@@ -91,7 +92,7 @@ export type ProviderOperateAccess = "granted" | "denied" | "pending";
  * either way.
  */
 function resolveSessionOperateAccess(input: {
-  readonly session: Pick<AuthSessionState, "authenticated" | "scopes"> | null;
+  readonly session: SessionGrantInput | null;
   readonly isPending: boolean;
   readonly hasError: boolean;
   readonly missingScopesAccess: "granted" | "denied";
@@ -108,17 +109,17 @@ function resolveSessionOperateAccess(input: {
   if (!input.session.authenticated) {
     return "denied";
   }
-  if (input.session.scopes === undefined) {
+  if (input.session.scopes === undefined && input.session.permissions === undefined) {
     return input.missingScopesAccess;
   }
-  return input.session.scopes.includes(AuthOrchestrationOperateScope) ? "granted" : "denied";
+  return sessionGrantsScope(input.session, AuthProvidersManageScope) ? "granted" : "denied";
 }
 
 /** Operate access for the primary environment's own browser session. */
 export function resolvePrimaryOperateAccess(input: {
   readonly isPrimary: boolean;
   readonly hasDesktopBridge: boolean;
-  readonly session: Pick<AuthSessionState, "authenticated" | "scopes"> | null;
+  readonly session: SessionGrantInput | null;
   readonly isPending: boolean;
   readonly hasError: boolean;
 }): ProviderOperateAccess {
@@ -138,7 +139,7 @@ export function resolvePrimaryOperateAccess(input: {
  * `/api/auth/session` endpoint reports for this client's credential.
  */
 export function resolveRemoteOperateAccess(input: {
-  readonly session: Pick<AuthSessionState, "authenticated" | "scopes"> | null;
+  readonly session: SessionGrantInput | null;
   readonly isPending: boolean;
   readonly hasError: boolean;
 }): ProviderOperateAccess {
