@@ -1354,6 +1354,56 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect("stores the web search API key in the secret store and materializes it on read", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+
+      const next = yield* serverSettings.updateSettings({
+        webSearch: { enabled: true, engine: "tavily", apiKey: "tvly-secret-key" },
+      });
+      assert.equal(next.webSearch.apiKey, "tvly-secret-key");
+      assert.equal(next.webSearch.apiKeyRedacted, true);
+
+      const clientSettings = ServerSettingsModule.redactServerSettingsForClient(next);
+      assert.equal(clientSettings.webSearch.apiKey, "");
+      assert.equal(clientSettings.webSearch.apiKeyRedacted, true);
+
+      const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.notInclude(raw, "tvly-secret-key");
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      const persistedWebSearch = JSON.parse(raw).webSearch as Record<string, unknown>;
+      assert.notOk("apiKey" in persistedWebSearch);
+      assert.equal(persistedWebSearch.apiKeyRedacted, true);
+
+      const secretBytes = yield* fileSystem.readFile(
+        `${serverConfig.secretsDir}/web-search-api-key.bin`,
+      );
+      assert.equal(new TextDecoder().decode(secretBytes), "tvly-secret-key");
+
+      const reloaded = yield* serverSettings.getSettings;
+      assert.equal(reloaded.webSearch.apiKey, "tvly-secret-key");
+
+      yield* serverSettings.updateSettings({ webSearch: { engine: "brave" } });
+      const afterEngineSwitch = yield* serverSettings.getSettings;
+      assert.equal(afterEngineSwitch.webSearch.engine, "brave");
+      assert.equal(afterEngineSwitch.webSearch.apiKey, "tvly-secret-key");
+
+      yield* serverSettings.updateSettings({ webSearch: { apiKeyRedacted: false } });
+      const cleared = yield* serverSettings.getSettings;
+      assert.equal(cleared.webSearch.apiKey, "");
+      assert.notOk(cleared.webSearch.apiKeyRedacted);
+      const clearedRaw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      assert.notOk("apiKeyRedacted" in (JSON.parse(clearedRaw).webSearch as object));
+      const missing = yield* fileSystem
+        .exists(`${serverConfig.secretsDir}/web-search-api-key.bin`)
+        .pipe(Effect.map((exists) => !exists));
+      assert.isTrue(missing);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("treats BYOK custom headers as secrets across persist and materialize", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
@@ -2979,7 +3029,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
-  // 计数/故障包装真实 secret store：get 调用按名字记录，可选择性地让首若干次失败。
+  // 计数包装真实 secret store：get 调用按名字记录。
   const buildInstrumentedRuntime = Effect.gen(function* () {
     const serverConfig = yield* ServerConfig.ServerConfig;
     const sql = yield* SqlClient.SqlClient;

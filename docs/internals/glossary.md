@@ -12,6 +12,7 @@ This is a living glossary for Code Work. It explains what common terms mean in t
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
 - [Code index](#code-index)
+- [Agent tools](#agent-tools)
 - [Remote servers (SSH)](#remote-servers-ssh)
 
 ## Concepts
@@ -183,6 +184,22 @@ A per-workspace declaration index agents query through the `code-work` MCP tools
 #### rootKey
 
 The workspace root path an index row belongs to. Every `files`/`symbols` row and every `CodeIndexRoot` resource is keyed by it, so one store serves all projects without cross-project leaks.
+
+### Agent tools
+
+Product-level memory, lifecycle hooks, and web search for **in-process** agents (BYOK / composition). Source of truth is `ServerSettings` (`agentMemory`, `agentHooks`, `webSearch`); chat `/memory`, `/hooks`, and `/search-engine` are convenience entry points. CLI providers keep their own systems. User-facing behavior: [../user/agent-tools.md](../user/agent-tools.md).
+
+#### Agent memory
+
+User notes in `agentMemory.userNotes`; project notes in `{cwd}/.codework/memory.md`. Injected into in-process turns when enabled. Tools: `memory.save`, `memory.recall` (`t3.memory.save` / `t3.memory.recall`).
+
+#### Agent hooks
+
+Optional commands run on the server at `user_prompt_submit`, `pre_tool_use`, `post_tool_use`, and `stop`. Stdin is JSON; `{"decision":"deny"}` or a non-zero exit blocks a tool. Only wraps the in-process ToolBroker.
+
+#### Web search
+
+Optional `web.search` (`t3.web.search`) tool backed by DuckDuckGo, SearXNG, Tavily, or Brave. Hidden when `webSearch.enabled` is false.
 
 ### Remote servers (SSH)
 

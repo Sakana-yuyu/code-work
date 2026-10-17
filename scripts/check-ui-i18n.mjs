@@ -113,6 +113,13 @@ const SAME_VALUE_EXEMPTIONS = new Set([
   "Tailscale IP",
   "Ultrathink",
   "WebSocket URL",
+  // Web-search engine names are brands; "Agent hooks" is kept as a term in zh.
+  "Agent hooks",
+  "Brave Search",
+  "DuckDuckGo",
+  "SearXNG",
+  "SearXNG URL",
+  "Tavily",
   // Provider-connection auth option labels are protocol terms.
   "URL / API Key",
   "API Key (x-api-key)",
@@ -216,7 +223,7 @@ const SAME_VALUE_EXEMPTIONS = new Set([
   "~/projects/my-app",
 ]);
 const SAME_VALUE_EXEMPTION =
-  /^(?:[A-Z0-9_ .:/@#$%+(){}\[\],~'"\\|-]+|Claude|Codex|Cursor|Grok|OpenCode|OpenAI|Anthropic|Gemini|DeepSeek|OpenRouter|Git|GitHub|GitLab|Bitbucket|macOS|Windows|Linux|Android|iOS|Tailscale|WSL|SSH|CPU|GPU|PID|URL|ID|PR|MCP|BYOK|ACP|Code Work(?: Connect)?|Sidecar|Span|Trace|Base URL|Tailnet|MagicDNS|PhpStorm|VSCodium|English)$/;
+  /^(?:[A-Z0-9_ .:/@#$%+(){}[\],~'"\\|-]+|Claude|Codex|Cursor|Grok|OpenCode|OpenAI|Anthropic|Gemini|DeepSeek|OpenRouter|Git|GitHub|GitLab|Bitbucket|macOS|Windows|Linux|Android|iOS|Tailscale|WSL|SSH|CPU|GPU|PID|URL|ID|PR|MCP|BYOK|ACP|Code Work(?: Connect)?|Sidecar|Span|Trace|Base URL|Tailnet|MagicDNS|PhpStorm|VSCodium|English)$/;
 const TECHNICAL_LITERAL =
   /^(?:https?:\/\/\S+|wss?:\/\/\S+|(?:[a-z0-9-]+\.)+[a-z]{2,}|[A-Z0-9_]{3,}|ERR_\{\{\w+\}\}|PR\s+#\{\{\w+\}\}|L\{\{\w+\}\}-L\{\{\w+\}\}|[a-z0-9_.-]+\/[a-z0-9_./-]+|[A-Za-z]:[\\/]|\.\.?[\\/]|[#.:/@$][^ ]+|--[^ ]+|[a-z]+(?::[a-z0-9-]+)+|[a-z]+(?:-[a-z0-9]+){2,}|\d+(?:\.\d+)?(?:ms|s|m|h)|\{\{\w+\}\}\s+(?:tokens?|\([A-Za-z0-9+ -]+\))|\{.*\}|git:\(|VITE\s.+|WSL\s*\([^)]*\)|[✓△✗].*)$/;
 const BAD_TRANSLATION_PATTERNS = [

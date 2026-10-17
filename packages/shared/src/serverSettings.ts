@@ -339,6 +339,30 @@ export function applyServerSettingsPatch(
       : {}),
     ...(mergedWorktreeCleanup !== undefined ? { worktreeCleanup: mergedWorktreeCleanup } : {}),
     ...(patch.mcpServers !== undefined ? { mcpServers: patch.mcpServers } : {}),
+    ...(patch.agentHooks?.hooks !== undefined
+      ? {
+          agentHooks: {
+            ...next.agentHooks,
+            ...patch.agentHooks,
+            hooks: patch.agentHooks.hooks,
+          },
+        }
+      : {}),
+    ...(patch.webSearch !== undefined
+      ? {
+          webSearch: {
+            ...next.webSearch,
+            ...patch.webSearch,
+            // 空 apiKey 视为“保留已存密钥”；显式 apiKeyRedacted: false 表示清除。
+            apiKey:
+              patch.webSearch.apiKey !== undefined && patch.webSearch.apiKey.trim().length > 0
+                ? patch.webSearch.apiKey
+                : patch.webSearch.apiKeyRedacted === false
+                  ? ""
+                  : current.webSearch.apiKey,
+          },
+        }
+      : {}),
     ...(patch.sourceControlWriterModelSelection !== undefined
       ? { sourceControlWriterModelSelection: patch.sourceControlWriterModelSelection }
       : {}),

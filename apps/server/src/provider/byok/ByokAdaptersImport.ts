@@ -9,6 +9,7 @@ import * as Effect from "effect/Effect";
 import { parse as parseYaml } from "yaml";
 
 import * as ServerSettings from "../../serverSettings.ts";
+import { catalogCapabilitiesForModel } from "./ContextWindowCatalog.ts";
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 
@@ -88,17 +89,20 @@ export function parseAdaptersYaml(yamlText: string): {
       continue;
     }
     const contextWindowRaw = entry["contextWindowTokens"];
+    // 导入未写窗口/输出时先按内置目录识别，目录也没有才落 128K 默认，
+    // 与添加表单、模型发现的回填语义一致。
     const contextWindowTokens =
       typeof contextWindowRaw === "number" &&
       Number.isFinite(contextWindowRaw) &&
       contextWindowRaw > 0
         ? contextWindowRaw
-        : DEFAULT_CONTEXT_WINDOW_TOKENS;
+        : (catalogCapabilitiesForModel(modelId)?.contextWindowTokens ??
+          DEFAULT_CONTEXT_WINDOW_TOKENS);
     const maxOutputRaw = entry["maxOutputTokens"];
     const maxOutputTokens =
       typeof maxOutputRaw === "number" && Number.isSafeInteger(maxOutputRaw) && maxOutputRaw > 0
         ? maxOutputRaw
-        : undefined;
+        : catalogCapabilitiesForModel(modelId)?.maxOutputTokens;
     const supplierID = cleanString(entry["supplierID"]);
     const modelCatalogURL = cleanString(entry["modelCatalogURL"]);
     // cursor-byok 的 customHeadersJSON：仅接受「字符串值的 JSON 对象」，启用

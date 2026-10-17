@@ -143,6 +143,10 @@ function sshServerPasswordSecretName(input: { readonly serverId: string }): stri
   return `ssh-server-${Buffer.from(input.serverId, "utf8").toString("base64url")}-password`;
 }
 
+function webSearchApiKeySecretName(): string {
+  return "web-search-api-key";
+}
+
 function hasByokSecretValue(value: unknown): boolean {
   return typeof value === "string" ? value.length > 0 : value !== undefined && value !== null;
 }
@@ -281,7 +285,14 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
       config.password.length > 0 ? { ...config, password: "", passwordRedacted: true } : config,
     ]),
   );
-  return { ...settings, providerInstances, localAccountPool, mcpServers, sshServers };
+  const webSearch = {
+    ...settings.webSearch,
+    apiKey: "",
+    ...(settings.webSearch.apiKey.length > 0 || settings.webSearch.apiKeyRedacted === true
+      ? { apiKeyRedacted: true as const }
+      : {}),
+  };
+  return { ...settings, providerInstances, localAccountPool, mcpServers, sshServers, webSearch };
 }
 
 export class ServerSettingsService extends Context.Service<
@@ -806,6 +817,34 @@ const make = Effect.gen(function* () {
       return { ...settings, sshServers };
     });
 
+  const materializeWebSearchSecrets = (
+    settings: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const webSearch = settings.webSearch;
+      if (webSearch.apiKey.length > 0 || webSearch.apiKeyRedacted !== true) {
+        return settings;
+      }
+      const secret = yield* secretStore.get(webSearchApiKeySecretName()).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ServerSettingsError({
+              settingsPath,
+              operation: "read-secret",
+              environmentVariable: "webSearch:apiKey",
+              cause,
+            }),
+        ),
+      );
+      return {
+        ...settings,
+        webSearch: {
+          ...webSearch,
+          apiKey: Option.isSome(secret) ? textDecoder.decode(secret.value) : "",
+        },
+      };
+    });
+
   const persistSshServerSecrets = (
     current: ServerSettings,
     next: ServerSettings,
@@ -863,6 +902,47 @@ const make = Effect.gen(function* () {
         );
       }
       return { ...next, sshServers };
+    });
+
+  const persistWebSearchSecrets = (
+    next: ServerSettings,
+    writeSecretStore: ServerSecretStore.ServerSecretStore["Service"],
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const webSearch = next.webSearch;
+      if (webSearch.apiKey.length > 0) {
+        yield* writeSecretStore
+          .set(webSearchApiKeySecretName(), textEncoder.encode(webSearch.apiKey))
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerSettingsError({
+                  settingsPath,
+                  operation: "write-secret",
+                  environmentVariable: "webSearch:apiKey",
+                  cause,
+                }),
+            ),
+          );
+        return { ...next, webSearch: { ...webSearch, apiKey: "", apiKeyRedacted: true } };
+      }
+      if (webSearch.apiKeyRedacted === true) {
+        // 客户端以空值 + 脱敏标记表示“保留已存密钥”。
+        return next;
+      }
+      yield* writeSecretStore.remove(webSearchApiKeySecretName()).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ServerSettingsError({
+              settingsPath,
+              operation: "remove-secret",
+              environmentVariable: "webSearch:apiKey",
+              cause,
+            }),
+        ),
+      );
+      const { apiKeyRedacted: _omit, ...rest } = webSearch;
+      return { ...next, webSearch: rest };
     });
 
   const materializeByokSecrets = (
@@ -1051,6 +1131,7 @@ const make = Effect.gen(function* () {
       Effect.flatMap(materializeMcpServerSecrets),
       Effect.flatMap(materializeByokSecrets),
       Effect.flatMap(materializeSshServerSecrets),
+      Effect.flatMap(materializeWebSearchSecrets),
     );
 
   // Readers poll settings constantly (background policy snapshots, provider
@@ -1599,7 +1680,11 @@ const make = Effect.gen(function* () {
             nextPersisted,
             secretTransaction.store,
           );
-          const next = yield* normalizeServerSettings(nextWithSshSecrets, settingsPath);
+          const nextWithWebSearchSecrets = yield* persistWebSearchSecrets(
+            nextWithSshSecrets,
+            secretTransaction.store,
+          );
+          const next = yield* normalizeServerSettings(nextWithWebSearchSecrets, settingsPath);
           return {
             contents: yield* serializeSettings(next),
             value: next,

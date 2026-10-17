@@ -13,6 +13,7 @@ export type SettingsSheetTarget =
   | "SettingsKeybindings"
   | "SettingsSourceControl"
   | "SettingsMcp"
+  | "SettingsAgentTools"
   | "SettingsWorkspaceScripts"
   | "SettingsAutomations"
   | "SettingsDiagnostics"

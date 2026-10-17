@@ -114,6 +114,139 @@ describe("ContextWindowMatcher", () => {
     expect(result.unchanged).toBe(0);
   });
 
+  // 2026-10 官方阵容：Opus 5.5/Sonnet 5.5/Haiku 5.5 均 1M/128K；5.5 规则
+  // 必须压在 Sonnet 5（64K 输出）与 Opus 5 规则之前。保存后的匹配只收敛
+  // 不抬升，窗口识别值由 catalogCapabilitiesForModel 直接核对。
+  it("covers the 2026-10 Anthropic lineup (Opus/Sonnet/Haiku 5.5, Opus 5)", () => {
+    const result = matchContextWindows([
+      adapter({ modelId: "claude-opus-5-5", contextWindowTokens: 128_000 }),
+      adapter({ modelId: "claude-sonnet-5-5", contextWindowTokens: 128_000 }),
+      adapter({ modelId: "claude-haiku-5-5", contextWindowTokens: 2_000_000 }),
+      adapter({ modelId: "claude-opus-5", contextWindowTokens: 128_000 }),
+    ]);
+
+    expect(result.details[0]).toMatchObject({
+      modelId: "claude-opus-5-5",
+      source: "catalog",
+      maxOutputAfter: 128_000,
+    });
+    expect(result.details[1]).toMatchObject({
+      modelId: "claude-sonnet-5-5",
+      maxOutputAfter: 128_000,
+    });
+    // 过大窗口仍会被收敛到目录口径。
+    expect(result.details[2]).toMatchObject({
+      modelId: "claude-haiku-5-5",
+      before: 2_000_000,
+      after: 1_000_000,
+      maxOutputAfter: 128_000,
+    });
+    expect(result.details[3]).toMatchObject({
+      modelId: "claude-opus-5",
+      maxOutputAfter: 128_000,
+    });
+    expect(catalogCapabilitiesForModel("claude-opus-5-5")).toMatchObject({
+      contextWindowTokens: 1_000_000,
+      maxOutputTokens: 128_000,
+    });
+    expect(catalogCapabilitiesForModel("claude-sonnet-5-5")).toMatchObject({
+      contextWindowTokens: 1_000_000,
+      maxOutputTokens: 128_000,
+    });
+    expect(catalogCapabilitiesForModel("claude-haiku-5-5")).toMatchObject({
+      contextWindowTokens: 1_000_000,
+      maxOutputTokens: 128_000,
+    });
+    expect(catalogCapabilitiesForModel("claude-opus-5")).toMatchObject({
+      contextWindowTokens: 1_000_000,
+      maxOutputTokens: 128_000,
+    });
+    expect(catalogCapabilitiesForModel("claude-opus-5-5")?.reasoningEfforts).toEqual([
+      "low",
+      "medium",
+      "high",
+      "max",
+    ]);
+    expect(catalogCapabilitiesForModel("claude-haiku-5-5")?.reasoningEfforts).toEqual([
+      "low",
+      "medium",
+      "high",
+    ]);
+    expect(catalogCapabilitiesForModel("claude-sonnet-5-5")?.reasoningEfforts).toBeUndefined();
+    expect(hasCatalogContextWindow("claude-haiku-5-5")).toBe(true);
+  });
+
+  // platform.kimi.com 快速开始：K3 上下文 1M、默认最大输出 131072。
+  it("corrects the Kimi K3 catalog to the official 1M context", () => {
+    const result = matchContextWindows([
+      adapter({ modelId: "kimi-k3", contextWindowTokens: 2_000_000 }),
+      adapter({ modelId: "kimi-k3-thinking", contextWindowTokens: 256_000 }),
+    ]);
+
+    // 过大窗口收敛到 1M；更小的显式窗口保持，仅回填最大输出。
+    expect(result.details[0]).toMatchObject({
+      modelId: "kimi-k3",
+      source: "catalog",
+      before: 2_000_000,
+      after: 1_000_000,
+      maxOutputAfter: 131_072,
+    });
+    expect(result.details[1]).toMatchObject({
+      modelId: "kimi-k3-thinking",
+      before: 256_000,
+      after: 256_000,
+      maxOutputAfter: 131_072,
+    });
+    expect(catalogCapabilitiesForModel("kimi-k3")?.contextWindowTokens).toBe(1_000_000);
+    expect(catalogCapabilitiesForModel("kimi-k3")?.supportsVision).toBe(true);
+  });
+
+  // 2026-10-09 官方核对：MiniMax M3 原生多模态（目录曾错标纯文本）、
+  // M2.7 系窗口 204800（曾错写 1M）；阶跃 Step 5 Preview 1M/视觉，
+  // free 变体 200K/32K 且必须排在通用 ^step-5 规则之前。
+  it("covers the corrected MiniMax lineup and the StepFun 5/3.7/3.5 flash family", () => {
+    expect(catalogCapabilitiesForModel("MiniMax-M3.1-Flash-Preview")).toMatchObject({
+      contextWindowTokens: 1_000_000,
+      supportsVision: true,
+    });
+    expect(catalogCapabilitiesForModel("minimax-m3")).toMatchObject({
+      supportsVision: true,
+    });
+    expect(catalogCapabilitiesForModel("minimax-m2.7-highspeed")).toMatchObject({
+      contextWindowTokens: 204_800,
+      supportsVision: false,
+    });
+    // 存量用户按旧目录存了 1M 的 M2.7 会被收敛回官方口径。
+    const minimax = matchContextWindows([
+      adapter({ modelId: "MiniMax-M2.7", contextWindowTokens: 1_000_000 }),
+    ]);
+    expect(minimax.details[0]).toMatchObject({
+      modelId: "MiniMax-M2.7",
+      source: "catalog",
+      before: 1_000_000,
+      after: 204_800,
+    });
+
+    expect(catalogCapabilitiesForModel("step-5-preview")).toMatchObject({
+      contextWindowTokens: 1_000_000,
+      supportsVision: true,
+    });
+    expect(catalogCapabilitiesForModel("step-5-preview-free")).toMatchObject({
+      contextWindowTokens: 200_000,
+      maxOutputTokens: 32_768,
+      supportsVision: true,
+    });
+    expect(catalogCapabilitiesForModel("step-3.7-flash")).toMatchObject({
+      contextWindowTokens: 256_000,
+      supportsVision: true,
+    });
+    expect(catalogCapabilitiesForModel("step-3.5-flash-2603")).toMatchObject({
+      contextWindowTokens: 256_000,
+      supportsVision: false,
+    });
+    expect(hasCatalogContextWindow("step-5-preview")).toBe(true);
+  });
+
   it("normalizes model ids before applying a relay catalog fallback", () => {
     const result = matchContextWindows(
       [adapter({ modelId: "models/Relay/Custom_Model", contextWindowTokens: 128_000 })],

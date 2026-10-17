@@ -376,6 +376,35 @@ const descriptors = [
     approval: "never",
     source: "t3",
   },
+  {
+    // 用户/项目 agent 记忆写入：只落到设置里的用户笔记或项目
+    // `.codework/memory.md`，不接受任意路径。
+    capabilityId: "t3.memory.save",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: false, execute: false, mutate: true },
+    approval: "never",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.memory.recall",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: true, execute: false, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.web.search",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: true, execute: false, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
 ] satisfies ReadonlyArray<CompositionCapabilityDescriptor>;
 
 const agentToolSignatures: ReadonlyMap<
@@ -683,6 +712,50 @@ const agentToolSignatures: ReadonlyMap<
           name: { type: "string", description: "技能名称，即 SKILL.md frontmatter 的 name。" },
         },
         required: ["name"],
+      },
+    },
+  ],
+  [
+    "memory.save",
+    {
+      description:
+        "把需要跨回合记住的事实写入 Code Work agent 记忆。scope=user 写入服务器级用户笔记（设置 → 集成 → Agent 记忆），scope=project 写入当前项目 .codework/memory.md（与写文件同级，审批/计划模式下不可用，该模式请用 scope=user）。mode=replace 覆盖该范围，默认 append。不要把密钥写进记忆。",
+      parameters: {
+        type: "object",
+        properties: {
+          content: { type: "string", description: "要保存的笔记正文。" },
+          scope: { type: "string", description: "user 或 project，默认 project。" },
+          mode: { type: "string", description: "append 或 replace，默认 append。" },
+        },
+        required: ["content"],
+      },
+    },
+  ],
+  [
+    "memory.recall",
+    {
+      description:
+        "读取 Code Work agent 记忆。可按 query 过滤；省略 query 则返回用户笔记与项目笔记全文。",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "可选：在记忆中搜索的关键词。" },
+          scope: { type: "string", description: "user、project 或 all，默认 all。" },
+        },
+      },
+    },
+  ],
+  [
+    "web.search",
+    {
+      description:
+        "用设置中选定的搜索引擎检索公开网页。返回标题、链接和摘要。需要先在设置 → 集成 → 联网搜索中开启；未开启或缺少密钥时会返回指引，不要反复重试。",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "搜索关键词。" },
+        },
+        required: ["query"],
       },
     },
   ],

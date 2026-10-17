@@ -26,6 +26,7 @@ import {
   byokCatalogTargetFromAdapter,
 } from "../byok/ByokCatalog.ts";
 import { BYOK_HTTP_TIMEOUT_MS } from "../byok/byokHttp.ts";
+import { BYOK_SLASH_COMMANDS } from "../byok/ByokSlashCommands.ts";
 import { buildServerProvider, type ServerProviderDraft } from "../providerSnapshot.ts";
 
 const BYOK_PRESENTATION = {
@@ -107,6 +108,7 @@ export function buildInitialByokProviderSnapshot(
         enabled: false,
         checkedAt,
         models,
+        slashCommands: BYOK_SLASH_COMMANDS,
         probe: {
           installed: false,
           version: null,
@@ -123,6 +125,7 @@ export function buildInitialByokProviderSnapshot(
         enabled: true,
         checkedAt,
         models,
+        slashCommands: BYOK_SLASH_COMMANDS,
         probe: {
           installed: true,
           version: null,
@@ -138,6 +141,7 @@ export function buildInitialByokProviderSnapshot(
       enabled: true,
       checkedAt,
       models,
+      slashCommands: BYOK_SLASH_COMMANDS,
       probe: {
         installed: true,
         version: null,
@@ -235,6 +239,7 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
     enabled: true,
     checkedAt: DateTime.formatIso(yield* DateTime.now),
     models,
+    slashCommands: BYOK_SLASH_COMMANDS,
     probe: {
       installed: true,
       version: null,

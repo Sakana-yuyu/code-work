@@ -206,6 +206,26 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
     ).toBe(false);
   });
 
+  it("defaults agent memory on, hooks and web search off", () => {
+    expect(DEFAULT_SERVER_SETTINGS.agentMemory).toEqual({ enabled: true, userNotes: "" });
+    expect(DEFAULT_SERVER_SETTINGS.agentHooks).toEqual({ enabled: false, hooks: [] });
+    expect(DEFAULT_SERVER_SETTINGS.webSearch).toEqual({
+      enabled: false,
+      engine: "duckduckgo",
+      apiKey: "",
+      baseUrl: "",
+    });
+    const decoded = decodeServerSettings({});
+    expect(decoded.agentMemory.enabled).toBe(true);
+    expect(decoded.agentHooks.enabled).toBe(false);
+    expect(decoded.webSearch.enabled).toBe(false);
+    expect(Schema.decodeUnknownSync(ServerSettingsPatch)({}).agentMemory).toBeUndefined();
+    expect(
+      Schema.decodeUnknownSync(ServerSettingsPatch)({ agentMemory: { enabled: false } }).agentMemory
+        ?.enabled,
+    ).toBe(false);
+  });
+
   it("defaults project-scoped settings and decodes overrides", () => {
     const decoded = decodeServerSettings({});
     expect(decoded.defaultRuntimeMode).toBe(DEFAULT_RUNTIME_MODE);

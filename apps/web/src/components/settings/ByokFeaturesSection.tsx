@@ -1,7 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRightIcon, FileInputIcon, MessageSquareTextIcon, WorkflowIcon } from "lucide-react";
+import {
+  ArrowRightIcon,
+  BlocksIcon,
+  BookMarkedIcon,
+  FileInputIcon,
+  MessageSquareTextIcon,
+  SearchIcon,
+  SparklesIcon,
+  WebhookIcon,
+  WorkflowIcon,
+} from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import type {
   ByokAdaptersImportResult,
   ByokDelegationConfig,
@@ -61,18 +72,20 @@ const DEFAULT_DELEGATION: ByokDelegationConfig = {
 };
 
 function ByokFeatureSection({
+  id,
   icon,
   title,
   description,
   children,
 }: {
+  readonly id?: string;
   readonly icon: React.ReactNode;
   readonly title: string;
   readonly description?: string;
   readonly children: React.ReactNode;
 }) {
   return (
-    <section className="border-t border-border/60 pt-5 first:border-t-0 first:pt-0">
+    <section id={id} className="border-t border-border/60 pt-5 first:border-t-0 first:pt-0">
       <div className="mb-3 flex items-start gap-2.5">
         <span className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/25 text-muted-foreground">
           {icon}
@@ -170,6 +183,73 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
             />
           </div>
         ) : null}
+      </ByokFeatureSection>
+
+      <ByokFeatureSection
+        id="byok-mcp"
+        icon={<BlocksIcon className="size-3.5" />}
+        title={t("byokFeatures.mcpTitle")}
+        description={t("byokFeatures.mcpDescription")}
+      >
+        <div className="rounded-lg border border-border/60 bg-muted/15 px-3 py-3">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {t("byokFeatures.mcpCanonicalDescription")}
+          </p>
+          <Button
+            className="mt-3"
+            size="sm"
+            variant="outline"
+            render={<Link to="/settings/integrations" hash="mcp-servers" />}
+          >
+            <ArrowRightIcon />
+            {t("byokFeatures.mcpOpenSettings")}
+          </Button>
+        </div>
+      </ByokFeatureSection>
+
+      <ByokFeatureSection
+        id="byok-skills"
+        icon={<SparklesIcon className="size-3.5" />}
+        title={t("byokFeatures.skillsTitle")}
+        description={t("byokFeatures.skillsDescription")}
+      >
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {t("byokFeatures.skillsCanonicalDescription")}
+        </p>
+      </ByokFeatureSection>
+
+      <ByokFeatureSection
+        id="byok-agent-tools"
+        icon={<BookMarkedIcon className="size-3.5" />}
+        title={t("byokFeatures.agentToolsTitle")}
+        description={t("byokFeatures.agentToolsDescription")}
+      >
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            render={<Link to="/settings/integrations" hash="agent-memory" />}
+          >
+            <BookMarkedIcon />
+            {t("agentMemory.title")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            render={<Link to="/settings/integrations" hash="agent-hooks" />}
+          >
+            <WebhookIcon />
+            {t("agentHooks.title")}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            render={<Link to="/settings/integrations" hash="web-search" />}
+          >
+            <SearchIcon />
+            {t("webSearch.title")}
+          </Button>
+        </div>
       </ByokFeatureSection>
 
       <ByokFeatureSection

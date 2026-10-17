@@ -1347,6 +1347,62 @@ export const BackgroundActivityOverrides = Schema.Struct({
 });
 export type BackgroundActivityOverrides = typeof BackgroundActivityOverrides.Type;
 
+export const AgentHookEvent = Schema.Literals([
+  "user_prompt_submit",
+  "pre_tool_use",
+  "post_tool_use",
+  "stop",
+]);
+export type AgentHookEvent = typeof AgentHookEvent.Type;
+export const AGENT_HOOK_EVENTS = [
+  "user_prompt_submit",
+  "pre_tool_use",
+  "post_tool_use",
+  "stop",
+] as const satisfies ReadonlyArray<AgentHookEvent>;
+
+export const AgentHookEntry = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  event: AgentHookEvent,
+  command: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  matcher: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+});
+export type AgentHookEntry = typeof AgentHookEntry.Type;
+
+export const AgentMemorySettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  userNotes: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+}).pipe(Schema.withDecodingDefault(Effect.succeed({})));
+export type AgentMemorySettings = typeof AgentMemorySettings.Type;
+
+export const AgentHooksSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  hooks: Schema.Array(AgentHookEntry).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+}).pipe(Schema.withDecodingDefault(Effect.succeed({})));
+export type AgentHooksSettings = typeof AgentHooksSettings.Type;
+
+export const WebSearchEngine = Schema.Literals(["duckduckgo", "searxng", "tavily", "brave"]);
+export type WebSearchEngine = typeof WebSearchEngine.Type;
+export const DEFAULT_WEB_SEARCH_ENGINE: WebSearchEngine = "duckduckgo";
+export const WEB_SEARCH_ENGINES = [
+  "duckduckgo",
+  "searxng",
+  "tavily",
+  "brave",
+] as const satisfies ReadonlyArray<WebSearchEngine>;
+
+export const WebSearchSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  engine: WebSearchEngine.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_WEB_SEARCH_ENGINE)),
+  ),
+  apiKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  baseUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  apiKeyRedacted: Schema.optionalKey(Schema.Boolean),
+}).pipe(Schema.withDecodingDefault(Effect.succeed({})));
+export type WebSearchSettings = typeof WebSearchSettings.Type;
+
 export const BackgroundActivitySettings = Schema.Struct({
   schemaVersion: Schema.Literal(1).pipe(Schema.withDecodingDefault(Effect.succeed(1 as const))),
   profile: BackgroundActivityProfileSelection.pipe(
@@ -1557,6 +1613,21 @@ export const ServerSettings = Schema.Struct({
    * 查询工具暴露给 BYOK agent；CLI 未安装时静默降级为普通工具集。
    */
   codeGraphEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /**
+   * Agent 记忆：用户笔记写入设置并注入进程内 agent 回合；项目笔记在
+   * `.codework/memory.md`。默认开启，空笔记不占上下文。
+   */
+  agentMemory: AgentMemorySettings,
+  /**
+   * 进程内 agent 生命周期钩子（用户提交、工具前后、回合结束）。
+   * 在本机执行用户配置的命令，默认关闭。
+   */
+  agentHooks: AgentHooksSettings,
+  /**
+   * 联网搜索：给进程内 agent 暴露 web.search 工具。默认关闭，
+   * 选定引擎并（如需要）填写密钥后开启。
+   */
+  webSearch: WebSearchSettings,
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -1771,6 +1842,27 @@ export const ServerSettingsPatch = Schema.Struct({
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   codeIndexEnabled: Schema.optionalKey(Schema.Boolean),
   codeGraphEnabled: Schema.optionalKey(Schema.Boolean),
+  agentMemory: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.optionalKey(Schema.Boolean),
+      userNotes: Schema.optionalKey(TrimmedString),
+    }),
+  ),
+  agentHooks: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.optionalKey(Schema.Boolean),
+      hooks: Schema.optionalKey(Schema.Array(AgentHookEntry)),
+    }),
+  ),
+  webSearch: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.optionalKey(Schema.Boolean),
+      engine: Schema.optionalKey(WebSearchEngine),
+      apiKey: Schema.optionalKey(TrimmedString),
+      apiKeyRedacted: Schema.optionalKey(Schema.Boolean),
+      baseUrl: Schema.optionalKey(TrimmedString),
+    }),
+  ),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({
       schemaVersion: Schema.optionalKey(Schema.Literal(1)),

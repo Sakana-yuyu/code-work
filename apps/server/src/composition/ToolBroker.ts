@@ -23,6 +23,7 @@ import {
   TerminalWriteInput,
   type PreviewTabId,
   type RuntimeMode,
+  DEFAULT_SERVER_SETTINGS,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -32,6 +33,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PartitionedSemaphore from "effect/PartitionedSemaphore";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
@@ -58,6 +60,14 @@ import * as CompositionToolInvocationCoordinator from "./CompositionToolInvocati
 import * as CompositionToolInvocationStartupRecovery from "./CompositionToolInvocationStartupRecovery.ts";
 import { writeCanvasArtifact } from "../canvas/CanvasArtifact.ts";
 import { discoverByokSkills, loadSkillByName } from "../skillDiscovery.ts";
+import {
+  appendMemoryNote,
+  readProjectMemory,
+  recallMemory,
+  writeProjectMemory,
+} from "../agent/AgentMemory.ts";
+import { searchWeb } from "../agent/WebSearch.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import type {
   CompositionToolInvocation,
   CompositionToolInvocationClaimResult,
@@ -108,6 +118,24 @@ const SkillsLoadArguments = Schema.Struct({
   name: TrimmedNonEmptyString,
 });
 const decodeSkillsLoadArguments = Schema.decodeUnknownEffect(SkillsLoadArguments);
+
+const MemorySaveArguments = Schema.Struct({
+  content: TrimmedNonEmptyString,
+  scope: Schema.optional(Schema.Literals(["user", "project"])),
+  mode: Schema.optional(Schema.Literals(["append", "replace"])),
+});
+const decodeMemorySaveArguments = Schema.decodeUnknownEffect(MemorySaveArguments);
+
+const MemoryRecallArguments = Schema.Struct({
+  query: Schema.optional(Schema.String),
+  scope: Schema.optional(Schema.Literals(["user", "project", "all"])),
+});
+const decodeMemoryRecallArguments = Schema.decodeUnknownEffect(MemoryRecallArguments);
+
+const WebSearchArguments = Schema.Struct({
+  query: TrimmedNonEmptyString,
+});
+const decodeWebSearchArguments = Schema.decodeUnknownEffect(WebSearchArguments);
 
 /** 模型给出的 limit 一律夹紧到契约上限内，超界不再单独报错。 */
 const boundedPositiveInt = (value: number | undefined, fallback: number, max: number): number => {
@@ -264,6 +292,15 @@ export class ToolScopeMissingError extends Schema.TaggedErrorClass<ToolScopeMiss
   }
 }
 
+export class WebSearchInvocationError extends Schema.TaggedErrorClass<WebSearchInvocationError>()(
+  "WebSearchInvocationError",
+  { cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return this.cause instanceof Error ? this.cause.message : "Web search request failed.";
+  }
+}
+
 const isToolArgumentsInvalidError = Schema.is(ToolArgumentsInvalidError);
 const isToolScopeMissingError = Schema.is(ToolScopeMissingError);
 const isIdeSessionFailure = Schema.is(CompositionIdeSessionRegistry.CompositionIdeSessionFailure);
@@ -340,8 +377,11 @@ const make = Effect.gen(function* () {
   const processRunner = yield* Effect.serviceOption(ProcessRunner.ProcessRunner);
   const fileSystem = yield* Effect.serviceOption(FileSystem.FileSystem);
   const path = yield* Effect.serviceOption(Path.Path);
+  const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
   const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+  // 项目记忆的读改写按工作区串行，跨线程的并发 memory.save 不互相覆盖。
+  const projectMemoryLocks = PartitionedSemaphore.makeUnsafe<string>({ permits: 1 });
   const completed = new Set<string>();
   // 工具 handler 的 execute 签名要求 R=never；技能发现需要真实文件系统，
   // 用 make 阶段拿到的服务实例就地补齐（缺失时 skills.load 返回不可用观察）。
@@ -497,6 +537,192 @@ const make = Effect.gen(function* () {
               };
             }
             return { ok: true as const, ...skill };
+          }),
+      },
+    ],
+    [
+      "memory.save",
+      {
+        operation: "mutate",
+        execute: (input) =>
+          Effect.gen(function* () {
+            const args = yield* decodeMemorySaveArguments(input.arguments).pipe(
+              Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+            );
+            const settings = Option.isSome(serverSettings)
+              ? yield* serverSettings.value.getSettings.pipe(
+                  Effect.orElseSucceed(() => DEFAULT_SERVER_SETTINGS),
+                )
+              : DEFAULT_SERVER_SETTINGS;
+            if (!settings.agentMemory.enabled) {
+              return {
+                ok: false as const,
+                error: {
+                  code: "memory_disabled",
+                  detail: "Agent memory is turned off in Settings → Integrations → Agent memory.",
+                },
+              };
+            }
+            const scope = args.scope ?? "project";
+            const mode = args.mode ?? "append";
+            if (scope === "project") {
+              // 项目笔记写进工作区文件，与写文件同级：审批模式（含计划模式）下
+              // 不能绕过审批直接落盘；用户笔记不属于项目内容，不受影响。
+              if (input.runtimeMode === "approval-required") {
+                return {
+                  ok: false as const,
+                  error: {
+                    code: "memory_requires_full_access",
+                    detail:
+                      "Project memory writes are disabled in this mode. Use scope=user for user notes, or switch to a mode that allows project changes.",
+                  },
+                };
+              }
+              return yield* projectMemoryLocks.withPermit(input.workspaceRoot)(
+                Effect.gen(function* () {
+                  // 读失败时不能继续 append —— appendMemoryNote 会把现有笔记当成空再覆盖。
+                  const current = yield* withFileSystem(
+                    readProjectMemory(input.workspaceRoot),
+                  ).pipe(Effect.orElseSucceed(() => Option.none<string>()));
+                  if (Option.isNone(current)) {
+                    return {
+                      ok: false as const,
+                      error: {
+                        code: "memory_unavailable",
+                        detail:
+                          "Project memory (.codework/memory.md) could not be read in this session.",
+                      },
+                    };
+                  }
+                  const next = appendMemoryNote(current.value, args.content, mode);
+                  const written = yield* withFileSystem(
+                    writeProjectMemory(input.workspaceRoot, next),
+                  ).pipe(Effect.orElseSucceed(() => Option.none<string>()));
+                  if (Option.isNone(written)) {
+                    return {
+                      ok: false as const,
+                      error: {
+                        code: "memory_write_failed",
+                        detail: "The note could not be written to .codework/memory.md.",
+                      },
+                    };
+                  }
+                  return { ok: true as const, scope, mode, bytes: written.value.length };
+                }),
+              );
+            }
+            if (Option.isNone(serverSettings)) {
+              return {
+                ok: false as const,
+                error: {
+                  code: "memory_unavailable",
+                  detail: "User memory is only writable from a running Code Work server.",
+                },
+              };
+            }
+            // 函数式 patch 在 CAS 提交时对最新快照重算 append，并发 memory.save
+            // 或 /memory 斜杠写入不会互相覆盖。
+            const saved = yield* serverSettings.value
+              .updateSettings((current) => ({
+                agentMemory: {
+                  userNotes: appendMemoryNote(current.agentMemory.userNotes, args.content, mode),
+                },
+              }))
+              .pipe(Effect.option);
+            if (Option.isNone(saved)) {
+              return {
+                ok: false as const,
+                error: {
+                  code: "memory_write_failed",
+                  detail: "The note could not be saved to server settings.",
+                },
+              };
+            }
+            return {
+              ok: true as const,
+              scope,
+              mode,
+              bytes: saved.value.agentMemory.userNotes.length,
+            };
+          }),
+      },
+    ],
+    [
+      "memory.recall",
+      {
+        operation: "read",
+        execute: (input) =>
+          Effect.gen(function* () {
+            const args = yield* decodeMemoryRecallArguments(input.arguments ?? {}).pipe(
+              Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+            );
+            const settings = Option.isSome(serverSettings)
+              ? yield* serverSettings.value.getSettings.pipe(
+                  Effect.orElseSucceed(() => DEFAULT_SERVER_SETTINGS),
+                )
+              : DEFAULT_SERVER_SETTINGS;
+            if (!settings.agentMemory.enabled) {
+              return {
+                ok: false as const,
+                error: {
+                  code: "memory_disabled",
+                  detail: "Agent memory is turned off in Settings → Integrations → Agent memory.",
+                },
+              };
+            }
+            const scope = args.scope ?? "all";
+            const query = args.query ?? "";
+            const userNotes = settings.agentMemory.userNotes;
+            const projectNotes = yield* withFileSystem(readProjectMemory(input.workspaceRoot)).pipe(
+              Effect.orElseSucceed(() => Option.none<string>()),
+            );
+            if (scope !== "user" && Option.isNone(projectNotes)) {
+              return {
+                ok: false as const,
+                error: {
+                  code: "memory_unavailable",
+                  detail: "Project memory (.codework/memory.md) could not be read in this session.",
+                },
+              };
+            }
+            const user = scope === "project" ? "" : recallMemory(userNotes, query);
+            const project =
+              scope === "user"
+                ? ""
+                : recallMemory(
+                    Option.getOrElse(projectNotes, () => ""),
+                    query,
+                  );
+            return { ok: true as const, scope, user, project };
+          }),
+      },
+    ],
+    [
+      "web.search",
+      {
+        operation: "read",
+        execute: (input) =>
+          Effect.gen(function* () {
+            const args = yield* decodeWebSearchArguments(input.arguments).pipe(
+              Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+            );
+            const settings = Option.isSome(serverSettings)
+              ? yield* serverSettings.value.getSettings.pipe(
+                  Effect.orElseSucceed(() => DEFAULT_SERVER_SETTINGS),
+                )
+              : DEFAULT_SERVER_SETTINGS;
+            return yield* Effect.tryPromise({
+              try: () => searchWeb(settings.webSearch, args.query),
+              catch: (cause) => new WebSearchInvocationError({ cause }),
+            }).pipe(
+              Effect.orElseSucceed(() => ({
+                ok: false as const,
+                engine: settings.webSearch.engine,
+                query: args.query,
+                hits: [],
+                error: "Web search failed.",
+              })),
+            );
           }),
       },
     ],

@@ -619,6 +619,64 @@ describe("serverSettings helpers", () => {
     expect(resolved.pauseWhenOnBattery).toBe(false);
   });
 
+  it("replaces agent hook entries instead of merging by index", () => {
+    const current = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      agentHooks: {
+        enabled: true,
+        hooks: [
+          {
+            id: "old",
+            enabled: true,
+            event: "pre_tool_use",
+            command: "echo old",
+            matcher: "",
+          },
+        ],
+      },
+    });
+    const next = applyServerSettingsPatch(current, {
+      agentHooks: {
+        hooks: [
+          {
+            id: "new",
+            enabled: true,
+            event: "stop",
+            command: "echo new",
+            matcher: "terminal.*",
+          },
+        ],
+      },
+    });
+    expect(next.agentHooks.hooks.map((hook) => hook.id)).toEqual(["new"]);
+  });
+
+  it("keeps the stored web search API key when a patch leaves it blank", () => {
+    const current = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      webSearch: { enabled: true, engine: "tavily", apiKey: "tvly-secret" },
+    });
+    const next = applyServerSettingsPatch(current, {
+      webSearch: { engine: "tavily", apiKey: "" },
+    });
+    expect(next.webSearch.apiKey).toBe("tvly-secret");
+    expect(next.webSearch.enabled).toBe(true);
+  });
+
+  it("clears the stored web search API key on an explicit apiKeyRedacted: false", () => {
+    const current = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      webSearch: { enabled: true, engine: "tavily", apiKey: "tvly-secret" },
+    });
+    const cleared = applyServerSettingsPatch(current, {
+      webSearch: { apiKey: "", apiKeyRedacted: false },
+    });
+    expect(cleared.webSearch.apiKey).toBe("");
+    expect(cleared.webSearch.apiKeyRedacted).toBe(false);
+    // 新密钥与清除标记同时到达时以新密钥为准。
+    const replaced = applyServerSettingsPatch(current, {
+      webSearch: { apiKey: "tvly-new", apiKeyRedacted: false },
+    });
+    expect(replaced.webSearch.apiKey).toBe("tvly-new");
+  });
+
   it("replaces a project's override entry wholesale and deletes it on null", () => {
     const projectA = "project-a" as ProjectId;
     const projectB = "project-b" as ProjectId;

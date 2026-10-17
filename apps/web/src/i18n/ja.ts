@@ -493,12 +493,12 @@ export const ja: Record<string, string> = {
   "modelPicker.noAvailableModelsDescription":
     "設定でプロバイダーを追加または有効にしてから、ここに戻ってモデルを選択してください。",
   "modelPicker.openProviderSettings": "プロバイダー設定を開く",
-  "pullRequests.updateEnvironmentServer":
-    "プルリクエストを閲覧するには、この環境の Code Work サーバーを更新してください。",
   "modelPicker.providerSettingsLink": "プロバイダー設定",
   "modelSwitch.restartContinueTitle": "モデルを切り替えてセッションを再起動しますか？",
   "modelSwitch.restartContinueDescription":
     "{{model}} への切り替えにはプロバイダーセッションの再起動が必要です。会話は現在の位置から続きます。",
+  "pullRequests.updateEnvironmentServer":
+    "プルリクエストを閲覧するには、この環境の Code Work サーバーを更新してください。",
   "pullRequests.failedToPrepareThread": "{{pr}} のスレッドを準備できませんでした。",
   "sidebar.sortLastUserMessage": "最終ユーザーメッセージ",
   "sidebar.sortCreatedAt": "作成日時",
@@ -2720,6 +2720,55 @@ export const ja: Record<string, string> = {
   "codeGraph.actionFailed": "操作に失敗しました",
   "codeGraph.noProjects": "プロジェクトはまだありません。",
   "codeGraph.refresh": "CodeGraph 状態を更新",
+  "agentMemory.title": "エージェントメモリ",
+  "agentMemory.explanation":
+    "プロセス内エージェント（カスタムモデルセッションを含む）が毎ターン参照し、memory.save で更新できるメモです。ユーザーメモはこのサーバーに、プロジェクトメモは .codework/memory.md に保存されます。",
+  "agentMemory.toggle": "エージェントメモリを有効化",
+  "agentMemory.toggleDescription":
+    "オンにすると、ユーザーメモとプロジェクトメモがエージェントターンに注入され、memory.save / memory.recall が使えます。",
+  "agentMemory.userNotes": "ユーザーメモ",
+  "agentMemory.userNotesDescription":
+    "このサーバー上の全プロジェクトで共有されます。チャットで /memory と入力すると一覧、/memory の後に本文を付けると追記できます。",
+  "agentMemory.userNotesPlaceholder": "プロジェクトをまたいで覚えてほしい事実…",
+  "agentHooks.title": "エージェント hooks",
+  "agentHooks.explanation":
+    'エージェントのライフサイクルでローカルコマンドを実行します。stdin に JSON が渡されます。ツール実行前に {"decision":"deny","reason":"…"} を出力すると呼び出しを止められます。このサーバー上で 10 秒でタイムアウトします。',
+  "agentHooks.toggle": "エージェント hooks を有効化",
+  "agentHooks.toggleDescription":
+    "デフォルトはオフです。プロセス内エージェント（カスタムモデルセッション）だけがこれらの hooks を実行します。CLI プロバイダーは各自の hook を使います。",
+  "agentHooks.add": "hook を追加",
+  "agentHooks.remove": "hook を削除",
+  "agentHooks.hookEnabled": "この hook を有効化",
+  "agentHooks.event": "イベント",
+  "agentHooks.command": "コマンド",
+  "agentHooks.commandPlaceholder": "実行するコマンド。例: python ~/.codework/hooks/check.py",
+  "agentHooks.matcher": "ツールマッチャー",
+  "agentHooks.matcherPlaceholder": "任意のツール名またはグロブ。例: terminal.*",
+  "agentHooks.event.userPromptSubmit": "ユーザーがプロンプトを送信",
+  "agentHooks.event.preToolUse": "ツール実行前",
+  "agentHooks.event.postToolUse": "ツール実行後",
+  "agentHooks.event.stop": "ターン終了時",
+  "webSearch.title": "ウェブ検索",
+  "webSearch.explanation":
+    "プロセス内エージェントがここで選んだエンジンで web.search を呼べます。DuckDuckGo はキー不要、Tavily と Brave は API キー、SearXNG はインスタンス URL が必要です。",
+  "webSearch.toggle": "ウェブ検索を有効化",
+  "webSearch.toggleDescription":
+    "デフォルトはオフです。オンにするとカスタムモデルセッションが公開ウェブを検索できます。チャットで /search-engine と入力するとエンジンを確認または切り替えできます。",
+  "webSearch.engine": "検索エンジン",
+  "webSearch.engineDescription": "変更するまで web.search はこのエンジンを使います。",
+  "webSearch.engine.duckduckgo": "DuckDuckGo",
+  "webSearch.engine.searxng": "SearXNG",
+  "webSearch.engine.tavily": "Tavily",
+  "webSearch.engine.brave": "Brave Search",
+  "webSearch.baseUrl": "SearXNG URL",
+  "webSearch.baseUrlDescription":
+    "SearXNG インスタンスのオリジン。末尾の /search は付けないでください。",
+  "webSearch.apiKey": "API キー",
+  "webSearch.apiKeyDescription":
+    "サーバーに保存され、再表示されません。空欄のままにすると現在のキーを維持します。",
+  "webSearch.apiKeyPlaceholder": "API キーを貼り付け",
+  "webSearch.apiKeyStored": "キーはサーバーに保存済み。新しいキーを貼り付けると置き換わります",
+  "webSearch.apiKeyRemove": "キーを削除",
   "settings.agentBrowserAccess": "エージェントのブラウザアクセス",
   "settings.appearance": "外観",
   "settings.archive": "アーカイブ",
@@ -3208,12 +3257,26 @@ export const ja: Record<string, string> = {
   "byokFeatures.promptTemplateChinese": "Software-Chinese 応答ポリシー",
   "byokFeatures.promptTemplateCustom": "カスタムプロンプト",
   "byokFeatures.promptTemplateCustomPlaceholder": "カスタムシステムプロンプトのテキスト…",
+  "byokFeatures.mcpTitle": "MCP サーバー",
+  "byokFeatures.mcpDescription":
+    "信頼済みの MCP サーバーは、このカスタムモデルセッションに mcp.<server>.<tool> としてツールを公開します。",
+  "byokFeatures.mcpCanonicalDescription":
+    "読み取りツールはすべてのアクセスモードで使えます。書き込みと実行はフルアクセスが必要です。チャットで /mcp と入力すると接続中のツールを確認できます。",
+  "byokFeatures.mcpOpenSettings": "MCP 設定を開く",
+  "byokFeatures.skillsTitle": "スキル",
+  "byokFeatures.skillsDescription":
+    "SKILL.md はユーザーおよびプロジェクトのスキルフォルダから読み込まれ、/ メニューに表示されます。",
+  "byokFeatures.skillsCanonicalDescription":
+    "SKILL.md を ~/.agents/skills、~/.claude/skills、~/.codex/skills、または現在のプロジェクト内の同名フォルダに置きます。チャットで $name または /skill name と入力して読み込みます。カタログはディスク上のファイルです。",
   "byok.slash.compact": "古いターンを要約してコンテキストを解放",
   "byok.slash.mcp": "このセッションに接続された MCP ツールを一覧表示",
   "byok.slash.skill": "スキル（SKILL.md）を一覧またはプレビュー",
   "byok.slash.memory": "エージェントメモリを一覧または追記",
   "byok.slash.hooks": "エージェント hooks を一覧",
   "byok.slash.searchEngine": "ウェブ検索エンジンを表示または切り替え",
+  "byokFeatures.agentToolsTitle": "メモリ、hooks、ウェブ検索",
+  "byokFeatures.agentToolsDescription":
+    "これらは Code Work の製品機能です。設定 → 連携 で構成すると、カスタムモデルセッションが自動的に使います。",
   "byokFeatures.delegationTitle": "委譲",
   "byokFeatures.delegationDescription":
     "このインスタンスの委譲状態のスナップショットです。委譲設定はすべて委譲ページにあります。",
@@ -4797,6 +4860,7 @@ export const ja: Record<string, string> = {
   update2: "「",
   updateAvailable2: "更新が利用可能",
   updateAvailableViewDetails: "更新が利用可能 — 詳細を表示",
+  versionAdvisoryViewDetails: "{{title}} — 詳細を表示",
   updateBranch: "ブランチを更新",
   updateExisting: "既存を更新",
   updateNow: "今すぐ更新",

@@ -45,6 +45,9 @@ it("为统一 Runtime Tool Plane 暴露稳定且无重复的 canonical capabilit
       "t3.delegate_task",
       "t3.codegraph.explore",
       "t3.skills.load",
+      "t3.memory.save",
+      "t3.memory.recall",
+      "t3.web.search",
     ],
   );
   assert.equal(

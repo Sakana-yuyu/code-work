@@ -1,6 +1,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
+  DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
+  ServerSettingsError,
   type ByokDelegationSnapshot,
   type CompositionTaskCancelResult,
   type TerminalAttachStreamEvent,
@@ -18,6 +20,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as PreviewAutomationBroker from "../mcp/PreviewAutomationBroker.ts";
 
 import * as ServerConfig from "../config.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
@@ -216,6 +219,9 @@ const TestLayer = Layer.mergeAll(
     Layer.provide(WorkspaceFileLayer),
     Layer.provide(WorkspaceEntriesLayer),
     Layer.provide(ToolTestServicesLayer),
+    // memory.save/memory.recall/web.search 在构造期读取服务实例；缺省降级为
+    // memory_unavailable，这里与生产装配保持同一接线。
+    Layer.provideMerge(ServerSettingsService.layerTest()),
   ),
   CapabilityPolicyLayer,
   CapabilityGrantLayer,
@@ -229,6 +235,7 @@ const TestLayer = Layer.mergeAll(
   ServerConfig.ServerConfig.layerTest(process.cwd(), {
     prefix: "codework-composition-tool-broker-test-",
   }),
+  ServerSettingsService.layerTest(),
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
 const makeTempDir = Effect.gen(function* () {
@@ -785,6 +792,9 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
           "t3.delegate_task",
           "t3.codegraph.explore",
           "t3.skills.load",
+          "t3.memory.save",
+          "t3.memory.recall",
+          "t3.web.search",
           "t3.mcp.preview",
           "t3.runtime.provider",
         ]);
@@ -941,6 +951,96 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
             code: "skill_not_found",
             available: expect.arrayContaining(["review-checklist"]),
           },
+        });
+      }),
+    );
+
+    it.effect("memory.save 写入项目笔记，memory.recall 可读回", () =>
+      Effect.gen(function* () {
+        const broker = yield* ToolBroker.ToolBroker;
+        const cwd = yield* makeTempDir;
+        const saved = yield* broker.invoke({
+          ...baseInput(cwd),
+          canonicalToolName: "memory.save",
+          arguments: { content: "Prefer vp for installs.", scope: "project" },
+          idempotencyKey: "idempotency-memory-1",
+          capabilityGrantIds: ["t3.memory.save"],
+        });
+        expect(saved.status).toBe("succeeded");
+        expect(saved.result).toMatchObject({ ok: true, scope: "project" });
+
+        const recalled = yield* broker.invoke({
+          ...baseInput(cwd),
+          canonicalToolName: "memory.recall",
+          arguments: { query: "vp", scope: "project" },
+          idempotencyKey: "idempotency-memory-2",
+          capabilityGrantIds: ["t3.memory.recall"],
+        });
+        expect(recalled.status).toBe("succeeded");
+        expect(recalled.result).toMatchObject({
+          ok: true,
+          project: expect.stringContaining("Prefer vp"),
+        });
+      }),
+    );
+
+    it.effect("memory.save 项目笔记在审批模式下被拒绝，用户笔记不受影响", () =>
+      Effect.gen(function* () {
+        const broker = yield* ToolBroker.ToolBroker;
+        const cwd = yield* makeTempDir;
+        const projectWrite = yield* broker.invoke({
+          ...baseInput(cwd),
+          canonicalToolName: "memory.save",
+          arguments: { content: "plan-mode note", scope: "project" },
+          idempotencyKey: "idempotency-memory-plan-1",
+          capabilityGrantIds: ["t3.memory.save"],
+          runtimeMode: "approval-required",
+        });
+        expect(projectWrite.status).toBe("succeeded");
+        expect(projectWrite.result).toMatchObject({
+          ok: false,
+          error: { code: "memory_requires_full_access" },
+        });
+
+        // 同一模式下 scope=user 写服务器笔记，不属于项目内容，仍可用。
+        const userWrite = yield* broker.invoke({
+          ...baseInput(cwd),
+          canonicalToolName: "memory.save",
+          arguments: { content: "user-level note", scope: "user" },
+          idempotencyKey: "idempotency-memory-plan-2",
+          capabilityGrantIds: ["t3.memory.save"],
+          runtimeMode: "approval-required",
+        });
+        expect(userWrite.status).toBe("succeeded");
+        expect(userWrite.result).toMatchObject({ ok: true, scope: "user" });
+
+        // 文件确实未落盘。
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        expect(yield* fileSystem.exists(path.join(cwd, ".codework", "memory.md"))).toBe(false);
+      }),
+    );
+
+    it.effect("memory.save 在项目记忆文件不可写时报告失败而不是假成功", () =>
+      Effect.gen(function* () {
+        const broker = yield* ToolBroker.ToolBroker;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        // .codework 被同名普通文件占位 → memory.md 父目录建不出来 → 写入必然失败
+        yield* fileSystem.writeFileString(path.join(cwd, ".codework"), "blocked");
+
+        const saved = yield* broker.invoke({
+          ...baseInput(cwd),
+          canonicalToolName: "memory.save",
+          arguments: { content: "note that cannot persist", scope: "project" },
+          idempotencyKey: "idempotency-memory-write-fail",
+          capabilityGrantIds: ["t3.memory.save"],
+        });
+        expect(saved.status).toBe("succeeded");
+        expect(saved.result).toMatchObject({
+          ok: false,
+          error: { code: "memory_write_failed" },
         });
       }),
     );
@@ -1334,3 +1434,57 @@ it.layer(DelegateTestLayer, { excludeTestServices: true })("delegate_task tool",
     }),
   );
 });
+
+// 设置存储拒写时用户记忆必须返回错误结果；伪造“成功”会让模型以为笔记已持久化。
+const FailingServerSettingsLayer = Layer.succeed(ServerSettingsService, {
+  start: Effect.void,
+  ready: Effect.void,
+  getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
+  updateSettings: () =>
+    Effect.fail(
+      new ServerSettingsError({
+        settingsPath: "<test>",
+        operation: "write-file",
+        cause: new Error("injected settings-store failure"),
+      }),
+    ),
+  streamChanges: Stream.empty,
+  subscribeChanges: Effect.succeed(Stream.empty),
+} satisfies ServerSettingsService["Service"]);
+
+const FailingSettingsTestLayer = ToolBroker.layer.pipe(
+  Layer.provide(CapabilityPolicyLayer.pipe(Layer.provideMerge(CapabilityGrantLayer))),
+  Layer.provideMerge(CapabilityGrantLayer),
+  Layer.provide(CapabilityRegistryLayer),
+  Layer.provide(McpToolRegistryLayer),
+  Layer.provide(WorkspaceFileLayer),
+  Layer.provide(WorkspaceEntriesLayer),
+  Layer.provide(ToolTestServicesLayer),
+  Layer.provide(FailingServerSettingsLayer),
+  Layer.provideMerge(NodeServices.layer),
+);
+
+it.layer(FailingSettingsTestLayer, { excludeTestServices: true })(
+  "memory.save user scope with failing settings store",
+  (it) => {
+    it.effect("用户记忆保存失败返回错误结果而不是假成功", () =>
+      Effect.gen(function* () {
+        const broker = yield* ToolBroker.ToolBroker;
+        const cwd = yield* makeTempDir;
+
+        const saved = yield* broker.invoke({
+          ...baseInput(cwd),
+          canonicalToolName: "memory.save",
+          arguments: { content: "note that cannot persist", scope: "user" },
+          idempotencyKey: "idempotency-memory-user-fail",
+          capabilityGrantIds: ["t3.memory.save"],
+        });
+        expect(saved.status).toBe("succeeded");
+        expect(saved.result).toMatchObject({
+          ok: false,
+          error: { code: "memory_write_failed" },
+        });
+      }),
+    );
+  },
+);

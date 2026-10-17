@@ -39,6 +39,9 @@ describe("BYOK ssh.* tool grouping", () => {
     expect(isByokProjectTool("skills.load")).toBe(true);
     expect(isByokProjectTool("codegraph.explore")).toBe(true);
     expect(isByokFullAccessTool("skills.load")).toBe(true);
+    expect(isByokProjectTool("memory.save")).toBe(true);
+    expect(isByokProjectTool("memory.recall")).toBe(true);
+    expect(isByokProjectTool("web.search")).toBe(true);
     // MCP 工具按 canonical 名逐描述符判定，不走静态集合。
     expect(isByokProjectTool("mcp.demo.echo")).toBe(false);
   });

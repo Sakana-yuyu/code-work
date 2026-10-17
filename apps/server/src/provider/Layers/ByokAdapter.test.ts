@@ -1,11 +1,19 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { ApprovalRequestId, ByokSettings, ProviderInstanceId, ThreadId } from "@codework/contracts";
+import {
+  ApprovalRequestId,
+  ByokSettings,
+  DEFAULT_SERVER_SETTINGS,
+  ProviderInstanceId,
+  ServerSettingsError,
+  ThreadId,
+} from "@codework/contracts";
 import { createModelSelection } from "@codework/shared/model";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -13,6 +21,7 @@ import { HttpBody, HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import { ServerConfig } from "../../config.ts";
 import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
+import * as ProcessRunner from "../../processRunner.ts";
 import * as ToolBroker from "../../composition/ToolBroker.ts";
 import { makeByokAdapter } from "./ByokAdapter.ts";
 
@@ -39,6 +48,14 @@ const settings = Schema.decodeUnknownSync(ByokSettings)({
 
 const sse = (...payloads: ReadonlyArray<unknown>): string =>
   [...payloads.map((payload) => `data: ${encodeJson(payload)}\n`), "data: [DONE]\n"].join("\n");
+
+// Disable codegraph so tests never spawn a real `codegraph init` subprocess
+// into the test cwd — on Windows the child holds a lock on the scoped temp
+// directory and its cleanup races `rmdir` (EBUSY).
+const serverSettingsWithoutCodeGraph = Effect.succeed({
+  ...DEFAULT_SERVER_SETTINGS,
+  codeGraphEnabled: false,
+});
 
 describe("ByokAdapter", () => {
   it.effect("重复命令保护保留失败工具事件并报告回合失败", () => {
@@ -371,6 +388,7 @@ describe("ByokAdapter", () => {
         instanceId,
         toolBroker,
         mcpToolRegistry,
+        getServerSettings: serverSettingsWithoutCodeGraph,
       });
       const eventsFiber = yield* adapter.streamEvents.pipe(
         Stream.takeUntil((event) => event.type === "turn.completed"),
@@ -745,6 +763,90 @@ describe("ByokAdapter", () => {
     );
   });
 
+  it.effect("附件回合同样执行 user_prompt_submit 钩子并可拦截", () => {
+    let requests = 0;
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        requests += 1;
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(
+            sse({ choices: [{ delta: { content: "unreachable" }, finish_reason: "stop" }] }),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+        );
+      }),
+    );
+    const attachmentId = "byokimg-33333333-4444-4555-8666-777777777777";
+
+    return Effect.gen(function* () {
+      const serverConfig = yield* ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      yield* fileSystem.makeDirectory(serverConfig.attachmentsDir, { recursive: true });
+      yield* fileSystem.writeFile(
+        `${serverConfig.attachmentsDir}/${attachmentId}.png`,
+        new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+      );
+
+      const adapter = yield* makeByokAdapter(settings, {
+        instanceId,
+        getServerSettings: Effect.succeed({
+          ...DEFAULT_SERVER_SETTINGS,
+          codeGraphEnabled: false,
+          agentHooks: {
+            enabled: true,
+            hooks: [
+              {
+                id: "deny-all",
+                enabled: true,
+                event: "user_prompt_submit" as const,
+                // 非零退出即拒绝；cmd/sh 上 exit 1 行为一致（内联 echo JSON 在
+                // Windows 下会被 cmd 引号转义改写，不适合做跨平台断言）。
+                command: "exit 1",
+                matcher: "",
+              },
+            ],
+          },
+        }),
+      });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* adapter.startSession({
+        threadId,
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      yield* adapter.sendTurn({
+        threadId,
+        input: "看看这张图",
+        attachments: [
+          { type: "image", id: attachmentId, name: "dot.png", mimeType: "image/png", sizeBytes: 4 },
+        ],
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+
+      // 钩子拒绝后不应再向供应商发请求，回合直接以钩子理由收口。
+      expect(requests).toBe(0);
+      expect(events.find((event) => event.type === "content.delta")).toMatchObject({
+        payload: { delta: expect.stringContaining("Hook exited with code 1") },
+      });
+      expect(events.at(-1)).toMatchObject({
+        type: "turn.completed",
+        payload: { state: "completed" },
+      });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-test-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(ProcessRunner.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+    );
+  });
+
   for (const usageCase of [
     {
       name: "完整用量",
@@ -903,8 +1005,17 @@ describe("ByokAdapter", () => {
     );
 
     return Effect.gen(function* () {
+      // 关闭记忆注入，让请求体断言聚焦在历史恢复本身。
+      const memoryOff = Effect.succeed({
+        ...DEFAULT_SERVER_SETTINGS,
+        codeGraphEnabled: false,
+        agentMemory: { enabled: false, userNotes: "" },
+      });
       // 第一段：原始会话。turn.completed 即历史已落盘的回执。
-      const adapter1 = yield* makeByokAdapter(settings, { instanceId });
+      const adapter1 = yield* makeByokAdapter(settings, {
+        instanceId,
+        getServerSettings: memoryOff,
+      });
       const events1 = yield* adapter1.streamEvents.pipe(
         Stream.takeUntil((event) => event.type === "turn.completed"),
         Stream.runCollect,
@@ -928,7 +1039,10 @@ describe("ByokAdapter", () => {
 
       // 第二段：模拟服务器重启——同 stateDir 下的全新 adapter 实例，
       // ProviderService 会把绑定里的 resumeCursor 透传给 startSession。
-      const adapter2 = yield* makeByokAdapter(settings, { instanceId });
+      const adapter2 = yield* makeByokAdapter(settings, {
+        instanceId,
+        getServerSettings: memoryOff,
+      });
       const events2 = yield* adapter2.streamEvents.pipe(
         Stream.takeUntil((event) => event.type === "turn.completed"),
         Stream.runCollect,
@@ -1090,7 +1204,7 @@ describe("ByokAdapter", () => {
         payload: { state: "completed" },
       });
       expect(requests).toHaveLength(2);
-      expect(JSON.stringify(requests[1]?.messages)).toContain("产品类型：商城");
+      expect(encodeJson(requests[1]?.messages)).toContain("产品类型：商城");
       expect(events).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -1231,10 +1345,302 @@ describe("ByokAdapter", () => {
           expect.objectContaining({ type: "turn.completed", payload: { state: "completed" } }),
         ]),
       );
-      expect(JSON.stringify(requests[1]?.messages)).toContain("商城");
+      expect(encodeJson(requests[1]?.messages)).toContain("商城");
     }).pipe(
       Effect.scoped,
       Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-ask-tool-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
+  it.effect("/mcp 列出已连接工具且不调用模型", () => {
+    const commandThreadId = ThreadId.make("thread-byok-slash-mcp");
+    let requests = 0;
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        requests += 1;
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(sse({ choices: [{ delta: { content: "nope" }, finish_reason: "stop" }] }), {
+            headers: { "content-type": "text/event-stream" },
+          }),
+        );
+      }),
+    );
+    const mcpToolRegistry = {
+      list: () =>
+        Effect.succeed([
+          {
+            canonicalToolName: "mcp.demo.echo",
+            serverId: "demo",
+            toolName: "echo",
+            description: "Echo back the input text.",
+            inputSchema: { type: "object", properties: { text: { type: "string" } } },
+            operation: "read" as const,
+            trusted: true,
+            status: "available" as const,
+            capabilityDescriptor: {
+              capabilityId: "t3.mcp.demo.echo",
+              kind: "mcp" as const,
+              version: "1",
+              status: "available" as const,
+              grants: { read: true, execute: false, mutate: false },
+              approval: "never" as const,
+              source: "t3" as const,
+            },
+          },
+        ]),
+    };
+
+    return Effect.gen(function* () {
+      const adapter = yield* makeByokAdapter(settings, { instanceId, mcpToolRegistry });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* adapter.startSession({
+        threadId: commandThreadId,
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      yield* adapter.sendTurn({
+        threadId: commandThreadId,
+        input: "/mcp",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      expect(requests).toBe(0);
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "session.started",
+            payload: expect.objectContaining({
+              slashCommands: expect.arrayContaining([
+                expect.objectContaining({ name: "compact" }),
+                expect.objectContaining({ name: "mcp" }),
+                expect.objectContaining({ name: "skill" }),
+              ]),
+            }),
+          }),
+          expect.objectContaining({
+            type: "content.delta",
+            payload: expect.objectContaining({
+              streamKind: "assistant_text",
+              delta: expect.stringContaining("mcp.demo.echo"),
+            }),
+          }),
+          expect.objectContaining({ type: "turn.completed", payload: { state: "completed" } }),
+        ]),
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-slash-mcp-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
+  it.effect("/memory 与 /search-engine 在设置写入失败时报告失败而不是假成功", () => {
+    const commandThreadId = ThreadId.make("thread-byok-slash-write-fail");
+    let requests = 0;
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        requests += 1;
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(sse({ choices: [{ delta: { content: "nope" }, finish_reason: "stop" }] }), {
+            headers: { "content-type": "text/event-stream" },
+          }),
+        );
+      }),
+    );
+
+    return Effect.gen(function* () {
+      const adapter = yield* makeByokAdapter(settings, {
+        instanceId,
+        getServerSettings: serverSettingsWithoutCodeGraph,
+        updateServerSettings: () =>
+          Effect.fail(
+            new ServerSettingsError({
+              settingsPath: "<test>",
+              operation: "write-file",
+              cause: new Error("injected settings-store failure"),
+            }),
+          ),
+      });
+      const takeCompleted = () =>
+        adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "turn.completed"),
+          Stream.runCollect,
+          Effect.forkScoped,
+        );
+
+      yield* adapter.startSession({
+        threadId: commandThreadId,
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+
+      const memoryFiber = yield* takeCompleted();
+      yield* adapter.sendTurn({
+        threadId: commandThreadId,
+        input: "/memory remember the deploy window",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      const memoryEvents = Array.from(yield* Fiber.join(memoryFiber));
+      expect(memoryEvents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "content.delta",
+            payload: expect.objectContaining({
+              delta: expect.stringContaining("Could not save the note"),
+            }),
+          }),
+          expect.objectContaining({ type: "turn.completed", payload: { state: "completed" } }),
+        ]),
+      );
+
+      const engineFiber = yield* takeCompleted();
+      yield* adapter.sendTurn({
+        threadId: commandThreadId,
+        input: "/search-engine tavily",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      const engineEvents = Array.from(yield* Fiber.join(engineFiber));
+      expect(engineEvents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "content.delta",
+            payload: expect.objectContaining({
+              delta: expect.stringContaining("Could not switch the search engine to 'tavily'"),
+            }),
+          }),
+          expect.objectContaining({ type: "turn.completed", payload: { state: "completed" } }),
+        ]),
+      );
+      expect(requests).toBe(0);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(workspaceRoot, { prefix: "byok-adapter-slash-fail-" })),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provide(NodeServices.layer),
+    );
+  });
+
+  it.effect("/skill 列出项目技能且 /compact 把更早回合压成摘要", () => {
+    const commandThreadId = ThreadId.make("thread-byok-slash-compact");
+    const requests: Array<Record<string, unknown>> = [];
+    const replies = ["one", "two", "three", "Login form is done; next is billing."];
+    const httpClient = HttpClient.make((request) =>
+      Effect.sync(() => {
+        if (request.body instanceof HttpBody.Uint8Array) {
+          requests.push(decodeJson(decoder.decode(request.body.body)) as Record<string, unknown>);
+        }
+        const reply = replies.shift() ?? "ok";
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(
+            sse(
+              { choices: [{ delta: { content: reply }, finish_reason: null }] },
+              { choices: [{ delta: {}, finish_reason: "stop" }] },
+            ),
+            { headers: { "content-type": "text/event-stream" } },
+          ),
+        );
+      }),
+    );
+
+    return Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix: "byok-slash-skill-" });
+      const skillDir = path.join(cwd, ".agents", "skills", "review-checklist");
+      yield* fileSystem.makeDirectory(skillDir, { recursive: true });
+      yield* fileSystem.writeFileString(
+        path.join(skillDir, "SKILL.md"),
+        "---\nname: review-checklist\ndescription: 代码评审清单\n---\n按清单逐项检查。\n",
+      );
+
+      const adapter = yield* makeByokAdapter(settings, {
+        instanceId,
+        getServerSettings: serverSettingsWithoutCodeGraph,
+      });
+      const takeCompleted = () =>
+        adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "turn.completed"),
+          Stream.runCollect,
+          Effect.forkScoped,
+        );
+
+      yield* adapter.startSession({
+        threadId: commandThreadId,
+        cwd,
+        runtimeMode: "full-access",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+
+      const skillEventsFiber = yield* takeCompleted();
+      yield* adapter.sendTurn({
+        threadId: commandThreadId,
+        input: "/skill",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      const skillEvents = Array.from(yield* Fiber.join(skillEventsFiber));
+      expect(skillEvents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "content.delta",
+            payload: expect.objectContaining({
+              delta: expect.stringContaining("review-checklist"),
+            }),
+          }),
+        ]),
+      );
+
+      for (const prompt of ["first", "second", "third"]) {
+        const fiber = yield* takeCompleted();
+        yield* adapter.sendTurn({
+          threadId: commandThreadId,
+          input: prompt,
+          modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+        });
+        yield* Fiber.join(fiber);
+      }
+
+      const compactFiber = yield* takeCompleted();
+      yield* adapter.sendTurn({
+        threadId: commandThreadId,
+        input: "/compact keep the billing plan",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      const compactEvents = Array.from(yield* Fiber.join(compactFiber));
+      expect(encodeJson(requests.at(-1)?.messages)).toContain("Summarize the following");
+      expect(compactEvents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "content.delta",
+            payload: expect.objectContaining({
+              delta: expect.stringContaining("Compressed older turns"),
+            }),
+          }),
+        ]),
+      );
+
+      const followFiber = yield* takeCompleted();
+      yield* adapter.sendTurn({
+        threadId: commandThreadId,
+        input: "continue",
+        modelSelection: createModelSelection(instanceId, "deepseek-v4-flash"),
+      });
+      yield* Fiber.join(followFiber);
+      expect(encodeJson(requests.at(-1)?.messages)).toContain("[Conversation summary]");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(ServerConfig.layerTest(process.cwd(), { prefix: "byok-adapter-slash-" })),
       Effect.provideService(HttpClient.HttpClient, httpClient),
       Effect.provide(NodeServices.layer),
     );

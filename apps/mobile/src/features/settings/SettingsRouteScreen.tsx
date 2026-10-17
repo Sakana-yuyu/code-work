@@ -146,6 +146,8 @@ function LocalSettingsRouteScreen() {
 
         <McpSettingsSection />
 
+        <AgentToolsSettingsSection />
+
         <WorkspaceScriptsSettingsSection />
 
         <AutomationsSettingsSection />
@@ -561,6 +563,8 @@ function ConfiguredSettingsRouteScreen() {
 
         <McpSettingsSection />
 
+        <AgentToolsSettingsSection />
+
         <WorkspaceScriptsSettingsSection />
 
         <AutomationsSettingsSection />
@@ -729,6 +733,19 @@ function McpSettingsSection() {
         label={t("mcpMobile.title")}
         value={t("mcpMobile.settingsHint")}
         target="SettingsMcp"
+      />
+    </SettingsSection>
+  );
+}
+
+function AgentToolsSettingsSection() {
+  return (
+    <SettingsSection title={t("agentToolsMobile.title")}>
+      <SettingsRow
+        icon="cube"
+        label={t("agentToolsMobile.title")}
+        value={t("agentToolsMobile.settingsHint")}
+        target="SettingsAgentTools"
       />
     </SettingsSection>
   );

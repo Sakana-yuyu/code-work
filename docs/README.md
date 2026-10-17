@@ -19,6 +19,7 @@
 - [Keeping app and server in sync](./user/updating.md)
 - [Source control integrations](./user/source-control.md)
 - [Code indexing](./user/code-index.md)
+- [Agent memory, hooks, and web search](./user/agent-tools.md)
 - [Background service (Linux)](./user/background-service.md)
 - Providers: [Codex](./user/providers-codex.md) · [Claude](./user/providers-claude.md) · [Pi / OhMyPi / ACP Agent](./user/providers-pi-ohmypi-acp.md)
 

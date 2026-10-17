@@ -176,6 +176,35 @@ describe("parseAdaptersYaml custom headers and max output", () => {
     expect(candidates[1]?.customHeaders).toBeUndefined();
     expect(candidates[2]?.customHeaders).toBeUndefined();
   });
+
+  // 导入未写窗口时先按内置目录识别，目录未收录才落 128K 默认。
+  it("recognizes context windows from the built-in catalog when the YAML omits them", () => {
+    const yaml = [
+      "modelAdapters:",
+      "  - displayName: Claude",
+      "    type: anthropic",
+      "    baseURL: https://api.anthropic.test",
+      "    modelID: claude-sonnet-5-5",
+      "  - displayName: Unknown",
+      "    type: openai",
+      "    baseURL: https://relay.test/v1",
+      "    modelID: private-model",
+    ].join("\n");
+
+    const { candidates, skippedReasons } = parseAdaptersYaml(yaml);
+
+    expect(skippedReasons).toEqual([]);
+    expect(candidates[0]).toMatchObject({
+      modelId: "claude-sonnet-5-5",
+      contextWindowTokens: 1_000_000,
+      maxOutputTokens: 128_000,
+    });
+    expect(candidates[1]).toMatchObject({
+      modelId: "private-model",
+      contextWindowTokens: 128_000,
+    });
+    expect(candidates[1]?.maxOutputTokens).toBeUndefined();
+  });
 });
 
 describe("importAdapters", () => {

@@ -107,6 +107,14 @@ describe("checkByokProviderStatus", () => {
     expect(result.status).toBe("ready");
     expect(result.auth).toEqual({ status: "authenticated", type: "byok" });
     expect(result.message).toContain("configured");
+    expect(result.slashCommands.map((command) => command.name)).toEqual([
+      "compact",
+      "mcp",
+      "skill",
+      "memory",
+      "hooks",
+      "search-engine",
+    ]);
   });
 });
 

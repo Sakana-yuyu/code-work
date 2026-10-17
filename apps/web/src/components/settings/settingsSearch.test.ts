@@ -119,6 +119,11 @@ describe("searchSettings", () => {
   it("用萌新常用说法搜索到 AI 服务、密钥和远程连接", () => {
     expect(searchSettings("模型").map((item) => item.id)).toContain("providers");
     expect(searchSettings("API key").map((item) => item.id)).toContain("facility-byok");
+    expect(searchSettings("MCP").map((item) => item.id)).toContain("mcp-servers");
+    expect(searchSettings("技能").map((item) => item.id)).toContain("byok-skills");
+    expect(searchSettings("memory").map((item) => item.id)).toContain("agent-memory");
+    expect(searchSettings("hooks").map((item) => item.id)).toContain("agent-hooks");
+    expect(searchSettings("tavily").map((item) => item.id)).toContain("web-search");
     expect(searchSettings("远程").map((item) => item.id)).toContain("remote-environments");
   });
 

@@ -128,6 +128,7 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
         ...(toolBroker._tag === "Some" ? { toolBroker: toolBroker.value } : {}),
         ...(mcpToolRegistry._tag === "Some" ? { mcpToolRegistry: mcpToolRegistry.value } : {}),
         getServerSettings: serverSettings.getSettings,
+        updateServerSettings: (patch) => serverSettings.updateSettings(patch),
       });
       const textGeneration = yield* makeByokTextGeneration(effectiveConfig);
 

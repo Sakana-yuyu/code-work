@@ -35,7 +35,10 @@ import {
   type ProviderRuntimeEvent,
   type ProviderSession,
   type ServerSettings,
+  type ServerSettingsConflictError,
   type ServerSettingsError,
+  type ServerSettingsPatch,
+  DEFAULT_SERVER_SETTINGS,
   ThreadId,
   TurnId,
   type UserInputQuestion,
@@ -75,7 +78,7 @@ import {
   type ByokAgentToolCall,
 } from "../../composition/ByokAgentLoop.ts";
 import type { CompositionMcpToolRegistryShape } from "../../composition/CompositionMcpToolRegistry.ts";
-import { discoverByokSkills } from "../../skillDiscovery.ts";
+import { discoverByokSkills, loadSkillByName } from "../../skillDiscovery.ts";
 import { makeByokModelDriver } from "../../composition/OpenAiByokModelDriver.ts";
 import { appendByokUsageRecord } from "../../usage/byokUsageLog.ts";
 import {
@@ -83,6 +86,19 @@ import {
   listCompositionAgentTools,
 } from "../../composition/CompositionToolRegistry.ts";
 import type { ToolBroker, ToolBrokerResult } from "../../composition/ToolBroker.ts";
+import * as ProcessRunner from "../../processRunner.ts";
+import {
+  appendMemoryNote,
+  formatMemoryListing,
+  loadMemoryForPrompt,
+  readProjectMemory,
+} from "../../agent/AgentMemory.ts";
+import {
+  formatHooksListing,
+  runAgentHooks,
+  wrapToolBrokerWithHooks,
+} from "../../agent/AgentHooks.ts";
+import { formatSearchEngineListing, isWebSearchEngine } from "../../agent/WebSearch.ts";
 import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
@@ -107,6 +123,17 @@ import {
   formatAskUserAnswers,
   parseAskUserToolArguments,
 } from "../byok/ByokAskUser.ts";
+import {
+  applyCompactSummary,
+  buildCompactPrompt,
+  BYOK_SLASH_COMMANDS,
+  formatMcpListing,
+  formatSkillListing,
+  parseByokSlashCommand,
+  serializeHistoryForCompact,
+  splitHistoryForCompact,
+  type ByokSlashCommand,
+} from "../byok/ByokSlashCommands.ts";
 import { applyPromptTemplate, renderPromptTemplate } from "../byok/PromptTemplate.ts";
 import {
   buildVisionPrompt,
@@ -209,6 +236,9 @@ const BYOK_IMAGE_CHARS_ESTIMATE = 4_000;
 /** Per-image budget for one vision delegation completion. */
 const BYOK_VISION_IMAGE_TIMEOUT_MS = 120_000;
 
+/** Budget for the one-shot `/compact` summarization completion. */
+const BYOK_COMPACT_TIMEOUT_MS = 60_000;
+
 /** Image mime types all three BYOK transports accept inline. */
 const BYOK_SUPPORTED_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
   "image/png",
@@ -250,6 +280,9 @@ export interface ByokAdapterLiveOptions {
   readonly mcpToolRegistry?: Pick<CompositionMcpToolRegistryShape, "list">;
   /** 读取全局 ServerSettings（当前只取 codeGraphEnabled）；缺省或失败视为关闭。 */
   readonly getServerSettings?: Effect.Effect<ServerSettings, ServerSettingsError>;
+  readonly updateServerSettings?: (
+    patch: ServerSettingsPatch | ((current: ServerSettings) => ServerSettingsPatch),
+  ) => Effect.Effect<ServerSettings, ServerSettingsError | ServerSettingsConflictError>;
 }
 
 const BYOK_PROJECT_TOOL_NAMES: ReadonlySet<string> = new Set([
@@ -268,6 +301,9 @@ const BYOK_PROJECT_TOOL_NAMES: ReadonlySet<string> = new Set([
   "ssh.read_file",
   // 技能加载只读且按名解析，所有模式可用。
   "skills.load",
+  "memory.recall",
+  "memory.save",
+  "web.search",
 ]);
 const BYOK_FULL_ACCESS_TOOL_NAMES: ReadonlySet<string> = new Set([
   ...BYOK_PROJECT_TOOL_NAMES,
@@ -371,6 +407,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
     const httpClient = yield* HttpClient.HttpClient;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
+    const processRunner = yield* Effect.serviceOption(ProcessRunner.ProcessRunner);
     const availableProjectTools = listCompositionAgentTools().filter((tool) =>
       isByokFullAccessTool(tool.canonicalToolName),
     );
@@ -694,6 +731,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
           threadId: input.threadId,
           payload: {
             message: "BYOK engine session started",
+            slashCommands: [...BYOK_SLASH_COMMANDS],
             ...(resumed ? { resume: true } : {}),
           },
         });
@@ -1029,34 +1067,70 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         );
       // CodeGraph：开关开启时，已有索引则注入使用边界指引；没有则后台补建
       // （per-root 去重、危险根守卫、绝不阻塞回合）。设置读取失败视为关闭。
+      const serverSettings = yield* (
+        options?.getServerSettings ?? Effect.succeed(DEFAULT_SERVER_SETTINGS)
+      ).pipe(Effect.orElseSucceed(() => DEFAULT_SERVER_SETTINGS));
+      const platform = yield* HostProcessPlatform;
       let codeGraphGuidance: string | undefined;
-      if (options?.getServerSettings !== undefined) {
-        const codeGraphEnabled = yield* options.getServerSettings.pipe(
-          Effect.map((settings) => settings.codeGraphEnabled),
-          Effect.orElseSucceed(() => false),
-        );
-        if (codeGraphEnabled) {
-          if (hasCodeGraphIndex(ctx.cwd)) {
-            codeGraphGuidance = CODEGRAPH_GUIDANCE_PROMPT;
-          } else {
-            const runFork = Effect.runForkWith(yield* Effect.context<never>());
-            const platform = yield* HostProcessPlatform;
-            yield* Effect.sync(() =>
-              spawnCodeGraphIndexInit({
-                root: ctx.cwd,
-                platform,
-                logWarning: (message, cause) => runFork(Effect.logWarning(message, { cause })),
-              }),
-            );
-          }
+      if (serverSettings.codeGraphEnabled) {
+        if (hasCodeGraphIndex(ctx.cwd)) {
+          codeGraphGuidance = CODEGRAPH_GUIDANCE_PROMPT;
         } else {
-          // 关闭开关时把工具从本轮清单撤下，已建索引保留不动（删除是
-          // 上游 codegraph uninit 的破坏性操作，永远不由我们自动执行）。
-          projectTools = projectTools.filter(
-            (tool) => tool.canonicalToolName !== "codegraph.explore",
+          const runFork = Effect.runForkWith(yield* Effect.context<never>());
+          yield* Effect.sync(() =>
+            spawnCodeGraphIndexInit({
+              root: ctx.cwd,
+              platform,
+              logWarning: (message, cause) => runFork(Effect.logWarning(message, { cause })),
+            }),
           );
         }
+      } else {
+        // 关闭开关时把工具从本轮清单撤下，已建索引保留不动（删除是
+        // 上游 codegraph uninit 的破坏性操作，永远不由我们自动执行）。
+        projectTools = projectTools.filter(
+          (tool) => tool.canonicalToolName !== "codegraph.explore",
+        );
       }
+      if (!serverSettings.agentMemory.enabled) {
+        projectTools = projectTools.filter(
+          (tool) =>
+            tool.canonicalToolName !== "memory.save" && tool.canonicalToolName !== "memory.recall",
+        );
+      }
+      if (!serverSettings.webSearch.enabled) {
+        projectTools = projectTools.filter((tool) => tool.canonicalToolName !== "web.search");
+      }
+      // 记忆只是注入的上下文：项目笔记损坏/不可读不应阻断整个回合，退化为不注入。
+      const memoryGuidance = serverSettings.agentMemory.enabled
+        ? yield* loadMemoryForPrompt(serverSettings.agentMemory, ctx.cwd).pipe(
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, path),
+            Effect.orElseSucceed(() => ""),
+          )
+        : "";
+      const promptHook = yield* runAgentHooks({
+        settings: serverSettings.agentHooks,
+        processRunner,
+        platform,
+        payload: {
+          event: "user_prompt_submit",
+          cwd: ctx.cwd,
+          prompt: renderAgentConversation(effectiveMessages),
+        },
+      });
+      if (promptHook.deny) {
+        const reply = promptHook.reason ?? "Blocked by an agent hook.";
+        ctx.history.push({ role: "assistant", content: reply });
+        yield* completeLocalReply(ctx, turnId, reply);
+        return;
+      }
+      const hookedBroker = wrapToolBrokerWithHooks(toolBroker, {
+        settings: serverSettings.agentHooks,
+        cwd: ctx.cwd,
+        processRunner,
+        platform,
+      });
       projectTools = [...projectTools, BYOK_ASK_USER_TOOL];
       const agentSystemPrompt = [
         systemPrompt,
@@ -1090,6 +1164,13 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               "以 mcp.<serverId>.<tool> 命名的工具来自用户在设置中连接的 MCP Server，可与内置工具一样直接调用。",
             ]),
         ...(codeGraphGuidance === undefined ? [] : [codeGraphGuidance]),
+        ...(memoryGuidance.trim().length === 0 ? [] : [memoryGuidance]),
+        ...(serverSettings.webSearch.enabled
+          ? [
+              `联网搜索已开启（引擎 ${serverSettings.webSearch.engine}）。需要公开网页资料时调用 web.search，不要编造检索结果。`,
+            ]
+          : []),
+        ...(promptHook.extra === undefined ? [] : [`Hook context:\n${promptHook.extra}`]),
       ]
         .filter((part) => part.trim().length > 0)
         .join("\n\n");
@@ -1219,7 +1300,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               : {}),
             systemPrompt: agentSystemPrompt,
           }),
-          toolBroker,
+          hookedBroker,
         ),
       );
 
@@ -1279,7 +1360,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
             arguments: rescuedCanvas,
           };
           yield* emitToolRowStarted(toolCall);
-          const result = yield* toolBroker.invoke({
+          const result = yield* hookedBroker.invoke({
             taskId: String(ctx.session.threadId),
             runId: String(turnId),
             agentId: `provider:${boundInstanceId}`,
@@ -1304,6 +1385,12 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       // 成功收口：先关引导窗口再清队列，最后到达的引导留在历史里等下一回合。
       ctx.steerWindowOpen = false;
       ctx.pendingSteers.length = 0;
+      yield* runAgentHooks({
+        settings: serverSettings.agentHooks,
+        processRunner,
+        platform,
+        payload: { event: "stop", cwd: ctx.cwd },
+      }).pipe(Effect.ignore);
       // 历史定型后、终态事件前落盘：turn.completed 即"已可恢复"的回执。
       yield* persistSessionState(ctx);
       yield* emit({
@@ -1314,6 +1401,191 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         turnId,
         payload: { state: "completed" },
       });
+    });
+
+    const completeLocalReply = Effect.fn("byokCompleteLocalReply")(function* (
+      ctx: ByokSessionContext,
+      turnId: TurnId,
+      reply: string,
+    ) {
+      if (sessions.get(ctx.session.threadId) !== ctx) return;
+      ctx.activeTurnId = undefined;
+      ctx.activeTurnFiber = undefined;
+      ctx.steerWindowOpen = false;
+      ctx.pendingSteers.length = 0;
+      yield* updateSession(ctx, { status: "ready" }, true);
+      if (reply.length > 0) {
+        appendTurnItem(ctx, turnId, { type: "text", text: reply });
+        yield* emit({
+          ...(yield* makeEventStamp()),
+          type: "content.delta",
+          provider: PROVIDER,
+          threadId: ctx.session.threadId,
+          turnId,
+          payload: { streamKind: "assistant_text", delta: reply },
+        });
+      }
+      yield* persistSessionState(ctx);
+      yield* emit({
+        ...(yield* makeEventStamp()),
+        type: "turn.completed",
+        provider: PROVIDER,
+        threadId: ctx.session.threadId,
+        turnId,
+        payload: { state: "completed" },
+      });
+    });
+
+    /**
+     * `/compact` `/mcp` `/skill` 在适配器内落地：不把斜杠原文交给模型，
+     * 避免 Goal 包裹后的普通回合把指令当成聊天内容。
+     */
+    const runSlashCommandTurn = Effect.fn("byokRunSlashCommandTurn")(function* (
+      ctx: ByokSessionContext,
+      turnId: TurnId,
+      adapter: ByokModelAdapter,
+      command: ByokSlashCommand,
+    ) {
+      let reply = "";
+      if (command.name === "mcp") {
+        const descriptors =
+          options?.mcpToolRegistry === undefined
+            ? []
+            : yield* options.mcpToolRegistry.list().pipe(Effect.orElseSucceed(() => []));
+        reply = formatMcpListing(descriptors);
+        ctx.history.push({ role: "assistant", content: reply });
+      } else if (command.name === "skill") {
+        const skills = yield* discoverByokSkills(ctx.cwd);
+        if (command.argument.length === 0) {
+          reply = formatSkillListing(skills);
+          ctx.history.push({ role: "assistant", content: reply });
+        } else {
+          const loaded = yield* loadSkillByName(command.argument, ctx.cwd);
+          if (loaded === undefined) {
+            reply = `Skill '${command.argument}' was not found.\n\n${formatSkillListing(skills)}`;
+            ctx.history.push({ role: "assistant", content: reply });
+          } else {
+            reply = `Loaded skill ${loaded.name} (${loaded.path}):\n\n${loaded.contents}`;
+            ctx.history.push({
+              role: "user",
+              content: `用户显式加载了技能 ${loaded.name}：\n\n${loaded.contents}`,
+            });
+            ctx.history.push({
+              role: "assistant",
+              content: `Loaded skill ${loaded.name}. Use it on the next turn.`,
+            });
+          }
+        }
+      } else if (command.name === "memory") {
+        const settings = yield* (
+          options?.getServerSettings ?? Effect.succeed(DEFAULT_SERVER_SETTINGS)
+        ).pipe(Effect.orElseSucceed(() => DEFAULT_SERVER_SETTINGS));
+        let nextSettings = settings;
+        if (command.argument.length > 0) {
+          if (options?.updateServerSettings === undefined) {
+            reply =
+              "Cannot write user memory from this session. Add the note in Settings → Integrations → Agent memory.";
+            ctx.history.push({ role: "assistant", content: reply });
+            yield* completeLocalReply(ctx, turnId, reply);
+            return;
+          }
+          // 函数式 patch 在 CAS 提交时对最新快照重算 append，避免与 memory.save 的并发写入互相覆盖。
+          const updated = yield* options
+            .updateServerSettings((current) => ({
+              agentMemory: {
+                userNotes: appendMemoryNote(current.agentMemory.userNotes, command.argument),
+              },
+            }))
+            .pipe(Effect.option);
+          if (Option.isNone(updated)) {
+            reply =
+              "Could not save the note to user memory — the settings store rejected the update. Check the server log and try again.";
+            ctx.history.push({ role: "assistant", content: reply });
+            yield* completeLocalReply(ctx, turnId, reply);
+            return;
+          }
+          nextSettings = updated.value;
+        }
+        const projectNotes = yield* readProjectMemory(ctx.cwd).pipe(
+          Effect.orElseSucceed(() => "(.codework/memory.md could not be read)"),
+        );
+        reply = formatMemoryListing({
+          enabled: nextSettings.agentMemory.enabled,
+          userNotes: nextSettings.agentMemory.userNotes,
+          projectNotes,
+        });
+        ctx.history.push({ role: "assistant", content: reply });
+      } else if (command.name === "hooks") {
+        const settings = yield* (
+          options?.getServerSettings ?? Effect.succeed(DEFAULT_SERVER_SETTINGS)
+        ).pipe(Effect.orElseSucceed(() => DEFAULT_SERVER_SETTINGS));
+        reply = formatHooksListing(settings.agentHooks);
+        ctx.history.push({ role: "assistant", content: reply });
+      } else if (command.name === "search-engine") {
+        const settings = yield* (
+          options?.getServerSettings ?? Effect.succeed(DEFAULT_SERVER_SETTINGS)
+        ).pipe(Effect.orElseSucceed(() => DEFAULT_SERVER_SETTINGS));
+        const requested = command.argument.trim().toLowerCase();
+        let nextSettings = settings;
+        if (requested.length > 0) {
+          if (!isWebSearchEngine(requested)) {
+            reply = `Unknown search engine '${command.argument}'. Use duckduckgo, searxng, tavily, or brave.\n\n${formatSearchEngineListing(settings.webSearch)}`;
+            ctx.history.push({ role: "assistant", content: reply });
+            yield* completeLocalReply(ctx, turnId, reply);
+            return;
+          }
+          if (options?.updateServerSettings === undefined) {
+            reply = `Current engine is ${settings.webSearch.engine}. Change it in Settings → Integrations → Web search.`;
+            ctx.history.push({ role: "assistant", content: reply });
+            yield* completeLocalReply(ctx, turnId, reply);
+            return;
+          }
+          const updated = yield* options
+            .updateServerSettings({
+              webSearch: { enabled: true, engine: requested },
+            })
+            .pipe(Effect.option);
+          if (Option.isNone(updated)) {
+            reply = `Could not switch the search engine to '${requested}' — the settings store rejected the update. Check the server log and try again.`;
+            ctx.history.push({ role: "assistant", content: reply });
+            yield* completeLocalReply(ctx, turnId, reply);
+            return;
+          }
+          nextSettings = updated.value;
+        }
+        reply = formatSearchEngineListing(nextSettings.webSearch);
+        ctx.history.push({ role: "assistant", content: reply });
+      } else {
+        const { older, recent } = splitHistoryForCompact(ctx.history);
+        if (older.length === 0) {
+          reply = "There is not enough conversation yet to compact. Send a few more turns first.";
+          ctx.history.push({ role: "assistant", content: reply });
+        } else {
+          const transcript = serializeHistoryForCompact(older);
+          const stream = streamChat(httpClient, {
+            protocol: adapter.protocol,
+            baseURL: adapter.baseURL,
+            apiKey: adapter.apiKey,
+            modelId: adapter.modelId,
+            ...(adapter.customHeaders !== undefined && adapter.customHeaders.trim().length > 0
+              ? { customHeaders: adapter.customHeaders }
+              : {}),
+            messages: [...buildCompactPrompt(transcript, command.argument)],
+          });
+          const summary = yield* collectChatText(stream).pipe(
+            Effect.timeoutOption(BYOK_COMPACT_TIMEOUT_MS),
+            Effect.map((outcome) => (Option.isSome(outcome) ? outcome.value.trim() : "")),
+            Effect.orElseSucceed(() => ""),
+          );
+          const text =
+            summary.length > 0
+              ? summary
+              : "Earlier turns were dropped to free context. Recent messages were kept.";
+          ctx.history = applyCompactSummary(recent, text);
+          reply = `Compressed older turns into a summary. Kept the last ${recent.length} messages.\n\n${text}`;
+        }
+      }
+      yield* completeLocalReply(ctx, turnId, reply);
     });
 
     const sendTurn: ByokAdapterShape["sendTurn"] = Effect.fn("byokSendTurn")(function* (input) {
@@ -1395,6 +1667,52 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         turnId,
         payload: { model: model ?? adapter.id },
       });
+      const slashCommand = attachments.length === 0 ? parseByokSlashCommand(text) : undefined;
+      if (slashCommand !== undefined) {
+        appendTurnItem(ctx, turnId, { type: "user", text });
+        const slashFiber = yield* runSlashCommandTurn(ctx, turnId, adapter, slashCommand).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+          Effect.catchCause((cause) =>
+            Effect.gen(function* () {
+              ctx.steerWindowOpen = false;
+              ctx.pendingSteers.length = 0;
+              if (Cause.hasInterruptsOnly(cause)) {
+                // Interruption is handled by `interruptTurn` (turn.aborted).
+                return;
+              }
+              const detail =
+                Option.getOrUndefined(Cause.findErrorOption(cause))?.message ??
+                "BYOK engine turn failed.";
+              if (ctx.activeTurnId !== undefined) {
+                ctx.activeTurnId = undefined;
+                ctx.activeTurnFiber = undefined;
+                yield* updateSession(ctx, { status: "error" }, true);
+              }
+              yield* emit({
+                ...(yield* makeEventStamp()),
+                type: "runtime.error",
+                provider: PROVIDER,
+                threadId: ctx.session.threadId,
+                turnId,
+                payload: { message: detail, class: "provider_error" },
+              });
+              yield* persistSessionState(ctx);
+              yield* emit({
+                ...(yield* makeEventStamp()),
+                type: "turn.completed",
+                provider: PROVIDER,
+                threadId: ctx.session.threadId,
+                turnId,
+                payload: { state: "failed", errorMessage: detail },
+              });
+            }),
+          ),
+          Effect.forkIn(adapterScope),
+        );
+        ctx.activeTurnFiber = slashFiber;
+        return { threadId: input.threadId, turnId };
+      }
       // Resolve image attachments to inline base64 parts from the server-side
       // attachment store; nothing client-supplied is trusted beyond its id.
       const contentParts: ByokContentPart[] = [];
@@ -1474,7 +1792,59 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
               input.interactionMode === "plan",
               reasoningEffort,
             )
-          : runTurn(ctx, turnId, adapter, messages, systemPrompt, reasoningEffort)
+          : Effect.gen(function* () {
+              // 附件（图片）回合走旧流式路径：没有工具清单，但 prompt 钩子
+              // 与记忆注入与 agent loop 入口保持一致。
+              const serverSettings = yield* (
+                options?.getServerSettings ?? Effect.succeed(DEFAULT_SERVER_SETTINGS)
+              ).pipe(Effect.orElseSucceed(() => DEFAULT_SERVER_SETTINGS));
+              const platform = yield* HostProcessPlatform;
+              const promptHook = yield* runAgentHooks({
+                settings: serverSettings.agentHooks,
+                processRunner,
+                platform,
+                payload: {
+                  event: "user_prompt_submit",
+                  cwd: ctx.cwd,
+                  prompt: renderAgentConversation(messages),
+                },
+              });
+              if (promptHook.deny) {
+                const reply = promptHook.reason ?? "Blocked by an agent hook.";
+                ctx.history.push({ role: "assistant", content: reply });
+                yield* completeLocalReply(ctx, turnId, reply);
+                return;
+              }
+              const memoryGuidance = serverSettings.agentMemory.enabled
+                ? yield* loadMemoryForPrompt(serverSettings.agentMemory, ctx.cwd).pipe(
+                    Effect.provideService(FileSystem.FileSystem, fileSystem),
+                    Effect.provideService(Path.Path, path),
+                    Effect.orElseSucceed(() => ""),
+                  )
+                : "";
+              const nextSystemPrompt = [
+                systemPrompt,
+                ...(memoryGuidance.trim().length === 0 ? [] : [memoryGuidance]),
+                ...(promptHook.extra === undefined ? [] : [`Hook context:\n${promptHook.extra}`]),
+              ].join("\n\n");
+              const outcome = yield* runTurn(
+                ctx,
+                turnId,
+                adapter,
+                messages,
+                nextSystemPrompt,
+                reasoningEffort,
+              );
+              // 与 agent loop 收口同序：turn.completed 之后补发观察性的 stop
+              // 钩子，结果忽略，只作通知。
+              yield* runAgentHooks({
+                settings: serverSettings.agentHooks,
+                processRunner,
+                platform,
+                payload: { event: "stop", cwd: ctx.cwd },
+              }).pipe(Effect.ignore);
+              return outcome;
+            })
       ).pipe(
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, path),

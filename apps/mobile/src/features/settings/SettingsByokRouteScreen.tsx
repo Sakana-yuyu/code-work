@@ -36,6 +36,7 @@ import {
   buildByokAdapter,
   createByokProviderInstance,
   DEFAULT_BYOK_PROMPT_TEMPLATE,
+  DEFAULT_CONTEXT_WINDOW_TOKENS,
   normalizeByokInstanceId,
   patchByokConfig,
   readByokConfigRecord,
@@ -275,6 +276,7 @@ function ByokInstanceCard(props: {
   readonly onSave: (instance: ProviderInstanceConfig) => Promise<boolean>;
   readonly onDelete: () => void;
 }) {
+  const navigation = useNavigation();
   const config = readByokConfigRecord(props.instance.config);
   const adapters = readByokModelAdapters(config);
   const promptTemplate = readByokPromptTemplate(config);
@@ -322,6 +324,9 @@ function ByokInstanceCard(props: {
     reportFailure: false,
   });
   const matchContextWindowsCommand = useAtomCommand(byokEnvironment.matchContextWindows, {
+    reportFailure: false,
+  });
+  const catalogLookupCommand = useAtomCommand(byokEnvironment.catalogModelLookup, {
     reportFailure: false,
   });
   const balanceCommand = useAtomCommand(byokEnvironment.balance, { reportFailure: false });
@@ -557,6 +562,32 @@ function ByokInstanceCard(props: {
       setMatchingAdapterId(null);
     },
     [adapters, matchContextWindowsCommand, props.environmentId, props.instanceId, updateConfig],
+  );
+
+  // 手动输入模型 ID 后按内置目录回填窗口/最大输出：表单仍是默认 128000、
+  // 最大输出留空才替换，用户显式值不覆盖——与 web 端手动填模型同一语义，
+  // 添加时即识别上下文，不必保存后再点「自动匹配上下文」。
+  const fillModelCapabilities = useCallback(
+    async (modelId: string) => {
+      const trimmed = modelId.trim();
+      if (trimmed.length === 0) return;
+      const result = await catalogLookupCommand({
+        environmentId: props.environmentId,
+        input: { modelId: trimmed },
+      });
+      if (result._tag === "Failure") return;
+      setAdapterForm((current) => ({
+        ...current,
+        ...(result.value.contextWindowTokens !== undefined &&
+        current.contextWindowTokens.trim() === String(DEFAULT_CONTEXT_WINDOW_TOKENS)
+          ? { contextWindowTokens: String(result.value.contextWindowTokens) }
+          : {}),
+        ...(result.value.maxOutputTokens !== undefined && current.maxOutputTokens.trim() === ""
+          ? { maxOutputTokens: String(result.value.maxOutputTokens) }
+          : {}),
+      }));
+    },
+    [catalogLookupCommand, props.environmentId],
   );
 
   const queryBalance = useCallback(
@@ -802,10 +833,48 @@ function ByokInstanceCard(props: {
                 : {}),
             }))
           }
+          onModelIdSettled={(modelId) => void fillModelCapabilities(modelId)}
           onSave={() => void saveAdapter()}
           onCancel={closeAdapterEditor}
         />
       )}
+
+      <SettingsSection title={t("byokMobile.toolsTitle")} card>
+        <Pressable
+          accessibilityRole="button"
+          className="flex-row items-center justify-between p-4"
+          onPress={() =>
+            navigation.navigate("SettingsSheet", {
+              screen: "SettingsContent",
+              params: { screen: "SettingsMcp" },
+            })
+          }
+        >
+          <View className="min-w-0 flex-1 gap-1">
+            <Text className="text-lg text-foreground">{t("mcpMobile.title")}</Text>
+            <Text className="text-sm text-foreground-muted">{t("byokMobile.mcpHint")}</Text>
+          </View>
+        </Pressable>
+        <View className="border-t border-border/40 p-4">
+          <Text className="text-lg text-foreground">{t("byokMobile.skillsTitle")}</Text>
+          <Text className="mt-1 text-sm text-foreground-muted">{t("byokMobile.skillsHint")}</Text>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          className="flex-row items-center justify-between border-t border-border/40 p-4"
+          onPress={() =>
+            navigation.navigate("SettingsSheet", {
+              screen: "SettingsContent",
+              params: { screen: "SettingsAgentTools" },
+            })
+          }
+        >
+          <View className="min-w-0 flex-1 gap-1">
+            <Text className="text-lg text-foreground">{t("agentToolsMobile.title")}</Text>
+            <Text className="text-sm text-foreground-muted">{t("byokMobile.agentToolsHint")}</Text>
+          </View>
+        </Pressable>
+      </SettingsSection>
 
       <SettingsSection title={t("byokMobile.promptTitle")} card>
         <View className="gap-3 p-4">
@@ -1077,6 +1146,7 @@ function AdapterEditor(props: {
   readonly onChange: (patch: Partial<MobileByokAdapterForm>) => void;
   readonly onDiscover: () => void;
   readonly onSelectModel: (model: ByokDiscoveredModel) => void;
+  readonly onModelIdSettled: (modelId: string) => void;
   readonly onSave: () => void;
   readonly onCancel: () => void;
 }) {
@@ -1182,6 +1252,8 @@ function AdapterEditor(props: {
         <TextInput
           value={props.form.modelId}
           onChangeText={(modelId) => props.onChange({ modelId })}
+          // 输完模型名离开输入框时按内置目录识别上下文，落在表单上而不是保存后。
+          onEndEditing={() => props.onModelIdSettled(props.form.modelId)}
           editable={!props.disabled}
           autoCapitalize="none"
           autoCorrect={false}

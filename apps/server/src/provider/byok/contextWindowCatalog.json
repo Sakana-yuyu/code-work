@@ -1,6 +1,6 @@
 {
   "_comment": "模型上下文目录（与 cursor-byok internal/modelcontext/models.json 保持同步，仅保留 Code Work 用到的字段：上下文窗口、最大输出、视觉能力）。first-match-wins：pattern 按数组顺序匹配，越靠前优先级越高。pattern 经 normalizeModelID 处理后再匹配（小写、去 models/ 前缀、空格/下划线转连字符）。",
-  "_source": "cursor-byok models.json + 本仓库 deepseek 补充 + 2026-09 官方发布核对（Fable/Mythos 5.1、GPT-6 Astra、Gemini 3.8 Flash、DeepSeek V4.1-Flash、Grok 4.6、Qwen3.8-Max）；2026-09-20 按 api-docs.deepseek.com 当前阵容复核：deepseek-flash=V4.1-Flash（1M/384K/视觉）、deepseek-v4-pro GA=1M/384K、V4 系列 384K 输出、deepseek-v4-flash 已并入 V4.1-Flash",
+  "_source": "cursor-byok models.json + 本仓库 deepseek 补充 + 2026-09 官方发布核对（Fable/Mythos 5.1、GPT-6 Astra、Gemini 3.8 Flash、DeepSeek V4.1-Flash、Grok 4.6、Qwen3.8-Max）；2026-09-20 按 api-docs.deepseek.com 当前阵容复核：deepseek-flash=V4.1-Flash（1M/384K/视觉）、deepseek-v4-pro GA=1M/384K、V4 系列 384K 输出、deepseek-v4-flash 已并入 V4.1-Flash；2026-10-09 按 platform.claude.com 官方核对：Opus 5.5（09-22）/Sonnet 5.5（09-28）/Haiku 5.5（10-07）均为 1M/128K、补 Opus 5（1M/128K）、Kimi K3 上下文按 platform.kimi.com 修正为 1M/131072；同日按 platform.minimax.cn / platform.stepfun.com 官方文档核对：补 MiniMax M3.1-Flash-Preview（1M/原生多模态）、M3 修正为视觉 true、M2.7 系窗口修正为 204800、补阶跃 Step 5 Preview（1M/视觉）与 step-5-preview-free（200K/32K）、Step 3.7 Flash（256K/视觉）、Step 3.5 Flash（256K/纯文本）",
   "rules": [
     {
       "pattern": "^gpt-?6(?:-|$)",
@@ -33,6 +33,37 @@
       "maxOutputTokens": 128000,
       "supportsVision": true,
       "reasoningEfforts": ["low", "medium", "high"]
+    },
+    {
+      "pattern": "^(?:claude-)?opus-?5[.-]?5(?:-|$)|^claude-5[.-]?5-opus(?:-|$)",
+      "displayName": "Claude Opus 5.5",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "supportsVision": true,
+      "reasoningEfforts": ["low", "medium", "high", "max"]
+    },
+    {
+      "pattern": "^(?:claude-)?sonnet-?5[.-]?5(?:-|$)|^claude-5[.-]?5-sonnet(?:-|$)",
+      "displayName": "Claude Sonnet 5.5",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^(?:claude-)?haiku-?5[.-]?5(?:-|$)|^claude-5[.-]?5-haiku(?:-|$)",
+      "displayName": "Claude Haiku 5.5",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "supportsVision": true,
+      "reasoningEfforts": ["low", "medium", "high"]
+    },
+    {
+      "pattern": "^(?:claude-)?opus-?5(?:-|$)|^claude-5-opus(?:-|$)",
+      "displayName": "Claude Opus 5",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "supportsVision": true,
+      "reasoningEfforts": ["low", "medium", "high", "max"]
     },
     {
       "pattern": "^deepseek-?v?4[.-]?1-?flash(?:-|$)",
@@ -326,16 +357,16 @@
     },
     {
       "pattern": "^kimi-?3(?:-|\\.|$)",
-      "displayName": "Kimi 3.0",
-      "contextWindowTokens": 256000,
-      "maxOutputTokens": 16384,
+      "displayName": "Kimi K3",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 131072,
       "supportsVision": true
     },
     {
       "pattern": "^kimi-?k3(?:-|\\.|$)",
-      "displayName": "Kimi K3",
-      "contextWindowTokens": 256000,
-      "maxOutputTokens": 16384,
+      "displayName": "Kimi K3（官方 ID kimi-k3）",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 131072,
       "supportsVision": true
     },
     {
@@ -549,23 +580,29 @@
       "supportsVision": true
     },
     {
+      "pattern": "^minimax-?m3[.-]?1-?flash(?:-|$)",
+      "displayName": "MiniMax M3.1-Flash-Preview",
+      "contextWindowTokens": 1000000,
+      "supportsVision": true
+    },
+    {
       "pattern": "^minimax-m3(?:-|$)",
       "displayName": "MiniMax-M3",
       "contextWindowTokens": 1000000,
       "maxOutputTokens": 16384,
-      "supportsVision": false
+      "supportsVision": true
     },
     {
       "pattern": "^minimax-m2[.-]?7-highspeed(?:-|$)",
       "displayName": "MiniMax-M2.7-highspeed",
-      "contextWindowTokens": 1000000,
+      "contextWindowTokens": 204800,
       "maxOutputTokens": 16384,
       "supportsVision": false
     },
     {
       "pattern": "^minimax-m2[.-]?7(?:-|$)",
       "displayName": "MiniMax-M2.7",
-      "contextWindowTokens": 1000000,
+      "contextWindowTokens": 204800,
       "maxOutputTokens": 16384,
       "supportsVision": false
     },
@@ -574,6 +611,31 @@
       "displayName": "MiniMax",
       "contextWindowTokens": 256000,
       "maxOutputTokens": 8192,
+      "supportsVision": false
+    },
+    {
+      "pattern": "^step-?5-?preview-?free(?:-|$)",
+      "displayName": "Step 5 Preview Free",
+      "contextWindowTokens": 200000,
+      "maxOutputTokens": 32768,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^step-?5(?:-|$)",
+      "displayName": "Step 5 Preview",
+      "contextWindowTokens": 1000000,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^step-?3[.-]?7-?flash(?:-|$)",
+      "displayName": "Step 3.7 Flash",
+      "contextWindowTokens": 256000,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^step-?3[.-]?5-?flash(?:-|$)",
+      "displayName": "Step 3.5 Flash",
+      "contextWindowTokens": 256000,
       "supportsVision": false
     },
     {
