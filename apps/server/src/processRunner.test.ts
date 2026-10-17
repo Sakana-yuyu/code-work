@@ -319,6 +319,38 @@ describe("runProcess", () => {
     }),
   );
 
+  it.effect("keeps the process exit code when the stdin write hits EPIPE", () =>
+    Effect.gen(function* () {
+      // A hook that exits without reading stdin is legal; the write lands on
+      // a closed pipe and must not mask the hook's own exit code and output.
+      const epipe = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+      const stdinWriteFailure = PlatformError.systemError({
+        _tag: "Unknown",
+        module: "ChildProcess",
+        method: "fromWritable",
+        cause: epipe,
+      });
+      const spawner = makeSpawner(() =>
+        Effect.succeed(
+          makeHandle({
+            stderr: "boom",
+            code: 2,
+            stdin: Sink.forEach(() => Effect.fail(stdinWriteFailure)),
+          }),
+        ),
+      );
+
+      const result = yield* runWith(spawner)({
+        command: "fake",
+        args: ["deny-without-reading"],
+        stdin: `{"event":"user_prompt_submit"}\n`,
+      });
+
+      expect(result.code).toBe(2);
+      expect(result.stderr).toBe("boom");
+    }),
+  );
+
   it.effect("returns output for non-zero exit codes", () =>
     Effect.gen(function* () {
       const spawner = makeSpawner(() => Effect.succeed(makeHandle({ stderr: "boom", code: 2 })));

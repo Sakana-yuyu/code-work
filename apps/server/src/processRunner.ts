@@ -92,6 +92,11 @@ export class ProcessStdinError extends Schema.TaggedErrorClass<ProcessStdinError
   }
 }
 
+/** The wrapped write may sit one or two levels down (PlatformError → Node error). */
+const isEpipeCause = (value: unknown): boolean =>
+  value instanceof Error &&
+  (("code" in value && value.code === "EPIPE") || isEpipeCause(value.cause));
+
 export class ProcessOutputLimitError extends Schema.TaggedErrorClass<ProcessOutputLimitError>()(
   "ProcessOutputLimitError",
   {
@@ -346,6 +351,15 @@ const runProcessCore = Effect.fn("processRunner.runProcessCore")(function* (
                 stdinBytes: Buffer.byteLength(stdin),
                 cause,
               }),
+          ),
+          // EPIPE means the process exited without reading its input — a legal
+          // pattern for hooks that decide without inspecting the payload. The
+          // run then settles on the process's own exit code and output instead
+          // of a pipe error masking them.
+          Effect.catchIf(
+            (error): error is ProcessStdinError =>
+              Schema.is(ProcessStdinError)(error) && isEpipeCause(error.cause),
+            () => Effect.void,
           ),
         );
 
