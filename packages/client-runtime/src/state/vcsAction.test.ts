@@ -1,10 +1,13 @@
 import {
+  AuthStandardClientScopes,
   EnvironmentId,
   WS_METHODS,
+  type AuthSessionState,
   type GitActionProgressEvent,
   type GitRunStackedActionResult,
 } from "@codework/contracts";
 import { describe, expect, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -42,6 +45,28 @@ import {
   VcsActionUnavailableError,
 } from "./vcsAction.ts";
 import { vcsRefsCacheStateAtom } from "./vcsRefInvalidation.ts";
+
+// Scoped RPC commands authorize against the session grants before dispatch.
+// These tests exercise stacked-action transport and ref invalidation, not
+// permissions, so every environment reads as fully granted instead of waiting
+// out the session fetch.
+vi.mock("./session.ts", () => ({
+  createEnvironmentSessionAtoms: () => ({ sessionStateAtom: sessions }),
+}));
+const grantedSession: AuthSessionState = {
+  authenticated: true,
+  auth: {
+    policy: "remote-reachable",
+    bootstrapMethods: [],
+    sessionMethods: [],
+    sessionCookieName: "test",
+  },
+  scopes: [...AuthStandardClientScopes],
+  permissions: [...AuthStandardClientScopes],
+};
+const sessions = Atom.family((_id: EnvironmentId) =>
+  Atom.make<AsyncResult.AsyncResult<AuthSessionState, string>>(AsyncResult.success(grantedSession)),
+);
 
 const actionId = "action-123";
 const action = "commit_push" as const;

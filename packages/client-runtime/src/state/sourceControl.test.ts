@@ -1,9 +1,12 @@
 import {
+  AuthStandardClientScopes,
   EnvironmentId,
   WS_METHODS,
+  type AuthSessionState,
   type SourceControlPublishRepositoryResult,
 } from "@codework/contracts";
 import { describe, expect, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -24,6 +27,27 @@ import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import type { RpcSession } from "../rpc/session.ts";
 import { createSourceControlEnvironmentAtoms } from "./sourceControl.ts";
 import { vcsRefsCacheStateAtom } from "./vcsRefInvalidation.ts";
+
+// Scoped RPC commands authorize against the session grants before dispatch.
+// These tests exercise ref invalidation, not permissions, so every environment
+// reads as fully granted instead of waiting out the session fetch.
+vi.mock("./session.ts", () => ({
+  createEnvironmentSessionAtoms: () => ({ sessionStateAtom: sessions }),
+}));
+const grantedSession: AuthSessionState = {
+  authenticated: true,
+  auth: {
+    policy: "remote-reachable",
+    bootstrapMethods: [],
+    sessionMethods: [],
+    sessionCookieName: "test",
+  },
+  scopes: [...AuthStandardClientScopes],
+  permissions: [...AuthStandardClientScopes],
+};
+const sessions = Atom.family((_id: EnvironmentId) =>
+  Atom.make<AsyncResult.AsyncResult<AuthSessionState, string>>(AsyncResult.success(grantedSession)),
+);
 
 const TARGET = new PrimaryConnectionTarget({
   environmentId: EnvironmentId.make("environment-1"),
