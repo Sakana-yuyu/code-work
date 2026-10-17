@@ -419,14 +419,12 @@ const make = Effect.gen(function* () {
       timeoutMs: 300_000,
     });
     if (result.exitCode !== 0)
-      return yield* Effect.fail(
-        new GitCommandError({
-          operation: "StorageCleanup.cleanupGit",
-          command,
-          cwd,
-          detail: result.stderr.trim().split(/\r?\n/)[0]?.slice(0, 1000) || "command failed",
-        }),
-      );
+      return yield* new GitCommandError({
+        operation: "StorageCleanup.cleanupGit",
+        command,
+        cwd,
+        detail: result.stderr.trim().split(/\r?\n/)[0]?.slice(0, 1000) || "command failed",
+      });
   });
 
   // Sessions live in their thread's worktree; a still-open session on a live or
@@ -821,10 +819,11 @@ const make = Effect.gen(function* () {
       bytesFreed += entry.bytes ?? 0;
     }
     const priority = { failed: 0, removed: 1, kept: 2 };
+    const finishedAtMillis = yield* Clock.currentTimeMillis;
     const latestReport: StorageCleanupReport = {
       trigger,
-      startedAt: new Date(now).toISOString(),
-      finishedAt: new Date(yield* Clock.currentTimeMillis).toISOString(),
+      startedAt: DateTime.formatIso(DateTime.makeUnsafe(now)),
+      finishedAt: DateTime.formatIso(DateTime.makeUnsafe(finishedAtMillis)),
       entries: entries
         .sort((a, b) => priority[a.outcome] - priority[b.outcome])
         .slice(0, REPORT_ENTRY_LIMIT),

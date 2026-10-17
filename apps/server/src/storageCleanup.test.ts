@@ -7,6 +7,7 @@ import {
   ThreadId,
 } from "@codework/contracts";
 import { assert, describe, it } from "@effect/vitest";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -25,12 +26,16 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 
 const NOW = Date.parse("2026-10-01T00:00:00.000Z");
-// Relative to `NOW` for the pure helper tests; the service tests override
-// every timestamp anyway.
+// Service tests pin the test clock to WALL_CLOCK; pure helper tests use NOW.
+const WALL_CLOCK = Date.parse("2026-11-01T00:00:00.000Z");
 const isoDaysAgo = (days: number) =>
-  new Date(NOW - days * 86_400_000).toISOString() as OrchestrationThreadShell["createdAt"];
+  DateTime.formatIso(
+    DateTime.makeUnsafe(NOW - days * 86_400_000),
+  ) as OrchestrationThreadShell["createdAt"];
 const isoNow = (days: number) =>
-  new Date(Date.now() - days * 86_400_000).toISOString() as OrchestrationThreadShell["createdAt"];
+  DateTime.formatIso(
+    DateTime.makeUnsafe(WALL_CLOCK - days * 86_400_000),
+  ) as OrchestrationThreadShell["createdAt"];
 
 const makeThread = (
   id: string,
@@ -86,7 +91,7 @@ describe("storageCleanupThreadIdle", () => {
 
   it("rejects a queued prompt newer than the last turn within the grace window", () => {
     const thread = makeThread("t4", {
-      latestUserMessageAt: new Date(NOW - 30_000).toISOString() as never,
+      latestUserMessageAt: DateTime.formatIso(DateTime.makeUnsafe(NOW - 30_000)) as never,
       latestTurn: {
         turnId: "turn-1" as never,
         state: "completed",
@@ -186,7 +191,7 @@ describe("StorageCleanup service", () => {
       snapshotSequence: 1,
       projects: [project],
       threads,
-      updatedAt: new Date().toISOString(),
+      updatedAt: isoDaysAgo(0),
     };
     const sqlStub = ((strings: TemplateStringsArray, ..._values: unknown[]) =>
       strings.join("").includes("provider_session_runtime")
@@ -296,7 +301,7 @@ describe("StorageCleanup service", () => {
 
   it.effect("removes an eligible stale worktree and reports it", () =>
     Effect.gen(function* () {
-      yield* TestClock.setTime(Date.now());
+      yield* TestClock.setTime(WALL_CLOCK);
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const config = yield* ServerConfig.ServerConfig;
@@ -344,7 +349,7 @@ describe("StorageCleanup service", () => {
 
   it.effect("keeps a worktree whose thread is still running", () =>
     Effect.gen(function* () {
-      yield* TestClock.setTime(Date.now());
+      yield* TestClock.setTime(WALL_CLOCK);
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const config = yield* ServerConfig.ServerConfig;
@@ -389,7 +394,7 @@ describe("StorageCleanup service", () => {
 
   it.effect("removes a deleted thread's worktree when the rule is on", () =>
     Effect.gen(function* () {
-      yield* TestClock.setTime(Date.now());
+      yield* TestClock.setTime(WALL_CLOCK);
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const config = yield* ServerConfig.ServerConfig;
@@ -430,7 +435,7 @@ describe("StorageCleanup service", () => {
 
   it.effect("keeps a stale worktree that still has uncommitted changes", () =>
     Effect.gen(function* () {
-      yield* TestClock.setTime(Date.now());
+      yield* TestClock.setTime(WALL_CLOCK);
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const config = yield* ServerConfig.ServerConfig;
