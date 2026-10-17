@@ -3080,7 +3080,10 @@ it.layer(NodeServices.layer)("server settings", (it) => {
 
       for (let index = 0; index < 3; index += 1) {
         const settings = yield* serverSettings.getSettings;
-        assert.equal(settings.providerInstances[instanceId]?.environment[0]?.value, "memo-secret");
+        assert.equal(
+          settings.providerInstances[instanceId]?.environment?.[0]?.value,
+          "memo-secret",
+        );
       }
       assert.equal(
         getCalls.filter((name) => name === secretName).length,
@@ -3117,7 +3120,10 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         },
       });
       const settings = yield* serverSettings.getSettings;
-      assert.equal(settings.providerInstances[instanceId]?.environment[0]?.value, "second-secret");
+      assert.equal(
+        settings.providerInstances[instanceId]?.environment?.[0]?.value,
+        "second-secret",
+      );
       const readsAfterSecond = getCalls.filter((name) => name === secretName).length;
       // 一次写入 = 事务捕获旧值一次 + 新代次物化一次。
       assert.equal(readsAfterSecond, readsAfterFirst + 2);
@@ -3180,7 +3186,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         },
       });
       const warm = yield* serverSettings.getSettings;
-      assert.equal(warm.providerInstances[instanceId]?.environment[0]?.value, "retry-secret");
+      assert.equal(warm.providerInstances[instanceId]?.environment?.[0]?.value, "retry-secret");
 
       // 下一个代次的物化失败一次：提交已完成，但物化报错不得钉死 memo，
       // 恢复后的读取必须重新物化而不是沿用失败或旧值。
@@ -3200,7 +3206,10 @@ it.layer(NodeServices.layer)("server settings", (it) => {
 
       failSecretReads = false;
       const recovered = yield* serverSettings.getSettings;
-      assert.equal(recovered.providerInstances[instanceId]?.environment[0]?.value, "retry-secret");
+      assert.equal(
+        recovered.providerInstances[instanceId]?.environment?.[0]?.value,
+        "retry-secret",
+      );
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 });
