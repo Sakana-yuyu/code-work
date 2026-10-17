@@ -357,7 +357,7 @@ const McpAppModelContextLayerLive = McpAppModelContext.layer.pipe(
 
 const ProviderLayerLive = ProviderServiceLive.pipe(
   Layer.provide(ProviderAdapterRegistryLive),
-  Layer.provide(McpAppModelContextLayerLive),
+  Layer.provideMerge(McpAppModelContextLayerLive),
   Layer.provideMerge(ProviderSessionDirectoryLayerLive),
 );
 
