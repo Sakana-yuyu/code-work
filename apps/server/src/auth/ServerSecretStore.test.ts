@@ -261,43 +261,48 @@ it.layer(NodeServices.layer)("ServerSecretStore.layer", (it) => {
     }).pipe(Effect.provide(makeConcurrentCreateSecretStoreLayer())),
   );
 
-  it.effect("uses restrictive permissions for the secret directory and files", () =>
-    Effect.gen(function* () {
-      const chmodCalls: Array<{ readonly path: string; readonly mode: number }> = [];
-      const recordingFileSystemLayer = Layer.effect(
-        FileSystem.FileSystem,
-        Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
+  // POSIX mode bits: `path.join` emits `\` on Windows, where the `/secrets`
+  // suffix cannot match and chmod only maps the read-only bit, so the
+  // assertion describes a Unix-only contract.
+  it.effect.skipIf(process.platform === "win32")(
+    "uses restrictive permissions for the secret directory and files",
+    () =>
+      Effect.gen(function* () {
+        const chmodCalls: Array<{ readonly path: string; readonly mode: number }> = [];
+        const recordingFileSystemLayer = Layer.effect(
+          FileSystem.FileSystem,
+          Effect.gen(function* () {
+            const fileSystem = yield* FileSystem.FileSystem;
 
-          return {
-            ...fileSystem,
-            makeDirectory: () => Effect.void,
-            writeFile: () => Effect.void,
-            rename: () => Effect.void,
-            chmod: (path, mode) =>
-              Effect.sync(() => {
-                chmodCalls.push({ path: String(path), mode });
-              }),
-          } satisfies FileSystem.FileSystem;
-        }),
-      ).pipe(Layer.provide(NodeServices.layer));
+            return {
+              ...fileSystem,
+              makeDirectory: () => Effect.void,
+              writeFile: () => Effect.void,
+              rename: () => Effect.void,
+              chmod: (path, mode) =>
+                Effect.sync(() => {
+                  chmodCalls.push({ path: String(path), mode });
+                }),
+            } satisfies FileSystem.FileSystem;
+          }),
+        ).pipe(Layer.provide(NodeServices.layer));
 
-      const secretStore = yield* Effect.service(ServerSecretStore.ServerSecretStore).pipe(
-        Effect.provide(
-          ServerSecretStore.layer.pipe(
-            Layer.provide(makeServerConfigLayer()),
-            Layer.provideMerge(recordingFileSystemLayer),
+        const secretStore = yield* Effect.service(ServerSecretStore.ServerSecretStore).pipe(
+          Effect.provide(
+            ServerSecretStore.layer.pipe(
+              Layer.provide(makeServerConfigLayer()),
+              Layer.provideMerge(recordingFileSystemLayer),
+            ),
           ),
-        ),
-      );
+        );
 
-      yield* secretStore.set("session-signing-key", Uint8Array.from([1, 2, 3]));
+        yield* secretStore.set("session-signing-key", Uint8Array.from([1, 2, 3]));
 
-      assert.isTrue(
-        chmodCalls.some((call) => call.mode === 0o700 && call.path.endsWith("/secrets")),
-      );
-      assert.isAtLeast(chmodCalls.filter((call) => call.mode === 0o600).length, 2);
-    }).pipe(Effect.provide(NodeServices.layer)),
+        assert.isTrue(
+          chmodCalls.some((call) => call.mode === 0o700 && call.path.endsWith("/secrets")),
+        );
+        assert.isAtLeast(chmodCalls.filter((call) => call.mode === 0o600).length, 2);
+      }).pipe(Effect.provide(NodeServices.layer)),
   );
 
   it.effect("propagates read failures other than missing-file errors", () =>
