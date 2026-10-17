@@ -12,6 +12,8 @@ import { t } from "./i18n.js";
 
 exposeClerkBridge({ passkeys: true });
 
+let clientPlatform: string | undefined;
+
 function unwrapEnsureSshEnvironmentResult(result: unknown) {
   if (
     typeof result === "object" &&
@@ -114,7 +116,12 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   openExternal: (url: string) => ipcRenderer.invoke(IpcChannels.OPEN_EXTERNAL_CHANNEL, url),
   probeRemoteEditors: () => ipcRenderer.invoke(IpcChannels.PROBE_REMOTE_EDITORS_CHANNEL, undefined),
   updateTrayRecents: (items) => ipcRenderer.invoke(IpcChannels.UPDATE_TRAY_RECENTS_CHANNEL, items),
-  getClientPlatform: () => process.platform,
+  getClientPlatform: () => {
+    // The renderer only needs the platform to pick a badge style; ask the
+    // main process (which owns HostProcessPlatform) once and cache it.
+    clientPlatform ??= ipcRenderer.sendSync(IpcChannels.GET_CLIENT_PLATFORM_CHANNEL) as string;
+    return clientPlatform;
+  },
   setNotificationBadge: (badge) =>
     ipcRenderer.invoke(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, badge),
   onNotificationBadgeClear: (listener) => {

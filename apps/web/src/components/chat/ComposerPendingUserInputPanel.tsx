@@ -7,6 +7,7 @@ import {
 } from "../../pendingUserInput";
 import { CheckIcon, ChevronDownIcon, XIcon } from "lucide-react";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { t } from "~/i18n";
 
@@ -222,16 +223,22 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         {/* Closing without answering resolves the request with empty answers —
             a deliberate "no answer" that unblocks the agent, distinct from
             collapsing, which only hides the card while it stays pending. */}
-        <button
-          type="button"
-          title={t("dismissUserInputQuestion")}
-          aria-label={t("dismissUserInputQuestion")}
-          disabled={isResponding}
-          onClick={onDismiss}
-          className="-my-1 shrink-0 rounded-md p-1.5 text-secondary-label outline-none transition-colors duration-150 hover:bg-muted/35 hover:text-foreground/85 focus-visible:ring-1 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <XIcon aria-hidden="true" className="size-3.5" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={t("dismissUserInputQuestion")}
+                disabled={isResponding}
+                onClick={onDismiss}
+                className="-my-1 shrink-0 rounded-md p-1.5 text-secondary-label outline-none transition-colors duration-150 hover:bg-muted/35 hover:text-foreground/85 focus-visible:ring-1 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            }
+          >
+            <XIcon aria-hidden="true" className="size-3.5" />
+          </TooltipTrigger>
+          <TooltipPopup side="top">{t("dismissUserInputQuestion")}</TooltipPopup>
+        </Tooltip>
       </div>
       {/* The panel carries the horizontal padding itself: it clips its content
           while the height animates, so the option buttons have to sit inside

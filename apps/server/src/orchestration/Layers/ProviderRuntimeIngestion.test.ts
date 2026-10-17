@@ -5939,99 +5939,109 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
-  it("mirrors provider-native goal reports into the thread goal store", async () => {
-    const harness = await createHarness();
-    const now = "2026-01-01T00:00:00.000Z";
-    const emitGoal = (eventId: string, goal: object | null) =>
+  effectIt.effect("mirrors provider-native goal reports into the thread goal store", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const now = "2026-01-01T00:00:00.000Z";
+      const emitGoal = (eventId: string, goal: object | null) =>
+        harness.emit({
+          type: "thread.goal.updated",
+          eventId: asEventId(eventId),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: now,
+          threadId: asThreadId("thread-1"),
+          payload: { goal },
+        } as unknown as ProviderRuntimeEvent);
+
+      emitGoal("evt-goal-set", {
+        objective: "ship the port",
+        status: "active",
+        tokensUsed: 40,
+        tokenBudget: 5000,
+      });
+      yield* Effect.promise(harness.drain);
+      let goal = yield* harness.goalStore.get(ThreadId.make("thread-1"));
+      expect(Option.isSome(goal)).toBe(true);
+      if (Option.isNone(goal)) throw new Error("expected a mirrored goal");
+      expect(goal.value.objective).toBe("ship the port");
+      expect(goal.value.status).toBe("active");
+      expect(goal.value.providerNative).toBe(true);
+      expect(goal.value.tokensUsed).toBe(40);
+      expect(goal.value.tokenBudget).toBe(5000);
+
+      emitGoal("evt-goal-paused", {
+        objective: "ship the port",
+        status: "paused",
+        tokensUsed: 80,
+      });
+      yield* Effect.promise(harness.drain);
+      goal = yield* harness.goalStore.get(ThreadId.make("thread-1"));
+      if (Option.isNone(goal)) throw new Error("expected the mirrored goal");
+      expect(goal.value.status).toBe("paused");
+      expect(goal.value.tokensUsed).toBe(80);
+
+      emitGoal("evt-goal-cleared", null);
+      yield* Effect.promise(harness.drain);
+      goal = yield* harness.goalStore.get(ThreadId.make("thread-1"));
+      expect(Option.isNone(goal)).toBe(true);
+    }),
+  );
+
+  effectIt.effect("leaves a Code Work-local goal untouched by provider clear reports", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      yield* harness.goalStore.set({
+        threadId: ThreadId.make("thread-1"),
+        objective: "local goal",
+      });
+
       harness.emit({
         type: "thread.goal.updated",
-        eventId: asEventId(eventId),
+        eventId: asEventId("evt-goal-clear-foreign"),
         provider: ProviderDriverKind.make("codex"),
-        createdAt: now,
+        createdAt: "2026-01-01T00:00:00.000Z",
         threadId: asThreadId("thread-1"),
-        payload: { goal },
-      } as unknown as ProviderRuntimeEvent);
+        payload: { goal: null },
+      });
+      yield* Effect.promise(harness.drain);
 
-    emitGoal("evt-goal-set", {
-      objective: "ship the port",
-      status: "active",
-      tokensUsed: 40,
-      tokenBudget: 5000,
-    });
-    await harness.drain();
-    let goal = await Effect.runPromise(harness.goalStore.get(ThreadId.make("thread-1")));
-    expect(Option.isSome(goal)).toBe(true);
-    if (Option.isNone(goal)) throw new Error("expected a mirrored goal");
-    expect(goal.value.objective).toBe("ship the port");
-    expect(goal.value.status).toBe("active");
-    expect(goal.value.providerNative).toBe(true);
-    expect(goal.value.tokensUsed).toBe(40);
-    expect(goal.value.tokenBudget).toBe(5000);
+      const goal = yield* harness.goalStore.get(ThreadId.make("thread-1"));
+      if (Option.isNone(goal)) throw new Error("expected the local goal to survive");
+      expect(goal.value.objective).toBe("local goal");
+      expect(goal.value.providerNative).not.toBe(true);
+    }),
+  );
 
-    emitGoal("evt-goal-paused", {
-      objective: "ship the port",
-      status: "paused",
-      tokensUsed: 80,
-    });
-    await harness.drain();
-    goal = await Effect.runPromise(harness.goalStore.get(ThreadId.make("thread-1")));
-    if (Option.isNone(goal)) throw new Error("expected the mirrored goal");
-    expect(goal.value.status).toBe("paused");
-    expect(goal.value.tokensUsed).toBe(80);
+  effectIt.effect(
+    "promotes a local goal row to provider-native when the provider reports the same objective",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() => createHarness());
+        const local = yield* harness.goalStore.set({
+          threadId: ThreadId.make("thread-1"),
+          objective: "shared objective",
+        });
 
-    emitGoal("evt-goal-cleared", null);
-    await harness.drain();
-    goal = await Effect.runPromise(harness.goalStore.get(ThreadId.make("thread-1")));
-    expect(Option.isNone(goal)).toBe(true);
-  });
+        harness.emit({
+          type: "thread.goal.updated",
+          eventId: asEventId("evt-goal-adopt"),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          threadId: asThreadId("thread-1"),
+          payload: {
+            goal: { objective: "shared objective", status: "paused", tokensUsed: 12 },
+          },
+        });
+        yield* Effect.promise(harness.drain);
 
-  it("leaves a Code Work-local goal untouched by provider clear reports", async () => {
-    const harness = await createHarness();
-    await Effect.runPromise(
-      harness.goalStore.set({ threadId: ThreadId.make("thread-1"), objective: "local goal" }),
-    );
-
-    harness.emit({
-      type: "thread.goal.updated",
-      eventId: asEventId("evt-goal-clear-foreign"),
-      provider: ProviderDriverKind.make("codex"),
-      createdAt: "2026-01-01T00:00:00.000Z",
-      threadId: asThreadId("thread-1"),
-      payload: { goal: null },
-    });
-    await harness.drain();
-
-    const goal = await Effect.runPromise(harness.goalStore.get(ThreadId.make("thread-1")));
-    if (Option.isNone(goal)) throw new Error("expected the local goal to survive");
-    expect(goal.value.objective).toBe("local goal");
-    expect(goal.value.providerNative).not.toBe(true);
-  });
-
-  it("promotes a local goal row to provider-native when the provider reports the same objective", async () => {
-    const harness = await createHarness();
-    const local = await Effect.runPromise(
-      harness.goalStore.set({ threadId: ThreadId.make("thread-1"), objective: "shared objective" }),
-    );
-
-    harness.emit({
-      type: "thread.goal.updated",
-      eventId: asEventId("evt-goal-adopt"),
-      provider: ProviderDriverKind.make("codex"),
-      createdAt: "2026-01-01T00:00:00.000Z",
-      threadId: asThreadId("thread-1"),
-      payload: {
-        goal: { objective: "shared objective", status: "paused", tokensUsed: 12 },
-      },
-    });
-    await harness.drain();
-
-    const goal = await Effect.runPromise(harness.goalStore.get(ThreadId.make("thread-1")));
-    if (Option.isNone(goal)) throw new Error("expected the promoted native goal");
-    expect(goal.value.goalId).not.toBe(local.goalId);
-    expect(goal.value.providerNative).toBe(true);
-    expect(goal.value.status).toBe("paused");
-    expect(goal.value.tokensUsed).toBe(12);
-  });
+        const goal = yield* harness.goalStore.get(ThreadId.make("thread-1"));
+        if (Option.isNone(goal)) throw new Error("expected the promoted native goal");
+        expect(goal.value.goalId).not.toBe(local.goalId);
+        expect(goal.value.providerNative).toBe(true);
+        expect(goal.value.status).toBe("paused");
+        expect(goal.value.tokensUsed).toBe(12);
+      }),
+  );
 
   it("continues processing runtime events after a single event handler failure", async () => {
     const harness = await createHarness();

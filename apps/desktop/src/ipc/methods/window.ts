@@ -14,6 +14,7 @@ import {
   type PickedThemeFile,
 } from "@codework/contracts";
 import { WORKSPACE_IMAGE_PREVIEW_EXTENSIONS } from "@codework/shared/filePreview";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import { isCommandAvailable } from "@codework/shared/shell";
 import * as NodeOS from "node:os";
 import * as FileSystem from "effect/FileSystem";
@@ -75,6 +76,14 @@ export const getSystemLocale = DesktopIpc.makeSyncIpcMethod({
   handler: Effect.fn("desktop.ipc.window.getSystemLocale")(function* () {
     const electronApp = yield* ElectronApp.ElectronApp;
     return yield* electronApp.systemLocale;
+  }),
+});
+
+export const getClientPlatform = DesktopIpc.makeSyncIpcMethod({
+  channel: IpcChannels.GET_CLIENT_PLATFORM_CHANNEL,
+  result: Schema.String,
+  handler: Effect.fn("desktop.ipc.window.getClientPlatform")(function* () {
+    return yield* HostProcessPlatform;
   }),
 });
 

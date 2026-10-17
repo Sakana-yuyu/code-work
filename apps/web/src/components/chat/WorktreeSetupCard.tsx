@@ -18,6 +18,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { t } from "~/i18n";
 import { cn } from "~/lib/utils";
 
@@ -246,33 +247,45 @@ function SetupDetails({ snapshot }: { snapshot: WorktreeSetupSnapshot }) {
       {snapshot.branch ? (
         <>
           <dt className="text-foreground/80">{t("worktreeSetup.detail.branch")}</dt>
-          <dd className="min-w-0 truncate font-mono" title={snapshot.branch}>
-            {snapshot.branch}
-          </dd>
+          <Tooltip>
+            <TooltipTrigger render={<dd className="min-w-0 truncate font-mono" />}>
+              {snapshot.branch}
+            </TooltipTrigger>
+            <TooltipPopup side="top">{snapshot.branch}</TooltipPopup>
+          </Tooltip>
         </>
       ) : null}
       {snapshot.baseRef ? (
         <>
           <dt className="text-foreground/80">{t("worktreeSetup.detail.base")}</dt>
-          <dd className="min-w-0 truncate font-mono" title={snapshot.baseRef}>
-            {snapshot.baseRef}
-          </dd>
+          <Tooltip>
+            <TooltipTrigger render={<dd className="min-w-0 truncate font-mono" />}>
+              {snapshot.baseRef}
+            </TooltipTrigger>
+            <TooltipPopup side="top">{snapshot.baseRef}</TooltipPopup>
+          </Tooltip>
         </>
       ) : null}
       {snapshot.worktreePath ? (
         <>
           <dt className="text-foreground/80">{t("worktreeSetup.detail.path")}</dt>
-          <dd className="min-w-0 truncate font-mono" title={snapshot.worktreePath}>
-            {snapshot.worktreePath}
-          </dd>
+          <Tooltip>
+            <TooltipTrigger render={<dd className="min-w-0 truncate font-mono" />}>
+              {snapshot.worktreePath}
+            </TooltipTrigger>
+            <TooltipPopup side="top">{snapshot.worktreePath}</TooltipPopup>
+          </Tooltip>
         </>
       ) : null}
       {snapshot.setupScript ? (
         <>
           <dt className="text-foreground/80">{t("worktreeSetup.detail.setup")}</dt>
-          <dd className="truncate font-mono" title={snapshot.setupScript.command}>
-            {snapshot.setupScript.command}
-          </dd>
+          <Tooltip>
+            <TooltipTrigger render={<dd className="truncate font-mono" />}>
+              {snapshot.setupScript.command}
+            </TooltipTrigger>
+            <TooltipPopup side="top">{snapshot.setupScript.command}</TooltipPopup>
+          </Tooltip>
         </>
       ) : null}
     </dl>

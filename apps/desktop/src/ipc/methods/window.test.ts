@@ -11,10 +11,12 @@ import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import {
+  getClientPlatform,
   getLocalEnvironmentBootstraps,
   getWindowFullscreenState,
   pickProjectFavicon,
 } from "./window.ts";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 
 const readyWslConfig: DesktopBackendManager.DesktopBackendStartConfig = {
   executablePath: "wsl.exe",
@@ -54,6 +56,15 @@ const defaultWslInstance: DesktopBackendManager.DesktopBackendInstance = {
   }),
   waitForReady: () => Effect.succeed(true),
 };
+
+describe("getClientPlatform", () => {
+  it.effect("reports the injected host platform", () =>
+    Effect.gen(function* () {
+      const result = yield* getClientPlatform.handler();
+      assert.equal(result, "linux");
+    }).pipe(Effect.provideService(HostProcessPlatform, "linux")),
+  );
+});
 
 describe("getLocalEnvironmentBootstraps", () => {
   it.effect("publishes the concrete running distro without replacing the stable instance id", () =>

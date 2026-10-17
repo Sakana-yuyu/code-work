@@ -264,6 +264,7 @@ it.layer(NodeServices.layer)("ServerSecretStore.layer", (it) => {
   // POSIX mode bits: `path.join` emits `\` on Windows, where the `/secrets`
   // suffix cannot match and chmod only maps the read-only bit, so the
   // assertion describes a Unix-only contract.
+  // oxlint-disable-next-line codework/no-global-process-runtime -- the skip decision needs the real host platform, outside any Effect runtime.
   it.effect.skipIf(process.platform === "win32")(
     "uses restrictive permissions for the secret directory and files",
     () =>
