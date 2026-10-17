@@ -17,7 +17,7 @@ import type {
   ProviderAdapterMcpApps,
   ProviderAdapterShape,
 } from "../provider/Services/ProviderAdapter.ts";
-import { ProviderAdapterRegistry } from "../provider/Services/ProviderAdapterRegistry.ts";
+import * as ProviderService from "../provider/Services/ProviderService.ts";
 import { ProviderSessionDirectory } from "../provider/Services/ProviderSessionDirectory.ts";
 import { makeAdapterRegistryMock } from "../provider/testUtils/providerAdapterRegistryMock.ts";
 import * as McpAppModelContext from "./McpAppModelContext.ts";
@@ -84,7 +84,9 @@ const requestsLayer = it.layer(
     Layer.provide(McpAppModelContext.layerEmpty),
     Layer.provide(directoryLayer),
     Layer.provide(
-      Layer.succeed(ProviderAdapterRegistry, makeAdapterRegistryMock({ [PROVIDER]: adapter })),
+      Layer.mock(ProviderService.ProviderService)({
+        adapterRegistry: makeAdapterRegistryMock({ [PROVIDER]: adapter }),
+      }),
     ),
     Layer.provideMerge(SqlitePersistenceMemory),
   ),
