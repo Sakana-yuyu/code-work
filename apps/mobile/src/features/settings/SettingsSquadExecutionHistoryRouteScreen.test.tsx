@@ -104,6 +104,20 @@ vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ bottom: 0 }),
 }));
 
+// AppSymbol 的 iOS 分支值导入 expo-symbols，其内部会拉起 expo-font →
+// expo-modules-core（需要原生 globalThis.expo），Node 测试环境没有宿主。
+vi.mock("expo-symbols", () => ({ SymbolView: "ExpoSymbolView" }));
+
+// useThemeColor → uniwind 依赖 react-native 原生宿主，测试里只关心结构。
+vi.mock("../../lib/useThemeColor", () => ({ useThemeColor: () => "#808080" }));
+
+// state/presentation 会拉起整条 connection 运行时（lib/runtime → dpop →
+// expo-crypto/expo-secure-store），原生宿主在 Node 里不存在；本测试只
+// 关心执行历史面板，机器状态一律为空即可。
+vi.mock("../../state/presentation", () => ({
+  useEnvironmentMachines: () => [],
+}));
+
 vi.mock("../../components/AndroidScreenHeader", () => ({
   AndroidScreenHeader: () => null,
 }));
