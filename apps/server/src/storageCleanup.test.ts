@@ -333,6 +333,14 @@ describe("StorageCleanup service", () => {
         }),
         layer,
       );
+      console.log(
+        "DBG-REPORT-1",
+        JSON.stringify(
+          { counts: cleanup.counts, entries: cleanup.entries, trigger: cleanup.trigger },
+          null,
+          1,
+        ),
+      );
       assert.strictEqual(cleanup.counts.removed, 1);
       assert.strictEqual(cleanup.counts.failed, 0);
       assert.strictEqual(removedPaths.length, 1);
@@ -425,6 +433,10 @@ describe("StorageCleanup service", () => {
         }),
         layer,
       );
+      console.log(
+        "DBG-REPORT-2",
+        JSON.stringify({ counts: cleanup.counts, entries: cleanup.entries, removedPaths }, null, 1),
+      );
       assert.strictEqual(cleanup.counts.removed, 1);
       assert.strictEqual(removedPaths.length, 1);
     }).pipe(
@@ -468,6 +480,10 @@ describe("StorageCleanup service", () => {
       );
       assert.strictEqual(cleanup.counts.removed, 0);
       assert.strictEqual(removedPaths.length, 0);
+      console.log(
+        "DBG-REPORT-3",
+        JSON.stringify({ counts: cleanup.counts, entries: cleanup.entries, removedPaths }, null, 1),
+      );
       const kept = cleanup.entries.find((e) => e.outcome === "kept");
       assert.match(kept?.reason ?? "", /uncommitted changes/);
     }).pipe(
