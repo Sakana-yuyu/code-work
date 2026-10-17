@@ -2113,13 +2113,23 @@ it.layer(
           defaultClaudeSettings,
           claudeCapabilities(),
         );
-        assert.strictEqual(
-          status.models.some((model) => model.slug === "claude-opus-5"),
-          false,
+        // Gating lives in the manifest application the Claude driver runs on
+        // the probe draft, not in the probe itself.
+        const applied = ModelManifest.applyModelManifest(
+          status,
+          ModelManifest.BUNDLED_MODEL_MANIFEST,
+          ProviderDriverKind.make("claudeAgent"),
         );
         assert.strictEqual(
-          status.message,
-          "Claude Code v2.1.218 is too old for Claude Opus 5. Upgrade to v2.1.219 or newer to access it.",
+          applied.models.some((model) => model.slug === "claude-opus-5"),
+          false,
+        );
+        assert.deepStrictEqual(applied.updateRequiredModels, [
+          { slug: "claude-opus-5", name: "Claude Opus 5", minVersion: "2.1.219" },
+        ]);
+        assert.strictEqual(
+          applied.message,
+          "Update Claude Code to v2.1.219 or newer to use Claude Opus 5.",
         );
       }).pipe(
         Effect.provide(
@@ -2169,13 +2179,24 @@ it.layer(
           defaultClaudeSettings,
           claudeCapabilities(),
         );
-        assert.strictEqual(
-          status.models.some((model) => model.slug === "claude-fable-5"),
-          false,
+        const applied = ModelManifest.applyModelManifest(
+          status,
+          ModelManifest.BUNDLED_MODEL_MANIFEST,
+          ProviderDriverKind.make("claudeAgent"),
         );
         assert.strictEqual(
-          status.message,
-          "Claude Code v2.1.168 is too old for Claude Fable 5. Upgrade to v2.1.169 or newer to access it.",
+          applied.models.some((model) => model.slug === "claude-fable-5"),
+          false,
+        );
+        // Opus 5 gates behind a newer CLI than Fable 5, so both are announced;
+        // the message names the lowest gate a user upgrades toward first.
+        assert.deepStrictEqual(applied.updateRequiredModels, [
+          { slug: "claude-fable-5", name: "Claude Fable 5", minVersion: "2.1.169" },
+          { slug: "claude-opus-5", name: "Claude Opus 5", minVersion: "2.1.219" },
+        ]);
+        assert.strictEqual(
+          applied.message,
+          "Update Claude Code to v2.1.169 or newer to use Claude Fable 5.",
         );
       }).pipe(
         Effect.provide(
@@ -2243,13 +2264,24 @@ it.layer(
           defaultClaudeSettings,
           claudeCapabilities(),
         );
+        const applied = ModelManifest.applyModelManifest(
+          status,
+          ModelManifest.BUNDLED_MODEL_MANIFEST,
+          ProviderDriverKind.make("claudeAgent"),
+        );
+        // Opus 4.7 is a legacy entry, so it gates out silently while the
+        // announcement still names the current-generation gates.
         assert.strictEqual(
-          status.models.some((model) => model.slug === "claude-opus-4-7"),
+          applied.models.some((model) => model.slug === "claude-opus-4-7"),
           false,
         );
+        assert.deepStrictEqual(applied.updateRequiredModels, [
+          { slug: "claude-fable-5", name: "Claude Fable 5", minVersion: "2.1.169" },
+          { slug: "claude-opus-5", name: "Claude Opus 5", minVersion: "2.1.219" },
+        ]);
         assert.strictEqual(
-          status.message,
-          "Claude Code v2.1.110 is too old for Claude Opus 4.7. Upgrade to v2.1.111 or newer to access it.",
+          applied.message,
+          "Update Claude Code to v2.1.169 or newer to use Claude Fable 5.",
         );
       }).pipe(
         Effect.provide(
