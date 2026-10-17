@@ -197,7 +197,7 @@ const desktopApplicationLayer = Layer.mergeAll(
   DesktopLinuxUrlHandler.layer,
   DesktopShellEnvironment.layer,
   desktopSshLayer,
-  DesktopDeepLinks.layer.pipe(Layer.provideMerge(electronLayer)),
+  DesktopDeepLinks.layer,
 ).pipe(
   Layer.provideMerge(DesktopUpdates.layer),
   Layer.provideMerge(desktopWslBackendLayer),
