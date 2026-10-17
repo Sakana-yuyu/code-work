@@ -65,7 +65,11 @@ describe("ComposerPendingUserInputPanel", () => {
     const markup = renderPanel();
 
     const label = t("dismissUserInputQuestion");
-    expect(markup).toContain(`aria-label="${label}"`);
-    expect(markup).toContain(`title="${label}"`);
+    const dismiss = markup.match(new RegExp(`<button[^>]*aria-label="${label}"[^>]*>`))?.[0];
+    expect(dismiss).toBeDefined();
+    expect(dismiss).toContain(`aria-label="${label}"`);
+    // The accessible label stays on the button; the hint moved into a Tooltip.
+    expect(dismiss).toContain("data-base-ui-tooltip-trigger");
+    expect(markup).not.toContain(`title="${label}"`);
   });
 });

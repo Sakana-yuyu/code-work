@@ -66,6 +66,7 @@ describe("UsageSubscriptionPanel", () => {
       hasData: false,
       isPending: true,
       environmentsCount: 1,
+      instanceLabel: () => undefined,
       refresh: () => {},
     });
     expect(renderToStaticMarkup(<UsageSubscriptionPanel />)).toBe("");
@@ -75,6 +76,7 @@ describe("UsageSubscriptionPanel", () => {
       hasData: false,
       isPending: false,
       environmentsCount: 1,
+      instanceLabel: () => undefined,
       refresh: () => {},
     });
     expect(renderToStaticMarkup(<UsageSubscriptionPanel />)).toBe("");
@@ -89,6 +91,7 @@ describe("UsageSubscriptionPanel", () => {
       hasData: true,
       isPending: false,
       environmentsCount: 1,
+      instanceLabel: () => undefined,
       refresh: () => {},
     });
 
@@ -98,8 +101,10 @@ describe("UsageSubscriptionPanel", () => {
     expect(markup).toContain("Claude Code");
     expect(markup).toContain("usageAccountQuota.window.fiveHours");
     expect(markup).toContain("usageAccountQuota.window.sevenDays");
-    expect(markup).toContain("42%");
-    expect(markup).toContain("90%");
+    // The bars show how much of each window is left, so the exhausted
+    // windows render their remainders (58% / 10%) rather than usage.
+    expect(markup).toContain("58%");
+    expect(markup).toContain("10%");
     expect(markup).toContain("bg-amber-500");
     expect(markup).toContain("text-amber-500");
     expect(markup).toContain("usageAccountQuota.resetsAt");

@@ -26,6 +26,25 @@ vi.mock("~/state/use-atom-command", () => ({
 vi.mock("./ui/toast", () => ({
   toastManager: { add: testState.toast },
 }));
+// The action gates on the environment's session grants, both for rendering
+// and again in the handler through the shared registry. These tests drive
+// the update flow itself, so the session always reads as granted.
+const grantedSession = () =>
+  AsyncResult.success({
+    authenticated: true,
+    auth: {
+      policy: "remote-reachable",
+      bootstrapMethods: [],
+      sessionMethods: [],
+      sessionCookieName: "test",
+    },
+    scopes: ["environment:maintain"],
+    permissions: ["environment:maintain"],
+  });
+vi.mock("@effect/atom-react", () => ({ useAtomValue: () => grantedSession() }));
+vi.mock("~/rpc/atomRegistry", () => ({
+  appAtomRegistry: { get: () => grantedSession() },
+}));
 
 import { ServerUpdateAction, ServerUpdateProgress } from "./ServerUpdateAction";
 

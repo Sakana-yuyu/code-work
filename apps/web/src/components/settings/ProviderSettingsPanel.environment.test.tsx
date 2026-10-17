@@ -109,6 +109,7 @@ vi.mock("../../hooks/useSettings", () => ({
     settingsState.updateFailureHandler = onServerUpdateFailure ?? null;
     return settingsState.updateSettings;
   },
+  useUpdateEnvironmentModelPreferences: () => async () => {},
 }));
 
 vi.mock("../../environments/primary", () => ({
