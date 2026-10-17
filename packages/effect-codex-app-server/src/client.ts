@@ -78,11 +78,12 @@ export class CodexAppServerClient extends Context.Service<
   }
 >()("effect-codex-app-server/client/CodexAppServerClient") {}
 
-// The generated `turn/start` schema predates `additionalContext` (MCP App
-// context rides it); encode through the widened shape so the field is not
-// stripped on the wire.
+// The generated `turn/start` schema predates `collaborationMode` and
+// `additionalContext` (MCP App context rides the latter); encode through the
+// widened shape so neither field is stripped on the wire.
 const V2TurnStartParamsWithCollaborationMode = CodexSchema.V2TurnStartParams.pipe(
   Schema.fieldsAssign({
+    collaborationMode: Schema.optionalKey(CodexSchema.V2TurnStartParams__CollaborationMode),
     additionalContext: Schema.optionalKey(
       Schema.Record(Schema.String, CodexSchema.V2TurnStartParams__AdditionalContextEntry),
     ),
