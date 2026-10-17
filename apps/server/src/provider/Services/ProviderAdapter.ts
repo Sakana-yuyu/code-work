@@ -12,6 +12,8 @@ import type {
   ProviderApprovalDecision,
   CompositionRuntimeCapabilityHandshakeRequest,
   CompositionRuntimeCapabilityHandshakeResult,
+  McpAppCallToolResult,
+  McpAppReadResourceResult,
   ProviderDriverKind,
   ProviderUserInputAnswers,
   ProviderRuntimeEvent,
@@ -27,7 +29,42 @@ import type {
 } from "@codework/contracts";
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
-import type { ProviderAdapterRequestError } from "../Errors.ts";
+import type { ProviderAdapterError, ProviderAdapterRequestError } from "../Errors.ts";
+
+/**
+ * A tool as one MCP server declares it (ext-apps spec 2026-01-26). The host
+ * sends `tool` verbatim as `toolInfo`; `annotations`/`_meta` drive the
+ * read-only and app-visibility gates.
+ */
+export interface ProviderAdapterMcpTool {
+  readonly name: string;
+  readonly title?: string | null;
+  readonly description?: string | null;
+  readonly inputSchema: unknown;
+  readonly outputSchema?: unknown;
+  readonly annotations?: unknown;
+  readonly _meta?: unknown;
+}
+
+/**
+ * The MCP client surface a live provider session exposes for MCP App bridge
+ * requests: every call rides the session's own connection and credentials and
+ * reaches only the named server. A stopped session never restarts for an app.
+ */
+export interface ProviderAdapterMcpApps {
+  readonly listTools: (input: {
+    readonly server: string;
+  }) => Effect.Effect<ReadonlyArray<ProviderAdapterMcpTool>, ProviderAdapterError>;
+  readonly callTool: (input: {
+    readonly server: string;
+    readonly tool: string;
+    readonly arguments?: Record<string, unknown>;
+  }) => Effect.Effect<McpAppCallToolResult, ProviderAdapterError>;
+  readonly readResource: (input: {
+    readonly server: string;
+    readonly uri: string;
+  }) => Effect.Effect<McpAppReadResourceResult, ProviderAdapterError>;
+}
 
 export type ProviderToolBrokerContext = {
   /** 仅由服务端会话配置绑定，不接受 Provider 工具参数声明。 */
@@ -216,6 +253,16 @@ export interface ProviderAdapterShape<TError> {
    * Stop all sessions owned by this adapter.
    */
   readonly stopAll: () => Effect.Effect<void, TError>;
+
+  /**
+   * The live session's MCP Apps surface (ext-apps spec 2026-01-26), for
+   * `McpAppRequests` to resolve bridge calls through. Undefined both when the
+   * provider does not implement MCP Apps and when the thread has no live
+   * session — never starts one.
+   */
+  readonly mcpApps?: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ProviderAdapterMcpApps | undefined, TError>;
 
   /**
    * Canonical runtime event stream emitted by this adapter.

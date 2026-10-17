@@ -42,6 +42,7 @@ import { ProviderAdapterValidationError } from "../Errors.ts";
 import type { CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
 import {
+  type CodexSessionMcpApps,
   type CodexSessionRuntimeOptions,
   type CodexSessionRuntimeSendTurnInput,
   type CodexSessionRuntimeShape,
@@ -120,6 +121,12 @@ class FakeCodexRuntime implements CodexSessionRuntimeShape {
   );
 
   public readonly closeImpl = vi.fn(() => Promise.resolve(undefined));
+
+  public readonly mcpApps: CodexSessionMcpApps = {
+    listTools: () => Effect.succeed([]),
+    callTool: () => Effect.die(new Error("MCP Apps are not implemented by FakeCodexRuntime")),
+    readResource: () => Effect.die(new Error("MCP Apps are not implemented by FakeCodexRuntime")),
+  };
 
   readonly options: CodexSessionRuntimeOptions;
 

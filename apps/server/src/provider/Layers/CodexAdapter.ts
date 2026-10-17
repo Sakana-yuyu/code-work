@@ -56,6 +56,7 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 import { type CodexAdapterShape } from "../Services/CodexAdapter.ts";
+import type { ProviderAdapterMcpApps } from "../Services/ProviderAdapter.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import {
@@ -1242,6 +1243,14 @@ function mapToRuntimeEvents(
     return completed ? [completed] : [];
   }
 
+  if (event.method === "item/mcpApp/captured") {
+    // Synthetic event from the session runtime's MCP App snapshotter: the
+    // completed mcpToolCall re-emitted with its `McpAppReference` under
+    // MCP_APP_OUTPUT_KEY, so ingestion merges the frame into the stored row.
+    const captured = mapItemLifecycle(event, canonicalThreadId, "item.updated");
+    return captured ? [captured] : [];
+  }
+
   if (
     event.method === "item/reasoning/summaryPartAdded" ||
     event.method === "item/commandExecution/terminalInteraction"
@@ -1823,6 +1832,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           Effect.provideService(Scope.Scope, sessionScope),
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
           Effect.provideService(Crypto.Crypto, crypto),
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
           Effect.mapError(
             (cause) =>
               new ProviderAdapterProcessError({
@@ -1971,6 +1981,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         ...(serviceTier ? { serviceTier } : {}),
         ...(interactionMode !== undefined ? { interactionMode } : {}),
         ...(codexAttachments.length > 0 ? { attachments: codexAttachments } : {}),
+        ...(input.appContext !== undefined ? { appContext: input.appContext } : {}),
       })
       .pipe(
         Effect.mapError((cause) =>
@@ -2119,6 +2130,27 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       discard: true,
     }).pipe(Effect.asVoid);
 
+  const mcpApps: NonNullable<CodexAdapterShape["mcpApps"]> = (threadId) =>
+    Effect.succeed(sessions.get(threadId)).pipe(
+      Effect.map((session) => {
+        if (session === undefined || session.stopped) return undefined;
+        const runtime = session.runtime.mcpApps;
+        const wrap = <A>(method: string, call: () => Effect.Effect<A, CodexSessionRuntimeError>) =>
+          call().pipe(Effect.mapError((error) => mapCodexRuntimeError(threadId, method, error)));
+        return {
+          listTools: (input: { readonly server: string }) =>
+            wrap("mcpApps.listTools", () => runtime.listTools(input)),
+          callTool: (input: {
+            readonly server: string;
+            readonly tool: string;
+            readonly arguments?: Record<string, unknown>;
+          }) => wrap("mcpApps.callTool", () => runtime.callTool(input)),
+          readResource: (input: { readonly server: string; readonly uri: string }) =>
+            wrap("mcpApps.readResource", () => runtime.readResource(input)),
+        } satisfies ProviderAdapterMcpApps;
+      }),
+    );
+
   yield* Effect.acquireRelease(Effect.void, () =>
     stopAll().pipe(
       Effect.andThen(Queue.shutdown(runtimeEventQueue)),
@@ -2150,6 +2182,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     listSessions,
     hasSession,
     stopAll,
+    mcpApps,
     get streamEvents() {
       return Stream.fromQueue(runtimeEventQueue);
     },

@@ -176,6 +176,7 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
+import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as SshServerServiceModule from "./ssh/SshServerService.ts";
 import * as SshTerminalServiceModule from "./ssh/SshTerminalService.ts";
@@ -577,6 +578,7 @@ const makeWsRpcLayer = (
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const storageCleanup = yield* StorageCleanup.StorageCleanup;
+      const mcpAppRequests = yield* McpAppRequests.McpAppRequests;
       const sshServerService = yield* SshServerServiceModule.SshServerService;
       const sshTerminalService = yield* SshTerminalServiceModule.SshTerminalService;
       const previewManager = yield* PreviewManager.PreviewManager;
@@ -2762,6 +2764,28 @@ const makeWsRpcLayer = (
         [WS_METHODS.serverGetStorageCleanupReport]: (_input) =>
           observeRpcStream(WS_METHODS.serverGetStorageCleanupReport, storageCleanup.reports, {
             "rpc.aggregate": "server",
+          }),
+        [WS_METHODS.mcpAppsCallTool]: (input) =>
+          observeRpcEffect(WS_METHODS.mcpAppsCallTool, mcpAppRequests.callTool(input), {
+            "rpc.aggregate": "mcp-apps",
+          }),
+        [WS_METHODS.mcpAppsToolInfo]: (input) =>
+          observeRpcEffect(WS_METHODS.mcpAppsToolInfo, mcpAppRequests.toolInfo(input), {
+            "rpc.aggregate": "mcp-apps",
+          }),
+        [WS_METHODS.mcpAppsReadResource]: (input) =>
+          observeRpcEffect(WS_METHODS.mcpAppsReadResource, mcpAppRequests.readResource(input), {
+            "rpc.aggregate": "mcp-apps",
+          }),
+        [WS_METHODS.mcpAppsUpdateModelContext]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpAppsUpdateModelContext,
+            mcpAppRequests.updateModelContext(input),
+            { "rpc.aggregate": "mcp-apps" },
+          ),
+        [WS_METHODS.mcpAppsItemDetail]: (input) =>
+          observeRpcEffect(WS_METHODS.mcpAppsItemDetail, mcpAppRequests.itemDetail(input), {
+            "rpc.aggregate": "mcp-apps",
           }),
         [WS_METHODS.serverGetMcpServers]: (_input) =>
           observeRpcEffect(

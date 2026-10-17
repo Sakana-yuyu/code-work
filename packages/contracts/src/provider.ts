@@ -76,6 +76,14 @@ export const ProviderSendTurnInput = Schema.Struct({
   ),
   modelSelection: Schema.optional(ModelSelection),
   interactionMode: Schema.optional(ProviderInteractionMode),
+  /**
+   * MCP Apps `ui/update-model-context` texts (ext-apps spec 2026-01-26),
+   * attached server-side before dispatch — clients never send this. Adapters
+   * that support it deliver the entries as untrusted context; the rest drop it.
+   */
+  appContext: Schema.optional(
+    Schema.Array(Schema.Struct({ key: Schema.String, text: Schema.String })),
+  ),
 });
 export type ProviderSendTurnInput = typeof ProviderSendTurnInput.Type;
 

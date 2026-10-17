@@ -67,6 +67,7 @@ import {
 import * as ServerConfig from "../../config.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
+import * as McpAppModelContext from "../../mcpApps/McpAppModelContext.ts";
 import { makeAdapterRegistryMock } from "../testUtils/providerAdapterRegistryMock.ts";
 
 const defaultServerSettingsLayer = ServerSettings.ServerSettingsService.layerTest();
@@ -96,7 +97,7 @@ const makeProviderServiceLive = (options?: ProviderServiceLiveOptions) =>
         },
       }),
     ...options,
-  });
+  }).pipe(Layer.provide(McpAppModelContext.layerEmpty));
 const asTurnId = (value: string): TurnId => TurnId.make(value);
 const codexInstanceId = ProviderInstanceId.make("codex");
 const claudeAgentInstanceId = ProviderInstanceId.make("claudeAgent");
@@ -342,6 +343,7 @@ function makeProviderServiceLayer() {
         Layer.provide(defaultServerSettingsLayer),
         Layer.provide(serverConfigTestLayer),
         Layer.provideMerge(AnalyticsService.layerTest),
+        Layer.provide(McpAppModelContext.layerEmpty),
         Layer.provide(
           Layer.succeed(
             ProviderEventLoggers.ProviderEventLoggers,

@@ -14,6 +14,11 @@ import type {
   UserInputQuestion,
 } from "@codework/contracts";
 import { parseCanvasReference } from "@codework/shared/canvas";
+import {
+  MCP_APP_OUTPUT_KEY,
+  readMcpAppReference,
+  type McpAppReference,
+} from "@codework/shared/mcpApp";
 import { formatDuration } from "@codework/shared/orchestrationTiming";
 import {
   activityFailureTranslation,
@@ -57,6 +62,12 @@ export interface ThreadFeedActivity {
   readonly canExpand: boolean;
   /** MCP Canvas 结果；点击工作日志可直接打开结构化产物。 */
   readonly canvas?: CanvasReference;
+  /**
+   * MCP App 结果（mcp_tool_call 的 toolData 携带）；feed 在该组工作日志下方
+   * 挂载宿主视图。`toolCallId` 是其请求寻址的 item id。
+   */
+  readonly mcpApp?: McpAppReference;
+  readonly toolCallId?: string;
   readonly getFullDetail: () => string | null;
   readonly getCopyText: () => string;
   readonly icon:
@@ -1919,6 +1930,10 @@ function buildThreadFeedWithEntries(
               })
               .join("\n"),
           );
+          const mcpApp =
+            entry.itemType === "mcp_tool_call"
+              ? readMcpAppReference(asRecord(entry.toolData)?.[MCP_APP_OUTPUT_KEY])
+              : undefined;
           const row: Extract<RawThreadFeedEntry, { type: "activity" }> = {
             type: "activity",
             id: entry.id,
@@ -1932,6 +1947,8 @@ function buildThreadFeedWithEntries(
               detail,
               canExpand: workEntryHasExpandedBody(entry),
               ...(entry.canvas ? { canvas: entry.canvas } : {}),
+              ...(entry.toolCallId ? { toolCallId: entry.toolCallId } : {}),
+              ...(mcpApp ? { mcpApp } : {}),
               getFullDetail,
               getCopyText,
               icon: workEntryIcon(entry),
@@ -1939,6 +1956,7 @@ function buildThreadFeedWithEntries(
               status: workEntryStatus(entry),
               ...(entry.tone === "error" ||
               entry.canvas !== undefined ||
+              mcpApp !== undefined ||
               entry.activityKind === "goal.completed" ||
               entry.toolLifecycleStatus === "inProgress"
                 ? { neverFold: true }

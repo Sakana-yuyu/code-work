@@ -132,6 +132,7 @@ import {
   ThreadWorkLog,
   WORK_GROUP_TOGGLE_HEIGHT,
 } from "./thread-work-log";
+import { mcpAppRowHeight, ThreadMcpApp } from "./McpAppWebView";
 import { useMarkdownCodeHighlight } from "./markdownCodeHighlightState";
 import { resolveThreadFeedCellIdentity } from "./thread-feed-recycling";
 import {
@@ -1152,6 +1153,7 @@ function renderFeedEntry(
   props: Pick<
     ThreadFeedProps,
     | "environmentId"
+    | "threadId"
     | "skills"
     | "onOpenCanvas"
     | "revertTurnCountByUserMessageId"
@@ -1161,6 +1163,7 @@ function renderFeedEntry(
   > & {
     readonly responseTextPacing: boolean;
     readonly reuseHistoricalRow: boolean;
+    readonly contentWidth: number;
     readonly onSelectText: (text: string) => void;
     readonly copiedRowId: string | null;
     readonly expandedWorkRows: Record<string, boolean>;
@@ -1372,17 +1375,35 @@ function renderFeedEntry(
     );
   }
 
+  const mcpApps = entry.activities.flatMap((activity) =>
+    activity.mcpApp !== undefined && activity.toolCallId !== undefined
+      ? [{ id: activity.toolCallId, app: activity.mcpApp }]
+      : [],
+  );
   return (
-    <ThreadWorkLog
-      activities={entry.activities}
-      reuseHistoricalRow={props.reuseHistoricalRow}
-      copiedRowId={props.copiedRowId}
-      expandedRows={props.expandedWorkRows}
-      iconSubtleColor={iconSubtleColor}
-      onCopyRow={props.onCopyWorkRow}
-      onToggleRow={props.onToggleWorkRow}
-      onOpenCanvas={props.onOpenCanvas}
-    />
+    <View>
+      <ThreadWorkLog
+        activities={entry.activities}
+        reuseHistoricalRow={props.reuseHistoricalRow}
+        copiedRowId={props.copiedRowId}
+        expandedRows={props.expandedWorkRows}
+        iconSubtleColor={iconSubtleColor}
+        onCopyRow={props.onCopyWorkRow}
+        onToggleRow={props.onToggleWorkRow}
+        onOpenCanvas={props.onOpenCanvas}
+      />
+      {mcpApps.map(({ id, app }) => (
+        <ThreadMcpApp
+          key={id}
+          environmentId={props.environmentId}
+          threadId={props.threadId}
+          conversationThreadId={props.threadId}
+          itemId={id}
+          app={app}
+          width={props.contentWidth}
+        />
+      ))}
+    </View>
   );
 }
 
@@ -2240,12 +2261,18 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           return WORK_GROUP_TOGGLE_HEIGHT;
         case "working":
           return workingRowHeight;
-        case "activity-group":
+        case "activity-group": {
+          // App rows ride under the log at a fixed height.
+          const appRowCount = entry.activities.filter(
+            (activity) => activity.mcpApp !== undefined && activity.toolCallId !== undefined,
+          ).length;
           // Expanded rows append a variable detail block — fall back to
           // measurement for those groups.
           return entry.activities.some((activity) => expandedWorkRows[activity.id])
             ? undefined
-            : collapsedWorkLogHeight(entry.activities, appearance.baseFontSize);
+            : collapsedWorkLogHeight(entry.activities, appearance.baseFontSize) +
+                appRowCount * mcpAppRowHeight();
+        }
         default:
           return undefined;
       }
@@ -2273,6 +2300,8 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             reuseHistoricalRow: identity.reuseHistoricalRow,
             onSelectText: textSelection.selectText,
             environmentId: props.environmentId,
+            threadId: props.threadId,
+            contentWidth,
             copiedRowId,
             expandedWorkRows,
             terminalAssistantMessageIds,
@@ -2336,6 +2365,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       props.onEditUserMessage,
       props.environmentId,
       props.skills,
+      contentWidth,
       renderMarkdownImage,
     ],
   );

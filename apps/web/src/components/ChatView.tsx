@@ -8665,6 +8665,8 @@ function ChatViewContent(props: ChatViewProps) {
               onCancelWorktreeSetup={onCancelWorktreeSetup}
               onWorktreeSetupWorkLocally={draftId ? onWorktreeSetupWorkLocally : null}
               onOpenWorktreeSetupTerminal={onOpenWorktreeSetupTerminal}
+              onSendAppMessage={async (text) => onSend(undefined, "foreground", undefined, text)}
+              awaitingUser={pendingApprovals.length > 0 || pendingUserInputs.length > 0}
             />
 
             {/* scroll to end pill — shown when user has scrolled away from the live edge */}

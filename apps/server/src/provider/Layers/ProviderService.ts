@@ -66,6 +66,7 @@ import { type EventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
+import * as McpAppModelContext from "../../mcpApps/McpAppModelContext.ts";
 import type { McpCapability } from "../../mcp/McpInvocationContext.ts";
 import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
 import * as ServerSettings from "../../serverSettings.ts";
@@ -243,6 +244,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
   const registry = yield* ProviderAdapterRegistry.ProviderAdapterRegistry;
   const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+  const mcpAppModelContext = yield* McpAppModelContext.McpAppModelContext;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const issueMcpCredential =
     options?.issueMcpCredential ?? McpSessionRegistry.issueActiveMcpCredential;
@@ -1011,7 +1013,26 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
               );
         sendInput = { ...input, input: header + history + footer + currentInput };
       }
-      const turn = yield* routed.adapter.sendTurn(sendInput);
+      // MCP Apps (ext-apps spec 2026-01-26): each app's last
+      // update-model-context text rides this turn as untrusted context. A
+      // read that fails costs the agent the apps' notes, not the turn.
+      const appContext = (yield* mcpAppModelContext
+        .forThread(input.threadId)
+        .pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("Failed to read MCP app model context.", { cause }).pipe(
+              Effect.as([]),
+            ),
+          ),
+        )).map((entry) => ({
+        // The item id alone is unique and needs no escaping; server and tool
+        // names are free text that would break the tag Codex wraps context in.
+        key: `mcp_app_${entry.itemId.replace(/[^\w.-]/g, "_")}`,
+        text: entry.text,
+      }));
+      const turn = yield* routed.adapter.sendTurn(
+        appContext.length === 0 ? sendInput : { ...sendInput, appContext },
+      );
       yield* directory.upsert({
         threadId: input.threadId,
         provider: routed.adapter.provider,

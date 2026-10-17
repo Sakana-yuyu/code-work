@@ -28,6 +28,10 @@ function connectionStatusLabel(environment: ConnectedEnvironmentSummary): string
   });
 }
 
+function environmentMcpEndpointUrl(displayUrl: string): string {
+  return `${displayUrl.trim().replace(/\/+$/u, "")}/mcp`;
+}
+
 export function ConnectionEnvironmentRow(props: {
   readonly environment: ConnectedEnvironmentSummary;
   readonly expanded: boolean;
@@ -220,6 +224,27 @@ export function ConnectionEnvironmentRow(props: {
                   onChangeText={setUrl}
                   className="rounded-[14px] border border-input-border bg-input px-4 py-3 text-base text-foreground"
                 />
+              </View>
+
+              <View className="gap-1.5">
+                <Text className="text-2xs font-codework-bold tracking-[0.8px] uppercase text-foreground-muted">
+                  {t("connections.mcpEndpoint")}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t("connections.copyMcpEndpoint")}
+                  className="rounded-[14px] border border-input-border bg-input px-4 py-3 active:opacity-70"
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    copyTextWithHaptic(environmentMcpEndpointUrl(props.environment.displayUrl), {
+                      target: "mcp-endpoint",
+                    });
+                  }}
+                >
+                  <Text className="text-sm text-foreground" numberOfLines={1}>
+                    {environmentMcpEndpointUrl(props.environment.displayUrl)}
+                  </Text>
+                </Pressable>
               </View>
             </>
           )}

@@ -135,6 +135,18 @@ import {
 } from "./provider.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
+  McpAppCallToolInput,
+  McpAppCallToolResult,
+  McpAppItemDetailInput,
+  McpAppItemDetailResult,
+  McpAppReadResourceInput,
+  McpAppReadResourceResult,
+  McpAppRequestError,
+  McpAppToolInfo,
+  McpAppToolInfoInput,
+  McpAppUpdateModelContextInput,
+} from "./mcpApps.ts";
+import {
   WorktreeSetupCancelInput,
   WorktreeSetupCancelResult,
   WorktreeSetupStreamEvent,
@@ -528,6 +540,13 @@ export const WS_METHODS = {
   serverConnectMcpServer: "server.connectMcpServer",
   serverDisconnectMcpServer: "server.disconnectMcpServer",
   serverRefreshMcpServer: "server.refreshMcpServer",
+
+  // MCP App bridge methods (ext-apps spec 2026-01-26)
+  mcpAppsCallTool: "mcpApps.callTool",
+  mcpAppsToolInfo: "mcpApps.toolInfo",
+  mcpAppsReadResource: "mcpApps.readResource",
+  mcpAppsUpdateModelContext: "mcpApps.updateModelContext",
+  mcpAppsItemDetail: "mcpApps.itemDetail",
   serverGetByokSupplierCatalog: "server.getByokSupplierCatalog",
   serverGetAcpRegistryCatalog: "server.getAcpRegistryCatalog",
   serverInstallAcpRegistryBinary: "server.installAcpRegistryBinary",
@@ -777,6 +796,36 @@ export const WsServerGetStorageCleanupReportRpc = Rpc.make(
     error: EnvironmentAuthorizationError,
   },
 );
+
+export const WsMcpAppsCallToolRpc = Rpc.make(WS_METHODS.mcpAppsCallTool, {
+  payload: McpAppCallToolInput,
+  success: McpAppCallToolResult,
+  error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
+});
+
+export const WsMcpAppsToolInfoRpc = Rpc.make(WS_METHODS.mcpAppsToolInfo, {
+  payload: McpAppToolInfoInput,
+  success: McpAppToolInfo,
+  error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
+});
+
+export const WsMcpAppsReadResourceRpc = Rpc.make(WS_METHODS.mcpAppsReadResource, {
+  payload: McpAppReadResourceInput,
+  success: McpAppReadResourceResult,
+  error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
+});
+
+export const WsMcpAppsUpdateModelContextRpc = Rpc.make(WS_METHODS.mcpAppsUpdateModelContext, {
+  payload: McpAppUpdateModelContextInput,
+  success: Schema.Void,
+  error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
+});
+
+export const WsMcpAppsItemDetailRpc = Rpc.make(WS_METHODS.mcpAppsItemDetail, {
+  payload: McpAppItemDetailInput,
+  success: McpAppItemDetailResult,
+  error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
+});
 
 const CompositionMcpServerControlInput = Schema.Struct({
   serverId: CompositionMcpServerId,
@@ -2207,6 +2256,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpdateSettingsRpc,
   WsServerRunStorageCleanupRpc,
   WsServerGetStorageCleanupReportRpc,
+  WsMcpAppsCallToolRpc,
+  WsMcpAppsToolInfoRpc,
+  WsMcpAppsReadResourceRpc,
+  WsMcpAppsUpdateModelContextRpc,
+  WsMcpAppsItemDetailRpc,
   WsServerGetMcpServersRpc,
   WsServerConnectMcpServerRpc,
   WsServerDisconnectMcpServerRpc,

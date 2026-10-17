@@ -1237,6 +1237,9 @@ type AdvertisedEndpointListRowProps = {
   isUpdatingTailscaleServe: boolean;
 };
 
+const mcpEndpointUrl = (endpoint: AdvertisedEndpoint): string =>
+  `${endpoint.httpBaseUrl.replace(/\/+$/u, "")}/mcp`;
+
 const AdvertisedEndpointListRow = memo(function AdvertisedEndpointListRow({
   endpoint,
   isDefault,
@@ -1252,6 +1255,18 @@ const AdvertisedEndpointListRow = memo(function AdvertisedEndpointListRow({
     isTailscaleHttpsEndpoint(endpoint) && endpoint.status === "available";
   const shouldShowEndpointUrl = !needsTailscaleSetup;
   const isEndpointRail = presentation === "endpoint-rail";
+  const { copyToClipboard: copyMcpEndpoint } = useCopyToClipboard<{ url: string }>({
+    onCopy: () => {
+      toastManager.add({ type: "success", title: t("mcpEndpointCopied") });
+    },
+    onError: (error, { url }) => {
+      toastManager.add({
+        type: "error",
+        title: t("clipboard.copyFailed", { target: url }),
+        description: error instanceof Error ? error.message : undefined,
+      });
+    },
+  });
   return (
     <div className={endpointRowClassName(presentation, isAvailable)}>
       {isEndpointRail && isDefault ? (
@@ -1287,6 +1302,27 @@ const AdvertisedEndpointListRow = memo(function AdvertisedEndpointListRow({
             <span className="rounded-md border border-primary/30 bg-primary/10 px-1 py-0.5 text-[10px] text-primary">
               {t("default")}
             </span>
+          ) : null}
+          {shouldShowEndpointUrl ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    aria-label={t("copyMcpEndpoint")}
+                    onClick={() =>
+                      copyMcpEndpoint(mcpEndpointUrl(endpoint), { url: mcpEndpointUrl(endpoint) })
+                    }
+                  >
+                    MCP
+                  </Button>
+                }
+              />
+              <TooltipPopup side="top" className="max-w-80">
+                {mcpEndpointUrl(endpoint)}
+              </TooltipPopup>
+            </Tooltip>
           ) : null}
           {needsTailscaleSetup ? (
             <Button

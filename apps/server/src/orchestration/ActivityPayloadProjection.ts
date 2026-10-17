@@ -1,4 +1,5 @@
 import { CanvasReference } from "@codework/contracts";
+import { MCP_APP_OUTPUT_KEY } from "@codework/shared/mcpApp";
 import type {
   OrchestrationEvent,
   OrchestrationThreadActivity,
@@ -180,6 +181,7 @@ const MCP_ITEM_KEPT_FIELDS = [
   "appContext",
   "error",
   "durationMs",
+  MCP_APP_OUTPUT_KEY,
 ] as const;
 
 /**

@@ -3,7 +3,7 @@ import * as Schema from "effect/Schema";
 import { Atom } from "effect/unstable/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
-import { createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
+import { createEnvironmentRpcCommand, createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
 
 const ASSET_URL_REFRESH_INTERVAL_MS = 30 * 60_000;
 const ASSET_URL_STALE_TIME_MS = 5 * 60_000;
@@ -72,6 +72,15 @@ export function createAssetEnvironmentAtoms<R, E>(
 
   return {
     createUrl,
+    /**
+     * A fresh signed URL on demand, bypassing the query cache: frames that
+     * hold a URL for its whole document lifetime (MCP Apps) re-mint before
+     * the cached one expires instead of reloading.
+     */
+    refreshUrl: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:assets:refresh-url",
+      tag: WS_METHODS.assetsCreateUrl,
+    }),
     createUrls: (target: {
       readonly environmentId: EnvironmentId;
       readonly resources: ReadonlyArray<AssetResource>;

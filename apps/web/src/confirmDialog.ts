@@ -46,6 +46,11 @@ export function readConfirmDialogState(): ConfirmDialogState {
   return state;
 }
 
+/** Whether a confirmation is on screen or queued — an app must not stack its own prompt on top. */
+export function isConfirmDialogActive(): boolean {
+  return state.status !== "idle";
+}
+
 export function subscribeConfirmDialog(listener: () => void): () => void {
   listeners.add(listener);
   return () => {

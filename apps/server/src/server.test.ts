@@ -168,6 +168,7 @@ import * as ModelGateway from "./provider/byok/modelGateway.ts";
 import * as ByokCatalog from "./provider/byok/ByokCatalog.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
+import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import { SshLayerLive } from "./server.ts";
 import * as PreviewManager from "./preview/Manager.ts";
@@ -821,6 +822,17 @@ const buildAppUnderTest = (options?: {
             reports: Stream.empty,
             drain: Effect.void,
           }),
+          Layer.mock(McpAppRequests.McpAppRequests)({
+            callTool: () => Effect.die("MCP App bridge is not stubbed in this test"),
+            toolInfo: () => Effect.die("MCP App bridge is not stubbed in this test"),
+            readResource: () => Effect.die("MCP App bridge is not stubbed in this test"),
+            updateModelContext: () => Effect.die("MCP App bridge is not stubbed in this test"),
+            itemDetail: () => Effect.die("MCP App bridge is not stubbed in this test"),
+          }),
+          // These ride the serve-level chain too: the routes' Request<"Requires">
+          // entries cannot be cancelled inside makeRoutesLayer.pipe.
+          ThreadVisibilityLive,
+          ModelManifest.layerTest,
           Layer.mock(TraceDiagnostics.TraceDiagnostics)({
             read: () =>
               Effect.succeed({

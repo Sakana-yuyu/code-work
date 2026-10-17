@@ -124,6 +124,8 @@ import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRun
 import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor.ts";
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
+import * as McpAppModelContext from "./mcpApps/McpAppModelContext.ts";
+import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
 import { ThreadSettlementReactorLive } from "./orchestration/Layers/ThreadSettlementReactor.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
@@ -347,9 +349,24 @@ const ProviderSessionDirectoryLayerLive = ProviderSessionDirectoryLive.pipe(
 // `create()`; `ProviderEventLoggers.layer` owns the shared native/canonical
 // NDJSON writers and is provided at the outer runtime layer so both
 // `ProviderService` and the per-instance drivers read the same logger pair.
+// MCP Apps (ext-apps spec 2026-01-26): per-app model context plus the bridge
+// that relays an app's requests to its own MCP server over the live provider
+// session. Both sit beside the provider layers they route through.
+const McpAppModelContextLayerLive = McpAppModelContext.layer.pipe(
+  Layer.provide(SqlitePersistenceLayerLive),
+);
+
 const ProviderLayerLive = ProviderServiceLive.pipe(
   Layer.provide(ProviderAdapterRegistryLive),
+  Layer.provide(McpAppModelContextLayerLive),
   Layer.provideMerge(ProviderSessionDirectoryLayerLive),
+);
+
+const McpAppsLayerLive = McpAppRequests.layer.pipe(
+  Layer.provide(SqlitePersistenceLayerLive),
+  Layer.provide(ProviderSessionDirectoryLayerLive),
+  Layer.provide(ProviderAdapterRegistryLive),
+  Layer.provide(McpAppModelContextLayerLive),
 );
 
 const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersistenceLayerLive));
@@ -847,6 +864,7 @@ const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
   Layer.provideMerge(ExternalLauncher.layer),
   Layer.provideMerge(RemoteOpenTargets.layer),
   Layer.provideMerge(ServerLifecycleEvents.layer),
+  Layer.provideMerge(McpAppsLayerLive),
   Layer.provide(NetService.layer),
 );
 

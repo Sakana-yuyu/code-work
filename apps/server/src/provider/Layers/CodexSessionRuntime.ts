@@ -14,17 +14,22 @@ import {
   ProviderThreadGoal,
   type ProviderTurnStartResult,
   type ProviderUserInputAnswers,
+  type McpAppCallToolResult,
+  type McpAppReadResourceResult,
   RuntimeMode,
   ThreadId,
   TurnId,
 } from "@codework/contracts";
 import { resolveSpawnCommand } from "@codework/shared/shell";
 import { normalizeModelSlug } from "@codework/shared/model";
+import { codexMcpAppResourceUri, MCP_APP_OUTPUT_KEY } from "@codework/shared/mcpApp";
+import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
@@ -43,6 +48,8 @@ import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import * as ManagedProcessRegistry from "../../process/ManagedProcessRegistry.ts";
 import { buildCodexDeveloperInstructions } from "../CodexDeveloperInstructions.ts";
+import { snapshotMcpApp } from "../../mcpApps/McpAppSnapshot.ts";
+import { resolveAttachmentPathById } from "../../attachmentStore.ts";
 const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnStartResponse);
 
 const PROVIDER = ProviderDriverKind.make("codex");
@@ -56,6 +63,9 @@ const BENIGN_ERROR_LOG_SNIPPETS = [
   "state db record_discrepancy: find_thread_path_by_id_str_in_subdir, falling_back",
 ];
 const CODEX_APP_SERVER_FORCE_KILL_AFTER = "2 seconds" as const;
+// Reading an app's resource is one MCP round trip; a server that hangs must
+// not hold the tool row (or the session's event queue) open.
+const MCP_APP_CAPTURE_TIMEOUT = "20 seconds";
 const RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS = [
   "not found",
   "missing thread",
@@ -135,6 +145,9 @@ const isMcpElicitationForm = Schema.is(McpElicitationForm);
 const CodexTurnStartParamsWithCollaborationMode = EffectCodexSchema.V2TurnStartParams.pipe(
   Schema.fieldsAssign({
     collaborationMode: Schema.optionalKey(EffectCodexSchema.V2TurnStartParams__CollaborationMode),
+    additionalContext: Schema.optionalKey(
+      Schema.Record(Schema.String, EffectCodexSchema.V2TurnStartParams__AdditionalContextEntry),
+    ),
   }),
 );
 const decodeCodexTurnStartParamsWithCollaborationMode = Schema.decodeUnknownEffect(
@@ -181,6 +194,31 @@ export interface CodexSessionRuntimeOptions {
    * TOML quoting these overrides rely on.
    */
   readonly gatewayAppServerArgs?: ReadonlyArray<string>;
+  /**
+   * Where captured MCP App documents land (spec 2026-01-26). Omitted disables
+   * capture: completed MCP tool calls that name a `ui://` resource stay plain
+   * tool rows.
+   */
+  readonly attachmentsDir?: string;
+}
+
+/** The Codex MCP client surface an MCP App's bridge requests run through. */
+export interface CodexSessionMcpApps {
+  readonly listTools: (input: {
+    readonly server: string;
+  }) => Effect.Effect<
+    ReadonlyArray<EffectCodexSchema.V2ListMcpServerStatusResponse__Tool>,
+    CodexSessionRuntimeError
+  >;
+  readonly callTool: (input: {
+    readonly server: string;
+    readonly tool: string;
+    readonly arguments?: Record<string, unknown>;
+  }) => Effect.Effect<McpAppCallToolResult, CodexSessionRuntimeError>;
+  readonly readResource: (input: {
+    readonly server: string;
+    readonly uri: string;
+  }) => Effect.Effect<McpAppReadResourceResult, CodexSessionRuntimeError>;
 }
 
 export interface CodexSessionRuntimeSendTurnInput {
@@ -194,6 +232,11 @@ export interface CodexSessionRuntimeSendTurnInput {
   readonly serviceTier?: CodexServiceTier | undefined;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort | undefined;
   readonly interactionMode?: ProviderInteractionMode;
+  /**
+   * MCP Apps model context (ext-apps spec 2026-01-26), delivered to Codex as
+   * `additionalContext` entries marked untrusted.
+   */
+  readonly appContext?: ReadonlyArray<{ readonly key: string; readonly text: string }>;
 }
 
 export interface CodexThreadTurnSnapshot {
@@ -229,6 +272,12 @@ export interface CodexSessionRuntimeShape {
     answers: ProviderUserInputAnswers,
   ) => Effect.Effect<void, CodexSessionRuntimeError>;
   readonly events: Stream.Stream<ProviderEvent, never>;
+  /**
+   * MCP Apps runtime (ext-apps spec 2026-01-26): the session's own MCP client
+   * resolves a tool call's app, so app requests ride its connection and
+   * credentials rather than opening a second MCP session.
+   */
+  readonly mcpApps: CodexSessionMcpApps;
   readonly close: Effect.Effect<void>;
 }
 
@@ -627,6 +676,12 @@ export function buildTurnStartParams(input: {
   readonly indexToolsAvailable?: boolean;
   /** Whether the instance's 子代理模式 guidance should ride on every turn. */
   readonly subagentModeEnabled?: boolean;
+  /**
+   * MCP Apps model context (ext-apps spec 2026-01-26): MCP-server-authored
+   * text for the agent's next turn, keyed per app. Sent as untrusted context —
+   * Codex renders it as quoted user-side input, never as instructions.
+   */
+  readonly appContext?: ReadonlyArray<{ readonly key: string; readonly text: string }>;
 }): Effect.Effect<
   CodexTurnStartParamsWithCollaborationMode,
   CodexErrors.CodexAppServerProtocolParseError
@@ -662,6 +717,16 @@ export function buildTurnStartParams(input: {
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
     ...(input.effort ? { effort: input.effort } : {}),
     ...(collaborationMode ? { collaborationMode } : {}),
+    ...(input.appContext === undefined || input.appContext.length === 0
+      ? {}
+      : {
+          additionalContext: Object.fromEntries(
+            input.appContext.map((entry) => [
+              entry.key,
+              { kind: "untrusted" as const, value: entry.text },
+            ]),
+          ),
+        }),
   }).pipe(
     Effect.mapError((cause) =>
       CodexErrors.CodexAppServerProtocolParseError.fromSchemaError(
@@ -1209,7 +1274,7 @@ export const makeCodexSessionRuntime = (
 ): Effect.Effect<
   CodexSessionRuntimeShape,
   CodexErrors.CodexAppServerError,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | FileSystem.FileSystem | Scope.Scope
 > =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -1769,6 +1834,29 @@ export const makeCodexSessionRuntime = (
             : {}),
           ...(payload !== undefined ? { payload } : {}),
         });
+
+        // MCP Apps: a completed mcpToolCall naming a `ui://` resource gets its
+        // document snapshotted off the notification reader so a slow MCP
+        // server cannot stall other events. Forks into the runtime scope so a
+        // closed session cannot leave a half-written or unreferenced file.
+        if (
+          notification.method === "item/completed" &&
+          options.attachmentsDir !== undefined &&
+          notification.params.item.type === "mcpToolCall"
+        ) {
+          const item = notification.params.item;
+          const resourceUri = codexMcpAppResourceUri(item);
+          if (resourceUri !== undefined) {
+            yield* captureMcpAppItem({
+              turnId,
+              itemId: item.id,
+              item,
+              server: item.server,
+              tool: item.tool,
+              resourceUri,
+            }).pipe(Effect.forkIn(runtimeScope));
+          }
+        }
       });
 
     const currentSessionProviderThreadId = Effect.map(Ref.get(sessionRef), currentProviderThreadId);
@@ -2195,6 +2283,89 @@ export const makeCodexSessionRuntime = (
      * synthetic `thread/goal/changed` notification event (the adapter maps it
      * alongside the wire's thread/goal/updated|cleared).
      */
+    /**
+     * MCP Apps (ext-apps spec 2026-01-26): snapshots a completed MCP tool
+     * call's `ui://` resource to a thread attachment, then emits a synthetic
+     * `item/mcpApp/captured` carrying the item patched with its
+     * `McpAppReference`. The completed item already emitted, so the timeline
+     * merges the reference into the same toolCallId row — a slow MCP server
+     * delays the frame, never the run's ingestion. Every failure degrades to
+     * the plain tool row, and a document that lands after the session closed
+     * is removed rather than left unreferenced.
+     */
+    const captureMcpAppItem = (input: {
+      readonly turnId: string | undefined;
+      readonly itemId: string;
+      readonly item: Record<string, unknown>;
+      readonly server: string;
+      readonly tool: string;
+      readonly resourceUri: string;
+    }) =>
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const attachmentsDir = options.attachmentsDir;
+          if (attachmentsDir === undefined) return;
+          const fileSystem = yield* FileSystem.FileSystem;
+          const reference = yield* restore(
+            readProviderThreadId.pipe(
+              Effect.flatMap((threadId) =>
+                client.request("mcpServer/resource/read", {
+                  threadId,
+                  server: input.server,
+                  uri: input.resourceUri,
+                }),
+              ),
+              Effect.timeout(MCP_APP_CAPTURE_TIMEOUT),
+              Effect.flatMap((response) =>
+                snapshotMcpApp({
+                  attachmentsDir,
+                  threadId: options.threadId,
+                  server: input.server,
+                  tool: input.tool,
+                  resourceUri: input.resourceUri,
+                  contents: response.contents,
+                }).pipe(Effect.provideService(FileSystem.FileSystem, fileSystem)),
+              ),
+              Effect.catchCauseIf(
+                (cause) => !Cause.hasInterruptsOnly(cause),
+                (cause) =>
+                  Effect.logWarning("Failed to capture an MCP app; showing a plain tool row.", {
+                    server: input.server,
+                    tool: input.tool,
+                    resourceUri: input.resourceUri,
+                    cause,
+                  }).pipe(Effect.as(undefined)),
+              ),
+              Effect.orDie,
+            ),
+          );
+          if (reference === undefined) return;
+          const removeSnapshot = () => {
+            const filePath = resolveAttachmentPathById({
+              attachmentsDir,
+              attachmentId: reference.attachmentId,
+            });
+            return filePath === null
+              ? Effect.void
+              : fileSystem.remove(filePath, { force: true }).pipe(Effect.ignore);
+          };
+          if (yield* Ref.get(closedRef)) {
+            yield* removeSnapshot();
+            return;
+          }
+          yield* emitEvent({
+            kind: "notification",
+            threadId: options.threadId,
+            method: "item/mcpApp/captured",
+            ...(input.turnId ? { turnId: TurnId.make(input.turnId) } : {}),
+            itemId: ProviderItemId.make(input.itemId),
+            payload: {
+              item: { ...input.item, [MCP_APP_OUTPUT_KEY]: reference },
+            },
+          }).pipe(Effect.catch(() => removeSnapshot()));
+        }),
+      );
+
     const emitGoalChanged = (goal: ProviderThreadGoal | null) =>
       Effect.gen(function* () {
         const providerThreadId = yield* readProviderThreadId;
@@ -2349,6 +2520,59 @@ export const makeCodexSessionRuntime = (
       yield* Queue.shutdown(events);
     });
 
+    /**
+     * The session's MCP client surface for MCP Apps (ext-apps spec
+     * 2026-01-26). App bridge requests reach only the server the producing
+     * tool call names, through this session's own MCP connection.
+     */
+    const mcpApps: CodexSessionMcpApps = {
+      listTools: (input) =>
+        client
+          .request("mcpServerStatus/list", { detail: "toolsAndAuthOnly" })
+          .pipe(
+            Effect.map((response) =>
+              Object.values(
+                response.data.find((entry) => entry.name === input.server)?.tools ?? {},
+              ),
+            ),
+          ),
+      callTool: (input) =>
+        readProviderThreadId.pipe(
+          Effect.flatMap((threadId) =>
+            client.request("mcpServer/tool/call", {
+              threadId,
+              server: input.server,
+              tool: input.tool,
+              arguments: input.arguments,
+            }),
+          ),
+          // The spec's wire shape: provider `null` fields become absent so a
+          // relaying host never has to guess which null it means.
+          Effect.map(
+            (response) =>
+              ({
+                content: response.content,
+                ...(response.structuredContent !== undefined && response.structuredContent !== null
+                  ? { structuredContent: response.structuredContent }
+                  : {}),
+                ...(response.isError === true ? { isError: true } : {}),
+                ...(response._meta !== undefined ? { _meta: response._meta } : {}),
+              }) satisfies McpAppCallToolResult,
+          ),
+        ),
+      readResource: (input) =>
+        readProviderThreadId.pipe(
+          Effect.flatMap((threadId) =>
+            client.request("mcpServer/resource/read", {
+              threadId,
+              server: input.server,
+              uri: input.uri,
+            }),
+          ),
+          Effect.map((response) => ({ contents: response.contents })),
+        ),
+    };
+
     return {
       start,
       getSession: Ref.get(sessionRef),
@@ -2383,6 +2607,7 @@ export const makeCodexSessionRuntime = (
               browserToolsAvailable: hasConfiguredMcpServer(options.appServerArgs),
               indexToolsAvailable: options.indexToolsAvailable ?? false,
               subagentModeEnabled: options.subagentModeEnabled ?? false,
+              ...(turnInput.appContext ? { appContext: turnInput.appContext } : {}),
             });
             const method = turnInput.reviewTarget ? "review/start" : "turn/start";
             const rawResponse = turnInput.reviewTarget
@@ -2557,6 +2782,7 @@ export const makeCodexSessionRuntime = (
           });
         }),
       events: Stream.fromQueue(events),
+      mcpApps,
       close,
     } satisfies CodexSessionRuntimeShape;
   });

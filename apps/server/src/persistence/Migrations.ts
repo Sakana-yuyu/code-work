@@ -92,6 +92,7 @@ import Migration0080 from "./Migrations/080_SpecWorkflowCapabilityFlags.ts";
 import Migration0081 from "./Migrations/081_ProjectionThreadMessageProviderInstance.ts";
 import Migration0082 from "./Migrations/082_ProjectionThreadMessageFirstSequence.ts";
 import Migration0083 from "./Migrations/083_ThreadGoalProviderNative.ts";
+import Migration0084 from "./Migrations/084_McpAppModelContext.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -189,6 +190,7 @@ export const migrationEntries = [
   [81, "ProjectionThreadMessageProviderInstance", Migration0081],
   [82, "ProjectionThreadMessageFirstSequence", Migration0082],
   [83, "ThreadGoalProviderNative", Migration0083],
+  [84, "McpAppModelContext", Migration0084],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

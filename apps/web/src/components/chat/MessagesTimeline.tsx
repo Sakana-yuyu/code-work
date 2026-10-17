@@ -27,6 +27,7 @@ const EMPTY_AGENT_PANEL_MODEL = emptyAgentPanelModel();
 const NOOP_OPEN_AGENTS = () => {};
 const NOOP_OPEN_CANVAS = (_canvas: CanvasReference) => {};
 import { resolveChatListAnchoredEndSpace } from "@codework/shared/chatList";
+import { MCP_APP_OUTPUT_KEY, readMcpAppReference } from "@codework/shared/mcpApp";
 import { useAssetUrlState } from "~/assets/assetUrls";
 import {
   createContext,
@@ -135,6 +136,7 @@ import {
   TIMELINE_MINIMAP_MIN_ITEMS,
   type TimelineLatestTurn,
 } from "./MessagesTimeline.logic";
+import { McpAppFrame } from "./McpAppFrame";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -206,6 +208,10 @@ interface TimelineRowSharedState {
   onWorktreeSetupWorkLocally: (() => void) | null;
   /** Reveals the setup script's terminal tab. */
   onOpenWorktreeSetupTerminal: ((terminalId: string) => void) | null;
+  /** Sends a user message an MCP App composed; undefined where send is unavailable. */
+  onSendAppMessage: ((text: string) => Promise<void>) | undefined;
+  /** An approval or question waits on the user; full-screen apps step aside. */
+  awaitingUser: boolean;
 }
 
 interface TimelineRowActivityState {
@@ -316,6 +322,8 @@ interface MessagesTimelineProps {
   onCancelWorktreeSetup?: (() => void) | null;
   onWorktreeSetupWorkLocally?: (() => void) | null;
   onOpenWorktreeSetupTerminal?: ((terminalId: string) => void) | null;
+  onSendAppMessage?: (text: string) => Promise<void>;
+  awaitingUser?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +371,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onCancelWorktreeSetup = null,
   onWorktreeSetupWorkLocally = null,
   onOpenWorktreeSetupTerminal = null,
+  onSendAppMessage,
+  awaitingUser = false,
 }: MessagesTimelineProps) {
   const responseTextPacing = isTextRevealEnabled(
     useAtomValue(serverEnvironment.configValueAtom(activeThreadEnvironmentId)),
@@ -652,6 +662,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onCancelWorktreeSetup,
       onWorktreeSetupWorkLocally,
       onOpenWorktreeSetupTerminal,
+      onSendAppMessage,
+      awaitingUser,
     }),
     [
       responseTextPacing,
@@ -679,6 +691,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onCancelWorktreeSetup,
       onWorktreeSetupWorkLocally,
       onOpenWorktreeSetupTerminal,
+      onSendAppMessage,
+      awaitingUser,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -3303,13 +3317,23 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   );
 });
 
+/** The MCP App a tool call produced, recorded on its stored item data. */
+function workEntryMcpApp(workEntry: TimelineWorkEntry) {
+  const data = workEntry.toolData;
+  return typeof data === "object" && data !== null
+    ? readMcpAppReference((data as Record<string, unknown>)[MCP_APP_OUTPUT_KEY])
+    : undefined;
+}
+
 const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
   isExpandedToolGroupEntry: boolean;
 }) {
   const { workEntry, workspaceRoot, isExpandedToolGroupEntry } = props;
+  const ctx = use(TimelineRowCtx);
   const [expanded, setExpanded] = useState(false);
+  const mcpApp = workEntryMcpApp(workEntry);
   const generatedImageName = workEntry.imagePath
     ? (workEntry.imagePath.split(/[\\/]/).pop() ?? workEntry.imagePath)
     : null;
@@ -3412,6 +3436,21 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
           onPointerDown={stopRowToggle}
         >
           <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
+        </div>
+      ) : null}
+      {mcpApp !== undefined && workEntry.toolCallId !== undefined ? (
+        <div className="mt-1 ms-7" onClick={stopRowToggle} onPointerDown={stopRowToggle}>
+          <McpAppFrame
+            // A recycled row must not keep another app's live document.
+            key={mcpApp.attachmentId}
+            environmentId={ctx.activeThreadEnvironmentId}
+            threadId={(ctx.threadRef?.threadId ?? "") as ThreadId}
+            conversationThreadId={(ctx.threadRef?.threadId ?? "") as ThreadId}
+            itemId={workEntry.toolCallId}
+            app={mcpApp}
+            onSendMessage={ctx.onSendAppMessage}
+            awaitingUser={ctx.awaitingUser}
+          />
         </div>
       ) : null}
       {workEntry.imagePath && generatedImageName ? (

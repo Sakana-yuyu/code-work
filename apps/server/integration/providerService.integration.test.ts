@@ -19,6 +19,7 @@ import {
   ProviderEventLoggers,
 } from "../src/provider/Layers/ProviderEventLoggers.ts";
 import { makeProviderServiceLive } from "../src/provider/Layers/ProviderService.ts";
+import * as McpAppModelContext from "../src/mcpApps/McpAppModelContext.ts";
 import {
   ProviderService,
   type ProviderServiceShape,
@@ -100,7 +101,10 @@ const makeIntegrationFixture = (options?: { readonly analytics?: Layer.Layer<Ana
       Layer.succeed(ProviderEventLoggers, NoOpProviderEventLoggers),
     ).pipe(Layer.provide(SqlitePersistenceMemory));
 
-    const layer = makeProviderServiceLive().pipe(Layer.provide(shared));
+    const layer = makeProviderServiceLive().pipe(
+      Layer.provide(shared),
+      Layer.provide(McpAppModelContext.layerEmpty),
+    );
 
     return {
       cwd,
