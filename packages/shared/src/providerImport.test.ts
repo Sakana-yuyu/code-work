@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import {
   findProviderImportDuplicate,
@@ -7,7 +7,7 @@ import {
   parseProviderImportLink,
   providerImportRequestBase,
   readProviderImportParamsText,
-} from "./providerImport";
+} from "./providerImport.ts";
 
 const SCHEMES = ["codework", "codework-dev", "codework-preview", "t3code"];
 
