@@ -1,6 +1,23 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "@effect/vitest";
 
 import {
+  EnvironmentId,
+  type ImageGenerateInput,
+  ImageGenerateError,
+  PreviewAutomationUnavailableError,
+  ProviderInstanceId,
+  type ServerSettings as ServerSettingsValue,
+  ThreadId,
+} from "@codework/contracts";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import { HttpClient } from "effect/unstable/http";
+
+import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as ServerSettings from "../../../serverSettings.ts";
+import * as WorkspacePaths from "../../../workspace/WorkspacePaths.ts";
+import {
+  handlers,
   imageFileStem,
   isXaiImagesHost,
   parseImageGenerationResponse,
@@ -9,6 +26,81 @@ import {
 } from "./handlers.ts";
 
 type ImagegenRouteCandidate = Parameters<typeof pickImageAdapter>[0][number];
+
+const invocationWith = (
+  capabilities: ReadonlyArray<McpInvocationContext.McpCapability>,
+): McpInvocationContext.McpInvocationScope => ({
+  environmentId: EnvironmentId.make("environment-1"),
+  threadId: ThreadId.make("thread-1"),
+  sessionId: "provider-session-1",
+  providerSessionId: "provider-session-1",
+  providerInstanceId: ProviderInstanceId.make("codex"),
+  capabilities: new Set(capabilities),
+  issuedAt: 1,
+});
+
+const input: ImageGenerateInput = { cwd: "/workspace", prompt: "a cat" };
+
+// The gate sits before every other service; the stubs only satisfy the
+// handler's static requirements for the pass-through case. HttpClient is a
+// structural class tag, so its stub goes through a cast rather than Layer.mock.
+const emptySettings = { providerInstances: {} } as unknown as ServerSettingsValue;
+const httpClientStub = {
+  execute: () => Effect.die("HttpClient is not under test"),
+} as unknown as HttpClient.HttpClient;
+const handlerServices = Layer.mergeAll(
+  Layer.mock(ServerSettings.ServerSettingsService)({
+    getSettings: Effect.succeed(emptySettings),
+  }),
+  Layer.succeed(HttpClient.HttpClient, httpClientStub),
+  Layer.mock(WorkspacePaths.WorkspacePaths)({}),
+);
+
+describe("image_generate capability gate", () => {
+  it.effect("refuses a valid credential without the imagegen capability", () =>
+    Effect.gen(function* () {
+      const error = yield* handlers
+        .image_generate(input)
+        .pipe(
+          Effect.provideService(
+            McpInvocationContext.McpInvocationContext,
+            invocationWith(["preview", "canvas", "index"]),
+          ),
+          Effect.provide(handlerServices),
+          Effect.flip,
+        );
+
+      expect(error).toBeInstanceOf(PreviewAutomationUnavailableError);
+      expect(error).toMatchObject({
+        capability: "imagegen",
+        environmentId: EnvironmentId.make("environment-1"),
+        threadId: ThreadId.make("thread-1"),
+      });
+    }),
+  );
+
+  it.effect(
+    "passes the gate with the capability and fails on the configured adapters instead",
+    () =>
+      Effect.gen(function* () {
+        // Settings without any BYOK instance: the gate must have let the call
+        // through, and the handler reports that no image route exists.
+        const error = yield* handlers
+          .image_generate(input)
+          .pipe(
+            Effect.provideService(
+              McpInvocationContext.McpInvocationContext,
+              invocationWith(["imagegen", "canvas"]),
+            ),
+            Effect.provide(handlerServices),
+            Effect.flip,
+          );
+
+        expect(error).toBeInstanceOf(ImageGenerateError);
+        expect(error).toMatchObject({ reason: "no_adapter" });
+      }),
+  );
+});
 
 const route = (id: string, protocol: string, apiKey = "sk-test"): ImagegenRouteCandidate => ({
   id,

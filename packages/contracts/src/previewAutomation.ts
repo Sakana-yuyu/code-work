@@ -634,7 +634,7 @@ export type PreviewAutomationResponse = typeof PreviewAutomationResponse.Type;
 export class PreviewAutomationUnavailableError extends Schema.TaggedErrorClass<PreviewAutomationUnavailableError>()(
   "PreviewAutomationUnavailableError",
   {
-    capability: Schema.Literals(["preview", "canvas", "index"]),
+    capability: Schema.Literals(["preview", "canvas", "index", "imagegen"]),
     environmentId: EnvironmentId,
     threadId: ThreadId,
     sessionId: TrimmedNonEmptyString,

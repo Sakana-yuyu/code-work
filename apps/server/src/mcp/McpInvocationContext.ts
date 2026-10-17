@@ -7,7 +7,7 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
-export type McpCapability = "preview" | "canvas" | "index";
+export type McpCapability = "preview" | "canvas" | "index" | "imagegen";
 
 export interface McpInvocationScope {
   readonly environmentId: EnvironmentId;

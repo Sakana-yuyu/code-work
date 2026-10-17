@@ -12,6 +12,7 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import * as ServerSettings from "../../../serverSettings.ts";
 import { gatewayAdapterRoutes } from "../../../provider/byok/modelGateway.ts";
 import * as WorkspacePaths from "../../../workspace/WorkspacePaths.ts";
+import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { collectUint8StreamText } from "../../../stream/collectUint8StreamText.ts";
 
 import { ImagegenToolkit } from "./tools.ts";
@@ -128,9 +129,13 @@ const noAdapterError = (): ImageGenerateError =>
       "No Custom model service (BYOK) adapter with an OpenAI-compatible API key is configured. Add one in Settings > Custom model services first.",
   });
 
-const handlers = {
+export const handlers = {
   image_generate: (input: ImageGenerateInput) =>
     Effect.gen(function* () {
+      // Image generation spends the host's BYOK key, so a credential must
+      // carry the imagegen capability; sessions only get it when an
+      // image-capable adapter route is configured.
+      yield* McpInvocationContext.requireMcpCapability("imagegen");
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const settings = yield* serverSettings.getSettings.pipe(Effect.orElseSucceed(() => null));
       if (settings === null) {

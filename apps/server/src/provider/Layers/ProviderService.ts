@@ -69,6 +69,8 @@ import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import * as McpAppModelContext from "../../mcpApps/McpAppModelContext.ts";
 import type { McpCapability } from "../../mcp/McpInvocationContext.ts";
 import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
+import { pickImageAdapter } from "../../mcp/toolkits/imagegen/handlers.ts";
+import { gatewayAdapterRoutes } from "../byok/modelGateway.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 const isModelSelection = Schema.is(ModelSelection);
 const HistoryReplayPayload = Schema.Struct({
@@ -281,7 +283,8 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   /**
    * 为每个 Provider 会话附加 code-work MCP。Canvas 是代码分析能力，不能
    * 跟随浏览器权限一起关闭；浏览器关闭时只授予 canvas 能力。代码索引
-   * 跟随服务器设置开关。
+   * 跟随服务器设置开关。图像生成消耗宿主 BYOK 密钥，只在配置了可用
+   * 图像线路时授予。
    */
   const agentBrowserAccessEnabled = serverSettings.getSettings.pipe(
     Effect.map((settings) => settings.enableAgentBrowserAccess),
@@ -294,6 +297,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   );
   const codeIndexEnabled = serverSettings.getSettings.pipe(
     Effect.map((settings) => settings.codeIndexEnabled),
+    Effect.orElseSucceed(() => false),
+  );
+  const imagegenRouteConfigured = serverSettings.getSettings.pipe(
+    Effect.map((settings) => pickImageAdapter(gatewayAdapterRoutes(settings), undefined) !== null),
     Effect.orElseSucceed(() => false),
   );
 
@@ -311,6 +318,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         : ["canvas"];
       if (yield* codeIndexEnabled) {
         capabilities.push("index");
+      }
+      if (yield* imagegenRouteConfigured) {
+        capabilities.push("imagegen");
       }
       const credential = yield* issueMcpCredential({
         threadId,
