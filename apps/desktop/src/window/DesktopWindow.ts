@@ -18,6 +18,7 @@ import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
+import { shouldCloseToTray } from "../electron/ElectronTray.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import {
   MENU_ACTION_CHANNEL,
@@ -598,9 +599,12 @@ export const make = Effect.gen(function* () {
     window.on("maximize", scheduleBoundsPersist);
     window.on("unmaximize", scheduleBoundsPersist);
     window.on("close", (event) => {
-      const keepInTray =
-        runSync(Ref.get(desktopState.trayReady)) && !runSync(Ref.get(desktopState.quitting));
-      if (keepInTray) {
+      if (
+        shouldCloseToTray({
+          trayReady: runSync(Ref.get(desktopState.trayReady)),
+          quitting: runSync(Ref.get(desktopState.quitting)),
+        })
+      ) {
         event.preventDefault();
         window.hide();
         void runFork(logWindowInfo("main window hidden to tray"));

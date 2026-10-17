@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { normalizeTrayRecentItems, trayThreadAction } from "./ElectronTray.ts";
+import { normalizeTrayRecentItems, shouldCloseToTray, trayThreadAction } from "./ElectronTray.ts";
 
 describe("ElectronTray", () => {
+  it("hides to the tray only while the tray exists and no quit is in flight", () => {
+    expect(shouldCloseToTray({ trayReady: true, quitting: false })).toBe(true);
+    // Without a tray icon the app could never be brought back: close for real.
+    expect(shouldCloseToTray({ trayReady: false, quitting: false })).toBe(false);
+    // Tray Quit and Cmd+Q drive before-quit; swallowing that close would hang.
+    expect(shouldCloseToTray({ trayReady: true, quitting: true })).toBe(false);
+    expect(shouldCloseToTray({ trayReady: false, quitting: true })).toBe(false);
+  });
+
   it("keeps the latest bounded set of valid conversations without duplicates", () => {
     expect(
       normalizeTrayRecentItems([

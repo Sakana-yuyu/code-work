@@ -60,6 +60,18 @@ export function trayThreadAction(
   return `open-thread:${encodeURIComponent(item.environmentId)}:${encodeURIComponent(item.threadId)}`;
 }
 
+/**
+ * Whether a main-window close hides to the tray instead of closing. The
+ * tray must exist (an app with no icon cannot be brought back), and an
+ * in-flight quit must not be swallowed.
+ */
+export function shouldCloseToTray(input: {
+  readonly trayReady: boolean;
+  readonly quitting: boolean;
+}): boolean {
+  return input.trayReady && !input.quitting;
+}
+
 function clipTitle(value: string, fallback: string): string {
   const normalized = value.replace(/\s+/g, " ").trim() || fallback;
   return normalized.length > MAX_TRAY_TITLE_LENGTH

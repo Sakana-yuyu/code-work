@@ -11,9 +11,41 @@ import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./DesktopLifecycle.ts";
+import { shouldQuitWhenAllWindowsClosed } from "./DesktopLifecycle.ts";
 import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
+
+describe("shouldQuitWhenAllWindowsClosed", () => {
+  it("quits on Windows/Linux only when neither the tray nor a quit exists", () => {
+    // Tray residency: the process and its backend stay alive with the tray.
+    assert.equal(
+      shouldQuitWhenAllWindowsClosed({ platform: "win32", quitting: false, trayReady: true }),
+      false,
+    );
+    assert.equal(
+      shouldQuitWhenAllWindowsClosed({ platform: "linux", quitting: false, trayReady: true }),
+      false,
+    );
+    // No tray icon left to bring the app back: quit instead of idling.
+    assert.equal(
+      shouldQuitWhenAllWindowsClosed({ platform: "win32", quitting: false, trayReady: false }),
+      true,
+    );
+    // An in-flight quit must not be double-driven.
+    assert.equal(
+      shouldQuitWhenAllWindowsClosed({ platform: "win32", quitting: true, trayReady: false }),
+      false,
+    );
+  });
+
+  it("never quits on macOS, where the dock keeps resident apps alive", () => {
+    assert.equal(
+      shouldQuitWhenAllWindowsClosed({ platform: "darwin", quitting: false, trayReady: false }),
+      false,
+    );
+  });
+});
 
 function makeElectronAppLayer(
   appListeners: Map<string, (...args: readonly unknown[]) => void>,

@@ -28,6 +28,19 @@ export class DesktopLifecycleRelaunchError extends Schema.TaggedErrorClass<Deskt
   }
 }
 
+/**
+ * Whether the app should quit now that its last window is gone. Tray
+ * residency keeps the process (and its backend) alive with only the tray
+ * icon left; macOS never quits here because the dock keeps running apps.
+ */
+export function shouldQuitWhenAllWindowsClosed(input: {
+  readonly platform: NodeJS.Platform;
+  readonly quitting: boolean;
+  readonly trayReady: boolean;
+}): boolean {
+  return input.platform !== "darwin" && !input.quitting && !input.trayReady;
+}
+
 export type DesktopLifecycleRuntimeServices =
   | DesktopEnvironment.DesktopEnvironment
   | DesktopShutdown.DesktopShutdown
@@ -237,9 +250,11 @@ export const make = DesktopLifecycle.of({
           const app = yield* ElectronApp.ElectronApp;
           const state = yield* DesktopState.DesktopState;
           if (
-            environment.platform !== "darwin" &&
-            !(yield* Ref.get(state.quitting)) &&
-            !(yield* Ref.get(state.trayReady))
+            shouldQuitWhenAllWindowsClosed({
+              platform: environment.platform,
+              quitting: yield* Ref.get(state.quitting),
+              trayReady: yield* Ref.get(state.trayReady),
+            })
           ) {
             yield* app.quit;
           }
