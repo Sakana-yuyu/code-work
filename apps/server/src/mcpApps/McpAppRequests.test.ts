@@ -10,6 +10,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as Schema from "effect/Schema";
 
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import type {
@@ -89,6 +90,9 @@ const requestsLayer = it.layer(
   ),
 );
 
+/** Same JSON encoding the bridge itself uses for payload columns. */
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+
 /** One stored mcp_tool_call whose data names the app its result produced. */
 const seedAppActivity = Effect.fn("seedAppActivity")(function* (options?: {
   readonly itemServer?: string;
@@ -103,7 +107,7 @@ const seedAppActivity = Effect.fn("seedAppActivity")(function* (options?: {
       activity_id, thread_id, turn_id, tone, kind, summary, payload_json, created_at
     ) VALUES (
       'activity-app-1', ${THREAD_ID}, 'turn-1', 'info', 'tool.completed', 'forecast',
-      ${JSON.stringify({
+      ${encodeJson({
         toolCallId: "item-app-1",
         data: {
           item: {
@@ -133,7 +137,7 @@ const seedResultActivity = Effect.fn("seedResultActivity")(function* () {
       activity_id, thread_id, turn_id, tone, kind, summary, payload_json, created_at
     ) VALUES (
       'activity-app-2', ${THREAD_ID}, 'turn-1', 'info', 'tool.completed', 'forecast',
-      ${JSON.stringify({
+      ${encodeJson({
         toolCallId: "item-app-1",
         data: {
           item: {
