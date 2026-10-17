@@ -125,7 +125,6 @@ import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderComma
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as McpAppModelContext from "./mcpApps/McpAppModelContext.ts";
-import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
 import { ThreadSettlementReactorLive } from "./orchestration/Layers/ThreadSettlementReactor.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
@@ -360,13 +359,6 @@ const ProviderLayerLive = ProviderServiceLive.pipe(
   Layer.provide(ProviderAdapterRegistryLive),
   Layer.provide(McpAppModelContextLayerLive),
   Layer.provideMerge(ProviderSessionDirectoryLayerLive),
-);
-
-const McpAppsLayerLive = McpAppRequests.layer.pipe(
-  Layer.provide(SqlitePersistenceLayerLive),
-  Layer.provide(ProviderSessionDirectoryLayerLive),
-  Layer.provide(ProviderAdapterRegistryLive),
-  Layer.provide(McpAppModelContextLayerLive),
 );
 
 const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersistenceLayerLive));
@@ -864,7 +856,6 @@ const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
   Layer.provideMerge(ExternalLauncher.layer),
   Layer.provideMerge(RemoteOpenTargets.layer),
   Layer.provideMerge(ServerLifecycleEvents.layer),
-  Layer.provideMerge(McpAppsLayerLive),
   Layer.provide(NetService.layer),
 );
 

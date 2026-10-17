@@ -77,6 +77,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import * as GitWorkflowService from "../../git/GitWorkflowService.ts";
 import * as WorkspaceOperationLock from "../WorkspaceOperationLock.ts";
+import { makeAdapterRegistryMock } from "../../provider/testUtils/providerAdapterRegistryMock.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asApprovalRequestId = (value: string): ApprovalRequestId => ApprovalRequestId.make(value);
@@ -480,6 +481,7 @@ describe("ProviderCommandReactor", () => {
       get streamEvents() {
         return Stream.fromPubSub(runtimeEventPubSub);
       },
+      adapterRegistry: makeAdapterRegistryMock({}),
     };
 
     const orchestrationLayer = OrchestrationEngineLive.pipe(

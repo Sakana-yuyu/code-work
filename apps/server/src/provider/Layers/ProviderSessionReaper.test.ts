@@ -29,6 +29,7 @@ import { ProviderSessionReaper } from "../Services/ProviderSessionReaper.ts";
 import { ProviderService, type ProviderServiceShape } from "../Services/ProviderService.ts";
 import { ProviderSessionDirectoryLive } from "./ProviderSessionDirectory.ts";
 import { makeProviderSessionReaperLive } from "./ProviderSessionReaper.ts";
+import { makeAdapterRegistryMock } from "../testUtils/providerAdapterRegistryMock.ts";
 
 const defaultModelSelection = {
   instanceId: ProviderInstanceId.make("codex"),
@@ -199,6 +200,7 @@ describe("ProviderSessionReaper", () => {
       rollbackConversation: () => unsupported(),
       uploadFeedback: () => unsupported(),
       streamEvents: Stream.empty,
+      adapterRegistry: makeAdapterRegistryMock({}),
     };
 
     const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(

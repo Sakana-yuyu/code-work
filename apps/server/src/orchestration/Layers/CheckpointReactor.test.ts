@@ -68,6 +68,7 @@ import * as WorkspaceOperationLock from "../WorkspaceOperationLock.ts";
 import { ProviderSessionDirectory } from "../../provider/Services/ProviderSessionDirectory.ts";
 import { ProviderSessionDirectoryLive } from "../../provider/Layers/ProviderSessionDirectory.ts";
 import * as ProviderSessionRuntime from "../../persistence/ProviderSessionRuntime.ts";
+import { makeAdapterRegistryMock } from "../../provider/testUtils/providerAdapterRegistryMock.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
@@ -145,6 +146,7 @@ function createProviderServiceHarness(
     get streamEvents() {
       return Stream.fromPubSub(runtimeEventPubSub);
     },
+    adapterRegistry: makeAdapterRegistryMock({}),
   };
 
   const emit = (event: LegacyProviderRuntimeEvent): void => {

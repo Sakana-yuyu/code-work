@@ -1619,6 +1619,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     get streamEvents(): ProviderServiceMethod<"streamEvents"> {
       return Stream.fromPubSub(runtimeEventPubSub);
     },
+    adapterRegistry: registry,
   } satisfies ProviderService.ProviderService["Service"];
 });
 

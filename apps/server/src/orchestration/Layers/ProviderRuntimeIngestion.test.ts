@@ -66,6 +66,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { parseSessionUpdateEvent } from "../../provider/acp/AcpRuntimeModel.ts";
 import { makeAcpContentDeltaEvent } from "../../provider/acp/AcpCoreRuntimeEvents.ts";
+import { makeAdapterRegistryMock } from "../../provider/testUtils/providerAdapterRegistryMock.ts";
 
 function makeTestServerSettingsLayer(overrides: Partial<ServerSettings> = {}) {
   return ServerSettingsService.layerTest(overrides);
@@ -146,6 +147,7 @@ function createProviderServiceHarness() {
     get streamEvents() {
       return Stream.fromPubSub(runtimeEventPubSub);
     },
+    adapterRegistry: makeAdapterRegistryMock({}),
   };
 
   const setSession = (session: ProviderSession): void => {

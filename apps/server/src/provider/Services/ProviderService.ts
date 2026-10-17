@@ -39,7 +39,10 @@ import type {
   ProviderToolBrokerBridge,
   ProviderToolBrokerContext,
 } from "./ProviderAdapter.ts";
-import type { ProviderInstanceRoutingInfo } from "./ProviderAdapterRegistry.ts";
+import type {
+  ProviderAdapterRegistryShape,
+  ProviderInstanceRoutingInfo,
+} from "./ProviderAdapterRegistry.ts";
 
 /**
  * ProviderServiceShape - Service API for provider session and turn orchestration.
@@ -172,6 +175,14 @@ export interface ProviderServiceShape {
    * Fan-out is owned by ProviderService (not by a standalone event-bus service).
    */
   readonly streamEvents: Stream.Stream<ProviderRuntimeEvent>;
+
+  /**
+   * The adapter facade this service routes through, exposed for consumers
+   * that must resolve adapters from the connection environment (the MCP
+   * Apps bridge): a sibling layer cannot see another layer's internal
+   * provides, so the facade is reachable only through this service.
+   */
+  readonly adapterRegistry: ProviderAdapterRegistryShape;
 }
 
 /**

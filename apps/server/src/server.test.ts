@@ -168,7 +168,10 @@ import * as ModelGateway from "./provider/byok/modelGateway.ts";
 import * as ByokCatalog from "./provider/byok/ByokCatalog.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
-import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
+import * as McpAppModelContext from "./mcpApps/McpAppModelContext.ts";
+import { makeAdapterRegistryMock } from "./provider/testUtils/providerAdapterRegistryMock.ts";
+import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
+import * as ProviderAdapterRegistry from "./provider/Services/ProviderAdapterRegistry.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import { SshLayerLive } from "./server.ts";
 import * as PreviewManager from "./preview/Manager.ts";
@@ -822,12 +825,20 @@ const buildAppUnderTest = (options?: {
             reports: Stream.empty,
             drain: Effect.void,
           }),
-          Layer.mock(McpAppRequests.McpAppRequests)({
-            callTool: () => Effect.die("MCP App bridge is not stubbed in this test"),
-            toolInfo: () => Effect.die("MCP App bridge is not stubbed in this test"),
-            readResource: () => Effect.die("MCP App bridge is not stubbed in this test"),
-            updateModelContext: () => Effect.die("MCP App bridge is not stubbed in this test"),
-            itemDetail: () => Effect.die("MCP App bridge is not stubbed in this test"),
+          // ws.ts builds the MCP App bridge from ambient services (see
+          // McpAppRequests.make), so the routes require its four inputs
+          // directly; stub them at the serve level like ProviderService.
+          Layer.mock(ProviderSessionDirectory.ProviderSessionDirectory)({
+            getBinding: () => Effect.succeed(Option.none()),
+          }),
+          Layer.succeed(
+            ProviderAdapterRegistry.ProviderAdapterRegistry,
+            makeAdapterRegistryMock({}),
+          ),
+          Layer.mock(McpAppModelContext.McpAppModelContext)({
+            set: () => Effect.void,
+            forThread: () => Effect.succeed([]),
+            deleteForThread: () => Effect.void,
           }),
           // These ride the serve-level chain too: the routes' Request<"Requires">
           // entries cannot be cancelled inside makeRoutesLayer.pipe.

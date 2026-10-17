@@ -28,6 +28,7 @@ import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDi
 import * as ThreadGoalStore from "./persistence/Services/ThreadGoalStore.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
+import { makeAdapterRegistryMock } from "./provider/testUtils/providerAdapterRegistryMock.ts";
 
 const providerInstanceId = ProviderInstanceId.make("codex");
 const updatedAt = "2026-08-20T12:00:00.000Z";
@@ -86,6 +87,7 @@ const makeProviderService = (liveThreadIds: ReadonlyArray<ThreadId> = []) =>
     rollbackConversation: () => Effect.die("unused"),
     uploadFeedback: () => Effect.die("unused"),
     streamEvents: Stream.empty,
+    adapterRegistry: makeAdapterRegistryMock({}),
   }) satisfies ProviderService.ProviderService["Service"];
 
 const queryWithThreads = (threads: ReadonlyArray<ReturnType<typeof makeThread>>) =>

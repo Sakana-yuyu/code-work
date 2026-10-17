@@ -578,7 +578,11 @@ const makeWsRpcLayer = (
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const storageCleanup = yield* StorageCleanup.StorageCleanup;
-      const mcpAppRequests = yield* McpAppRequests.McpAppRequests;
+      // Built from ambient services rather than a boot-graph layer: a layer
+      // would eagerly materialize the adapter facade in whichever branch
+      // reaches it first and fail the boot without the hydrated registry in
+      // scope (see McpAppRequests.make).
+      const mcpAppRequests = yield* McpAppRequests.make;
       const sshServerService = yield* SshServerServiceModule.SshServerService;
       const sshTerminalService = yield* SshTerminalServiceModule.SshTerminalService;
       const previewManager = yield* PreviewManager.PreviewManager;

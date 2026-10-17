@@ -157,6 +157,14 @@ const makeStartupDependencies = (
       rollbackConversation: () => Effect.die("unused"),
       uploadFeedback: () => Effect.die("unused"),
       streamEvents: Stream.empty,
+      adapterRegistry: {
+        getByInstance: () => Effect.die("unused"),
+        getInstanceInfo: () => Effect.die("unused"),
+        listInstances: () => Effect.succeed([]),
+        listProviders: () => Effect.succeed([]),
+        streamChanges: Stream.empty,
+        subscribeChanges: Effect.die("unused"),
+      },
     }),
   );
 
