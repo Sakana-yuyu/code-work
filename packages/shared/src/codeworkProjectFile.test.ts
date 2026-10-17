@@ -36,19 +36,23 @@ describe("buildCodeworkProjectFileJsonSchema", () => {
       "defaultThreadEnvMode",
       "iconPath",
       "scripts",
+      "worktreeSubmodules",
     ]);
     expect(schema.required).toBeUndefined();
     expect(schema.properties.iconPath?.description).toContain("Workspace-relative path");
     expect(schema.properties.defaultThreadEnvMode?.description).toContain("new threads start");
+    expect(schema.properties.worktreeSubmodules?.description).toContain("git submodules");
 
     const script = schema.properties.scripts?.items;
     expect(script?.required).toEqual(["name", "command"]);
     expect(Object.keys(script?.properties ?? {}).sort()).toEqual([
+      "async",
       "autoOpenPreview",
       "command",
       "icon",
       "name",
       "previewUrl",
+      "runOnSettle",
       "runOnWorktreeCreate",
     ]);
   });
