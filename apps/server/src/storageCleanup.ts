@@ -350,8 +350,14 @@ const make = Effect.gen(function* () {
     });
     const index = yield* read(["rev-parse", "--git-path", "index"]);
     if (index === null) return true;
-    // Another Git process is writing to this checkout.
-    if (yield* fs.exists(`${path.resolve(cwd, index.stdout.trim())}.lock`))
+    // Another Git process is writing to this checkout. A probe failure —
+    // ENOTDIR when a linked worktree's `.git` file makes the derived path
+    // impossible on POSIX — means "no lock file", not a failed sweep entry;
+    // Git itself still refuses work on a checkout that is truly locked.
+    const indexLocked = yield* fs
+      .exists(`${path.resolve(cwd, index.stdout.trim())}.lock`)
+      .pipe(Effect.orElseSucceed(() => false));
+    if (indexLocked)
       return yield* failure(
         "Git index is locked. Status will resume when the index lock is removed.",
       );
