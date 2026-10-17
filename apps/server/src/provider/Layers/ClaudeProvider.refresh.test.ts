@@ -21,9 +21,11 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { beforeEach, vi } from "vite-plus/test";
 
 import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";
+import * as ModelManifest from "../ModelManifest.ts";
 import { makeNativeProviderCatalog, type NativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import { ProviderCatalogForceRefresh } from "../ProviderCatalogCache.ts";
 import { checkClaudeProviderStatus, makePendingClaudeProvider } from "./ClaudeProvider.ts";
+import { ProviderDriverKind } from "@codework/contracts";
 
 const sdk = vi.hoisted(() => ({ query: vi.fn<typeof query>() }));
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ query: sdk.query }));
@@ -211,7 +213,15 @@ it.effect("版本、SDK 与技能扫描共同耗尽一次 30 秒预算，残缺�
     expect(result.status).toBe("error");
     expect(result.installed).toBe(true);
     expect(result.version).toBe("2.1.111");
-    expect(result.models.some((model) => model.slug === "claude-opus-5")).toBe(false);
+    // The degraded timeout draft carries the ungated built-in catalog; the
+    // Claude driver still applies the manifest on top, and that gate — not the
+    // probe — is what hides Opus 5 from an old CLI.
+    const applied = ModelManifest.applyModelManifest(
+      result,
+      ModelManifest.BUNDLED_MODEL_MANIFEST,
+      ProviderDriverKind.make("claudeAgent"),
+    );
+    expect(applied.models.some((model) => model.slug === "claude-opus-5")).toBe(false);
     expect(result.message).toContain("30 秒");
     expect(DateTime.toEpochMillis(yield* DateTime.now) - startedAt).toBe(30_000);
     expect(fixture.options[0]!.abortController!.signal.aborted).toBe(true);
