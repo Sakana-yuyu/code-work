@@ -8331,6 +8331,7 @@ function ChatViewContent(props: ChatViewProps) {
       width={workspaceLayout.width}
       chatVisible={ideChatVisible}
       maximized={rightPanelMaximized}
+      editorRequestId={activeFileSurface?.revealRequestId ?? 0}
       workbench={
         activeProject && activeWorkspaceRoot ? (
           <Suspense fallback={null}>

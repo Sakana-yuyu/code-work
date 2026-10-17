@@ -10,6 +10,24 @@ export const WorkspaceLayoutSchema = Schema.Literals(["chat", "ide"]);
 type WorkspaceLayoutMode = typeof WorkspaceLayoutSchema.Type;
 const IDE_MIN_WIDTH = 900;
 export const IDE_MIN_VIEWPORT_WIDTH = 1000;
+/** 编辑器让位前保留的最小宽度，与对话列的拖宽上限原先所用的余量一致。 */
+export const IDE_EDITOR_MIN_WIDTH = 480;
+export const IDE_CHAT_MIN_WIDTH = 280;
+
+/**
+ * 对话列拖过编辑器的最小宽度后，编辑器让位，对话占满这一行。
+ * 窗口还不够同时放下两者时不让位，避免窄屏把编辑器直接藏掉。
+ */
+export function ideEditorGivesWay(width: number, chatWidth: number): boolean {
+  if (width < IDE_EDITOR_MIN_WIDTH + IDE_CHAT_MIN_WIDTH) return false;
+  return chatWidth > width - IDE_EDITOR_MIN_WIDTH;
+}
+
+/** 重新要编辑器时，把对话列收回到两者都能放下的宽度。 */
+export function ideChatWidthForEditor(width: number, chatWidth: number): number {
+  const maxChat = Math.max(IDE_CHAT_MIN_WIDTH, width - IDE_EDITOR_MIN_WIDTH);
+  return Math.min(Math.max(chatWidth, IDE_CHAT_MIN_WIDTH), maxChat);
+}
 
 export function shouldUseIdeShell(
   preferred: WorkspaceLayoutMode,

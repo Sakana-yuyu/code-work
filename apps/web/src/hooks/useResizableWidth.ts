@@ -46,6 +46,8 @@ export interface ResizableWidthHandlers {
  */
 export function useResizableWidth(options: UseResizableWidthOptions): {
   readonly width: number;
+  /** Clamps, persists to localStorage, and updates state. */
+  readonly setWidth: (value: number) => void;
   readonly handlers: ResizableWidthHandlers;
 } {
   const { storageKey, legacyStorageKey, defaultWidth, minWidth, maxWidth, edge } = options;
@@ -212,6 +214,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
 
   return {
     width: clampedWidth,
+    setWidth: commitWidth,
     handlers: { onKeyDown, onPointerDown, onPointerMove, onPointerUp, onPointerCancel },
   };
 }

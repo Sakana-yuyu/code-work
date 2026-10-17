@@ -59,6 +59,8 @@ export const en: Record<string, string> = {
   "workspace.ideModeDescription": "Files, editor, terminal and AI chat",
   "workspace.ideNeedsSpace": "Close conversation split and widen the workspace to use IDE mode",
   "workspace.toggleAiChat": "Toggle AI chat",
+  "workspace.maximizeChat": "Use the editor space for chat",
+  "workspace.showEditor": "Show the editor",
   "workspace.chooseFile": "Select a file in the explorer to start editing",
   "localAccountPool.title": "Local official account pool",
   "localAccountPool.description":
@@ -6698,6 +6700,8 @@ export const zhCN: Record<string, string> = {
   "workspace.ideModeDescription": "文件树、编辑器、终端与 AI 对话",
   "workspace.ideNeedsSpace": "退出对话分屏并拉宽工作区，必要时收起侧栏后可使用 IDE 模式",
   "workspace.toggleAiChat": "显示或隐藏 AI 对话",
+  "workspace.maximizeChat": "用编辑区显示对话",
+  "workspace.showEditor": "显示编辑器",
   "workspace.chooseFile": "从左侧文件树选择文件开始编辑",
   "localAccountPool.title": "本地官方账号池",
   "localAccountPool.description":

@@ -58,7 +58,7 @@ describe("工作区布局容器", () => {
     const separator = markup.match(/<div[^>]*role="separator"[^>]*>/)?.[0];
     expect(separator).toContain('tabindex="0"');
     expect(separator).toContain('aria-valuemin="280"');
-    expect(separator).toContain('aria-valuemax="720"');
+    expect(separator).toContain('aria-valuemax="1200"');
     expect(separator).toContain('aria-valuenow="360"');
     expect(separator).toContain("touch-none");
     expect(renderLayout(false)).not.toContain('role="separator"');

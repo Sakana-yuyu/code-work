@@ -55,6 +55,8 @@ export const ja: Record<string, string> = {
   "workspace.ideModeDescription": "ファイル、エディター、ターミナルと AI チャット",
   "workspace.ideNeedsSpace": "IDE モードを使うには、会話の分割を閉じて画面を広げてください",
   "workspace.toggleAiChat": "AI チャットの表示を切り替え",
+  "workspace.maximizeChat": "エディターの場所をチャットにする",
+  "workspace.showEditor": "エディターを表示",
   "workspace.chooseFile": "左側のファイル一覧からファイルを選んで編集を開始",
   "effortPicker.labelLanguage": "強度ラベルの言語",
   "Fallback model": "フォールバックモデル",

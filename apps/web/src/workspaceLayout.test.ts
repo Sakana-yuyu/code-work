@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@codework/contracts";
 
 import {
+  ideChatWidthForEditor,
+  ideEditorGivesWay,
   resolveWorkspaceLayout,
   shouldUseIdeShell,
   useIdeViewportAvailable,
@@ -50,6 +52,15 @@ describe("工作区布局", () => {
     expect(resolveWorkspaceLayout("ide", 899)).toBe("chat");
     expect(resolveWorkspaceLayout("ide", 0)).toBe("chat");
     expect(resolveWorkspaceLayout("ide", 1200)).toBe("ide");
+  });
+
+  it("对话拖过编辑器最小宽度后编辑器让位，打开文件时再把对话收回", () => {
+    expect(ideEditorGivesWay(1200, 360)).toBe(false);
+    expect(ideEditorGivesWay(1200, 720)).toBe(false);
+    expect(ideEditorGivesWay(1200, 721)).toBe(true);
+    expect(ideEditorGivesWay(700, 600)).toBe(false);
+    expect(ideChatWidthForEditor(1200, 900)).toBe(720);
+    expect(ideChatWidthForEditor(1200, 360)).toBe(360);
   });
 
   it("持久化只接受对话和 IDE 两种布局", () => {
