@@ -342,8 +342,11 @@ describe("StorageCleanup service", () => {
       assert.strictEqual(entry?.kind, "worktree");
       assert.match(entry?.reason ?? "", /inactive/i);
     }).pipe(
-      Effect.provide(ServerConfig.layerTest(process.cwd(), { prefix: "cleanup-test-" })),
-      Effect.provide(NodeServices.layer),
+      Effect.provide(
+        ServerConfig.layerTest(process.cwd(), { prefix: "cleanup-test-" }).pipe(
+          Layer.provideMerge(NodeServices.layer),
+        ),
+      ),
     ),
   );
 
@@ -387,8 +390,11 @@ describe("StorageCleanup service", () => {
       const kept = cleanup.entries.find((e) => e.outcome === "kept");
       assert.match(kept?.reason ?? "", /running|pending/i);
     }).pipe(
-      Effect.provide(ServerConfig.layerTest(process.cwd(), { prefix: "cleanup-test-" })),
-      Effect.provide(NodeServices.layer),
+      Effect.provide(
+        ServerConfig.layerTest(process.cwd(), { prefix: "cleanup-test-" }).pipe(
+          Layer.provideMerge(NodeServices.layer),
+        ),
+      ),
     ),
   );
 
@@ -428,8 +434,11 @@ describe("StorageCleanup service", () => {
       assert.strictEqual(cleanup.counts.removed, 1);
       assert.strictEqual(removedPaths.length, 1);
     }).pipe(
-      Effect.provide(ServerConfig.layerTest(process.cwd(), { prefix: "cleanup-test-" })),
-      Effect.provide(NodeServices.layer),
+      Effect.provide(
+        ServerConfig.layerTest(process.cwd(), { prefix: "cleanup-test-" }).pipe(
+          Layer.provideMerge(NodeServices.layer),
+        ),
+      ),
     ),
   );
 
@@ -471,8 +480,11 @@ describe("StorageCleanup service", () => {
       const kept = cleanup.entries.find((e) => e.outcome === "kept");
       assert.match(kept?.reason ?? "", /uncommitted changes/);
     }).pipe(
-      Effect.provide(ServerConfig.layerTest(process.cwd(), { prefix: "cleanup-test-" })),
-      Effect.provide(NodeServices.layer),
+      Effect.provide(
+        ServerConfig.layerTest(process.cwd(), { prefix: "cleanup-test-" }).pipe(
+          Layer.provideMerge(NodeServices.layer),
+        ),
+      ),
     ),
   );
 });
