@@ -753,6 +753,9 @@ const buildAppUnderTest = (options?: {
             ...options?.layers?.providerRegistry,
           }),
           Layer.mock(ProviderService.ProviderService)({
+            // ws.ts resolves the MCP App bridge's adapter facade through this
+            // field, so the serve-level mock must expose it too.
+            adapterRegistry: makeAdapterRegistryMock({}),
             uploadFeedback: () => Effect.die("Provider feedback is not stubbed in this test"),
             ...options?.layers?.providerService,
           }),
