@@ -1674,14 +1674,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const secretsDir = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "codework-gw-secrets-",
       });
-      // The gateway token is whatever hex string the secret file holds, so
-      // pre-seeding it keeps the test honest without rebuilding the app's
-      // secret store.
-      const token = "ab".repeat(32);
-      yield* fileSystem.writeFile(
-        `${secretsDir}/byok-gateway-token.bin`,
-        Buffer.from(token, "hex"),
-      );
       yield* buildAppUnderTest({
         config: { secretsDir },
         layers: {
@@ -1692,6 +1684,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
         },
       });
+      // CliProxy 在构建期轮换网关令牌，所以只能读取启动后落盘的那一份；
+      // 预置令牌会被轮换覆盖，请求随即 401。
+      const token = Buffer.from(
+        yield* fileSystem.readFile(`${secretsDir}/byok-gateway-token.bin`),
+      ).toString("hex");
 
       const response = yield* HttpClient.post("/byok-gw/anthropic/v1/messages", {
         headers: {
