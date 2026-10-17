@@ -22,6 +22,20 @@ If reordering is unavailable for one environment, update the Code Work server ru
 environment. Older servers can still pin and unpin threads, but do not understand synced ordering;
 their pinned threads keep the default newest-first order below the ones you have arranged.
 
+On web and desktop, unpinning, settling, snoozing, and archiving a thread each show
+a notification with **Undo** for five seconds. Undo restores the thread's previous
+state, including its pinned position, and reopens an archived thread you were
+viewing. Discarding an unsent draft from the sidebar works the same way: Undo brings
+back its text and attachments. `mod+z` triggers the most recent Undo when no text field is focused; see
+[Keybindings](./keybindings.md).
+
+When you connect more than one environment, environment labels carry a machine icon so
+same-named projects on different machines stay distinguishable, and project pickers show a small
+badge naming the other environments a project lives on. The icon comes from what each server detects
+about its hardware. To override it, open the environment's menu in **Settings → Connections** and
+choose **Icon** — picking the detected kind clears the override. Older servers that predate machine
+detection show the picker disabled with the reason.
+
 ## Environment artwork
 
 Dev and Nightly environments can identify themselves with artwork at the top of the sidebar and in
