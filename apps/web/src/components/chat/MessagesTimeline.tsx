@@ -70,7 +70,6 @@ import {
   resolveFileDiffPath,
 } from "../../lib/diffRendering";
 import ChatMarkdown from "../ChatMarkdown";
-import { withoutChatEmoji } from "@codework/shared/chatPresentation";
 import { StreamingChatMarkdown } from "./StreamingChatMarkdown";
 import { isTextRevealEnabled } from "@codework/client-runtime/text-reveal";
 import { useAtomValue } from "@effect/atom-react";
@@ -1870,7 +1869,6 @@ const ReasoningSummaryTimelineRow = memo(function ReasoningSummaryTimelineRow({
 }: {
   row: Extract<TimelineRow, { kind: "reasoning-summary" }>;
 }) {
-  const ctx = use(TimelineRowCtx);
   const label =
     row.summaries.length > 1
       ? t("chat.reasoningSegmentCount", { count: row.summaries.length })
@@ -1891,13 +1889,7 @@ const ReasoningSummaryTimelineRow = memo(function ReasoningSummaryTimelineRow({
               index > 0 && "mt-2 border-t border-border/30 pt-2",
             )}
           >
-            <ChatMarkdown
-              text={summary.text}
-              cwd={ctx.markdownCwd}
-              threadRef={ctx.threadRef ?? undefined}
-              lineBreaks
-              className="text-inherit"
-            />
+            {summary.text}
           </div>
         ))}
       </div>
@@ -2239,9 +2231,7 @@ function WorkGroupToggleTimelineRow({
             className="size-4 shrink-0 stroke-[1.8] opacity-70"
           />
         </span>
-        <span className="min-w-0 flex-1 truncate text-secondary-label">
-          {withoutChatEmoji(row.summary)}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-secondary-label">{row.summary}</span>
       </button>
     );
   }
@@ -3375,8 +3365,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   const showFailedIndicator = workEntryDisplayIndicatesToolFailure(workEntry);
   const entryIconName =
     showWarningIndicator || showFailedIndicator ? "x" : workEntryIconName(workEntry);
-  const preview = workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
-  const displayText = workEntry.command ? preview : withoutChatEmoji(preview);
+  const displayText = workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
   const canExpand = toolCallHasExpandedBody(workEntry);
   const expandedBody = expanded ? buildToolCallExpandedBody(workEntry, workspaceRoot) : null;
   const showDestructiveRowStyle =
@@ -3469,17 +3458,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
           onClick={stopRowToggle}
           onPointerDown={stopRowToggle}
         >
-          {workLogEntryIsToolLike(workEntry) || workEntry.command ? (
-            <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
-          ) : (
-            <ChatMarkdown
-              text={expandedBody}
-              cwd={ctx.markdownCwd}
-              threadRef={ctx.threadRef ?? undefined}
-              lineBreaks
-              className="text-muted-foreground"
-            />
-          )}
+          <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
         </div>
       ) : null}
       {mcpApp !== undefined && workEntry.toolCallId !== undefined ? (
