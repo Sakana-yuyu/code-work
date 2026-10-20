@@ -717,16 +717,24 @@ export function applyThreadDetailEvent(
       // dropStaleContextWindowActivities; retention stays per turn so a
       // thread.reverted that discards turns can still resolve a value from
       // the turns that survive.
+      // 绝大多数活动既不是可解析的上下文快照、也没有重投，此时一次原始拷贝（slice）
+      // 就够了。`filter` 只在两种情况必要：要挤掉同轮的旧上下文行，或同 id 重投。
+      // 常见路径因此省掉每个元素一次 `isResolvableContextWindowActivity` 调用与闭包分配
+      // ——那条路径每个工具活动都会走一遍。（不复用模块级 id 集合：活动只增不减，
+      // 跨线程累积会变成常驻内存的泄漏点。）
       const supersedesContextWindow = isResolvableContextWindowActivity(activity);
-      const retained = thread.activities.filter(
-        (entry) =>
-          entry.id !== activity.id &&
-          !(
-            supersedesContextWindow &&
-            entry.turnId === activity.turnId &&
-            isResolvableContextWindowActivity(entry)
-          ),
-      );
+      const retained =
+        supersedesContextWindow || thread.activities.some((entry) => entry.id === activity.id)
+          ? thread.activities.filter(
+              (entry) =>
+                entry.id !== activity.id &&
+                !(
+                  supersedesContextWindow &&
+                  entry.turnId === activity.turnId &&
+                  isResolvableContextWindowActivity(entry)
+                ),
+            )
+          : thread.activities.slice();
       // 新快照可能使用不同的旧版空 sequence 排序；首次追加保持原来的规范化行为。
       let start = 0;
       let end = retained.length;

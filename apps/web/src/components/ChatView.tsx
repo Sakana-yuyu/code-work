@@ -7103,6 +7103,12 @@ function ChatViewContent(props: ChatViewProps) {
   }, [cancelWorktreeSetup, draftId, setupTarget.environmentId, worktreeSetup]);
   const onSendRef = useRef(onSend);
   onSendRef.current = onSend;
+  // 时间线是 `memo` 的，而 `onSend` 每帧都是新闭包。把它包成身份稳定的回调，
+  // 否则每次 ChatView 渲染都会击穿时间线的浅比较，连带换掉行上下文重画已挂载的行。
+  const onSendAppMessage = useCallback(
+    async (text: string) => onSendRef.current(undefined, "foreground", undefined, text),
+    [],
+  );
   // Resend once the cancelled dispatch has settled and the composer is free.
   // Every state that makes `onSend` bail and wait is part of the readiness
   // check, so the flag survives a reconnect, a reverting checkpoint, or a
@@ -8666,7 +8672,7 @@ function ChatViewContent(props: ChatViewProps) {
               onCancelWorktreeSetup={onCancelWorktreeSetup}
               onWorktreeSetupWorkLocally={draftId ? onWorktreeSetupWorkLocally : null}
               onOpenWorktreeSetupTerminal={onOpenWorktreeSetupTerminal}
-              onSendAppMessage={async (text) => onSend(undefined, "foreground", undefined, text)}
+              onSendAppMessage={onSendAppMessage}
               awaitingUser={pendingApprovals.length > 0 || pendingUserInputs.length > 0}
             />
 

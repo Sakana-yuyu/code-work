@@ -70,6 +70,7 @@ import {
   resolveFileDiffPath,
 } from "../../lib/diffRendering";
 import ChatMarkdown from "../ChatMarkdown";
+import { withoutChatEmoji } from "@codework/shared/chatPresentation";
 import { StreamingChatMarkdown } from "./StreamingChatMarkdown";
 import { isTextRevealEnabled } from "@codework/client-runtime/text-reveal";
 import { useAtomValue } from "@effect/atom-react";
@@ -600,7 +601,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         rowTop < scrollBottom &&
         rowTop + Math.max(1, rowHeight ?? 1) > scrollTop;
 
-      strip.dataset.inView = inView ? "true" : "false";
+      // 只写真正变化的条：这一轮在每次滚动帧上跑，长线程里有几百个缩略条，
+      // 无条件赋值会让每个条都触发一次样式重算。
+      const nextValue = inView ? "true" : "false";
+      if (strip.dataset.inView !== nextValue) {
+        strip.dataset.inView = nextValue;
+      }
     }
   }, [contentInsetEndAdjustment, listRef, minimapItems, minimapStripMap, onIsAtEndChange]);
 
@@ -839,18 +845,18 @@ function deriveTimelineMinimapItems(
     items.push({
       id: row.id,
       rowIndex: index,
-      userText: compactMinimapPreview(row.message.text),
-      assistantText: compactMinimapPreview(resolveFinalAssistantTextForTurn(rows, index)),
+      userText: compactMinimapPreview(row.message),
+      assistantText: compactMinimapPreview(resolveFinalAssistantMessageForTurn(rows, index)),
     });
   }
   return items;
 }
 
-function resolveFinalAssistantTextForTurn(
+function resolveFinalAssistantMessageForTurn(
   rows: ReadonlyArray<MessagesTimelineRow>,
   userRowIndex: number,
-) {
-  let finalAssistantText: string | null = null;
+): { readonly text?: string | null } | null {
+  let finalAssistantMessage: { readonly text?: string | null } | null = null;
   for (let index = userRowIndex + 1; index < rows.length; index += 1) {
     const row = rows[index];
     if (row?.kind !== "message") {
@@ -860,15 +866,33 @@ function resolveFinalAssistantTextForTurn(
       break;
     }
     if (row.message.role === "assistant") {
-      finalAssistantText = row.message.text ?? null;
+      finalAssistantMessage = row.message;
     }
   }
-  return finalAssistantText;
+  return finalAssistantMessage;
 }
 
-function compactMinimapPreview(text: string | null | undefined) {
-  const compact = text?.replace(/\s+/g, " ").trim() ?? "";
-  return compact.length > 0 ? compact : null;
+/**
+ * 归一化结果按消息对象缓存：缩略图在每个流式增量上都会重建，但历史消息的
+ * 文本不会变，而 reducer 只替换真正变化的那条（其余保持同一引用）。
+ * WeakMap 不持有消息，线程释放后自然回收。
+ */
+const compactPreviewCache = new WeakMap<object, string | null>();
+
+function compactMinimapPreview(
+  message: { readonly text?: string | null } | null | undefined,
+): string | null {
+  if (message === null || message === undefined) {
+    return null;
+  }
+  const cached = compactPreviewCache.get(message);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const compact = message.text?.replace(/\s+/g, " ").trim() ?? "";
+  const preview = compact.length > 0 ? compact : null;
+  compactPreviewCache.set(message, preview);
+  return preview;
 }
 
 function resolveTimelineRowTop(state: TimelinePositionState, rowIndex: number) {
@@ -1846,6 +1870,7 @@ const ReasoningSummaryTimelineRow = memo(function ReasoningSummaryTimelineRow({
 }: {
   row: Extract<TimelineRow, { kind: "reasoning-summary" }>;
 }) {
+  const ctx = use(TimelineRowCtx);
   const label =
     row.summaries.length > 1
       ? t("chat.reasoningSegmentCount", { count: row.summaries.length })
@@ -1866,7 +1891,13 @@ const ReasoningSummaryTimelineRow = memo(function ReasoningSummaryTimelineRow({
               index > 0 && "mt-2 border-t border-border/30 pt-2",
             )}
           >
-            {summary.text}
+            <ChatMarkdown
+              text={summary.text}
+              cwd={ctx.markdownCwd}
+              threadRef={ctx.threadRef ?? undefined}
+              lineBreaks
+              className="text-inherit"
+            />
           </div>
         ))}
       </div>
@@ -2208,7 +2239,9 @@ function WorkGroupToggleTimelineRow({
             className="size-4 shrink-0 stroke-[1.8] opacity-70"
           />
         </span>
-        <span className="min-w-0 flex-1 truncate text-secondary-label">{row.summary}</span>
+        <span className="min-w-0 flex-1 truncate text-secondary-label">
+          {withoutChatEmoji(row.summary)}
+        </span>
       </button>
     );
   }
@@ -3342,7 +3375,8 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   const showFailedIndicator = workEntryDisplayIndicatesToolFailure(workEntry);
   const entryIconName =
     showWarningIndicator || showFailedIndicator ? "x" : workEntryIconName(workEntry);
-  const displayText = workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
+  const preview = workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
+  const displayText = workEntry.command ? preview : withoutChatEmoji(preview);
   const canExpand = toolCallHasExpandedBody(workEntry);
   const expandedBody = expanded ? buildToolCallExpandedBody(workEntry, workspaceRoot) : null;
   const showDestructiveRowStyle =
@@ -3435,7 +3469,17 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
           onClick={stopRowToggle}
           onPointerDown={stopRowToggle}
         >
-          <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
+          {workLogEntryIsToolLike(workEntry) || workEntry.command ? (
+            <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
+          ) : (
+            <ChatMarkdown
+              text={expandedBody}
+              cwd={ctx.markdownCwd}
+              threadRef={ctx.threadRef ?? undefined}
+              lineBreaks
+              className="text-muted-foreground"
+            />
+          )}
         </div>
       ) : null}
       {mcpApp !== undefined && workEntry.toolCallId !== undefined ? (

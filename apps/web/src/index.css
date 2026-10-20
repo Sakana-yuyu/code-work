@@ -2513,23 +2513,11 @@ code {
   color: var(--code-foreground) !important;
 }
 
-@keyframes ultrathink-rainbow {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 200% 50%;
-  }
-}
-
-@keyframes ultrathink-chroma-shift {
-  0% {
-    filter: hue-rotate(0deg) saturate(1.2);
-  }
-  100% {
-    filter: hue-rotate(360deg) saturate(1.2);
-  }
-}
+/* ultrathink 的彩虹边框与图标色相偏移是**静态**的。
+   这两处原本各跑一个 10s 无限动画（`background-position` 和 `filter: hue-rotate`），
+   两者都不在合成器上：前者每帧重绘背景，后者每帧重建滤镜图层。只要输入框里有
+   "ultrathink"，它们就会一直跑，高压刷新率屏幕上直接把 GPU 顶满。视觉识别只依赖
+   「彩虹渐变 + 色相偏移」本身，不需要让它动。 */
 
 .ultrathink-frame {
   --ultrathink-spectrum: linear-gradient(
@@ -2553,6 +2541,7 @@ code {
   padding: 2px;
   background-image: var(--ultrathink-spectrum);
   background-size: 220% 220%;
+  background-position: 0% 50%;
   pointer-events: none;
   filter: saturate(0.82) brightness(0.92);
   -webkit-mask:
@@ -2563,7 +2552,6 @@ code {
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
   mask-composite: exclude;
-  animation: ultrathink-rainbow 10s linear infinite;
 }
 
 .ultrathink-frame > * {
@@ -2571,7 +2559,7 @@ code {
 }
 
 .ultrathink-chroma {
-  animation: ultrathink-chroma-shift 10s linear infinite;
+  filter: hue-rotate(210deg) saturate(1.2);
 }
 
 @keyframes preview-loading-progress {

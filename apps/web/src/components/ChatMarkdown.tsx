@@ -25,6 +25,7 @@ import {
   type AtomCommandResult,
 } from "@codework/client-runtime/state/runtime";
 import { classifyMarkdownImageSource } from "@codework/client-runtime/markdown-images";
+import { withoutChatEmojiInTree } from "@codework/shared/chatPresentation";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import React, {
@@ -253,6 +254,12 @@ type MarkdownHtmlAstNode = {
   children?: MarkdownHtmlAstNode[];
 };
 
+function rehypeHideChatEmoji() {
+  return withoutChatEmojiInTree;
+}
+
+const CHAT_TEXT_REHYPE_PLUGINS = [rehypeHideChatEmoji];
+
 /** Preserve Windows drive paths through the protocol allowlist in rehype-sanitize. */
 function rehypeNormalizeWindowsImageSrc() {
   return (tree: MarkdownHtmlAstNode) => {
@@ -312,6 +319,7 @@ const CHAT_MARKDOWN_REHYPE_PLUGINS = [
   rehypeRaw,
   rehypeNormalizeWindowsImageSrc,
   [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
+  rehypeHideChatEmoji,
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
 /** GitHub's own five alert kinds, in its colors: the glyph names the urgency, the title says it. */
@@ -1904,6 +1912,11 @@ function ChatMarkdown({
   /* eslint-disable react/no-unstable-nested-components -- ReactMarkdown requires component
    * renderers that close over this message's metadata. useMemo keeps them stable until that
    * metadata changes. */
+  // 流式回复每个 token 都会更新 `text`。把它放进渲染表的依赖里会让整张表（十几个
+  // 渲染闭包）在每个增量上重建；真正需要正文的只有下面的 `li` 任务标记。
+  // 用 ref 拿当前值，渲染表就只随真正的元数据变化。
+  const markdownTextRef = useRef(text);
+  markdownTextRef.current = text;
   const markdownComponents = useMemo<MarkdownRenderers>(() => {
     const fileLinkChip = (
       fileLinkMeta: MarkdownFileLinkMeta,
@@ -1997,7 +2010,9 @@ function ChatMarkdown({
       li({ node, children, ...props }) {
         const listItemStart = node?.position?.start.offset;
         const markerOffset =
-          typeof listItemStart === "number" ? findTaskListMarkerOffset(text, listItemStart) : null;
+          typeof listItemStart === "number"
+            ? findTaskListMarkerOffset(markdownTextRef.current, listItemStart)
+            : null;
         return (
           <li {...props} data-task-marker-offset={markerOffset ?? undefined}>
             {renderSkillInlineMarkdownChildren(children, skills)}
@@ -2249,7 +2264,6 @@ function ChatMarkdown({
     revealMarkdownFileInFileManager,
     revealInFileManagerLabel,
     skills,
-    text,
     threadRef,
     updateThreadPullRequestLink,
   ]);
@@ -2278,7 +2292,7 @@ function ChatMarkdown({
       <MarkdownRendererContext.Provider value={markdownComponents}>
         <ReactMarkdown
           remarkPlugins={remarkPlugins}
-          rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : undefined}
+          rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : CHAT_TEXT_REHYPE_PLUGINS}
           skipHtml={false}
           components={STABLE_MARKDOWN_COMPONENTS}
           urlTransform={markdownUrlTransform}
