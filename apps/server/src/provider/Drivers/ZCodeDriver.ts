@@ -39,7 +39,12 @@ import {
   openaiGatewayBase,
 } from "../byok/modelGateway.ts";
 import { pifamilyModelRoutes, type PifamilyModelRoute } from "../pifamily/byokProviderConfig.ts";
-import { resolveZCodeSpawnTarget, zcodeSpawnEnv } from "../zcode/zcodeBundledRuntime.ts";
+import {
+  readZCodeBundleVersion,
+  resolveZCodeSpawnTarget,
+  zcodeSpawnEnv,
+  type ZCodeBundleVersion,
+} from "../zcode/zcodeBundledRuntime.ts";
 import {
   buildZCodeProviderConfig,
   resolveZCodeDataDir,
@@ -333,6 +338,16 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
               Effect.orElseSucceed(() => draft),
             );
 
+      // 内嵌运行时跳过 `--version` 探针，卡片上的版本取自随包 VERSION.json（vendor 时写入）。
+      const bundleVersion =
+        spawnTarget.source === "bundled"
+          ? yield* readZCodeBundleVersion().pipe(
+              Effect.provideService(FileSystem.FileSystem, fileSystem),
+              Effect.provideService(Path.Path, path),
+              Effect.orElseSucceed(() => Option.none<ZCodeBundleVersion>()),
+            )
+          : Option.none<ZCodeBundleVersion>();
+
       const checkProvider = fetchPifamilyRefreshCatalog({
         driverKind: "zcodeAgent",
         settings: { ...effectiveConfig, binaryPath: spawnTarget.command },
@@ -348,6 +363,9 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
         displayBinaryPath: spawnTarget.displayPath,
         // 内嵌运行时常驻，不跑 --version 探针，卡片不会再报"CLI 版本命令返回失败"。
         assumeInstalled: spawnTarget.source === "bundled",
+        ...(Option.isSome(bundleVersion)
+          ? { versionOverride: bundleVersion.value.productVersion }
+          : {}),
       }).pipe(
         Effect.map(stampIdentity),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -371,6 +389,9 @@ export const ZCodeDriver: ProviderDriver<ZCodeAgentSettings, ZCodeDriverEnv> = {
                 settings: effectiveConfig,
                 routes,
                 catalog,
+                ...(Option.isSome(bundleVersion)
+                  ? { versionOverride: bundleVersion.value.productVersion }
+                  : {}),
               }),
             ),
             Effect.flatMap(decorateOfficialAuth),

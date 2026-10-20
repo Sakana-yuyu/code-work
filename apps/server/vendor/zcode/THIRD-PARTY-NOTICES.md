@@ -6,6 +6,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 ## npm packages
 
+- @agentclientprotocol/sdk@0.21.1 — Apache-2.0
+
 - @ai-sdk/anthropic@3.0.81 — Apache-2.0
 
 - @ai-sdk/gateway@3.0.121 — Apache-2.0
@@ -246,6 +248,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - @jridgewell/trace-mapping@0.3.31 — MIT
 
+- @kurkle/color@0.3.4 — MIT
+
 - @larksuiteoapi/node-sdk@1.61.1 — MIT
 
 - @larksuiteoapi/node-sdk@1.64.0 — MIT
@@ -323,6 +327,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 - @modelcontextprotocol/client@2.0.0 — MIT
 
 - @modelcontextprotocol/core@2.0.0 — MIT
+
+- @modelcontextprotocol/ext-apps@2.0.0 — MIT
 
 - @modelcontextprotocol/sdk@1.29.0 — MIT
 
@@ -552,9 +558,9 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - @rive-app/webgl2@2.37.1 — MIT
 
-- @rrweb/types@2.1.6 — MIT
+- @rrweb/types@2.0.0 — MIT
 
-- @rrweb/utils@2.1.6 — MIT
+- @rrweb/utils@2.0.0 — MIT
 
 - @sec-ant/readable-stream@0.4.1 — MIT
 
@@ -780,7 +786,11 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - @xyflow/react@12.10.2 — MIT
 
+- @xyflow/react@12.11.2 — MIT
+
 - @xyflow/system@0.0.76 — MIT
+
+- @xyflow/system@0.0.79 — MIT
 
 - accepts@2.0.0 — MIT
 
@@ -900,6 +910,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - character-reference-invalid@2.0.1 — MIT
 
+- chart.js@4.5.1 — MIT
+
 - cheerio-select@2.1.0 — BSD-2-Clause
 
 - cheerio@1.2.0 — MIT
@@ -907,6 +919,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 - chevrotain-allstar@0.4.1 — MIT
 
 - chevrotain@12.0.0 — Apache-2.0
+
+- chokidar@4.0.3 — MIT
 
 - class-variance-authority@0.7.1 — Apache-2.0
 
@@ -1150,6 +1164,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - electron@41.0.3 — MIT
 
+- elkjs@0.12.0 — EPL-2.0 OR GPL-3.0-or-later
+
 - embla-carousel-react@8.6.0 — MIT
 
 - embla-carousel-reactive-utils@8.6.0 — MIT
@@ -1319,6 +1335,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 - graphql@16.13.2 — MIT
 
 - hachure-fill@0.5.2 — MIT
+
+- has-flag@4.0.0 — MIT
 
 - has-property-descriptors@1.0.2 — MIT
 
@@ -1559,6 +1577,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 - longest-streak@3.1.0 — MIT
 
 - loose-envify@1.4.0 — MIT
+
+- lottie-web@5.13.0 — MIT
 
 - lowercase-keys@2.0.0 — MIT
 
@@ -1940,6 +1960,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - raw-body@3.0.2 — MIT
 
+- react-chartjs-2@5.3.1 — MIT
+
 - react-devtools-core@7.0.1 — MIT
 
 - react-dom@19.2.7 — MIT
@@ -1969,6 +1991,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 - react@19.2.7 — MIT
 
 - readable-stream@2.3.8 — MIT
+
+- readdirp@4.1.2 — MIT
 
 - recast@0.23.11 — MIT
 
@@ -2040,11 +2064,11 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 
 - router@2.2.0 — MIT
 
-- rrdom@2.1.6 — MIT
+- rrdom@2.0.0 — MIT
 
-- rrweb-snapshot@2.1.6 — MIT
+- rrweb-snapshot@2.0.0 — MIT
 
-- rrweb@2.1.6 — MIT
+- rrweb@2.0.0 — MIT
 
 - run-applescript@7.1.0 — MIT
 
@@ -2167,6 +2191,8 @@ Original copyright, license and NOTICE text is retained below. Identical text is
 - stylis@4.3.6 — MIT
 
 - sumchecker@3.0.1 — Apache-2.0
+
+- supports-color@8.1.1 — MIT
 
 - swr@2.5.1 — MIT
 
@@ -2472,6 +2498,14 @@ The original import revisions of copied components are not recorded in the curre
 
 - React Best Practices skill (MIT): .agents/skills/react-best-practices. License reference: https://github.com/vercel-labs/agent-skills/tree/063bee94c3f4df8453406c830b0a7df0f2860278. Original import revision: not recorded. Review required: Pinned upstream README and skill declare MIT, but a complete original copyright/license notice has not been obtained.
 
+- Knip documentation mirror (ISC): docs/knip/docs. License reference: https://raw.githubusercontent.com/webpro-nl/knip/d5d20e5e21d64590c0e735c6bc840295cda665cd/license. Original import revision: not recorded.
+
+- Source Sans Pro 2.020 in Knip docs (OFL-1.1): docs/knip/docs/public/fonts/SourceSansPro-Regular.otf. License reference: https://raw.githubusercontent.com/adobe-fonts/source-sans/778e10a3656a899e0bc9f8a54d50a1ab4ba55308/LICENSE.txt. Original import revision: not recorded.
+
+- Source Sans Pro 2.045 and 1.095 in Knip docs (OFL-1.1): docs/knip/docs/src/fonts/6xK3dSBYKcSV-LCoeQqfX1RYOo3qOK7lujVj9w.woff2, docs/knip/docs/src/fonts/6xKwdSBYKcSV-LCoeQqfX1RYOo3qPZYokSds18S0xR41.woff2, docs/knip/docs/src/fonts/6xKwdSBYKcSV-LCoeQqfX1RYOo3qPZZMkids18S0xR41.woff2, docs/knip/docs/src/fonts/6xKydSBYKcSV-LCoeQqfX1RYOo3ik4zwlxdu3cOWxw.woff2. License reference: https://raw.githubusercontent.com/adobe-fonts/source-sans/ce77773581f4d454f0fa985c073bb25c721bfcf5/LICENSE.txt. Original import revision: not recorded.
+
+- Hack 3.003 in Knip docs (MIT AND Bitstream-Vera): docs/knip/docs/src/fonts/hack-regular-subset.woff2. License reference: https://raw.githubusercontent.com/source-foundry/Hack/b47d21f808fbf4784565feccde2213ef2af924b3/LICENSE.md. Original import revision: not recorded.
+
 Fig autocomplete source carries the repository's MIT license; the generated registry records npm @withfig/autocomplete@2.692.3 metadata as ISC. The original source MIT notice is retained below.
 
 ## Embedded native and WASM components
@@ -2484,6 +2518,12 @@ Electron/Chromium target-specific notices are shipped separately under Resources
 
 ## Modified npm packages
 
+- @radix-ui/react-collapsible@1.1.12: modified by ZCode; the changes are recorded in patches/@radix-ui__react-collapsible@1.1.12.patch in the source repository.
+
+- vitest@4.1.7: modified by ZCode; the changes are recorded in patches/vitest@4.1.7.patch in the source repository.
+
+- wdio-electron-service@9.2.1: modified by ZCode; the changes are recorded in patches/wdio-electron-service@9.2.1.patch in the source repository.
+
 - @arms/rum-electron@0.0.3: modified by ZCode; the changes are recorded in patches/@arms__rum-electron@0.0.3.patch in the source repository.
 
 - @ai-sdk/openai-compatible@2.0.60: modified by ZCode; the changes are recorded in patches/@ai-sdk__openai-compatible@2.0.60.patch in the source repository.
@@ -2491,6 +2531,220 @@ Electron/Chromium target-specific notices are shipped separately under Resources
 - @ai-sdk/anthropic@3.0.81: modified by ZCode; the changes are recorded in patches/@ai-sdk__anthropic@3.0.81.patch in the source repository.
 
 ## License and NOTICE texts
+
+### Notice 6ed4f049cce59e05197d585bdf8a39980b45d546d6ea718ee344555f3a867c3a
+
+- @agentclientprotocol/sdk@0.21.1: LICENSE
+
+
+
+````text
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   Copyright 2025 Zed Industries, Inc. and contributors
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+````
+
+### Notice cff63b58fb0de3be0abeccdd54f6277831c8b7c70fadc24c701d67adeedd81a3
+
+- @agentclientprotocol/sdk@0.21.1: README.md (license section)
+
+
+
+````text
+### License
+
+By contributing, you agree that your contributions will be licensed under the Apache 2.0 License.
+
+````
 
 ### Notice b4f9adb7c568904834d0dd6cc98d16c390d21ca32fc17ae7a267715269bd5529
 
@@ -2534,7 +2788,9 @@ Electron/Chromium target-specific notices are shipped separately under Resources
 
 - ai-elements: https://raw.githubusercontent.com/vercel/ai-elements/6a9d5b1822ffb10bba4bd97175f01edd7d8651cd/LICENSE
 
-```text
+
+
+````text
 Copyright 2023 Vercel, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -2548,7 +2804,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-```
+````
 
 ### Notice 6dd0d97acd4d13f4608a0f530f0487e0ff20812888bd1803aecfaaa17ff0f849
 
@@ -2558,7 +2814,9 @@ limitations under the License.
 
 - @ai-sdk/provider-utils@4.0.39: src/to-json-schema/zod3-to-json-schema/LICENSE
 
-```text
+
+
+````text
 ISC License
 
 Copyright (c) 2020, Stefan Terdell
@@ -2575,7 +2833,7 @@ ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
 WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-```
+````
 
 ### Notice c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4
 
@@ -2613,7 +2871,9 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 - baseline-browser-mapping@2.10.18: LICENSE.txt
 
-```text
+
+
+````text
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -2816,24 +3076,28 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
    See the License for the specific language governing permissions and
    limitations under the License.
 
-```
+````
 
 ### Notice 6e9230f7f5f5f79e3b538e8e85e84170f78d0521dd5e783cbdef62d3c8e761a1
 
 - @aiden0z/pptx-renderer@1.2.4: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache License 2.0. See `LICENSE`.
 
-```
+````
 
 ### Notice 67cd5e903c1f908edfa27c25606fa806ce629d9a8ddb7d83019d9fd1f83f7fde
 
 - @antfu/install-pkg@1.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 Anthony Fu <https://github.com/antfu>
@@ -2856,24 +3120,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 6209542eca0c56db0322ad9a8f307b85b8fad89ce601810e00987d4a94e55738
 
 - @antfu/install-pkg@1.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](./LICENSE) License © 2021 [Anthony Fu](https://github.com/antfu)
 
-```
+````
 
 ### Notice 2c976d327b293bd74c257cd53e9b4ecef97a06b1651baa3b24327c97192cb3de
 
 - @arms/rum-browser@0.1.8: https://registry.npmjs.org/%40arms%2frum-browser%400.1.8
 
-```text
+
+
+````text
 @arms/rum-browser@0.1.8
 Publisher-declared license: ISC
 Evidence: https://registry.npmjs.org/%40arms%2frum-browser%400.1.8
@@ -2895,13 +3163,15 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 328eb7864c20ab77607b26ee1913b65a9b880f6300eea9e667b890da896a2f40
 
 - @arms/rum-core@0.1.4: https://registry.npmjs.org/%40arms%2frum-core%400.1.4
 
-```text
+
+
+````text
 @arms/rum-core@0.1.4
 Publisher-declared license: ISC
 Evidence: https://registry.npmjs.org/%40arms%2frum-core%400.1.4
@@ -2923,13 +3193,15 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 38b6f63a0aa422b5c329e75f1aeecd2b02e83caab1747644c00810870d77bacb
 
 - @arms/rum-electron@0.0.3: https://registry.npmjs.org/%40arms%2frum-electron%400.0.3
 
-```text
+
+
+````text
 @arms/rum-electron@0.0.3
 Publisher-declared license: MIT
 Evidence: https://registry.npmjs.org/%40arms%2frum-electron%400.0.3
@@ -2957,7 +3229,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 117da2af0d4ce0fe1c8e19b5cff9dcd806adf973d328d27b11d4448c4ff24f76
 
@@ -3015,7 +3287,9 @@ SOFTWARE.
 
 - @babel/types@7.29.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
@@ -3039,13 +3313,15 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 4be9d87b56a306293223b490c0d0b245e9e94f39884147bf051a6c7b825aeb30
 
 - @babel/helpers@7.29.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
@@ -3070,13 +3346,15 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 2e97627cb278aa7556fb9e8817368302301a595b6c7582512b8d74c57b773652
 
 - @babel/parser@7.29.2: LICENSE
 
-```text
+
+
+````text
 Copyright (C) 2012-2014 by various contributors (see AUTHORS)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -3097,13 +3375,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 5b3af80f317313a8b8c227b0c8bffae67728cfec1786137b0553e625f2affec9
 
 - @borewit/text-codec@0.2.2: LICENSE.txt
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright © 2025 Borewit
@@ -3114,13 +3394,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 0984740e0c3d725c8044dec7edcefe1dbce180ef5a7bc710c251e19607000158
 
 - @braintree/sanitize-url@7.1.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2017 Braintree
@@ -3143,13 +3425,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice e9355cb16457e81acd97dac2e50f2f8bbf2a9a464025f9c46db3680cf9598846
 
 - @chenglou/pretext@0.0.8: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2026 Pretext contributors
@@ -3172,7 +3456,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
 
@@ -3196,7 +3480,9 @@ SOFTWARE.
 
 - Apache-2.0 licensed components: Apache License, Version 2.0
 
-```text
+
+
+````text
 
                                  Apache License
                            Version 2.0, January 2004
@@ -3400,7 +3686,7 @@ SOFTWARE.
    See the License for the specific language governing permissions and
    limitations under the License.
 
-```
+````
 
 ### Notice 537607e3f1533ad2c5b12978967f5ab27f34ffb7e626e321017a7ccca6cc24ff
 
@@ -3426,7 +3712,9 @@ SOFTWARE.
 
 - @dnd-kit/utilities@3.2.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021, Claudéric Demers
@@ -3449,24 +3737,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 24ca8559d731b38606649310786324e0b4e060d929e21597dbcb7e88449e22bb
 
 - @dnd-kit/abstract@0.4.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 This package is licensed under the MIT License - see the [LICENSE](/LICENSE) file for details.
 
-```
+````
 
 ### Notice 2edeb009148c36c249712564871d8297d92094b88e417228e4f3ce7db59ee9ed
 
 - @dotenvx/dotenvx@1.61.0: LICENSE
 
-```text
+
+
+````text
 BSD 3-Clause License
 
 Copyright (c) 2024, Scott Motte
@@ -3496,13 +3788,15 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice ebb2e920800c6353474e3e23d84f714ee8aaecd8f5a71851aa03594a4129d855
 
 - @dukelib/sheets-wasm@0.1.21: https://raw.githubusercontent.com/guseggert/duke-sheets/6a749bbfbd82f4f662dc7106781dfacf7e32f2a8/LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2026 Gus Eggert
@@ -3525,7 +3819,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 34f85f5d41bc28cd790bf7d11be0f3478980cb5f75b49fda3c33667429d0e7f4
 
@@ -3533,7 +3827,9 @@ SOFTWARE.
 
 - eciesjs@0.4.18: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2019-2026 Weiliang Li
@@ -3556,13 +3852,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 68e3fbc87924b2ca7f6a10d52be2ee83e86f7d2f28e74f343795e8f9e58f3ec1
 
 - @egjs/hammerjs@2.0.17: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2018-present NAVER Corp.
@@ -3586,13 +3884,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 24601581852c22ee64603c980589723298f3a10fe52e1279bec400f7fd9a4d22
 
 - @egjs/hammerjs@2.0.17: README.md (license section)
 
-```text
+
+
+````text
 ## License
 [MIT][license]
 
@@ -3633,13 +3933,15 @@ THE SOFTWARE.
 
 [license]: ./LICENSE.md
 
-```
+````
 
 ### Notice edab8abb78d9c5b36944c3e00aebf6a90eb32378993f49ac8a3904007029c629
 
 - @electron/get@2.0.3: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Contributors to the Electron project
@@ -3662,7 +3964,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 646b749e034c3f7a735d2325da81a0700f64f2b779e14b9af1d932230d400c51
 
@@ -3670,7 +3972,9 @@ SOFTWARE.
 
 - @extend-ai/react-xlsx@0.16.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2026 CrowdView Inc, dba Extend
@@ -3693,7 +3997,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice bca603cabc880342e6b5b1e6a3e7b498225df28fb0d4df747f63160e8daae7f0
 
@@ -3701,12 +4005,14 @@ SOFTWARE.
 
 - @extend-ai/react-xlsx@0.16.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 See the repository license for usage terms.
 
-```
+````
 
 ### Notice e0ada792e41aae00426826d7d778bb3bf5ad39fe4ae86760e59df108b3bfe805
 
@@ -3714,7 +4020,9 @@ See the repository license for usage terms.
 
 - @fiahfy/packbits@0.0.6: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018 fiahfy
@@ -3737,7 +4045,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce
 
@@ -3751,7 +4059,9 @@ SOFTWARE.
 
 - @floating-ui/utils@0.2.11: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021-present Floating UI contributors
@@ -3773,13 +4083,15 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 6895190430d809c4c57a7582ecc2f99acbc2ea39a5dfad20262a41d5b3e91733
 
 - @hono/node-server@1.19.14: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2022 - present, Yusuke Wada and Hono contributors
@@ -3802,7 +4114,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice daf005969aac8cb4283b3777361f0244f4cce898b9a983a60b7f0d9e96f559bf
 
@@ -3890,18 +4202,22 @@ SOFTWARE.
 
 - universalify@2.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT
 
-```
+````
 
 ### Notice c681d64256e752c1435814cf045f4467720a8473e425ea54103a0f5128bfc817
 
 - @hono/node-ws@1.3.0: https://registry.npmjs.org/@hono%2fnode-ws/1.3.0
 
-```text
+
+
+````text
 @hono/node-ws@1.3.0
 Publisher-declared license: MIT
 Evidence: https://registry.npmjs.org/@hono%2fnode-ws/1.3.0
@@ -3930,13 +4246,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 045ce74712fc613fdd74d1c55f5140a08d623836ff2aca44132b38d68fbc67ad
 
 - @iconify/types@2.0.0: license.txt
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 - 2022 Vjacheslav Trushkin / Iconify OÜ
@@ -3958,13 +4276,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
+````
 
 ### Notice 1f277f6c357201bd047b5fe57e3d013a7a33f62dcefb9088902ba28d9ca13bee
 
 - @iconify/types@2.0.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 This package is licensed under MIT license.
@@ -3975,13 +4295,15 @@ Previous versions of this package were dual-licensed under Apache 2.0 and GPL 2.
 
 © 2021 - 2022 Vjacheslav Trushkin / Iconify OÜ
 
-```
+````
 
 ### Notice 38cd1f2b0663a83a72d2ee00e5ddd27d855e34922f1b8b62929d39d0089d1a00
 
 - @iconify/utils@3.1.0: lib/misc/licenses.d.ts
 
-```text
+
+
+````text
 interface LicenseInfo {
   /** Requires attribution */
   attribution: boolean;
@@ -3997,13 +4319,15 @@ interface LicenseInfo {
  */
 declare const licensesData: Record<string, LicenseInfo>;
 export { LicenseInfo, licensesData };
-```
+````
 
 ### Notice e783ba83473cab44c710c2e619f1f8de5e832f01a2e53ffea18c74e7c367c350
 
 - @iconify/utils@3.1.0: lib/misc/licenses.js
 
-```text
+
+
+````text
 /** Completely free, no limits */
 const freeLicense = {
 	attribution: false,
@@ -4065,13 +4389,15 @@ const licensesData = {
 };
 
 export { licensesData };
-```
+````
 
 ### Notice a86793ac023162ce98b91899601c15f6712f44943163c4f92a0a4bf89152b3bf
 
 - @iconify/utils@3.1.0: license.txt
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021-PRESENT Vjacheslav Trushkin
@@ -4093,20 +4419,22 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
+````
 
 ### Notice 0743b206924944d6470f9644304d29205d9f4eda0798082727ec3b9480601784
 
 - @iconify/utils@3.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 The library is released with MIT license.
 
 © 2021-PRESENT Vjacheslav Trushkin
 
-```
+````
 
 ### Notice 85aca0b12ce5ade4ff76e9cbbe7e0d5a4cdde979e3930727c272e1fa04b8cc23
 
@@ -4120,7 +4448,9 @@ The library is released with MIT license.
 
 - @inquirer/type@3.0.10: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2025 Simon Boudrias
 
 Permission is hereby granted, free of charge, to any person
@@ -4144,19 +4474,21 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 8b34a8186325e3af9c36f5f1756c9ab4154efd7a662789b82574854588addf5e
 
 - @inquirer/ansi@1.0.2: README.md (license section)
 
-```text
+
+
+````text
 # License
 
 Copyright (c) 2025 Simon Boudrias (twitter: [@vaxilart](https://twitter.com/Vaxilart))<br/>
 Licensed under the MIT license.
 
-```
+````
 
 ### Notice ea1321eab8ef4a829ce63f2808c34a0314f6ee69d7f148c894b9fd3a8c6f47ad
 
@@ -4164,13 +4496,15 @@ Licensed under the MIT license.
 
 - @inquirer/core@10.3.2: README.md (license section)
 
-```text
+
+
+````text
 # License
 
 Copyright (c) 2023 Simon Boudrias (twitter: [@vaxilart](https://twitter.com/Vaxilart))<br/>
 Licensed under the MIT license.
 
-```
+````
 
 ### Notice 942eab097945c835cf41abcbf1b9a6659c5d0c3493e60c56796d2e045c219278
 
@@ -4232,7 +4566,9 @@ Licensed under the MIT license.
 
 - jimp@1.6.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018 Oliver Moran
@@ -4255,7 +4591,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 769d154fbde32a915af110b1123650bc79f4cbe675acc66e005265bf069c6c6c
 
@@ -4267,7 +4603,9 @@ SOFTWARE.
 
 - @jridgewell/trace-mapping@0.3.31: LICENSE
 
-```text
+
+
+````text
 Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -4288,13 +4626,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice b8778b155bfde5a28b023a558753c0fa058a52bb9de35c343c250be1bbcdedab
 
 - @jridgewell/resolve-uri@3.1.2: LICENSE
 
-```text
+
+
+````text
 Copyright 2019 Justin Ridgewell <jridgewell@google.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -4314,7 +4654,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
+````
 
 ### Notice 98bb58f02f63428bdcf9153ac14c74149b50d3995e363c17a3faea9f8248858c
 
@@ -4324,12 +4664,46 @@ SOFTWARE.
 
 - use-callback-ref@1.3.3: README.md (license section)
 
-```text
+
+
+````text
 # License
 
 MIT
 
-```
+````
+
+### Notice 89ba0032731489153d552db918b727feb05128cf9eca20092875a9ad14147671
+
+- @kurkle/color@0.3.4: LICENSE.md
+
+
+
+````text
+The MIT License (MIT)
+
+Copyright (c) 2018-2024 Jukka Kurkela
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+````
+
+### Notice bcb7ca9ca99522b2cc6a2913987a46114a1926896b9ebbe0fca67423aad0c5d5
+
+- @kurkle/color@0.3.4: README.md (license section)
+
+
+
+````text
+## License
+
+`@kurkle/color` is available under the [MIT license](https://github.com/kurkle/color/blob/main/LICENSE.md).
+
+````
 
 ### Notice f9bfd5e309b1523a2dd3937b44f516e6018605eb05b35336485b0a34cbd9f373
 
@@ -4337,7 +4711,9 @@ MIT
 
 - @larksuiteoapi/node-sdk@1.64.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2022 Lark Technologies Pte. Ltd.
@@ -4347,7 +4723,7 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice, shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
+````
 
 ### Notice d0de7064760700e47a0fdedd12ae4e027146e16e9cec0233505fe7c4ed5b3344
 
@@ -4355,11 +4731,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 - @larksuiteoapi/node-sdk@1.64.0: README.md (license section)
 
-```text
+
+
+````text
 ## LICENSE
 MIT
 
-```
+````
 
 ### Notice da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93
 
@@ -4421,7 +4799,9 @@ MIT
 
 - use-sync-external-store@1.6.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Meta Platforms, Inc. and affiliates.
@@ -4444,7 +4824,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice a3d60eaf32d2fb09c9d82ef39f14bd6e2c0f3ca7de30daa827486c0d6f8b6e9f
 
@@ -4458,7 +4838,9 @@ SOFTWARE.
 
 - node-pty@1.1.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2012-2015, Christopher Jeffrey (https://github.com/chjj/)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -4529,7 +4911,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice d9c397a5dc5ac77a2a08fc967ea06a65317a4b5b8de48f6f732ffcb21737e3d2
 
@@ -4549,7 +4931,9 @@ SOFTWARE.
 
 - @mbears/opentui-react@0.2.15: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2025 opentui
@@ -4571,13 +4955,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
+````
 
 ### Notice d374061c40bfb6f99c5033290caefda97a9b3e7e477e5ee02f487143ef2177e8
 
 - @mermaid-js/parser@1.1.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2023 Yokozuna59
@@ -4600,7 +4986,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a
 
@@ -4608,9 +4994,13 @@ SOFTWARE.
 
 - @modelcontextprotocol/core@2.0.0: LICENSE
 
+- @modelcontextprotocol/ext-apps@2.0.0: LICENSE
+
 - @modelcontextprotocol/server@2.0.0: LICENSE
 
-```text
+
+
+````text
 The MCP project is undergoing a licensing transition from the MIT License to the Apache License, Version 2.0 ("Apache-2.0"). All new code and specification contributions to the project are licensed under Apache-2.0. Documentation contributions (excluding specifications) are licensed under CC-BY-4.0.
 
 Contributions for which relicensing consent has been obtained are licensed under Apache-2.0. Contributions made by authors who originally licensed their work under the MIT License and who have not yet granted explicit permission to relicense remain licensed under the MIT License.
@@ -4828,13 +5218,15 @@ Documentation in this project (excluding specifications) is licensed under
 CC-BY-4.0. See https://creativecommons.org/licenses/by/4.0/legalcode for
 the full license text.
 
-```
+````
 
 ### Notice 5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d
 
 - @modelcontextprotocol/sdk@1.29.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2024 Anthropic, PBC
@@ -4857,24 +5249,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice fde378dc2165c395ec906b2fc84fad5e80f79c9664b70d30e0fd4073f2d3f58d
 
 - @modelcontextprotocol/sdk@1.29.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 This project is licensed under the MIT License—see the [LICENSE](LICENSE) file for details.
 
-```
+````
 
 ### Notice bb3a5cb8fb224f632970e31425348f556f7a83b165d5384ea5e142575f5c412e
 
 - @mswjs/interceptors@0.41.3: LICENSE.md
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018–present Artem Zakharchenko
@@ -4885,7 +5281,7 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6
 
@@ -4907,7 +5303,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 - @napi-rs/canvas@0.1.100: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2020 lynweklm@gmail.com
@@ -4930,13 +5328,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice f36671a5487c9c5050efacb58011c37c24c55a889803cb036cf9d9a6347c1e2d
 
 - @noble/ciphers@1.3.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2022 Paul Miller (https://paulmillr.com)
@@ -4959,13 +5359,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-```
+````
 
 ### Notice 5244f4105e5fddd0275196baae45e3b59e6847bf88100e5f5bd66ad319a0b68d
 
 - @noble/ciphers@1.3.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 The MIT License (MIT)
@@ -4975,7 +5377,7 @@ Copyright (c) 2016 Thomas Pornin <pornin@bolet.org>
 
 See LICENSE file.
 
-```
+````
 
 ### Notice 4f221aee6e072336700c408c68ab3b96a3fc09f6aebe6f48f1bd99e5ef13faec
 
@@ -4983,7 +5385,9 @@ See LICENSE file.
 
 - @noble/hashes@1.8.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2022 Paul Miller (https://paulmillr.com)
@@ -5005,7 +5409,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-```
+````
 
 ### Notice 7b306feca513554815797ea7164cc1eb3657566b50a8d5ff38613dc8196336b3
 
@@ -5013,7 +5417,9 @@ THE SOFTWARE.
 
 - @noble/hashes@1.8.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 The MIT License (MIT)
@@ -5022,7 +5428,7 @@ Copyright (c) 2022 Paul Miller [(https://paulmillr.com)](https://paulmillr.com)
 
 See LICENSE file.
 
-```
+````
 
 ### Notice 9363d160bf41d46d83901a5d24fc3fe2094c2afc17b4a2378914b273977ee2de
 
@@ -5034,7 +5440,9 @@ See LICENSE file.
 
 - fast-glob@3.3.3: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) Denis Malinochkin
@@ -5057,7 +5465,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 757327b8b604f5cf387d2c5bcda5755b5d2375169ece76fe231310c599638152
 
@@ -5067,18 +5475,22 @@ SOFTWARE.
 
 - @nodelib/fs.walk@1.2.8: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 This software is released under the terms of the MIT license.
 
-```
+````
 
 ### Notice b1688598c3e32605b3973902a546225e0159349c05a0f74db67f76e08e116e65
 
 - @open-draft/deferred-promise@2.2.0: https://registry.npmjs.org/@open-draft%2fdeferred-promise/2.2.0
 
-```text
+
+
+````text
 @open-draft/deferred-promise@2.2.0
 Publisher-declared license: MIT
 Evidence: https://registry.npmjs.org/@open-draft%2fdeferred-promise/2.2.0
@@ -5107,13 +5519,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 34e3b3cdcf290b26f75c56b812009b5f5a31189c26290878cb98e65bc8bd58f3
 
 - @open-draft/logger@0.3.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2023—present Artem Zakharchenko
@@ -5124,7 +5538,7 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 40fa61cad189e31256c0483cf454045dbef07b098d9f02642a4e9517b3c13f59
 
@@ -5132,7 +5546,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 - until-async@3.0.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 Artem Zakharchenko
@@ -5155,13 +5571,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice bd58f2a90815dfc0589075fab5af424dedc7415266765f48ae59b3de98d5e1be
 
 - @opentelemetry/api-logs@0.214.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5173,7 +5591,7 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [npm-img]: https://badge.fury.io/js/%40opentelemetry%2Fapi-logs.svg
 [logs-api-docs]: https://open-telemetry.github.io/opentelemetry-js/modules/_opentelemetry_api_logs.html
 
-```
+````
 
 ### Notice 9cfa86899ccd67b76331431bbff57cbe15ceabb2e393aeb5a56c7a958dabd595
 
@@ -5181,7 +5599,9 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 
 - @opentelemetry/api@1.9.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5193,13 +5613,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [docs-tracing]: https://github.com/open-telemetry/opentelemetry-js/blob/main/doc/tracing.md
 [docs-sdk-registration]: https://github.com/open-telemetry/opentelemetry-js/blob/main/doc/sdk-registration.md
 
-```
+````
 
 ### Notice fc58ccbf60cdd4a212be673e7f1278dd1a3e49f1b1ddc21a7d70724bc8b3044a
 
 - @opentelemetry/context-async-hooks@2.6.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5214,13 +5636,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [npm-url]: https://www.npmjs.com/package/@opentelemetry/context-async-hooks
 [npm-img]: https://badge.fury.io/js/%40opentelemetry%2Fcontext-async-hooks.svg
 
-```
+````
 
 ### Notice 998b885208a7e72f854bca1a9fcb439c7665671dcbc77a9b6ca5fae5a15982dc
 
 - @opentelemetry/core@2.6.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5231,13 +5655,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [npm-url]: https://www.npmjs.com/package/@opentelemetry/core
 [npm-img]: https://badge.fury.io/js/%40opentelemetry%2Fcore.svg
 
-```
+````
 
 ### Notice f60c6f5ed7777891fdb00c840a9328db068f279da72aee211f1648d28a93be36
 
 - @opentelemetry/exporter-metrics-otlp-http@0.214.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5252,13 +5678,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [semconv-resource-service-name]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/resource/semantic_conventions/README.md#service
 [trace-exporter-url]: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/exporter-trace-otlp-http
 
-```
+````
 
 ### Notice 1b28b52d5dc4fa05b087ba53e75f1f95c11731ed07218fcdc992ad8bcddd93e1
 
 - @opentelemetry/exporter-metrics-otlp-proto@0.214.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5271,13 +5699,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [semconv-resource-service-name]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/resource/semantic_conventions/README.md#service
 [trace-exporter-url]: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/exporter-trace-otlp-http
 
-```
+````
 
 ### Notice e1acb133327575513e723320b5c42d7705bfe95dfdf0da1879239824ec5f8496
 
 - @opentelemetry/exporter-trace-otlp-proto@0.214.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5290,13 +5720,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [semconv-resource-service-name]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/resource/semantic_conventions/README.md#service
 [metrics-exporter-url]: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-exporter-metrics-otlp-proto
 
-```
+````
 
 ### Notice 0b8732770b293090db6e4ec732b98a2b3b199c927dfafcbc23e51c5b724306b7
 
 - @opentelemetry/otlp-exporter-base@0.214.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5308,13 +5740,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [npm-url-grpc]: https://www.npmjs.com/package/@opentelemetry/otlp-grpc-exporter-base
 [npm-img]: https://badge.fury.io/js/%40opentelemetry%2Fotlp-exporter-base.svg
 
-```
+````
 
 ### Notice df4b0aa1ded638f520ed7ca841161c27677d0678671e98ffc02917fdb0c0ff3b
 
 - @opentelemetry/otlp-transformer@0.214.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5328,13 +5762,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [sdk]: https://github.com/open-telemetry/opentelemetry-js
 [otlp]: https://github.com/open-telemetry/opentelemetry-proto
 
-```
+````
 
 ### Notice 9cb96eeeccf177dd2579c21e2376f52ce4fa90861cc2dda9f14842542da7a3f9
 
 - @opentelemetry/resources@2.6.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5347,13 +5783,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 
 [resource-semantic_conventions]: https://github.com/open-telemetry/opentelemetry-specification/tree/master/specification/resource/semantic_conventions
 
-```
+````
 
 ### Notice a194d66e0c5bd6dc8927f5806bd9c5fd1df7c582eb8518d980a612cee902d632
 
 - @opentelemetry/sdk-logs@0.214.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5364,13 +5802,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [npm-url]: https://www.npmjs.com/package/@opentelemetry/sdk-logs
 [npm-img]: https://badge.fury.io/js/%40opentelemetry%2Fsdk%2Dlogs.svg
 
-```
+````
 
 ### Notice 1c6a18bba0437d60bb18fa58bf055eb32c51c791837ac0ad375b529bcf245f94
 
 - @opentelemetry/sdk-metrics@2.6.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5381,13 +5821,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [npm-url]: https://www.npmjs.com/package/@opentelemetry/sdk-metrics
 [npm-img]: https://badge.fury.io/js/%40opentelemetry%2Fsdk%2Dmetrics.svg
 
-```
+````
 
 ### Notice 8375f12da0f472679e1eeee52bf58ea289c9806b8a7605f80a1f8865b01908f1
 
 - @opentelemetry/sdk-trace-base@2.6.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5398,13 +5840,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [npm-url]: https://www.npmjs.com/package/@opentelemetry/sdk-trace-base
 [npm-img]: https://badge.fury.io/js/%40opentelemetry%2Fsdk-trace-base.svg
 
-```
+````
 
 ### Notice ac32ccc44843f58e28c56d475e1e8687a3eeae4aa003c9225b40e9603b5f9c73
 
 - @opentelemetry/semantic-conventions@1.43.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Apache 2.0 - See [LICENSE][license-url] for more information.
@@ -5419,13 +5863,15 @@ Apache 2.0 - See [LICENSE][license-url] for more information.
 [semconv-http-stabilization]: https://opentelemetry.io/blog/2023/http-conventions-declared-stable/
 [trace-semantic_conventions]: https://github.com/open-telemetry/semantic-conventions/tree/main/specification/trace/semantic_conventions
 
-```
+````
 
 ### Notice 13d92be18d5ceac526f33cc96b6902a14d168f3e1d4b16be738f0fa70da7fe98
 
 - @pierre/diffs@1.1.22: LICENSE.md
 
-```text
+
+
+````text
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -5616,13 +6062,15 @@ under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 
-```
+````
 
 ### Notice aef11f1ea1092ed19cf5c2ace111cdca883ceabe2a69af2ee7afec648aa5c36d
 
 - @pierre/theme@0.0.28: LICENSE.md
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2026 The Pierre Computer Company
@@ -5645,13 +6093,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice a11fc89e4c6b118854c7a667734a0b2e6bf2af5e45c6686de31adbccc8f3ae8d
 
 - @preact/signals-core@1.14.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2022-present Preact Team
@@ -5674,18 +6124,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 1a70b7436b85394d20ba1a0b5574002fc33b4619b9d1b62388ef74d79f9cf0de
 
 - @preact/signals-core@1.14.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 `MIT`, see the [LICENSE](../../LICENSE) file.
 
-```
+````
 
 ### Notice a67b34a24a5daddcce46aea68c5004e4442bbfb63690329fa607bf4de4269794
 
@@ -5709,7 +6161,9 @@ SOFTWARE.
 
 - @protobufjs/utf8@1.1.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2016, Daniel Wirtz  All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -5737,7 +6191,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 0e80a2d229d2fd4fc7e8636142ec5d0ff0bc031f14c15b682e2ac01dfd5b5138
 
@@ -5867,7 +6321,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - radix-ui@1.4.3: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2022 WorkOS
@@ -5890,13 +6346,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 49784961ec6c4941437b7a2c54d8977d0528076a9e7c73dd40f7d0942b8f106d
 
 - @reduxjs/toolkit@2.12.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018 Mark Erikson
@@ -5919,13 +6377,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice cf81859d85e99ff2fad83d51d9dfd85ca5189b23c4442aacf1890c54665d92f4
 
 - @rive-app/react-webgl2@4.28.0: https://raw.githubusercontent.com/rive-app/rive-react/4161dedae00abdda48353dfc2698abfec242f465/LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 Rive
@@ -5948,13 +6408,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 8a1efa755d19446b51a18e1c15f6308728da0b36283c4d38050698ad6954b69a
 
 - @rive-app/webgl2@2.37.1: https://raw.githubusercontent.com/rive-app/rive-wasm/f6a20c7a5cbdd00257cd147ab5be73f87c2388ac/LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2020-2021 Rive
@@ -5977,21 +6439,23 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c
 
-- @rrweb/types@2.1.6: https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE
+- @rrweb/types@2.0.0: https://raw.githubusercontent.com/rrweb-io/rrweb/%40rrweb%2Ftypes%402.0.0/LICENSE
 
-- @rrweb/utils@2.1.6: https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE
+- @rrweb/utils@2.0.0: https://raw.githubusercontent.com/rrweb-io/rrweb/%40rrweb%2Futils%402.0.0/LICENSE
 
-- rrdom@2.1.6: https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE
+- rrdom@2.0.0: https://raw.githubusercontent.com/rrweb-io/rrweb/rrdom%402.0.0/LICENSE
 
-- rrweb-snapshot@2.1.6: https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE
+- rrweb-snapshot@2.0.0: https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb-snapshot%402.0.0/LICENSE
 
-- rrweb@2.1.6: https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE
+- rrweb@2.0.0: https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.0.0/LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018 Contributors (https://github.com/rrweb-io/rrweb/graphs/contributors)
@@ -6014,13 +6478,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 7e32638e170fa7342000a703a8ed950e05095b2f73fc689992a82776a3c3bd3c
 
 - @sec-ant/readable-stream@0.4.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2022 Ze-Zheng Wu
@@ -6043,7 +6509,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 7a9d8d01038aeacf9e5bcdabbddf2a7815200dce9fc1118468cc553e00ae3eee
 
@@ -6095,7 +6561,9 @@ SOFTWARE.
 
 - shiki@4.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 Pine Wu
@@ -6119,13 +6587,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice b5cb7ff7859e7d282d98fc43ab081b0dda5dc659dc3385cf65740c759a7e6a6c
 
 - @shikijs/vscode-textmate@10.0.2: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) Microsoft Corporation
@@ -6148,7 +6618,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 5c932d88256b4ab958f64a856fa48e8bd1f55bc1d96b8149c65689e0c61789d3
 
@@ -6266,6 +6736,8 @@ SOFTWARE.
 
 - strip-final-newline@4.0.0: license
 
+- supports-color@8.1.1: license
+
 - tagged-tag@1.0.0: license
 
 - type-fest@5.5.0: license-mit
@@ -6284,7 +6756,9 @@ SOFTWARE.
 
 - yoctocolors@2.1.2: license
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
@@ -6295,13 +6769,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 653b779005a3a4d64a7288c940f7b9a0e8f0b1e0375f6aa6af9473caf131e564
 
 - @standard-schema/spec@1.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2024 Colin McDonnell
@@ -6323,13 +6799,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
+````
 
 ### Notice 9cf2166507311f427e083ef7671da566949391cb745789abcff8bd43ac26d1f1
 
 - @standard-schema/utils@0.3.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2024 Fabian Hiller
@@ -6351,7 +6829,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
+````
 
 ### Notice f5ecc63f26b1bf790f68fd8e4a84376385b19b9246100dc93a5b6ba9bf17f964
 
@@ -6359,7 +6837,9 @@ SOFTWARE.
 
 - @stripe/stripe-js@9.6.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2017 Stripe
@@ -6382,7 +6862,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 0194571d45a06ea2a22ceb51f981e3be92525966d28847dbc0d9982603bf90de
 
@@ -6392,7 +6872,9 @@ SOFTWARE.
 
 - http2-wrapper@1.0.3: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018 Szymon Marczak
@@ -6415,7 +6897,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7
 
@@ -6423,7 +6905,9 @@ SOFTWARE.
 
 - @tanstack/virtual-core@3.13.23: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021-present Tanner Linsley
@@ -6446,13 +6930,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 5bb0e8b566dee0e946cafd9bbed359eb0494580df86457876b4f41bba5c77b25
 
 - @tokenizer/inflate@0.4.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2024, Borewit
 All rights reserved.
 
@@ -6468,22 +6954,26 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
+````
 
 ### Notice 4ebd81eccd9aa1342f76e5fb60c2b36e3d442f8258cd6ed70a2999cee5332b05
 
 - @tokenizer/inflate@0.4.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-```
+````
 
 ### Notice 73af3f57f2b7aa24fa9523eebe12bd4bb8d3627a2a2d15ec4f5bff5f6f028ef6
 
 - @tokenizer/token@0.3.0: README.md (license section)
 
-```text
+
+
+````text
 ## Licence
 
 (The MIT License)
@@ -6497,13 +6987,15 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-```
+````
 
 ### Notice c5adaf9051f20a1bbeecfb39de415cac1fef591d4fcda2b55d66b31354fdba1e
 
 - @tokenizer/token@0.3.0: node_modules/@tokenizer/token/README.md
 
-```text
+
+
+````text
 ## Licence
 
 (The MIT License)
@@ -6517,7 +7009,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-```
+````
 
 ### Notice cfdbc702905f76418731134393fcd447eaa53df7eea32f332071e9b4960a2783
 
@@ -6531,7 +7023,9 @@ THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 - tokenlens@1.3.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) [2025] [Nicklas Scharpff]
@@ -6554,7 +7048,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice c2a4cfb69592431f4b3a179c114909bb76a979d5748c19ca595c94133c623b12
 
@@ -6562,7 +7056,9 @@ SOFTWARE.
 
 - ts-morph@26.0.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2017 David Sherret
@@ -6585,7 +7081,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383
 
@@ -6709,7 +7205,9 @@ SOFTWARE.
 
 - @types/yauzl@2.10.3: LICENSE
 
-```text
+
+
+````text
     MIT License
 
     Copyright (c) Microsoft Corporation.
@@ -6732,13 +7230,15 @@ SOFTWARE.
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE
 
-```
+````
 
 ### Notice dc6d4961d8b6ee747231582ae9c53ce1d66bf76bc9f5a28f554c0e97210953bf
 
 - @ungap/structured-clone@1.3.0: LICENSE
 
-```text
+
+
+````text
 ISC License
 
 Copyright (c) 2021, Andrea Giammarchi, @WebReflection
@@ -6755,13 +7255,15 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
 OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 6a3508febf2cfccfee96597394543a6154a4bb0b1f91f28404be42c09e9fcb54
 
 - @upsetjs/venn.js@2.0.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2013 Ben Frederickson
@@ -6785,18 +7287,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice ff847eb3406eb54f1b3e41d83b4e531dae4c2d80cf049a6620a1b623dcf7d68c
 
 - @upsetjs/venn.js@2.0.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Released under the MIT License.
 
-```
+````
 
 ### Notice b070d77bfb2c52a1dd6996de0ce5f64c49a0ca55c889b163a963ddf5cb001ee2
 
@@ -6804,7 +7308,9 @@ Released under the MIT License.
 
 - @vercel/oidc@3.2.0: LICENSE
 
-```text
+
+
+````text
 
                                  Apache License
                            Version 2.0, January 2004
@@ -7008,13 +7514,15 @@ Released under the MIT License.
    See the License for the specific language governing permissions and
    limitations under the License.
 
-```
+````
 
 ### Notice 542d926d7bbb099785e322d1d5574c539d51942e52ec8adce2be4629ba81fc7f
 
 - @xstate/fsm@1.6.5: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015 David Khourshid
@@ -7038,13 +7546,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice a26afeeba9ab0a19502a73df658d8fb09186d0906c81af6c04d334064971e81f
 
 - @xterm/addon-clipboard@0.2.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2023, The xterm.js authors (https://github.com/xtermjs/xterm.js)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -7065,13 +7575,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice e256f01188af527e4d06d21d06fbf785ae9c50d4b328bf03cbe0ba7f0aa4228f
 
 - @xterm/addon-fit@0.10.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2019, The xterm.js authors (https://github.com/xtermjs/xterm.js)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -7092,13 +7604,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice b569f629d00f2626a8100df2a1798210535621e42164dfd426a6fe5aac7b0ccd
 
 - @xterm/xterm@5.5.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2017-2019, The xterm.js authors (https://github.com/xtermjs/xterm.js)
 Copyright (c) 2014-2016, SourceLair Private Company (https://www.sourcelair.com)
 Copyright (c) 2012-2013, Christopher Jeffrey (https://github.com/chjj/)
@@ -7121,13 +7635,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 76926e97472ebef8bd5026ce80437f6430b1ca1d0d765b380e52bf9f1302986d
 
 - @xterm/xterm@5.5.0: README.md (license section)
 
-```text
+
+
+````text
 ## License Agreement
 
 If you contribute code to this project, you implicitly allow your code to be distributed under the MIT license. You are also implicitly verifying that all code is your original work.
@@ -7136,15 +7652,21 @@ Copyright (c) 2017-2022, [The xterm.js authors](https://github.com/xtermjs/xterm
 Copyright (c) 2014-2017, SourceLair, Private Company ([www.sourcelair.com](https://www.sourcelair.com/home)) (MIT License)<br>
 Copyright (c) 2012-2013, Christopher Jeffrey (MIT License)
 
-```
+````
 
 ### Notice 023119ac20fb1c8c9930abe0bcd196989a1960388529a96fc43cebf96f07c9ff
 
 - @xyflow/react@12.10.2: LICENSE
 
+- @xyflow/react@12.11.2: LICENSE
+
 - @xyflow/system@0.0.76: LICENSE
 
-```text
+- @xyflow/system@0.0.79: LICENSE
+
+
+
+````text
 MIT License
 
 Copyright (c) 2019-2025 webkid GmbH
@@ -7167,18 +7689,22 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice e3af1abd27a708d72b7737fb8d0095622b48cb2540c1c705c8fa838b107371bd
 
 - @xyflow/react@12.10.2: README.md (license section)
 
-```text
+- @xyflow/react@12.11.2: README.md (license section)
+
+
+
+````text
 ## License
 
 React Flow is [MIT licensed](../../LICENSE).
 
-```
+````
 
 ### Notice 71f83c4c0621102a56d9853812777b85751bce7e9726f686f5b056c1f8a4b0e6
 
@@ -7188,7 +7714,9 @@ React Flow is [MIT licensed](../../LICENSE).
 
 - mime-types@3.0.2: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2014 Jonathan Ong <me@jongleberry.com>
@@ -7213,13 +7741,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 8680b8612ab6b67e95d54bc30d5bd33abc9a6f91f11bff0007eb000a563cf728
 
 - accepts@2.0.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -7234,13 +7764,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [npm-url]: https://npmjs.org/package/accepts
 [npm-version-image]: https://badgen.net/npm/v/accepts
 
-```
+````
 
 ### Notice cfa72b62b9ae173078823a3796b25c027a9071046a263beddf966df67018ce06
 
 - acorn-jsx@5.3.2: LICENSE
 
-```text
+
+
+````text
 Copyright (C) 2012-2017 by Ingvar Stepanyan
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -7261,24 +7793,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 0fcfb65cfdc25b72b2c6fcd64828f786710359adcc3e9397252fd5f5e900ff09
 
 - acorn-jsx@5.3.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 This plugin is issued under the [MIT license](./LICENSE).
 
-```
+````
 
 ### Notice 76a876cf886ff9be2a8b5e2e86514fed06223c8c9f0c1e9ee9606e93841e00b7
 
 - acorn@8.16.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (C) 2012-2022 by various contributors (see AUTHORS)
@@ -7301,7 +7837,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 8d8c55319c7729d57be811c747452636688d54f19701ee0752b6b15ad3771d9a
 
@@ -7321,7 +7857,9 @@ THE SOFTWARE.
 
 - socks-proxy-agent@10.0.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2013 Nathan Rajlich <nathan@tootallnate.net>
@@ -7344,13 +7882,15 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
+````
 
 ### Notice 9df3bb69929a3b650ed73b3bfa1756725aaff0ac296461605753547004eafeaf
 
 - ajv-formats@3.0.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2020 Evgeny Poberezkin
@@ -7373,24 +7913,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice ac52a35a977ee80a171f3727fdbd9c61ea06fd06ba02cb0d762266c777187eef
 
 - ajv-formats@3.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](https://github.com/ajv-validator/ajv-formats/blob/master/LICENSE)
 
-```
+````
 
 ### Notice a05350a88e318e4f5f2c2a1ff1e2e88daa4dd38e6e78b71cccae422bdc762cc3
 
 - ajv@8.18.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015-2021 Evgeny Poberezkin
@@ -7414,7 +7958,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice 5664c680d8430d77e20c55742343ded09ac1f50d72f24eb5bd5e37ce95af1ae0
 
@@ -7432,18 +7976,22 @@ SOFTWARE.
 
 - shiki@4.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](./LICENSE)
 
-```
+````
 
 ### Notice 4643a4e712246eca7684de8ea540b7d3d5c557f7e05402d5c88003dacc6b04b2
 
 - anser@2.3.5: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2012-25 Ionică Bizău <bizauionica@gmail.com> (https://ionicabizau.net)
@@ -7466,7 +8014,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0
 
@@ -7483,6 +8031,8 @@ SOFTWARE.
 - find-up@4.1.0: license
 
 - got@11.8.6: license
+
+- has-flag@4.0.0: license
 
 - is-fullwidth-code-point@3.0.0: license
 
@@ -7526,7 +8076,9 @@ SOFTWARE.
 
 - wrap-ansi@6.2.0: license
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
@@ -7537,24 +8089,28 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice defeece29c804130b5916fa4273671f06e05d9688510ebf0037045c1ef7ddcea
 
 - ansi-to-react@6.2.6: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [BSD-3-Clause](https://choosealicense.com/licenses/bsd-3-clause/)
 
-```
+````
 
 ### Notice 2c88816684a40c718113a10062a8335b665cec00d3c7b32e2b3fe9c620a3e03e
 
 - ansi-to-react@6.2.6: https://registry.npmjs.org/ansi-to-react/6.2.6
 
-```text
+
+
+````text
 ansi-to-react@6.2.6
 Publisher-declared license: BSD-3-Clause
 Evidence: https://registry.npmjs.org/ansi-to-react/6.2.6
@@ -7591,13 +8147,15 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice aedafeae58d48d949d59d808112126c97ff0ce47f92dbe80336898d22dbecf23
 
 - any-base@1.1.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015 Kamil Harasimowicz and contributors
@@ -7619,13 +8177,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
+````
 
 ### Notice de4d1f2d2ad5ad0cfd1657a106476b31cb5db5ef9d1ff842b237c0c81f0c8a23
 
 - argparse@2.0.1: LICENSE
 
-```text
+
+
+````text
 A. HISTORY OF THE SOFTWARE
 ==========================
 
@@ -7881,7 +8441,7 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
 OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 30f0cfddf483d1128e3610205020f2041a6c5e837aa999e0aa82e5576187d4a9
 
@@ -7895,7 +8455,9 @@ OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 - use-sidecar@1.1.3: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2017 Anton Korzunov
@@ -7918,7 +8480,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice accb529d68d1d7e60d4182df01cc42ebe1be5d538755db5774b215deaecb71fb
 
@@ -7926,18 +8488,22 @@ SOFTWARE.
 
 - get-nonce@1.0.1: README.md (license section)
 
-```text
+
+
+````text
 # Licence
 
 MIT
 
-```
+````
 
 ### Notice f4b6bd1a9437d0f66ff46d8f4dca185c31a069ba11e437f3b8506ec4424be9cf
 
 - asn1@0.2.6: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2011 Mark Cavage, All rights reserved.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -7958,18 +8524,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE
 
-```
+````
 
 ### Notice f20ebe6476df3c73e9ae121c1497ecfd29740dad06c28864d9e9903bbabf0100
 
 - asn1@0.2.6: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT.
 
-```
+````
 
 ### Notice a374b737c41b30b1ec04c5fcc17d1b853f008f217cc43a9dbea441abd9afde70
 
@@ -7977,7 +8545,9 @@ MIT.
 
 - ast-types@0.16.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2013 Ben Newman <bn@cs.stanford.edu>
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -7999,13 +8569,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice d9fed24f132985934fca621c4dc1dfb53e03377a24d0568d424383d7eaa9c0ac
 
 - async@3.2.6: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2010-2018 Caolan McMahon
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -8026,13 +8598,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 1953150d5d4b10c7542cee6f6e0c613b2682545233f069d75cfff1936386ce10
 
 - asynckit@0.4.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2016 Alex Indigo
@@ -8055,24 +8629,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice e133e504ede8af9b1ae168c212c792f38e03fbaa339510f346e21e45d0b301de
 
 - asynckit@0.4.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 AsyncKit is licensed under the MIT license.
 
-```
+````
 
 ### Notice e5909d19273f75386213370789163e2cc09089883e3f9d780cb3b2bcbe8023d2
 
 - await-to-js@3.0.0: LICENSE
 
-```text
+
+
+````text
 Copyright 2017 Dima Grossman <dima@grossman.io>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -8081,13 +8659,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice fd9a050fb486b88c9944eed4e7e91b9e7ad27de1e0be767309e962107969003c
 
 - await-to-js@3.0.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT © [Dima Grossman](http://blog.grossman.io) && Tomer Barnea
@@ -8106,13 +8686,15 @@ MIT © [Dima Grossman](http://blog.grossman.io) && Tomer Barnea
 
 [download-badge]: http://img.shields.io/npm/dm/await-to-js.svg?style=flat-square
 
-```
+````
 
 ### Notice 82761059eaedacb3356803aea8a170d8298609f91b14fc32ee1bfb40d690183c
 
 - axios@1.13.6: LICENSE
 
-```text
+
+
+````text
 # Copyright (c) 2014-present Matt Zabriskie & Collaborators
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -8121,18 +8703,20 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 8473eb9be53be85369a78427af60d82922bf44da8c3a16d6ebe643badd150f31
 
 - axios@1.13.6: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-```
+````
 
 ### Notice 63cb98b3f6abfb3c3592c16f88253c1bdc834087bf52671e8ce5609e4eb693cf
 
@@ -8156,7 +8740,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 - unist-util-visit@5.1.0: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2015 Titus Wormer <tituswormer@gmail.com>
@@ -8180,13 +8766,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 6149dd55b853a41975436217e5d1dc08210756bd3a45c2555ab2d802c409d485
 
 - bail@2.0.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -8229,13 +8817,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [noop3]: https://www.npmjs.com/package/noop3
 
-```
+````
 
 ### Notice d408f38ffa3355c5faec517153295338892eb0f1ea43f57874bb23c6075979b5
 
 - balanced-match@4.0.4: LICENSE.md
 
-```text
+
+
+````text
 (MIT)
 
 Original code Copyright Julian Gruber <julian@juliangruber.com>
@@ -8260,13 +8850,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice f3eca6ff762533fa5a77caf954a143e48afa204668cf97dce758c45a9e006be3
 
 - base64-arraybuffer@1.0.2: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2012 Niklas von Hertzen
 
 Permission is hereby granted, free of charge, to any person
@@ -8290,24 +8882,28 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 62235643db61d20e8e4c58d160e906fc168941207adbc96a80ba87b491570067
 
 - base64-arraybuffer@1.0.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 Copyright (c) 2012 Niklas von Hertzen
 Licensed under the MIT license.
 
-```
+````
 
 ### Notice 5b417c1f5ee996875e86b4959851c94e102edbbb3c68199bd3336c7351c924f9
 
 - basic-ftp@5.2.2: LICENSE.txt
 
-```text
+
+
+````text
 Copyright (c) 2019 Patrick Juchli
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -8327,13 +8923,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
+````
 
 ### Notice b5f71fac3ae50115c65ee70551bdbaeed89b4f7a76ac36dc8c576e3036bcd604
 
 - bcrypt-pbkdf@1.0.2: LICENSE
 
-```text
+
+
+````text
 The Blowfish portions are under the following license:
 
 Blowfish block cipher for OpenBSD
@@ -8401,13 +8999,15 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 0e00c860f4ae10ef7d21d31833d4dc187d866d2914b3a20e0037f3bd2c67d2fa
 
 - bcrypt-pbkdf@1.0.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 This source form is a 1:1 port from the OpenBSD `blowfish.c` and `bcrypt_pbkdf.c`.
@@ -8415,13 +9015,15 @@ As a result, it retains the original copyright and license. The two files are
 under slightly different (but compatible) licenses, and are here combined in
 one file. For each of the full license texts see `LICENSE`.
 
-```
+````
 
 ### Notice 8bfcf12013c5d0707794813d1f2787917eada9b8643bf47bfe0306fe018624c8
 
 - bmp-ts@1.0.9: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2019 Andrew Lisowski
@@ -8444,7 +9046,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 23d466b1b134b415b66fa50c6526b4cf3e7b9258554da88d3abb371721e7ce68
 
@@ -8452,7 +9054,9 @@ SOFTWARE.
 
 - type-is@2.0.1: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2014 Jonathan Ong <me@jongleberry.com>
@@ -8477,13 +9081,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice fd46a30345253b7418c9ae232e63cf9d9d4e773aa99ef1f03e84407662791803
 
 - body-parser@2.2.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -8498,13 +9104,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [ossf-scorecard-badge]: https://api.scorecard.dev/projects/github.com/expressjs/body-parser/badge
 [ossf-scorecard-visualizer]: https://ossf.github.io/scorecard-visualizer/#/projects/github.com/expressjs/body-parser
 
-```
+````
 
 ### Notice 2d2349188616c4b64ceeae33e1386bb546b0658864b4f7f8c9785757cb065b5d
 
 - boolbase@1.0.0: https://registry.npmjs.org/boolbase/1.0.0
 
-```text
+
+
+````text
 boolbase@1.0.0
 Publisher-declared license: ISC
 Evidence: https://registry.npmjs.org/boolbase/1.0.0
@@ -8527,13 +9135,15 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 8e4aa1aef825c37d6f74d4b867dccb7b059b66c75ecdedc74834e2f403568a27
 
 - boolean@3.2.0: LICENSE.txt
 
-```text
+
+
+````text
 The MIT License (MIT)
 Copyright (c) 2014-2022 the native web.
 
@@ -8543,13 +9153,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 915a283980628a0ca9e7b423ebafc6f3a0fa1e630ff17d34e59034808d92011c
 
 - border-beam@1.0.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2026 Jakub Antalik
@@ -8572,13 +9184,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 9c63a23124d68cd30cd316a94a1a0bca34f032786df6df69fc4b5f136bac8d2e
 
 - brace-expansion@5.0.5: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright Julian Gruber <julian@juliangruber.com>
@@ -8603,7 +9217,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 35bdd8a44339719441900fb50fbefc5e2dca1ca662cbaed7a687de842c8b70f2
 
@@ -8615,7 +9229,9 @@ SOFTWARE.
 
 - micromatch@4.0.8: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014-present, Jon Schlinkert.
@@ -8638,13 +9254,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice a5555dc3e925c3c12eb3daa35c12fa696b089014b1261e9262ac428cf0bea33d
 
 - braces@3.0.3: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 Copyright © 2019, [Jon Schlinkert](https://github.com/jonschlinkert).
@@ -8654,13 +9272,15 @@ Released under the [MIT License](LICENSE).
 
 _This file was generated by [verb-generate-readme](https://github.com/verbose/verb-generate-readme), v0.8.0, on April 08, 2019._
 
-```
+````
 
 ### Notice 21c2679a63d7699c0e644409e2f17d0adbc7a965003feb06b3ff4b833d21f722
 
 - browserslist@4.28.2: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright 2014 Andrey Sitnik <andrey@sitnik.es> and other contributors
@@ -8682,50 +9302,56 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 14895b82e3367b66bdb127fe91505f8615491f2a23eb1c0b7d8f7c54be67f57a
 
 - buffer-crc32@0.2.13: LICENSE
 
-```text
+
+
+````text
 The MIT License
 
 Copyright (c) 2013 Brian J. Brennan
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to use,
-copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
-Software, and to permit persons to whom the Software is furnished to do so,
+Permission is hereby granted, free of charge, to any person obtaining a copy 
+of this software and associated documentation files (the "Software"), to deal in 
+the Software without restriction, including without limitation the rights to use, 
+copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the 
+Software, and to permit persons to whom the Software is furnished to do so, 
 subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
+The above copyright notice and this permission notice shall be included in all 
 copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
 PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
 FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 67e1dec8c95326f5f89c63fd42f7eaf61f5d4f286cfe90a17e0eea90a6108ed2
 
 - buffer-crc32@0.2.13: README.md (license section)
 
-```text
+
+
+````text
 # license
 MIT/X11
 
-```
+````
 
 ### Notice ddc9158fa20e427bc12fa8e1e6d07c642ed4d2c618607df768b30ae2986b3b7c
 
 - buffer-crc32@1.0.0: LICENSE
 
-```text
+
+
+````text
 The MIT License
 
 Copyright (c) 2013-2024 Brian J. Brennan
@@ -8746,18 +9372,20 @@ PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS 
 FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice c6483fac297225119319fee0a87bb04bbd17dd65e30299f92317da30bcb9a9a1
 
 - buffer-crc32@1.0.0: README.md (license section)
 
-```text
+
+
+````text
 # license
 
 MIT/X11
 
-```
+````
 
 ### Notice d06b5d27bbbbe22c36b1fd88406b1208876e2d37d795f5b8eaed951a459a3111
 
@@ -8765,7 +9393,9 @@ MIT/X11
 
 - ssh2@1.17.0: LICENSE
 
-```text
+
+
+````text
 Copyright Brian White. All rights reserved.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -8785,7 +9415,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
-```
+````
 
 ### Notice bed8d0ab3e6031817f775a641ff37313b0f5591bc8ba0ed79b978dafbd4231ce
 
@@ -8793,7 +9423,9 @@ IN THE SOFTWARE.
 
 - electron-updater@6.8.3: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015 Loopline Systems
@@ -8817,13 +9449,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice f2046b2f212d286d06a53214867136c8152a481737e62fcda49c1412488c3a74
 
 - bun-ffi-structs@0.2.2: LICENSE
 
-```text
+
+
+````text
 Copyright 2025 Anomaly
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -8832,13 +9466,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice e3b44af066615de2ea48d18d852d0762f18c0b2efcea714fa48a6f729d405b85
 
 - bytes@3.1.2: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2012-2014 TJ Holowaychuk <tj@vision-media.ca>
@@ -8863,13 +9499,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 084adb10b5fc6c48ed64780d1fe8ef625aca43532bafed6762d96ac3ec03cec5
 
 - bytes@3.1.2: Readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -8883,13 +9521,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [npm-image]: https://badgen.net/npm/v/bytes
 [npm-url]: https://npmjs.org/package/bytes
 
-```
+````
 
 ### Notice b35de79efc88b23c73dd431df6075bed0890db0db1544ee3d57b046aa7a8e72b
 
 - cacheable-lookup@5.0.4: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2019 Szymon Marczak
@@ -8912,7 +9552,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 861908ec818ff6142fdd6c4b66d6264c206d3d5a46003b1342e1853a9a85abac
 
@@ -8920,7 +9560,9 @@ SOFTWARE.
 
 - clone-response@1.0.3: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2017 Luke Childs
@@ -8943,7 +9585,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 4f6bff47d23de042c99fb8f97a4a4193390d0f7fef2443b6aef8945aa8147b79
 
@@ -8953,12 +9595,14 @@ SOFTWARE.
 
 - responselike@2.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT © Luke Childs
 
-```
+````
 
 ### Notice 5e325595b4ea8cfec3802f545b1def5d7b73e4a5b8e9ba63e32a320f67732292
 
@@ -8976,7 +9620,9 @@ MIT © Luke Childs
 
 - side-channel-map@1.0.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2024 Jordan Harband
@@ -8999,7 +9645,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 0b8c7c0c5579b689ab841976b473ebe9269aa46347fc1295431e0fc3f2452d36
 
@@ -9008,6 +9654,8 @@ SOFTWARE.
 - camelcase@5.3.1: readme.md (license section)
 
 - decamelize@1.2.0: readme.md (license section)
+
+- has-flag@4.0.0: readme.md (license section)
 
 - is-fullwidth-code-point@3.0.0: readme.md (license section)
 
@@ -9037,18 +9685,22 @@ SOFTWARE.
 
 - strip-final-newline@2.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT © [Sindre Sorhus](https://sindresorhus.com)
 
-```
+````
 
 ### Notice fd3a263fe19ed8faa9068b43abaebafc02c77897b0c6fc09abc04bb592e5f16e
 
 - caniuse-lite@1.0.30001787: LICENSE
 
-```text
+
+
+````text
 Attribution 4.0 International
 
 =======================================================================
@@ -9100,7 +9752,7 @@ exhaustive, and do not form part of our licenses.
      such as asking that all changes be marked or described.
      Although not required by our licenses, you are encouraged to
      respect those requests where reasonable. More_considerations
-     for the public:
+     for the public: 
 	wiki.creativecommons.org/Considerations_for_licensees
 
 =======================================================================
@@ -9445,13 +10097,15 @@ public licenses.
 
 Creative Commons may be contacted at creativecommons.org.
 
-```
+````
 
 ### Notice f61b55f45906274c0d834ddf2e318c56c001fba66062ae8a22d45f15945cd7f0
 
 - ccount@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -9488,13 +10142,15 @@ Creative Commons may be contacted at creativecommons.org.
 
 [contribute]: https://opensource.guide/how-to-contribute/
 
-```
+````
 
 ### Notice 45d31799d0db956cc3eb5469346abbd9b7025babc5ff29fab10d7095da992ef1
 
 - ce-la-react@0.3.2: LICENSE
 
-```text
+
+
+````text
 BSD 3-Clause License
 
 Copyright (c) 2017 Google LLC. All rights reserved.
@@ -9523,13 +10179,15 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
+````
 
 ### Notice cfbe7d45039b02dfe38e8fd09468c633c36f2b61e061f9ecb1b26e1d867ba54f
 
 - character-entities-html4@2.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -9572,13 +10230,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 [html]: https://www.w3.org/TR/html4/sgml/entities.html
 
-```
+````
 
 ### Notice 07221efe8243658d103e856aa30a9a598235e7cbf62850c9714e0693d69a60f6
 
 - character-entities-legacy@3.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -9623,13 +10283,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 [character-entities]: https://github.com/wooorm/character-entities
 
-```
+````
 
 ### Notice 8fa9da45e332970568b1038a12fb2e24e1541003f458b4f32a258ebd70342384
 
 - character-entities@2.0.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -9672,13 +10334,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 [html]: https://html.spec.whatwg.org/multipage/syntax.html#named-character-references
 
-```
+````
 
 ### Notice acbc749a901d088cade5d4f004537905074c2ace908cb7e1435624cd4a5a41d8
 
 - character-reference-invalid@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -9717,7 +10381,39 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 [source]: https://html.spec.whatwg.org/multipage/parsing.html#table-charref-overrides
 
-```
+````
+
+### Notice 41a84aa2caba645f966a18d9c2056b73e6d3a81d80bc0046bc0011a2634d4cce
+
+- chart.js@4.5.1: LICENSE.md
+
+
+
+````text
+The MIT License (MIT)
+
+Copyright (c) 2014-2024 Chart.js Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+````
+
+### Notice c8849bac944d8177fa253a79fe27c849f99b176196c60e158004e2f71ed48da9
+
+- chart.js@4.5.1: README.md (license section)
+
+
+
+````text
+## License
+
+Chart.js is available under the [MIT license](LICENSE.md).
+
+````
 
 ### Notice cb992345949ccd6e8394b2cd6c465f7b897c864f845937dbf64e8997f389e164
 
@@ -9741,7 +10437,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - nth-check@2.1.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) Felix Böhm
 All rights reserved.
 
@@ -9754,13 +10452,15 @@ Redistributions in binary form must reproduce the above copyright notice, this l
 THIS IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 61c1e21d3a8ff20f9b69abe15104a75584688080febc22f60a4cbf3854becf4e
 
 - cheerio@1.2.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2022 The Cheerio contributors
@@ -9783,13 +10483,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 1db2cfbc7ce5fa3b82699b4ac4badce8984084d25b5308ece00f5c9b1381a0a5
 
 - chevrotain-allstar@0.4.1: LICENSE
 
-```text
+
+
+````text
 Copyright 2022 TypeFox GmbH
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
@@ -9807,13 +10509,59 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FO
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
+
+### Notice bdfd5e0edb6089e6586c8f15e6a86fab83ffbeeda3b3b7b33734ccb8c5906965
+
+- chokidar@4.0.3: LICENSE
+
+
+
+````text
+The MIT License (MIT)
+
+Copyright (c) 2012 Paul Miller (https://paulmillr.com), Elan Shanker
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the “Software”), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+````
+
+### Notice 22748b67aba7858f24730a8dc6aa876d13d666d74178f8aa0e01af41617e75e7
+
+- chokidar@4.0.3: README.md (license section)
+
+
+
+````text
+## License
+
+MIT (c) Paul Miller (<https://paulmillr.com>), see [LICENSE](LICENSE) file.
+
+````
 
 ### Notice 0ccbf956cffc8dcf515809433cb5242ee67c94513d46e48c261d68d0880de406
 
 - class-variance-authority@0.7.1: LICENSE
 
-```text
+
+
+````text
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -10005,13 +10753,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
    See the License for the specific language governing permissions and
    limitations under the License.
 
-```
+````
 
 ### Notice f101c761d255d0dddc77dd8a9327733b03d381798ec54a1bb718367207b48a8e
 
 - classcat@5.0.5: LICENSE.md
 
-```text
+
+
+````text
 Copyright © Jorge Bucaran <<https://jorgebucaran.com>>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the 'Software'), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -10020,7 +10770,7 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 1357154d40ea5bf0e89ccfd2bd99f0ac8def6dc5b07794b1ea2386b3e662a617
 
@@ -10030,18 +10780,22 @@ THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 - redux@5.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE.md)
 
-```
+````
 
 ### Notice 31493c14dc0b4eb1e06fe5d4bab3ca4e3b40f8749433455c713863238600cf1a
 
 - cli-width@4.1.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2015, Ilya Radchenko <knownasilya@gmail.com>
 
 Permission to use, copy, modify, and/or distribute this software for any
@@ -10056,7 +10810,7 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 2dc0465729366c3a7890dfa9e972a1ba7048a26c02116fb8b419a6a1ac110149
 
@@ -10064,7 +10818,9 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 - cliui@8.0.1: LICENSE.txt
 
-```text
+
+
+````text
 Copyright (c) 2015, Contributors
 
 Permission to use, copy, modify, and/or distribute this software
@@ -10080,7 +10836,7 @@ OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
 WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 9a9edad7baae52622bddf3c15b2ef8a33d2c89f2d25408ad13e8a7481c6b0c97
 
@@ -10088,7 +10844,9 @@ ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 - escalade@3.2.0: license
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
@@ -10099,7 +10857,7 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 64bfb35736af66c969cdc077ecf8f949e9532c584225f0d906c4847ce0cfe8c1
 
@@ -10113,18 +10871,22 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 - kleur@4.1.5: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT © [Luke Edwards](https://lukeed.com)
 
-```
+````
 
 ### Notice b5acfd21b3b61508365224c40ec1b03ec71091248baaf989d4be916551e7d532
 
 - cmdk@1.1.1: LICENSE.md
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2022 Paco Coursey
@@ -10147,13 +10909,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 2769ffd3960ca1197b672b10d18b5216f423cb5c07dc328590548c47724d50fd
 
 - code-block-writer@13.0.3: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015-2024 David Sherret
@@ -10177,13 +10941,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice 693866fc419c6f61c8570438ec00659d156ec2b4d4a4d04091711f5f11a365d4
 
 - color-convert@2.0.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2011-2016 Heather Arthur <fayearthur@gmail.com>
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -10206,23 +10972,27 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-```
+````
 
 ### Notice 85d3187e3194bd8b8ccdd87f2a3ee5902347f2ddebead1920a1ca3502a4f37c5
 
 - color-convert@2.0.1: README.md (license section)
 
-```text
+
+
+````text
 # License
 Copyright &copy; 2011-2016, Heather Arthur and Josh Junon. Licensed under the [MIT License](LICENSE).
 
-```
+````
 
 ### Notice c064f7a3e353bc1bc977f3c897941c75ef763f44f41677e0a15370ca0853d6e2
 
 - color-name@1.1.4: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 Copyright (c) 2015 Dmitry Ivanov
 
@@ -10231,7 +11001,7 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
+````
 
 ### Notice 47eb8ca82c798246774946d1be0f9aa08f025fa8325ced0947aeeb4c05fe5547
 
@@ -10239,7 +11009,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 - delayed-stream@1.0.0: License
 
-```text
+
+
+````text
 Copyright (c) 2011 Debuggable Limited <felix@debuggable.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -10260,18 +11032,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice a02b2123bae911f4c7e058e96be2a9150a50e357384d4e7cf0a71c699e1398eb
 
 - combined-stream@1.0.8: Readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 combined-stream is licensed under the MIT license.
 
-```
+````
 
 ### Notice ca4662cb5d1b738fbe5350c0d5485ba11773b4b7208974082ae6e129a52d631d
 
@@ -10313,7 +11087,9 @@ combined-stream is licensed under the MIT license.
 
 - zwitch@2.0.4: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2016 Titus Wormer <tituswormer@gmail.com>
@@ -10337,13 +11113,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 0d13d0632e581f2e0beca6b1b213a868f04e218e1064c1995324886439e8cc6d
 
 - comma-separated-tokens@2.0.3: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -10384,7 +11162,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [hast]: https://github.com/syntax-tree/hast
 
-```
+````
 
 ### Notice 04512a63dce4d2d506ad612dc0bd7681ccf6e3655f7b6eaef7dfac8323d1ec0b
 
@@ -10398,7 +11176,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - commander@8.3.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2011 TJ Holowaychuk <tj@vision-media.ca>
@@ -10422,24 +11202,28 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 9ad16d97c7bb53424faf728c764553270680c4b283408ea64ab7b23a055dcd8b
 
 - commander@2.20.3: Readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](https://github.com/tj/commander.js/blob/master/LICENSE)
 
-```
+````
 
 ### Notice 0f0b408b8b871d983e767528c6dc51e0ad7efaa022890c449fe2b2e1ee24dbb7
 
 - component-emitter@1.3.1: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2014 Component contributors <dev@component.io>
@@ -10465,13 +11249,15 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 2b2bbe4244586c068b33c4aba13f06cda14d66b076e474141d92c4a4f5910992
 
 - confbox@0.1.8: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Pooya Parsa <pooya@pi0.io>
@@ -10591,13 +11377,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice ce1c2c2432196296d9fbb2ab2edf148ecde16116b950f31aa91d5ba93e431931
 
 - confbox@0.1.8: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 <!-- automd:contributors license=MIT author=pi0 -->
@@ -10619,7 +11407,7 @@ _🤖 auto updated with [automd](https://automd.unjs.io)_
 
 <!-- /automd -->
 
-```
+````
 
 ### Notice bd47ce7b88c7759630d1e2b9fcfa170a0f1fde522be09e13fb1581a79d090400
 
@@ -10631,7 +11419,9 @@ _🤖 auto updated with [automd](https://automd.unjs.io)_
 
 - vary@1.1.2: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2014-2017 Douglas Christopher Wilson
@@ -10655,13 +11445,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 95b55640c571c11e9bd437e1228d83f58164348dd81e6fcb10a82865416d3945
 
 - content-disposition@1.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -10677,13 +11469,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [github-actions-ci-image]: https://img.shields.io/github/actions/workflow/status/jshttp/content-disposition/ci.yml
 [github-actions-ci-url]: https://github.com/jshttp/content-disposition/actions/workflows/ci.yml
 
-```
+````
 
 ### Notice 257aed98914108e91a337912727b6a802eef218248507f74b76faffaff517a38
 
 - content-type@1.0.5: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2015 Douglas Christopher Wilson
@@ -10707,13 +11501,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 96b95531350895e5473076c6f8c7727602b3218d372a18fb2d8ca5928ffc6a13
 
 - content-type@1.0.5: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -10728,14 +11524,16 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [npm-url]: https://npmjs.org/package/content-type
 [npm-version-image]: https://badgen.net/npm/v/content-type
 
-```
+````
 
 ### Notice 1fa6ee8bb95a81ae3d73a5bd074a3ac380ffec13697051063ca1a601921b91db
 
 - convert-source-map@2.0.0: LICENSE
 
-```text
-Copyright 2013 Thorsten Lorenz.
+
+
+````text
+Copyright 2013 Thorsten Lorenz. 
 All rights reserved.
 
 Permission is hereby granted, free of charge, to any person
@@ -10759,13 +11557,15 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 0dd4e47333485760cf8c265db5a5e24ae8d7401064c6f2e19793ee81a5bef42f
 
 - cookie-signature@1.2.2: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2012–2024 LearnBoost <tj@learnboost.com> and other contributors;
@@ -10789,20 +11589,22 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice c717e08d842bcd600971f37754cacd779f1eb8c58e67a49b36b1585406cfb1b1
 
 - cookie-signature@1.2.2: Readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT.
 
 See LICENSE file for details.
 
-```
+````
 
 ### Notice c02110eedc16c7114f1a9bdc026c65626ce1d9c7e27fd51a8e0feee8a48a6858
 
@@ -10810,7 +11612,9 @@ See LICENSE file for details.
 
 - cookie@1.1.1: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2012-2014 Roman Shtylman <shtylman@gmail.com>
@@ -10836,13 +11640,15 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-```
+````
 
 ### Notice 5116dc78ed727665dcf0446a593b8beb7abb21b8f1eba35e68ec0fca35ffc5bd
 
 - cookie@0.7.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -10857,13 +11663,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [npm-url]: https://npmjs.org/package/cookie
 [npm-version-image]: https://badgen.net/npm/v/cookie
 
-```
+````
 
 ### Notice e571ca49b39b727b0dcf63ea21ed19d464dad354012ec6173a547d3826146a53
 
 - cookie@1.1.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -10876,13 +11684,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [npm-url]: https://npmjs.org/package/cookie
 [npm-version-image]: https://img.shields.io/npm/v/cookie
 
-```
+````
 
 ### Notice 33b734d60042d0fe0c92dd1fc1e874193a1c899ec3e276a2eb935d2d0bf5b710
 
 - core-util-is@1.0.3: LICENSE
 
-```text
+
+
+````text
 Copyright Node.js contributors. All rights reserved.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -10903,13 +11713,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 1aa9a12863eefb583779b2ca0e5d73c610b6e6d07529ae0472721769a6ea0a32
 
 - cors@2.8.6: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2013 Troy Goode <troygoode@gmail.com>
@@ -10933,7 +11745,7 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice d8fb6b7948841b7c3a0b8f0e438515c6b34e0e5f6bb7ce61853e98156faa3f1b
 
@@ -10941,12 +11753,14 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - require-directory@2.1.1: README.markdown (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT License](http://www.opensource.org/licenses/mit-license.php)
 
-```
+````
 
 ### Notice 5fb3cf4a14c3c5af6e473a192df8bca10c77754e3a0c6492c79fb92a76a5478a
 
@@ -10954,7 +11768,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - cose-base@2.2.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2019 - present, iVis@Bilkent.
@@ -10977,7 +11793,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 8e714750725e75c8b31172ef84c0805f94873f86e3b5cfca8a948553f0778fa1
 
@@ -10985,7 +11801,9 @@ SOFTWARE.
 
 - tabbable@6.4.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015 David Clark
@@ -11009,13 +11827,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice af272c1b4dd08dd61d43e001d3134119d03ca7a2b057a64f7355fdf27fbea3dd
 
 - cpu-features@0.0.10: deps/cpu_features/LICENSE
 
-```text
+
+
+````text
 
                                  Apache License
                            Version 2.0, January 2004
@@ -11247,26 +12067,30 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 
-```
+````
 
 ### Notice baca02474792926d323771550f43ca2b371897d88efdebed64ed81499ece5563
 
 - cpu-features@0.0.10: deps/cpu_features/README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 The cpu_features library is licensed under the terms of the Apache license.
 See [LICENSE](LICENSE) for more information.
 
 <a name="cmake"></a>
-```
+````
 
 ### Notice 7c28463b739e2e73a49bf127d0bda427f8c55f0b37365a044c3c3f254716118b
 
 - cpu-features@0.0.10: LICENSE
 
-```text
+
+
+````text
 Copyright Brian White. All rights reserved.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -11286,13 +12110,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
-```
+````
 
 ### Notice d1c89d2de9ab5785f68c69473d5e10f1ff0e5dbacef88e2aecbd6eaf89b63003
 
 - croner@10.0.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015-2021 Hexagon <github.com/Hexagon>
@@ -11316,24 +12142,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice 617a73e3b4c3ecebeeb79c89359d5d1bca104a6446fb46af444b19a187b4ca54
 
 - croner@10.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT License
 
-```
+````
 
 ### Notice aaa78451b6fecd1b9c4594c796c133c0e90cad100372ff8bc6de615e9ef9adf1
 
 - cross-spawn@7.0.6: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2018 Made With MOXY Lda <hello@moxy.studio>
@@ -11356,18 +12186,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice ae23bc497387d4df92901cf403625e16c228dc6ef366a5f74d9ba0117a3bfce0
 
 - cross-spawn@7.0.6: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Released under the [MIT License](https://www.opensource.org/licenses/mit-license.php).
 
-```
+````
 
 ### Notice 483acb265f182907d1caf6cff9c16c96f31325ed23792832cc5d8b12d5f88c8a
 
@@ -11381,7 +12213,9 @@ Released under the [MIT License](https://www.opensource.org/licenses/mit-license
 
 - uc.micro@1.0.6: LICENSE.txt
 
-```text
+
+
+````text
 Copyright Mathias Bynens <https://mathiasbynens.be/>
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -11403,7 +12237,7 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice a20aed7ab3446ca948bbf8400896b758c119736b94b2229c09389399c26e2e7a
 
@@ -11411,18 +12245,22 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - jsesc@3.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 This library is available under the [MIT](https://mths.be/mit) license.
 
-```
+````
 
 ### Notice 6b16a2f12f0ebe66e6940b7cc7fc0100bde0e5738b1f2007d6147950019dbe56
 
 - cssfilter@0.0.10: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015 老雷
@@ -11446,11 +12284,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice bd1e69233912e0a8706fd2ecfb9670c6bb74d7833da3bbbcff9f0feac4fd53dd
 
 - cssfilter@0.0.10: README.md (license section)
+
+
 
 ````text
 ## License
@@ -11485,7 +12325,9 @@ SOFTWARE.
 
 - csstype@3.2.3: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2017-2018 Fredrik Nicol
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -11506,13 +12348,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 440fc58a56a12814e417d2b341da89b050da052dc75bdb235607d37ec5fe74ef
 
 - cytoscape-cose-bilkent@4.1.0: LICENSE
 
-```text
+
+
+````text
 
 
 Copyright (c) 2016-2018, The Cytoscape Consortium.
@@ -11534,13 +12378,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
+````
 
 ### Notice 2837634f403949215760fcdd2fa1ed0c64875d02099ecc8318c704b852f1421d
 
 - cytoscape-fcose@2.2.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2018 - present, iVis-at-Bilkent.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -11561,13 +12407,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice eb319c6e6f233607f71e8e2f450391751883cfc0eeb3ca7ef574c13d1d9c2203
 
 - cytoscape@3.33.2: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2016-2026, The Cytoscape Consortium.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -11587,13 +12435,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
+````
 
 ### Notice 4a5a644717fc90d678e8fbbc537a08452d0566726710eef47b196abd6363e635
 
 - cytoscape@3.33.2: license-update.mjs
 
-```text
+
+
+````text
 import fs from 'fs';
 import path from 'path';
 
@@ -11627,13 +12477,15 @@ SOFTWARE.`;
 
 fs.writeFileSync(path.join(__dirname, 'LICENSE'), license);
 
-```
+````
 
 ### Notice 0747bebeb06b10954913149be9b9a8bdf6fad3e6fdcbd9f9524e7a94c13d2cea
 
 - d3-array@2.12.1: LICENSE
 
-```text
+
+
+````text
 Copyright 2010-2020 Mike Bostock
 All rights reserved.
 
@@ -11662,7 +12514,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 3e6849627f74ff73c257a3ae1efb574015d94fc1035c05ec3c15805165efcbc4
 
@@ -11670,7 +12522,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - d3@7.9.0: LICENSE
 
-```text
+
+
+````text
 Copyright 2010-2023 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -11685,7 +12539,7 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice e008c5e25a6be382593089c29bfabbc553c6378eee02895aec46ce396cc404ee
 
@@ -11737,7 +12591,9 @@ THIS SOFTWARE.
 
 - victory-vendor@37.3.6: lib-vendor/d3-timer/LICENSE
 
-```text
+
+
+````text
 Copyright 2010-2021 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -11752,7 +12608,7 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice faa682e3e430941f958d26180458f5934a62f58dac4d70ccdd15608c15d0f884
 
@@ -11766,7 +12622,9 @@ THIS SOFTWARE.
 
 - victory-vendor@37.3.6: lib-vendor/d3-color/LICENSE
 
-```text
+
+
+````text
 Copyright 2010-2022 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -11781,13 +12639,15 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice e51cba0e4fa1d8c078e15319868f2b90188f413f9ce9dac1043b62db32901e93
 
 - d3-contour@4.0.2: LICENSE
 
-```text
+
+
+````text
 Copyright 2012-2023 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -11802,13 +12662,15 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice 582c3022bd01942336095f92b58a90b1be624dc547d987555c6c956512dd24c1
 
 - d3-delaunay@6.0.4: LICENSE
 
-```text
+
+
+````text
 Copyright 2018-2021 Observable, Inc.
 Copyright 2021 Mapbox
 
@@ -11824,13 +12686,15 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice 7842a82012622e5a37bfe4f6c1b67cd3bae6350716b5bf87f36cea0bdc1319dc
 
 - d3-dsv@3.0.1: LICENSE
 
-```text
+
+
+````text
 Copyright 2013-2021 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -11845,7 +12709,7 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice b989d9085148d21ff64a75e14462aefa06b2589a55553b07b1460c70081c7d08
 
@@ -11853,7 +12717,9 @@ THIS SOFTWARE.
 
 - victory-vendor@37.3.6: lib-vendor/d3-ease/LICENSE
 
-```text
+
+
+````text
 Copyright 2010-2021 Mike Bostock
 Copyright 2001 Robert Penner
 All rights reserved.
@@ -11883,13 +12749,15 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice ffdc17dc9040006bddeb891c95bfbb492e86d6bc64a4a4233666febab1be35e0
 
 - d3-fetch@3.0.1: LICENSE
 
-```text
+
+
+````text
 Copyright 2016-2021 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -11904,13 +12772,15 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice 2a6d2d5f32ba0b755ddbc1c833f766e30cdbe6ebe9a6d4e3e24427721f0b63d3
 
 - d3-format@3.1.2: LICENSE
 
-```text
+
+
+````text
 Copyright 2010-2026 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -11925,13 +12795,15 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice 3e3edc1224eec9c39cd26491a21304a62883c1e5b6a65c5283ccc7a6cc94baee
 
 - d3-geo@3.1.1: LICENSE
 
-```text
+
+
+````text
 Copyright 2010-2024 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -11967,13 +12839,15 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice b8265327ab678f554800e71188b1cc6b1ff57522e292d2b1c0be66f27cf328b6
 
 - d3-path@1.0.9: LICENSE
 
-```text
+
+
+````text
 Copyright 2015-2016 Mike Bostock
 All rights reserved.
 
@@ -12002,13 +12876,15 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice a09b0d6d76e768fca2085fad05743ee81ddd11946bcda160a3cf5e1081a479aa
 
 - d3-path@3.1.0: LICENSE
 
-```text
+
+
+````text
 Copyright 2015-2022 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -12023,13 +12899,15 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice 2bf785e778d67a4f5266cffcd4f2cc5bb98cde73791666e7efeb8002ba32dfa5
 
 - d3-sankey@0.12.3: LICENSE
 
-```text
+
+
+````text
 Copyright 2015, Mike Bostock
 All rights reserved.
 
@@ -12058,13 +12936,15 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 0986d93944902cca9af86824b6a641b4b7c2d10602fc510c433a8bcd443919fe
 
 - d3-scale-chromatic@3.1.0: LICENSE
 
-```text
+
+
+````text
 Copyright 2010-2024 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -12094,13 +12974,15 @@ under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 
-```
+````
 
 ### Notice 7eea8533ea92bd8c32a901e89ecb0305890905bb12711449565ddff96891146d
 
 - d3-shape@1.3.7: LICENSE
 
-```text
+
+
+````text
 Copyright 2010-2015 Mike Bostock
 All rights reserved.
 
@@ -12129,13 +13011,15 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice d01eb84ccce437dbf5fd40853bceea0f287930920acea066597a4a25ead63858
 
 - dagre-d3-es@7.0.14: LICENSE.md
 
-```text
+
+
+````text
 Original dagre-d3 copyright: Copyright (c) 2013 Chris Pettitt
 Original dagre copyright: Copyright (c) 2012-2014 Chris Pettitt
 Original graphlib copyright: Copyright (c) 2012-2014 Chris Pettitt
@@ -12160,7 +13044,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 9b7a157a0079ef346f3215b964071fa460d0dd251ca93cbf581bcc91595066ca
 
@@ -12168,7 +13052,9 @@ THE SOFTWARE.
 
 - data-uri-to-buffer@4.0.1: node_modules/node-fetch/node_modules/data-uri-to-buffer/README.md
 
-```text
+
+
+````text
 License
 -------
 
@@ -12197,7 +13083,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [rfc]: http://tools.ietf.org/html/rfc2397
 
-```
+````
 
 ### Notice 29308c08926e2139ce2c6dc389fc7d6ac801927df4941c19fa92de4a8b18da12
 
@@ -12205,7 +13091,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - get-uri@8.0.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2014 Nathan Rajlich <nathan@tootallnate.net>
@@ -12228,13 +13116,15 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
+````
 
 ### Notice 5faab7526d055651be3aab769d58897be6bd91f3d39d137f25f12dba1b31d5dc
 
 - dayjs@1.11.20: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018-present, iamkun
@@ -12257,18 +13147,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice dafa243c2b1674d24bfad40e0930a446f711cca096339ff9f4c910c3ab161f27
 
 - dayjs@1.11.20: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Day.js is licensed under a [MIT License](./LICENSE).
 
-```
+````
 
 ### Notice 6fb9754611c20f6649f68805e8c990e83261f29316e29de9e6cedae607b8634c
 
@@ -12278,7 +13170,9 @@ Day.js is licensed under a [MIT License](./LICENSE).
 
 - strip-bom@3.0.0: license
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
@@ -12301,13 +13195,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice fc0397fbd5c128bec7edef4e8d3f45e15db5fd043cdd0a2edfc4f14d47fbc3e4
 
 - decimal.js-light@2.5.1: LICENCE.md
 
-```text
+
+
+````text
 The MIT Expat Licence.
 
 Copyright (c) 2020 Michael Mclaughlin
@@ -12332,7 +13228,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-```
+````
 
 ### Notice dd1081884a92952802f4803110a6bb543acea9a814c786d58605b4c1219b5ebb
 
@@ -12414,7 +13310,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - vfile-message@4.0.3: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) Titus Wormer <tituswormer@gmail.com>
@@ -12438,13 +13336,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 0b5f7891900efd5364b53c088964ecbcb9b42b79540556493551a39b3b90d15e
 
 - decode-named-character-reference@1.3.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -12483,13 +13383,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [typescript]: https://www.typescriptlang.org
 
-```
+````
 
 ### Notice 76c9d5f5ea942054715c026f33f8717c9e24603196a3737b8899afa216bcbdab
 
 - dedent@1.7.2: LICENSE.md
 
-```text
+
+
+````text
 # MIT License
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -12511,13 +13413,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 6cfc4687cb2f2d86f4a77e6b526290d3878e5e512f3fec2f4cb36a9cb36f798b
 
 - deepmerge@4.3.1: license.txt
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2012 James Halliday, Josh Duff, and other contributors
@@ -12540,13 +13444,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice b41d08bc3624d8c436fc80237d73ebb361985a67f4504bbcd703e5ca2b27254c
 
 - define-data-property@1.1.4: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2023 Jordan Harband
@@ -12569,13 +13475,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 00d402c2bbe7c67369bd01ce2c16b8ed46ccc949a1ee2d6bb8f9606afa8c7434
 
 - define-properties@1.2.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (C) 2015 Jordan Harband
@@ -12597,13 +13505,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-```
+````
 
 ### Notice 0b348fff56384b43dbb37593906904e56d0f9deb51eae590d4dc6d427fbf1808
 
 - delaunator@5.1.0: LICENSE
 
-```text
+
+
+````text
 ISC License
 
 Copyright (c) 2026, Mapbox
@@ -12620,24 +13530,28 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice a456ca0dd0e5f08f8b1c74e3f4672d84addaa8baaff2d9b30f7ad89ce18fa86c
 
 - delayed-stream@1.0.0: Readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 delayed-stream is licensed under the MIT license.
 
-```
+````
 
 ### Notice bd134b41da59e452fb5a1d366b660886f741c87c2bf9428e93764c419fbc40f5
 
 - depd@2.0.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2014-2018 Douglas Christopher Wilson
@@ -12661,13 +13575,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice cce5995bd62b089cbadc5eb6818ba00a80b5a18bb6983995786ff826a941fd9f
 
 - depd@2.0.0: Readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -12684,7 +13600,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [travis-image]: https://badgen.net/travis/dougwilson/nodejs-depd/master?label=linux
 [travis-url]: https://travis-ci.org/dougwilson/nodejs-depd
 
-```
+````
 
 ### Notice 306fa513e39b23a6e8747520de761809d206b99800ef41907b530226574c59ae
 
@@ -12694,7 +13610,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - kleur@4.1.5: license
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
@@ -12717,7 +13635,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 54b32293ea560d22cd9b62af9b2cda1a030d910a48c6601d227c5ff2338d95f8
 
@@ -12725,7 +13643,9 @@ THE SOFTWARE.
 
 - detect-node@2.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2017 Ilya Kantor
@@ -12748,13 +13668,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 6f296a5eccc1dc96714bb94ebaa9cac25b0a1467d74cc5263ac4d0646ab01f62
 
 - devlop@1.1.0: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2023 Titus Wormer <tituswormer@gmail.com>
@@ -12778,13 +13700,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice dd4053e49e206d0070116e07dc6d9d13ba98919dd46be963fbb9f6dd7b9c9213
 
 - devlop@1.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -12845,7 +13769,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-unreachable]: #unreachablemessage
 
-```
+````
 
 ### Notice eda81a415869e67809f6a9f3fd6056062cb83a462118e07eec5e92b2e0c40ce9
 
@@ -12855,7 +13779,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - diff@9.0.0: LICENSE
 
-```text
+
+
+````text
 BSD 3-Clause License
 
 Copyright (c) 2009-2015, Kevin Decker <kpdecker@gmail.com>
@@ -12886,7 +13812,7 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 6889a34703a55996819d0a563f1bdf84397198b0d0b176d7456fe53a0bfcaba0
 
@@ -12896,16 +13822,20 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - diff@9.0.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 See [LICENSE](https://github.com/kpdecker/jsdiff/blob/master/LICENSE).
 
-```
+````
 
 ### Notice c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2
 
 - dijkstrajs@1.0.3: LICENSE.md
+
+
 
 ````text
 ```
@@ -12934,7 +13864,9 @@ THE SOFTWARE.
 
 - docx-preview@0.4.0: LICENSE
 
-```text
+
+
+````text
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -13137,13 +14069,15 @@ THE SOFTWARE.
    See the License for the specific language governing permissions and
    limitations under the License.
 
-```
+````
 
 ### Notice 94cfe87de9b178e8fee313a19178e625129e2ce559db32e772e7bd95114ee6ff
 
 - dom-serializer@2.0.0: LICENSE
 
-```text
+
+
+````text
 License
 
 (The MIT License)
@@ -13156,13 +14090,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 1b02e03c3fb4f87d476c128f0eb9def1f5a1709d28b180465228bd41574623b7
 
 - dompurify@3.3.3: LICENSE
 
-```text
+
+
+````text
 DOMPurify
 Copyright 2025 Dr.-Ing. Mario Heiderich, Cure53
 
@@ -13732,13 +14668,15 @@ Exhibit B - “Incompatible With Secondary Licenses” Notice
       the Mozilla Public License, v. 2.0.
 
 
-```
+````
 
 ### Notice 74b629b24865e1e83c5277ee84590b7937644d6fd959d0c7bdce758676cd2ced
 
 - dotenv@17.4.2: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2015, Scott Motte
 All rights reserved.
 
@@ -13763,7 +14701,7 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 2b770a704c15de238c3f622b01b0044ddd60b49ee30608ea6991ebf19db7a7a1
 
@@ -13771,7 +14709,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - math-intrinsics@1.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2024 ECMAScript Shims
@@ -13794,13 +14734,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 634293835b43a6dd2094fa39182a3d9a6b9ca43b7fdb9ac354e8037af2a3093a
 
 - echarts@6.1.0: LICENSE
 
-```text
+
+
+````text
 
                                  Apache License
                            Version 2.0, January 2004
@@ -14024,13 +14966,15 @@ The following files embed [d3.js](https://github.com/d3/d3) BSD 3-Clause:
     `/src/util/number.ts`
 See `/licenses/LICENSE-d3` for details of the license.
 
-```
+````
 
 ### Notice e1211892da0b0e0585b7aebe8f98c1274fba15bafe47fa1f4ee8a7a502c06304
 
 - echarts@6.1.0: licenses/LICENSE-d3
 
-```text
+
+
+````text
 Copyright 2010-2016 Mike Bostock
 All rights reserved.
 
@@ -14059,36 +15003,42 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice d491d358344f842685c1b1585970999db65fe30ecf7ef3867af8814f4016c016
 
 - echarts@6.1.0: NOTICE
 
-```text
+
+
+````text
 Apache ECharts
 Copyright 2017-2026 The Apache Software Foundation
 
 This product includes software developed at
 The Apache Software Foundation (https://www.apache.org/).
-```
+````
 
 ### Notice 8a4c3eb1acbbc8ae95185e93061600adc6a51988e5c5ac264738a5cc5aa3667d
 
 - echarts@6.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 ECharts is available under the Apache License V2.
 
-```
+````
 
 ### Notice 965ef284f7f4c176842ec2e87fa13e79feed777d56d7a21a5a3b38f1bb6dc288
 
 - ee-first@1.1.1: LICENSE
 
-```text
+
+
+````text
 
 The MIT License (MIT)
 
@@ -14112,38 +15062,42 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 25ba5c59dad3e0dd8f9540beaa0f0a86a10e3aec35af5fdc8e88c5f6a5c0d8c6
 
 - electron-to-chromium@1.5.336: LICENSE
 
-```text
+
+
+````text
 Copyright 2018 Kilian Valkhof
 
 Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
 
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice e45cc9748a256e86701d991817c8e668cf8d82354998a302009e2b945a29b853
 
 - electron-to-chromium@1.5.336: README.md (license section)
 
-```text
+
+
+````text
 ## License
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FKilian%2Felectron-to-chromium.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FKilian%2Felectron-to-chromium?ref=badge_large)
 
-```
+````
 
 ### Notice 5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d
 
-- electron@41.0.3: dist/LICENSE
-
 - electron@41.0.3: LICENSE
 
-```text
+
+
+````text
 Copyright (c) Electron contributors
 Copyright (c) 2013-2020 GitHub Inc.
 
@@ -14166,20 +15120,295 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 56a37896ff6edec2b75b41465b66dd768f2d294c315255164898ca3e685bbd30
 
 - electron@41.0.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](https://github.com/electron/electron/blob/main/LICENSE)
 
 When using Electron logos, make sure to follow [OpenJS Foundation Trademark Policy](https://trademark-policy.openjsf.org/).
 
-```
+````
+
+### Notice 637e81f4a1b6b4079535c499fca05e238cf7605c1ff5b76d60d7da7ce96700c9
+
+- elkjs@0.12.0: LICENSE.md
+
+
+
+````text
+# Eclipse Public License - v 2.0
+
+THE ACCOMPANYING PROGRAM IS PROVIDED UNDER THE TERMS OF THIS ECLIPSE
+PUBLIC LICENSE (“AGREEMENT”). ANY USE, REPRODUCTION OR DISTRIBUTION OF
+THE PROGRAM CONSTITUTES RECIPIENT'S ACCEPTANCE OF THIS AGREEMENT.
+
+## 1. DEFINITIONS
+
+“Contribution” means:
+
+-   a\) in the case of the initial Contributor, the initial content
+    Distributed under this Agreement, and
+-   b\) in the case of each subsequent Contributor:
+    -   i\) changes to the Program, and
+    -   ii\) additions to the Program;
+
+    where such changes and/or additions to the Program originate from
+    and are Distributed by that particular Contributor. A Contribution
+    “originates” from a Contributor if it was added to the Program by
+    such Contributor itself or anyone acting on such Contributor's
+    behalf. Contributions do not include changes or additions to the
+    Program that are not Modified Works.
+
+“Contributor” means any person or entity that Distributes the Program.
+
+“Licensed Patents” mean patent claims licensable by a Contributor which
+are necessarily infringed by the use or sale of its Contribution alone
+or when combined with the Program.
+
+“Program” means the Contributions Distributed in accordance with this
+Agreement.
+
+“Recipient” means anyone who receives the Program under this Agreement
+or any Secondary License (as applicable), including Contributors.
+
+“Derivative Works” shall mean any work, whether in Source Code or other
+form, that is based on (or derived from) the Program and for which the
+editorial revisions, annotations, elaborations, or other modifications
+represent, as a whole, an original work of authorship.
+
+“Modified Works” shall mean any work in Source Code or other form that
+results from an addition to, deletion from, or modification of the
+contents of the Program, including, for purposes of clarity any new file
+in Source Code form that contains any contents of the Program. Modified
+Works shall not include works that contain only declarations,
+interfaces, types, classes, structures, or files of the Program solely
+in each case in order to link to, bind by name, or subclass the Program
+or Modified Works thereof.
+
+“Distribute” means the acts of a) distributing or b) making available in
+any manner that enables the transfer of a copy.
+
+“Source Code” means the form of a Program preferred for making
+modifications, including but not limited to software source code,
+documentation source, and configuration files.
+
+“Secondary License” means either the GNU General Public License, Version
+2.0, or any later versions of that license, including any exceptions or
+additional permissions as identified by the initial Contributor.
+
+## 2. GRANT OF RIGHTS
+
+-   a\) Subject to the terms of this Agreement, each Contributor hereby
+    grants Recipient a non-exclusive, worldwide, royalty-free copyright
+    license to reproduce, prepare Derivative Works of, publicly display,
+    publicly perform, Distribute and sublicense the Contribution of such
+    Contributor, if any, and such Derivative Works.
+-   b\) Subject to the terms of this Agreement, each Contributor hereby
+    grants Recipient a non-exclusive, worldwide, royalty-free patent license
+    under Licensed Patents to make, use, sell, offer to sell, import and
+    otherwise transfer the Contribution of such Contributor, if any, in
+    Source Code or other form. This patent license shall apply to the
+    combination of the Contribution and the Program if, at the time the
+    Contribution is added by the Contributor, such addition of the
+    Contribution causes such combination to be covered by the
+    Licensed Patents. The patent license shall not apply to any other
+    combinations which include the Contribution. No hardware per se is
+    licensed hereunder.
+-   c\) Recipient understands that although each Contributor grants the
+    licenses to its Contributions set forth herein, no assurances are
+    provided by any Contributor that the Program does not infringe the
+    patent or other intellectual property rights of any other entity. Each
+    Contributor disclaims any liability to Recipient for claims brought by
+    any other entity based on infringement of intellectual property rights
+    or otherwise. As a condition to exercising the rights and licenses
+    granted hereunder, each Recipient hereby assumes sole responsibility to
+    secure any other intellectual property rights needed, if any. For
+    example, if a third party patent license is required to allow Recipient
+    to Distribute the Program, it is Recipient's responsibility to acquire
+    that license before distributing the Program.
+-   d\) Each Contributor represents that to its knowledge it has sufficient
+    copyright rights in its Contribution, if any, to grant the copyright
+    license set forth in this Agreement.
+-   e\) Notwithstanding the terms of any Secondary License, no Contributor
+    makes additional grants to any Recipient (other than those set forth in
+    this Agreement) as a result of such Recipient's receipt of the Program
+    under the terms of a Secondary License (if permitted under the terms of
+    Section 3).
+
+## 3. REQUIREMENTS
+
+3.1 If a Contributor Distributes the Program in any form, then:
+
+-   a\) the Program must also be made available as Source Code, in accordance
+    with section 3.2, and the Contributor must accompany the Program with a
+    statement that the Source Code for the Program is available under this
+    Agreement, and informs Recipients how to obtain it in a reasonable
+    manner on or through a medium customarily used for software exchange;
+    and
+-   b\) the Contributor may Distribute the Program under a license different
+    than this Agreement, provided that such license:
+    -   i\) effectively disclaims on behalf of all other Contributors all
+        warranties and conditions, express and implied, including warranties or
+        conditions of title and non-infringement, and implied warranties or
+        conditions of merchantability and fitness for a particular purpose;
+    -   ii\) effectively excludes on behalf of all other Contributors all
+        liability for damages, including direct, indirect, special, incidental
+        and consequential damages, such as lost profits;
+    -   iii\) does not attempt to limit or alter the recipients' rights in the
+        Source Code under section 3.2; and
+    -   iv\) requires any subsequent distribution of the Program by any party to
+        be under a license that satisfies the requirements of this section 3.
+
+3.2 When the Program is Distributed as Source Code:
+
+-   a\) it must be made available under this Agreement, or if the Program (i)
+    is combined with other material in a separate file or files made
+    available under a Secondary License, and (ii) the initial Contributor
+    attached to the Source Code the notice described in Exhibit A of this
+    Agreement, then the Program may be made available under the terms of
+    such Secondary Licenses, and
+-   b\) a copy of this Agreement must be included with each copy of
+    the Program.
+
+3.3 Contributors may not remove or alter any copyright, patent,
+trademark, attribution notices, disclaimers of warranty, or limitations
+of liability (‘notices’) contained within the Program from any copy of
+the Program which they Distribute, provided that Contributors may add
+their own appropriate notices.
+
+## 4. COMMERCIAL DISTRIBUTION
+
+Commercial distributors of software may accept certain responsibilities
+with respect to end users, business partners and the like. While this
+license is intended to facilitate the commercial use of the Program, the
+Contributor who includes the Program in a commercial product offering
+should do so in a manner which does not create potential liability for
+other Contributors. Therefore, if a Contributor includes the Program in
+a commercial product offering, such Contributor (“Commercial
+Contributor”) hereby agrees to defend and indemnify every other
+Contributor (“Indemnified Contributor”) against any losses, damages and
+costs (collectively “Losses”) arising from claims, lawsuits and other
+legal actions brought by a third party against the Indemnified
+Contributor to the extent caused by the acts or omissions of such
+Commercial Contributor in connection with its distribution of the
+Program in a commercial product offering. The obligations in this
+section do not apply to any claims or Losses relating to any actual or
+alleged intellectual property infringement. In order to qualify, an
+Indemnified Contributor must: a) promptly notify the Commercial
+Contributor in writing of such claim, and b) allow the Commercial
+Contributor to control, and cooperate with the Commercial Contributor
+in, the defense and any related settlement negotiations. The Indemnified
+Contributor may participate in any such claim at its own expense.
+
+For example, a Contributor might include the Program in a commercial
+product offering, Product X. That Contributor is then a Commercial
+Contributor. If that Commercial Contributor then makes performance
+claims, or offers warranties related to Product X, those performance
+claims and warranties are such Commercial Contributor's responsibility
+alone. Under this section, the Commercial Contributor would have to
+defend claims against the other Contributors related to those
+performance claims and warranties, and if a court requires any other
+Contributor to pay any damages as a result, the Commercial Contributor
+must pay those damages.
+
+## 5. NO WARRANTY {#warranty}
+
+EXCEPT AS EXPRESSLY SET FORTH IN THIS AGREEMENT, AND TO THE EXTENT
+PERMITTED BY APPLICABLE LAW, THE PROGRAM IS PROVIDED ON AN “AS IS”
+BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR
+IMPLIED INCLUDING, WITHOUT LIMITATION, ANY WARRANTIES OR CONDITIONS OF
+TITLE, NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR
+PURPOSE. Each Recipient is solely responsible for determining the
+appropriateness of using and distributing the Program and assumes all
+risks associated with its exercise of rights under this Agreement,
+including but not limited to the risks and costs of program errors,
+compliance with applicable laws, damage to or loss of data, programs or
+equipment, and unavailability or interruption of operations.
+
+## 6. DISCLAIMER OF LIABILITY {#disclaimer}
+
+EXCEPT AS EXPRESSLY SET FORTH IN THIS AGREEMENT, AND TO THE EXTENT
+PERMITTED BY APPLICABLE LAW, NEITHER RECIPIENT NOR ANY CONTRIBUTORS
+SHALL HAVE ANY LIABILITY FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING WITHOUT LIMITATION LOST
+PROFITS), HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OR DISTRIBUTION OF THE PROGRAM OR THE
+EXERCISE OF ANY RIGHTS GRANTED HEREUNDER, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.
+
+## 7. GENERAL
+
+If any provision of this Agreement is invalid or unenforceable under
+applicable law, it shall not affect the validity or enforceability of
+the remainder of the terms of this Agreement, and without further action
+by the parties hereto, such provision shall be reformed to the minimum
+extent necessary to make such provision valid and enforceable.
+
+If Recipient institutes patent litigation against any entity (including
+a cross-claim or counterclaim in a lawsuit) alleging that the Program
+itself (excluding combinations of the Program with other software or
+hardware) infringes such Recipient's patent(s), then such Recipient's
+rights granted under Section 2(b) shall terminate as of the date such
+litigation is filed.
+
+All Recipient's rights under this Agreement shall terminate if it fails
+to comply with any of the material terms or conditions of this Agreement
+and does not cure such failure in a reasonable period of time after
+becoming aware of such noncompliance. If all Recipient's rights under
+this Agreement terminate, Recipient agrees to cease use and distribution
+of the Program as soon as reasonably practicable. However, Recipient's
+obligations under this Agreement and any licenses granted by Recipient
+relating to the Program shall continue and survive.
+
+Everyone is permitted to copy and distribute copies of this Agreement,
+but in order to avoid inconsistency the Agreement is copyrighted and may
+only be modified in the following manner. The Agreement Steward reserves
+the right to publish new versions (including revisions) of this
+Agreement from time to time. No one other than the Agreement Steward has
+the right to modify this Agreement. The Eclipse Foundation is the
+initial Agreement Steward. The Eclipse Foundation may assign the
+responsibility to serve as the Agreement Steward to a suitable separate
+entity. Each new version of the Agreement will be given a distinguishing
+version number. The Program (including Contributions) may always be
+Distributed subject to the version of the Agreement under which it was
+received. In addition, after a new version of the Agreement is
+published, Contributor may elect to Distribute the Program (including
+its Contributions) under the new version.
+
+Except as expressly stated in Sections 2(a) and 2(b) above, Recipient
+receives no rights or licenses to the intellectual property of any
+Contributor under this Agreement, whether expressly, by implication,
+estoppel or otherwise. All rights in the Program not expressly granted
+under this Agreement are reserved. Nothing in this Agreement is intended
+to be enforceable by any entity that is not a Contributor or Recipient.
+No third-party beneficiary rights are created under this Agreement.
+
+## Exhibit A – Form of Secondary Licenses Notice {#exhibit-a}
+
+“This Source Code may also be made available under the following
+Secondary Licenses when the conditions for such availability set forth
+in the Eclipse Public License, v. 2.0 are satisfied: GNU General Public License v3.0 or later”
+
+> Simply including a copy of this Agreement, including this Exhibit A is
+> not sufficient to license the Source Code under Secondary Licenses.
+>
+> If it is not possible or desirable to put the notice in a particular
+> file, then You may include the notice in a location (such as a LICENSE
+> file in a relevant directory) where a recipient would be likely to
+> look for such a notice.
+>
+> You may add additional accurate notices of copyright ownership.
+
+````
 
 ### Notice 992490064b90ec94c302fe5f29dcc14cb44145857064e46f9ffe6c8f511c1093
 
@@ -14189,7 +15418,9 @@ When using Electron logos, make sure to follow [OpenJS Foundation Trademark Poli
 
 - embla-carousel@8.6.0: https://raw.githubusercontent.com/davidjerleke/embla-carousel/0fe65834136f1aa35e4c1a4a477e5ccb4bb5ee54/LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) David Jerleke.
@@ -14212,7 +15443,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice f4b5ab4f016cc614118b9e550b7be32d6d9dda64ca5df9d0f8785ffa112281e4
 
@@ -14220,18 +15451,22 @@ SOFTWARE.
 
 - emoji-regex@8.0.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 _emoji-regex_ is available under the [MIT](https://mths.be/mit) license.
 
-```
+````
 
 ### Notice 7585ea7bba616ccbbe43cb54ecb67956688c3c5641bb84f3099a652a73193afe
 
 - encodeurl@2.0.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2016 Douglas Christopher Wilson
@@ -14255,7 +15490,7 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 1ddc4317948d8df218fe59f4068571e36f53facb3f9fa59e1a22f398e6cdb389
 
@@ -14265,18 +15500,22 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - image-q@4.0.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
 
-```
+````
 
 ### Notice 14ea882b80407e75e92b36d6f3b5e70d38427502747717ac1842f9b3e8d7302e
 
 - encoding-sniffer@0.2.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2022 Felix Boehm <me@feedic.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -14296,19 +15535,21 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 7c59ffc1bdc8ebb3145afe526c0afb0d63e2b1a3233ce239eb3f62a6a79b0e2e
 
 - encoding-sniffer@0.2.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](/LICENSE) file
 for more information.
 
-```
+````
 
 ### Notice 3fe8d55a98dbf260eace67c00cf9bc53edb46234e840098a0b93df3096b97fb6
 
@@ -14316,7 +15557,9 @@ for more information.
 
 - pump@3.0.4: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014 Mathias Buus
@@ -14338,7 +15581,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-```
+````
 
 ### Notice 92b07a2e5b0e051d37dde85042c736d6d551cfcbc0983f39d7ef903b3986bbc1
 
@@ -14346,7 +15589,9 @@ THE SOFTWARE.
 
 - is-arrayish@0.2.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015 JD Ballard
@@ -14369,7 +15614,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice e11a9e06de508df22938ae4740c0ccc08f6cb64dc78e17f4700f17eb11d6cb06
 
@@ -14377,18 +15622,22 @@ THE SOFTWARE.
 
 - is-arrayish@0.2.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 Licensed under the [MIT License](http://opensource.org/licenses/MIT).
 You can find a copy of it in [LICENSE](LICENSE).
 
-```
+````
 
 ### Notice 1a3aeb1f1398bd697d57c3c585faadf59d825aca6e3162cd7eeb72ff76eb2466
 
 - es-set-tostringtag@2.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2022 ECMAScript Shims
@@ -14411,13 +15660,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice ed68888a2a28f32a05e88f24d4d4ee75075a1bda2b6372a1f2e00fa0576a5524
 
 - es-toolkit@1.46.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2024 Viva Republica, Inc
@@ -14444,13 +15695,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 4f5c0226bb5570f6e475316741efedae39609f79afd7da1ac6d1b7974e57cec2
 
 - es-toolkit@1.46.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT © Viva Republica, Inc. See [LICENSE](./LICENSE) for details.
@@ -14462,13 +15715,15 @@ MIT © Viva Republica, Inc. See [LICENSE](./LICENSE) for details.
   </picture>
 </a>
 
-```
+````
 
 ### Notice 9f655c5baa5a6f254d1e87f27e14d04acaff4bd0b489ea3c2f33723919da2f44
 
 - es6-error@4.1.1: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015 Ben Youngblood
@@ -14491,13 +15746,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 9a508cd4122f2dc1cc39f8ab0b6950efbc49fb087a581c7177a4b8c9d5d0d6a1
 
 - escape-carriage@1.3.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2016 Lukas Geiger
@@ -14520,13 +15777,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 255aa557a1f55224ce522f311629c0bf20854740a67955cefd798fbd1d3d1ded
 
 - escape-html@1.0.3: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2012-2013 TJ Holowaychuk
@@ -14552,23 +15811,27 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice ab27fc045f7a02ee0f02640e290b14a849a6a9d3dac2c5e6a4f986d303543809
 
 - escape-html@1.0.3: Readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
   MIT
-```
+````
 
 ### Notice d5d62471a28a9920416c7d37d387a3bf55f32cb768590f605f84990b76aee5de
 
 - escodegen@2.1.0: LICENSE.BSD
 
-```text
+
+
+````text
 Copyright (C) 2012 Yusuke Suzuki (twitter: @Constellation) and other contributors.
 
 Redistribution and use in source and binary forms, with or without
@@ -14591,22 +15854,26 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice dfa7ef94613d565e710c978df225de3122191a8c1ffd595d4534b416779379f2
 
 - escodegen@2.1.0: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
-```
+````
 
 ### Notice 94bcb9959136723aa4fb36e1a6c4d5c662a2369978cfae344dabfb83ae619e79
 
 - esprima@4.0.1: LICENSE.BSD
 
-```text
+
+
+````text
 Copyright JS Foundation and other contributors, https://js.foundation/
 
 Redistribution and use in source and binary forms, with or without
@@ -14629,7 +15896,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 0e74697a68cebdcd61502c30fe80ab7f9e341d995dcd452023654d57133534b1
 
@@ -14637,7 +15904,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - esutils@2.0.3: LICENSE.BSD
 
-```text
+
+
+````text
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
 
@@ -14658,13 +15927,15 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice fb9ec038b2e8c2fb89b42c7ac4782997520e63a7f1fe08a44d9fa87b16a3ebdc
 
 - estraverse@5.3.0: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 Copyright (C) 2012-2016 [Yusuke Suzuki](http://github.com/Constellation)
@@ -14691,7 +15962,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 536804b3adbff17dbbb9ed0d2bf9655b78f07640278581e37e3d7475282d5e61
 
@@ -14725,7 +15996,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - micromark-extension-math@3.1.0: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2020 Titus Wormer <tituswormer@gmail.com>
@@ -14749,13 +16022,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 6a85148dbf4b8b44facf692f364d04eb550f2777a3fdf9d0bc1de9c96da2d9f3
 
 - estree-util-is-identifier-name@3.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -14818,13 +16093,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-options]: #options
 
-```
+````
 
 ### Notice 7a4b3bbfc3a432eb250c5db71d170b1d5b190928e413cb9c0d69f1fc988253c3
 
 - esutils@2.0.3: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 Copyright (C) 2013 [Yusuke Suzuki](http://github.com/Constellation)
@@ -14851,7 +16128,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice a7996721249a136fbcfc1c201bcb5f414f38a701d4a24f28abe65e16cfcce813
 
@@ -14859,7 +16136,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - proxy-addr@2.0.7: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2014-2016 Douglas Christopher Wilson
@@ -14883,13 +16162,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 659fc5dfb9e9d4b7a6fbe2dc2e95a67390f0003ccfe55ebbefbd847ddd7a2e64
 
 - etag@1.8.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -14905,13 +16186,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [downloads-image]: https://img.shields.io/npm/dm/etag.svg
 [downloads-url]: https://npmjs.org/package/etag
 
-```
+````
 
 ### Notice 3aecc12b1cb28832b5f65ab64291de96568c3f236a74d646281b4491f7bcadbf
 
 - eventemitter3@5.0.4: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014 Arnout Kazemier
@@ -14934,13 +16217,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 835eb611a23301b27115ca1be9f754c876e643ceb7fe63049c6b50609a1cafeb
 
 - eventsource-parser@3.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2026 Espen Hovlandsdal <espen@hovlandsdal.com>
@@ -14963,24 +16248,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice f9393fc579597ec74f5bf505cb3b15a6ce8df99d879fe7429dbad0f988e36182
 
 - eventsource-parser@3.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT © [Espen Hovlandsdal](https://espen.codes/)
 
-```
+````
 
 ### Notice f683a72ffe6a9675b5507af22fe0f448d8c8de3da1e14f139d370a7e6a54a23e
 
 - eventsource@3.0.7: LICENSE
 
-```text
+
+
+````text
 The MIT License
 
 Copyright (c) EventSource GitHub organisation
@@ -15004,24 +16293,28 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice ee61f0ccd83bed6fbeeafa4d4b9341e43fd36b2199315c01ab150fa7666ed1f4
 
 - eventsource@3.0.7: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT-licensed. See [LICENSE](LICENSE).
 
-```
+````
 
 ### Notice 3c58bdcad5b1313456b7cf639574708a84a80ee6bddf1a26f0c5fc4d7ab1830b
 
 - exif-parser@0.1.12: LICENSE.md
 
-```text
+
+
+````text
 The MIT License
 ===============
 
@@ -15045,13 +16338,15 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
+````
 
 ### Notice 90021adfb24b0a7af5754cebc6085e2560555f74d29a6d44a7f9a32125f8b348
 
 - express-rate-limit@8.3.2: license.md
 
-```text
+
+
+````text
 ﻿# MIT License
 
 Copyright 2023 Nathan Friedly, Vedant K
@@ -15073,13 +16368,15 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 71b4417f386404ac5c8d94a36ccee7c17671d7d5d2aa6eaaba8b40ae4c8ead8b
 
 - express-rate-limit@8.3.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT © [Nathan Friedly](http://nfriedly.com/),
@@ -15119,13 +16416,15 @@ MIT © [Nathan Friedly](http://nfriedly.com/),
 [`validate`]:
 	https://express-rate-limit.mintlify.app/reference/configuration#validate
 
-```
+````
 
 ### Notice 95a5762890e5c1c9808921cef095661fc482c5e1f0bba31446ac85595df6237c
 
 - express@5.2.1: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2009-2014 TJ Holowaychuk <tj@vision-media.ca>
@@ -15151,13 +16450,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 6f40ee67b67149b92612c8bef900417b142ac6742645a6a40b4cd79404fd6d51
 
 - express@5.2.1: Readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
   [MIT](LICENSE)
@@ -15175,13 +16476,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [Code of Conduct]: https://github.com/expressjs/.github/blob/HEAD/CODE_OF_CONDUCT.md
 [Contributing Guide]: https://github.com/expressjs/.github/blob/HEAD/CONTRIBUTING.md
 
-```
+````
 
 ### Notice 97af7428f93afbab9bf79cd09254da1357161794f4255eb1b4599f04dd2d2e7c
 
 - extend@3.0.2: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014 Stefan Thomas
@@ -15206,24 +16509,28 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-```
+````
 
 ### Notice 96be1b98f5e3e3ff42bab4784541378aae45378d76c6b7fb09cc17e63ee60b1f
 
 - extend@3.0.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 `node-extend` is licensed under the [MIT License][mit-license-url].
 
-```
+````
 
 ### Notice 77b2de947c65f3062fb347118ca198ca50898ead84a8509d8153fa65741f029b
 
 - extract-zip@2.0.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2014 Max Ogden and other contributors
 All rights reserved.
 
@@ -15248,7 +16555,7 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 7bf9b2de73a6b356761c948d0e9eeb4be6c1270bd04c79cd489c1e400ffdfc1a
 
@@ -15256,7 +16563,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - json-schema-traverse@1.0.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2017 Evgeny Poberezkin
@@ -15279,24 +16588,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 401b0744a23319b32b65e4adddcfba20d9fcc16e36f91647cd1f1cf17a877e4c
 
 - fast-deep-equal@3.1.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](https://github.com/epoberezkin/fast-deep-equal/blob/master/LICENSE)
 
-```
+````
 
 ### Notice 3373ce36e26227cf53ad2dad5cd60cd9ca46e9bcef8a0bc2ec04e600ef2b13a1
 
 - fast-glob@3.3.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 This software is released under the terms of the MIT license.
@@ -15328,13 +16641,15 @@ This software is released under the terms of the MIT license.
 [libuv_thread_pool]: http://docs.libuv.org/en/v1.x/threadpool.html
 [windows_naming_conventions]: https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file#naming-conventions
 
-```
+````
 
 ### Notice 47ec9747cf2c470a505fcb20f3ec2ff2e60ea4febaf2e1e7041a24fc369fac3c
 
 - fast-png@8.0.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2015 Michaël Zasso
@@ -15357,13 +16672,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 185ef4f377743572c2bf0931f741fae52401268cbe70c880b74063799814083e
 
 - fast-uri@3.1.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae
 Copyright (c) 2021-present The Fastify team
 All rights reserved.
@@ -15396,24 +16713,28 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 The complete list of contributors can be found at:
 - https://github.com/garycourt/uri-js/graphs/contributors
-```
+````
 
 ### Notice 5d6869e69fab0f51a283fafce7de16b7713474fff6d728824d9f4b23d526b799
 
 - fast-uri@3.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Licensed under [BSD-3-Clause](./LICENSE).
 
-```
+````
 
 ### Notice c3367f6d01a79d368fc4fbb41b3615fcd92f243d6597ab96742f6f976f9325af
 
 - fastq@1.20.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2015-2020, Matteo Collina <matteo.collina@gmail.com>
 
 Permission to use, copy, modify, and/or distribute this software for any
@@ -15428,13 +16749,15 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice ba9493d367402925a7705f85f597583fd894561efb8717ab6ad56d9ebc17ba14
 
 - fastq@1.20.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 ISC
@@ -15443,13 +16766,15 @@ ISC
 [npm-badge]: https://badge.fury.io/js/fastq.svg
 [npm-url]: https://badge.fury.io/js/fastq
 
-```
+````
 
 ### Notice 176d95320d565cb034d8323797b6cd6160238f625453687f98aad2085c46c3b3
 
 - fd-slicer@1.1.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2014 Andrew Kelley
 
 Permission is hereby granted, free of charge, to any person
@@ -15472,13 +16797,15 @@ ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 9a39f2aadab11a3697edd668ff2d8ad885b649737b7ab4d3bf12b34e5ada0c86
 
 - fdir@6.5.0: LICENSE
 
-```text
+
+
+````text
 Copyright 2023 Abdullah Atta
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -15487,13 +16814,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice a5edccac92c3aa845694dcfaa72a0c098c1ae40d5ca6a37e4e59d778cf8e29bd
 
 - fetch-blob@3.2.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2019 David Frank
@@ -15516,13 +16845,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 0a1df3a083d0c010560aa342e87959c8c1070e6fd54545741f083f22d0c8b551
 
 - fflate@0.8.3: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2026 Arjun Barrett
@@ -15544,13 +16875,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
+````
 
 ### Notice 152b9bf6c0191f8108f8373dbde6829f3fb8c5d147c628ef4584d354dac62f77
 
 - fflate@0.8.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 This software is [MIT Licensed](./LICENSE), with special exemptions for projects
@@ -15559,13 +16892,15 @@ and organizations as noted below:
 - [SheetJS](https://github.com/SheetJS/) is exempt from MIT licensing and may
   license any source code from this software under the BSD Zero Clause License
 
-```
+````
 
 ### Notice 51053fa495da93a8d38892812ad9861dfac4ac3ca34e6186c36f7ed40d15ef54
 
 - fill-range@7.1.1: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 Copyright © 2019, [Jon Schlinkert](https://github.com/jonschlinkert).
@@ -15574,13 +16909,15 @@ Released under the [MIT License](LICENSE).
 ***
 
 _This file was generated by [verb-generate-readme](https://github.com/verbose/verb-generate-readme), v0.8.0, on April 08, 2019._
-```
+````
 
 ### Notice 47dcccf62bf40469d23849b0b1dc8df9fc91bce219b880c638d4dc4596e6b5cf
 
 - finalhandler@2.1.1: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2014-2022 Douglas Christopher Wilson <doug@somethingdoug.com>
@@ -15604,13 +16941,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 1ac2df9cc7f47a556551f85004cdbb344f684be81c157d4260991bb7d0304e4f
 
 - finalhandler@2.1.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -15627,13 +16966,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [github-actions-ci-url]: https://github.com/pillarjs/finalhandler/actions/workflows/ci.yml
 [ossf-scorecard-badge]: https://api.scorecard.dev/projects/github.com/pillarjs/finalhandler/badge
 [ossf-scorecard-visualizer]: https://ossf.github.io/scorecard-visualizer/#/projects/github.com/pillarjs/finalhandler
-```
+````
 
 ### Notice bfa8a54bb952ccda79f0f1889721d108f5b605babbb2b8a3705ffb52f4132eb7
 
 - follow-redirects@1.16.0: LICENSE
 
-```text
+
+
+````text
 Copyright 2014–present Olivier Lalonde <olalonde@gmail.com>, James Talmage <james@talmage.io>, Ruben Verborgh
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -15653,24 +16994,28 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY
 WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice abd3792ba3b4f3da7f4ed431de50254c3e748bba1596bc7f36937b97767e02d2
 
 - follow-redirects@1.16.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT License](https://github.com/follow-redirects/follow-redirects/blob/master/LICENSE)
 
-```
+````
 
 ### Notice e5b780d4f38d1d3328e3e53186c4e62d3fa149ea6f2bacd5de5ad0c30ac85343
 
 - form-data@4.0.5: License
 
-```text
+
+
+````text
 Copyright (c) 2012 Felix Geisendörfer (felix@debuggable.com) and contributors
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -15691,24 +17036,28 @@ Copyright (c) 2012 Felix Geisendörfer (felix@debuggable.com) and contributors
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
 
-```
+````
 
 ### Notice 8d4313d2ec98dee47b0c630ccfe5ca0b6e7c60e8d74cf460db5bcb271f908c14
 
 - form-data@4.0.5: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Form-Data is released under the [MIT](License) license.
 
-```
+````
 
 ### Notice 435a6437e47e5e479942255680e7fbe5f333d55234ada1c35f6115ca641d5bb4
 
 - formdata-polyfill@4.0.10: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2016 Jimmy Karl Roland Wärting
@@ -15731,13 +17080,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 69795e1401babee570887916671d2e770e503236167b2bb8d4cff05dfa6041a3
 
 - forwarded@0.2.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -15753,13 +17104,15 @@ SOFTWARE.
 [downloads-image]: https://img.shields.io/npm/dm/forwarded.svg
 [downloads-url]: https://npmjs.org/package/forwarded
 
-```
+````
 
 ### Notice 5ff46083b88563822b0560dd6221ab89d2f74bc97a52d4c97a75020fd62c6f32
 
 - framer-motion@12.38.0: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2018 Framer B.V.
@@ -15782,13 +17135,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice a0ec0dab16b3666f24950f86d257930ac2ad475557b4bfe245620e0817d8a45d
 
 - fresh@2.0.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2012 TJ Holowaychuk <tj@vision-media.ca>
@@ -15813,13 +17168,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 415657352a5a182c4e3aae6941fff39eb8fe4e0cbd275fcc06a870504317818f
 
 - fresh@2.0.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -15835,7 +17192,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [downloads-image]: https://img.shields.io/npm/dm/fresh.svg
 [downloads-url]: https://npmjs.org/package/fresh
 
-```
+````
 
 ### Notice 1e76029602ae9b21cc4e612db2496d92febed882ba13ba745f8b3309e85f9d39
 
@@ -15843,7 +17200,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - fs-extra@8.1.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2011-2017 JP Richardson
@@ -15860,7 +17219,7 @@ WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEM
 OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 99418da6b0279959da793d62433978847d00236e852c4be780f384b7f506d425
 
@@ -15868,7 +17227,9 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
 
 - fs-extra@8.1.0: README.md (license section)
 
-```text
+
+
+````text
 License
 -------
 
@@ -15881,13 +17242,15 @@ Copyright (c) 2011-2017 [JP Richardson](https://github.com/jprichardson)
 
 [jsonfile]: https://github.com/jprichardson/node-jsonfile
 
-```
+````
 
 ### Notice c6a7de1428955aa5a692f4d3a3d3ede658d959616944713337cda296736442e1
 
 - fs-extra@11.3.4: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2011-2024 JP Richardson
@@ -15904,13 +17267,15 @@ WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEM
 OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 17f7fa5a10a40e614e14342fa1b18046fee2edcdfb9528bf67f4593ef2ff61fd
 
 - fs-extra@11.3.4: README.md (license section)
 
-```text
+
+
+````text
 License
 -------
 
@@ -15923,13 +17288,15 @@ Copyright (c) 2011-2024 [JP Richardson](https://github.com/jprichardson)
 
 [jsonfile]: https://github.com/jprichardson/node-jsonfile
 
-```
+````
 
 ### Notice 773e131a7684726005a7e4688a80b4620033bc08499bc1404dd1a1eb3bca725e
 
 - function-bind@1.1.2: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2013 Raynos.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -15951,13 +17318,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-```
+````
 
 ### Notice 626c3f57d6c312eb777f144bf8e255ece53a9bd081daf75fb12584584f75791c
 
 - fuzzysort@3.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018 Stephen Kamenar
@@ -15980,13 +17349,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice e3a956681ee067f971ac413994171b3d90ca801ec6324e76c9c55366cfe31cb0
 
 - gensync@1.0.0-beta.2: LICENSE
 
-```text
+
+
+````text
 Copyright 2018 Logan Smyth <loganfsmyth@gmail.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -15995,13 +17366,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 902dbb4154679fb2b8d7c33878183f45b268d01eae5e5033dddaa8852d45f213
 
 - get-caller-file@2.0.5: LICENSE.md
 
-```text
+
+
+````text
 ISC License (ISC)
 Copyright 2018 Stefan Penner
 
@@ -16009,13 +17382,15 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 39c5ec504cf6bd5cd782a7c695828e09189df79f5d94840e4f08feb97b9fd416
 
 - get-intrinsic@1.3.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2020 Jordan Harband
@@ -16038,13 +17413,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice acf3b087b348d2f2e731b9d4131af185aad694c1204ce14a46909483fd42da05
 
 - get-nonce@1.0.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2020 Anton Korzunov
@@ -16067,13 +17444,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice be46ce1e3b0479af9ce82d22b465a6d7d2ff084fca0aaf3d54172da2b5eb5781
 
 - get-proto@1.0.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2025 Jordan Harband
@@ -16096,13 +17475,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice c28a483580454d61210a1c7cc0899d75b68fa875cc7940ebafde3c49ca762439
 
 - gifwrap@0.10.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright © 2017 Joseph T. Lapp
@@ -16125,7 +17506,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 8d56843c9f050e653dd59f8879210e02dc3d5c9e0faffd149634431e3516a2c8
 
@@ -16133,7 +17514,9 @@ SOFTWARE.
 
 - gifwrap@0.10.1: templates/README.hbs (license section)
 
-```text
+
+
+````text
 ## LICENSE
 
 MIT License
@@ -16158,13 +17541,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 2c46f1325bd3822a33c1e2c1e49c18d13127ac00f9c8b3b79196c7a126f73cd9
 
 - glob-parent@5.1.2: LICENSE
 
-```text
+
+
+````text
 The ISC License
 
 Copyright (c) 2015, 2019 Elan Shanker
@@ -16181,13 +17566,15 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice eca3afeabf486743034ff5ed6c5950b742c0f818c56528829285e20a381b812a
 
 - glob-parent@5.1.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 ISC
@@ -16214,7 +17601,7 @@ ISC
 [gitter-url]: https://gitter.im/gulpjs/gulp
 [gitter-image]: https://badges.gitter.im/gulpjs/gulp.svg
 
-```
+````
 
 ### Notice ba98e94118579117505f6f11fd9a4354c5e65ece03b4898d8b8f7785efcd25c1
 
@@ -16222,7 +17609,9 @@ ISC
 
 - roarr@2.15.4: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2019, Gajus Kuizinas (http://gajus.com/)
 All rights reserved.
 
@@ -16248,13 +17637,15 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice acfaf437865d82f0fa9b9cdcae8b550bed8d011adaa5b42d973191caf99f62a8
 
 - globalthis@1.0.4: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2016 Jordan Harband
@@ -16277,13 +17668,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice d90bf0a089da4cf43d644ed240a0b3825dcdb705e64e38371d56995a4cc9e4c5
 
 - gopd@1.2.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2022 Jordan Harband
@@ -16306,13 +17699,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice f65c5d9f22a317b2a10803bd1868461ce6499c2ed7217bc80c0cc772a748789c
 
 - graceful-fs@4.2.11: LICENSE
 
-```text
+
+
+````text
 The ISC License
 
 Copyright (c) 2011-2022 Isaac Z. Schlueter, Ben Noordhuis, and Contributors
@@ -16329,13 +17724,15 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 35a11da7e877009ddc57405844209908cfc567adda0ec1daf410368c9f5b0d01
 
 - graphql@16.13.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) GraphQL Contributors
@@ -16358,24 +17755,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 4084b9c2798a4862d57944deb3345b8e14020b3ce8d8294a7f3cc75325a6a9bf
 
 - graphql@16.13.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 GraphQL.js is [MIT-licensed](./LICENSE).
 
-```
+````
 
 ### Notice 5e807b516a9be9229ed459880bf353a336e2d947867247290680d437017be391
 
 - hachure-fill@0.5.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2023 Preet Shihn
@@ -16398,13 +17799,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 0f0ca96f50793990031ebc488a38f7292ff70bce8ab6a8e5eeda674abc32ccdf
 
 - has-property-descriptors@1.0.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2022 Inspect JS
@@ -16427,13 +17830,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 206c1adcf206dc0031b11232f5b054ec5f1662407ab1ca415247921cab2068ab
 
 - has-symbols@1.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2016 Jordan Harband
@@ -16456,13 +17861,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice e2560e002e13281578c75c850061d9255c33d16d732939e8c2db64c2506642fa
 
 - has-tostringtag@1.0.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 Inspect JS
@@ -16485,13 +17892,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice bf9b0d665be2a689851eea667ca9f42066ea1d903b38349c51e6a44b2577680a
 
 - hasown@2.0.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Jordan Harband and contributors
@@ -16514,13 +17923,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice c01b44788e1829e81cb20d621c93c07a08ea010063118b956739f2ab050d17ca
 
 - hast-util-from-dom@5.0.1: license
 
-```text
+
+
+````text
 (ISC License)
 
 Copyright (c) Keith McKnight <keith@mcknig.ht>
@@ -16537,13 +17948,15 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice a285743567d7641a92c7043f9679b6b590e3b29e714bcb3fe2555cf09166f946
 
 - hast-util-from-dom@5.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [ISC][license] © [Keith McKnight][author]
@@ -16618,13 +18031,15 @@ THIS SOFTWARE.
 
 [api-after-transform]: #aftertransform
 
-```
+````
 
 ### Notice fb5678944a6345b1d30a8fe006aef2be2f6bb1c22431a7cc92674fb0944a7578
 
 - hast-util-from-html-isomorphic@2.0.0: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2023 Remco Haszing <remcohaszing@gmail.com>
@@ -16648,13 +18063,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice c1c1c8582e542f00268b590247219687a9fe636f988a45db2f2a308233e8e0ce
 
 - hast-util-from-html-isomorphic@2.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Remco Haszing][author]
@@ -16729,13 +18146,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-options]: #options
 
-```
+````
 
 ### Notice e620971c29d750df627f71f4e629618ef8fcbbea134ab95b344fc0c1a757cad1
 
 - hast-util-from-html@2.0.3: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2022 Titus Wormer <tituswormer@gmail.com>
@@ -16759,13 +18178,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 2440dafa6c920d201f2c12c1b0ba14466b6b3b2169355087392d1a5176ef4738
 
 - hast-util-from-html@2.0.3: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -16856,13 +18277,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-options]: #options
 
-```
+````
 
 ### Notice 9e6ca892b452bf4c68e873238aecb1380b32dbab32f2276067211e0197ff64fb
 
 - hast-util-from-parse5@8.0.3: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][file-license] © [Titus Wormer][wooorm]
@@ -16927,13 +18350,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [wooorm]: https://wooorm.com
 
-```
+````
 
 ### Notice 22f957c88cbf227933af5a10780b2c618fc9a941c057bb9536ee6e6d21186ba5
 
 - hast-util-is-element@3.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -17010,13 +18435,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-test-function]: #testfunction
 
-```
+````
 
 ### Notice ebf25ef6c109e18349146e9df9ed215819c3fd1138c53aaa62650258446ccc6b
 
 - hast-util-parse-selector@4.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -17083,13 +18510,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-parse-selector]: #parseselectorselector-defaulttagname
 
-```
+````
 
 ### Notice b18d7b4a3f437ed362a46554bc0d95dd025b69fe65492e580c0f5fef64e599ef
 
 - hast-util-raw@9.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -17156,13 +18585,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-options]: #options
 
-```
+````
 
 ### Notice 5b7c0897eb37d81d003f5f652b52cea28a97dcbb9ab118ab2a9387c1c1a87776
 
 - hast-util-sanitize@5.0.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -17233,13 +18664,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-schema]: #schema
 
-```
+````
 
 ### Notice 4000251cdc2021539fd259c124604bedf4e8a07b459b9cdd38564eb459e03282
 
 - hast-util-to-html@9.0.5: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][file-license] © [Titus Wormer][wooorm]
@@ -17308,13 +18741,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [wooorm]: https://wooorm.com
 
-```
+````
 
 ### Notice 497b6f95c5492fe4e8b9257fbb273eb309b4b0db62873bb250a4087daa907b9f
 
 - hast-util-to-jsx-runtime@2.3.6: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][file-license] © [Titus Wormer][wooorm]
@@ -17397,13 +18832,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [wooorm]: https://wooorm.com
 
-```
+````
 
 ### Notice 73c7b09c49009f60f5c485232852f76623a0eeaa462679ba617b87a3519fcc65
 
 - hast-util-to-parse5@8.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -17474,13 +18911,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-space]: #space
 
-```
+````
 
 ### Notice 691115fe0234b1f05cb52a9c4aded367e389784a6501af824e85a7e54ca47d38
 
 - hast-util-to-text@4.0.2: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2019 Titus Wormer <tituswormer@gmail.com>
@@ -17504,13 +18943,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice c320cb3c8182c0c83390455552e0d5b5f4f49d5aab8ba0179228b38798e213c0
 
 - hast-util-to-text@4.0.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -17591,13 +19032,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-whitespace]: #whitespace
 
-```
+````
 
 ### Notice 3f1f56b95970ba088472a7746833e62fb47eb9dc0a09dc4d925848c501b9c702
 
 - hast-util-whitespace@3.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -17662,13 +19105,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-whitespace]: #whitespacething
 
-```
+````
 
 ### Notice 7cc83e3f91fb4a936ddb5b69318d95fc7d1e796861bc6d924b195c7a5d8796b5
 
 - hastscript@9.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][file-license] © [Titus Wormer][wooorm]
@@ -17739,13 +19184,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [wooorm]: https://wooorm.com
 
-```
+````
 
 ### Notice b7e6f39fae834b72ef575518b0d88d5200e04b65cba72c12ab67b2a449170999
 
 - headers-polyfill@4.0.3: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2020–present Artem Zakharchenko
@@ -17756,13 +19203,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 6c081431591d9df696c82dc598fe1423765b8a299b200ed00b281afd0f64c490
 
 - highlight.js@11.11.1: LICENSE
 
-```text
+
+
+````text
 BSD 3-Clause License
 
 Copyright (c) 2006, Ivan Sagalaev.
@@ -17793,26 +19242,30 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 45bc54e7b76222d27e604d66646aa4a51b3c9f49509865c8b0b6a3039885c206
 
 - highlight.js@11.11.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Highlight.js is released under the BSD License. See our [LICENSE][7] file
 for details.
 
 
-```
+````
 
 ### Notice a6ab98e5c77b9070c443eaff2ff81034a6f8cc05a7524d5098eb0f24defa0115
 
 - hono@4.12.12: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 - present, Yusuke Wada and Hono contributors
@@ -17835,24 +19288,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice cc9f0f085dedbf396f90628d836896d4ebde5afa68c1188e889121cfa3f223a0
 
 - hono@4.12.12: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
 
-```
+````
 
 ### Notice e18cf5173e928f808f0cd208097fee8fbec9d28fc0255213938e4c559e29ff58
 
 - html-url-attributes@3.0.1: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) Titus Wormer
@@ -17875,13 +19332,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 77588c813a52f6d94ab7e7d5c450bc1660b39aee2a3789f94b88e391ec62cc4d
 
 - html-url-attributes@3.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -17938,13 +19397,15 @@ THE SOFTWARE.
 
 [xss]: https://en.wikipedia.org/wiki/Cross-site_scripting
 
-```
+````
 
 ### Notice e9cdd659f2a7fd17991fe2518f4bd599d04424d80b9cde2145b97ed8f7ca0414
 
 - html-void-elements@3.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -17981,13 +19442,15 @@ THE SOFTWARE.
 
 [contribute]: https://opensource.guide/how-to-contribute/
 
-```
+````
 
 ### Notice 204cfa747341660e4da64cd23e8c876c6b20279d247f48564993d3fc4a2eab47
 
 - htmlparser2@10.1.0: LICENSE
 
-```text
+
+
+````text
 Copyright 2010, 2011, Chris Winberry <chris@winberry.net>. All rights reserved.
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to
@@ -17995,10 +19458,10 @@ deal in the Software without restriction, including without limitation the
 rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
 sell copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
-
+ 
 The above copyright notice and this permission notice shall be included in
 all copies or substantial portions of the Software.
-
+ 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -18006,13 +19469,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
-```
+````
 
 ### Notice ab868ad5a2ef5068560d9cd3b2180ec63c140bb4c5cae1ba779d300a0ac74fa3
 
 - http-cache-semantics@4.2.0: LICENSE
 
-```text
+
+
+````text
 Copyright 2016-2018 Kornel Lesiński
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -18023,13 +19488,15 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice dcb94ff9b1e037a847bc20589dc81a1066d041fd4c16deb18b0fa968c66cf395
 
 - http-errors@2.0.1: LICENSE
 
-```text
+
+
+````text
 
 The MIT License (MIT)
 
@@ -18054,13 +19521,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 1d70431799b9f40e8bd5ed8e54d1566a33a0026c308c575666fca6166f188611
 
 - http-errors@2.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -18077,13 +19546,15 @@ THE SOFTWARE.
 [travis-image]: https://badgen.net/travis/jshttp/http-errors/master
 [travis-url]: https://travis-ci.org/jshttp/http-errors
 
-```
+````
 
 ### Notice 6ae13df543a24b3fb18c25182cf4f084132f799ea9225410f7037888401b7469
 
 - http-mitm-proxy@1.1.0: README.md (license section)
 
 - http-mitm-proxy@1.1.0: node_modules/http-mitm-proxy/README.md
+
+
 
 ````text
 # License
@@ -18121,7 +19592,9 @@ THE SOFTWARE.
 
 - http-proxy-agent@9.0.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2013 Nathan Rajlich <nathan@tootallnate.net>
@@ -18145,13 +19618,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 0f2c1c521a08ca2e202316a29c57cba39077ebe2618cf10f23df410f4047f60a
 
 - human-signals@2.1.0: LICENSE
 
-```text
+
+
+````text
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -18354,13 +19829,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
    See the License for the specific language governing permissions and
    limitations under the License.
 
-```
+````
 
 ### Notice f4ff0f211345d2496a6e9dc56d6f13f4ee52c0223ab718bfe7ebc77945af3942
 
 - human-signals@8.0.1: LICENSE
 
-```text
+
+
+````text
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -18563,7 +20040,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
    See the License for the specific language governing permissions and
    limitations under the License.
 
-```
+````
 
 ### Notice ac779f7314c74f232ef847ea86e714abe25cf6eeb5cc97b69451b74e2af6492d
 
@@ -18571,7 +20048,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - iconv-lite@0.7.2: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2011 Alexander Shtuchkin
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -18594,13 +20073,15 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-```
+````
 
 ### Notice 18d45466ba3253deae04667e267a91ea8de8548f18c1125264d1c9db28194cc1
 
 - ieee754@1.2.1: LICENSE
 
-```text
+
+
+````text
 Copyright 2008 Fair Oaks Labs, Inc.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -18613,24 +20094,28 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 38ef4fd41ee0e40636499f7cb81312677c5cfa3170eb0408fb771fa815031705
 
 - ieee754@1.2.1: README.md (license section)
 
-```text
+
+
+````text
 ## license
 
 BSD 3 Clause. Copyright (c) 2008, Fair Oaks Labs, Inc.
 
-```
+````
 
 ### Notice 9c94db23dc4b1e9aaee5d195668b916afc71efed54af226b66cf0ccc4389c1c0
 
 - ignore@5.3.2: LICENSE-MIT
 
-```text
+
+
+````text
 Copyright (c) 2013 Kael Zhang <i@kael.me>, contributors
 http://kael.me/
 
@@ -18652,13 +20137,15 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
 LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
+````
 
 ### Notice 74773cfa34cf18a6652f84f4f1912ceb88f35e90f15d27a2f8d0cde278c46ce9
 
 - image-q@4.0.0: LICENSE
 
-```text
+
+
+````text
 # image-quantization (https://github.com/igor-bezkrovny/image-quantization)
 
 The MIT License (MIT)
@@ -18709,13 +20196,15 @@ that this copyright notice remain intact.
 Copyright (c) 2015, Leon Sorokin
 All rights reserved. (MIT Licensed)
 
-```
+````
 
 ### Notice 809e66de579fb7d92503848bbe6d1f348f4f6521a71e5d294fe7cc0c87a3b4ff
 
 - immediate@3.0.6: LICENSE.txt
 
-```text
+
+
+````text
 Copyright (c) 2012 Barnesandnoble.com, llc, Donavon West, Domenic Denicola, Brian Cavalier
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -18737,7 +20226,7 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 99cf22f6960a6fe228ec84ea9aefb0d75b27999ece83a3a9801e1c2081fa270b
 
@@ -18745,7 +20234,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - immer@11.1.8: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2017 Michel Weststrate
@@ -18768,13 +20259,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 5ffe28e7ade7d8f10d85d5337a73fd793dac5c462fb9a28fbf8c5046c7fbca3b
 
 - inherits@2.0.4: LICENSE
 
-```text
+
+
+````text
 The ISC License
 
 Copyright (c) Isaac Z. Schlueter
@@ -18792,13 +20285,15 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
 
-```
+````
 
 ### Notice 395c95f20598da653ff1eb1cb9d74947c7fac689697147f1d192fd0242a0e635
 
 - inline-style-parser@0.2.7: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2012 TJ Holowaychuk <tj@vision-media.ca>
@@ -18809,18 +20304,20 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice b76ec21373e606d9a467e3b6fe9eba8d5f0ec7f433d260cbf536196f933a466a
 
 - inline-style-parser@0.2.7: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](https://github.com/remarkablemark/inline-style-parser/blob/master/LICENSE). See the [license](https://github.com/reworkcss/css/blob/v2.2.4/LICENSE) from the original project.
 
-```
+````
 
 ### Notice 9ea8903938dab5f12c4572d60725069bec2d1b0dc3bcc210b09bae946a5ebb1f
 
@@ -18830,7 +20327,9 @@ THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 - victory-vendor@37.3.6: lib-vendor/internmap/LICENSE
 
-```text
+
+
+````text
 Copyright 2021 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -18845,13 +20344,15 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice 1c22118fd112e8c394a5ec0598d2e2dfcdc19b3e1055ac3eaccdb2522b777335
 
 - iobuffer@6.0.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015 Michaël Zasso
@@ -18875,13 +20376,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice f8d791359a50cbcac82c29cb7b0b1b889b28be76fdd35b8ee33f0f7c8704702a
 
 - ip-address@10.1.0: LICENSE
 
-```text
+
+
+````text
 Copyright (C) 2011 by Beau Gunderson
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -18902,13 +20405,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 62568a2d1337b77171ecca9db10579163446de1ba6151678e81f06cdc199971b
 
 - ipaddr.js@1.9.1: LICENSE
 
-```text
+
+
+````text
 Copyright (C) 2011-2017 whitequark <whitequark@whitequark.org>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -18929,13 +20434,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 7227b7cba0735e5e016bb16f6c8bfe0cddc7dfaad3ad5ccfcbe6ea0359c6d0f7
 
 - is-alphabetical@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -18972,13 +20479,15 @@ THE SOFTWARE.
 
 [contribute]: https://opensource.guide/how-to-contribute/
 
-```
+````
 
 ### Notice 00175f19b19961430ae0a7ac50ab5519a838ea81cc9b0a4c555f14d19414fc38
 
 - is-alphanumerical@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -19015,13 +20524,15 @@ THE SOFTWARE.
 
 [contribute]: https://opensource.guide/how-to-contribute/
 
-```
+````
 
 ### Notice 9edb74dc0756df768a9dd1fa53180031c292d21a3b23fff3b91debfe5c817ec2
 
 - is-decimal@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -19058,13 +20569,15 @@ THE SOFTWARE.
 
 [contribute]: https://opensource.guide/how-to-contribute/
 
-```
+````
 
 ### Notice 73b5283588baa142c5baaef5f56d3e8fdea7a30b214e8c5737e87640f882453a
 
 - is-extglob@2.1.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014-2016, Jon Schlinkert
@@ -19087,13 +20600,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice ce09ba496ece5b031c199eabbd6dd8922ba22547f78cf2f8d39a90ff7295c9c4
 
 - is-extglob@2.1.1: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 Copyright © 2016, [Jon Schlinkert](https://github.com/jonschlinkert).
@@ -19102,13 +20617,15 @@ Released under the [MIT license](https://github.com/jonschlinkert/is-extglob/blo
 ***
 
 _This file was generated by [verb-generate-readme](https://github.com/verbose/verb-generate-readme), v0.1.31, on October 12, 2016._
-```
+````
 
 ### Notice 4cd903859549d4b20b571041f96dfae1136ed079c476126268f9d7cc1b611150
 
 - is-glob@4.0.3: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014-2017, Jon Schlinkert.
@@ -19131,13 +20648,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice c5b63082db55c98e92454790999280a5b8ec5bc9294ac58b006e377aa58a916c
 
 - is-glob@4.0.3: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 Copyright © 2019, [Jon Schlinkert](https://github.com/jonschlinkert).
@@ -19146,13 +20665,15 @@ Released under the [MIT License](LICENSE).
 ***
 
 _This file was generated by [verb-generate-readme](https://github.com/verbose/verb-generate-readme), v0.8.0, on March 27, 2019._
-```
+````
 
 ### Notice e6d55dd9cf84824f40d98d6a9ace3e38a652ad675e1ebd63ba2d9296c5549ad2
 
 - is-hexadecimal@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -19189,13 +20710,15 @@ _This file was generated by [verb-generate-readme](https://github.com/verbose/ve
 
 [contribute]: https://opensource.guide/how-to-contribute/
 
-```
+````
 
 ### Notice 000ffa2d773c511f4459fb31d89f841806f93bf5caf2050468ab2097c081b443
 
 - is-node-process@1.2.0: https://registry.npmjs.org/is-node-process/1.2.0
 
-```text
+
+
+````text
 is-node-process@1.2.0
 Publisher-declared license: MIT
 Evidence: https://registry.npmjs.org/is-node-process/1.2.0
@@ -19224,13 +20747,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 1a55b6c4419b9c3cf55b9b4dcd561acfd300f0e0cf58705c589f58b629898579
 
 - is-number@7.0.0: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 Copyright © 2018, [Jon Schlinkert](https://github.com/jonschlinkert).
@@ -19239,13 +20764,15 @@ Released under the [MIT License](LICENSE).
 ***
 
 _This file was generated by [verb-generate-readme](https://github.com/verbose/verb-generate-readme), v0.6.0, on June 15, 2018._
-```
+````
 
 ### Notice 44191656d296391e0ec97e32f5385f0d02b6f2992694082d22ea04ba0f66f9e4
 
 - is-promise@4.0.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2014 Forbes Lindesay
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19265,18 +20792,20 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-```
+````
 
 ### Notice e579b653ff07c984ce18443ab436688edbb1097149d080d517707a29f4778c4e
 
 - is-promise@4.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
   MIT
 
-```
+````
 
 ### Notice 66aa9feab8bb39aceebd69f2a357015d57ceab486d3c7a19ff8d3d4110a6d101
 
@@ -19284,7 +20813,9 @@ THE SOFTWARE.
 
 - isarray@1.0.0: node_modules/isarray/README.md
 
-```text
+
+
+````text
 ## License
 
 (MIT)
@@ -19309,7 +20840,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 4ec3d4c66cd87f5c8d8ad911b10f99bf27cb00cdfcff82621956e379186b016b
 
@@ -19335,7 +20866,9 @@ SOFTWARE.
 
 - yallist@3.1.1: LICENSE
 
-```text
+
+
+````text
 The ISC License
 
 Copyright (c) Isaac Z. Schlueter and Contributors
@@ -19352,7 +20885,7 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 8a1af140fdfbf5afd3df27f7e662f989c5b963a300020dfafce42033cae9e004
 
@@ -19360,7 +20893,9 @@ IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 - sax@1.6.0: LICENSE.md
 
-```text
+
+
+````text
 # Blue Oak Model License
 
 Version 1.0.0
@@ -19417,13 +20952,15 @@ without any warranty or condition, and no contributor
 will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 
-```
+````
 
 ### Notice dd6488c9c1a4ce2dc978ecee067e5b6a725b52e6057a450b24f1a23bc373b057
 
 - isomorphic.js@0.2.5: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2020 Kevin Jahns <kevin.jahns@protonmail.com>.
@@ -19446,13 +20983,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 8078b0829d6c3e9ecde2f003e1966e4cad3efc6e7a640efbab0313cc166b1af1
 
 - jose@6.2.2: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2018 Filip Skokan
@@ -19475,28 +21014,30 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice c0a8512eabe960492fefd4f287523eb3b5ca1518ca37ef0ec83344cd7f089cb8
 
 - jpeg-js@0.4.4: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2014, Eugene Ware
 All rights reserved.
-
+  
 Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+modification, are permitted provided that the following conditions are met:  
 
 1. Redistributions of source code must retain the above copyright
-   notice, this list of conditions and the following disclaimer.
+   notice, this list of conditions and the following disclaimer.  
 2. Redistributions in binary form must reproduce the above copyright
    notice, this list of conditions and the following disclaimer in the
-   documentation and/or other materials provided with the distribution.
+   documentation and/or other materials provided with the distribution.  
 3. Neither the name of Eugene Ware nor the names of its contributors
    may be used to endorse or promote products derived from this software
-   without specific prior written permission.
-
+   without specific prior written permission.  
+  
 THIS SOFTWARE IS PROVIDED BY EUGENE WARE ''AS IS'' AND ANY
 EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -19508,22 +21049,26 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice ae070da695f33eee9ad9a6f12cb2c2c5d8074103c8df5ce396ff5a65ede8ce37
 
 - jpeg-js@0.4.4: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
-```
+````
 
 ### Notice fcf06aacb36ee29237110d6b3a9fbd6296e85ad4324263abf5f8a5cfb5706c81
 
 - js-base64@3.7.8: LICENSE.md
 
-```text
+
+
+````text
 Copyright (c) 2014, Dan Kogai
 All rights reserved.
 
@@ -19552,13 +21097,15 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 2213d91c606205c71eb051a199478cdc2adde945893404d7f1421436dd6d5cc1
 
 - js-tokens@4.0.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014, 2015, 2016, 2017, 2018 Simon Lydell
@@ -19581,25 +21128,29 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice a9c4f7413b679cf3007503361be7e81246c0c0f452e61a0763e035b4de8374d3
 
 - js-tokens@4.0.0: README.md (license section)
 
-```text
+
+
+````text
 License
 =======
 
 [MIT](LICENSE).
 
-```
+````
 
 ### Notice a07bc24468b9654ce76a547d47a2db282d07733b715db4c73a98bd63961f9550
 
 - js-yaml@4.1.1: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (C) 2011-2015 by Vitaly Puzrin
@@ -19622,43 +21173,47 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 715f1f0f2eb7688e53e4e958acdc7fc9e365ae3eaf26efc2604b93cc65fdc3f5
 
 - json-buffer@3.0.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2013 Dominic Tarr
 
-Permission is hereby granted, free of charge,
-to any person obtaining a copy of this software and
-associated documentation files (the "Software"), to
-deal in the Software without restriction, including
-without limitation the rights to use, copy, modify,
-merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom
-the Software is furnished to do so,
+Permission is hereby granted, free of charge, 
+to any person obtaining a copy of this software and 
+associated documentation files (the "Software"), to 
+deal in the Software without restriction, including 
+without limitation the rights to use, copy, modify, 
+merge, publish, distribute, sublicense, and/or sell 
+copies of the Software, and to permit persons to whom 
+the Software is furnished to do so, 
 subject to the following conditions:
 
-The above copyright notice and this permission notice
+The above copyright notice and this permission notice 
 shall be included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
-ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR 
+ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 50627796eb4236cd05674e71d090e594447995225b7d94cd59e57c25fa3a0217
 
 - json-parse-even-better-errors@2.3.1: LICENSE.md
 
-```text
+
+
+````text
 Copyright 2017 Kat Marchán
 Copyright npm, Inc.
 
@@ -19685,24 +21240,28 @@ DEALINGS IN THE SOFTWARE.
 This library is a fork of 'better-json-errors' by Kat Marchán, extended and
 distributed under the terms of the MIT license above.
 
-```
+````
 
 ### Notice 98af9af941943e9c3e91098628e7d8fa1d414eaa02927958fcf9fe1047b74750
 
 - json-schema-traverse@1.0.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](https://github.com/epoberezkin/json-schema-traverse/blob/master/LICENSE)
 
-```
+````
 
 ### Notice bbe87b573c12bda5baf18742117330efa177e0886b3b0a278dacf8f236e1e129
 
 - json-schema-typed@8.0.2: LICENSE.md
 
-```text
+
+
+````text
 BSD 2-Clause License
 
 Original source code is copyright (c) 2019-2025 Remy Rylan
@@ -19761,26 +21320,30 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice e512501011f8b75ffc66de53432eea7ee99d6b9372c33257b7b7a7b1e5d951d6
 
 - json-schema-typed@8.0.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [BSD-2-Clause][license]
 
 [license]: https://github.com/RemyRylan/json-schema-typed/blob/main/dist/node/LICENSE.md
 
-```
+````
 
 ### Notice 4e053c510d6f3e4724213a292c65142df68d069c40f558582bc4270914e16f77
 
 - json-schema@0.4.0: LICENSE
 
-```text
+
+
+````text
 Dojo is available under *either* the terms of the BSD 3-Clause "New" License *or* the
 Academic Free License version 2.1. As a recipient of Dojo, you may choose which
 license to receive this code under (except as noted in per-module LICENSE
@@ -19790,7 +21353,7 @@ the directories in which they reside and in the code itself. No external
 contributions are allowed under licenses which are fundamentally incompatible
 with the AFL-2.1 OR and BSD-3-Clause licenses that Dojo is distributed under.
 
-The text of the AFL-2.1 and BSD-3-Clause licenses is reproduced below.
+The text of the AFL-2.1 and BSD-3-Clause licenses is reproduced below. 
 
 -------------------------------------------------------------------------------
 BSD 3-Clause "New" License:
@@ -19977,13 +21540,15 @@ Permission is hereby granted to copy and distribute this license without
 modification. This license may not be modified without the express written
 permission of its copyright owner.
 
-```
+````
 
 ### Notice 53e59feb13058722d977c699eb0407c7bce2f93c949b681bbd2ff31698535927
 
 - json5@2.2.3: LICENSE.md
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2012-2018 Aseem Kishore, and [others].
@@ -20008,17 +21573,19 @@ SOFTWARE.
 
 [others]: https://github.com/json5/json5/contributors
 
-```
+````
 
 ### Notice 09ebd9927f40b8b47880fa9ad15bd2e09ca95a6d52668767c2b0f01550920357
 
 - json5@2.2.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 MIT. See [LICENSE.md](./LICENSE.md) for details.
 
-```
+````
 
 ### Notice a9801fb52ba22ef808682a094da8a7a480584b7ed0dfd0d888ab543616335031
 
@@ -20026,7 +21593,9 @@ MIT. See [LICENSE.md](./LICENSE.md) for details.
 
 - jsonfile@6.2.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2012-2015, JP Richardson <jprichardson@gmail.com>
@@ -20043,7 +21612,7 @@ WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEM
 OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice e61af02e143359d84791b8386297b57a0739d9f545e253757bec1ef00952ca23
 
@@ -20051,7 +21620,9 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
 
 - jsonfile@6.2.0: README.md (license section)
 
-```text
+
+
+````text
 License
 -------
 
@@ -20059,13 +21630,15 @@ License
 
 Copyright 2012-2016, JP Richardson  <jprichardson@gmail.com>
 
-```
+````
 
 ### Notice 27873abeec2df3693480a8d1b8fe17dd61bee843d1b39c1c9cfab57ffe93099e
 
 - jszip@3.10.1: lib/license_header.js
 
-```text
+
+
+````text
 /*!
 
 JSZip v__VERSION__ - A JavaScript class for generating and reading zip files
@@ -20078,13 +21651,15 @@ JSZip uses the library pako released under the MIT license :
 https://github.com/nodeca/pako/blob/main/LICENSE
 */
 
-```
+````
 
 ### Notice 566c953c6090b1218ca6217dd7359d45dde46581968586dc607d59a78af6a9c4
 
 - jszip@3.10.1: LICENSE.markdown
 
-```text
+
+
+````text
 JSZip is dual licensed. At your choice you may use it under the MIT license *or* the GPLv3
 license.
 
@@ -20737,20 +22312,22 @@ copy of the Program in return for a fee.
 
                      END OF TERMS AND CONDITIONS
 
-```
+````
 
 ### Notice dba96b09a408c2b05eba8afc951c146611f6571e54921463bd2560eea441d712
 
 - jszip@3.10.1: README.markdown (license section)
 
-```text
+
+
+````text
 License
 -------
 
 JSZip is dual-licensed. You may use it under the MIT license *or* the GPLv3
 license. See [LICENSE.markdown](LICENSE.markdown).
 
-```
+````
 
 ### Notice 2bac2a40e8df7bcf69fa8fe096eb2a345f00f351440be38659ba25062b821fb8
 
@@ -20758,18 +22335,22 @@ license. See [LICENSE.markdown](LICENSE.markdown).
 
 - katex@0.16.45: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 KaTeX is licensed under the [MIT License](https://opensource.org/licenses/MIT).
 
-```
+````
 
 ### Notice 766ccc1f306c885aa45542a9846bbd0a505b27a0374f146778171c2254ce18e3
 
 - katex@0.16.45: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2013-2020 Khan Academy and other contributors
@@ -20792,13 +22373,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 7a1da246f5e03ea6f987021848a3ff9d9e9a86a54adf96a216f2ee57a9a762d6
 
 - keycharm@0.4.0: LICENSE-APACHE-2.0
 
-```text
+
+
+````text
                                Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -20976,13 +22559,15 @@ SOFTWARE.
 
    END OF TERMS AND CONDITIONS
 
-```
+````
 
 ### Notice 7909cb1efaa8bd800a6d33d73cb9538bfe56a7da61c1fd8b4afb9ddd557ec044
 
 - keycharm@0.4.0: LICENSE-MIT
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014 Almende B.V.
@@ -21006,36 +22591,42 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice 1a7471ca96e17d08d390ff3b0c23ccbbff29390483add7577ae75c799d494b59
 
 - keycharm@0.4.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Keycharm is Dual-licensed with both the Apache 2.0 license as well as the MIT license.
 I'll leave it up to the user to pick which one they prefer.
 
-```
+````
 
 ### Notice 7c52c9115673b3e47e2a78c9c911558b7b2f23b144a3927e5fa862e1409727ba
 
 - keyv@4.5.4: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT © Jared Wray
 
-```
+````
 
 ### Notice 6f7e6eae2a2afbaa67b266650f7342e7bf8e82cb57f6ab98148b3d6e0fb4450a
 
 - keyv@4.5.4: https://registry.npmjs.org/keyv/4.5.4
 
-```text
+
+
+````text
 keyv@4.5.4
 Publisher-declared license: MIT
 Evidence: https://registry.npmjs.org/keyv%404.5.4
@@ -21065,13 +22656,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 66b333b0f66759a0b710459e03f7029abe17f4358114a128d2c972e642961b49
 
 - khroma@2.1.0: license
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2019-present Fabio Spampinato, Andrew Maney
@@ -21094,18 +22687,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 4a66c14969ba178b2391ff5e25abe40398c1817013e13c9d043d49d0dfbe41c8
 
 - khroma@2.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT © Fabio Spampinato, Andrew Maney
 
-```
+````
 
 ### Notice 48bfd53f76185bd32bb91393a7e27ab553b77b4b965245ba73f4714c11030a4a
 
@@ -21113,7 +22708,9 @@ MIT © Fabio Spampinato, Andrew Maney
 
 - koffi@2.15.6: src/cnoke/LICENSE.txt
 
-```text
+
+
+````text
 MIT License
 
 Copyright (C) 2025  Niels Martignène <niels.martignene@protonmail.com>
@@ -21137,20 +22734,22 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice f2ab762f285386aefd2bbb9c3e6befa2ca28a5be7e364151e1c074b56174b657
 
 - koffi@2.15.6: README.md (license section)
 
-```text
+
+
+````text
 # License
 
 This program is free software: you can redistribute it and/or modify it under the terms of the **MIT License**.
 
 Find more information here: https://choosealicense.com/licenses/mit/
 
-```
+````
 
 ### Notice 89024017b88a9f2b763f79b941a4f2db3b4428edfcacdc0b23866b2da633ad0c
 
@@ -21158,7 +22757,9 @@ Find more information here: https://choosealicense.com/licenses/mit/
 
 - node-addon-api@7.1.1: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2017 [Node.js API collaborators](https://github.com/nodejs/node-addon-api#collaborators)
@@ -21169,26 +22770,30 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 23bb020e852abb6189c65da294665dba27321b8de5032d61b917f0b09095d6fb
 
 - koffi@2.15.6: vendor/node-addon-api/README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Licensed under [MIT](./LICENSE.md)
 
 [Node-API support matrix]: https://nodejs.org/dist/latest/docs/api/n-api.html#node-api-version-matrix
 
-```
+````
 
 ### Notice a553508f516031c91f3af1148d44970cb81bbae6c4f091be6835d39cc252238c
 
 - koffi@2.15.6: vendor/node-api-headers/LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 Node.js
@@ -21211,24 +22816,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice dcc0c7f42f2693b8dcc0bcbdb054c890333c87ce91994e72513de0c34306d330
 
 - koffi@2.15.6: vendor/node-api-headers/README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Licensed under [MIT](./LICENSE.md)
 
-```
+````
 
 ### Notice 599bf70b4e55f06250571d103dbd8441e0c47cb7f858c0147ca312ce38e9ef2a
 
 - langium@4.2.2: LICENSE
 
-```text
+
+
+````text
 Copyright 2021 TypeFox GmbH
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
@@ -21246,7 +22855,7 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FO
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice eabb762d8a95109a39c9be3247325529a5239a7aca327d909c3ccdc41f3a06bf
 
@@ -21254,7 +22863,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 - layout-base@2.0.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2019 iVis@Bilkent
@@ -21277,13 +22888,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice f18c12b8e7daf98d572518b7db133b2dc66a713921dac4825410dd656e0c1a1a
 
 - lazy-val@1.0.5: https://registry.npmjs.org/lazy-val/1.0.5
 
-```text
+
+
+````text
 lazy-val@1.0.5
 Publisher-declared license: MIT
 Evidence: https://registry.npmjs.org/lazy-val/1.0.5
@@ -21312,13 +22925,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 5446db1e43fe52faf3faab7e9959fe3762ac11bdc61c0945934c498affd52d73
 
 - lib0@0.2.117: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2019 Kevin Jahns <kevin.jahns@protonmail.com>.
@@ -21341,24 +22956,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 2a88c16bef1c3bef4a5bd265bd61ea2e30b19d0a501e12e1d5d79e523ca4836c
 
 - lib0@0.2.117: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 [The MIT License](./LICENSE) © Kevin Jahns
 
-```
+````
 
 ### Notice 5c81b0caa98593408b03125efa25efe622341ed87ae55561968828cd887d64a4
 
 - lie@3.3.0: license.md
 
-```text
+
+
+````text
 #Copyright (c) 2014-2018 Calvin Metcalf, Jordan Harband
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -21367,13 +22986,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 **THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.**
 
-```
+````
 
 ### Notice 456fe85ad3e71db9523313cf7437b0f90c392d8a48c869908e46716b26d2cf53
 
 - lines-and-columns@1.2.4: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015 Brian Donovan
@@ -21396,13 +23017,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 95e3f7f0e81e9b4940cdfaa1956aaff5e4dfd2fb1565041e7c78eb9a606f23e3
 
 - linkify-it@3.0.3: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2015 Vitaly Puzrin.
 
 Permission is hereby granted, free of charge, to any person
@@ -21426,18 +23049,20 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 66248fe82ba8e21f73a251762bb60b0f40b0b96d63b5ea4459b1c4d27bb5fab7
 
 - linkify-it@3.0.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](https://github.com/markdown-it/linkify-it/blob/master/LICENSE)
 
-```
+````
 
 ### Notice f71e8ed126b46346494aad5486874cd8f0aafe95092ed67d2e3cb6110f939abc
 
@@ -21445,7 +23070,9 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 - lodash.merge@4.6.2: LICENSE
 
-```text
+
+
+````text
 Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
 
 Based on Underscore.js, copyright Jeremy Ashkenas,
@@ -21494,7 +23121,7 @@ maintained libraries used by this software which have their own
 licenses; we recommend you read them, as their terms may differ from the
 terms above.
 
-```
+````
 
 ### Notice ffd8b33b354585f4ce119f19c53728281e48a97b074491eb6bf6d5c5ff305272
 
@@ -21502,7 +23129,9 @@ terms above.
 
 - lodash.pickby@4.6.0: LICENSE
 
-```text
+
+
+````text
 Copyright jQuery Foundation and other contributors <https://jquery.org/>
 
 Based on Underscore.js, copyright Jeremy Ashkenas,
@@ -21551,13 +23180,15 @@ maintained libraries used by this software which have their own
 licenses; we recommend you read them, as their terms may differ from the
 terms above.
 
-```
+````
 
 ### Notice 2b61a34ef17beffb1e555efa8b46110d25398d47f2e88b2cacc46f8bd382c639
 
 - lodash.identity@3.0.0: LICENSE.txt
 
-```text
+
+
+````text
 Copyright 2012-2015 The Dojo Foundation <http://dojofoundation.org/>
 Based on Underscore.js 1.7.0, copyright 2009-2015 Jeremy Ashkenas,
 DocumentCloud and Investigative Reporters & Editors <http://underscorejs.org/>
@@ -21581,13 +23212,15 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice e159c6d48c989185448658f276375bfb2300362ec6d4ae5525a2d49c4bcb947d
 
 - lodash.isequal@4.5.0: LICENSE
 
-```text
+
+
+````text
 Copyright JS Foundation and other contributors <https://js.foundation/>
 
 Based on Underscore.js, copyright Jeremy Ashkenas,
@@ -21636,7 +23269,7 @@ maintained libraries used by this software which have their own
 licenses; we recommend you read them, as their terms may differ from the
 terms above.
 
-```
+````
 
 ### Notice 9f084fac69d8cf1e6ce983ba5a3499c7695ed74a26ec625c38f0fd19fddd5e10
 
@@ -21646,7 +23279,9 @@ terms above.
 
 - trim-lines@3.0.1: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2015 Titus Wormer <mailto:tituswormer@gmail.com>
@@ -21670,13 +23305,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 9e1401666d34accfe12b5cf5d07c65ffe9f07d33e6222a24aca5e90e2b66308e
 
 - longest-streak@3.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -21715,13 +23352,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [ccount]: https://github.com/wooorm/ccount
 
-```
+````
 
 ### Notice 4eb7543b08d955a6d23fcc224601d43ff566e775be918805e26210d7f6eb4893
 
 - loose-envify@1.4.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015 Andres Suarez <zertosh@gmail.com>
@@ -21744,13 +23383,45 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
+
+### Notice 9d8d4d8b4bb99572ee8b51025a30b8493d949798cac465c6c15b1b29420bcb06
+
+- lottie-web@5.13.0: LICENSE.md
+
+
+
+````text
+The MIT License (MIT)
+
+Copyright (c) 2015 Bodymovin
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+````
 
 ### Notice 0a7cda7d15aca7baaa3035e1f90466dde9ecc980c103cd230382d6675714bf2a
 
 - lru_map@0.4.1: node_modules/lru_map/README.md
 
-```text
+
+
+````text
  item that's removed from the cache. The returned entry must not include any strong references to other entries. See note in the documentation of `LRUMap.prototype.set()`.
 
 
@@ -21776,13 +23447,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 451ec07eeb9c4e1b86de9abdaa426462a8be48f887ec7421cf0bbb9c769555ab
 
 - lru-cache@7.18.3: LICENSE
 
-```text
+
+
+````text
 The ISC License
 
 Copyright (c) 2010-2023 Isaac Z. Schlueter and Contributors
@@ -21799,13 +23472,15 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice e047b205e1166c4b397715eed92723c836d5eb1c974fe22dd3889102ebc9c60a
 
 - lucide-react@1.17.0: dist/esm/icons/copyright.mjs
 
-```text
+
+
+````text
 /**
  * @license lucide-react v1.17.0 - ISC
  *
@@ -21824,21 +23499,25 @@ const Copyright = createLucideIcon("copyright", __iconNode);
 export { __iconNode, Copyright as default };
 //# sourceMappingURL=copyright.mjs.map
 
-```
+````
 
 ### Notice 276fbb649bda6b64528dedc0db040efc6ec73a3a1881a737f850ffdcef114501
 
 - lucide-react@1.17.0: dist/esm/icons/copyright.mjs.map
 
-```text
+
+
+````text
 {"version":3,"file":"copyright.mjs","sources":["../../../src/icons/copyright.ts"],"sourcesContent":["import createLucideIcon from '../createLucideIcon';\nimport { IconNode } from '../types';\n\nexport const __iconNode: IconNode = [\n  ['circle', { cx: '12', cy: '12', r: '10', key: '1mglay' }],\n  ['path', { d: 'M14.83 14.83a4 4 0 1 1 0-5.66', key: '1i56pz' }],\n];\n\n/**\n * @component @name Copyright\n * @description Lucide SVG icon component, renders SVG Element with children.\n *\n * @preview ![img](data:image/svg+xml;base64,PHN2ZyAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogIHdpZHRoPSIyNCIKICBoZWlnaHQ9IjI0IgogIHZpZXdCb3g9IjAgMCAyNCAyNCIKICBmaWxsPSJub25lIgogIHN0cm9rZT0iIzAwMCIgc3R5bGU9ImJhY2tncm91bmQtY29sb3I6ICNmZmY7IGJvcmRlci1yYWRpdXM6IDJweCIKICBzdHJva2Utd2lkdGg9IjIiCiAgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIgogIHN0cm9rZS1saW5lam9pbj0icm91bmQiCj4KICA8Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxMCIgLz4KICA8cGF0aCBkPSJNMTQuODMgMTQuODNhNCA0IDAgMSAxIDAtNS42NiIgLz4KPC9zdmc+Cg==) - https://lucide.dev/icons/copyright\n * @see https://lucide.dev/guide/packages/lucide-react - Documentation\n *\n * @param {Object} props - Lucide icons props and any valid SVG attribute\n * @returns {JSX.Element} JSX Element\n *\n */\nconst Copyright = createLucideIcon('copyright', __iconNode);\n\nexport default Copyright;\n"],"names":[],"mappings":";;;;;;;;;AAGO,CAAA,CAAA,CAAA,CAAA,CAAA,CAAM,UAAA,CAAA,CAAA,CAAuB;AAAA,CAAA,CAClC,CAAC,QAAA,CAAA,CAAU,CAAA,CAAE,EAAA,CAAA,CAAI,CAAA,CAAA,CAAA,CAAA,EAAM,CAAA,CAAA,CAAA,CAAI,IAAA,CAAA,CAAM,CAAA,EAAG,CAAA,CAAA,CAAA,CAAA,CAAA,CAAM,GAAA,CAAA,CAAK,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,EAAU,CAAA;AAAA,CAAA,CACzD,CAAC,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAQ,CAAA,CAAE,GAAG,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAiC,CAAA,CAAA,CAAA,CAAA,CAAK,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,GAAU;AAChE,CAAA;AAaA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAM,SAAA,CAAA,CAAA,CAAY,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAiB,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,EAAa,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAU,CAAA;;"}
-```
+````
 
 ### Notice b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57
 
 - lucide-react@1.17.0: LICENSE
 
-```text
+
+
+````text
 ISC License
 
 Copyright (c) 2026 Lucide Icons and Contributors
@@ -21883,26 +23562,30 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 48bd5dfd1787760ab2c85ce9c7b76245963c46d67badcccdf5a793cf32167639
 
 - lucide-react@1.17.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Lucide is licensed under the ISC license. See [LICENSE](https://lucide.dev/license).
 
 [//]: <> (Sponsors)
 
-```
+````
 
 ### Notice b6c07e1f39bc4dca9286be4b2715b35287ef9d5a42063f6f530a442e317a91d2
 
 - make-cancellable-promise@2.0.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2019–2024 Wojciech Maj
@@ -21925,7 +23608,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 27490088c473281a75d95935a8d5d0791ed9e3ac0b6eb38e5f0852ee4b6d9aa3
 
@@ -21939,18 +23622,22 @@ SOFTWARE.
 
 - swr@2.5.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 The MIT License.
 
-```
+````
 
 ### Notice 8f57f140e524175547525b0992d69124c966260d7183c15155d3b66585b34405
 
 - make-event-props@2.0.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018–2024 Wojciech Maj
@@ -21973,13 +23660,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice a853314783bc4277fae353bcd85ec8781294fe8249e122fda3ba48388c946e0c
 
 - markdown-table@3.0.4: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -22026,7 +23715,7 @@ SOFTWARE.
 
 [mdast-util-gfm]: https://github.com/syntax-tree/mdast-util-gfm
 
-```
+````
 
 ### Notice 8e3a3f82f59a60958f56ca08f445647c32a4733dc7ca6c2c46f6eb898471ab9c
 
@@ -22036,7 +23725,9 @@ SOFTWARE.
 
 - marked@17.0.6: LICENSE.md
 
-```text
+
+
+````text
 # License information
 
 ## Contribution License Agreement
@@ -22082,7 +23773,7 @@ Redistribution and use in source and binary forms, with or without modification,
 
 This software is provided by the copyright holders and contributors “as is” and any express or implied warranties, including, but not limited to, the implied warranties of merchantability and fitness for a particular purpose are disclaimed. In no event shall the copyright owner or contributors be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, procurement of substitute goods or services; loss of use, data, or profits; or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of the use of this software, even if advised of the possibility of such damage.
 
-```
+````
 
 ### Notice 9432aa108cccae3962e4d284c49478ba528fb74e0fb68c4af719e8a338bb15da
 
@@ -22092,19 +23783,23 @@ This software is provided by the copyright holders and contributors “as is” 
 
 - marked@17.0.6: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Copyright (c) 2018+, MarkedJS. (MIT License)
 Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
-```
+````
 
 ### Notice 7eafde8bdc53b059e5060f712a5671639193125443e4890e4ada83daf9629cf6
 
 - mdast-util-find-and-replace@3.0.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -22189,13 +23884,15 @@ Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
 [api-regexp-match-object]: #regexpmatchobject
 
-```
+````
 
 ### Notice 88680166a83f1bf78fbdc45576b280de4b57bb9de2c201a5ab2cabe44144061d
 
 - mdast-util-from-markdown@2.0.3: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][file-license] © [Titus Wormer][wooorm]
@@ -22298,13 +23995,15 @@ Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
 [wooorm]: https://wooorm.com
 
-```
+````
 
 ### Notice e23af4b98807eb7778fc9f02bc7fe4788bd63a5a4b5a6b3fe78e98f133bc5369
 
 - mdast-util-gfm-autolink-literal@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -22387,13 +24086,15 @@ Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
 [api-gfm-autolink-literal-to-markdown]: #gfmautolinkliteraltomarkdown
 
-```
+````
 
 ### Notice 114213621f7edfd4bb040936e889b2c27fad041f9a1963b8a340da1ce6f65705
 
 - mdast-util-gfm-footnote@2.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -22494,13 +24195,15 @@ Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
 [typescript]: https://www.typescriptlang.org
 
-```
+````
 
 ### Notice 3a47a47b045ad140b829fc08354702b65603e60d5f0ae2d325944b211ac2c890
 
 - mdast-util-gfm-strikethrough@2.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -22587,13 +24290,15 @@ Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
 [api-gfm-strikethrough-to-markdown]: #gfmstrikethroughtomarkdown
 
-```
+````
 
 ### Notice b91442655e7814a0aff74b99d6451ccde113bf18e6b5d7c90097eea111041605
 
 - mdast-util-gfm-table@2.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -22704,13 +24409,15 @@ Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
 [dfn-table]: #table
 
-```
+````
 
 ### Notice 6527800528e7bb7d9a2f83b069646aa8b083cc12b4681391c43fba1e65d96ef2
 
 - mdast-util-gfm-task-list-item@2.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -22791,13 +24498,15 @@ Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
 [api-gfm-task-list-item-to-markdown]: #gfmtasklistitemtomarkdown
 
-```
+````
 
 ### Notice 65841ddb5c183d8fc9797ed73f7b5a93e62c635917284088d432f60a558b44d1
 
 - mdast-util-gfm@3.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -22878,13 +24587,15 @@ Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
 [typescript]: https://www.typescriptlang.org
 
-```
+````
 
 ### Notice cff85a071921cb939c77145d09a47e1de7370e6e0c794f484d83fa517841f2a7
 
 - mdast-util-math@3.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -22979,13 +24690,15 @@ Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
 [dfn-math]: #math-1
 
-```
+````
 
 ### Notice 04fe50d667fd83f9a1a070b40fc71ef426655aff4d20b539dded76eef8137d1e
 
 - mdast-util-mdx-expression@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -23080,13 +24793,15 @@ Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
 [dfn-phrasing-content]: #phrasingcontent-mdx-expression
 
-```
+````
 
 ### Notice b6fc2cc08872f7837723ce673e1b940764e88236334374d59f34df1784f77c3b
 
 - mdast-util-mdx-jsx@3.2.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -23197,13 +24912,15 @@ Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
 [api-to-markdown-options]: #tomarkdownoptions
 
-```
+````
 
 ### Notice 0e1d69f4e703a9aca0525c426aedf824dea12ad50124bd1a7df8c5d7471dfaa0
 
 - mdast-util-mdxjs-esm@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -23296,13 +25013,15 @@ Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
 
 [api-mdxjs-esm-hast]: #mdxjsesmhast
 
-```
+````
 
 ### Notice b6d1a4e1831b177acc96f22a817d4f0f4c18419355badc3125754445fc69e3a7
 
 - mdast-util-phrasing@4.1.0: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2017 Titus Wormer <tituswormer@gmail.com>
@@ -23327,13 +25046,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 73ca00ea2f952780125faaae8c886b7e96a7b417e8e615eab70775152b0cfc49
 
 - mdast-util-phrasing@4.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Victor Felder][author]
@@ -23402,13 +25123,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-phrasing]: #phrasingvalue
 
-```
+````
 
 ### Notice af24de87312a0df6461e0d129eaa446206603c1b1042a396554750a68d33d2b8
 
 - mdast-util-to-hast@13.2.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -23517,13 +25240,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-to-hast]: #tohasttree-options
 
-```
+````
 
 ### Notice f1118ba796bbb32989a7dbf5d3699978bb8f1413b633ef736536e22b4a572a57
 
 - mdast-util-to-markdown@2.1.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -23630,13 +25355,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-unsafe]: #unsafe
 
-```
+````
 
 ### Notice 075cb62faa39cc8f9b00d6712f525596c2ae82fbe3d1fb70aae64ff6c3e63ec4
 
 - mdast-util-to-string@4.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -23707,13 +25434,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-options]: #options
 
-```
+````
 
 ### Notice 13faec6cc4820429b213665a1fff88e1bcfad5a3aff10956f90dea08bf45e808
 
 - media-chrome@4.19.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2020 Mux, Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -23734,13 +25463,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 16d5fc84b87931c42bb3b02b0ee1e42df9869ead90f2c3dac03060db96a3d91b
 
 - media-typer@1.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -23755,13 +25486,15 @@ SOFTWARE.
 [travis-image]: https://badgen.net/travis/jshttp/media-typer/master
 [travis-url]: https://travis-ci.org/jshttp/media-typer
 
-```
+````
 
 ### Notice 70b126abc64d7ea06e1243349073935caa16fa47a41a571773ccf0b350b1d574
 
 - merge-descriptors@2.0.0: license
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Jonathan Ong <me@jongleberry.com>
@@ -23774,7 +25507,7 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice c2ccf44e0692ca362353ee78a13dfabd61bd9af4491b64ec69f01a9ef0038193
 
@@ -23782,7 +25515,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 - react-pdf@10.4.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2017–2024 Wojciech Maj
@@ -23805,13 +25540,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 2cee71bf4612fc2efe1c6261e3f2b21f3c7259ef8a4f3593b095ae7a7bd65ad9
 
 - merge-stream@2.0.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) Stephen Sugden <me@stephensugden.com> (stephensugden.com)
@@ -23834,13 +25571,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice b2590e53ea6e050512c3993bfc746c394bbba9242fd6909245201bdc1dc6862a
 
 - merge2@1.4.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014-2020 Teambition
@@ -23863,13 +25602,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice e231a1bc79e33dd75753c3a1e2d907bb04e968a6f19d75b5c573b25992cdccc7
 
 - merge2@1.4.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT © [Teambition](https://www.teambition.com)
@@ -23883,13 +25624,15 @@ MIT © [Teambition](https://www.teambition.com)
 [downloads-url]: https://npmjs.org/package/merge2
 [downloads-image]: http://img.shields.io/npm/dm/merge2.svg?style=flat-square
 
-```
+````
 
 ### Notice e9a5df5a6ae5cd51ca430715f4c62fb5424946e8da07b7caa058a1ba0582a848
 
 - meriyah@7.1.2: LICENSE.md
 
-```text
+
+
+````text
 ISC License
 
 Copyright (c) 2019 and later, KFlash and others.
@@ -23898,13 +25641,15 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80
 
 - mermaid@11.14.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014 - 2022 Knut Sveidqvist
@@ -23927,13 +25672,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 59e92612ac29a0fb08486add32794c79c5bf64ba20a94305b32ed0b3501e80b5
 
 - micromark-core-commonmark@2.0.3: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -23994,13 +25741,15 @@ SOFTWARE.
 
 [typescript]: https://www.typescriptlang.org
 
-```
+````
 
 ### Notice a7b294523dccbe77fb59b2b941de6ec179c72b21602621e4aca4a24f4a24eca5
 
 - micromark-extension-cjk-friendly-gfm-strikethrough@2.0.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2025 Tatsunori Uchino <tats.u@live.jp>
 
 MIT LICENSE
@@ -24030,13 +25779,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice e4078c730a92cb9c2803a46b6f288a26bf196433e2b009e90ef4789217b49907
 
 - micromark-extension-cjk-friendly-util@3.0.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2025 Tatsunori Uchino <tats.u@live.jp>
 
 MIT LICENSE
@@ -24066,13 +25817,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice ba752b39ec76e0887ed1b66d3eb4507d41dd3cff41be66d475d556e15d6a9520
 
 - micromark-extension-cjk-friendly@2.0.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2025 Tatsunori Uchino <tats.u@live.jp>
 
 MIT LICENSE
@@ -24102,13 +25855,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 484be44f60ffba8d224ee7a690b4bbc52db79bcb51fbe9811754182700510daa
 
 - micromark-extension-gfm-autolink-literal@2.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -24189,13 +25944,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-gfm-autolink-literal-html]: #gfmautolinkliteralhtml
 
-```
+````
 
 ### Notice 807a88522a850092aece49486207c17c313c4d5708ac276524840fe1caa0b0fa
 
 - micromark-extension-gfm-footnote@2.1.0: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2021 Titus Wormer <tituswormer@gmail.com>
@@ -24219,13 +25976,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 2d593758c419397df65775fbcac517d95d31759b38f154dd41454fb6551ebc99
 
 - micromark-extension-gfm-footnote@2.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -24332,13 +26091,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-back-label-template]: #backlabeltemplate
 
-```
+````
 
 ### Notice 7351230bd4022ecf2a7bb5d5afdc90bcf3d3d0e914c12e81211c421b9cc3e91e
 
 - micromark-extension-gfm-strikethrough@2.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -24417,13 +26178,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-options]: #options
 
-```
+````
 
 ### Notice 9b5c718decc58467258a7a862c9349e8463d54149b81e9a4f4c107baa22376b9
 
 - micromark-extension-gfm-table@2.1.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -24512,13 +26275,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-gfm-table-html]: #gfmtablehtml
 
-```
+````
 
 ### Notice 11659053d5678d619156d494cb82c4f01791af0a5b19a27c33c22f77b99be2c8
 
 - micromark-extension-gfm-tagfilter@2.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -24583,13 +26348,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-gfm-tagfilter-html]: #gfmtagfilterhtml
 
-```
+````
 
 ### Notice 55df4c9d2e154ada603ff989541c92b195138a4db2ae1d089e75b277d8d94f10
 
 - micromark-extension-gfm-task-list-item@2.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -24666,13 +26433,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-gfm-task-list-item-html]: #gfmtasklistitemhtml
 
-```
+````
 
 ### Notice 549d2bbd558267563b80019533ee987bc3104d5dda16f945ef824a4fe6c890ec
 
 - micromark-extension-gfm@3.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -24773,13 +26542,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-html-options]: #htmloptions
 
-```
+````
 
 ### Notice 1f4893148d467d28f9d27487e451c94f1a987572543c40bb822f829fcb75b0a6
 
 - micromark-extension-math@3.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -24858,13 +26629,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-html-options]: #htmloptions
 
-```
+````
 
 ### Notice 21ee7b7466bec8192f16b7c76f946449f960de1ac6f2478f0f12a569b6b2457a
 
 - micromark-factory-destination@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -24923,13 +26696,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-factory-destination]: #factorydestination
 
-```
+````
 
 ### Notice 69b73323996e241ac82fad9cddcf690902ee79c0d4310b671ebf43e5ab8bb6b5
 
 - micromark-factory-label@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -24988,13 +26763,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-factory-label]: #factorylabel
 
-```
+````
 
 ### Notice 20d2b46ebaf7030c86e0f236e38dacb7f138aac7fae982caf10397ad344fb8de
 
 - micromark-factory-space@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25055,13 +26832,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-factory-space]: #factoryspace
 
-```
+````
 
 ### Notice 2f639382baf9dff1af4572c95a3591f7c918f50ba26e23f9b468595dab274549
 
 - micromark-factory-title@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25120,13 +26899,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-factory-title]: #factorytitle
 
-```
+````
 
 ### Notice d6b329c067bd1df1719f795cfdca75f9adfcc37f22ac87f19954d2876cd70835
 
 - micromark-factory-whitespace@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25187,13 +26968,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-factory-whitespace]: #factorywhitespace
 
-```
+````
 
 ### Notice 65858aa37f1ab6e9948398712c3cfcb51328d9e1c48fccdb254d7db2d7912251
 
 - micromark-util-character@2.1.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25276,13 +27059,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-unicode-whitespace]: #unicodewhitespacecode
 
-```
+````
 
 ### Notice 94cfc72d9ba1b3b58d4bdf26dbae747f87917aeb0ac1a36a86ce36980ae97056
 
 - micromark-util-chunked@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25343,13 +27128,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-splice]: #splicelist-start-remove-items
 
-```
+````
 
 ### Notice 12a828610a006dd24dd724b844ebb61b7b5c2e7713447aae09e8bc4f58baf8ee
 
 - micromark-util-classify-character@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25408,13 +27195,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-classify-character]: #classifycharactercode
 
-```
+````
 
 ### Notice e7543ee86cbc281345f371a833a1317377ae8753c81684a9f87a2ba808c911cc
 
 - micromark-util-combine-extensions@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25481,13 +27270,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-combine-html-extensions]: #combinehtmlextensionshtmlextensions
 
-```
+````
 
 ### Notice 2b0057928130ec2f1fdaa4fea9d0c58d6ed943e5bd2173334999a52f19ddd4c0
 
 - micromark-util-decode-numeric-character-reference@2.0.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25546,13 +27337,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-decode-numeric-character-reference]: #decodenumericcharacterreferencevalue-base
 
-```
+````
 
 ### Notice 3ce8c24e99a98fbcc6836d5bc8d7ce404e08040da3376983b6747a7624c7525f
 
 - micromark-util-decode-string@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25611,13 +27404,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-decode-string]: #decodestringvalue
 
-```
+````
 
 ### Notice 69eb7a2b43e5358e19607781d4613111892bc88c9e915893992a973f0aaa8654
 
 - micromark-util-encode@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25676,13 +27471,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-encode]: #encodevalue
 
-```
+````
 
 ### Notice 5b5c0400178ccab05500c610ba9ac8925f74136839c9b15626ea5738daab3779
 
 - micromark-util-html-tag-name@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25743,13 +27540,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-html-raw-names]: #htmlrawnames
 
-```
+````
 
 ### Notice e52ff07b0af52ef50c2c4086945f443ee6de5d861506f3415645145fd81c4a7e
 
 - micromark-util-normalize-identifier@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25808,13 +27607,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-normalize-identifier]: #normalizeidentifiervalue
 
-```
+````
 
 ### Notice 3cc5be246953ce0b701286ec18074497d7556fa3d259791391c3be60fd3aa432
 
 - micromark-util-resolve-all@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25875,13 +27676,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-resolve-all]: #resolveallconstructs-events-context
 
-```
+````
 
 ### Notice 3ea51e725657e0aa00028a5967bb87f0d76c7bf0317294fbf67b58d55bea5e5d
 
 - micromark-util-sanitize-uri@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -25944,13 +27747,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-sanitize-uri]: #sanitizeuriurl-pattern
 
-```
+````
 
 ### Notice 6b01c8eb66f4bd4e1142125b26cd31531a9c3a9950cfe603410fd25516e2b6b5
 
 - micromark-util-subtokenize@2.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -26009,13 +27814,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [typescript]: https://www.typescriptlang.org
 
-```
+````
 
 ### Notice b63aaf7ee7dade9f30440ed582988c39e29b8790765b61d0fc197ea719f1020b
 
 - micromark-util-symbol@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -26074,13 +27881,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [micromark-build]: https://github.com/micromark/micromark/tree/main/packages/micromark-build
 
-```
+````
 
 ### Notice 3215d2d9a91e57e5da345f7e9af4b0adfa82f573a6a8ba2bf6c880771f103013
 
 - micromark-util-types@2.0.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -26137,13 +27946,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [typescript]: https://www.typescriptlang.org
 
-```
+````
 
 ### Notice df9af90d321cb918d370fa795a49c2e97cd1e884bc982ba4b1e49468bdc5fce4
 
 - micromark@4.0.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -26246,13 +28057,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [uint8-array]: https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array
 
-```
+````
 
 ### Notice 5ea16a4b407b0bd1127b777daa5ea6aa3a1792a7af2b9e216888d9c40ddcd79a
 
 - micromatch@4.0.8: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 Copyright © 2024, [Jon Schlinkert](https://github.com/jonschlinkert).
@@ -26261,7 +28074,7 @@ Released under the [MIT License](LICENSE).
 ***
 
 _This file was generated by [verb-generate-readme](https://github.com/verbose/verb-generate-readme), v0.8.0, on August 23, 2024._
-```
+````
 
 ### Notice cc1dfd4dafa27271e8212cd3b274eeb3f262e40a6fdab36ddc3f9696f706f58b
 
@@ -26269,7 +28082,9 @@ _This file was generated by [verb-generate-readme](https://github.com/verbose/ve
 
 - mime-db@1.54.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2014 Jonathan Ong <me@jongleberry.com>
@@ -26294,7 +28109,7 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 0f40e7bf9319221245cc318bd5ca1bb5e077f7c839eeadbfd1d981404f65d8ea
 
@@ -26302,7 +28117,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - mime-types@3.0.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -26317,13 +28134,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [npm-url]: https://npmjs.org/package/mime-types
 [npm-version-image]: https://badgen.net/npm/v/mime-types
 
-```
+````
 
 ### Notice 8f2658c03422c408b2b2ce4d151decc3b1a6fd3d86e5ca9433777bccdcdf75a2
 
 - mime@3.0.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2010 Benjamin Thomas, Robert Kieffer
@@ -26346,13 +28165,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 2c7c5d22ed5a8ee968c64757710979afcd77438c48b4a265b94e615babd8a901
 
 - minimatch@10.2.5: LICENSE.md
 
-```text
+
+
+````text
 # Blue Oak Model License
 
 Version 1.0.0
@@ -26409,7 +28230,7 @@ without any warranty or condition, and no contributor
 will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim._**
 
-```
+````
 
 ### Notice 435a6722c786b0a56fbe7387028f1d9d3f3a2d0fb615bb8fee118727c3f59b7b
 
@@ -26417,7 +28238,9 @@ software or this license, under any kind of legal claim._**
 
 - semver-compare@1.0.0: LICENSE
 
-```text
+
+
+````text
 This software is released under the MIT license:
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -26437,13 +28260,15 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice cc15cc37a1fb93f68ce0b84d0333571b35870e10fb441e7b8c2cc93c11e2829d
 
 - minimist@1.2.8: README.md (license section)
 
-```text
+
+
+````text
 # license
 
 MIT
@@ -26460,13 +28285,15 @@ MIT
 [actions-image]: https://img.shields.io/endpoint?url=https://github-actions-badge-u3jn4tfpocch.runkit.sh/minimistjs/minimist
 [actions-url]: https://github.com/minimistjs/minimist/actions
 
-```
+````
 
 ### Notice 1cab22f196264195a4caec8ca5630170fdde76ee8f43346e47021d087332d3b0
 
 - mitt@3.0.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 Jason Miller
@@ -26489,24 +28316,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 23f29ca7271409b35761a333311e24dd1dc6b62bea91fd7c80b2bc753f3b1b8f
 
 - mitt@3.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT License](https://opensource.org/licenses/MIT) © [Jason Miller](https://jasonformat.com/)
 
-```
+````
 
 ### Notice 144c935613e823350f7798d19da78b5e8315a79af5c2a3744fd85cd61baf07ee
 
 - mkdirp@1.0.4: LICENSE
 
-```text
+
+
+````text
 Copyright James Halliday (mail@substack.net) and Isaac Z. Schlueter (i@izs.me)
 
 This project is free software released under the MIT license:
@@ -26529,7 +28360,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 4d8a73c1024e09c8b323a225d3a7880156ba5a4b9a8d56c9f4fd4202384b110f
 
@@ -26537,12 +28368,14 @@ THE SOFTWARE.
 
 - semver-compare@1.0.0: readme.markdown (license section)
 
-```text
+
+
+````text
 # license
 
 MIT
 
-```
+````
 
 ### Notice 46231df5a7733c3f52f11b71f3df61813007745b62b09031acfb45fb42d75082
 
@@ -26550,7 +28383,9 @@ MIT
 
 - ufo@1.6.3: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Pooya Parsa <pooya@pi0.io>
@@ -26573,13 +28408,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice e9a45168c4e32772336055b667d33706b95bf1cafd4c4d3eb3bb1a9edd5fa8b8
 
 - mlly@1.8.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](./LICENSE) - Made with 💛
@@ -26593,13 +28430,15 @@ SOFTWARE.
 [codecov-src]: https://img.shields.io/codecov/c/gh/unjs/mlly/main?style=flat&colorA=18181B&colorB=F0DB4F
 [codecov-href]: https://codecov.io/gh/unjs/mlly
 
-```
+````
 
 ### Notice 9ae360a69508e492009c51dfa9b71322977c2bc3f8902b9ca3fdd521677bcf01
 
 - module-details-from-path@1.0.4: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2016-2025 Thomas Watson Steen
@@ -26622,13 +28461,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 8f38f320bbf5eb84c08e08676f7ee1d2204ebe5797f6a090d077329cf212fca3
 
 - moment@2.30.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) JS Foundation and other contributors
 
 Permission is hereby granted, free of charge, to any person
@@ -26652,13 +28493,15 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 99a0638a7421918cd7265336281089bca327701b2911140879b199f4349c0435
 
 - moment@2.30.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Moment.js is freely distributable under the terms of the [MIT license][license-url].
@@ -26689,7 +28532,7 @@ Moment.js is freely distributable under the terms of the [MIT license][license-u
 [semver-image]: https://api.dependabot.com/badges/compatibility_score?dependency-name=moment&package-manager=npm_and_yarn&version-scheme=semver
 [semver-url]: https://dependabot.com/compatibility-score.html?dependency-name=moment&package-manager=npm_and_yarn&version-scheme=semver
 
-```
+````
 
 ### Notice 1bf0dc3f7727723e5a032ed12164a47cf92c05204cb1a3485f123c24e2833ed1
 
@@ -26699,7 +28542,9 @@ Moment.js is freely distributable under the terms of the [MIT license][license-u
 
 - motion@12.38.0: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2024 [Motion](https://motion.dev) B.V.
@@ -26722,13 +28567,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 1662fae9b5314d11cf51284e2dcd1f006a354f7343f08712a730fcff9a359801
 
 - ms@2.1.3: license.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2020 Vercel, Inc.
@@ -26751,13 +28598,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice be7690d23425cbcf147da49a90e7c86009e614a51ba60127392546f75166e959
 
 - msw@2.13.3: LICENSE.md
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018–present Artem Zakharchenko
@@ -26780,13 +28629,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 95d152af7a776fba93bd795d3235d478cca4a207f8e1475fc9a3d71d28964c39
 
 - nan@2.26.2: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2018 [NAN contributors](<https://github.com/nodejs/nan#wg-members--collaborators>)
@@ -26797,20 +28648,22 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 4a9b7b6eb87db1ae48c596bce13fcff1d4e96a1cee5131c6d2dc183a9f549f17
 
 - nan@2.26.2: README.md (license section)
 
-```text
+
+
+````text
 ## Licence &amp; copyright
 
 Copyright (c) 2018 NAN WG Members / Collaborators (listed above).
 
 Native Abstractions for Node.js is licensed under an MIT license. All rights not explicitly granted in the MIT license are reserved. See the included LICENSE file for more details.
 
-```
+````
 
 ### Notice da4db1480d9beea3483a2eda5c53b22238d0827d57da162b48f122e04d2d9987
 
@@ -26818,7 +28671,9 @@ Native Abstractions for Node.js is licensed under an MIT license. All rights not
 
 - nanoid@5.1.7: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright 2017 Andrey Sitnik <andrey@sitnik.ru>
@@ -26840,13 +28695,15 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 553d4d20029a24e315b428a1a54a9e109eaa340f2e958a4f50a92362c2c4070b
 
 - negotiator@1.0.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2012-2014 Federico Romero
@@ -26872,13 +28729,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice ebda07b8dbb32a559887a3ee241c9b68a6a951559770b8d9aeea7040f68ac662
 
 - negotiator@1.0.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -26894,13 +28753,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [github-actions-ci-image]: https://img.shields.io/github/workflow/status/jshttp/negotiator/ci/master?label=ci
 [github-actions-ci-url]: https://github.com/jshttp/negotiator/actions/workflows/ci.yml
 
-```
+````
 
 ### Notice c47e09b7a38f5f4ceec262e87037ce38911a9fb3f70af1a8199aa6d6bd3be8d0
 
 - netmask@2.1.1: LICENSE.md
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2011 Olivier Poitrey rs@rhapsodyk.net
@@ -26923,13 +28784,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 32296159ac5e1cedf2084832b2a808e6e2f6e3cee905904a012bf579f3aec78e
 
 - netmask@2.1.1: README.md (license section)
 
-```text
+
+
+````text
 License
 -------
 
@@ -26943,13 +28806,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 8ec1386f7f078b0c7cd25341cd80f332df902371cda9f40c10ec2b4007b420b7
 
 - node-domexception@1.0.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 Jimmy Wärting
@@ -26972,13 +28837,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 3e2c11dcf3f17ab585baab8faba54772d7872f1c6e026022acd4b4006665efb0
 
 - node-fetch@3.3.2: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2016 - 2020 Node Fetch Team
@@ -27002,13 +28869,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice 1ba08df29da0b708fe06471bb587195d2243fece2e749d6c15c0b9370d3459d5
 
 - node-fetch@3.3.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE.md)
@@ -27022,13 +28891,15 @@ SOFTWARE.
 [Blob]: https://developer.mozilla.org/en-US/docs/Web/API/Blob
 [File]: https://developer.mozilla.org/en-US/docs/Web/API/File
 
-```
+````
 
 ### Notice f63ff0e4e239244aa79280da2dd4811a0469e5e201caf5cbc0d97c3a1dff8e82
 
 - node-forge@1.4.0: LICENSE
 
-```text
+
+
+````text
 You may use the Forge project under the terms of either the BSD License or the
 GNU General Public License (GPL) Version 2.
 
@@ -27361,13 +29232,15 @@ PROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGES.
 
 
-```
+````
 
 ### Notice 7b3638496004b2daed183a91c4ba45d3ef6331db6c9d0eb1dd882a505630c172
 
 - node-gyp-build@4.8.4: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2017 Mathias Buus
@@ -27390,13 +29263,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 19a2bbc1fb89abc59f36e8f2426d065bb9795d344e3165f2e83b110474115a9d
 
 - node-gyp-build@4.8.4: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT
@@ -27404,13 +29279,15 @@ MIT
 [prebuildify]: https://github.com/prebuild/prebuildify
 [node-gyp]: https://www.npmjs.com/package/node-gyp
 
-```
+````
 
 ### Notice c39e428064b4f3e4fe81a975bf0fd3b845922b431bc4d9a7ffc8bfb091981836
 
 - node-pty@1.1.0: deps/winpty/LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2011-2016 Ryan Prichard
@@ -27433,26 +29310,30 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 7cd68f9b7b52db9a94cad7bfa663abdae9833a9136f72caff5303db425fb47da
 
 - node-pty@1.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Copyright (c) 2012-2015, Christopher Jeffrey (MIT License).<br>
 Copyright (c) 2016, Daniel Imms (MIT License).<br>
 Copyright (c) 2018, Microsoft Corporation (MIT License).
 
-```
+````
 
 ### Notice 3706296ed611888111ceccc1dff4712844dea4bde0b185c82d718c3b69895abe
 
 - node-releases@2.0.37: LICENSE
 
-```text
+
+
+````text
 The MIT License
 
 Copyright (c) 2017 Sergey Rubanov (https://github.com/chicoxyzzy)
@@ -27475,13 +29356,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice bd40cc437e28a3ad7bef2ad34e6b72e757b182e67bda1acadbab4ef0476f8232
 
 - object-inspect@1.13.4: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2013 James Halliday
@@ -27504,13 +29387,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 04694eacd112f4a979f1dd1c7a1c365ea2d721f505eb0464bd05838d80933c34
 
 - object-inspect@1.13.4: readme.markdown (license section)
 
-```text
+
+
+````text
 # license
 
 MIT
@@ -27531,13 +29416,15 @@ MIT
 [actions-image]: https://img.shields.io/endpoint?url=https://github-actions-badge-u3jn4tfpocch.runkit.sh/inspect-js/object-inspect
 [actions-url]: https://github.com/inspect-js/object-inspect/actions
 
-```
+````
 
 ### Notice 5640e5cbe2e9f57f6ccfdd8dbfbeadb875495bdbcb69d2666ce3177ccd0942e4
 
 - object-keys@1.1.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (C) 2013 Jordan Harband
@@ -27559,13 +29446,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-```
+````
 
 ### Notice 825311b35022a789d246bad9c8f7579344784ca99503ebda403b08765e6e65f3
 
 - object-treeify@1.1.33: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2019 Lukas Siemon
 
 Permission is hereby granted, free of charge, to any person
@@ -27589,13 +29478,15 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice fc7d762e0ebf8720d0a03cf00058aaa3a198347e9651be2f50a25e3b3ec13985
 
 - omggif@1.0.10: node_modules/omggif/README
 
-```text
+
+
+````text
 omggif is a JavaScript implementation of a GIF 89a encoder and decoder.
 
 https://github.com/deanm/omggif
@@ -27621,13 +29512,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 8089bcc08845ec143e5761f4a101a65b8c792a0dedbfeeb90a15560c0b77f768
 
 - on-finished@2.4.1: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2013 Jonathan Ong <me@jongleberry.com>
@@ -27652,13 +29545,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice b87de2a3554a3d82a9d8bb6b3c0a0847bc3272b4568ddacdf3f5414c49a1dddc
 
 - on-finished@2.4.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -27673,7 +29568,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [npm-url]: https://npmjs.org/package/on-finished
 [npm-version-image]: https://badgen.net/npm/v/on-finished
 
-```
+````
 
 ### Notice 3d19c2b6246b3072547af2bd05e6b4c09bd3d15955590f1f1e1d20382c919a49
 
@@ -27683,7 +29578,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - regex@6.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2025 Steven Levithan
@@ -27706,13 +29603,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 5fe78c91b36c6147ed0b6ab1631ce731165b7dd5e00482be1f027d46d12a8082
 
 - oniguruma-parser@0.12.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2025-2026 Steven Levithan
@@ -27735,7 +29634,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice c1a5a1ebc88f3e0f3caa04c0af52bf8f3a5405a467337a09594ae1ad149cec83
 
@@ -27743,7 +29642,9 @@ SOFTWARE.
 
 - oniguruma-to-es@4.3.6: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2024-2026 Steven Levithan
@@ -27766,13 +29667,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice d06a69cefbdd9135436ff8e36ea5c32f07fc27c629063aa411f811efe7c30359
 
 - outvariant@1.4.3: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021–present Artem Zakharchenko
@@ -27783,13 +29686,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 819021ebdb731965692b2f38206ed1c96a956469827173dc668a1c6ba3e97097
 
 - pac-proxy-agent@9.0.1: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2014 Nathan Rajlich <nathan@tootallnate.net>
@@ -27813,13 +29718,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 05c365176db3cc00e951c44b921c809c75b8e99d2d724f7daf00381e26fb0850
 
 - package-manager-detector@1.6.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2020-PRESENT Anthony Fu <https://github.com/antfu>
@@ -27842,13 +29749,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 881a4fb74835aeb67adc99655b61bb873f600b61d0e417b91df9682c95050ad9
 
 - package-manager-detector@1.6.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](./LICENSE) License © 2020-PRESENT [Anthony Fu](https://github.com/antfu)
@@ -27864,13 +29773,15 @@ SOFTWARE.
 [license-src]: https://img.shields.io/github/license/antfu-collective/package-manager-detector.svg?style=flat&colorA=18181B&colorB=F0DB4F
 [license-href]: https://github.com/antfu-collective/package-manager-detector/blob/main/LICENSE
 
-```
+````
 
 ### Notice a04665b3b2de56c66730c1f720f528175739e4104f79073614aa611da1e85539
 
 - pako@1.0.11: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn
@@ -27893,31 +29804,35 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 7ec6b1073551f775deded18211724c9b260af2cc2c6886466b23e7e157e23c22
 
 - pako@1.0.11: README.md (license section)
 
-```text
+
+
+````text
 License
 -------
 
 - MIT - all files, except `/lib/zlib` folder
 - ZLIB - `/lib/zlib` content
 
-```
+````
 
 ### Notice c656075390251ac17be4bc48143bd75e5822c9dbc255fe1ea0560a554a65e1ee
 
 - parse-bmfont-ascii@1.0.6: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT, see [LICENSE.md](http://github.com/mattdesl/parse-bmfont-ascii/blob/master/LICENSE.md) for details.
 
-```
+````
 
 ### Notice 59c38e93a395817bc9d674d868af7c062fcea8b37468af8b3f6f075133eb1756
 
@@ -27925,7 +29840,9 @@ MIT, see [LICENSE.md](http://github.com/mattdesl/parse-bmfont-ascii/blob/master/
 
 - parse-bmfont-xml@1.1.6: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 Copyright (c) 2015 Matt DesLauriers
 
@@ -27948,7 +29865,7 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-```
+````
 
 ### Notice fb153e8eaf70c10aa169bc3d7401946a9d51163cafaca23458cea8e67de972f4
 
@@ -27956,7 +29873,9 @@ OR OTHER DEALINGS IN THE SOFTWARE.
 
 - xml-parse-from-string@1.0.1: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 Copyright (c) 2015 Jam3
 
@@ -27979,29 +29898,33 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-```
+````
 
 ### Notice 79025a6dd85cda7486e9330a86d698d37a135ac8be4711d689d1914c8e273ae1
 
 - parse-bmfont-binary@1.0.6: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT, see [LICENSE.md](http://github.com/Jam3/parse-bmfont-binary/blob/master/LICENSE.md) for details.
 
-```
+````
 
 ### Notice e896a716f451ac04adbf13104e366e4e2f9129a4dc2e962c1f1b0b813bcc307d
 
 - parse-bmfont-xml@1.1.6: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT, see [LICENSE.md](http://github.com/mattdesl/parse-bmfont-xml/blob/master/LICENSE.md) for details.
 
-```
+````
 
 ### Notice 5d0698266086f217bb11ea0499d33453e401fe479fb9126ad04e625e63d3557b
 
@@ -28009,7 +29932,9 @@ MIT, see [LICENSE.md](http://github.com/mattdesl/parse-bmfont-xml/blob/master/LI
 
 - property-information@7.1.0: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) Titus Wormer <mailto:tituswormer@gmail.com>
@@ -28033,13 +29958,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 014ce7fc6d6ca35f7a995ebcf1b569f3f85df4c32ce63aa6431fa8c8b6ce145a
 
 - parse-entities@4.0.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -28088,7 +30015,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [contribute]: https://opensource.guide/how-to-contribute/
 
-```
+````
 
 ### Notice 8c535800331e1e4439835555b3f9edc7fe9dee2fab0d8bbbd5a982e8b8343d4d
 
@@ -28098,7 +30025,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - parse5@7.3.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2013-2019 Ivan Nikulin (ifaaan@gmail.com, https://github.com/inikulin)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -28119,13 +30048,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 11d017c3b9f1ee3f44caf7203035f0461d5b57e0db8ce1bc03a9af34fa7d3f6b
 
 - parseurl@1.3.3: LICENSE
 
-```text
+
+
+````text
 
 (The MIT License)
 
@@ -28151,13 +30082,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 6afb719574c7e2a5a3d7fc168e9ba0dfdfb6600993ea8b4e121dc302ae156ca3
 
 - parseurl@1.3.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
   [MIT](LICENSE)
@@ -28172,13 +30105,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [travis-image]: https://badgen.net/travis/pillarjs/parseurl/master
 [travis-url]: https://travis-ci.org/pillarjs/parseurl
 
-```
+````
 
 ### Notice a22b9d5763f574e5db347c30acc0b33eaf4846767c03d2e27d012e864e79a824
 
 - path-browserify@1.0.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2013 James Halliday
@@ -28200,20 +30135,22 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 695acc0a402394b4d27c9374cb000fd13a934e9dc144cf396941382689b9d1fd
 
 - path-browserify@1.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](./LICENSE)
 
 [path]: https://nodejs.org/docs/v10.3.0/api/path.html
 
-```
+````
 
 ### Notice e9754a00aebde654e80f40bcf41dab667d6a41dfbbd2912bcf14fb07d468bf71
 
@@ -28221,7 +30158,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - points-on-curve@0.2.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2020 Preet Shihn
@@ -28244,17 +30183,19 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 8d30831188290490a985a6cb3deb0b1b9def055a4a59a5df086a1a0fc1c39e99
 
 - path-data-parser@0.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 [MIT License](https://github.com/pshihn/path-data-parser/blob/master/LICENSE)
 
-```
+````
 
 ### Notice 4eeb3271453a891df609e5a9f4ee79a68307f730c13417a3bfeffa604ac8cf25
 
@@ -28262,7 +30203,9 @@ SOFTWARE.
 
 - path-to-regexp@8.4.2: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014 Blake Embrey (hello@blakeembrey.com)
@@ -28285,7 +30228,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 8febb3ff0eb567a5c571fedf8d1bc2151429302ab565ac4e4f799a77e97f7759
 
@@ -28293,7 +30236,9 @@ THE SOFTWARE.
 
 - path-to-regexp@8.4.2: Readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT
@@ -28309,13 +30254,15 @@ MIT
 [license-image]: http://img.shields.io/npm/l/path-to-regexp.svg?style=flat
 [license-url]: LICENSE.md
 
-```
+````
 
 ### Notice 52e92576851154bad7737e90cc72818936f43665cb0e3f7428ed8edc8cc5709b
 
 - pathe@2.0.3: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Pooya Parsa <pooya@pi0.io> - Daniel Roe <daniel@roe.dev>
@@ -28387,13 +30334,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 173d33adafd425fb8423e7435e181093034cea0dc1fa7b54a027ddd44c3346a1
 
 - pathe@2.0.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Made with 💛 Published under the [MIT](./LICENSE) license.
@@ -28411,13 +30360,15 @@ Some code was used from the Node.js project. Glob supported is powered by [zepto
 [size-src]: https://packagephobia.now.sh/badge?p=pathe
 [size-href]: https://packagephobia.now.sh/result?p=pathe
 
-```
+````
 
 ### Notice aa92ab5a472974865a96fd4a4e9c13bb41bf6fe1b309cb6b8da48bc9e19839a2
 
 - pdfjs-dist@5.4.296: cmaps/LICENSE
 
-```text
+
+
+````text
 %%Copyright: -----------------------------------------------------------
 %%Copyright: Copyright 1990-2009 Adobe Systems Incorporated.
 %%Copyright: All rights reserved.
@@ -28433,12 +30384,12 @@ Some code was used from the Node.js project. Glob supported is powered by [zepto
 %%Copyright: Redistributions in binary form must reproduce the above
 %%Copyright: copyright notice, this list of conditions and the following
 %%Copyright: disclaimer in the documentation and/or other materials
-%%Copyright: provided with the distribution.
+%%Copyright: provided with the distribution. 
 %%Copyright:
 %%Copyright: Neither the name of Adobe Systems Incorporated nor the names
 %%Copyright: of its contributors may be used to endorse or promote
 %%Copyright: products derived from this software without specific prior
-%%Copyright: written permission.
+%%Copyright: written permission. 
 %%Copyright:
 %%Copyright: THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
 %%Copyright: CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
@@ -28455,13 +30406,15 @@ Some code was used from the Node.js project. Glob supported is powered by [zepto
 %%Copyright: SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %%Copyright: -----------------------------------------------------------
 
-```
+````
 
 ### Notice 286e4fd7b447330b2c88e23890e3cd0a9d38cb398d4a59cb247f578ccbda3213
 
 - pdfjs-dist@5.4.296: iccs/LICENSE
 
-```text
+
+
+````text
 CC0 1.0 Universal
 
 Statement of Purpose
@@ -28579,13 +30532,15 @@ Affirmer's express Statement of Purpose.
 For more information, please see
 http://creativecommons.org/publicdomain/zero/1.0/
 
-```
+````
 
 ### Notice 0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594
 
 - pdfjs-dist@5.4.296: LICENSE
 
-```text
+
+
+````text
 
                                  Apache License
                            Version 2.0, January 2004
@@ -28764,13 +30719,15 @@ http://creativecommons.org/publicdomain/zero/1.0/
 
    END OF TERMS AND CONDITIONS
 
-```
+````
 
 ### Notice b578cdd2345840ada550bd12519533812320d5f1d21cf4c1c7e1b1b0a31c98b7
 
 - pdfjs-dist@5.4.296: standard_fonts/LICENSE_FOXIT
 
-```text
+
+
+````text
 // Copyright 2014 PDFium Authors. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -28799,13 +30756,15 @@ http://creativecommons.org/publicdomain/zero/1.0/
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 93fed46019c38bbe566b479d22148e2e8a1e85ada614accb0211c37b2c61c19b
 
 - pdfjs-dist@5.4.296: standard_fonts/LICENSE_LIBERATION
 
-```text
+
+
+````text
 Digitized data copyright (c) 2010 Google Corporation
 	with Reserved Font Arimo, Tinos and Cousine.
 Copyright (c) 2012 Red Hat, Inc.
@@ -28834,7 +30793,7 @@ however, cannot be released under any other type of license.  The
 requirement for fonts to remain under this license does not apply to
 any document created using the fonts or their derivatives.
 
-
+ 
 
 DEFINITIONS
 "Font Software" refers to the set of files released by the Copyright
@@ -28891,11 +30850,11 @@ Software, subject to the following conditions:
    Software.
 
 
-
+ 
 TERMINATION
 This license becomes null and void if any of the above conditions are not met.
 
-
+ 
 
 DISCLAIMER
 THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
@@ -28909,16 +30868,18 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER
 DEALINGS IN THE FONT SOFTWARE.
 
 
-```
+````
 
 ### Notice a6af136f3e15038a666b61f376612a07d9a4e48cb7c01adbf3e33b3f14ab49b6
 
 - pdfjs-dist@5.4.296: wasm/LICENSE_OPENJPEG
 
-```text
+
+
+````text
 /*
- * The copyright in this software is being made available under the 2-clauses
- * BSD License, included below. This software may be subject to other third
+ * The copyright in this software is being made available under the 2-clauses 
+ * BSD License, included below. This software may be subject to other third 
  * party and contributor rights, including patent rights, and no such rights
  * are granted under this license.
  *
@@ -28929,7 +30890,7 @@ DEALINGS IN THE FONT SOFTWARE.
  * Copyright (c) 2005, Herve Drolon, FreeImage Team
  * Copyright (c) 2002-2003, Yannick Verschueren
  * Copyright (c) 2001-2003, David Janssens
- * Copyright (c) 2011-2012, Centre National d'Etudes Spatiales (CNES), France
+ * Copyright (c) 2011-2012, Centre National d'Etudes Spatiales (CNES), France 
  * Copyright (c) 2012, CS Systemes d'Information, France
  *
  * All rights reserved.
@@ -28956,13 +30917,15 @@ DEALINGS IN THE FONT SOFTWARE.
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-```
+````
 
 ### Notice 717fc62da03292dbb4dd0c8280bd4ce7bb8550dcf31d772bc93455fb50313425
 
 - pdfjs-dist@5.4.296: wasm/LICENSE_PDFJS_OPENJPEG
 
-```text
+
+
+````text
 Copyright (c) 2024, Mozilla Foundation
 
 Redistribution and use in source and binary forms, with or without
@@ -28986,13 +30949,15 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice eb5104ca33552be007857a28351bc408f379ddd4bfacab1226b09c6d1e9fd7c4
 
 - pdfjs-dist@5.4.296: wasm/LICENSE_PDFJS_QCMS
 
-```text
+
+
+````text
 Copyright (c) 2025, Mozilla Foundation
 
 Redistribution and use in source and binary forms, with or without
@@ -29016,42 +30981,46 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 36d847ae882f6574ebc72f56a4f354e4f104fde4a584373496482e97d52d31bc
 
 - pdfjs-dist@5.4.296: wasm/LICENSE_QCMS
 
-```text
+
+
+````text
 qcms
 Copyright (C) 2009-2024 Mozilla Corporation
 Copyright (C) 1998-2007 Marti Maria
 
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the "Software"),
-to deal in the Software without restriction, including without limitation
-the rights to use, copy, modify, merge, publish, distribute, sublicense,
-and/or sell copies of the Software, and to permit persons to whom the Software
+Permission is hereby granted, free of charge, to any person obtaining 
+a copy of this software and associated documentation files (the "Software"), 
+to deal in the Software without restriction, including without limitation 
+the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+and/or sell copies of the Software, and to permit persons to whom the Software 
 is furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in
+The above copyright notice and this permission notice shall be included in 
 all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
-THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO 
+THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND 
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE 
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION 
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION 
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 7e64acffcb0d20d33f5a86949ffd4a99ae045b10c7332a9c3a58635876c16880
 
 - pend@1.2.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (Expat)
 
 Copyright (c) 2014 Andrew Kelley
@@ -29076,13 +31045,15 @@ ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 6582629e2979466878f6014313dcc2f3756c9616148682227ce3063dde310750
 
 - picocolors@1.1.1: LICENSE
 
-```text
+
+
+````text
 ISC License
 
 Copyright (c) 2021-2024 Oleksii Raspopov, Kostiantyn Denysov, Anton Verinov
@@ -29099,7 +31070,7 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice d0cd141b0c322fded5dfad1d4645bb2fedfc05b7321fe1009469638190d59ef9
 
@@ -29107,7 +31078,9 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 - picomatch@4.0.4: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2017-present, Jon Schlinkert.
@@ -29130,7 +31103,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 1176ba9b9b619eb0f6cc67b6f97695d7c82e86337e3ab590e5536270b652ed12
 
@@ -29138,19 +31111,23 @@ THE SOFTWARE.
 
 - picomatch@4.0.4: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 Copyright © 2017-present, [Jon Schlinkert](https://github.com/jonschlinkert).
 Released under the [MIT License](LICENSE).
 
-```
+````
 
 ### Notice 824f6069c5a59b0c1650d0fb9f8d091866c6019eb761c8e658dfc03f001eabd2
 
 - pinyin-pro@3.29.4: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2022-present zh-lx
@@ -29173,13 +31150,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice c6a01684eb9061a00589d483e9cf9ea5a82b3e8270f9992501ceb79f32753fb5
 
 - pixelmatch@5.3.0: LICENSE
 
-```text
+
+
+````text
 ISC License
 
 Copyright (c) 2019, Mapbox
@@ -29196,16 +31175,18 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice feb87a2e0c305de3464cc44077da5393c52d8ca6362d37427157d04ec6f4510d
 
 - pkce-challenge@5.0.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
-Copyright (c) 2019
+Copyright (c) 2019 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -29225,13 +31206,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice cb00dc7c358014d300dba2462e57d3f477299c169c7ab14d8fe5e347eca44f48
 
 - pkg-types@1.3.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Pooya Parsa <pooya@pi0.io> - Daniel Roe <daniel@roe.dev>
@@ -29277,13 +31260,15 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice c36961403f9455be47b84a8979757459aa53f2e80359c4a94da5ab7d20f8800e
 
 - pkg-types@1.3.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 <!-- automd:contributors license=MIT author="pi0,danielroe" -->
@@ -29297,13 +31282,15 @@ Made by [@pi0](https://github.com/pi0), [@danielroe](https://github.com/danielro
 
 <!-- /automd -->
 
-```
+````
 
 ### Notice 45873d00a0dd243596deb4aa23b2493b3d1f0671921bf2538ea431d7380220eb
 
 - playwright-core@1.59.1: LICENSE
 
-```text
+
+
+````text
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -29507,20 +31494,22 @@ Made by [@pi0](https://github.com/pi0), [@danielroe](https://github.com/danielro
    See the License for the specific language governing permissions and
    limitations under the License.
 
-```
+````
 
 ### Notice 6d602191187b35b9b01d2cffa01c8469c2c8d9de8a96f1bf868e0f264f51c81d
 
 - playwright-core@1.59.1: NOTICE
 
-```text
+
+
+````text
 Playwright
 Copyright (c) Microsoft Corporation
 
 This software contains code derived from the Puppeteer project (https://github.com/puppeteer/puppeteer),
 available under the Apache 2.0 license (https://github.com/puppeteer/puppeteer/blob/master/LICENSE).
 
-```
+````
 
 ### Notice 176b07a18c0bb3836aaeb61088fd0bf11a38f66e6f15e3fbda85faa225250d6e
 
@@ -29528,7 +31517,9 @@ available under the Apache 2.0 license (https://github.com/puppeteer/puppeteer/b
 
 - pngjs@6.0.0: LICENSE
 
-```text
+
+
+````text
 pngjs2 original work Copyright (c) 2015 Luke Page & Original Contributors
 pngjs derived work Copyright (c) 2012 Kuba Niegowski
 
@@ -29550,7 +31541,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 1ae36f168a61fd7d96c27418d27f1431943f47ceed4d2d019869639205c84039
 
@@ -29558,7 +31549,9 @@ THE SOFTWARE.
 
 - pngjs@6.0.0: README.md (license section)
 
-```text
+
+
+````text
 # License
 
 (The MIT License)
@@ -29581,13 +31574,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice be75ef59c5cf59715588a17a82dff7dd3e83c4dba3c458676bb9311e05fbedc5
 
 - pngjs@7.0.0: LICENSE
 
-```text
+
+
+````text
 pngjs original work Copyright (c) 2015 Luke Page & Original Contributors
 pngjs derived work Copyright (c) 2012 Kuba Niegowski
 
@@ -29609,24 +31604,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 1198bea011d375e05ed4e70430adca46f148a76636a3ee2cb2ca4dc3e91a0c32
 
 - points-on-curve@0.2.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 [MIT License](https://github.com/pshihn/bezier-points/blob/master/LICENSE)
 
 
-```
+````
 
 ### Notice b6fc1f7f1d96a48bc97176f3dcef959e364c5c17ba44167511de421500a86c6c
 
 - points-on-path@0.2.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2020 Preet
@@ -29649,24 +31648,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 7b46ea7f6a31e3c590f657081360c8af657a005900c6779a9a62a4a107a7822c
 
 - points-on-path@0.2.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 [MIT License](https://github.com/pshihn/points-on-path/blob/master/LICENSE)
 
 
-```
+````
 
 ### Notice 2998094b38f7ace25f141fb36f334d8338f65a1812978d618b1161f4d77ae10e
 
 - postcss-selector-parser@7.1.1: LICENSE-MIT
 
-```text
+
+
+````text
 Copyright (c) Ben Briggs <beneb.info@gmail.com> (http://beneb.info)
 
 Permission is hereby granted, free of charge, to any person
@@ -29690,13 +31693,15 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 5be1f3465bba68a626777f984878814aaf35e7ef8e9fd314d469bcf887050fb8
 
 - postcss@8.5.9: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright 2013 Andrey Sitnik <andrey@sitnik.es>
@@ -29718,13 +31723,15 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice ecdccbcf39024f624ded480c01c0b25458e1eca8f26ecf040933865ce56d9a4f
 
 - process-nextick-args@2.0.1: license.md
 
-```text
+
+
+````text
 # Copyright (c) 2015 Calvin Metcalf
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -29745,13 +31752,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.**
 
-```
+````
 
 ### Notice d7d2a7786de7c7cfd96f920c6f12927d74e1d2a861ca4498bf465c3bc3f4c21c
 
 - progress@2.0.3: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2017 TJ Holowaychuk <tj@vision-media.ca>
@@ -29775,7 +31784,7 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice ade66f698fd417addc4d948a85ef33e8abb302daff6453feda18b191d250e54d
 
@@ -29783,7 +31792,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - sisteransi@1.0.5: license
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018 Terkel Gjervig Nielsen
@@ -29806,7 +31817,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice f657f99d3fb9647db92628e96007aabb46e5f04f33e49999075aab8e250ca7ce
 
@@ -29814,7 +31825,9 @@ SOFTWARE.
 
 - warning@4.0.3: LICENSE.md
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2013-present, Facebook, Inc.
@@ -29837,24 +31850,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice ca980af9aad75880631440fc14082e1a217b1ea3e615cf715469468bee6a8ef4
 
 - prop-types@15.8.1: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 prop-types is [MIT licensed](./LICENSE).
 
-```
+````
 
 ### Notice ac9579e0acfe1f27d342adb5c61fe3dafe7bff388e0200d6d3f951a3e37f42dd
 
 - propagating-hammerjs@3.0.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014-2024 Jos de Jong
@@ -29878,13 +31895,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice c4cb93eae39264b5b3cf06e4e497e5c42349c8dd2d59e99b50f2307f15fdaed6
 
 - property-information@7.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][file-license] © [Titus Wormer][wooorm]
@@ -29954,13 +31973,15 @@ Derivative work based on [React][github-react-source] licensed under
 
 [wooorm]: https://wooorm.com
 
-```
+````
 
 ### Notice 4ab87e6e3c0c0b78e47c77d49ec10c048f8a519fb8062e6e3217e3e6e9b0c6e9
 
 - protobufjs@7.5.5: google/LICENSE
 
-```text
+
+
+````text
 Copyright 2014, Google Inc.  All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29989,13 +32010,15 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 49d6a1c9a623784c61c6cb70f773f3457faceb1914a13c8560a9823b7631950c
 
 - protobufjs@7.5.5: LICENSE
 
-```text
+
+
+````text
 This license applies to all parts of protobuf.js except those files
 either explicitly including or referencing a different license or
 located in a directory containing a different LICENSE file.
@@ -30036,13 +32059,15 @@ of the input file used when generating it. This code is not
 standalone and requires a support library to be linked with it. This
 support library is itself covered by the above license.
 
-```
+````
 
 ### Notice b63c1498c008bad41ef805fd849003b331f188eff153a060b665be52757e87e9
 
 - proxy-addr@2.0.7: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -30057,7 +32082,7 @@ support library is itself covered by the above license.
 [npm-url]: https://npmjs.org/package/proxy-addr
 [npm-version-image]: https://badgen.net/npm/v/proxy-addr
 
-```
+````
 
 ### Notice f55828df4b8752c48e765a806465b76a103e3cb363379c569b15a1df2ba2d79e
 
@@ -30065,7 +32090,9 @@ support library is itself covered by the above license.
 
 - proxy-from-env@2.1.0: LICENSE
 
-```text
+
+
+````text
 The MIT License
 
 Copyright (C) 2016-2018 Rob Wu <rob@robwu.nl>
@@ -30087,13 +32114,15 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 8df47c6ad9ac2c41eb9b2a72def9908959da0ede8dadd56c7b249c1bdb0c5ce6
 
 - qrcode@1.5.4: license
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2012 Ryan Day
@@ -30105,26 +32134,30 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-```
+````
 
 ### Notice f71e27c438db7d5ef54db35eef8dd0126f1f3dc9d047949e2f250ff0838bfdc9
 
 - qrcode@1.5.4: README.md (license section)
 
-```text
+
+
+````text
 ## License
 [MIT](https://github.com/soldair/node-qrcode/blob/master/license)
 
 The word "QR Code" is registered trademark of:<br>
 DENSO WAVE INCORPORATED
 
-```
+````
 
 ### Notice e7dc37bf662d7f786efcb46c545615e70c1daf458a38385521c63cf6607cdfe1
 
 - qs@6.15.1: LICENSE.md
 
-```text
+
+
+````text
 BSD 3-Clause License
 
 Copyright (c) 2014, Nathan LaFreniere and other [contributors](https://github.com/ljharb/qs/graphs/contributors)
@@ -30155,7 +32188,7 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice d4c2065e2b936e62a4eb400efb4576edec9ca1388a9f78aa288e147275e7bc8b
 
@@ -30163,7 +32196,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - run-parallel@1.2.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) Feross Aboukhadijeh
@@ -30185,24 +32220,28 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice a3c7d5b41af742dce5b55e0b2cb165c39b857e3d48e51ed2ee1e66afe3b82887
 
 - queue-microtask@1.2.3: README.md (license section)
 
-```text
+
+
+````text
 ## license
 
 MIT. Copyright (c) [Feross Aboukhadijeh](https://feross.org).
 
-```
+````
 
 ### Notice f29b60ea39a2132e3baa98927c2d473b349a54143da44a0c6762b243e6459452
 
 - quickjs-wasi@2.2.0: https://registry.npmjs.org/quickjs-wasi/2.2.0
 
-```text
+
+
+````text
 quickjs-wasi@2.2.0
 Publisher-declared license: MIT
 Evidence: https://registry.npmjs.org/quickjs-wasi/2.2.0
@@ -30231,24 +32270,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice a19f7c7af23346e3df7345076547704c068e1f6de86b3d9d7554d06cb4c7d38f
 
 - radix-ui@1.4.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Licensed under the MIT License, Copyright © 2022-present [WorkOS](https://workos.com).
 
-```
+````
 
 ### Notice f655e6291356ec0de7a8f0e69f294961a2cea86678ec94588be1e6a492e278ab
 
 - range-parser@1.2.1: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2012-2014 TJ Holowaychuk <tj@vision-media.ca>
@@ -30273,13 +32316,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 34830b5bd3fa8f5f76537e22e01285642f16b16aa93393c4caf463a9b3bbf695
 
 - range-parser@1.2.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -30294,13 +32339,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [travis-image]: https://badgen.net/travis/jshttp/range-parser/master
 [travis-url]: https://travis-ci.org/jshttp/range-parser
 
-```
+````
 
 ### Notice 37876d7de8bdf5e5b9b58a697ebc34044624e493e6f49eff5c938e5226dcac6b
 
 - raw-body@3.0.2: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2013-2014 Jonathan Ong <me@jongleberry.com>
@@ -30324,13 +32371,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice ba3a5f9e9af85a93b87cc61076d162090564e3235bdcb026aaf8781f735c4a47
 
 - raw-body@3.0.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -30346,13 +32395,77 @@ THE SOFTWARE.
 [github-actions-ci-image]: https://img.shields.io/github/actions/workflow/status/stream-utils/raw-body/ci.yml?branch=master&label=ci
 [github-actions-ci-url]: https://github.com/jshttp/stream-utils/raw-body?query=workflow%3Aci
 
-```
+````
+
+### Notice 0d18348c715c41254b8bc1d1b400ffc9e9f0fd21b106d85c7e504c45462f83e2
+
+- react-chartjs-2@5.3.1: LICENSE
+
+
+
+````text
+Copyright 2020 Jeremy Ayerst
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+````
+
+### Notice 3c8ae59bbd7b94c058614adc0a76571162fd9b2fd9433df2ab74d0c9b32b4054
+
+- react-chartjs-2@5.3.1: LICENSE.md
+
+
+
+````text
+MIT License
+
+Copyright (c) 2017 Jeremy Ayerst
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+````
+
+### Notice c89a3a19dc62f06a08c0125c3960394bf00b1583ffc0654d82f3907afa7e1418
+
+- react-chartjs-2@5.3.1: README.md (license section)
+
+
+
+````text
+## License
+
+[MIT Licensed](LICENSE)
+Copyright (c) 2020 Jeremy Ayerst
+
+````
 
 ### Notice 2cdb493db15b320c5787535f9dadd37b13cae6fe0a1cdd7849ccfbce70c389fd
 
 - react-error-boundary@6.1.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 Copyright (c) 2020 Brian Vaughn
 
@@ -30374,7 +32487,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85
 
@@ -30384,7 +32497,9 @@ SOFTWARE.
 
 - yoga-layout@3.2.1: https://raw.githubusercontent.com/facebook/yoga/v3.2.1/LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Facebook, Inc. and its affiliates.
@@ -30407,13 +32522,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice c5a0e348be3cd999ae55e7054079ddd3cd704137e90bbcb084cf8d1127035f20
 
 - react-jsx-parser@2.4.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2017 Troy Alford
@@ -30436,7 +32553,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice f2da73c752c6b87624755edacf927cbd915fa76555d383e74494bad4a5155ab3
 
@@ -30444,7 +32561,9 @@ SOFTWARE.
 
 - redux@5.0.1: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015-present Dan Abramov
@@ -30467,23 +32586,27 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 8ee8354d5f5f12f11ba596bba67b060d43d3cd677075171404ab5a73703450e8
 
 - react-remove-scroll-bar@2.3.8: README.md (license section)
 
-```text
+
+
+````text
 # License
 MIT
 
-```
+````
 
 ### Notice f158b3bd10b867740fdbf81447216f1f8685473acf61e6a105ef91ba9fe8ebc3
 
 - react-remove-scroll-bar@2.3.8: https://registry.npmjs.org/react-remove-scroll-bar/2.3.8
 
-```text
+
+
+````text
 react-remove-scroll-bar@2.3.8
 Publisher-declared license: MIT
 Evidence: https://registry.npmjs.org/react-remove-scroll-bar/2.3.8
@@ -30512,22 +32635,26 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 989051b7cbf77fd359344aac9c71a43cf7a37c5ad21859ed54aed78e70025f7a
 
 - react-remove-scroll@2.7.2: README.md (license section)
 
-```text
+
+
+````text
 # License
 MIT
-```
+````
 
 ### Notice a8f1e0280bf14adcf5d017547db85eb5c3bac0feb1690ca98650874002eaa8ea
 
 - react-resizable-panels@4.10.0: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2018 Brian Vaughn
@@ -30550,23 +32677,27 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice d82df31b416ee5c6b6e32ac3d5e5fac3a4f7940588cdf6f2b91935ed077849b9
 
 - react-style-singleton@2.2.3: README.md (license section)
 
-```text
+
+
+````text
 # License
 
 MIT
-```
+````
 
 ### Notice ec62dc96da0099b87f4511736c87309335527fb7031639493e06c95728dc8c54
 
 - readable-stream@2.3.8: LICENSE
 
-```text
+
+
+````text
 Node.js is licensed for use as follows:
 
 """
@@ -30615,13 +32746,61 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-```
+````
+
+### Notice dffec71d93f273d2af7b54c6c7e7e70b3289c632ec0d7253210ec21ac336d5ac
+
+- readdirp@4.1.2: LICENSE
+
+
+
+````text
+MIT License
+
+Copyright (c) 2012-2019 Thorsten Lorenz, Paul Miller (https://paulmillr.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+````
+
+### Notice d7659b795379812cc8df27e1feb7d6c7570c734b7714b844a561fdb20a949009
+
+- readdirp@4.1.2: README.md (license section)
+
+
+
+````text
+## License
+
+Copyright (c) 2012-2019 Thorsten Lorenz, Paul Miller (<https://paulmillr.com>)
+
+MIT License, see [LICENSE](LICENSE) file.
+
+````
 
 ### Notice 6ca87d1dce5b82873603e566fd83dabe8771fb169013337d4a14bb9bbf794687
 
 - recast@0.23.11: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2012 Ben Newman <bn@cs.stanford.edu>
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -30643,13 +32822,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 2d3aa48a8d1d3b93093680e8e68d3a64cfb590c3ade377ffcaefc69dac7c2ce5
 
 - recharts@3.8.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015-present recharts
@@ -30673,26 +32854,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice b3c17ebfa395574a02157422872c7791c5bb3af2bf4d1f09181c0a7cff8977b3
 
 - recharts@3.8.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](http://opensource.org/licenses/MIT)
 
 Copyright (c) 2015-2024 Recharts Group.
 
-```
+````
 
 ### Notice c8b22deb666940868b61b1bc7498c178c76ae6350de43dbde37923d6cec336e4
 
 - recharts@3.8.0: umd/Recharts.js.LICENSE.txt
 
-```text
+
+
+````text
 /*! decimal.js-light v2.5.1 https://github.com/MikeMcl/decimal.js-light/LICENCE */
 
 /**
@@ -30715,13 +32900,15 @@ Copyright (c) 2015-2024 Recharts Group.
  * LICENSE file in the root directory of this source tree.
  */
 
-```
+````
 
 ### Notice 635da794c92d278f8355428be0f9922d643f556d4f75f33fe4aca6b98d27affe
 
 - redux-thunk@3.1.0: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015-present Dan Abramov
@@ -30744,24 +32931,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice dc9a1040fdfe7f2182d726eb44b9d7c2dbaa4cade20c10aef34cf998eeb8233d
 
 - redux-thunk@3.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT
 
-```
+````
 
 ### Notice 8ca7af4f6c753e5ab8388e1078d94ce4650723bba4b0d4dfe562fbd45fb4a4e6
 
 - regex-utilities@2.3.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2024 Steven Levithan
@@ -30784,13 +32975,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 42d997d1f47c9222dec2844468fc2a4fd144c6950d698eade460e94537ddcdd3
 
 - regl@2.1.1: LICENSE
 
-```text
+
+
+````text
 
 The MIT License (MIT)
 
@@ -30814,13 +33007,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 19a348dadee07bc9a8b0c0b5dfba98458329d86b983715a4ddf6d1a0b196c144
 
 - rehype-harden@1.1.8: LICENSE.md
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2025 Vercel Inc.
@@ -30843,24 +33038,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 07cff33cff4ac8545846508edd21f8b1c4fb8966aeaf67637dd3018e162887da
 
 - rehype-harden@1.1.8: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT License - see the [LICENSE](LICENSE) file for details.
 
-```
+````
 
 ### Notice 715e5f42f11d5c7c5b0105e8c55888d22d46cc61a9e0c8ea1359203ec303d42a
 
 - rehype-katex@7.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Junyoung Choi][author]
@@ -30937,7 +33136,7 @@ MIT License - see the [LICENSE](LICENSE) file for details.
 
 [api-rehype-katex]: #unifieduserehypekatex-options
 
-```
+````
 
 ### Notice cb992262f361a5359e6771c28740d33c7041e15332ae8537fae40538992591a9
 
@@ -30945,7 +33144,9 @@ MIT License - see the [LICENSE](LICENSE) file for details.
 
 - remark-math@6.0.0: https://raw.githubusercontent.com/remarkjs/remark-math/d5d0660b150810a535bbb07eac6cc96a4510aa24/license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2017 Junyoung Choi <fluke8259@gmail.com>
@@ -30968,13 +33169,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 5cc4806f704f1622e6dcec253993d9c54ca04a9ad0813a8e0bdf9b4929c97fa7
 
 - rehype-raw@7.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -31045,13 +33248,15 @@ SOFTWARE.
 
 [api-rehype-raw]: #unifieduserehyperaw-options
 
-```
+````
 
 ### Notice 945069aab2ba3b78cad8c0a2ca24b473553f53aae1de5ed1a15472d47132d2f6
 
 - rehype-sanitize@6.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -31130,7 +33335,7 @@ SOFTWARE.
 
 [api-rehype-sanitize]: #unifieduserehypesanitize-schema
 
-```
+````
 
 ### Notice f202c602f804953b80ed3f924096375aa79aac536090b7ca319027faf79ae24f
 
@@ -31138,7 +33343,9 @@ SOFTWARE.
 
 - remark-cjk-friendly@2.0.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2025 Tatsunori Uchino <tats.u@live.jp>
 
 MIT LICENSE
@@ -31168,13 +33375,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 943c27bc732aa3c0ba236451c968efe8689a1afaca627b7d3de21a3b159a9528
 
 - remark-gfm@4.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -31263,13 +33472,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [wiki-xss]: https://en.wikipedia.org/wiki/Cross-site_scripting
 
-```
+````
 
 ### Notice ebd07fd90a5f4e097ec25b877482bfbefdd7d80a8b55e4c08a5d5b3ad8873b19
 
 - remark-math@6.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Junyoung Choi][author]
@@ -31348,7 +33559,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-remark-math]: #unifieduseremarkmath-options
 
-```
+````
 
 ### Notice 413654b0a78b98661dce96d2aff2e4d075603d220b8483e28b1aa010ccc138b4
 
@@ -31356,7 +33567,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - remark-stringify@11.0.0: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2014 Titus Wormer <tituswormer@gmail.com>
@@ -31379,13 +33592,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice e9a66ffaa93f7b2779e668bc9b3bb6d2d3aaf440e42aad8b34fe0dd7d201f58c
 
 - remark-parse@11.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -31478,13 +33693,15 @@ THE SOFTWARE.
 
 [api-remark-parse]: #unifieduseremarkparse
 
-```
+````
 
 ### Notice 75c38930e7fccb9e1dfbcfc0dd47e28058c5992dd0fb9baf2d93db7fea7f5c86
 
 - remark-rehype@11.1.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][file-license] © [Titus Wormer][wooorm]
@@ -31597,13 +33814,15 @@ THE SOFTWARE.
 
 [wooorm]: https://wooorm.com
 
-```
+````
 
 ### Notice ac697471f6f706a96aa1bc1ce84fd1a795e82e96e5fdd781b59d803bc90bc3ad
 
 - remark-stringify@11.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -31686,13 +33905,15 @@ THE SOFTWARE.
 
 [api-remark-stringify]: #unifieduseremarkstringify-options
 
-```
+````
 
 ### Notice a92e52eb1fa7cd746e3827bf01d3a3589bbc8e1e51348b1da042aad165525ad1
 
 - require-directory@2.1.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2011 Troy Goode <troygoode@gmail.com>
@@ -31716,13 +33937,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 6ee0feb1f6ef996ff5a68600f8cf98909cf412d39ef3cdceaefd87d636fa1b7f
 
 - require-from-string@2.0.2: license
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) Vsevolod Strukchinsky <floatdrop@gmail.com> (github.com/floatdrop)
@@ -31745,18 +33968,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 49d6fe93c5f7d46ed2c11ebb62899e0a48ae1ae09606b175a59d5cf1d91bd668
 
 - require-from-string@2.0.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT © [Vsevolod Strukchinsky](http://github.com/floatdrop)
 
-```
+````
 
 ### Notice 365496ca1f56da40b23c9815fc40fa9005847b2f8f8fd1c1a4929ef25ec8cd1d
 
@@ -31768,7 +33993,9 @@ MIT © [Vsevolod Strukchinsky](http://github.com/floatdrop)
 
 - yargs-parser@21.1.1: LICENSE.txt
 
-```text
+
+
+````text
 Copyright (c) 2016, Contributors
 
 Permission to use, copy, modify, and/or distribute this software
@@ -31784,7 +34011,7 @@ OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
 WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice a0926e00c3e77e7a82b68b454bd35fb63ab965fd23ab646263cf27fd63c81200
 
@@ -31798,18 +34025,22 @@ ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 - yargs-parser@21.1.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 ISC
 
-```
+````
 
 ### Notice 0bb5035e49bf9b5661655b402bab3c3efccb8eab2a50e37392100139fe3280f2
 
 - reselect@5.1.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015-2018 Reselect Contributors
@@ -31832,24 +34063,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice d73d718f692b143160831ab5e4a1dcc96f8180ad08054d84243d35870fb135f8
 
 - reselect@5.1.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT
 
-```
+````
 
 ### Notice 03b347a3d13b0e5bdb8fc5edeed0286b1be51441c6490a90710692d227136e0d
 
 - resolve-alpn@1.2.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018 Szymon Marczak
@@ -31873,13 +34108,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice 2c4e066228dbca96c8c6e8bef5377306f227ffa1d87a18a218b230e13ac5d39e
 
 - responselike@2.0.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2017 Luke Childs
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -31900,13 +34137,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 29de6bd2570e11d73396880c41a2f1dea7e072782012f160e4dbf17f39e2db03
 
 - rettime@0.11.7: LICENSE.md
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2024—present Artem Zakharchenko
@@ -31917,13 +34156,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 93a1506953b08ad4874e1cc0971a1d2ac387ca510da91e4d05e460a6c4966fa3
 
 - reusify@1.1.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015-2024 Matteo Collina
@@ -31947,13 +34188,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-```
+````
 
 ### Notice bea951a2e9571b7b14e09c81e8271397ecb5f9dfddefe76f42f497610f865ca3
 
 - reusify@1.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT
@@ -31961,13 +34204,15 @@ MIT
 [npm-badge]: https://badge.fury.io/js/reusify.svg
 [npm-url]: https://badge.fury.io/js/reusify
 
-```
+````
 
 ### Notice 98c5d072cf97c4bdd0e215246ff1414e5f1908c721ced8e754c32e476f4c00dd
 
 - ripgrep@0.3.1: LICENSE.md
 
-```text
+
+
+````text
 # License
 
 The MIT License (MIT)
@@ -32019,18 +34264,20 @@ permissive license (typically MIT or Apache-2.0). When shipping a compiled
 from the upstream source tree with tools such as `cargo about` or
 `cargo-license`.
 
-```
+````
 
 ### Notice 64c4e000fb5924d18ea114fdbf7c32d1eb3db896cd25c15973f1ad1efbbfeb0d
 
 - ripgrep@0.3.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT. ripgrep itself is licensed under MIT / Unlicense by its authors — see [vendor/ripgrep](vendor/ripgrep).
 
-```
+````
 
 ### Notice 88d9b4eb60579c191ec391ca04c16130572d7eedc4a86daa58bf28c6e14c9bcd
 
@@ -32038,7 +34285,9 @@ MIT. ripgrep itself is licensed under MIT / Unlicense by its authors — see [ve
 
 - tweetnacl@0.14.5: LICENSE
 
-```text
+
+
+````text
 This is free and unencumbered software released into the public domain.
 
 Anyone is free to copy, modify, publish, use, compile, sell, or
@@ -32064,24 +34313,28 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 For more information, please refer to <http://unlicense.org>
 
-```
+````
 
 ### Notice 6c608c09d062007d57ab3ac511cbe44833e95a215deb8acd36767aeff16f3440
 
 - robust-predicates@3.0.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Since the original code is in the public domain, this project follows the same choice. See [Unlicense](https://unlicense.org).
 
-```
+````
 
 ### Notice dca9a392272606ac748ac0976a2a1133f14eef841c27beaa51a844d53c56a09d
 
 - roughjs@4.6.6: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2019 Preet Shihn
@@ -32104,23 +34357,27 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice cb56a971990af01c13792b2a79a4b319bc000caaa01720e34344e65ca5b32cb4
 
 - roughjs@4.6.6: README.md (license section)
 
-```text
+
+
+````text
 ## License
 [MIT License](https://github.com/pshihn/rough/blob/master/LICENSE) (c) [Preet Shihn](https://twitter.com/preetster)
 
-```
+````
 
 ### Notice d0bca4e517157b7a6120c085f5fe43a35b90c095e3bbeb9e67f220c608506a16
 
 - router@2.2.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2013 Roman Shtylman
@@ -32145,13 +34402,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 5ca52667d17b1f17d424c5dcc5564d9783f6c8e88cb38d4a1628132fcf22d57e
 
 - router@2.2.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -32167,24 +34426,28 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [downloads-image]: https://img.shields.io/npm/dm/router.svg
 [downloads-url]: https://npmjs.org/package/router
 
-```
+````
 
 ### Notice 07340ab9b9cccfe94ca08d40cd6ade86d343ad3c81fe921c00f5a2872abe8d13
 
 - run-parallel@1.2.0: README.md (license section)
 
-```text
+
+
+````text
 ### license
 
 MIT. Copyright (c) [Feross Aboukhadijeh](http://feross.org).
 
-```
+````
 
 ### Notice e273680c43c2ab5bb3b50af28de6a08000b333396834db7bf6129cd6f130c9cd
 
 - rw@1.3.3: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2014-2016, Michael Bostock
 All rights reserved.
 
@@ -32212,13 +34475,15 @@ OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice c7cc929b57080f4b9d0c6cf57669f0463fc5b39906344dfc8d3bc43426b30eac
 
 - safe-buffer@5.1.2: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) Feross Aboukhadijeh
@@ -32241,24 +34506,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 4001f409f2886ac791b0be2131ca3ed8770b896314579ecb5d1eaf7a6e6f3eb8
 
 - safe-buffer@5.1.2: README.md (license section)
 
-```text
+
+
+````text
 ## license
 
 MIT. Copyright (C) [Feross Aboukhadijeh](http://feross.org)
 
-```
+````
 
 ### Notice 4bc935e71be198c67ddf3c2b5fddb195f6edc182bfc155a96a6db61b44b494b9
 
 - safer-buffer@2.1.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018 Nikita Skovoroda <chalkerx@gmail.com>
@@ -32281,25 +34550,29 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 660db1542fe470a1dc4d87af8a02275c42be452f75930a4dc8d76edfea01e117
 
 - semaphore@1.1.0: README.md (license section)
 
-```text
+
+
+````text
 License
 ===
 
 MIT
 
-```
+````
 
 ### Notice 1b8910ad1a22011c632f7ff544708be6cf08818ef80e8d4b45b6808ee8b05c17
 
 - semaphore@1.1.0: https://registry.npmjs.org/semaphore/1.1.0
 
-```text
+
+
+````text
 semaphore@1.1.0
 Publisher-declared license: MIT
 Evidence: https://registry.npmjs.org/semaphore/1.1.0
@@ -32328,13 +34601,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 25a328069fe771f8ed5b6f983ed4b0e6c84b3312ac0f69b28c3d52dc277962c9
 
 - send@1.2.1: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2012 TJ Holowaychuk
@@ -32359,13 +34634,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 6acb5236fdb284e239fdd9aa3e939067b28373d09c241ce7aab38d2d01f0e495
 
 - send@1.2.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -32380,13 +34657,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [npm-url]: https://npmjs.org/package/send
 [npm-version-image]: https://badgen.net/npm/v/send
 
-```
+````
 
 ### Notice 63b9a188d7d43e64b0558b7115255045b9fe20a5fc3ff483421cb899e7f52bcb
 
 - serve-static@2.2.1: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2010 Sencha Inc.
@@ -32413,13 +34692,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 1bb378450d226c3c14c3f41075853c28856b263da072e267ebe92db7c5c51141
 
 - serve-static@2.2.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -32434,13 +34715,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [npm-url]: https://npmjs.org/package/serve-static
 [npm-version-image]: https://badgen.net/npm/v/serve-static
 
-```
+````
 
 ### Notice c4b4ad3a5746f1f5249a6dd90396ec519264e1bb02e01e48a6522c48a3a97cb4
 
 - setimmediate@1.0.5: LICENSE.txt
 
-```text
+
+
+````text
 Copyright (c) 2012 Barnesandnoble.com, llc, Donavon West, and Domenic Denicola
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -32462,13 +34745,15 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 76d6d1ea0c268da37dd3c961b4fcfb23dee8417fff9e8786d4d44c585b781b69
 
 - setprototypeof@1.2.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2015, Wes Todd
 
 Permission to use, copy, modify, and/or distribute this software for any
@@ -32483,7 +34768,7 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
 OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 1564074e13439397221ffd522e2e504d56561994a23d371aa5e3ad43e4f5423f
 
@@ -32491,7 +34776,9 @@ CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 - shadcn: https://raw.githubusercontent.com/shadcn-ui/ui/a87a63b2ca25143d26c8bd0903e4e9bc77b3f824/LICENSE.md
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2023 shadcn
@@ -32514,24 +34801,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice ec88057ca4f135ebf6ab98505eeda39e37374c904fcafb38fc6f47423b8c778b
 
 - shadcn@4.1.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Licensed under the [MIT license](https://github.com/shadcn-ui/ui/blob/main/LICENSE.md).
 
-```
+````
 
 ### Notice 69dee148a2cc470554dfa7142e830662062394d0fe67cddd379aba90dc60d6b3
 
 - shebang-command@2.0.0: license
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Kevin Mårtensson <kevinmartensson@gmail.com> (github.com/kevva)
@@ -32542,44 +34833,48 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 8bb16db1b047019e4395965f2cf3611b06c34bf86dc2d0210b3c3f91b53c21fe
 
 - shell-quote@1.8.3: LICENSE
 
-```text
+
+
+````text
 The MIT License
 
 Copyright (c) 2013 James Halliday (mail@substack.net)
 
-Permission is hereby granted, free of charge,
-to any person obtaining a copy of this software and
-associated documentation files (the "Software"), to
-deal in the Software without restriction, including
-without limitation the rights to use, copy, modify,
-merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom
-the Software is furnished to do so,
+Permission is hereby granted, free of charge, 
+to any person obtaining a copy of this software and 
+associated documentation files (the "Software"), to 
+deal in the Software without restriction, including 
+without limitation the rights to use, copy, modify, 
+merge, publish, distribute, sublicense, and/or sell 
+copies of the Software, and to permit persons to whom 
+the Software is furnished to do so, 
 subject to the following conditions:
 
-The above copyright notice and this permission notice
+The above copyright notice and this permission notice 
 shall be included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
-ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR 
+ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
+````
 
 ### Notice 04014660b7a26fb2d0ea658f99485c05085e0afd0cd629317b0fd7d940a4b4be
 
 - shell-quote@1.8.3: README.md (license section)
 
-```text
+
+
+````text
 # license
 
 MIT
@@ -32600,7 +34895,7 @@ MIT
 [actions-image]: https://img.shields.io/endpoint?url=https://github-actions-badge-u3jn4tfpocch.runkit.sh/ljharb/shell-quote
 [actions-url]: https://github.com/ljharb/shell-quote/actions
 
-```
+````
 
 ### Notice cfc3f455254c0af0655cc3ff46a41ed644b67599f6043346169d285bf2b3cf3b
 
@@ -32608,7 +34903,9 @@ MIT
 
 - side-channel@1.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2019 Jordan Harband
@@ -32631,13 +34928,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice e05b1eaf5b5f99b7ad75cd1f38858ff9a311780b97715ead67936d60bf96aa7e
 
 - signal-exit@3.0.7: LICENSE.txt
 
-```text
+
+
+````text
 The ISC License
 
 Copyright (c) 2015, Contributors
@@ -32655,13 +34954,15 @@ OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
 WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice b173e19b9a78df305577ace0e52ef45a4bcc915ea28b47b256dc3b68dcb1f7e7
 
 - signal-exit@4.1.0: LICENSE.txt
 
-```text
+
+
+````text
 The ISC License
 
 Copyright (c) 2015-2023 Benjamin Coe, Isaac Z. Schlueter, and Contributors
@@ -32679,13 +34980,15 @@ OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
 WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 2a26ecc6ad02d385a1233195b397847f50106cf275cd72592e801cda0733f8e2
 
 - simple-xml-to-json@1.2.7: license
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2022 Nir Moav
@@ -32708,24 +35011,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice e88a63a1aa1d7140fd8c9ff400bfaa9e5898b67739b8619c947c0293bf5a9d1f
 
 - sisteransi@1.0.5: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT © [Terkel Gjervig](https://terkel.com)
 
-```
+````
 
 ### Notice c46e2c333e1c9e6fcfd130cf91b8e54bf67b60fabbc04996f7e199b990353ff3
 
 - smart-buffer@4.2.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2013-2017 Josh Glazebrook
@@ -32747,24 +35054,28 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice ba1fe8640bf121f1bef3f7ecdd1d39942910450c074fa9403b708c0b9320e5db
 
 - smart-buffer@4.2.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 This work is licensed under the [MIT license](http://en.wikipedia.org/wiki/MIT_License).
 
-```
+````
 
 ### Notice fa5659948374d4f555594f47f6da073b40dc503e921aeeece30df4362b3051a5
 
 - smol-toml@1.6.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) Squirrel Chat et al., All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -32790,13 +35101,15 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 4f4f28866154c8d758241a64296e8790d45d7d912ff7b029930778c06d8f2a72
 
 - socks@2.8.7: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2013 Josh Glazebrook
@@ -32818,18 +35131,20 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 20adad4ceafc2eb897bafb61eb9ba5a16fb6c0106bf4dc1056a302cda221e107
 
 - socks@2.8.7: README.md (license section)
 
-```text
+
+
+````text
 # License
 
 This work is licensed under the [MIT license](http://en.wikipedia.org/wiki/MIT_License).
 
-```
+````
 
 ### Notice 6cb0631f71c7749763fd3dd1d5bee52dd1070ec17f2edc1710079ad070bd2fbd
 
@@ -32837,7 +35152,9 @@ This work is licensed under the [MIT license](http://en.wikipedia.org/wiki/MIT_L
 
 - source-map@0.6.1: LICENSE
 
-```text
+
+
+````text
 
 Copyright (c) 2009-2011, Mozilla Foundation and contributors
 All rights reserved.
@@ -32867,13 +35184,15 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 64a574420fb94c697fafecb00f684df486d228c66ecfdc497b1455ae319f4fbe
 
 - space-separated-tokens@2.0.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -32914,13 +35233,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 [hast]: https://github.com/syntax-tree/hast
 
-```
+````
 
 ### Notice f8287e4dd9480be58c56aca4a55c23b782c43a86e69aabad78fff4df0d29edef
 
 - sprintf-js@1.1.3: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2007-present, Alexandru Mărășteanu <hello@alexei.ro>
 All rights reserved.
 
@@ -32946,24 +35267,28 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice b0103765a1ddbb08ac290cf214f00caabac645d7f8702d22677d0b766f7b7729
 
 - sprintf-js@1.1.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 **sprintf-js** is licensed under the terms of the BSD 3-Clause License.
 
-```
+````
 
 ### Notice 512cfa4d5e7a7569c7ae4dd95241cb6ae2aaf648ef9ebd080c01bd24868d26e9
 
 - statuses@2.0.2: LICENSE
 
-```text
+
+
+````text
 
 The MIT License (MIT)
 
@@ -32988,13 +35313,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 576496989a06e81605d8bcd25e012f63e2e587523bcbdd6a525de3dc4e8af96e
 
 - statuses@2.0.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -33011,13 +35338,15 @@ THE SOFTWARE.
 [ossf-scorecard-badge]: https://api.securityscorecards.dev/projects/github.com/jshttp/statuses/badge
 [ossf-scorecard-visualizer]: https://kooltheba.github.io/openssf-scorecard-api-visualizer/#/projects/github.com/jshttp/statuses
 
-```
+````
 
 ### Notice 93f24a47f95aea2be1b0dad78de98dc6d3de01ce22c0b72dc73e453c7917b955
 
 - strict-event-emitter@0.5.1: https://registry.npmjs.org/strict-event-emitter/0.5.1
 
-```text
+
+
+````text
 strict-event-emitter@0.5.1
 Publisher-declared license: MIT
 Evidence: https://registry.npmjs.org/strict-event-emitter/0.5.1
@@ -33046,13 +35375,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 11f2aafb37d06b3ee5bdaf06e9811141d0da05263c316f3d627f45c20d43261b
 
 - string_decoder@1.1.1: LICENSE
 
-```text
+
+
+````text
 Node.js is licensed for use as follows:
 
 """
@@ -33102,13 +35433,15 @@ IN THE SOFTWARE.
 """
 
 
-```
+````
 
 ### Notice 9d06b05f89ddcf637be7b4f15c446dd36eb5104a18aa59be8f9af7a0c537c9dd
 
 - stringify-entities@4.0.4: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -33155,13 +35488,15 @@ IN THE SOFTWARE.
 
 [short]: #optionsuseshortestreferences
 
-```
+````
 
 ### Notice 55ebc02db1f1610e3b4924d0dba2dcef3c3e3f930676b4990cad04ab8d5cb842
 
 - stringify-object@5.0.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2015, Yeoman team
 All rights reserved.
 
@@ -33185,13 +35520,15 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice c77d564d48f13e7ece47d5dcc57102810744828d5f5af5826808a0320de3bb76
 
 - strtok3@10.3.5: LICENSE.txt
 
-```text
+
+
+````text
 MIT License
 
 Copyright © 2026 Borewit
@@ -33214,7 +35551,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice eaa051098571692fe59a53a77983c58a4ccc3bfb61aece6ad415b31ca4b25b4b
 
@@ -33222,18 +35559,22 @@ SOFTWARE.
 
 - token-types@6.1.2: README.md (license section)
 
-```text
+
+
+````text
 ## Licence
 
 This project is licensed under the [MIT License](LICENSE.txt). Feel free to use, modify, and distribute as needed.
 
-```
+````
 
 ### Notice bbb380e5c1a717079378d6ea4d33c8a5a81655d4612b749f882e34e46712aab5
 
 - style-to-js@1.1.21: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2020 Menglin "Mark" Xu <mark@remarkablemark.org>
@@ -33257,24 +35598,28 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice a9ed7b3f96a817ed085254cc87208db2a6ebbf5661758136807f95e64e553c2a
 
 - style-to-js@1.1.21: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](https://github.com/remarkablemark/style-to-js/blob/master/LICENSE)
 
-```
+````
 
 ### Notice 896c9fd6b5fc48ac31800b9d29a6e3ffcb0c2d534ed077ebfa5c2fa388cc38b7
 
 - style-to-object@1.0.14: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2017 Menglin "Mark" Xu <mark@remarkablemark.org>
@@ -33298,24 +35643,28 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 41e69ae791a7c0a5f18694e8f67267a6e8b3d1e685ee427117e5a18d5828cfbb
 
 - style-to-object@1.0.14: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](https://github.com/remarkablemark/style-to-object/blob/master/LICENSE)
 
-```
+````
 
 ### Notice 88c579c6ee44b41137a21321190d177982e5b17d4fa1b83a4a2e3ea325a8fc9a
 
 - stylis@4.3.6: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2016-present Sultan Tarimo
@@ -33338,24 +35687,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 0ce5ffaadf384c9e64046fffa70faec61ac66c66af562682b16566a99be9e228
 
 - stylis@4.3.6: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 Stylis is [MIT licensed](./LICENSE).
 
-```
+````
 
 ### Notice 2eb01c9bb506815f353fc3053a396b0a4ec1b15255cdcf292a437ecc9f5e6ae2
 
 - swr@2.5.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2023 Vercel, Inc.
@@ -33378,13 +35731,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice d4c70c7ce38cea8778f0aed3fc0bef0a9dbd27f13bd8b6773cbd6d37941971e5
 
 - tailwind-merge@3.5.0: LICENSE.md
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 Dany Castillo
@@ -33407,13 +35762,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 07dfda191a2065012e303aef89f30452c48f2eee2257f485f26cdd156acf2bc2
 
 - tailwind-scrollbar-hide@4.0.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 reslear
@@ -33436,23 +35793,27 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice b00bea22a7af04273de43cf955ebb2f37d4feaee5fdedafab1fadd5fa1b3ca57
 
 - tailwind-scrollbar-hide@4.0.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](./LICENSE)
-```
+````
 
 ### Notice 60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985
 
 - tailwindcss@4.2.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Tailwind Labs, Inc.
@@ -33475,13 +35836,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice b1c501095de70182748cb8e8d97ac5577701a4ef3b755ba30d59fd87b24bdb0f
 
 - tiny-invariant@1.3.3: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2019 Alexander Reardon
@@ -33503,13 +35866,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
+````
 
 ### Notice 4b3faf884ee71eec3df920b66c98fc6618af28e824cf3a32ef3d8774048cc76d
 
 - tiny-typed-emitter@2.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2020 Zurab Benashvili (binier) <zura.bena@gmail.com>
@@ -33532,13 +35897,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice c6cb470a9ba0a50d57611aeec1f31da609c5aefdbee8eac7f289bcb0e30625fa
 
 - tinycolor2@1.6.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c), Brian Grinstead, http://briangrinstead.com
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -33559,13 +35926,15 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
 LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
+````
 
 ### Notice 538cf6250ba4f1ecf9986515e6db7885fd8f28892ab593f4f3dfb78a5deb6159
 
 - tinyexec@1.1.1: dist/LICENSES.txt
 
-```text
+
+
+````text
 isexe:2.0.0 -- The ISC License
 
 Copyright (c) Isaac Z. Schlueter and Contributors
@@ -33649,13 +36018,15 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
+````
 
 ### Notice f95f668fe64081ddb4153b322e34fdd719b991285ed08177d5ad7133b7988d92
 
 - tinyexec@1.1.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2024 Tinylibs
@@ -33678,7 +36049,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice c64182d48160db948b6aa97a984f1a32974ce4d2053900361264cd33853796cb
 
@@ -33686,7 +36057,9 @@ SOFTWARE.
 
 - tldts@7.0.28: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2017 Thomas Parisot, 2018 Rémi Berson
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
@@ -33701,13 +36074,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
  WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice b009b9b1b7ce08c0e0c9bcb60b5d7b7e8386bfd5e7ef6331a68a57f54f17989c
 
 - tldts@7.0.28: README.md (license section)
 
-```text
+
+
+````text
 # License
 
 [MIT License](LICENSE).
@@ -33719,13 +36094,15 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTH
 [changes Atom Feed]: https://github.com/publicsuffix/list/commits/master.atom
 [public suffix]: https://publicsuffix.org/learn/
 
-```
+````
 
 ### Notice e7d1fee7347ffddccc5fd03327ffdb50f8c112be0d5016d62388a92c4ae6e7a9
 
 - to-regex-range@5.0.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015-present, Jon Schlinkert.
@@ -33748,13 +36125,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 74f22b0ad6badeb2657934caf2465d92f17c41d671f88539f39b010c2945ee5d
 
 - to-regex-range@5.0.1: README.md (license section)
 
-```text
+
+
+````text
 ### License
 
 Copyright © 2019, [Jon Schlinkert](https://github.com/jonschlinkert).
@@ -33763,13 +36142,15 @@ Released under the [MIT License](LICENSE).
 ***
 
 _This file was generated by [verb-generate-readme](https://github.com/verbose/verb-generate-readme), v0.8.0, on April 07, 2019._
-```
+````
 
 ### Notice a832d679750e49ab433626ab196350b89964b60eb0d3edd3341887c7d5f4c128
 
 - toidentifier@1.0.1: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2016 Douglas Christopher Wilson <doug@somethingdoug.com>
@@ -33792,13 +36173,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 14773cc91fe9d8d58ce73d70d666a10ea66ae6643fa01ffbb0656c0556e40b93
 
 - toidentifier@1.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -33813,13 +36196,15 @@ SOFTWARE.
 [npm-url]: https://npmjs.org/package/toidentifier
 
 
-```
+````
 
 ### Notice eb0bff8faaba4581e0f09c962e0f795f1f8810191c9d616f3f66f36be4b3a5dc
 
 - token-types@6.1.2: LICENSE.txt
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright © 2026 Borewit
@@ -33830,13 +36215,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 4c4d15b635e04e691825a76db7d33f7f2033b55669a7430011694f31e6c65999
 
 - topojson-client@3.1.0: LICENSE
 
-```text
+
+
+````text
 Copyright 2012-2019 Michael Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -33851,13 +36238,15 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice 22ec6791c91ba42c0516a05f4cbdde019aae4687f8a38c5ca7e8a69ee68f851d
 
 - tough-cookie@6.0.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2015, Salesforce.com, Inc.
 All rights reserved.
 
@@ -33871,13 +36260,15 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 1822dc553f420373015ed919f68beb652d81999cd4ae9e2a6f1e5ee7463c4119
 
 - trim-lines@3.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -33914,13 +36305,15 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 [contribute]: https://opensource.guide/how-to-contribute/
 
-```
+````
 
 ### Notice 6c03fd41cfd7c92d8aa8a2fa521b94b2683f059123281dcf921ddea9216b6254
 
 - trough@2.2.0: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2016 Titus Wormer <tituswormer@gmail.com>
@@ -33943,13 +36336,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice a38b7821330a2f5674023120c71accd2a1bea7f99899cc5c58d0d5208902fe36
 
 - trough@2.2.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][file-license] © [Titus Wormer][wooorm]
@@ -34002,13 +36397,15 @@ THE SOFTWARE.
 
 [wooorm]: https://wooorm.com
 
-```
+````
 
 ### Notice eff13095d9d762c3bd9dda74370c81e2130c28f2691bc455603abf973bac25b9
 
 - ts-dedent@2.2.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2018 Tamino Martinius
@@ -34031,13 +36428,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 8850a2d4828514113042db6ec97237b7ca6cb1599734874e5817d521f8f84e1c
 
 - tsconfig-paths@4.2.0: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2016 Jonas Kello
@@ -34060,7 +36459,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 210b19e543130388c68654b7497e967119ce17145f66ab7d85688fbd70f08751
 
@@ -34068,7 +36467,9 @@ SOFTWARE.
 
 - tslib@2.8.1: LICENSE.txt
 
-```text
+
+
+````text
 Copyright (c) Microsoft Corporation.
 
 Permission to use, copy, modify, and/or distribute this software for any
@@ -34081,13 +36482,15 @@ INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
 LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
-```
+````
 
 ### Notice 039184dfa0a822397b3f45a435b5b1e538721587fbade96b9fa80f86cb354109
 
 - tw-animate-css@1.4.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2025 Wombosvideo
@@ -34110,13 +36513,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 64a93ffc0a06a2266dbb57ed7ebe3b56ba66ab337b6347fabdbf86c76819fbae
 
 - type-fest@0.13.1: license
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https:/sindresorhus.com)
@@ -34127,13 +36532,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice ee8ce2b628da002780228222081dd7353fb050ca452de937983a369a1d80c418
 
 - type-fest@0.13.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 (MIT OR CC0-1.0)
@@ -34150,13 +36557,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 	</sub>
 </div>
 
-```
+````
 
 ### Notice a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499
 
 - type-fest@5.5.0: license-cc0
 
-```text
+
+
+````text
 Creative Commons Legal Code
 
 CC0 1.0 Universal
@@ -34279,13 +36688,15 @@ express Statement of Purpose.
     party to this document and has no duty or obligation with respect to
     this CC0 or use of the Work.
 
-```
+````
 
 ### Notice f3e1c451633ab36a5a05da690ced1f3c0df5b7adcf2a1280873a4167025aedb5
 
 - type-fest@5.5.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 - [MIT](license-mit)
@@ -34293,13 +36704,15 @@ express Statement of Purpose.
 
 SPDX-License-Identifier: (MIT OR CC0-1.0)
 
-```
+````
 
 ### Notice c70c6de97aba1fcb301343a4afdbde5ddb84f32c9aa56f1f59d63a2bc2ae2c74
 
 - type-is@2.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -34316,7 +36729,7 @@ SPDX-License-Identifier: (MIT OR CC0-1.0)
 [travis-image]: https://badgen.net/travis/jshttp/type-is/master
 [travis-url]: https://travis-ci.org/jshttp/type-is
 
-```
+````
 
 ### Notice a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47
 
@@ -34324,12 +36737,14 @@ SPDX-License-Identifier: (MIT OR CC0-1.0)
 
 - typescript@6.0.2: LICENSE.txt
 
-```text
+
+
+````text
 Apache License
 
 Version 2.0, January 2004
 
-http://www.apache.org/licenses/
+http://www.apache.org/licenses/ 
 
 TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
@@ -34381,13 +36796,15 @@ If the Work includes a "NOTICE" text file as part of its distribution, then any 
 
 END OF TERMS AND CONDITIONS
 
-```
+````
 
 ### Notice bc3f77470074f60e7016a653f8058a39275a3893c0d84417e598a6a2b1e09c42
 
 - ufo@1.6.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](./LICENSE)
@@ -34405,13 +36822,15 @@ Special thanks to Eduardo San Martin Morote ([posva](https://github.com/posva)) 
 [bundle-src]: https://img.shields.io/bundlephobia/minzip/ufo?style=flat&colorA=18181B&colorB=F0DB4F
 [bundle-href]: https://bundlephobia.com/result?p=ufo
 
-```
+````
 
 ### Notice a8715bd6ba5604134c8bfea951ebc2379ae9e71e78262275f7f87a50c845ae96
 
 - unbash@4.0.1: LICENSE
 
-```text
+
+
+````text
 ISC License
 
 Copyright (c) Lars Kappert
@@ -34428,13 +36847,15 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice d274cc11a7f8b98caff978f6b5acdfd72de3ba6a2c3c20ea3bd984fcde194201
 
 - unbash@4.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 ISC
@@ -34447,7 +36868,7 @@ ISC
 [6]: https://unbash.statichost.page
 [7]: https://ast-explorer.dev/#eNoVjDsKwzAQRK8yDK5CyAGS2nVAId02jixZAbFr/Kls393rbh7zeBsrn5xLqpV3jr5X/XVzcYgOKRaD8LoNzffTBqFotgkZf8XtUW14oTdRIHaLq00WYscwpRFtCO8g2psm75n3toPHCdz+Ivg=
 
-```
+````
 
 ### Notice a6db8096b2707bc0102d256917d4d33f298ba36d8c3f25de067a2b5bb379db27
 
@@ -34459,7 +36880,9 @@ ISC
 
 - undici@7.25.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) Matteo Collina and Undici contributors
@@ -34482,7 +36905,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice a21d6c8d3fc631198b97e57584697f7f9c37805c71c6cf9a12e4442b40394b88
 
@@ -34490,7 +36913,9 @@ SOFTWARE.
 
 - undici@7.25.0: lib/web/fetch/LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2020 Ethan Arrowood
@@ -34513,7 +36938,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 05811400116ed61f1a7693b78fe8ca6598c155a12f3978e609db4df648a4cb3d
 
@@ -34521,7 +36946,9 @@ SOFTWARE.
 
 - vfile@6.0.3: license
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2015 Titus Wormer <tituswormer@gmail.com>
@@ -34544,11 +36971,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 35a9304282ff9161976d664ebe5d1b01a2e1ab2d4ab6f26a25f74db7930cad9b
 
 - unified@11.0.5: readme.md (license section)
+
+
 
 ````text
 ## License
@@ -34585,7 +37014,9 @@ example.md: no issues found
 
 - unist-util-find-after@5.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -34646,13 +37077,15 @@ example.md: no issues found
 
 [api-findafter]: #findafterparent-nodeindex-test
 
-```
+````
 
 ### Notice 82974dbf2639d13edab95c32ed9cb6c0867ede272cd2e07ce47ce8548fe55c05
 
 - unist-util-is@6.0.1: license
 
-```text
+
+
+````text
 (The MIT license)
 
 Copyright (c) 2015 Titus Wormer <tituswormer@gmail.com>
@@ -34676,13 +37109,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice da16bae58f944e2e4adec46262d03a789d6529bad486ed6f4e1057a98e7ed2cc
 
 - unist-util-is@6.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -34753,13 +37188,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [unist-util-select]: https://github.com/syntax-tree/unist-util-select
 
-```
+````
 
 ### Notice 60b6486ef8d0aa6da300b88e6b5c19a387d59a7e577fb2b15a6d1eacb424c3d7
 
 - unist-util-position@5.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -34830,13 +37267,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [pointstart]: #pointstartnode
 
-```
+````
 
 ### Notice 46f3d88133b0ad0c888ad26da22fcc78f4018a7e6f18643a25a37b66ed0f920d
 
 - unist-util-remove-position@5.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -34903,13 +37342,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [options]: #options
 
-```
+````
 
 ### Notice eff3d4d385246282cf2fdcd142e1284a00db5536133d85b86ab5e0865e650665
 
 - unist-util-stringify-position@4.0.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -34970,13 +37411,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [stringifyposition]: #stringifypositionnodepositionpoint
 
-```
+````
 
 ### Notice a08736eefe43df1f813155dddd76af0354343eda3f3327ee5803213aa98f1881
 
 - unist-util-visit-parents@6.0.2: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -35065,13 +37508,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [api-visitorresult]: #visitorresult
 
-```
+````
 
 ### Notice 3d0339f36ada73cc5c1832994ec0be2c9e77e3a91afad459af826df73a82616a
 
 - unist-util-visit@5.1.0: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][file-license] © [Titus Wormer][wooorm]
@@ -35154,7 +37599,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [wooorm]: https://wooorm.com
 
-```
+````
 
 ### Notice 3fda5977c0904e226190b4e21d64340c1731e2142d6fe5f3dee0090a216b8b63
 
@@ -35162,7 +37607,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - universalify@2.0.1: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2017, Ryan Zimmerman <opensrc@ryanzim.com>
@@ -35184,13 +37631,15 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 1a526fbe8d8577f5a4b1c2821842b55b7c0e18862531c62ae4ce69c9b19b74b6
 
 - unpipe@1.0.0: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2015 Douglas Christopher Wilson <doug@somethingdoug.com>
@@ -35214,13 +37663,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 0df77f96c14e74d9b4a2d2b7842255d5c9a9d3bb108b1aa45f5294bcf7474b65
 
 - unpipe@1.0.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -35236,13 +37687,15 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [downloads-image]: https://img.shields.io/npm/dm/unpipe.svg
 [downloads-url]: https://npmjs.org/package/unpipe
 
-```
+````
 
 ### Notice 0ab717053f3e24736cd404a0801407fb305db75d1b58f7e6487d14feee30d28a
 
 - unsafe-pointer@0.2.0: https://registry.npmjs.org/unsafe-pointer/0.2.0
 
-```text
+
+
+````text
 unsafe-pointer@0.2.0
 Publisher-declared license: MIT
 Evidence: https://registry.npmjs.org/unsafe-pointer/0.2.0
@@ -35271,13 +37724,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice c414dde36704bd9c8a76c7aa2921b19270ff9abeb478ea0050250d16cf29b0f6
 
 - update-browserslist-db@1.2.3: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright 2022 Andrey Sitnik <andrey@sitnik.ru> and other contributors
@@ -35299,7 +37754,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 8048290dfdb6e83fbed17e8985c8cfc4ce9da9b842642f3d3e497280790cfa31
 
@@ -35307,7 +37762,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - world-atlas@2.0.2: LICENSE
 
-```text
+
+
+````text
 Copyright 2013-2019 Michael Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -35322,25 +37779,29 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice cdf3ac6726d430176309c272f86fa1e735dc1fdd51d9fd07a547a76c6390d38d
 
 - use-sidecar@1.1.3: README.md (license section)
 
-```text
+
+
+````text
 # Licence
 
 MIT
 
 
-```
+````
 
 ### Notice dd5448ae7dc84cda27cc096fba9d540dd7f62bda8c5ea4ed736e51d74e451283
 
 - use-stick-to-bottom@1.1.3: LICENSE.txt
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2024 - present StackBlitz
@@ -35363,7 +37824,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice c1fb8861eca211bf5aea574358aba7039396c0c1824c2a1477cc126d398efd89
 
@@ -35371,7 +37832,9 @@ SOFTWARE.
 
 - utif2@4.1.0: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2017 Photopea
@@ -35394,13 +37857,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 0154425673db15cdfa80ecba2c9b1f1a867f7197a006764712849bfc3a93cbb7
 
 - util-deprecate@1.0.2: LICENSE
 
-```text
+
+
+````text
 (The MIT License)
 
 Copyright (c) 2014 Nathan Rajlich <nathan@tootallnate.net>
@@ -35426,13 +37891,15 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 8ccaa98cfb3b665c158c384ca5882f59e93e232c3da2f0317f81111a688bb0f6
 
 - util-deprecate@1.0.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 (The MIT License)
@@ -35460,7 +37927,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice beaa6b04fb82e41dd2ad679e19e27953afb5999b1abbb455b6564e78ebfeb332
 
@@ -35468,7 +37935,9 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 - uuid@9.0.1: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2010-2020 Robert Kieffer and other contributors
@@ -35479,13 +37948,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice f3e1645267f7dd77ee6545283cc1766e5883e8fb3b5088fe2cfb995defbb3dde
 
 - validate-npm-package-name@7.0.2: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2015, npm, Inc
 
 
@@ -35493,13 +37964,15 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-```
+````
 
 ### Notice 6afc8ec28a2c38f19a0f3e86f4a6630b76610a4347c3a9b86a56946446da55db
 
 - vary@1.1.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -35515,13 +37988,15 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 [downloads-image]: https://img.shields.io/npm/dm/vary.svg
 [downloads-url]: https://npmjs.org/package/vary
 
-```
+````
 
 ### Notice 95e20ec3e15bdef606e6ff1ddd6f6c9cc11b44096e4ef10b2d39bf4093f6c412
 
 - vfile-location@5.0.3: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -35578,13 +38053,15 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 [api-location-map]: #location
 
-```
+````
 
 ### Notice 2788edbdd74b4c950c3978cc6019e84004817617958f94f6a031b19428c3f0ac
 
 - vfile-message@4.0.3: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][file-license] © [Titus Wormer][wooorm]
@@ -35643,13 +38120,15 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 [wooorm]: https://wooorm.com
 
-```
+````
 
 ### Notice ff9ab696812f58d452b2466963447232bbcb8a428fb6ffbde18e9545d775f1c7
 
 - vfile@6.0.3: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -35750,13 +38229,15 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 [api-value]: #value
 
-```
+````
 
 ### Notice 0ab21426fad1e8b819ea8ab4c7faf5a24d4fca9c01572fe722490d600bba0d22
 
 - victory-vendor@37.3.6: lib-vendor/d3-path/LICENSE
 
-```text
+
+
+````text
 Copyright 2015-2021 Mike Bostock
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -35771,13 +38252,15 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice ad6cf57648385d6c40a29f73c55e42922dd793823df5ea265ccd834873bf09b9
 
 - victory-vendor@37.3.6: lib-vendor/d3-voronoi/LICENSE
 
-```text
+
+
+````text
 Copyright 2010-2016 Mike Bostock
 All rights reserved.
 
@@ -35829,24 +38312,28 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 89a1b11ed159d4757d550e4d3ecd156016bec7b16a80031122de0a2a62a684fc
 
 - victory-vendor@37.3.6: README.md (license section)
 
-```text
+
+
+````text
 ## Licenses
 
 This project is released under the MIT license, but the vendor'ed in libraries include other licenses (e.g. ISC) that we enumerate in our `package.json:license` field.
 
-```
+````
 
 ### Notice 34dee5fd5e5cc756efb5ad4d64652bce719bdf5e900ca5d7538253e737930bc4
 
 - victory-vendor@37.3.6: https://raw.githubusercontent.com/FormidableLabs/victory/v37.3.6/LICENSE.txt
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2015-2020 Formidable Labs.
@@ -35877,7 +38364,7 @@ SOFTWARE.
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
-```
+````
 
 ### Notice 1509904280a272780fd69c04b858f512cf216f8e3464a0dd98d8f34416feced9
 
@@ -35887,7 +38374,9 @@ copies or substantial portions of the Software.
 
 - vis-util@6.0.0: LICENSE-APACHE-2.0
 
-```text
+
+
+````text
                                Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -36065,13 +38554,15 @@ copies or substantial portions of the Software.
 
    END OF TERMS AND CONDITIONS
 
-```
+````
 
 ### Notice 1f65085e54c036645082257618db2c7b787e68c3b02485e214ecd09e0834ee8f
 
 - vis-data@8.0.4: LICENSE-MIT
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014-2017 Almende B.V.
@@ -36094,13 +38585,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice b65d7e3f0eeeb733aa844271af3c9383f55e78979bbbcb5a3df13fbd34868b8c
 
 - vis-data@8.0.4: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Copyright (C) 2010-2019 Almende B.V. and Contributors
@@ -36117,13 +38610,15 @@ and
 
 Vis.js may be distributed under either license.
 
-```
+````
 
 ### Notice 535036cac87eaf62b4460a592c2d12e349d6b1135f0203e77eab1b23ad08bc55
 
 - vis-timeline@8.5.1: LICENSE.md
 
-```text
+
+
+````text
 # License
 
 Copyright (c) 2014-2017 Almende B.V. and contributors
@@ -36134,13 +38629,15 @@ You can choose between one of them if you use this work.
 
 `SPDX-License-Identifier: Apache-2.0 OR MIT`
 
-```
+````
 
 ### Notice 507e7e91e0a385c9de0464889068fada0620e327d23f1d64605a7d046490ec97
 
 - vis-timeline@8.5.1: LICENSE.MIT.txt
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014-2017 Almende B.V. and contributors
@@ -36164,13 +38661,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 322be9edf6bc7e286f5e8a3e9cc166cf36d1d1e3a76da2e88aae624bc715bd82
 
 - vis-timeline@8.5.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 Copyright (c) 2014-2017 Almende B.V. and contributors
@@ -36181,13 +38680,15 @@ You can choose between one of them if you use this work.
 
 `SPDX-License-Identifier: Apache-2.0 OR MIT`
 
-```
+````
 
 ### Notice b88d2c1898485a909bfd92d1a2a676c266db5384d7153f3bdb80caebb7038351
 
 - vis-util@6.0.0: LICENSE-MIT
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014-2017 Almende B.V.
@@ -36211,7 +38712,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice ec9ee83580841e8eb687aca9867f221503809ba6426c7f876ede17d91b9fcfd0
 
@@ -36225,7 +38726,9 @@ SOFTWARE.
 
 - vscode-languageserver@9.0.1: License.txt
 
-```text
+
+
+````text
 Copyright (c) Microsoft Corporation
 
 All rights reserved.
@@ -36238,7 +38741,7 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 4180043f94d308c28ae10a9810c22a4d5d9a94372f7c84c2140e878ba2e3ad2e
 
@@ -36250,26 +38753,32 @@ THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 - vscode-languageserver-types@3.17.5: README.md (license section)
 
-```text
+
+
+````text
 ## License
 [MIT](https://github.com/Microsoft/vscode-languageserver-node/blob/master/License.txt)
 
-```
+````
 
 ### Notice a5d5d5e1939f39f861d318d7575647d24adfc5af193ea3c6aa9013dc8e9e9eee
 
 - vscode-languageserver@9.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 [MIT](https://github.com/Microsoft/vscode-languageserver-node/blob/master/License.txt)
-```
+````
 
 ### Notice c669138cb1eb01fbb745e8e460b291e4f2869c14a40061390b6095d845ed4c82
 
 - vscode-uri@3.1.0: LICENSE.md
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) Microsoft
@@ -36279,13 +38788,15 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
+````
 
 ### Notice 42ada6a691750b26bb5e3dfd0bd232dee08142f00fc029fde7fa165d357242ec
 
 - web-namespaces@2.0.1: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -36322,13 +38833,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 [contribute]: https://opensource.guide/how-to-contribute/
 
-```
+````
 
 ### Notice 81008a3fb78f69f3c4a72a9e005c8582342ab62864371b3ab8e1b6af9041e080
 
 - web-streams-polyfill@3.3.3: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2024 Mattias Buelens
@@ -36352,13 +38865,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 5f9cf9fb6acb1972b35ae29119ce563bb60ec097656bc4b69b9bac2d04c7a147
 
 - web-tree-sitter@0.25.10: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2018-2024 Max Brunsfeld
@@ -36381,13 +38896,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice bfdeded4040e05da31ca9b6239dc83bd23fa26ac8db87342a7ca4363f68916ff
 
 - web-vitals@3.5.2: LICENSE
 
-```text
+
+
+````text
 
                                  Apache License
                            Version 2.0, January 2004
@@ -36591,18 +39108,20 @@ SOFTWARE.
    See the License for the specific language governing permissions and
    limitations under the License.
 
-```
+````
 
 ### Notice 43aaa4efe24cac3b61a9626d2ec1316b634457f90919fff757c299c090d6595f
 
 - web-vitals@3.5.2: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [Apache 2.0](/LICENSE)
 
-```
+````
 
 ### Notice 528eec83cb836a0adda9f8fc3d6a2a70a710d6cc0be9a155f92212c8df28acfa
 
@@ -36610,7 +39129,9 @@ SOFTWARE.
 
 - whatwg-mimetype@4.0.0: LICENSE.txt
 
-```text
+
+
+````text
 Copyright © Domenic Denicola <d@domenic.me>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -36619,13 +39140,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 852bf81203aa93aa89afc9f881ebb035322dc7334aaceff435c557634c94a815
 
 - which-module@2.0.1: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2016, Contributors
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -36640,26 +39163,30 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice 772f48e5d6769a333efff80e90dde66d54c4fe452689c430148c8968605a6ed9
 
 - which-module@2.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 ISC © Contributors
 
 [opensourceregistry_package_id]: # (458260416784685e5ef3091fee54001785dd4360406aa3000315ff256eef6878)
 
-```
+````
 
 ### Notice 3de284c8e6fa7e8437eff6f53695471e0332129a5b42a79361e17b7637de94b3
 
 - ws@7.5.11: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com>
@@ -36682,13 +39209,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 316046a02abc690ab53714a66fd3481033f37ee23e54a293b5093342e59d43d8
 
 - ws@7.5.11: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -36706,7 +39235,7 @@ SOFTWARE.
 [ws-server-options]:
   https://github.com/websockets/ws/blob/master/doc/ws.md#new-websocketserveroptions-callback
 
-```
+````
 
 ### Notice 2b29dcfe0d6471f7e8c92c5fb38c9f93edee10330937055440192f1832b1ecef
 
@@ -36714,7 +39243,9 @@ SOFTWARE.
 
 - ws@8.20.0: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com>
 Copyright (c) 2013 Arnout Kazemier and contributors
 Copyright (c) 2016 Luigi Pinca and contributors
@@ -36736,7 +39267,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice c63ef91c14f147f837c11850187ac35794e22e192ee846ad0daffb55e13a86cd
 
@@ -36744,7 +39275,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - ws@8.20.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT](LICENSE)
@@ -36764,24 +39297,28 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [utf-8-validate]: https://github.com/websockets/utf-8-validate
 [ws-server-options]: ./doc/ws.md#new-websocketserveroptions-callback
 
-```
+````
 
 ### Notice b62b0f91d50a1729c834f1c0ced03edef1426592dcc90aa5fe88fc2850b353c3
 
 - xml-parse-from-string@1.0.1: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 MIT, see [LICENSE.md](http://github.com/Jam3/xml-parse-from-string/blob/master/LICENSE.md) for details.
 
-```
+````
 
 ### Notice c51452ef1dfd5606c9fe266930fa6bf7e8a534d52973b6475df5bf212cad5b0a
 
 - xml2js@0.5.0: LICENSE
 
-```text
+
+
+````text
 Copyright 2010, 2011, 2012, 2013. All rights reserved.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -36802,13 +39339,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 
-```
+````
 
 ### Notice e368bc4263b466cf98c225af15e300549e00da8859416a4536109e9654d434a8
 
 - xmlbuilder@11.0.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2013 Ozgur Ozcitak
@@ -36831,13 +39370,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 93dbf94b858812876168fbd4de2da2251ad21d9856a09347ecdbb0aaa56a6e89
 
 - xss@1.0.15: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2012-2018 Zongmin Lei(雷宗民) <leizongmin@gmail.com>
 http://ucdok.com
 
@@ -36861,11 +39402,13 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
 LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
+````
 
 ### Notice 1cf3dcaa49fda51f1faba28900a4bfc53df411226e87c84c4a099620ed4b9ff5
 
 - xss@1.0.15: README.md (license section)
+
+
 
 ````text
 ## License
@@ -36904,7 +39447,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 - y18n@5.0.8: LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2015, Contributors
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -36919,13 +39464,15 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice eaa7022082baf3afdf9abf7ed29dd20a76454e46d21b3ba1677355937ec0257f
 
 - y18n@4.0.3: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 ISC
@@ -36939,13 +39486,15 @@ ISC
 [standard-image]: https://img.shields.io/badge/code%20style-standard-brightgreen.svg
 [standard-url]: https://github.com/feross/standard
 
-```
+````
 
 ### Notice 39d9e6d515ee09fccd4749ddf12073041512300ad2c4b11e020c75d1ab56d7e0
 
 - y18n@5.0.8: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 ISC
@@ -36955,13 +39504,15 @@ ISC
 [standard-image]: https://img.shields.io/badge/code%20style-standard-brightgreen.svg
 [standard-url]: https://github.com/feross/standard
 
-```
+````
 
 ### Notice 5bba27375d93e9119f76c1015f7672cf9ad5f70952296e0842fb2243d6376869
 
 - yaml@2.9.0: LICENSE
 
-```text
+
+
+````text
 Copyright Eemeli Aro <eemeli@gmail.com>
 
 Permission to use, copy, modify, and/or distribute this software for any purpose
@@ -36976,7 +39527,7 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-```
+````
 
 ### Notice 2f1a503bfab84b3ba7393627308b3274501e459e3b5185bbb56bbf16cb1602d4
 
@@ -36984,7 +39535,9 @@ THIS SOFTWARE.
 
 - yargs@17.7.2: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright 2010 James Halliday (mail@substack.net); Modified work Copyright 2014 Contributors (ben@npmjs.com)
@@ -37007,7 +39560,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice b303783d5eb7ca50b853ffa5f145e4e7998fab339831d848f507ca6cd970577a
 
@@ -37017,7 +39570,9 @@ THE SOFTWARE.
 
 - yazl@3.3.1: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2014 Josh Wolfe
@@ -37040,13 +39595,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 341baa53605ed85d6f95782322854cca56c655ebc7fd4712649b8e7afc6020ff
 
 - yjs@13.6.30: LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 
 Copyright (c) 2023
@@ -37071,13 +39628,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice 8ab1d1c64be7c9016c6fda6b12cb359cc57b48a21bc4e664ded0ce59e66ce743
 
 - yjs@13.6.30: README.md (license section)
 
-```text
+
+
+````text
 ## License and Author
 
 Yjs and all related projects are [**MIT licensed**](./LICENSE).
@@ -37089,13 +39648,15 @@ Fund this project by donating on [GitHub Sponsors](https://github.com/sponsors/d
 or hiring [me](https://github.com/dmonad) as a contractor for your collaborative
 app.
 
-```
+````
 
 ### Notice 80d3168ad2f70f6f5bb2ab22b23414707abf6f0a392034891481ae36a1a429d4
 
 - zod-to-json-schema@3.25.2: LICENSE
 
-```text
+
+
+````text
 ISC License
 
 Copyright (c) 2020, Stefan Terdell
@@ -37111,7 +39672,7 @@ ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
 WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-```
+````
 
 ### Notice 3f1189b28e3866e0d979968d466b78f813f76827cfdca1fbb124cc0a5c8841f8
 
@@ -37119,7 +39680,9 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 - zod@4.6.5: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2025 Colin McDonnell
@@ -37142,13 +39705,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice a681e9d183c72b4af4856935893805eb48c08f0f5a3f260203db7444c20fb98a
 
 - zrender@6.1.0: LICENSE
 
-```text
+
+
+````text
 BSD 3-Clause License
 
 Copyright (c) 2017, Baidu Inc.
@@ -37178,13 +39743,15 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
+````
 
 ### Notice bcbeb207afbcccedd174564d91ddff470bb7f857ea1c979d070893c99b328c26
 
 - zrender@6.1.0: README.md (license section)
 
-```text
+
+
+````text
 ## License
 
 BSD 3-Clause License
@@ -37217,7 +39784,7 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice c1e6e266563517467b1bf874817d23e426f3149252bd7d42758cd697514b8417
 
@@ -37225,7 +39792,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - zustand@5.0.12: LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2019 Paul Henschel
@@ -37248,13 +39817,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice f4dc8dc6a71af29906b21c688bd97426abedbed5ee14b0bd989c2e6ab7afa089
 
 - zwitch@2.0.4: readme.md (license section)
 
-```text
+
+
+````text
 ## License
 
 [MIT][license] © [Titus Wormer][author]
@@ -37295,13 +39866,15 @@ SOFTWARE.
 
 [handler]: #function-handlervalue-rest
 
-```
+````
 
 ### Notice 5129f8779dca579cfcb235570688a2f15822b270575e04f27ef906aabbcc0355
 
 - Fig autocomplete registry: https://raw.githubusercontent.com/withfig/autocomplete/aef52acff84c45edde61ae610cc2c964802b9a38/LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2021 Hercules Labs Inc. (Fig)
@@ -37324,13 +39897,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice cdab3014d4f69b49dde2b85e81792208c72de613aa6aed7f7a9b5c6609b89670
 
 - Material Icon Theme: https://raw.githubusercontent.com/material-extensions/vscode-material-icon-theme/cb1dfb6d9cb73b15681a93939983d75dbba7bf5b/LICENSE
 
-```text
+
+
+````text
 The MIT License (MIT)
 Copyright (c) 2025 Material Extensions
 
@@ -37340,13 +39915,15 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 014bb31e83d5c2e76aea1cc6e82217346ab41362f32cb355ad0f5c10aa0aeaff
 
 - agent-browser skills (including dogfood and electron): https://raw.githubusercontent.com/vercel-labs/agent-browser/99c732c18810494593ead9dd96ab6f5f0c78b729/LICENSE
 
-```text
+
+
+````text
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -37549,13 +40126,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-```
+````
 
 ### Notice 9480271317925265e806a9a196aaa33410a962fa9d4d1e248a4a5187bc8c9df9
 
 - Visual Studio Code IPC and common utilities: https://raw.githubusercontent.com/microsoft/vscode/44825207bf4389c3bd17c92d3ec28cf784c324cc/LICENSE.txt
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2015 - present Microsoft Corporation
@@ -37578,13 +40157,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
 
 ### Notice a37e0e9697144819e1d965176ac4ae5bc3fa02d11e7812036bbcadf6dafe2400
 
 - Superpowers skill description adaptations: https://raw.githubusercontent.com/obra/superpowers/f2cbfbefebbfef77321e4c9abc9e949826bea9d7/LICENSE
 
-```text
+
+
+````text
 MIT License
 
 Copyright (c) 2025 Jesse Vincent
@@ -37607,13 +40188,301 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-```
+````
+
+### Notice ef3e637bb6cc9fa34bacda2f2d31a794ca65abfe3109c150e00bb10dca25e431
+
+- Knip documentation mirror: https://raw.githubusercontent.com/webpro-nl/knip/d5d20e5e21d64590c0e735c6bc840295cda665cd/license
+
+
+
+````text
+ISC License (ISC)
+
+Copyright 2022-2025 Lars Kappert
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
+
+````
+
+### Notice 653aaf9819e33cf1e2b3523c5d4d6c3dae925d770cb4563030f96655321ca2e9
+
+- Source Sans Pro 2.020 in Knip docs: https://raw.githubusercontent.com/adobe-fonts/source-sans/778e10a3656a899e0bc9f8a54d50a1ab4ba55308/LICENSE.txt
+
+
+
+````text
+Copyright 2010, 2012, 2014 Adobe Systems Incorporated (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe Systems Incorporated in the United States and/or other countries.
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+
+This license is copied below, and is also available with a FAQ at: http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+
+````
+
+### Notice e1d1fdcefb57985226c06fa9500d29caacfa2b1f8b8c74db911f13c6cad186a1
+
+- Source Sans Pro 2.045 and 1.095 in Knip docs: https://raw.githubusercontent.com/adobe-fonts/source-sans/ce77773581f4d454f0fa985c073bb25c721bfcf5/LICENSE.txt
+
+
+
+````text
+Copyright 2010-2018 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe in the United States and/or other countries.
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+
+This license is copied below, and is also available with a FAQ at: http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+
+````
+
+### Notice 1f61bb7c790c59b4b0ecdf304628b94e42ae4c8020094a8c3da73381ab212623
+
+- Hack 3.003 in Knip docs: https://raw.githubusercontent.com/source-foundry/Hack/b47d21f808fbf4784565feccde2213ef2af924b3/LICENSE.md
+
+
+
+````text
+The work in the Hack project is Copyright 2018 Source Foundry Authors and licensed under the MIT License
+
+The work in the DejaVu project was committed to the public domain.
+
+Bitstream Vera Sans Mono Copyright 2003 Bitstream Inc. and licensed under the Bitstream Vera License with Reserved Font Names "Bitstream" and "Vera"
+
+### MIT License
+
+Copyright (c) 2018 Source Foundry Authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+### BITSTREAM VERA LICENSE
+
+Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is a trademark of Bitstream, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of the fonts accompanying this license ("Fonts") and associated documentation files (the "Font Software"), to reproduce and distribute the Font Software, including without limitation the rights to use, copy, merge, publish, distribute, and/or sell copies of the Font Software, and to permit persons to whom the Font Software is furnished to do so, subject to the following conditions:
+
+The above copyright and trademark notices and this permission notice shall be included in all copies of one or more of the Font Software typefaces.
+
+The Font Software may be modified, altered, or added to, and in particular the designs of glyphs or characters in the Fonts may be modified and additional glyphs or characters may be added to the Fonts, only if the fonts are renamed to names not containing either the words "Bitstream" or the word "Vera".
+
+This License becomes null and void to the extent applicable to Fonts or Font Software that has been modified and is distributed under the "Bitstream Vera" names.
+
+The Font Software may be sold as part of a larger software package but no copy of one or more of the Font Software typefaces may be sold by itself.
+
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL BITSTREAM OR THE GNOME FOUNDATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.
+
+Except as contained in this notice, the names of Gnome, the Gnome Foundation, and Bitstream Inc., shall not be used in advertising or otherwise to promote the sale, use or other dealings in this Font Software without prior written authorization from the Gnome Foundation or Bitstream Inc., respectively. For further information, contact: fonts at gnome dot org.
+
+````
 
 ### Notice 5f787c1dee3c56547f09ccc2906ab5f5293c4d8dd6c8654e573216c38e908dbd
 
 - Skia (inside @napi-rs/canvas@0.1.100): https://raw.githubusercontent.com/google/skia/fe2718df5f53a681087be6f0539045ca1b4b8c09/LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2011 Google Inc. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -37644,13 +40513,15 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87
 
 - expat (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/external/github.com/libexpat/libexpat.git/+/6154446fccefbf3ca644894f598969113b0c7bcd/expat/COPYING?format=TEXT
 
-```text
+
+
+````text
 Copyright (c) 1998-2000 Thai Open Source Software Center Ltd and Clark Cooper
 Copyright (c) 2001-2025 Expat maintainers
 
@@ -37673,13 +40544,15 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f
 
 - freetype (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/chromium/src/third_party/freetype2.git/+/264b5fbf5b912b39f98d038bf75d39be0a73f21b/docs/FTL.TXT?format=TEXT
 
-```text
+
+
+````text
                     The FreeType Project LICENSE
                     ----------------------------
 
@@ -37850,13 +40723,15 @@ Legal Terms
 
 --- end of FTL.TXT ---
 
-```
+````
 
 ### Notice ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64
 
 - harfbuzz (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/external/github.com/harfbuzz/harfbuzz.git/+/9cb1fee51069b206effb4736e443b038d230789d/COPYING?format=TEXT
 
-```text
+
+
+````text
 HarfBuzz is licensed under the so-called "Old MIT" license.  Details follow.
 For parts of HarfBuzz that are licensed under different licenses see individual
 files names COPYING in subdirectories where applicable.
@@ -37900,13 +40775,15 @@ FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS
 ON AN "AS IS" BASIS, AND THE COPYRIGHT HOLDER HAS NO OBLIGATION TO
 PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
 
-```
+````
 
 ### Notice 43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1
 
 - highway (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/external/github.com/google/highway.git/+/424360251cdcfc314cfc528f53c872ecd63af0f0/LICENSE?format=TEXT
 
-```text
+
+
+````text
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -38108,13 +40985,15 @@ PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-```
+````
 
 ### Notice 17510cf7a58b4879b887ec05a45d72cf1b73544dd9ec7e72f20110ed104229ee
 
 - icu (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/chromium/deps/icu.git/+/364118a1d9da24bb5b770ac3d762ac144d6da5a4/LICENSE?format=TEXT
 
-```text
+
+
+````text
 UNICODE LICENSE V3
 
 COPYRIGHT AND PERMISSION NOTICE
@@ -38628,13 +41507,15 @@ written prior permission.  M.I.T. makes no representations about the
 suitability of this software for any purpose.  It is provided "as is"
 without express or implied warranty.
 
-```
+````
 
 ### Notice 96f5b328adbb78eeaaec6980d73fd558cb1e4d62560ed615646bc3cf5e532430
 
 - libjpeg-turbo (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/chromium/deps/libjpeg_turbo.git/+/e14cbfaa85529d47f9f55b0f104a579c1061f9ad/LICENSE.md?format=TEXT
 
-```text
+
+
+````text
 libjpeg-turbo Licenses
 ======================
 
@@ -38771,13 +41652,15 @@ attribution and endorsement protections to other entities.  Thus, it was
 desirable to choose a license that granted us the same protections for new code
 that were granted to the IJG for code derived from their software.
 
-```
+````
 
 ### Notice 75815e3bf6484201a3c3d17a1bbf10f2e8e3237f84df10a2357ea896db2a81d6
 
 - libjpeg-turbo (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/chromium/deps/libjpeg_turbo.git/+/e14cbfaa85529d47f9f55b0f104a579c1061f9ad/README.ijg?format=TEXT
 
-```text
+
+
+````text
 libjpeg-turbo note:  This file has been modified by The libjpeg-turbo Project
 to include only information relevant to libjpeg-turbo, to wordsmith certain
 sections, and to remove impolitic language that existed in the libjpeg v8
@@ -39039,13 +41922,15 @@ TO DO
 
 Please send bug reports, offers of help, etc. to jpeg-info@jpegclub.org.
 
-```
+````
 
 ### Notice 8405932022a556380c2d8c272eff154a923feb197233f348ce5f7334fb0a5ede
 
 - libjxl (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/external/gitlab.com/wg1/jpeg-xl.git/+/a205468bc5d3a353fb15dae2398a101dff52f2d3/LICENSE?format=TEXT
 
-```text
+
+
+````text
 Copyright (c) the JPEG XL Project Authors.
 All rights reserved.
 
@@ -39074,13 +41959,15 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-```
+````
 
 ### Notice 91915f8ae056a68a3c5bdf05d9f6f78bb6903e27a8ca3a8434c9e4ac87300575
 
 - libjxl (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/external/gitlab.com/wg1/jpeg-xl.git/+/a205468bc5d3a353fb15dae2398a101dff52f2d3/PATENTS?format=TEXT
 
-```text
+
+
+````text
 Additional IP Rights Grant (Patents)
 
 "This implementation" means the copyrightable works distributed by
@@ -39104,13 +41991,15 @@ infringement, or inducement of patent infringement, then any patent
 rights granted to you under this License for this implementation of JPEG XL
 shall terminate as of the date such litigation is filed.
 
-```
+````
 
 ### Notice bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526
 
 - libpng (inside @napi-rs/canvas@0.1.100): https://skia.googlesource.com/third_party/libpng.git/+/d5515b5b8be3901aac04e5bd8bd5c89f287bcd33/LICENSE?format=TEXT
 
-```text
+
+
+````text
 COPYRIGHT NOTICE, DISCLAIMER, and LICENSE
 =========================================
 
@@ -39246,13 +42135,15 @@ to supporting the PNG file format in commercial products.  If you use
 this source code in a product, acknowledgment is not required but would
 be appreciated.
 
-```
+````
 
 ### Notice 5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf
 
 - libwebp (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/webm/libwebp.git/+/845d5476a866141ba35ac133f856fa62f0b7445f/COPYING?format=TEXT
 
-```text
+
+
+````text
 Copyright (c) 2010, Google Inc. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -39284,13 +42175,15 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-```
+````
 
 ### Notice cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c
 
 - libwebp (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/webm/libwebp.git/+/845d5476a866141ba35ac133f856fa62f0b7445f/PATENTS?format=TEXT
 
-```text
+
+
+````text
 Additional IP Rights Grant (Patents)
 ------------------------------------
 
@@ -39315,13 +42208,15 @@ patent infringement, then any patent rights granted to you under this License
 for these implementations of WebM shall terminate as of the date such
 litigation is filed.
 
-```
+````
 
 ### Notice e1cfcc55c325b3f78cf55df9664abaa066e2271dffe8213347d9fccdfbac8f2c
 
 - zlib (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/chromium/src/third_party/zlib/+/646b7f569718921d7d4b5b8e22572ff6c76f2596/LICENSE?format=TEXT
 
-```text
+
+
+````text
 version 1.2.12, March 27th, 2022
 
 Copyright (C) 1995-2022 Jean-loup Gailly and Mark Adler
@@ -39342,13 +42237,15 @@ freely, subject to the following restrictions:
    misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
 
-```
+````
 
 ### Notice 58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd
 
 - piex (inside @napi-rs/canvas@0.1.100): https://android.googlesource.com/platform/external/piex.git/+/bb217acdca1cc0c16b704669dd6f91a1b509c406/LICENSE?format=TEXT
 
-```text
+
+
+````text
 
                                  Apache License
                            Version 2.0, January 2004
@@ -39551,13 +42448,15 @@ freely, subject to the following restrictions:
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-```
+````
 
 ### Notice 3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94
 
 - brotli (inside @napi-rs/canvas@0.1.100): https://raw.githubusercontent.com/google/brotli/6d03dfbedda1615c4cba1211f8d81735575209c8/LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -39578,13 +42477,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 37398454f23ddeb02f0b81113fef9ebdc4571b7297cb6e18376c1ccb9bb1453e
 
 - libjpeg-turbo arithmetic coding (inside @napi-rs/canvas@0.1.100): https://chromium.googlesource.com/chromium/deps/libjpeg_turbo.git/+/e14cbfaa85529d47f9f55b0f104a579c1061f9ad/src/jcarith.c?format=TEXT
 
-```text
+
+
+````text
 /*
  * jcarith.c
  *
@@ -39606,15 +42507,17 @@ THE SOFTWARE.
  * Recommendation ITU-T T.81 (1992) | ISO/IEC 10918-1:1994.
  */
 
-```
+````
 
 ### Notice 96f73f9d2a16c21a36b418f06073be26e7d6d5e7c1bc99756b21a4f2c74ef171
 
 - QuickJS-NG (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/quickjs-ng/quickjs/dec012362bd93876449f3ecff4f835b2eba89bab/LICENSE
 
-```text
-The MIT License (MIT)
 
+
+````text
+The MIT License (MIT)
+ 
 Copyright (c) 2017-2026 Fabrice Bellard
 Copyright (c) 2017-2024 Charlie Gordon
 Copyright (c) 2023-2026 Ben Noordhuis
@@ -39638,13 +42541,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 9b405ef4c89342f5eae1dd828882f931747f71001cfba7d114801039b52ad09b
 
 - Mbed TLS (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/vercel-labs/quickjs-wasi/cc1fea4a6a4ac1d960e0db68d35e1459064a1a23/extensions/crypto/mbedtls/LICENSE
 
-```text
+
+
+````text
 Mbed TLS files are provided under a dual [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html)
 OR [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) license.
 This means that users may choose which of these licenses they take the code
@@ -40199,13 +43104,15 @@ consider it more useful to permit linking proprietary applications with the
 library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.
 
-```
+````
 
 ### Notice 2711a8b5a5cdfef0e639f96c1aca12ae23d7d64a02d0507f1bdf14d2b27bbc3a
 
 - WASI libc (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/WebAssembly/wasi-libc/2fc32bc81b9f07f8d9525edea59bfbaf760c06d6/LICENSE
 
-```text
+
+
+````text
 wasi-libc as a whole is multi-licensed under the
 Apache License v2.0 with LLVM Exceptions, the Apache License v2.0, and
 the MIT License. See the LICENSE-APACHE-LLVM, LICENSE-APACHE and LICENSE-MIT
@@ -40224,13 +43131,15 @@ wasi-libc's changes to these files are multi-licensed under the
 Apache License v2.0 with LLVM Exceptions, the Apache License v2.0,
 the MIT License, and the original licenses of the third-party works.
 
-```
+````
 
 ### Notice a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2
 
 - WASI libc (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/WebAssembly/wasi-libc/2fc32bc81b9f07f8d9525edea59bfbaf760c06d6/LICENSE-APACHE
 
-```text
+
+
+````text
                               Apache License
                         Version 2.0, January 2004
                      http://www.apache.org/licenses/
@@ -40433,13 +43342,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-```
+````
 
 ### Notice 268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5
 
 - WASI libc (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/WebAssembly/wasi-libc/2fc32bc81b9f07f8d9525edea59bfbaf760c06d6/LICENSE-APACHE-LLVM
 
-```text
+
+
+````text
 
                                  Apache License
                            Version 2.0, January 2004
@@ -40661,13 +43572,15 @@ the License, but only in their entirety and only with respect to the Combined
 Software.
 
 
-```
+````
 
 ### Notice 23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3
 
 - WASI libc (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/WebAssembly/wasi-libc/2fc32bc81b9f07f8d9525edea59bfbaf760c06d6/LICENSE-MIT
 
-```text
+
+
+````text
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
 documentation files (the "Software"), to deal in the
@@ -40692,13 +43605,15 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice c8b789cf5a746611e6300a0cc7750dbf92b61912a709d04e639245f7290656d0
 
 - WASI libc (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/WebAssembly/wasi-libc/2fc32bc81b9f07f8d9525edea59bfbaf760c06d6/libc-bottom-half/cloudlibc/LICENSE
 
-```text
+
+
+````text
 Copyright (c) 2015-2017 Nuxi (https://nuxi.nl/) and contributors.
 
 Redistribution and use in source and binary forms, with or without
@@ -40722,13 +43637,15 @@ LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
 OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGE.
 
-```
+````
 
 ### Notice f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af
 
 - WASI libc (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/WebAssembly/wasi-libc/2fc32bc81b9f07f8d9525edea59bfbaf760c06d6/libc-top-half/musl/COPYRIGHT
 
-```text
+
+
+````text
 musl as a whole is licensed under the following standard MIT license:
 
 ----------------------------------------------------------------------
@@ -40923,13 +43840,15 @@ negated the permissions granted in the license. In the spirit of
 permissive licensing, and of not having licensing issues being an
 obstacle to adoption, that text has been removed.
 
-```
+````
 
 ### Notice 539dd7aed86e8a4f12cbdd0e6c50c189c7d74847e4fecc64ce2c6ee3a01da38b
 
 - WASI LLVM runtime (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/llvm/llvm-project/4434dabb69916856b824f68a64b029c67175e532/libcxx/LICENSE.TXT
 
-```text
+
+
+````text
 ==============================================================================
 The LLVM Project is under the Apache License v2.0 with LLVM Exceptions:
 ==============================================================================
@@ -41242,13 +44161,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice e2b35be49f7284a45b7baca8fc7b3ab7440e7902392b2528a457816b5bb2a15c
 
 - WASI LLVM runtime (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/llvm/llvm-project/4434dabb69916856b824f68a64b029c67175e532/libcxxabi/LICENSE.TXT
 
-```text
+
+
+````text
 ==============================================================================
 The LLVM Project is under the Apache License v2.0 with LLVM Exceptions:
 ==============================================================================
@@ -41561,13 +44482,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice 1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d
 
 - WASI LLVM runtime (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/llvm/llvm-project/4434dabb69916856b824f68a64b029c67175e532/compiler-rt/LICENSE.TXT
 
-```text
+
+
+````text
 ==============================================================================
 The LLVM Project is under the Apache License v2.0 with LLVM Exceptions:
 ==============================================================================
@@ -41880,13 +44803,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-```
+````
 
 ### Notice af0d7d2cef91fc243cf4ad98570b03d1f26f5e0227cad0f5f4a7376e2feb3160
 
 - Ada URL parser (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/ada-url/ada/v3.4.3/LICENSE-MIT
 
-```text
+
+
+````text
 Copyright 2023 Yagiz Nizipli and Daniel Lemire
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -41906,13 +44831,15 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-```
+````
 
 ### Notice 508d4676d4083e874df706f302d9d42e5e7f9aed3f5a7ea614dc6d2b2252a22f
 
 - Ada URL parser (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/ada-url/ada/v3.4.3/LICENSE-APACHE
 
-```text
+
+
+````text
               Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -42115,13 +45042,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
    See the License for the specific language governing permissions and
    limitations under the License.
 
-```
+````
 
 ### Notice 52c49219748499a9a56e0d8d10a73a2d7741f5ecf5c88bdff30593599d6dfbb6
 
 - Project Everest (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/vercel-labs/quickjs-wasi/cc1fea4a6a4ac1d960e0db68d35e1459064a1a23/extensions/crypto/mbedtls/tf-psa-crypto/drivers/everest/library/Hacl_Curve25519_joined.c
 
-```text
+
+
+````text
 /*
  *  Interface to code from Project Everest
  *
@@ -42143,13 +45072,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *  This file is part of Mbed TLS (https://tls.mbed.org)
  */
 
-```
+````
 
 ### Notice 0c74e86d37d6fc7e8f22b4b8e3b801f6737c263c27a71d81c86cd8de0b6a84e5
 
 - Project Everest (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/vercel-labs/quickjs-wasi/cc1fea4a6a4ac1d960e0db68d35e1459064a1a23/extensions/crypto/mbedtls/tf-psa-crypto/drivers/everest/library/everest.c
 
-```text
+
+
+````text
 /*
  *  Interface to code from Project Everest
  *
@@ -42171,13 +45102,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *  This file is part of Mbed TLS (https://tls.mbed.org).
  */
 
-```
+````
 
 ### Notice 3007cd45c9afdf93812c0c8a7643ea32a7db0b24e495dc0f2312c8a43990b0dd
 
 - Project Everest (inside quickjs-wasi@2.2.0): https://raw.githubusercontent.com/vercel-labs/quickjs-wasi/cc1fea4a6a4ac1d960e0db68d35e1459064a1a23/extensions/crypto/mbedtls/tf-psa-crypto/drivers/everest/library/x25519.c
 
-```text
+
+
+````text
 /*
  *  ECDH with curve-optimized implementation multiplexing
  *
@@ -42199,11 +45132,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *  This file is part of Mbed TLS (https://tls.mbed.org)
  */
 
-```
+````
 
 ## Native search tools
 
-```text
+````text
 NATIVE SEARCH THIRD-PARTY NOTICES
 
 
@@ -42862,16 +45795,16 @@ are met:
 1. Redistributions of source code must retain the above copyright
    notice, this list of conditions and the following disclaimer.
 
-2. The origin of this software must not be misrepresented; you must
-   not claim that you wrote the original software.  If you use this
-   software in a product, an acknowledgment in the product
+2. The origin of this software must not be misrepresented; you must 
+   not claim that you wrote the original software.  If you use this 
+   software in a product, an acknowledgment in the product 
    documentation would be appreciated but is not required.
 
 3. Altered source versions must be plainly marked as such, and must
    not be misrepresented as being the original software.
 
-4. The name of the author may not be used to endorse or promote
-   products derived from this software without specific prior written
+4. The name of the author may not be used to endorse or promote 
+   products derived from this software without specific prior written 
    permission.
 
 THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
@@ -45814,7 +48747,7 @@ are met:
 2. Redistributions in binary form must reproduce the copyright
    notice, this list of conditions and the following disclaimer in the
    documentation and/or other materials provided with the distribution.
-3. The name of the author may not be used to endorse or promote products
+3. The name of the author may not be used to endorse or promote products 
    derived from this software without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
@@ -48375,4 +51308,4 @@ their own copyright notices and license terms:
     written authorization of the copyright holder.
 
 
-```
+````

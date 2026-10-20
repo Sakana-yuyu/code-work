@@ -51,6 +51,13 @@ const routes: ReadonlyArray<PifamilyModelRoute> = [
     modelId: "gpt-mock",
     contextWindowTokens: 128_000,
   },
+  {
+    adapterId: "mock-byok-adapter-b",
+    protocol: "openai",
+    displayName: "Mock B",
+    modelId: "gpt-mock-b",
+    contextWindowTokens: 128_000,
+  },
 ];
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -247,10 +254,38 @@ describe("makeZCodeAdapter", () => {
           ["item.started", { itemType: "command_execution", title: "Bash" }],
           ["item.completed", { itemType: "command_execution", status: "completed" }],
         ]);
-        expect(recorder.events.some((event) => event.type === "thread.token-usage.updated")).toBe(
-          true,
+        // 参数流：start 先开行，delta 拼出可解析 JSON 后才带出真命令，
+        // scheduled 再补全入参——同一 toolCallId 只应该有一条 started。
+        const toolUpdates = recorder.events.flatMap((event) =>
+          event.type === "item.updated" ? [event.payload] : [],
         );
-        expect(recorder.events.every((event) => isProviderRuntimeEvent(event))).toBe(true);
+        expect(toolUpdates.some((payload) => payload.detail === "Bash: ls")).toBe(true);
+        expect(
+          recorder.events.filter(
+            (event) => event.type === "item.started" && event.itemId === "tc1",
+          ),
+        ).toHaveLength(1);
+        // 用量只在 `result` 帧落地（`turn.completed` 之后）：本回合明细与 projection
+        // 的上下文占用合并成一条，多发一条会让「N 步」凭空翻倍。
+        yield* recorder.waitFor((event) => event.type === "thread.token-usage.updated");
+        expect(recorder.events.some((event) => !isProviderRuntimeEvent(event))).toBe(false);
+        // 标题镜像：占位标题必须被丢掉，只有真正的标题到达线程元数据。
+        expect(
+          recorder.events.flatMap((event) =>
+            event.type === "thread.metadata.updated" ? [event.payload.name] : [],
+          ),
+        ).toEqual(["Fixture session title"]);
+        // 无头模式拒绝的审批只提示一次，绝不能开成可交互请求。
+        const warnings = recorder.events.flatMap((event) =>
+          event.type === "runtime.warning" ? [event.payload] : [],
+        );
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]?.message).toContain("Bash");
+        expect(
+          recorder.events.some(
+            (event) => event.type === "request.opened" || event.type === "request.resolved",
+          ),
+        ).toBe(false);
         expect(preparedModels).toEqual(["mock-byok-adapter"]);
 
         const [listed] = yield* adapter.listSessions();
@@ -289,6 +324,67 @@ describe("makeZCodeAdapter", () => {
     ),
   );
 
+  it.effect("回合用量按 ZCode usage 拆分到 Code Work 快照字段", () =>
+    runWithAdapter({}, ({ adapter, recorder }) =>
+      Effect.gen(function* () {
+        const threadId = ThreadId.make("zcode-usage");
+        yield* adapter.startSession({ threadId, runtimeMode: "full-access" });
+        yield* adapter.sendTurn({ threadId, input: "hello" });
+        // 用量在 `result` 帧才落地（`turn.completed` 已经结算），先等它。
+        yield* recorder.waitFor((event) => event.type === "thread.token-usage.updated");
+        yield* recorder.waitFor((event) => event.type === "turn.completed");
+        const usages = recorder.events.flatMap((event) =>
+          event.type === "thread.token-usage.updated" ? [event.payload.usage] : [],
+        );
+        // 每回合只发一条用量：`turn.completed` 的明细与 `result` 的上下文占用合并，
+        // 多发一条会让「N 步」按行数统计时凭空翻倍。
+        expect(usages).toHaveLength(1);
+        expect(usages[0]).toMatchObject({
+          // 上下文进度条读 contextUsed，而不是本回合计费的 token 总量。
+          usedTokens: 1_024,
+          maxTokens: 128_000,
+          totalProcessedTokens: 42,
+          lastUsedTokens: 42,
+          inputTokens: 30,
+          lastInputTokens: 30,
+          outputTokens: 12,
+          lastOutputTokens: 12,
+          cachedInputTokens: 8,
+          reasoningOutputTokens: 5,
+          toolUses: 1,
+          durationMs: 10,
+        });
+      }),
+    ),
+  );
+
+  it.effect("会话已落地后换模型直接拒绝，不按旧模型静默跑一轮", () =>
+    runWithAdapter({}, ({ adapter, recorder, argvFile, preparedModels }) =>
+      Effect.gen(function* () {
+        const threadId = ThreadId.make("zcode-model-switch");
+        yield* adapter.startSession({ threadId, runtimeMode: "full-access" });
+        yield* adapter.sendTurn({ threadId, input: "hello" });
+        yield* recorder.waitFor((event) => event.type === "turn.completed");
+        expect((yield* adapter.listSessions())[0]?.resumeCursor).toEqual({
+          zcodeSessionId: "zc-session-1",
+        });
+
+        const outcome = yield* Effect.exit(
+          adapter.sendTurn({
+            threadId,
+            input: "again",
+            modelSelection: { instanceId, model: "mock-byok-adapter-b" },
+          }),
+        );
+        expect(outcome._tag).toBe("Failure");
+        const argvs = yield* readArgv(argvFile);
+        // 第二次 sendTurn 没有启动进程：ZCode 的 --resume 只认会话库里的模型。
+        expect(argvs).toHaveLength(1);
+        expect(preparedModels).toEqual(["mock-byok-adapter"]);
+      }),
+    ),
+  );
+
   it.effect("上一回合迟到的退出帧不会错杀下一回合", () =>
     Effect.gen(function* () {
       const secondSpawnAttempted = yield* Deferred.make<void>();
@@ -321,6 +417,33 @@ describe("makeZCodeAdapter", () => {
         { secondSpawnAttempted, releaseFile },
       );
     }),
+  );
+
+  it.effect("续接会话按会话库旧模型跑时只提醒一次，不静默", () =>
+    runWithAdapter(
+      { MOCK_ZCODE_MODE: "drift", MOCK_ZCODE_ACTUAL_MODEL: "stale-byok-adapter" },
+      ({ adapter, recorder }) =>
+        Effect.gen(function* () {
+          const threadId = ThreadId.make("zcode-model-drift");
+          yield* adapter.startSession({ threadId, runtimeMode: "full-access" });
+          yield* adapter.sendTurn({ threadId, input: "hello" });
+          const warning = yield* recorder.waitFor((event) => event.type === "runtime.warning");
+          expect(warning.payload).toMatchObject({
+            message: expect.stringContaining("stale-byok-adapter"),
+            detail: {
+              providerId: "codework-openai",
+              modelId: "stale-byok-adapter",
+              expected: "mock-byok-adapter",
+            },
+          });
+          yield* recorder.waitFor((event) => event.type === "turn.completed");
+          const secondTurnStart = recorder.events.length;
+          yield* adapter.sendTurn({ threadId, input: "again" });
+          yield* recorder.waitFor((event) => event.type === "turn.completed", secondTurnStart);
+          const warnings = recorder.events.filter((event) => event.type === "runtime.warning");
+          expect(warnings).toHaveLength(1);
+        }),
+    ),
   );
 
   it.effect("turn.failed 以失败终态收尾并带上上游错误", () =>

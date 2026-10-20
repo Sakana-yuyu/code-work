@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 
 /**
  * ZCode 内嵌运行时：仓库随带的 `vendor/zcode/zcode.cjs` 是从上游 ZCode 源码
@@ -33,6 +34,8 @@ export interface ZCodeSpawnTarget {
 const BUNDLE_DIR_NAME = "zcode";
 const BUNDLE_FILE_NAME = "zcode.cjs";
 const BUNDLE_MARKER_NAME = "source.sha";
+/** `scripts/vendor-zcode.mjs` 在 vendor 目录写下的上游版本清单。 */
+export const BUNDLE_MANIFEST_NAME = "VERSION.json";
 /** Electron asar 对单文件 readFile/writeFile 支持稳定；不要递归复制虚拟目录。 */
 const BUNDLE_FILES = [
   BUNDLE_FILE_NAME,
@@ -40,6 +43,7 @@ const BUNDLE_FILES = [
   "LICENSE",
   "NOTICE.md",
   "THIRD-PARTY-NOTICES.md",
+  BUNDLE_MANIFEST_NAME,
 ] as const;
 
 /** `binaryPath` 是显式用户配置（非默认命令名）时尊重配置。 */
@@ -178,3 +182,60 @@ export const resolveZCodeSpawnTarget = Effect.fn("resolveZCodeSpawnTarget")(func
 /** bundled 目标经 node 系运行时执行；Electron 下需 RUN_AS_NODE，node 下为无害冗余。 */
 export const zcodeSpawnEnv = (target: ZCodeSpawnTarget): Readonly<Record<string, string>> =>
   target.source === "bundled" ? { ELECTRON_RUN_AS_NODE: "1" } : {};
+
+/** 随包清单里记录的上游版本；只读 vendored 目录（不依赖释放结果）。 */
+export interface ZCodeBundleVersion {
+  readonly productVersion: string;
+  readonly cliVersion: string;
+  readonly builtinConfigRevision?: number;
+  /** 上游来源标识（分支/提交或 tarball）。历史清单里的 `commit` 也归一到这个字段。 */
+  readonly sourceRef?: string;
+}
+
+const decodeBundleManifest = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(
+    Schema.Struct({
+      productVersion: Schema.optional(Schema.String),
+      cliVersion: Schema.optional(Schema.String),
+      builtinConfigRevision: Schema.optional(Schema.Number),
+      sourceRef: Schema.optional(Schema.String),
+      // 早期清单只记裸 commit；仍可读，但不再写。
+      commit: Schema.optional(Schema.String),
+    }),
+  ),
+);
+
+/**
+ * 读 vendored 运行时目录里的 `VERSION.json`。内嵌运行时跳过 `--version` 探针，
+ * 卡片要显示"内置的是哪一版"就得靠这份随包清单；清单缺失（老 vendor）返回 none。
+ */
+export const readZCodeBundleVersion = Effect.fn("readZCodeBundleVersion")(
+  function* (): Effect.fn.Return<
+    Option.Option<ZCodeBundleVersion>,
+    never,
+    FileSystem.FileSystem | Path.Path
+  > {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    for (const candidate of bundledSourceCandidates()) {
+      const manifestPath = path.join(candidate, BUNDLE_MANIFEST_NAME);
+      const contents = yield* fs.readFileString(manifestPath).pipe(Effect.option);
+      if (Option.isNone(contents)) continue;
+      const parsed = yield* decodeBundleManifest(contents.value).pipe(Effect.option);
+      if (Option.isNone(parsed)) continue;
+      const productVersion = parsed.value.productVersion?.trim() ?? "";
+      const cliVersion = parsed.value.cliVersion?.trim() ?? "";
+      if (productVersion === "") continue;
+      const sourceRef = parsed.value.sourceRef?.trim() ?? parsed.value.commit?.trim() ?? "";
+      return Option.some({
+        productVersion,
+        cliVersion,
+        ...(parsed.value.builtinConfigRevision === undefined
+          ? {}
+          : { builtinConfigRevision: parsed.value.builtinConfigRevision }),
+        ...(sourceRef === "" ? {} : { sourceRef }),
+      });
+    }
+    return Option.none<ZCodeBundleVersion>();
+  },
+);

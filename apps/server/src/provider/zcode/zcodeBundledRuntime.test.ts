@@ -10,7 +10,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 
-import { extractBundledZCode } from "./zcodeBundledRuntime.ts";
+import { extractBundledZCode, readZCodeBundleVersion } from "./zcodeBundledRuntime.ts";
 
 describe("extractBundledZCode", () => {
   it.effect("逐文件释放 bundle，完整校验后才写 source.sha", () =>
@@ -30,6 +30,7 @@ describe("extractBundledZCode", () => {
           "LICENSE",
           "NOTICE.md",
           "THIRD-PARTY-NOTICES.md",
+          "VERSION.json",
           "source.sha",
         ];
         for (const file of files) {
@@ -47,6 +48,21 @@ describe("extractBundledZCode", () => {
       } finally {
         yield* Effect.promise(() => NodeFSP.rm(stateDir, { recursive: true, force: true }));
       }
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("随包 VERSION.json 报告内置运行时的上游版本", () =>
+    Effect.gen(function* () {
+      const version = yield* readZCodeBundleVersion();
+      expect(Option.isSome(version)).toBe(true);
+      if (Option.isNone(version)) return;
+      expect(version.value.productVersion).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(version.value.cliVersion).toMatch(/^\d+\.\d+\.\d+$/);
+      // 清单是用户可见的“内置的是哪一版”，来源必须能被独立核对；历史清单里
+      // 记过一个并不存在于上游的 commit，所以这里要求 sourceRef 存在且不是裸 SHA。
+      expect(version.value.sourceRef).toBeDefined();
+      expect(version.value.sourceRef).not.toMatch(/^[0-9a-f]{40}$/);
+      expect(version.value.sourceRef).toContain("ZCode@");
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
