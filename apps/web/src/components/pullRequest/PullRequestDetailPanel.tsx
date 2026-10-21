@@ -1188,7 +1188,7 @@ export function PullRequestDetailPanel({
             className={cn(
               "col-start-1 row-start-1 flex min-w-0 items-center gap-1 text-sm text-muted-foreground transition-[opacity,transform] ease-out motion-reduce:transform-none motion-reduce:transition-none sm:text-xs",
               condensed
-                ? "pointer-events-none -translate-y-1 opacity-0 duration-100"
+                ? "pointer-events-none -translate-y-1 opacity-0 duration-200"
                 : "translate-y-0 opacity-100 delay-50 duration-150",
             )}
           >
@@ -1247,7 +1247,7 @@ export function PullRequestDetailPanel({
               "col-start-1 row-start-1 flex min-w-0 items-center gap-1 text-sm text-muted-foreground transition-[opacity,transform] ease-out motion-reduce:transform-none motion-reduce:transition-none sm:text-xs",
               condensed
                 ? "translate-y-0 opacity-100 delay-50 duration-150"
-                : "pointer-events-none translate-y-1 opacity-0 duration-100",
+                : "pointer-events-none translate-y-1 opacity-0 duration-200",
             )}
           >
             {detail && statePresentation ? (
@@ -1574,7 +1574,7 @@ export function PullRequestDetailPanel({
               "min-h-0 overflow-hidden transition-[opacity,transform] duration-150 ease-out motion-reduce:transform-none motion-reduce:transition-none",
               condensed
                 ? "translate-y-0 opacity-100 delay-50"
-                : "translate-y-1 opacity-0 duration-100",
+                : "translate-y-1 opacity-0 duration-200",
             )}
             inert={!condensed}
           >
@@ -1679,7 +1679,7 @@ export function PullRequestDetailPanel({
             className={cn(
               "min-h-0 overflow-hidden transition-[opacity,transform] duration-150 ease-out motion-reduce:transform-none motion-reduce:transition-none",
               condensed
-                ? "-translate-y-1 opacity-0 duration-100"
+                ? "-translate-y-1 opacity-0 duration-200"
                 : "translate-y-0 opacity-100 delay-50",
             )}
             inert={condensed}

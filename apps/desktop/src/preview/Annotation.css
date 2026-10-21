@@ -34,7 +34,7 @@
   --codework-foreground: oklch(0.269 0 0);
   --codework-popover: white;
   --codework-popover-foreground: oklch(0.269 0 0);
-  --codework-primary: oklch(0.488 0.217 264);
+  --codework-primary: oklch(0.488 0.18 264);
   --codework-primary-foreground: white;
   --codework-muted: rgb(0 0 0 / 4%);
   --codework-muted-foreground: oklch(0.556 0 0);
@@ -42,7 +42,7 @@
   --codework-accent-foreground: oklch(0.269 0 0);
   --codework-border: rgb(0 0 0 / 8%);
   --codework-input: rgb(0 0 0 / 10%);
-  --codework-ring: oklch(0.488 0.217 264);
+  --codework-ring: oklch(0.488 0.18 264);
   color: var(--codework-foreground);
   font-family: var(--codework-font-sans);
 }

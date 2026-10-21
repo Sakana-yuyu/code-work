@@ -99,7 +99,7 @@ export function ContextWindowMeter(props: {
                   strokeLinecap="round"
                   strokeDasharray={circumference}
                   strokeDashoffset={dashOffset}
-                  className="transition-[stroke-dashoffset,stroke] duration-500 ease-out motion-reduce:transition-none"
+                  className="transition-[stroke-dashoffset,stroke] duration-200 ease-out motion-reduce:transition-none"
                 />
               </svg>
             </span>
@@ -143,7 +143,7 @@ export function ContextWindowMeter(props: {
               aria-label={t("contextWindowUsage")}
             >
               <div
-                className="h-full rounded-full transition-[width,background-color] duration-500 ease-out motion-reduce:transition-none"
+                className="h-full rounded-full transition-[width,background-color] duration-200 ease-out motion-reduce:transition-none"
                 style={{ width: `${normalizedPercentage}%`, backgroundColor: usageColor }}
               />
             </div>
