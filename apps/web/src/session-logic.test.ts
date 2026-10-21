@@ -2136,6 +2136,44 @@ describe("deriveTimelineEntries", () => {
     });
     expect(entries[2]).toMatchObject({ summaries: [{ text: "换个思路。" }] });
   });
+
+  it("跨来源交错的时间按时间合并，来源内部乱序仍整体有序", () => {
+    const entries = deriveTimelineEntries(
+      [
+        {
+          id: MessageId.make("message-late"),
+          role: "assistant",
+          text: "later",
+          createdAt: "2026-02-23T00:00:04.000Z",
+          turnId: null,
+          updatedAt: "2026-02-23T00:00:04.000Z",
+          streaming: false,
+        },
+      ],
+      [],
+      [
+        // 来源内部乱序：合并走回落排序，不能只依赖每段有序的假设。
+        { id: "work-2", createdAt: "2026-02-23T00:00:03.000Z", label: "第三步", tone: "tool" },
+        { id: "work-1", createdAt: "2026-02-23T00:00:01.000Z", label: "第一步", tone: "tool" },
+      ],
+      [],
+      [
+        {
+          id: "reasoning-summary:turn-1:0",
+          createdAt: "2026-02-23T00:00:02.000Z",
+          turnId: TurnId.make("turn-1"),
+          text: "中间想一下。",
+        },
+      ],
+    );
+
+    expect(entries.map((entry) => entry.createdAt)).toEqual([
+      "2026-02-23T00:00:01.000Z",
+      "2026-02-23T00:00:02.000Z",
+      "2026-02-23T00:00:03.000Z",
+      "2026-02-23T00:00:04.000Z",
+    ]);
+  });
 });
 
 describe("deriveWorkLogEntries context window handling", () => {

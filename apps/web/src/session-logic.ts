@@ -501,7 +501,7 @@ export function derivePendingApprovals(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): PendingApproval[] {
   const openByRequestId = new Map<ApprovalRequestId, PendingApproval>();
-  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  const ordered = orderActivities(activities);
 
   for (const activity of ordered) {
     const payload =
@@ -606,7 +606,7 @@ export function derivePendingUserInputs(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): PendingUserInput[] {
   const openByRequestId = new Map<ApprovalRequestId, PendingUserInput>();
-  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  const ordered = orderActivities(activities);
 
   for (const activity of ordered) {
     const payload =
@@ -754,7 +754,7 @@ export function deriveActivePlanState(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
   latestTurnId: TurnId | undefined,
 ): ActivePlanState | null {
-  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  const ordered = orderActivities(activities);
   const allPlanActivities = ordered.filter((activity) => activity.kind === "turn.plan.updated");
   // Prefer plan from the current turn; fall back to the most recent plan from any turn
   // so that TodoWrite tasks persist across follow-up messages.
@@ -795,7 +795,7 @@ export interface TurnPlanEntry {
 export function deriveTurnPlans(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): TurnPlanEntry[] {
-  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  const ordered = orderActivities(activities);
   const byTurn = new Map<
     string,
     { activities: OrchestrationThreadActivity[]; entry: TurnPlanEntry }
@@ -839,7 +839,7 @@ export function deriveReasoningSummaryEntries(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): ReasoningSummaryEntry[] {
   const summaries = new Map<string, ReasoningSummaryEntry>();
-  const orderedActivities = [...activities].toSorted(compareActivitiesByOrder);
+  const orderedActivities = orderActivities(activities);
   // Goal 内部可能包含很多模型回合；Goal 完成后只保留最终结果，避免把
   // 已结束 Goal 的整段思考过程铺满时间线。完成后的新回合仍正常展示摘要。
   const latestCompletedGoalIndex = orderedActivities.findLastIndex(
@@ -967,10 +967,28 @@ function isAgentInternalActivity(activity: OrchestrationThreadActivity): boolean
   return typeof payload.agentId === "string" && payload.agentId.trim().length > 0;
 }
 
+/**
+ * 按显示顺序排列活动。
+ *
+ * 活动按到达顺序追加，通常已经是排好序的；流式期间这些派生函数每来一个增量
+ * 就会重跑一遍，若无条件复制并全量排序，长线程会在每个增量上做 O(n log n) 的
+ * 比较。这里先线性确认是否已有序，有序时直接复用入参数组，乱序输入仍照常排序。
+ */
+function orderActivities(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): ReadonlyArray<OrchestrationThreadActivity> {
+  for (let index = 1; index < activities.length; index += 1) {
+    if (compareActivitiesByOrder(activities[index - 1]!, activities[index]!) > 0) {
+      return [...activities].toSorted(compareActivitiesByOrder);
+    }
+  }
+  return activities;
+}
+
 export function deriveWorkLogEntries(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): WorkLogEntry[] {
-  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  const ordered = orderActivities(activities);
   const entries: DerivedWorkLogEntry[] = [];
   for (const activity of ordered) {
     // Agent task.started rows are CTA seeds: they carry the true spawn turn,
@@ -2008,6 +2026,48 @@ function compareActivityLifecycleRank(kind: string): number {
   return 1;
 }
 
+/**
+ * 按 `createdAt` 合并若干已排序的行序列。
+ *
+ * 时间线要在每个流式增量上重建，而这些输入序列本身已经按时间追加有序。此时
+ * 全量排序会对整个时间线重复做 O(n log n) 次字符串比较；线性归并在同样保证
+ * 稳定（相等时间戳保持原有先后）的前提下只需一次遍历。任何一段乱序就退回排序，
+ * 结果与原来完全一致。
+ */
+function mergeTimelineRowsByCreatedAt(segments: ReadonlyArray<TimelineEntry[]>): TimelineEntry[] {
+  const ordered = segments.every((segment) => {
+    for (let index = 1; index < segment.length; index += 1) {
+      if (segment[index - 1]!.createdAt.localeCompare(segment[index]!.createdAt) > 0) return false;
+    }
+    return true;
+  });
+  if (!ordered) {
+    return segments.flat().toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+  const cursors = segments.map(() => 0);
+  const merged: TimelineEntry[] = [];
+  const total = segments.reduce((count, segment) => count + segment.length, 0);
+  while (merged.length < total) {
+    let bestSegment = -1;
+    for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+      const cursor = cursors[segmentIndex]!;
+      const candidate = segments[segmentIndex]![cursor];
+      if (candidate === undefined) continue;
+      if (
+        bestSegment === -1 ||
+        candidate.createdAt.localeCompare(
+          segments[bestSegment]![cursors[bestSegment]!]!.createdAt,
+        ) < 0
+      ) {
+        bestSegment = segmentIndex;
+      }
+    }
+    merged.push(segments[bestSegment]![cursors[bestSegment]!]!);
+    cursors[bestSegment] = (cursors[bestSegment] ?? 0) + 1;
+  }
+  return merged;
+}
+
 export function deriveTimelineEntries(
   messages: ReadonlyArray<ChatMessage>,
   proposedPlans: ReadonlyArray<ProposedPlan>,
@@ -2045,13 +2105,13 @@ export function deriveTimelineEntries(
     createdAt: entry.createdAt,
     entry,
   }));
-  const sorted = [
-    ...messageRows,
-    ...proposedPlanRows,
-    ...turnPlanRows,
-    ...reasoningSummaryRows,
-    ...workRows,
-  ].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const sorted = mergeTimelineRowsByCreatedAt([
+    messageRows,
+    proposedPlanRows,
+    turnPlanRows,
+    reasoningSummaryRows,
+    workRows,
+  ]);
   // 排序后把相邻的摘要行并成一组；中间隔着工具行等可见条目时天然分组，
   // 保留「思考 → 动手 → 再思考」的真实节奏。
   const merged: TimelineEntry[] = [];
