@@ -4,6 +4,7 @@ import {
 } from "@codework/mobile-markdown-text/renderer";
 
 import { highlightCodeSnippet } from "../features/review/shikiReviewHighlighter";
+import { withoutChatEmojiInTree } from "@codework/shared/chatPresentation";
 
 type MobileSelectableMarkdownTextProps = Omit<SelectableMarkdownTextProps, "highlightCode">;
 
@@ -19,5 +20,11 @@ export function hasNativeSelectableMarkdownText(): boolean {
 }
 
 export function SelectableMarkdownText(props: MobileSelectableMarkdownTextProps) {
-  return <CodeworkSelectableMarkdownText {...props} highlightCode={highlightCodeSnippet} />;
+  return (
+    <CodeworkSelectableMarkdownText
+      {...props}
+      transformDocument={withoutChatEmojiInTree}
+      highlightCode={highlightCodeSnippet}
+    />
+  );
 }

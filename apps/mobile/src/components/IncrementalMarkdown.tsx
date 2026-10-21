@@ -2,6 +2,7 @@ import { useMemo, type ComponentProps } from "react";
 import { Markdown } from "react-native-nitro-markdown";
 import { parseMarkdownWithOptions } from "react-native-nitro-markdown/headless";
 import { createNativeMarkdownPrefixCache } from "@codework/mobile-markdown-text/markdown";
+import { withoutChatEmojiInTree } from "@codework/shared/chatPresentation";
 
 type Props = Pick<
   ComponentProps<typeof Markdown>,
@@ -20,7 +21,7 @@ export function IncrementalMarkdown({ children, options, ...props }: Props) {
       ),
     [gfm, html, math],
   );
-  const sourceAst = useMemo(() => parse(children), [children, parse]);
+  const sourceAst = useMemo(() => withoutChatEmojiInTree(parse(children)), [children, parse]);
   return (
     <Markdown {...props} options={options} sourceAst={sourceAst}>
       {children}

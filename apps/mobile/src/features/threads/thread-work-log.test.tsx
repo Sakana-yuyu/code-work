@@ -142,6 +142,34 @@ describe("历史活动容器的挂载与选择边界", () => {
     expect(detail.props.selectable).toBe(true);
   });
 
+  it("思考与进度标题隐藏 emoji，展开正文交给共用渲染器且复制原文", () => {
+    const source = '⌛ 18s · 等待首个 token\n`const icon = "😀"`';
+    const activity = {
+      ...activityFor("reasoning-emoji", source),
+      summary: "⏳正在连接",
+      detail: "✅已收到请求",
+      toolLike: false,
+    };
+    const copy = vi.fn();
+    const renderTextDetail = vi.fn((text: string) => <span>{text}</span>);
+    const elements = renderLog({
+      activities: [activity],
+      copiedRowId: null,
+      expandedRows: { [activity.id]: true },
+      iconSubtleColor: "#808080",
+      onCopyRow: copy,
+      onToggleRow: vi.fn(),
+      renderTextDetail,
+    });
+    const pressable = elements.find((element) => String(element.type) === "Pressable");
+    if (!isValidElement<{ accessibilityLabel: string; onLongPress: () => void }>(pressable))
+      throw new Error("活动行缺失");
+    expect(pressable.props.accessibilityLabel).toBe("正在连接 已收到请求");
+    expect(renderTextDetail).toHaveBeenCalledWith(source);
+    pressable.props.onLongPress();
+    expect(copy).toHaveBeenCalledWith(activity.id, source);
+  });
+
   it("历史单行复用后长按复制更新到新活动的身份与全文", () => {
     const copy = vi.fn();
     const keys = [];

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { MarkdownNode } from "react-native-nitro-markdown/headless";
+import { withoutChatEmojiInTree } from "@codework/shared/chatPresentation";
 
 import {
   nativeMarkdownCodeHighlightAppend,
@@ -43,6 +44,21 @@ describe("流式代码的异步高亮", () => {
 });
 
 describe("nativeMarkdownTextRuns", () => {
+  it("显示层隐藏正文 emoji，代码与源节点保持原样", () => {
+    const node: MarkdownNode = {
+      type: "paragraph",
+      children: [
+        { type: "text", content: "⏳正在连接 " },
+        { type: "code_inline", content: 'const icon = "😀"' },
+      ],
+    };
+    expect(nativeMarkdownTextRuns(withoutChatEmojiInTree(node))).toEqual([
+      { text: "正在连接 " },
+      { text: 'const icon = "😀"', code: true },
+    ]);
+    expect(node.children?.[0]?.content).toBe("⏳正在连接 ");
+  });
+
   it("preserves inline emphasis and code styles", () => {
     const node: MarkdownNode = {
       type: "paragraph",

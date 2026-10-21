@@ -1391,6 +1391,25 @@ function renderFeedEntry(
         onCopyRow={props.onCopyWorkRow}
         onToggleRow={props.onToggleWorkRow}
         onOpenCanvas={props.onOpenCanvas}
+        renderTextDetail={(text) => (
+          <StreamingMarkdown
+            text={text}
+            streaming={false}
+            pacing={false}
+            native={{
+              skills: props.skills,
+              textStyle: markdownStyles.assistant.nativeTextStyle,
+              onLinkPress: props.onMarkdownLinkPress,
+              renderImage: props.renderMarkdownImage,
+            }}
+            fallback={{
+              options: { gfm: true },
+              renderers: markdownStyles.assistant.renderers,
+              styles: markdownStyles.assistant.styles,
+              theme: markdownStyles.assistant.theme,
+            }}
+          />
+        )}
       />
       {mcpApps.map(({ id, app }) => (
         <ThreadMcpApp

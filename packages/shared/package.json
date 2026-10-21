@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./chatPresentation": {
+      "types": "./src/chatPresentation.ts",
+      "import": "./src/chatPresentation.ts"
+    },
     "./themePalettes": {
       "types": "./src/themePalettes.ts",
       "import": "./src/themePalettes.ts"
@@ -289,6 +293,7 @@
     "@noble/curves": "catalog:",
     "@noble/hashes": "catalog:",
     "effect": "catalog:",
+    "emoji-regex": "10.6.0",
     "jose": "catalog:",
     "yaml": "catalog:"
   },

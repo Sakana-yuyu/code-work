@@ -34,6 +34,7 @@ export function hasNativeSelectableMarkdownText(): boolean {
 
 export function SelectableMarkdownText({
   markdown,
+  transformDocument,
   skills = EMPTY_SKILLS,
   textStyle,
   highlightCode,
@@ -55,7 +56,8 @@ export function SelectableMarkdownText({
     [],
   );
   const chunks = useMemo(() => {
-    const parsedDocument = parse(markdown);
+    const sourceDocument = parse(markdown);
+    const parsedDocument = transformDocument ? transformDocument(sourceDocument) : sourceDocument;
     const document = preserveSoftBreaks
       ? nativeMarkdownWithPreservedSoftBreaks(parsedDocument)
       : parsedDocument;
@@ -67,7 +69,7 @@ export function SelectableMarkdownText({
           }
         : chunk,
     );
-  }, [markdown, parse, preserveSoftBreaks, skills]);
+  }, [markdown, parse, preserveSoftBreaks, skills, transformDocument]);
 
   return (
     <MarkdownImageRendererContext.Provider value={renderImage ?? null}>

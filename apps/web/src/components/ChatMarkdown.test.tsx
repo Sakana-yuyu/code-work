@@ -35,6 +35,33 @@ import ChatMarkdown, {
   shouldUseMarkdownFileBrowserPrimaryAction,
 } from "./ChatMarkdown";
 
+describe("ChatMarkdown emoji 显示", () => {
+  it("隐藏正文和表格里的 emoji，保留行内代码与链接地址", () => {
+    const markup = renderToStaticMarkup(
+      <ChatMarkdown
+        cwd={undefined}
+        text={
+          '⏳ 等待\n\n`const icon = "😀"`\n\n[✅完成](https://example.com/🚀)\n\n| 状态 |\n| --- |\n| 🎉成功 |'
+        }
+      />,
+    );
+    expect(markup).not.toContain("⏳");
+    expect(markup).not.toContain("✅");
+    expect(markup).not.toContain("🎉");
+    expect(markup).toContain("😀");
+    expect(markup).toContain(`https://example.com/${encodeURIComponent("🚀")}`);
+    expect(markup).toContain("成功");
+  });
+
+  it("HTML 模式也隐藏文本 emoji，并保留代码", () => {
+    const markup = renderToStaticMarkup(
+      <ChatMarkdown cwd={undefined} parseRawHtml text={"<div>⏳等待<code>😀</code></div>"} />,
+    );
+    expect(markup).not.toContain("⏳");
+    expect(markup).toContain("😀");
+  });
+});
+
 describe("canUseMarkdownFileShellActions", () => {
   const environmentId = EnvironmentId.make("environment-1");
 
@@ -314,4 +341,13 @@ describe("ACP 嵌入资源的字面显示", () => {
       expect(html).not.toContain('href="https://example.com/inside"');
     },
   );
+});
+
+describe("代码块 emoji 显示", () => {
+  it("围栏代码保留 emoji 原文", () => {
+    const markup = renderToStaticMarkup(
+      <ChatMarkdown cwd={undefined} text={'```text\nconst icon = "🦊"\n```'} />,
+    );
+    expect(markup).toContain("🦊");
+  });
 });

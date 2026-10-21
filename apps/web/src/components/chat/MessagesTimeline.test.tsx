@@ -524,6 +524,51 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("px-1 text-sm leading-relaxed text-muted-foreground");
   });
 
+  it("思考摘要和过程提示隐藏 emoji，保留代码与进度文字", () => {
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={{
+          turnId: TurnId.make("turn-emoji"),
+          state: "running",
+          startedAt: MESSAGE_CREATED_AT,
+          completedAt: null,
+        }}
+        timelineEntries={[
+          {
+            id: "reasoning-emoji",
+            kind: "reasoning-summary",
+            createdAt: MESSAGE_CREATED_AT,
+            summaries: [
+              {
+                id: "summary-emoji",
+                turnId: TurnId.make("turn-emoji"),
+                createdAt: MESSAGE_CREATED_AT,
+                text: '⌛ 18s · 等待首个 token\n\n`const icon = "😀"`',
+              },
+            ],
+          },
+          {
+            id: "progress-emoji",
+            kind: "work",
+            createdAt: MESSAGE_CREATED_AT,
+            entry: {
+              id: "progress-emoji",
+              createdAt: MESSAGE_CREATED_AT,
+              label: "⏳ 正在连接上游",
+              tone: "info",
+            },
+          },
+        ]}
+      />,
+    );
+    expect(markup).not.toContain("⌛");
+    expect(markup).not.toContain("⏳");
+    expect(markup).toContain("18s · 等待首个 token");
+    expect(markup).toContain("正在连接上游");
+    expect(markup).toContain("😀");
+  });
+
   it("shows one expandable history row while the current BYOK tool stays visible", () => {
     const turnId = TurnId.make("turn-running-byok");
     const markup = renderToStaticMarkup(

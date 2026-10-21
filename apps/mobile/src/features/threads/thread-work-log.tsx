@@ -1,4 +1,5 @@
 import * as Haptics from "expo-haptics";
+import { withoutChatEmoji } from "@codework/shared/chatPresentation";
 import { type AppSymbolName, SymbolView } from "../../components/AppSymbol";
 import { LayoutAnimation, Pressable, ScrollView, View } from "react-native";
 import { useState, type ReactNode } from "react";
@@ -146,6 +147,7 @@ export function ThreadWorkLog(props: {
   readonly onCopyRow: (rowId: string, value: string) => void;
   readonly onToggleRow: (rowId: string) => void;
   readonly onOpenCanvas?: (canvas: import("@codework/contracts").CanvasReference) => void;
+  readonly renderTextDetail?: (text: string) => ReactNode;
 }) {
   const pressedBackground = useThemeColor("--color-subtle");
   const rows = visibleWorkLogActivities(props.activities).map((activity) => ({
@@ -173,7 +175,13 @@ export function ThreadWorkLog(props: {
           const canExpand = row.canExpand;
           const canOpenCanvas = row.canvas !== undefined && props.onOpenCanvas !== undefined;
           const fullDetail = expanded ? row.getFullDetail() : null;
-          const displayText = row.detail ? `${row.summary} ${row.detail}` : row.summary;
+          const summary = withoutChatEmoji(row.summary);
+          const detail = row.detail
+            ? row.toolLike
+              ? row.detail
+              : withoutChatEmoji(row.detail)
+            : null;
+          const displayText = detail ? `${summary} ${detail}` : summary;
           const iconIsDestructive = row.icon === "alert" || row.icon === "warning";
 
           return (
@@ -228,10 +236,10 @@ export function ThreadWorkLog(props: {
                         iconIsDestructive && "text-rose-600 dark:text-rose-400",
                       )}
                     >
-                      {row.summary}
+                      {summary}
                     </Text>
-                    {row.detail ? (
-                      <Text className="text-foreground-muted opacity-60"> {row.detail}</Text>
+                    {detail ? (
+                      <Text className="text-foreground-muted opacity-60"> {detail}</Text>
                     ) : null}
                   </Text>
 
@@ -291,12 +299,16 @@ export function ThreadWorkLog(props: {
                     className="max-h-60"
                     contentContainerStyle={{ paddingRight: 8 }}
                   >
-                    <Text
-                      selectable
-                      className="font-mono text-2xs leading-normal text-foreground-muted"
-                    >
-                      {fullDetail}
-                    </Text>
+                    {!row.toolLike && props.renderTextDetail ? (
+                      props.renderTextDetail(fullDetail)
+                    ) : (
+                      <Text
+                        selectable
+                        className="font-mono text-2xs leading-normal text-foreground-muted"
+                      >
+                        {row.toolLike ? fullDetail : withoutChatEmoji(fullDetail)}
+                      </Text>
+                    )}
                   </ScrollView>
                 </View>
               ) : null}

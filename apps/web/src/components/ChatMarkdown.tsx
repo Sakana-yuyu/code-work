@@ -25,6 +25,7 @@ import {
   type AtomCommandResult,
 } from "@codework/client-runtime/state/runtime";
 import { classifyMarkdownImageSource } from "@codework/client-runtime/markdown-images";
+import { withoutChatEmojiInTree } from "@codework/shared/chatPresentation";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import React, {
@@ -253,6 +254,13 @@ type MarkdownHtmlAstNode = {
   children?: MarkdownHtmlAstNode[];
 };
 
+/** 会话正文统一隐藏 emoji：只改显示树，消息原文、链接地址与代码保持原样。 */
+function rehypeHideChatEmoji() {
+  return withoutChatEmojiInTree;
+}
+
+const CHAT_TEXT_REHYPE_PLUGINS = [rehypeHideChatEmoji];
+
 /** Preserve Windows drive paths through the protocol allowlist in rehype-sanitize. */
 function rehypeNormalizeWindowsImageSrc() {
   return (tree: MarkdownHtmlAstNode) => {
@@ -312,6 +320,7 @@ const CHAT_MARKDOWN_REHYPE_PLUGINS = [
   rehypeRaw,
   rehypeNormalizeWindowsImageSrc,
   [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
+  rehypeHideChatEmoji,
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
 /** GitHub's own five alert kinds, in its colors: the glyph names the urgency, the title says it. */
@@ -2284,7 +2293,7 @@ function ChatMarkdown({
       <MarkdownRendererContext.Provider value={markdownComponents}>
         <ReactMarkdown
           remarkPlugins={remarkPlugins}
-          rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : undefined}
+          rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : CHAT_TEXT_REHYPE_PLUGINS}
           skipHtml={false}
           components={STABLE_MARKDOWN_COMPONENTS}
           urlTransform={markdownUrlTransform}

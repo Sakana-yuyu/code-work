@@ -52,6 +52,10 @@ export type MarkdownImageRenderer = (image: MarkdownImageRequest) => import("rea
 
 export interface SelectableMarkdownTextProps {
   readonly markdown: string;
+  /** 显示层转换，不修改 Markdown 原文和代码复制来源。 */
+  readonly transformDocument?: (
+    document: import("react-native-nitro-markdown/headless").MarkdownNode,
+  ) => import("react-native-nitro-markdown/headless").MarkdownNode;
   readonly textStyle: NativeMarkdownTextStyle;
   readonly highlightCode: MarkdownCodeHighlighter;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;
