@@ -18,7 +18,7 @@ import type {
   ServerSettings as ServerSettingsContract,
 } from "@codework/contracts";
 import * as Effect from "effect/Effect";
-import { HttpClient } from "effect/unstable/http";
+import { HttpClient } from "effect/http";
 
 import * as ServerSettings from "../../serverSettings.ts";
 import { publicSupplierCatalog } from "./SupplierCatalogTransport.ts";

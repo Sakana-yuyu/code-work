@@ -56,7 +56,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { t } from "~/i18n";
 import { byokEnvironment } from "../../state/server";
 import { useByokBalanceDashboards } from "../../state/byokBalance";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { useAtomCommand } from "../../state/use-atom-command";
 
 /**

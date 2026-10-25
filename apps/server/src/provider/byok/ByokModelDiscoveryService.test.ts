@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import * as ServerSettings from "../../serverSettings.ts";
 import { make, type ByokModelDiscoveryService } from "./ByokModelDiscoveryService.ts";

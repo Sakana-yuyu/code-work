@@ -30,7 +30,7 @@ import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { type HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
+import { type HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 import type { ByokModelAdapter, ByokSettings } from "@codework/contracts";
 
