@@ -62,6 +62,15 @@ describe("Struct", () => {
       void [type, encoded, iso]
     })
 
+    it("simplifies readonly & required make input", () => {
+      const schema = Schema.Struct({ a: Schema.String, b: Schema.Number })
+
+      // @ts-expect-error Type '{ readonly a: string; readonly b: number; }'
+      const makeIn: never = null as unknown as Schema.Struct.MakeIn<typeof schema.fields>
+
+      void makeIn
+    })
+
     it("readonly & optionalKey field", () => {
       const schema = Schema.Struct({
         a: Schema.optionalKey(Schema.String)
@@ -678,6 +687,27 @@ describe("Struct", () => {
 })
 
 describe("StructWithRest", () => {
+  it("requires an object-shaped encoded base", () => {
+    const base = Schema.Record(Schema.Literals(["bash", "sh"]), Schema.NonEmptyString)
+    const records = [Schema.Record(Schema.NonEmptyString, Schema.NonEmptyString)] as const
+    const jsonBase = Schema.fromJsonString(base, { space: 2 })
+
+    expect(Schema.StructWithRest).type.toBeCallableWith(base, records)
+    expect(Schema.StructWithRest).type.toBeCallableWith(base, [])
+    expect(Schema.StructWithRest).type.not.toBeCallableWith(jsonBase, records)
+    expect(Schema.StructWithRest).type.not.toBeCallableWith(jsonBase, [])
+
+    const schema = Schema.fromJsonString(Schema.StructWithRest(base, records), { space: 2 })
+    expect(Schema.revealCodec(schema)).type.toBe<
+      Schema.Codec<
+        { readonly bash: string; readonly sh: string; readonly [x: string]: string },
+        string,
+        never,
+        never
+      >
+    >()
+  })
+
   it("Record(String, Number)", async () => {
     const schema = Schema.StructWithRest(
       Schema.Struct({ a: Schema.Number }),

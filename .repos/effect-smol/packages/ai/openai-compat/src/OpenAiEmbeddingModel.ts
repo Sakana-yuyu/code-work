@@ -5,22 +5,25 @@
  * values, supports scoped request configuration overrides, and checks that the
  * provider returns one numeric vector for each requested input.
  *
+ * @stability unstable
  * @since 4.0.0
  */
+import * as AiError from "effect/ai/AiError"
+import * as EmbeddingModel from "effect/ai/EmbeddingModel"
+import * as AiModel from "effect/ai/Model"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import { dual } from "effect/Function"
 import * as Layer from "effect/Layer"
 import type { Simplify } from "effect/Types"
-import * as AiError from "effect/unstable/ai/AiError"
-import * as EmbeddingModel from "effect/unstable/ai/EmbeddingModel"
-import * as AiModel from "effect/unstable/ai/Model"
 import type { CreateEmbedding200, CreateEmbeddingRequestJson } from "./OpenAiClient.ts"
 import { OpenAiClient } from "./OpenAiClient.ts"
+import { OpenAiConfig } from "./OpenAiConfig.ts"
 
 /**
  * A model identifier accepted by an OpenAI-compatible embeddings endpoint.
  *
+ * @stability unstable
  * @category models
  * @since 4.0.0
  */
@@ -46,7 +49,8 @@ type ModelConfig = Omit<ConfigOptions, "model"> & { readonly [x: string]: unknow
  *
  * @see {@link withConfigOverride} for scoping embedding request overrides
  *
- * @category context
+ * @stability unstable
+ * @category services
  * @since 4.0.0
  */
 export class Config extends Context.Service<
@@ -65,6 +69,7 @@ export class Config extends Context.Service<
  * @see {@link layer} for providing only the embedding model service
  * @see {@link withConfigOverride} for scoped request configuration overrides
  *
+ * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
@@ -104,6 +109,10 @@ export const model = (
  *
  * **Gotchas**
  *
+ * Concurrent `embed` calls share a request when their `Config` and
+ * `OpenAiConfig` values are equal. Other per-call context, such as
+ * `FetchHttpClient.RequestInit`, takes the first caller's value for the batch.
+ *
  * Provider responses must contain one numeric vector for every requested input
  * with unique, in-range `index` values; otherwise embedding operations fail with
  * `AiError.InvalidOutputError`.
@@ -112,21 +121,22 @@ export const model = (
  * @see {@link layer} for providing the service as a `Layer`
  * @see {@link withConfigOverride} for scoping embedding request overrides
  *
+ * @stability unstable
  * @category constructors
  * @since 4.0.0
  */
 export const make = Effect.fnUntraced(function*({ model, config: providerConfig }: {
   readonly model: string
   readonly config?: ModelConfig | undefined
-}): Effect.fn.Return<EmbeddingModel.Service, never, OpenAiClient> {
+}): Effect.fn.Return<EmbeddingModel.EmbeddingModel, never, OpenAiClient> {
   const client = yield* OpenAiClient
 
-  const makeConfig = Effect.gen(function*() {
-    const services = yield* Effect.context<never>()
-    return { model, ...providerConfig, ...services.mapUnsafe.get(Config.key) }
-  })
+  const makeConfig = Effect.contextWith((services: Context.Context<never>) =>
+    Effect.succeed({ model, ...providerConfig, ...Context.getOrUndefined(services, Config) })
+  )
 
   return yield* EmbeddingModel.make({
+    batchKey: (context) => [Context.getOrUndefined(context, Config), Context.getOrUndefined(context, OpenAiConfig)],
     embedMany: Effect.fnUntraced(function*({ inputs }) {
       const config = yield* makeConfig
       const response = yield* client.createEmbedding({ ...config, input: inputs })
@@ -147,6 +157,7 @@ export const make = Effect.fnUntraced(function*({ model, config: providerConfig 
  * @see {@link make} for constructing the embedding model service effectfully
  * @see {@link model} for creating an `AiModel` with configured dimensions
  *
+ * @stability unstable
  * @category layers
  * @since 4.0.0
  */
@@ -173,6 +184,7 @@ export const layer = (options: {
  *
  * @see {@link Config} for available OpenAI-compatible embedding request configuration fields
  *
+ * @stability unstable
  * @category configuration
  * @since 4.0.0
  */

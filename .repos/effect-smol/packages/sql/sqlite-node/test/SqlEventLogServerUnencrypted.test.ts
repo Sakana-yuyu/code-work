@@ -1,18 +1,20 @@
 import { SqliteClient } from "@effect/sql-sqlite-node"
 import { assert, describe, it } from "@effect/vitest"
 import { Effect, Layer, Redacted } from "effect"
-import * as SqlEventLogServerUnencryptedStorageTest from "effect-test/unstable/eventlog/SqlEventLogServerUnencryptedStorageTest"
-import type * as EventJournal from "effect/unstable/eventlog/EventJournal"
-import * as EventLog from "effect/unstable/eventlog/EventLog"
-import * as EventLogEncryption from "effect/unstable/eventlog/EventLogEncryption"
-import * as EventLogMessage from "effect/unstable/eventlog/EventLogMessage"
-import * as EventLogServerUnencrypted from "effect/unstable/eventlog/EventLogServerUnencrypted"
-import * as EventLogSessionAuth from "effect/unstable/eventlog/EventLogSessionAuth"
-import { makeGetIdentityRootSecretMaterial } from "effect/unstable/eventlog/internal/identityRootSecretDerivation"
-import * as SqlEventLogServerUnencrypted from "effect/unstable/eventlog/SqlEventLogServerUnencrypted"
-import { Reactivity } from "effect/unstable/reactivity"
-import * as RpcTest from "effect/unstable/rpc/RpcTest"
-import * as SqlClient from "effect/unstable/sql/SqlClient"
+import * as RegressionTest from "effect-test/eventlog/EventLogServerUnencryptedRegressionTest"
+import * as SqlEventLogServerUnencryptedStorageTest from "effect-test/eventlog/SqlEventLogServerUnencryptedStorageTest"
+import * as EventJournal from "effect/eventlog/EventJournal"
+import * as EventLog from "effect/eventlog/EventLog"
+import * as EventLogEncryption from "effect/eventlog/EventLogEncryption"
+import * as EventLogMessage from "effect/eventlog/EventLogMessage"
+import * as EventLogServerUnencrypted from "effect/eventlog/EventLogServerUnencrypted"
+import * as EventLogSessionAuth from "effect/eventlog/EventLogSessionAuth"
+import { makeGetIdentityRootSecretMaterial } from "effect/eventlog/internal/identityRootSecretDerivation"
+import * as SqlEventLogServerUnencrypted from "effect/eventlog/SqlEventLogServerUnencrypted"
+import { Reactivity } from "effect/reactivity"
+import * as RpcTest from "effect/rpc/RpcTest"
+import * as SqlClient from "effect/sql/SqlClient"
+import * as Statement from "effect/sql/Statement"
 
 SqlEventLogServerUnencryptedStorageTest.suite(
   "sql-sqlite-node",
@@ -21,7 +23,24 @@ SqlEventLogServerUnencryptedStorageTest.suite(
   })
 )
 
+RegressionTest.suite(
+  "SQLite",
+  SqlEventLogServerUnencrypted.layerStorage().pipe(
+    Layer.provide(SqliteClient.layer({ filename: ":memory:" })),
+    Layer.provide(Reactivity.layer)
+  )
+)
+
 const getIdentityRootSecretMaterial = makeGetIdentityRootSecretMaterial(globalThis.crypto)
+const storeId = EventLogMessage.StoreId.make("store-a")
+
+const makeEntry = (value: number) =>
+  new EventJournal.Entry({
+    id: EventJournal.makeEntryIdUnsafe(),
+    event: "UserCreated",
+    primaryKey: `user-${value}`,
+    payload: new Uint8Array([value])
+  }, { disableChecks: true })
 
 const makeAuthenticateRequest = Effect.fnUntraced(function*(options: {
   readonly identity: EventLog.Identity["Service"]
@@ -45,6 +64,54 @@ const makeAuthenticateRequest = Effect.fnUntraced(function*(options: {
 })
 
 describe("SqlEventLogServerUnencrypted (sql-sqlite-node)", () => {
+  it.effect("forbids writing entries for another identity", () =>
+    Effect.gen(function*() {
+      const sql = yield* SqliteClient.make({ filename: ":memory:" })
+      const storage = yield* SqlEventLogServerUnencrypted.makeStorage().pipe(
+        Effect.provideService(SqlClient.SqlClient, sql),
+        Effect.orDie
+      )
+      const rpcClient = yield* RpcTest.makeClient(EventLogMessage.EventLogRemoteRpcs).pipe(
+        Effect.provide(
+          EventLogServerUnencrypted.layerRpcHandlers.pipe(
+            Layer.provideMerge(EventLog.layerRegistry),
+            Layer.provide(Layer.succeed(EventLogServerUnencrypted.Storage, storage)),
+            Layer.provide(Layer.succeed(EventLogServerUnencrypted.StoreMapping, {
+              resolve: ({ storeId }) => Effect.succeed(storeId),
+              hasStore: () => Effect.succeed(true)
+            })),
+            Layer.provide(Layer.succeed(EventLogServerUnencrypted.EventLogServerAuthorization, {
+              authorizeWrite: () => Effect.void,
+              authorizeRead: () => Effect.void,
+              authorizeIdentity: () => Effect.void
+            }))
+          )
+        )
+      )
+      const identityA = yield* EventLog.makeIdentity
+      const identityB = yield* EventLog.makeIdentity
+      const hello = yield* rpcClient["EventLog.Hello"]()
+      yield* rpcClient["EventLog.Authenticate"](
+        yield* makeAuthenticateRequest({
+          identity: identityA,
+          challenge: hello.challenge,
+          remoteId: hello.remoteId
+        })
+      )
+      const data = yield* new EventLogMessage.WriteEntriesUnencrypted({
+        publicKey: identityB.publicKey,
+        storeId,
+        entries: [makeEntry(1)]
+      }).encoded
+
+      const error = yield* rpcClient["EventLog.WriteSingle"]({ data }).pipe(Effect.flip)
+
+      assert.instanceOf(error, EventLogMessage.EventLogProtocolError)
+      assert.strictEqual(error.code, "Forbidden")
+      const written = yield* storage.write(storeId, [makeEntry(2)])
+      assert.deepStrictEqual(written.map((entry) => entry.remoteSequence), [1])
+    }).pipe(Effect.provide([Reactivity.layer, EventLogEncryption.layerSubtle])))
+
   it.effect("rejects session-auth rebinding for an existing publicKey", () =>
     Effect.gen(function*() {
       const sql = yield* SqliteClient.make({ filename: ":memory:" })
@@ -107,4 +174,38 @@ describe("SqlEventLogServerUnencrypted (sql-sqlite-node)", () => {
       assert.strictEqual(error.code, "Forbidden")
       assert.strictEqual(error.message, "Session auth signature verification failed")
     }).pipe(Effect.provide([Reactivity.layer, EventLogEncryption.layerSubtle])))
+
+  it.effect("reads batch history through id and primary key lookups", () => {
+    const statements: Array<readonly [string, ReadonlyArray<unknown>]> = []
+    return Effect.gen(function*() {
+      const sql = yield* SqlClient.SqlClient
+      const { write } = yield* RegressionTest.makeClient("plan")
+      yield* write([yield* RegressionTest.makeEntry(2_000, "a"), yield* RegressionTest.makeEntry(3_000, "b")])
+      statements.length = 0
+      yield* write([yield* RegressionTest.makeEntry(1_000, "a")])
+
+      const reads = statements.filter(([text]) => /^\s*SELECT\b/i.test(text) && text.includes(`"effect_events"`))
+      assert.isNotEmpty(reads)
+      for (const [text, params] of reads) {
+        const plan = yield* sql.unsafe<{ readonly detail: string }>(`EXPLAIN QUERY PLAN ${text}`, params)
+        for (const { detail } of plan.filter(({ detail }) => detail.includes("effect_events"))) {
+          // A range on entry_id alone reads every entry after the batch.
+          assert.match(detail, /^SEARCH effect_events USING (COVERING )?INDEX \S+ \(.*\b(entry_id|primary_key)=\?/)
+        }
+      }
+    }).pipe(
+      Effect.provide(
+        SqlEventLogServerUnencrypted.layerStorage().pipe(
+          Layer.provideMerge(SqliteClient.layer({ filename: ":memory:" })),
+          Layer.provide(Reactivity.layer)
+        )
+      ),
+      Effect.provide(EventLogEncryption.layerSubtle),
+      Effect.provideService(Statement.CurrentTransformer, (statement) =>
+        Effect.sync(() => {
+          statements.push(statement.compile())
+          return statement
+        }))
+    )
+  })
 })

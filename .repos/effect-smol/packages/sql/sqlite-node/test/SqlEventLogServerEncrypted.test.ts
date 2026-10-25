@@ -1,18 +1,28 @@
 import { SqliteClient } from "@effect/sql-sqlite-node"
 import { assert, describe, it } from "@effect/vitest"
 import { Effect, Layer, Queue, Redacted, Stream } from "effect"
-import * as EventJournal from "effect/unstable/eventlog/EventJournal"
-import * as EventLog from "effect/unstable/eventlog/EventLog"
-import * as EventLogEncryption from "effect/unstable/eventlog/EventLogEncryption"
-import * as EventLogMessage from "effect/unstable/eventlog/EventLogMessage"
-import type { StoreId } from "effect/unstable/eventlog/EventLogMessage"
-import * as EventLogServer from "effect/unstable/eventlog/EventLogServerEncrypted"
-import * as EventLogSessionAuth from "effect/unstable/eventlog/EventLogSessionAuth"
-import { makeGetIdentityRootSecretMaterial } from "effect/unstable/eventlog/internal/identityRootSecretDerivation"
-import * as SqlEventLogServer from "effect/unstable/eventlog/SqlEventLogServerEncrypted"
-import { Reactivity } from "effect/unstable/reactivity"
-import * as RpcTest from "effect/unstable/rpc/RpcTest"
-import * as SqlClient from "effect/unstable/sql/SqlClient"
+import * as EncryptedTest from "effect-test/eventlog/EventLogServerEncryptedTest"
+import * as EventJournal from "effect/eventlog/EventJournal"
+import * as EventLog from "effect/eventlog/EventLog"
+import * as EventLogEncryption from "effect/eventlog/EventLogEncryption"
+import * as EventLogMessage from "effect/eventlog/EventLogMessage"
+import type { StoreId } from "effect/eventlog/EventLogMessage"
+import * as EventLogServer from "effect/eventlog/EventLogServerEncrypted"
+import * as EventLogSessionAuth from "effect/eventlog/EventLogSessionAuth"
+import { makeGetIdentityRootSecretMaterial } from "effect/eventlog/internal/identityRootSecretDerivation"
+import * as SqlEventLogServer from "effect/eventlog/SqlEventLogServerEncrypted"
+import { Reactivity } from "effect/reactivity"
+import * as RpcTest from "effect/rpc/RpcTest"
+import * as SqlClient from "effect/sql/SqlClient"
+
+EncryptedTest.suite(
+  "SQLite",
+  SqlEventLogServer.layerStorage().pipe(
+    Layer.provide(SqliteClient.layer({ filename: ":memory:" })),
+    Layer.provide(Reactivity.layer),
+    Layer.provide(EventLogEncryption.layerSubtle)
+  )
+)
 
 const storeIdA = "store-a" as StoreId
 const storeIdB = "store-b" as StoreId
@@ -25,28 +35,24 @@ const makeEntry = (value: number) =>
     payload: new Uint8Array([value])
   }, { disableChecks: true })
 
-const persistEntries = (
+const encodeWrite = Effect.fnUntraced(function*(
   encryption: EventLogEncryption.EventLogEncryption["Service"],
   identity: EventLog.Identity["Service"],
-  entries: ReadonlyArray<EventJournal.Entry>
-) =>
-  Effect.gen(function*() {
-    const encrypted = yield* encryption.encrypt(identity, entries)
-    return encrypted.encryptedEntries.map((encryptedEntry, index) =>
-      new EventLogServer.PersistedEntry({
-        entryId: entries[index].id,
-        iv: encrypted.iv,
-        encryptedEntry
-      })
-    )
-  })
+  entry: EventJournal.Entry
+) {
+  const batches = yield* encryption.encrypt(identity, storeIdA, [entry])
+  return yield* new EventLogMessage.WriteEntries({
+    publicKey: identity.publicKey,
+    storeId: storeIdA,
+    batches
+  }).encoded
+})
 
-const makePersistedEntry = (index: number, entryId = EventJournal.makeEntryIdUnsafe()) =>
-  new EventLogServer.PersistedEntry({
-    entryId,
-    iv: new Uint8Array(12),
-    encryptedEntry: Uint8Array.of(index)
-  })
+const makeBatch = (index: number, entryId = EventJournal.makeEntryIdUnsafe()): EventLogEncryption.EncryptedBatch => ({
+  entryIds: [entryId],
+  iv: new Uint8Array(12),
+  encryptedBatch: Uint8Array.of(index)
+})
 
 const getIdentityRootSecretMaterial = makeGetIdentityRootSecretMaterial(globalThis.crypto)
 
@@ -71,7 +77,201 @@ const makeAuthenticateRequest = Effect.fnUntraced(function*(options: {
   })
 })
 
+const makeAuthenticatedRpcClient = Effect.fnUntraced(function*(
+  storage: EventLogServer.Storage["Service"],
+  identities: ReadonlyArray<EventLog.Identity["Service"]>
+) {
+  const rpcClient = yield* RpcTest.makeClient(EventLogMessage.EventLogRemoteRpcs).pipe(
+    Effect.provide(
+      EventLogServer.layerRpcHandlers.pipe(
+        Layer.provide(Layer.succeed(EventLogServer.Storage, storage))
+      )
+    )
+  )
+  for (const identity of identities) {
+    const hello = yield* rpcClient["EventLog.Hello"]()
+    yield* rpcClient["EventLog.Authenticate"](
+      yield* makeAuthenticateRequest({
+        identity,
+        challenge: hello.challenge,
+        remoteId: hello.remoteId
+      })
+    )
+  }
+  return rpcClient
+})
+
+const assertForbidden = Effect.fnUntraced(function*<A>(
+  effect: Effect.Effect<A, EventLogMessage.EventLogProtocolError>
+) {
+  const error = yield* Effect.flip(effect)
+  assert.instanceOf(error, EventLogMessage.EventLogProtocolError)
+  assert.strictEqual(error.code, "Forbidden")
+})
+
 describe("SqlEventLogServer", () => {
+  it.effect("forbids reading another identity's changes", () =>
+    Effect.gen(function*() {
+      const sql = yield* SqliteClient.make({ filename: ":memory:" })
+      const storage = yield* SqlEventLogServer.makeStorage().pipe(
+        Effect.provideService(SqlClient.SqlClient, sql)
+      )
+      const encryption = yield* EventLogEncryption.EventLogEncryption
+      const identityA = yield* encryption.generateIdentity
+      const identityB = yield* encryption.generateIdentity
+      const rpcClient = yield* makeAuthenticatedRpcClient(storage, [identityA])
+
+      yield* storage.write(identityB.publicKey, storeIdA, [makeBatch(1)])
+      const error = yield* rpcClient["EventLog.Changes"]({
+        publicKey: identityB.publicKey,
+        storeId: storeIdA,
+        startSequence: 0
+      }).pipe(
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.flip
+      )
+
+      assert.instanceOf(error, EventLogMessage.EventLogProtocolError)
+      assert.strictEqual(error.code, "Forbidden")
+    }).pipe(Effect.provide([Reactivity.layer, EventLogEncryption.layerSubtle])))
+
+  it.effect("forbids writing entries for another identity", () =>
+    Effect.gen(function*() {
+      const sql = yield* SqliteClient.make({ filename: ":memory:" })
+      const storage = yield* SqlEventLogServer.makeStorage().pipe(
+        Effect.provideService(SqlClient.SqlClient, sql)
+      )
+      const encryption = yield* EventLogEncryption.EventLogEncryption
+      const identityA = yield* encryption.generateIdentity
+      const identityB = yield* encryption.generateIdentity
+      const rpcClient = yield* makeAuthenticatedRpcClient(storage, [identityA])
+      const entry = makeEntry(1)
+      const data = yield* encodeWrite(encryption, identityB, entry)
+
+      const error = yield* rpcClient["EventLog.WriteSingle"]({ data }).pipe(Effect.flip)
+
+      assert.instanceOf(error, EventLogMessage.EventLogProtocolError)
+      assert.strictEqual(error.code, "Forbidden")
+      const written = yield* storage.write(identityB.publicKey, storeIdA, [makeBatch(2)])
+      assert.deepStrictEqual(written.map((entry) => entry.sequence), [1])
+    }).pipe(Effect.provide([Reactivity.layer, EventLogEncryption.layerSubtle])))
+
+  it.effect("forbids writing chunked entries for another identity", () =>
+    Effect.gen(function*() {
+      const sql = yield* SqliteClient.make({ filename: ":memory:" })
+      const storage = yield* SqlEventLogServer.makeStorage().pipe(
+        Effect.provideService(SqlClient.SqlClient, sql)
+      )
+      const encryption = yield* EventLogEncryption.EventLogEncryption
+      const identityA = yield* encryption.generateIdentity
+      const identityB = yield* encryption.generateIdentity
+      const rpcClient = yield* makeAuthenticatedRpcClient(storage, [identityA])
+      const entry = makeEntry(1)
+      const data = yield* encodeWrite(encryption, identityB, entry)
+      const midpoint = Math.ceil(data.byteLength / 2)
+      const parts = [
+        new EventLogMessage.ChunkedMessage({ id: 1, part: [0, 2], data: data.subarray(0, midpoint) }),
+        new EventLogMessage.ChunkedMessage({ id: 1, part: [1, 2], data: data.subarray(midpoint) })
+      ] as const
+
+      yield* rpcClient["EventLog.WriteChunked"](parts[0])
+      const error = yield* rpcClient["EventLog.WriteChunked"](parts[1]).pipe(Effect.flip)
+
+      assert.instanceOf(error, EventLogMessage.EventLogProtocolError)
+      assert.strictEqual(error.code, "Forbidden")
+      const written = yield* storage.write(identityB.publicKey, storeIdA, [makeBatch(2)])
+      assert.deepStrictEqual(written.map((entry) => entry.sequence), [1])
+    }).pipe(Effect.provide([Reactivity.layer, EventLogEncryption.layerSubtle])))
+
+  it.effect("isolates authenticated identities between connections", () =>
+    Effect.gen(function*() {
+      const sql = yield* SqliteClient.make({ filename: ":memory:" })
+      const storage = yield* SqlEventLogServer.makeStorage().pipe(
+        Effect.provideService(SqlClient.SqlClient, sql)
+      )
+      const encryption = yield* EventLogEncryption.EventLogEncryption
+      const identityA = yield* encryption.generateIdentity
+      const identityB = yield* encryption.generateIdentity
+      const handlers = yield* Layer.build(
+        EventLogServer.layerRpcHandlers.pipe(
+          Layer.provide(Layer.succeed(EventLogServer.Storage, storage))
+        )
+      )
+      const rpcClientA = yield* RpcTest.makeClient(EventLogMessage.EventLogRemoteRpcs).pipe(
+        Effect.provide(handlers)
+      )
+      const rpcClientB = yield* RpcTest.makeClient(EventLogMessage.EventLogRemoteRpcs).pipe(
+        Effect.provide(handlers)
+      )
+      const helloA = yield* rpcClientA["EventLog.Hello"]()
+      yield* rpcClientA["EventLog.Authenticate"](
+        yield* makeAuthenticateRequest({
+          identity: identityA,
+          challenge: helloA.challenge,
+          remoteId: helloA.remoteId
+        })
+      )
+      const helloB = yield* rpcClientB["EventLog.Hello"]()
+      yield* rpcClientB["EventLog.Authenticate"](
+        yield* makeAuthenticateRequest({
+          identity: identityB,
+          challenge: helloB.challenge,
+          remoteId: helloB.remoteId
+        })
+      )
+      const data = yield* encodeWrite(encryption, identityB, makeEntry(1))
+      const midpoint = Math.ceil(data.byteLength / 2)
+      const parts = [
+        new EventLogMessage.ChunkedMessage({ id: 1, part: [0, 2], data: data.subarray(0, midpoint) }),
+        new EventLogMessage.ChunkedMessage({ id: 1, part: [1, 2], data: data.subarray(midpoint) })
+      ] as const
+
+      yield* storage.write(identityB.publicKey, storeIdA, [makeBatch(1)])
+      yield* assertForbidden(
+        rpcClientA["EventLog.Changes"]({
+          publicKey: identityB.publicKey,
+          storeId: storeIdA,
+          startSequence: 0
+        }).pipe(Stream.take(1), Stream.runCollect)
+      )
+      yield* assertForbidden(rpcClientA["EventLog.WriteSingle"]({ data }))
+      yield* rpcClientA["EventLog.WriteChunked"](parts[0])
+      yield* assertForbidden(rpcClientA["EventLog.WriteChunked"](parts[1]))
+    }).pipe(Effect.provide([Reactivity.layer, EventLogEncryption.layerSubtle])))
+
+  it.effect("supports multiple authenticated identities on one connection", () =>
+    Effect.gen(function*() {
+      const sql = yield* SqliteClient.make({ filename: ":memory:" })
+      const storage = yield* SqlEventLogServer.makeStorage().pipe(
+        Effect.provideService(SqlClient.SqlClient, sql)
+      )
+      const encryption = yield* EventLogEncryption.EventLogEncryption
+      const identityA = yield* encryption.generateIdentity
+      const identityB = yield* encryption.generateIdentity
+      const rpcClient = yield* makeAuthenticatedRpcClient(storage, [identityA, identityB])
+      const entryA = makeEntry(1)
+      const entryB = makeEntry(2)
+      const dataA = yield* encodeWrite(encryption, identityA, entryA)
+      const dataB = yield* encodeWrite(encryption, identityB, entryB)
+
+      yield* rpcClient["EventLog.WriteSingle"]({ data: dataA })
+      yield* rpcClient["EventLog.WriteSingle"]({ data: dataB })
+      const changesA = yield* rpcClient["EventLog.Changes"]({
+        publicKey: identityA.publicKey,
+        storeId: storeIdA,
+        startSequence: 0
+      }).pipe(Stream.take(1), Stream.runCollect)
+      const changesB = yield* rpcClient["EventLog.Changes"]({
+        publicKey: identityB.publicKey,
+        storeId: storeIdA,
+        startSequence: 0
+      }).pipe(Stream.take(1), Stream.runCollect)
+
+      assert.strictEqual(changesA.length, 1)
+      assert.strictEqual(changesB.length, 1)
+    }).pipe(Effect.provide([Reactivity.layer, EventLogEncryption.layerSubtle])))
+
   it.effect("persists remote id across storage instances", () =>
     Effect.gen(function*() {
       const sql = yield* SqliteClient.make({ filename: ":memory:" })
@@ -146,23 +346,67 @@ describe("SqlEventLogServer", () => {
       const encryption = yield* EventLogEncryption.EventLogEncryption
       const identity = yield* encryption.generateIdentity
       const entries = [makeEntry(1), makeEntry(2)]
-      const persisted = yield* persistEntries(encryption, identity, entries)
+      const persisted = yield* encryption.encrypt(identity, storeIdA, entries)
       const written = yield* storage.write(identity.publicKey, storeIdA, persisted)
-      assert.deepStrictEqual(written.map((entry) => entry.sequence), [1, 2])
+      assert.deepStrictEqual(written.map((batch) => batch.sequence), [1])
+      assert.deepStrictEqual(
+        (yield* encryption.decrypt(identity, storeIdA, written)).map((entry) => entry.remoteSequence),
+        [1, 2]
+      )
 
       const changes = yield* storage.changes(identity.publicKey, storeIdA, 0).pipe(
         Stream.toQueue({ capacity: "unbounded" })
       )
       const taken = yield* Queue.takeAll(changes)
-      assert.deepStrictEqual(taken.map((entry) => entry.sequence), [1, 2])
+      assert.deepStrictEqual(
+        (yield* encryption.decrypt(identity, storeIdA, taken)).map((entry) => entry.remoteSequence),
+        [1, 2]
+      )
 
       const nextEntry = makeEntry(3)
-      const nextPersisted = yield* persistEntries(encryption, identity, [nextEntry])
+      const nextPersisted = yield* encryption.encrypt(identity, storeIdA, [nextEntry])
       const updated = yield* storage.write(identity.publicKey, storeIdA, nextPersisted)
       assert.deepStrictEqual(updated.map((entry) => entry.sequence), [3])
 
       const next = yield* Queue.take(changes)
       assert.strictEqual(next.sequence, 3)
+    }).pipe(Effect.provide([Reactivity.layer, EventLogEncryption.layerSubtle])))
+
+  it.effect("publishes each entry only once when the same batch is written twice", () =>
+    Effect.gen(function*() {
+      const sql = yield* SqliteClient.make({ filename: ":memory:" })
+      const storage = yield* SqlEventLogServer.makeStorage().pipe(
+        Effect.provideService(SqlClient.SqlClient, sql)
+      )
+      const entries = [makeBatch(1), makeBatch(2)]
+      const written = yield* storage.write("client-1", storeIdA, entries)
+      assert.deepStrictEqual(written.map((entry) => entry.sequence), [1, 2])
+
+      const changes = yield* storage.changes("client-1", storeIdA, 0).pipe(
+        Stream.toQueue({ capacity: "unbounded" })
+      )
+      assert.deepStrictEqual([yield* Queue.take(changes), yield* Queue.take(changes)], written)
+
+      yield* storage.write("client-1", storeIdA, entries)
+      assert.sameDeepMembers(
+        [...yield* storage.entrySequences("client-1", storeIdA, [entries[1].entryIds[0], entries[0].entryIds[0]])],
+        [
+          { entryId: entries[1].entryIds[0], sequence: 2 },
+          { entryId: entries[0].entryIds[0], sequence: 1 }
+        ]
+      )
+      const next = yield* storage.write("client-1", storeIdA, [makeBatch(3)])
+      // A fresh entry marks the end of the replay without a sleep or timeout.
+      const published = yield* Stream.fromQueue(changes).pipe(
+        Stream.takeUntil((entry) => entry.sequence === next[0].sequence),
+        Stream.runCollect
+      )
+      const backlog = yield* storage.changes("client-1", storeIdA, 0).pipe(
+        Stream.take(3),
+        Stream.runCollect
+      )
+      assert.deepStrictEqual(backlog, [...written, ...next])
+      assert.deepStrictEqual(published, next)
     }).pipe(Effect.provide([Reactivity.layer, EventLogEncryption.layerSubtle])))
 
   it.effect("isolates same publicKey across storeIds", () =>
@@ -172,8 +416,8 @@ describe("SqlEventLogServer", () => {
         Effect.provideService(SqlClient.SqlClient, sql)
       )
 
-      yield* storage.write("client-1", storeIdA, [makePersistedEntry(1)])
-      yield* storage.write("client-1", storeIdB, [makePersistedEntry(2)])
+      yield* storage.write("client-1", storeIdA, [makeBatch(1)])
+      yield* storage.write("client-1", storeIdB, [makeBatch(2)])
 
       const storeAEntries = yield* storage.changes("client-1", storeIdA, 0).pipe(
         Stream.take(1),
@@ -195,8 +439,8 @@ describe("SqlEventLogServer", () => {
         Effect.provideService(SqlClient.SqlClient, sql)
       )
 
-      yield* storage.write("client-1", storeIdA, [makePersistedEntry(1)])
-      yield* storage.write("client-2", storeIdA, [makePersistedEntry(2)])
+      yield* storage.write("client-1", storeIdA, [makeBatch(1)])
+      yield* storage.write("client-2", storeIdA, [makeBatch(2)])
 
       const clientOneEntries = yield* storage.changes("client-1", storeIdA, 0).pipe(
         Stream.take(1),
@@ -219,10 +463,10 @@ describe("SqlEventLogServer", () => {
       )
       const sharedEntryId = EventJournal.makeEntryIdUnsafe()
 
-      yield* storage.write("client-1", storeIdA, [makePersistedEntry(1, sharedEntryId)])
-      yield* storage.write("client-1", storeIdA, [makePersistedEntry(2, sharedEntryId)])
-      yield* storage.write("client-1", storeIdB, [makePersistedEntry(3, sharedEntryId)])
-      yield* storage.write("client-2", storeIdA, [makePersistedEntry(4, sharedEntryId)])
+      yield* storage.write("client-1", storeIdA, [makeBatch(1, sharedEntryId)])
+      yield* storage.write("client-1", storeIdA, [makeBatch(2, sharedEntryId)])
+      yield* storage.write("client-1", storeIdB, [makeBatch(3, sharedEntryId)])
+      yield* storage.write("client-2", storeIdA, [makeBatch(4, sharedEntryId)])
 
       assert.deepStrictEqual(
         (yield* storage.changes("client-1", storeIdA, 0).pipe(

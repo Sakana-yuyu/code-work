@@ -7,6 +7,17 @@ export class ContainerError extends Data.TaggedError("ContainerError")<{
   cause: unknown
 }> {}
 
+const makeMysqlContainer = () =>
+  new MySqlContainer("mysql:lts").withHealthCheck({
+    test: [
+      "CMD-SHELL",
+      "MYSQL_PWD=\"$MYSQL_ROOT_PASSWORD\" mysqladmin ping --protocol TCP --host 127.0.0.1 --user root --silent"
+    ],
+    interval: 250,
+    timeout: 1000,
+    retries: 1000
+  })
+
 export class MysqlContainer extends Context.Service<
   MysqlContainer,
   StartedMySqlContainer
@@ -14,7 +25,7 @@ export class MysqlContainer extends Context.Service<
   static readonly layer = Layer.effect(this)(
     Effect.acquireRelease(
       Effect.tryPromise({
-        try: () => new MySqlContainer("mysql:lts").start(),
+        try: () => makeMysqlContainer().start(),
         catch: (cause) => new ContainerError({ cause })
       }),
       (container) => Effect.promise(() => container.stop())
@@ -32,7 +43,17 @@ export class MysqlContainer extends Context.Service<
 
   static layerClient = this.client.pipe(Layer.provide(this.layer))
 
-  static layerClientWithTransforms = Layer.unwrap(
+  // Root can inspect other connections' lock waits.
+  static layerClientRoot = Layer.unwrap(
+    Effect.gen(function*() {
+      const container = yield* MysqlContainer
+      return MysqlClient.layer({
+        url: Redacted.make(container.getConnectionUri(true))
+      })
+    })
+  ).pipe(Layer.provide(this.layer))
+
+  static clientWithTransforms = Layer.unwrap(
     Effect.gen(function*() {
       const container = yield* MysqlContainer
       return MysqlClient.layer({
@@ -41,7 +62,7 @@ export class MysqlContainer extends Context.Service<
         transformResultNames: String.snakeToCamel
       })
     })
-  ).pipe(Layer.provide(this.layer))
+  )
 
   static layerVitest = Layer.effect(
     this,

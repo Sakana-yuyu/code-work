@@ -13,7 +13,7 @@ import {
 import type { Predicate } from "effect"
 import { Array as Arr, Chunk, Equal, Equivalence, Option, Order, Result } from "effect"
 import { identity, pipe } from "effect/Function"
-import { FastCheck as fc } from "effect/testing"
+import * as fc from "fast-check"
 
 const assertTuple = <A, B>(
   actual: [Chunk.Chunk<A>, Chunk.Chunk<B>],
@@ -92,6 +92,10 @@ describe("Chunk", () => {
       pipe(Chunk.make(1, 2, 3, 4, 5), Chunk.chunksOf(1)),
       Chunk.make(Chunk.make(1), Chunk.make(2), Chunk.make(3), Chunk.make(4), Chunk.make(5))
     )
+    assertEquals(
+      pipe(Chunk.make(1, 2, 3), Chunk.chunksOf(1.5)),
+      Chunk.make(Chunk.make(1), Chunk.make(2), Chunk.make(3))
+    )
     assertEquals(pipe(Chunk.make(1, 2, 3, 4, 5), Chunk.chunksOf(5)), Chunk.make(Chunk.make(1, 2, 3, 4, 5)))
     // out of bounds
     assertEquals(
@@ -100,6 +104,10 @@ describe("Chunk", () => {
     )
     assertEquals(
       pipe(Chunk.make(1, 2, 3, 4, 5), Chunk.chunksOf(-1)),
+      Chunk.make(Chunk.make(1), Chunk.make(2), Chunk.make(3), Chunk.make(4), Chunk.make(5))
+    )
+    assertEquals(
+      pipe(Chunk.make(1, 2, 3, 4, 5), Chunk.chunksOf(Number.NaN)),
       Chunk.make(Chunk.make(1), Chunk.make(2), Chunk.make(3), Chunk.make(4), Chunk.make(5))
     )
     assertEquals(pipe(Chunk.make(1, 2, 3, 4, 5), Chunk.chunksOf(10)), Chunk.make(Chunk.make(1, 2, 3, 4, 5)))
@@ -221,6 +229,22 @@ describe("Chunk", () => {
         assertNone(pipe(chunk, Chunk.get(4)))
       })
     })
+
+    describe("Given a singleton Chunk and a fractional index in range", () => {
+      const chunk = Chunk.make(1)
+
+      it("should return the value at the floored index", () => {
+        assertSome(Chunk.get(chunk, 0.5), 1)
+      })
+    })
+
+    describe("Given a non-finite index", () => {
+      it("should return a None", () => {
+        assertNone(Chunk.get(Chunk.empty(), Number.NaN))
+        assertNone(Chunk.get(Chunk.make(1), Number.NaN))
+        assertNone(Chunk.get(Chunk.make(1, 2, 3), Number.NaN))
+      })
+    })
   })
 
   describe("getUnsafe", () => {
@@ -322,6 +346,20 @@ describe("Chunk", () => {
       })
     })
 
+    describe("Given a singleton Chunk and a fractional index in range", () => {
+      const chunk = Chunk.make(1)
+
+      it("should return the value at the floored index", () => {
+        strictEqual(Chunk.getUnsafe(chunk, 0.5), 1)
+      })
+    })
+
+    describe("Given a non-finite index", () => {
+      it("should throw", () => {
+        throws(() => Chunk.getUnsafe(Chunk.make(1, 2), Number.NaN))
+      })
+    })
+
     describe("Given an array Chunk and an index in bounds", () => {
       const chunk = pipe(Chunk.fromArrayUnsafe([1, 2, 3]))
       const index = 1
@@ -385,6 +423,25 @@ describe("Chunk", () => {
         }
       )
     )
+  })
+
+  describe("count normalization", () => {
+    it("normalizes NaN to a zero count", () => {
+      const chunk = Chunk.make(1, 2, 3)
+      assertEquals(Chunk.take(chunk, Number.NaN), Chunk.empty())
+      assertEquals(Chunk.drop(chunk, Number.NaN), chunk)
+      assertEquals(Chunk.takeRight(chunk, Number.NaN), Chunk.empty())
+      assertEquals(Chunk.dropRight(chunk, Number.NaN), chunk)
+      assertTuple(Chunk.splitAt(chunk, Number.NaN), [Chunk.empty(), chunk])
+    })
+
+    it("produces valid chunks for fractional counts", () => {
+      const chunk = Chunk.make(1, 2, 3)
+      deepStrictEqual(Chunk.toArray(Chunk.take(chunk, 1.5)), [1])
+      deepStrictEqual(Chunk.toArray(Chunk.drop(chunk, 1.5)), [2, 3])
+      deepStrictEqual(Chunk.toArray(Chunk.takeRight(chunk, 1.5)), [3])
+      deepStrictEqual(Chunk.toArray(Chunk.dropRight(chunk, 1.5)), [1, 2])
+    })
   })
 
   describe("take", () => {
@@ -510,6 +567,16 @@ describe("Chunk", () => {
   })
 
   describe("concat", () => {
+    it("preserves a sliced chunk when appending after a prefix", () => {
+      const chunk = pipe(
+        Chunk.make(2, 3, 4),
+        Chunk.take(2),
+        Chunk.prependAll(Chunk.of(1)),
+        Chunk.append(5)
+      )
+      deepStrictEqual(Chunk.toArray(chunk), [1, 2, 3, 5])
+    })
+
     describe("Given 2 chunks of the same length", () => {
       const chunk1 = Chunk.fromArrayUnsafe([0, 1])
       const chunk2 = Chunk.fromArrayUnsafe([2, 3])
@@ -641,7 +708,7 @@ describe("Chunk", () => {
     )
     assertTuple(
       Chunk.partition(Chunk.make(1, 3), (n) => n > 2 ? Result.succeed(n) : Result.fail(n)),
-      [Chunk.make(1), Chunk.make(3)]
+      [Chunk.make(3), Chunk.make(1)]
     )
 
     assertTuple(
@@ -653,23 +720,23 @@ describe("Chunk", () => {
     )
     assertTuple(
       Chunk.partition(Chunk.make(1, 2), (n, i) => n + i > 2 ? Result.succeed(n + i) : Result.fail(`negative:${n + i}`)),
-      [Chunk.make("negative:1"), Chunk.make(3)]
+      [Chunk.make(3), Chunk.make("negative:1")]
     )
   })
 
   it("partition (identity)", () => {
     assertTuple(Chunk.partition(Chunk.empty(), identity), [Chunk.empty(), Chunk.empty()])
     assertTuple(Chunk.partition(Chunk.make(Result.succeed(1), Result.fail("a"), Result.succeed(2)), identity), [
-      Chunk.make("a"),
-      Chunk.make(1, 2)
+      Chunk.make(1, 2),
+      Chunk.make("a")
     ])
   })
 
   it("separate", () => {
     assertTuple(Chunk.separate(Chunk.empty()), [Chunk.empty(), Chunk.empty()])
     assertTuple(Chunk.separate(Chunk.make(Result.succeed(1), Result.fail("e"), Result.succeed(2))), [
-      Chunk.make("e"),
-      Chunk.make(1, 2)
+      Chunk.make(1, 2),
+      Chunk.make("e")
     ])
   })
 
@@ -681,6 +748,7 @@ describe("Chunk", () => {
   it("split", () => {
     assertEquals(pipe(Chunk.empty(), Chunk.split(2)), Chunk.empty())
     assertEquals(pipe(Chunk.make(1), Chunk.split(2)), Chunk.make(Chunk.make(1)))
+    assertEquals(pipe(Chunk.make(1, 2, 3), Chunk.split(Number.NaN)), Chunk.make(Chunk.make(1, 2, 3)))
     assertEquals(pipe(Chunk.make(1, 2), Chunk.split(2)), Chunk.make(Chunk.make(1), Chunk.make(2)))
     assertEquals(pipe(Chunk.make(1, 2, 3, 4, 5), Chunk.split(2)), Chunk.make(Chunk.make(1, 2, 3), Chunk.make(4, 5)))
     assertEquals(
@@ -706,6 +774,36 @@ describe("Chunk", () => {
       Chunk.filter(Chunk.make(Option.some(3), Option.none(), Option.some(1)), Option.isSome),
       Chunk.make(Option.some(3), Option.some(1)) as any
     )
+  })
+
+  it("combinators read sparse backing holes as undefined", () => {
+    const sparse: Array<number | undefined> = new Array(3)
+    sparse[0] = 1
+    sparse[2] = 3
+    const chunk = Chunk.fromArrayUnsafe(sparse)
+    const isUndefined = (a: unknown) => a === undefined
+    deepStrictEqual(Chunk.toArray(Chunk.filter(chunk, isUndefined)), [undefined])
+    deepStrictEqual(
+      Chunk.toArray(Chunk.filterMap(chunk, (a) => a === undefined ? Result.succeed("hole") : Result.failVoid)),
+      ["hole"]
+    )
+    deepStrictEqual(Chunk.toArray(Chunk.zipWith(chunk, chunk, (a, b) => [a, b])), [
+      [1, 1],
+      [undefined, undefined],
+      [3, 3]
+    ])
+    assertSome(Chunk.findLastIndex(chunk, isUndefined), 1)
+    assertTrue(Chunk.some(chunk, isUndefined))
+    assertFalse(Chunk.every(chunk, (a) => a !== undefined))
+    assertSome(Chunk.findLast(chunk, isUndefined), undefined)
+    deepStrictEqual(Chunk.toArray(Chunk.difference(Chunk.make(1, undefined, 2), chunk)), [2])
+    deepStrictEqual(Chunk.toArray(Chunk.difference(chunk, Chunk.make(3))), [1, undefined])
+  })
+
+  it("findLast", () => {
+    assertSome(Chunk.findLast(Chunk.make(1, 2, 3, 4), (n) => n % 2 === 1), 3)
+    assertNone(Chunk.findLast(Chunk.make(2, 4), (n) => n % 2 === 1))
+    assertNone(Chunk.findLast(Chunk.empty<number>(), (n) => n % 2 === 1))
   })
 
   it("filterMap", () => {
@@ -743,6 +841,27 @@ describe("Chunk", () => {
     assertEquals(Chunk.flatMap(Chunk.make(1, 2, 3), (n) => Chunk.make(n, n + 1)), Chunk.make(1, 2, 2, 3, 3, 4))
   })
 
+  it("flatMap preserves order and callback indices across chunk backings", () => {
+    const indices: Array<number> = []
+    const outer = Chunk.drop(Chunk.make(0, 1, 2, 3), 1)
+    const result = Chunk.flatMap(outer, (n, i) => {
+      indices.push(i)
+      return n === 2 ? Chunk.empty() : Chunk.appendAll(Chunk.of(n), Chunk.of(n + 10))
+    })
+    deepStrictEqual(Array.from(result), [1, 11, 3, 13])
+    deepStrictEqual(indices, [0, 1, 2])
+  })
+
+  it("flatMap and join read the holes of a sparse backing array as undefined", () => {
+    const sparse: Array<string> = new Array(3)
+    sparse[0] = "a"
+    sparse[2] = "c"
+    const chunk = Chunk.fromArrayUnsafe(sparse)
+    const doubled = Chunk.flatMap(chunk, (a) => Chunk.make(a, a))
+    deepStrictEqual(Array.from(doubled), ["a", "a", undefined, undefined, "c", "c"])
+    strictEqual(Chunk.join(chunk, "-"), "a--c")
+  })
+
   it("union", () => {
     assertEquals(Chunk.union(Chunk.make(1, 2, 3), Chunk.empty()), Chunk.make(1, 2, 3))
     assertEquals(Chunk.union(Chunk.empty(), Chunk.make(1, 2, 3)), Chunk.make(1, 2, 3))
@@ -769,6 +888,7 @@ describe("Chunk", () => {
   it("splitNonEmptyAt", () => {
     assertTuple(Chunk.splitNonEmptyAt(Chunk.make(1, 2, 3, 4), 2), [Chunk.make(1, 2), Chunk.make(3, 4)])
     assertTuple(Chunk.splitNonEmptyAt(Chunk.make(1, 2, 3, 4), 10), [Chunk.make(1, 2, 3, 4), Chunk.empty()])
+    assertTuple(Chunk.splitNonEmptyAt(Chunk.make(1, 2, 3, 4), Number.NaN), [Chunk.make(1), Chunk.make(2, 3, 4)])
   })
 
   it("splitWhere", () => {
@@ -808,6 +928,7 @@ describe("Chunk", () => {
   it("makeBy", () => {
     assertEquals(Chunk.makeBy(5, (n) => n * 2), Chunk.make(0, 2, 4, 6, 8))
     assertEquals(Chunk.makeBy(2.2, (n) => n * 2), Chunk.make(0, 2))
+    assertEquals(Chunk.makeBy(Number.NaN, (n) => n), Chunk.make(0))
   })
 
   it("range", () => {
@@ -851,6 +972,17 @@ describe("Chunk", () => {
     assertFalse(equivalence(Chunk.make(1, 2, 3), Chunk.make(1, 2, 4)))
   })
 
+  it("makeEquivalence is symmetric on a sparse backing array, whose holes read as undefined", () => {
+    const equivalence = Chunk.makeEquivalence(Equivalence.strictEqual<number | undefined>())
+    const holey: Array<number | undefined> = new Array(2)
+    holey[1] = 1
+    const sparse = Chunk.fromArrayUnsafe(holey)
+    assertFalse(equivalence(sparse, Chunk.make(5, 1)))
+    assertFalse(equivalence(Chunk.make(5, 1), sparse))
+    assertTrue(equivalence(sparse, Chunk.make(undefined, 1)))
+    assertTrue(equivalence(Chunk.make(undefined, 1), sparse))
+  })
+
   it("differenceWith", () => {
     const eq = <E extends { id: number }>(a: E, b: E) => a.id === b.id
     const differenceWith = pipe(eq, Chunk.differenceWith)
@@ -870,5 +1002,66 @@ describe("Chunk", () => {
     assertEquals(Chunk.difference(Chunk.empty(), curr), Chunk.empty())
     assertEquals(Chunk.difference(curr, Chunk.empty()), curr)
     assertEquals(Chunk.difference(curr, curr), Chunk.empty())
+  })
+
+  it("fromNonEmptyArrayUnsafe", () => {
+    assertEquals(Chunk.fromNonEmptyArrayUnsafe([1, 2]), Chunk.make(1, 2))
+  })
+
+  it("isNonEmpty", () => {
+    assertFalse(Chunk.isNonEmpty(Chunk.empty()))
+    assertTrue(Chunk.isNonEmpty(Chunk.make(1)))
+  })
+
+  it("head", () => {
+    assertNone(Chunk.head(Chunk.empty()))
+    assertSome(Chunk.head(Chunk.make(1, 2)), 1)
+  })
+
+  it("headUnsafe", () => {
+    strictEqual(Chunk.headUnsafe(Chunk.make(1, 2)), 1)
+    throws(() => Chunk.headUnsafe(Chunk.empty()), new Error("Index out of bounds: 0"))
+  })
+
+  it("headNonEmpty / lastNonEmpty / tailNonEmpty", () => {
+    const chunk = Chunk.make(1, 2, 3)
+    strictEqual(Chunk.headNonEmpty(chunk), 1)
+    strictEqual(Chunk.lastNonEmpty(chunk), 3)
+    assertEquals(Chunk.tailNonEmpty(chunk), Chunk.make(2, 3))
+  })
+
+  it("sort", () => {
+    const chunk = Chunk.make(3, 1, 2)
+    assertEquals(Chunk.sort(chunk, Order.Number), Chunk.make(1, 2, 3))
+    assertEquals(chunk, Chunk.make(3, 1, 2))
+  })
+
+  it("contains", () => {
+    assertTrue(Chunk.contains(Chunk.make(1, 2), 2))
+    assertFalse(Chunk.contains(Chunk.make(1, 2), 3))
+  })
+
+  it("containsWith", () => {
+    const containsMod3 = Chunk.containsWith<number>((a, b) => a % 3 === b % 3)
+    assertTrue(containsMod3(Chunk.make(1, 2), 4))
+    assertFalse(containsMod3(Chunk.make(1, 2), 3))
+  })
+
+  it("findFirst", () => {
+    assertSome(Chunk.findFirst(Chunk.make(1, 2, 3, 4), (n) => n > 2), 3)
+    assertNone(Chunk.findFirst(Chunk.make(1, 2), (n) => n > 2))
+  })
+
+  it("findFirstIndex", () => {
+    assertSome(Chunk.findFirstIndex(Chunk.make(1, 2, 3, 4), (n) => n > 2), 2)
+    assertNone(Chunk.findFirstIndex(Chunk.make(1, 2), (n) => n > 2))
+  })
+
+  it("reduce", () => {
+    strictEqual(Chunk.reduce(Chunk.make("a", "b"), "", (acc, s, i) => `${acc}${i}${s}`), "0a1b")
+  })
+
+  it("reduceRight", () => {
+    strictEqual(Chunk.reduceRight(Chunk.make("a", "b"), "", (acc, s, i) => `${acc}${i}${s}`), "1b0a")
   })
 })

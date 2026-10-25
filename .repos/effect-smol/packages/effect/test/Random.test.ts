@@ -60,6 +60,51 @@ describe("Random", () => {
   })
 
   describe("nextBetween", () => {
+    it.effect.each(
+      [
+        ["positive", 10, 20, 1 - Number.EPSILON, 20 - 2 ** -48],
+        ["adjacent", 1e16, 1e16 + 2, 0.75, 1e16],
+        ["negative", -1e16 - 2, -1e16, 0.75, -1e16 - 2],
+        ["zero", -Number.MIN_VALUE, 0, 0.75, -Number.MIN_VALUE]
+      ] as const
+    )("excludes a rounded upper bound: %s", ([_name, min, max, draw, expected]) =>
+      Effect.gen(function*() {
+        const value = yield* Random.nextBetween(min, max).pipe(
+          Effect.provideService(Random.Random, {
+            nextIntUnsafe: () => 0,
+            nextDoubleUnsafe: () => draw
+          })
+        )
+
+        assert.isAtLeast(value, min)
+        assert.isBelow(value, max)
+        assert.strictEqual(value, expected)
+      }))
+
+    it.effect("preserves degenerate bounds", () =>
+      Effect.gen(function*() {
+        const value = yield* Random.nextBetween(10, 10).pipe(
+          Effect.provideService(Random.Random, {
+            nextIntUnsafe: () => 0,
+            nextDoubleUnsafe: () => 0.75
+          })
+        )
+
+        assert.strictEqual(value, 10)
+      }))
+
+    it.effect("documents current behavior for unsupported bounds", () =>
+      Effect.gen(function*() {
+        const value = yield* Random.nextBetween(10, Infinity).pipe(
+          Effect.provideService(Random.Random, {
+            nextIntUnsafe: () => 0,
+            nextDoubleUnsafe: () => 0.75
+          })
+        )
+
+        assert.strictEqual(value, Infinity)
+      }))
+
     it.effect("generates number in half-open range", () =>
       Effect.gen(function*() {
         for (let i = 0; i < 100; i++) {
@@ -185,18 +230,15 @@ describe("Random", () => {
   })
 
   describe("withSeed", () => {
-    it.effect("produces deterministic sequence with same seed", () =>
+    it.effect("restarts the sequence on each evaluation of a reused effect", () =>
       Effect.gen(function*() {
-        const program = Effect.gen(function*() {
-          const v1 = yield* Random.next
-          const v2 = yield* Random.nextInt
-          return [v1, v2]
-        })
+        const seeded = Effect.all([Random.next, Random.next]).pipe(Random.withSeed("my-seed"))
 
-        const result1 = yield* program.pipe(Random.withSeed("test-seed"))
-        const result2 = yield* program.pipe(Random.withSeed("test-seed"))
+        const first = yield* seeded
+        const second = yield* seeded
 
-        assert.deepStrictEqual(result1, result2)
+        assert.notStrictEqual(first[0], first[1])
+        assert.deepStrictEqual(second, first)
       }))
 
     it.effect("produces different sequences with different seeds", () =>

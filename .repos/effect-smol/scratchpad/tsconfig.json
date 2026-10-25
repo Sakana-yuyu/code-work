@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json.schemastore.org/tsconfig",
+  "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "../tsconfig.base.json",
   "include": ["**/*.ts"],
   "compilerOptions": {
@@ -13,7 +13,9 @@
     "plugins": [
       {
         "name": "@effect/language-service",
-        "namespaceImportPackages": []
+        "effectFn": ["untraced"],
+        "namespaceImportPackages": [],
+        "diagnosticSeverity": { "effectFnOpportunity": "error" }
       }
     ]
   }

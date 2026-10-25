@@ -1,5 +1,6 @@
+import { assert } from "@effect/vitest"
 import { Equal, Hash, HashMap, Option, Result } from "effect"
-import { FastCheck as fc } from "effect/testing"
+import * as fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
 describe("HashMap", () => {
@@ -29,6 +30,23 @@ describe("HashMap", () => {
   })
 
   describe("basic operations", () => {
+    it("modifyHash stores a new key under the supplied hash", () => {
+      const key = {}
+      const hash = 12345
+      const map = HashMap.modifyHash(HashMap.empty<object, string>(), key, hash, () => Option.some("value"))
+
+      expect(HashMap.getHash(map, key, hash)).toEqual(Option.some("value"))
+    })
+
+    it("modifyHash removes a key using the supplied hash", () => {
+      const key = {}
+      const hash = 12345
+      const map = HashMap.modifyHash(HashMap.empty<object, string>(), key, hash, () => Option.some("value"))
+      const removed = HashMap.modifyHash(map, key, hash, () => Option.none())
+
+      expect(HashMap.getHash(removed, key, hash)).toEqual(Option.none())
+    })
+
     it("get - existing key", () => {
       const map = HashMap.make(["a", 1], ["b", 2])
       expect(HashMap.get(map, "a")).toEqual(Option.some(1))
@@ -138,6 +156,57 @@ describe("HashMap", () => {
       const map = HashMap.make(["a", 1], ["b", 2])
       const entries = Array.from(map).sort(([a], [b]) => a.localeCompare(b))
       expect(entries).toEqual([["a", 1], ["b", 2]])
+    })
+
+    it("preserves traversal order across every node kind", () => {
+      const expectIteration = <A>(iterator: Iterator<A>, expected: ReadonlyArray<A>) => {
+        for (const value of expected) {
+          expect(iterator.next()).toEqual({ done: false, value })
+        }
+        expect(iterator.next()).toEqual({ done: true, value: undefined })
+        expect(iterator.next()).toEqual({ done: true, value: undefined })
+      }
+
+      const empty = HashMap.empty<string, number>()
+      expectIteration(empty[Symbol.iterator](), [])
+      expectIteration(HashMap.entries(empty), [])
+      expectIteration(HashMap.keys(empty), [])
+      expectIteration(HashMap.values(empty), [])
+
+      const input = [
+        ...Array.from({ length: 16 }, (_, i) => [`leaf-${17 - i}`, 17 - i, 17 - i] as const),
+        ["nested-2", 65, 102] as const,
+        ["collision-first", 0, 1] as const,
+        ["nested-0", 1, 100] as const,
+        ["collision-second", 0, 2] as const,
+        ["nested-1", 33, 101] as const
+      ]
+      let map = empty
+      for (const [key, hash, value] of input) {
+        map = HashMap.modifyHash(map, key, hash, () => Option.some(value))
+      }
+
+      const expected: Array<[string, number]> = [
+        ["collision-first", 1],
+        ["collision-second", 2],
+        ["nested-0", 100],
+        ["nested-1", 101],
+        ["nested-2", 102],
+        ...Array.from({ length: 16 }, (_, i) => [`leaf-${i + 2}`, i + 2] as [string, number])
+      ]
+      expectIteration(map[Symbol.iterator](), expected)
+      expectIteration(HashMap.entries(map), expected)
+      expectIteration(HashMap.keys(map), expected.map(([key]) => key))
+      expectIteration(HashMap.values(map), expected.map(([, value]) => value))
+    })
+
+    it("does not expose mutable collision entries", () => {
+      const map = HashMap.make(["fF", 1], ["AA", 2])
+      const entry = Array.from(HashMap.entries(map)).find(([key]) => key === "fF")!
+
+      entry[1] = 99
+
+      expect(HashMap.getUnsafe(map, "fF")).toBe(1)
     })
   })
 
@@ -531,6 +600,51 @@ describe("HashMap", () => {
         }),
         { numRuns: 200 }
       )
+    })
+
+    it("set stores a new value that is equal to the current one", () => {
+      let valueOperations = 0
+      class Versioned implements Equal.Equal {
+        constructor(readonly id: string, readonly version: number) {}
+
+        [Equal.symbol](that: Equal.Equal): boolean {
+          valueOperations++
+          return that instanceof Versioned && this.id === that.id
+        }
+
+        [Hash.symbol](): number {
+          valueOperations++
+          return Hash.string(this.id)
+        }
+      }
+
+      const collisionA = new FixedHashKey("collisionA", 7)
+      const collisionB = new FixedHashKey("collisionB", 7)
+      const leaf = HashMap.make(["a", new Versioned("a", 0)])
+      const collisions = HashMap.make([collisionA, new Versioned("a", 0)], [collisionB, new Versioned("b", 0)])
+      const next = new Versioned("a", 1)
+
+      assert.strictEqual(HashMap.getUnsafe(HashMap.set(leaf, "a", next), "a"), next)
+      assert.strictEqual(HashMap.getUnsafe(HashMap.set(collisions, collisionA, next), collisionA), next)
+      assert.strictEqual(valueOperations, 0)
+    })
+
+    it("set uses Object.is to decide whether to preserve map identity", () => {
+      const value = { x: 1 }
+      const collisionA = new FixedHashKey("collisionA", 7)
+      const collisionB = new FixedHashKey("collisionB", 7)
+      for (const stored of [value, NaN, 0]) {
+        for (
+          const map of [HashMap.make([collisionA, stored]), HashMap.make([collisionA, stored], [collisionB, stored])]
+        ) {
+          assert.strictEqual(HashMap.set(map, collisionA, stored), map)
+          if (stored === 0) {
+            const updated = HashMap.set(map, collisionA, -0)
+            assert.notStrictEqual(updated, map)
+            assert.isTrue(Object.is(HashMap.getUnsafe(updated, collisionA), -0))
+          }
+        }
+      }
     })
   })
 
