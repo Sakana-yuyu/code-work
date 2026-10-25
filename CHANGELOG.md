@@ -7,6 +7,23 @@
 
 更早的历史版本见 [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases)。
 
+## 1.0.32
+
+### 新增
+
+- 自定义模型服务的供应商模板大幅扩充：新增腾讯 TokenHub、千问 QwenCloud、百度千帆、StreamLake（KAT-Coder）、火山方舟 Coding Plan 等官方渠道，以及 Ollama、vLLM、LM Studio、llama.cpp 本地推理与 Groq、DeepInfra、Fireworks 等推理云接入，共 60 余个新模板；已下线的 ETok.ai 与 ZetaAPI 模板随之移除。
+- 新增 Reasonix CLI 接入入口：`reasonix acp` 以标准协议提供会话，模型与凭据沿用 CLI 自身配置。
+
+### 改进
+
+- 内置引擎升级到 effect 4.0.6 正式版，吸收上游三个月的稳定性修复。
+- IDE 打开速度显著提升：鼠标悬停 IDE 切换按钮时即开始准备工作台与后台会话，点击后基本无需等待；就绪状态的发现从平均约 0.75 秒缩短到约 0.15 秒；终端输出与文件传输改为批量转发，长输出更流畅。
+- 模型上下文目录并入 2026-10 新模型核对结果：GPT-6.1 Sol、GPT-6 Luna、Gemini 3.5–3.7 Flash、Grok 4.7、Claude Haiku 4.5、GLM 4.x-Flash 全系等获得准确的上下文窗口与最大输出；GPT-5.6 系最大输出修正为 128K，grok-4.5 兼容 Cursor 渠道命名。
+
+### 修复
+
+- 修复 OhMyPi 会话中，模型缺少 API Key 等被拒绝的请求不报错、对话一直转圈直到超时的问题；现在会立即以明确原因失败。
+
 ## 1.0.31
 
 ### 新增
