@@ -315,7 +315,7 @@ import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
 import { WorkspaceLayout } from "./WorkspaceLayout";
-import { useWorkspaceLayout, useWorkspaceLayoutPreference } from "../workspaceLayout";
+import { useWorkspaceLayout } from "../workspaceLayout";
 import { sendCodeossCommand } from "./ide/codeossCommands";
 import { nextFileCommentId } from "./files/fileCommentAnnotations";
 import { openCommandPalette } from "../commandPaletteBus";
@@ -563,11 +563,6 @@ const PreviewPanel = lazy(() =>
 );
 const DiffPanel = lazy(() => import("./DiffPanel"));
 const FilePreviewPanel = lazy(() => import("./files/FilePreviewPanel"));
-const prewarmIdeCommand = createEnvironmentRpcCommand(connectionAtomRuntime, {
-  label: "ide.prewarm",
-  tag: WS_METHODS.idePrewarm,
-});
-
 const startIdeSessionCommand = createEnvironmentRpcCommand(connectionAtomRuntime, {
   label: "ide.open",
   tag: WS_METHODS.ideOpen,
@@ -1586,7 +1581,6 @@ function ChatViewContent(props: ChatViewProps) {
   const compactPanelViewport = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const [workspaceElement, setWorkspaceElement] = useState<HTMLDivElement | null>(null);
   const workspaceLayout = useWorkspaceLayout(workspaceElement);
-  const [preferredLayout] = useWorkspaceLayoutPreference();
   // IDE 布局没有右侧面板的网格槽位（工作台占满主区）：Agents/Diff/预览等
   // 面板一律走覆盖层 sheet，否则这些入口在工作台模式下是死点击。
   const shouldUseRightPanelSheet = compactPanelViewport || workspaceLayout.mode === "ide";
@@ -1978,16 +1972,7 @@ function ChatViewContent(props: ChatViewProps) {
   // this covers the server's first-open install wait. Only IDE users pay the
   // prefetch; the RPC is idempotent and installs nothing beyond the runtime
   // pipeline. Idempotent server-side.
-  const prewarmIde = useAtomCommand(prewarmIdeCommand, { reportFailure: false });
   const startIdeSession = useAtomCommand(startIdeSessionCommand, { reportFailure: false });
-  const ideLayoutPreferred = preferredLayout === "ide" || workspaceLayout.mode === "ide";
-  useEffect(() => {
-    if (activeProject === null || !ideLayoutPreferred) return;
-    const timer = setTimeout(() => {
-      void prewarmIde({ environmentId: activeProject.environmentId, input: {} });
-    }, 3_000);
-    return () => clearTimeout(timer);
-  }, [activeProject?.environmentId, ideLayoutPreferred, prewarmIde]);
   // The overrides map outranks the record field; a stored null stays null.
   const activeProjectModelSelection = useMemo(
     () => resolveProjectModelSelection(settings, activeProject?.id ?? null, activeProject),

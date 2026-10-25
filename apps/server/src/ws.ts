@@ -4574,11 +4574,6 @@ const makeWsRpcLayer = (
             Codeoss.use((ide) => ide.open(currentSessionId, input)),
           ),
 
-        [WS_METHODS.idePrewarm]: () =>
-          observeRpcEffect(
-            WS_METHODS.idePrewarm,
-            Codeoss.use((ide) => ide.prewarm()),
-          ),
         [WS_METHODS.assetsCreateUrl]: (input) =>
           observeRpcEffect(
             WS_METHODS.assetsCreateUrl,

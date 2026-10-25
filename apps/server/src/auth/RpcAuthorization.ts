@@ -196,7 +196,6 @@ export const RPC_REQUIRED_SCOPES = {
   // favicons stay on the orchestration read scope.
   [WS_METHODS.assetsCreateUrl]: AuthOrchestrationReadScope,
   [WS_METHODS.ideOpen]: AuthOrchestrationOperateScope,
-  [WS_METHODS.idePrewarm]: AuthOrchestrationOperateScope,
   [WS_METHODS.attachmentsCreateUploadUrl]: AuthOrchestrationOperateScope,
   [WS_METHODS.attachmentsDelete]: AuthOrchestrationOperateScope,
   [WS_METHODS.providerUploadFeedback]: AuthOrchestrationOperateScope,

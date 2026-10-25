@@ -109,15 +109,6 @@ export class CodeossRuntime {
     };
   }
 
-  /**
-   * Warm the runtime download/verify pipeline without spawning anything.
-   * Called once at layer build so the first `open` skips the install wait;
-   * failures clear the memo and surface through `open` as usual.
-   */
-  prewarm(): void {
-    void this.resolveProduct().catch(() => {});
-  }
-
   find(capability: string) {
     return [...this.sessions.values()].find(
       (session) => session.capability === capability && session.state.phase === "ready",
