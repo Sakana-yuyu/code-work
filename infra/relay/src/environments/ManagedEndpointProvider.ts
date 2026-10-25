@@ -1,10 +1,10 @@
 import * as Alchemy from "alchemy";
-import * as Cloudflare from "alchemy/Cloudflare";
+import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Arr from "effect/Array";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -25,7 +25,7 @@ import {
 import * as ManagedEndpointAllocations from "./ManagedEndpointAllocations.ts";
 import * as ManagedTunnelLimits from "./ManagedTunnelLimits.ts";
 
-export class ManagedEndpointProvisioningNotConfigured extends Schema.TaggedErrorClass<ManagedEndpointProvisioningNotConfigured>()(
+export class ManagedEndpointProvisioningNotConfigured extends Schema.TaggedError<ManagedEndpointProvisioningNotConfigured>()(
   "ManagedEndpointProvisioningNotConfigured",
   {
     userId: Schema.String,
@@ -54,7 +54,7 @@ const ManagedEndpointProvisioningStage = Schema.Literals([
   "mark-allocation-ready",
 ]);
 
-export class ManagedEndpointProvisioningFailed extends Schema.TaggedErrorClass<ManagedEndpointProvisioningFailed>()(
+export class ManagedEndpointProvisioningFailed extends Schema.TaggedError<ManagedEndpointProvisioningFailed>()(
   "ManagedEndpointProvisioningFailed",
   {
     stage: ManagedEndpointProvisioningStage,
@@ -83,7 +83,7 @@ const ManagedEndpointDeprovisioningStage = Schema.Literals([
   "remove-allocation",
 ]);
 
-export class ManagedEndpointDeprovisioningFailed extends Schema.TaggedErrorClass<ManagedEndpointDeprovisioningFailed>()(
+export class ManagedEndpointDeprovisioningFailed extends Schema.TaggedError<ManagedEndpointDeprovisioningFailed>()(
   "ManagedEndpointDeprovisioningFailed",
   {
     stage: ManagedEndpointDeprovisioningStage,
@@ -99,7 +99,7 @@ export class ManagedEndpointDeprovisioningFailed extends Schema.TaggedErrorClass
   }
 }
 
-export class ManagedEndpointOriginNotAllowed extends Schema.TaggedErrorClass<ManagedEndpointOriginNotAllowed>()(
+export class ManagedEndpointOriginNotAllowed extends Schema.TaggedError<ManagedEndpointOriginNotAllowed>()(
   "ManagedEndpointOriginNotAllowed",
   {
     userId: Schema.String,
@@ -183,7 +183,7 @@ const ManagedEndpointTunnelClientOperation = Schema.Literals([
   "delete",
 ]);
 
-export class ManagedEndpointTunnelClientError extends Schema.TaggedErrorClass<ManagedEndpointTunnelClientError>()(
+export class ManagedEndpointTunnelClientError extends Schema.TaggedError<ManagedEndpointTunnelClientError>()(
   "ManagedEndpointTunnelClientError",
   {
     operation: ManagedEndpointTunnelClientOperation,
@@ -246,7 +246,7 @@ const ManagedEndpointDnsClientOperation = Schema.Literals([
   "delete-record",
 ]);
 
-export class ManagedEndpointDnsClientError extends Schema.TaggedErrorClass<ManagedEndpointDnsClientError>()(
+export class ManagedEndpointDnsClientError extends Schema.TaggedError<ManagedEndpointDnsClientError>()(
   "ManagedEndpointDnsClientError",
   {
     operation: ManagedEndpointDnsClientOperation,
@@ -625,7 +625,7 @@ export const make = Effect.gen(function* () {
           ),
         )
         .pipe(
-          Effect.map(Encoding.encodeHex),
+          Effect.map(Hex.encode),
           Effect.mapError(
             (cause) =>
               new ManagedEndpointProvisioningFailed({

@@ -36,9 +36,9 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientError from "effect/unstable/http/HttpClientError";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
 
 import * as EnvironmentLinks from "./EnvironmentLinks.ts";
 import * as ManagedEndpointAllocations from "./ManagedEndpointAllocations.ts";
@@ -68,7 +68,7 @@ function environmentConnectNotAuthorizedReasonMessage(
   }
 }
 
-export class EnvironmentConnectNotAuthorized extends Schema.TaggedErrorClass<EnvironmentConnectNotAuthorized>()(
+export class EnvironmentConnectNotAuthorized extends Schema.TaggedError<EnvironmentConnectNotAuthorized>()(
   "EnvironmentConnectNotAuthorized",
   {
     environmentId: Schema.String,
@@ -81,7 +81,7 @@ export class EnvironmentConnectNotAuthorized extends Schema.TaggedErrorClass<Env
   }
 }
 
-export class EnvironmentMintRequestFailed extends Schema.TaggedErrorClass<EnvironmentMintRequestFailed>()(
+export class EnvironmentMintRequestFailed extends Schema.TaggedError<EnvironmentMintRequestFailed>()(
   "EnvironmentMintRequestFailed",
   {
     environmentId: Schema.String,
@@ -94,7 +94,7 @@ export class EnvironmentMintRequestFailed extends Schema.TaggedErrorClass<Enviro
   }
 }
 
-export class EnvironmentMintRequestTimedOut extends Schema.TaggedErrorClass<EnvironmentMintRequestTimedOut>()(
+export class EnvironmentMintRequestTimedOut extends Schema.TaggedError<EnvironmentMintRequestTimedOut>()(
   "EnvironmentMintRequestTimedOut",
   {
     environmentId: Schema.String,
@@ -106,7 +106,7 @@ export class EnvironmentMintRequestTimedOut extends Schema.TaggedErrorClass<Envi
   }
 }
 
-export class EnvironmentMintResponseInvalid extends Schema.TaggedErrorClass<EnvironmentMintResponseInvalid>()(
+export class EnvironmentMintResponseInvalid extends Schema.TaggedError<EnvironmentMintResponseInvalid>()(
   "EnvironmentMintResponseInvalid",
   {
     environmentId: Schema.String,
@@ -418,7 +418,7 @@ const make = Effect.gen(function* () {
       });
       const now = yield* DateTime.now;
       const expiresAt = DateTime.add(now, { minutes: 2 });
-      const nonce = yield* crypto.randomUUIDv4.pipe(
+      const nonce = yield* crypto.randomUUIDv4().pipe(
         Effect.mapError(
           (cause) =>
             new EnvironmentMintRequestFailed({
@@ -432,7 +432,7 @@ const make = Effect.gen(function* () {
         iss: relayIssuer,
         aud: `t3-env:${link.environmentId}`,
         sub: input.userId,
-        jti: yield* crypto.randomUUIDv4.pipe(
+        jti: yield* crypto.randomUUIDv4().pipe(
           Effect.mapError(
             (cause) =>
               new EnvironmentMintRequestFailed({
@@ -573,7 +573,7 @@ const make = Effect.gen(function* () {
       });
       const now = yield* DateTime.now;
       const expiresAt = DateTime.add(now, { minutes: 2 });
-      const nonce = yield* crypto.randomUUIDv4.pipe(
+      const nonce = yield* crypto.randomUUIDv4().pipe(
         Effect.mapError(
           (cause) =>
             new EnvironmentMintRequestFailed({
@@ -587,7 +587,7 @@ const make = Effect.gen(function* () {
         iss: relayIssuer,
         aud: `t3-env:${link.environmentId}`,
         sub: input.userId,
-        jti: yield* crypto.randomUUIDv4.pipe(
+        jti: yield* crypto.randomUUIDv4().pipe(
           Effect.mapError(
             (cause) =>
               new EnvironmentMintRequestFailed({
