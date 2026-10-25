@@ -33,7 +33,7 @@ describe("ContextWindowMatcher", () => {
           source: "catalog",
           before: 1_000_000,
           after: 272_000,
-          maxOutputAfter: 32_768,
+          maxOutputAfter: 128_000,
         },
       ],
     });
@@ -49,7 +49,7 @@ describe("ContextWindowMatcher", () => {
         source: "catalog",
         before: 200_000,
         after: 200_000,
-        maxOutputAfter: 32_768,
+        maxOutputAfter: 128_000,
       },
     ]);
     expect(result.fromCatalog).toBe(1);

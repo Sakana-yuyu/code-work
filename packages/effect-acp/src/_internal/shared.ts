@@ -74,15 +74,12 @@ export function decodeExtNotificationRegistration<A, I>(
 const encoder = new TextEncoder();
 
 const JsonRpcId = Schema.Union([Schema.Number, Schema.String]);
-const JsonRpcHeaders = Schema.Array(Schema.Unknown);
-
 export const jsonRpcRequest = <A, I>(method: string, params: Schema.Codec<A, I>) =>
   Schema.Struct({
     jsonrpc: Schema.Literal("2.0"),
     id: JsonRpcId,
     method: Schema.Literal(method),
     params,
-    headers: JsonRpcHeaders,
   });
 
 export const jsonRpcNotification = <A, I>(method: string, params: Schema.Codec<A, I>) =>

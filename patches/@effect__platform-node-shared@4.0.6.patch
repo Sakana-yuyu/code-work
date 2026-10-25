@@ -1,0 +1,26 @@
+diff --git a/dist/NodeChildProcessSpawner.js b/dist/NodeChildProcessSpawner.js
+index 47285c035b3060e737f2c1beef66dcb70e39da84..fa48046bd323827e5e3be907f4e1d24828f4c111 100644
+--- a/dist/NodeChildProcessSpawner.js
++++ b/dist/NodeChildProcessSpawner.js
+@@ -278,7 +278,7 @@ const make = /*#__PURE__*/Effect.gen(function* () {
+   };
+   const spawn = (command, spawnOptions) => Effect.callback(resume => {
+     const deferred = Deferred.makeUnsafe();
+-    const handle = NodeChildProcess.spawn(command.command, command.args, spawnOptions);
++    const handle = NodeChildProcess.spawn(command.command, command.args, { ...spawnOptions, windowsHide: true });
+     handle.on("error", error => {
+       resume(Effect.fail(toPlatformError("spawn", error, command)));
+     });
+diff --git a/src/NodeChildProcessSpawner.ts b/src/NodeChildProcessSpawner.ts
+index ed9449024be94e28b88119fdef4f42ad370c1c7a..aaff8dfa242158abff98cec914a65338df9daaa2 100644
+--- a/src/NodeChildProcessSpawner.ts
++++ b/src/NodeChildProcessSpawner.ts
+@@ -394,7 +394,7 @@ const make = Effect.gen(function*() {
+       const handle = NodeChildProcess.spawn(
+         command.command,
+         command.args,
+-        spawnOptions
++        { ...spawnOptions, windowsHide: true }
+       )
+       handle.on("error", (error) => {
+         resume(Effect.fail(toPlatformError("spawn", error, command)))

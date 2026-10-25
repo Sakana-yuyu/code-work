@@ -23,9 +23,22 @@ vi.mock("node:child_process", async (original) => {
         actual.spawn(command, args, { ...options, windowsHide: true }),
     ),
     // 非零退出后的清理只核对调用，不向已退出、可能复用的 PID 执行 taskkill。
+    // effect 4.0.6 起 taskkill 走 execFile（附 PID 复用守卫），旧 exec 一并保留。
     exec: vi.fn(
       (
         _command: string,
+        optionsOrCallback: NodeChildProcess.ExecOptions | Completion,
+        callback?: Completion,
+      ) => {
+        const complete = typeof optionsOrCallback === "function" ? optionsOrCallback : callback;
+        queueMicrotask(() => complete?.(null));
+        return new actual.ChildProcess();
+      },
+    ),
+    execFile: vi.fn(
+      (
+        _command: string,
+        _args: ReadonlyArray<string>,
         optionsOrCallback: NodeChildProcess.ExecOptions | Completion,
         callback?: Completion,
       ) => {
@@ -83,18 +96,19 @@ it.effect("隐藏控制台时 stdin 与 stderr 仍可正常传输并结束", () 
   }),
 );
 
-it.effect("非零退出返回原退出码，SDK 清理命令也隐藏控制台", () =>
+it.effect("非零退出返回原退出码，已退出的 leader 不再执行清理命令", () =>
   Effect.gen(function* () {
     const result = yield* run({ args: ["-e", "process.exit(7)"] });
 
     expect(result.code).toBe(7);
     const platform = yield* HostProcessPlatform;
     if (platform === "win32") {
-      const calls = vi.mocked(NodeChildProcess.exec).mock.calls;
-      expect(calls.length).toBeGreaterThan(0);
-      for (const [, options] of calls) {
-        expect(typeof options === "object" && options?.windowsHide === true).toBe(true);
-      }
+      // effect 4.0.6 的 taskkill 带 PID 复用守卫：leader 已退出（exitCode 非空）
+      // 时直接跳过清理，不再对可能已被无关进程复用的 PID 执行 taskkill。
+      const taskkillCalls = vi
+        .mocked(NodeChildProcess.execFile)
+        .mock.calls.filter((call) => String(call[0]).includes("taskkill"));
+      expect(taskkillCalls.length).toBe(0);
     }
   }),
 );

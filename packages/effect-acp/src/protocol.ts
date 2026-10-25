@@ -610,9 +610,18 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
         Effect.flatMap(() =>
           Effect.try({
             try: () =>
-              parser.decode(data) as ReadonlyArray<
-                RpcMessage.FromClientEncoded | RpcMessage.FromServerEncoded
-              >,
+              // effect 4.0.6 的 Request 帧要求 headers 字段（HTTP/socket 传输各自
+              // 注入）；ACP stdio 线上没有 header 语义，这里统一回填空表，兼容
+              // 4.0.6 之前写入的历史帧与测试帧。
+              (
+                parser.decode(data) as ReadonlyArray<
+                  RpcMessage.FromClientEncoded | RpcMessage.FromServerEncoded
+                >
+              ).map((frame) =>
+                frame._tag === "Request" && frame.headers === undefined
+                  ? { ...frame, headers: [] }
+                  : frame,
+              ),
             catch: (cause) =>
               new AcpError.AcpProtocolParseError({
                 operation: "decode-wire-message",
@@ -686,7 +695,14 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
         Effect.forever,
       ),
     send: (_clientId, request) =>
-      offerOutgoing(request).pipe(
+      // effect 4.0.6 的 RpcClient 只在传输层注入 Request.headers（HTTP/socket
+      // 传输各自补齐）；自定义 stdio 传输由这里补空 headers，否则 agent 侧的
+      // 帧校验以 Missing key: headers 拒收。
+      offerOutgoing(
+        request._tag === "Request" && request.headers === undefined
+          ? { ...request, headers: [] }
+          : request,
+      ).pipe(
         Effect.mapError(
           (error) =>
             new RpcClientError.RpcClientError({

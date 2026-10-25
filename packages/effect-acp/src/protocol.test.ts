@@ -541,6 +541,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
             payload: {
               sessionId: "session-1",
             },
+            // 内存层帧由传输包装补齐 headers；wire 编码会省略空表。
             headers: [],
           },
         },
@@ -646,7 +647,6 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
         params: {
           hello: "world",
         },
-        headers: [],
       });
 
       yield* Queue.offer(
@@ -754,7 +754,9 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
                 requestId: 42,
                 exit: {
                   _tag: "Failure",
-                  cause: [{ _tag: "Die", defect: error }],
+                  // effect 4.0.6 直接把 JSON-RPC error 解为 Fail（此前为 Die，
+                  // ACP 归一化后语义等价）。
+                  cause: [{ _tag: "Fail", error }],
                 },
               },
         );
@@ -780,7 +782,6 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
           params: {
             hello: "world",
           },
-          headers: [],
         }),
       );
 
@@ -822,7 +823,6 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
             },
             options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }],
           },
-          headers: [],
         }),
       );
 
@@ -894,7 +894,6 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
         params: {
           hello: "world",
         },
-        headers: [],
       });
 
       yield* Fiber.interrupt(response);
@@ -1126,7 +1125,6 @@ it.effect("扩展请求等待时仍处理后续请求，回应保持原请求 ID
           id,
           method: "x/test",
           params: { hello },
-          headers: [],
         }),
       );
     }
