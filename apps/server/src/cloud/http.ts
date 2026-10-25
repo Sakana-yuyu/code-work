@@ -50,10 +50,10 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import * as HttpEffect from "effect/unstable/http/HttpEffect";
-import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
-import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
+import * as HttpEffect from "effect/http/HttpEffect";
+import { HttpServerRequest, HttpServerResponse } from "effect/http";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
@@ -398,7 +398,7 @@ const makeCloudLinkProof = Effect.fn("environment.cloud.makeLinkProof")(function
     iss: `t3-env:${descriptor.environmentId}`,
     aud: normalizeRelayIssuer(request.relayIssuer),
     sub: descriptor.environmentId,
-    jti: yield* Crypto.Crypto.pipe(Effect.flatMap((crypto) => crypto.randomUUIDv4)),
+    jti: yield* Crypto.Crypto.pipe(Effect.flatMap((crypto) => crypto.randomUUIDv4())),
     iat: nowSeconds,
     exp: Math.floor(expiresAt.epochMilliseconds / 1_000),
     challenge: request.challenge,
@@ -901,7 +901,7 @@ const cloudEnvironmentHealthHandler = Effect.fn("environment.cloud.health")(
       iss: `t3-env:${environmentId}`,
       aud: normalizeRelayIssuer(relayIssuer),
       sub: environmentId,
-      jti: yield* Crypto.Crypto.pipe(Effect.flatMap((crypto) => crypto.randomUUIDv4)),
+      jti: yield* Crypto.Crypto.pipe(Effect.flatMap((crypto) => crypto.randomUUIDv4())),
       iat: nowSeconds,
       exp: Math.floor(responseExpiresAt.epochMilliseconds / 1_000),
       environmentId,
@@ -1025,7 +1025,7 @@ const cloudMintCredentialHandler = Effect.fn("environment.cloud.mintCredential")
       iss: `t3-env:${environmentId}`,
       aud: normalizeRelayIssuer(relayIssuer),
       sub: environmentId,
-      jti: yield* Crypto.Crypto.pipe(Effect.flatMap((crypto) => crypto.randomUUIDv4)),
+      jti: yield* Crypto.Crypto.pipe(Effect.flatMap((crypto) => crypto.randomUUIDv4())),
       iat: nowSeconds,
       exp: Math.floor(issued.expiresAt.epochMilliseconds / 1_000),
       environmentId,

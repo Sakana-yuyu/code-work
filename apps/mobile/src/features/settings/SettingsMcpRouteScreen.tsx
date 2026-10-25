@@ -8,7 +8,7 @@ import type {
   ServerSettings,
 } from "@codework/contracts";
 import { squashAtomCommandFailure } from "@codework/client-runtime/state/runtime";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Alert, Platform, Pressable, RefreshControl, ScrollView, Switch, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

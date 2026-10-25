@@ -1,6 +1,6 @@
 import * as Console from "effect/Console";
 import * as Option from "effect/Option";
-import { Command } from "effect/unstable/cli";
+import { Command } from "effect/cli";
 
 import {
   agentIdArgument,

@@ -138,7 +138,7 @@ export const SshTerminalAttachStreamEventWire = ForwardCompatibleUnion(
 );
 export type SshTerminalAttachStreamEventWire = typeof SshTerminalAttachStreamEventWire.Type;
 
-export class SshTerminalSessionLookupError extends Schema.TaggedErrorClass<SshTerminalSessionLookupError>()(
+export class SshTerminalSessionLookupError extends Schema.TaggedError<SshTerminalSessionLookupError>()(
   "SshTerminalSessionLookupError",
   {
     threadId: Schema.String,
@@ -150,7 +150,7 @@ export class SshTerminalSessionLookupError extends Schema.TaggedErrorClass<SshTe
   }
 }
 
-export class SshTerminalNotRunningError extends Schema.TaggedErrorClass<SshTerminalNotRunningError>()(
+export class SshTerminalNotRunningError extends Schema.TaggedError<SshTerminalNotRunningError>()(
   "SshTerminalNotRunningError",
   {
     threadId: Schema.String,

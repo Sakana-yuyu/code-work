@@ -26,7 +26,7 @@ const CompositionSquadPlanDocument = Schema.Struct({
     .check(Schema.isMaxLength(64)),
 });
 
-export class CompositionSquadPlanError extends Schema.TaggedErrorClass<CompositionSquadPlanError>()(
+export class CompositionSquadPlanError extends Schema.TaggedError<CompositionSquadPlanError>()(
   "CompositionSquadPlanError",
   {
     code: Schema.String,

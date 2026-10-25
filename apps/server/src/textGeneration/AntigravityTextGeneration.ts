@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { AntigravitySettings, TextGenerationError, type ModelSelection } from "@codework/contracts";
 import { extractJsonObject } from "@codework/shared/schemaJson";
 import { collectStreamAsString } from "../provider/providerSnapshot.ts";

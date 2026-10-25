@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import type { EnvironmentId } from "@codework/contracts";
 import { ManagedRelay } from "@codework/client-runtime/relay";
 import * as Layer from "effect/Layer";
-import { HttpClient } from "effect/unstable/http";
+import { HttpClient } from "effect/http";
 
 import type { SavedRemoteConnection } from "../../lib/connection";
 import { MobileStorage } from "../../persistence/mobile-storage";

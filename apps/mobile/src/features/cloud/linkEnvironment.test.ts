@@ -10,7 +10,7 @@ import { EnvironmentId } from "@codework/contracts";
 import { RelayMobileClientId } from "@codework/contracts/relay";
 import { ManagedRelay } from "@codework/client-runtime/relay";
 import { remoteHttpClientLayer } from "@codework/client-runtime/rpc";
-import { HttpClient } from "effect/unstable/http";
+import { HttpClient } from "effect/http";
 import { MobilePreferencesStore } from "../../persistence/mobile-preferences";
 import { MobileStorage } from "../../persistence/mobile-storage";
 

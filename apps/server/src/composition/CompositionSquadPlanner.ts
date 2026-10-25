@@ -54,7 +54,7 @@ export interface CompositionSquadPlanningInput {
   readonly workspaceRootDigest?: string;
 }
 
-export class CompositionSquadPlannerError extends Schema.TaggedErrorClass<CompositionSquadPlannerError>()(
+export class CompositionSquadPlannerError extends Schema.TaggedError<CompositionSquadPlannerError>()(
   "CompositionSquadPlannerError",
   {
     code: Schema.String,

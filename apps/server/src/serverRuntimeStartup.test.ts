@@ -658,7 +658,7 @@ it.effect("resolveAutoBootstrapWelcomeTargets preserves typed UUID generation fa
       } satisfies OrchestrationEngine.OrchestrationEngineService["Service"]),
       Effect.provideService(Crypto.Crypto, {
         ...crypto,
-        randomUUIDv4: Effect.fail(uuidError),
+        randomUUIDv4: () => Effect.fail(uuidError),
       }),
       Effect.flip,
     );

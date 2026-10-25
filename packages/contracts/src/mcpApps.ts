@@ -102,7 +102,7 @@ export const McpAppRequestErrorReason = Schema.Literals([
 ]);
 export type McpAppRequestErrorReason = typeof McpAppRequestErrorReason.Type;
 
-export class McpAppRequestError extends Schema.TaggedErrorClass<McpAppRequestError>()(
+export class McpAppRequestError extends Schema.TaggedError<McpAppRequestError>()(
   "McpAppRequestError",
   {
     threadId: ThreadId,

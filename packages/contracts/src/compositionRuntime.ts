@@ -73,7 +73,7 @@ export const CompositionMcpRuntimeServerState = Schema.Struct({
 });
 export type CompositionMcpRuntimeServerState = typeof CompositionMcpRuntimeServerState.Type;
 
-export class CompositionMcpRuntimeRpcError extends Schema.TaggedErrorClass<CompositionMcpRuntimeRpcError>()(
+export class CompositionMcpRuntimeRpcError extends Schema.TaggedError<CompositionMcpRuntimeRpcError>()(
   "CompositionMcpRuntimeRpcError",
   {
     serverId: TrimmedNonEmptyString,

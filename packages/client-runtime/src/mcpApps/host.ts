@@ -1,6 +1,6 @@
 // @effect-diagnostics globalTimers:off - The bridge runs in the client, outside an Effect runtime.
 import { MCP_APP_PROTOCOL_VERSION, type McpAppReference } from "@codework/shared/mcpApp";
-import * as Encoding from "effect/Encoding";
+import * as Base64 from "effect/encoding/Base64";
 import * as Predicate from "effect/Predicate";
 import * as Result from "effect/Result";
 
@@ -75,7 +75,7 @@ export function mcpResourceBytes(content: unknown): Uint8Array | undefined {
   if (!Predicate.isObject(content)) return undefined;
   if (typeof content.text === "string") return encoder.encode(content.text);
   if (typeof content.blob === "string") {
-    const decoded = Encoding.decodeBase64(content.blob);
+    const decoded = Base64.decode(content.blob);
     return Result.isSuccess(decoded) ? decoded.success : undefined;
   }
   return undefined;

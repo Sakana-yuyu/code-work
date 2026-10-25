@@ -7,7 +7,7 @@ import * as Crypto from "effect/Crypto";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -54,7 +54,7 @@ export class ServerSettingsOriginCommitHook extends Context.Reference<ServerSett
   },
 ) {}
 
-export class ServerSettingsOriginError extends Schema.TaggedErrorClass<ServerSettingsOriginError>()(
+export class ServerSettingsOriginError extends Schema.TaggedError<ServerSettingsOriginError>()(
   "ServerSettingsOriginError",
   {
     settingsPath: Schema.String,
@@ -129,7 +129,7 @@ const makeOriginToken = Effect.fn("ServerSettingsOriginCas.makeOriginToken")(fun
   const digest = yield* crypto
     .digest("SHA-256", bytes)
     .pipe(Effect.mapError((cause) => originError(settingsPath, "hash-origin", cause)));
-  return Encoding.encodeHex(digest);
+  return Hex.encode(digest);
 });
 
 export const readServerSettingsOriginSnapshot = Effect.fn("ServerSettingsOriginCas.readSnapshot")(
@@ -232,9 +232,9 @@ const acquireOriginLock = Effect.fn("ServerSettingsOriginCas.acquireLock")(funct
     .pipe(Effect.mapError((cause) => originError(settingsPath, "prepare-lock", cause)));
 
   const owner = {
-    token: yield* crypto.randomUUIDv4.pipe(
-      Effect.mapError((cause) => originError(settingsPath, "acquire-lock", cause)),
-    ),
+    token: yield* crypto
+      .randomUUIDv4()
+      .pipe(Effect.mapError((cause) => originError(settingsPath, "acquire-lock", cause))),
     pid: process.pid,
     createdAtUnixMs: yield* Clock.currentTimeMillis,
   } satisfies ServerSettingsOriginLockOwner;

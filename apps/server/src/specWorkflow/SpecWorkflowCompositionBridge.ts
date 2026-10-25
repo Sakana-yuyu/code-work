@@ -35,7 +35,7 @@ export const SpecWorkflowCompositionBridgeErrorCode = Schema.Literals([
 export type SpecWorkflowCompositionBridgeErrorCode =
   typeof SpecWorkflowCompositionBridgeErrorCode.Type;
 
-export class SpecWorkflowCompositionBridgeError extends Schema.TaggedErrorClass<SpecWorkflowCompositionBridgeError>()(
+export class SpecWorkflowCompositionBridgeError extends Schema.TaggedError<SpecWorkflowCompositionBridgeError>()(
   "SpecWorkflowCompositionBridgeError",
   {
     code: SpecWorkflowCompositionBridgeErrorCode,

@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
-import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/reactivity";
 import { useEffect } from "react";
 
 import { appAtomRegistry } from "../../state/atom-registry";
@@ -13,7 +13,7 @@ import {
 
 export type ReviewHighlighterStatus = "idle" | "initializing" | "ready" | "error";
 
-export class ReviewHighlighterManagerError extends Schema.TaggedErrorClass<ReviewHighlighterManagerError>()(
+export class ReviewHighlighterManagerError extends Schema.TaggedError<ReviewHighlighterManagerError>()(
   "ReviewHighlighterManagerError",
   {
     operation: Schema.Literals(["prepare", "prepare-languages", "resolve-engine"]),

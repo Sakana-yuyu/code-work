@@ -1,7 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { FetchHttpClient, HttpClient } from "effect/unstable/http";
+import { FetchHttpClient, HttpClient } from "effect/http";
 
 // 信号只在 Effect 上下文传递；未使用此工厂的 HTTP 客户端不会收到额外传输字段。
 class CatalogSignal extends Context.Reference<AbortSignal | undefined>(

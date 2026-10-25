@@ -8,10 +8,10 @@ const trimNonEmptyOption = (value: string): Option.Option<string> => {
 };
 
 const trimmedString = (name: string) =>
-  Config.string(name).pipe(Config.option, Config.map(Option.flatMap(trimNonEmptyOption)));
+  Config.String(name).pipe(Config.option, Config.map(Option.flatMap(trimNonEmptyOption)));
 
 const optionalBoolean = (name: string) =>
-  Config.boolean(name).pipe(Config.option, Config.map(Option.getOrElse(() => false)));
+  Config.Boolean(name).pipe(Config.option, Config.map(Option.getOrElse(() => false)));
 
 const commaSeparatedStrings = (name: string) =>
   trimmedString(name).pipe(
@@ -35,8 +35,8 @@ const preferredString = (canonicalName: string, legacyName: string) =>
 
 const preferredBoolean = (canonicalName: string, legacyName: string) =>
   Config.all({
-    canonical: Config.boolean(canonicalName).pipe(Config.option),
-    legacy: Config.boolean(legacyName).pipe(Config.option),
+    canonical: Config.Boolean(canonicalName).pipe(Config.option),
+    legacy: Config.Boolean(legacyName).pipe(Config.option),
   }).pipe(
     Config.map(({ canonical, legacy }) =>
       Option.getOrElse(
@@ -48,14 +48,14 @@ const preferredBoolean = (canonicalName: string, legacyName: string) =>
 
 const preferredPort = (canonicalName: string, legacyName: string) =>
   Config.all({
-    canonical: Config.port(canonicalName).pipe(Config.option),
-    legacy: Config.port(legacyName).pipe(Config.option),
+    canonical: Config.Port(canonicalName).pipe(Config.option),
+    legacy: Config.Port(legacyName).pipe(Config.option),
   }).pipe(Config.map(({ canonical, legacy }) => Option.orElse(canonical, () => legacy)));
 
 const preferredInteger = (canonicalName: string, legacyName: string, defaultValue: number) =>
   Config.all({
-    canonical: Config.int(canonicalName).pipe(Config.option),
-    legacy: Config.int(legacyName).pipe(Config.option),
+    canonical: Config.Int(canonicalName).pipe(Config.option),
+    legacy: Config.Int(legacyName).pipe(Config.option),
   }).pipe(
     Config.map(({ canonical, legacy }) =>
       Option.getOrElse(
@@ -67,8 +67,8 @@ const preferredInteger = (canonicalName: string, legacyName: string, defaultValu
 
 const preferredUrl = (canonicalName: string, legacyName: string) =>
   Config.all({
-    canonical: Config.url(canonicalName).pipe(Config.option),
-    legacy: Config.url(legacyName).pipe(Config.option),
+    canonical: Config.URL(canonicalName).pipe(Config.option),
+    legacy: Config.URL(legacyName).pipe(Config.option),
   }).pipe(Config.map(({ canonical, legacy }) => Option.orElse(canonical, () => legacy)));
 
 const compactEnv = (env: Readonly<Record<string, string | undefined>>): Record<string, string> =>

@@ -8,7 +8,7 @@ import Constants from "expo-constants";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 import { ManagedRelay } from "@codework/client-runtime/relay";
 
 import type { EnvironmentId } from "@codework/contracts";

@@ -25,7 +25,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { Argument, Command, Flag } from "effect/unstable/cli";
+import { Argument, Command, Flag } from "effect/cli";
 
 import {
   type ControlClientOpen,
@@ -447,52 +447,52 @@ export function formatAutomationRunHistory(
   return [...runs, `Next cursor: ${result.nextCursor ?? "none"}`].join("\n");
 }
 
-const serverFlag = Flag.string("server").pipe(
+const serverFlag = Flag.String("server").pipe(
   Flag.withDescription("Code Work server URL or pairing link."),
   Flag.withDefault("http://127.0.0.1:3773"),
 );
 
-const accessTokenFlag = Flag.string("access-token").pipe(
+const accessTokenFlag = Flag.String("access-token").pipe(
   Flag.withDescription("Scoped bearer access token. Prefer a short-lived token."),
   Flag.optional,
 );
 
-const projectFlag = Flag.string("project").pipe(
+const projectFlag = Flag.String("project").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Only list automations owned by this project id."),
   Flag.optional,
 );
 
-const statusFlag = Flag.string("status").pipe(
+const statusFlag = Flag.String("status").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Comma-separated statuses: active, paused, completed."),
   Flag.optional,
 );
 
-const jsonFlag = Flag.boolean("json").pipe(
+const jsonFlag = Flag.Boolean("json").pipe(
   Flag.withDescription("Emit JSON instead of human-readable output."),
   Flag.withDefault(false),
 );
 
-const automationIdArgument = Argument.string("automation-id").pipe(
+const automationIdArgument = Argument.String("automation-id").pipe(
   Argument.withDescription("Composition automation id."),
 );
 
-const automationRunIdArgument = Argument.string("automation-run-id").pipe(
+const automationRunIdArgument = Argument.String("automation-run-id").pipe(
   Argument.withDescription("Source composition automation run id."),
 );
 
-const configFileFlag = Flag.string("config").pipe(
+const configFileFlag = Flag.String("config").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("JSON file validated against the Code Work Automation contract."),
 );
 
-const expectedRevisionFlag = Flag.integer("expected-revision").pipe(
+const expectedRevisionFlag = Flag.Int("expected-revision").pipe(
   Flag.withSchema(PositiveInt),
   Flag.withDescription("Current revision required for optimistic concurrency."),
 );
 
-const operationIdFlag = Flag.string("operation-id").pipe(
+const operationIdFlag = Flag.String("operation-id").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription(
     "Stable idempotency key. Generated and printed before dispatch when omitted.",
@@ -500,7 +500,7 @@ const operationIdFlag = Flag.string("operation-id").pipe(
   Flag.optional,
 );
 
-const cursorFlag = Flag.string("cursor").pipe(
+const cursorFlag = Flag.String("cursor").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Opaque pagination cursor returned by the previous history page."),
   Flag.optional,
@@ -510,7 +510,7 @@ const AutomationHistoryLimit = PositiveInt.check(
   Schema.isLessThanOrEqualTo(COMPOSITION_AUTOMATION_RUN_HISTORY_MAX_LIMIT),
 );
 
-const limitFlag = Flag.integer("limit").pipe(
+const limitFlag = Flag.Int("limit").pipe(
   Flag.withSchema(AutomationHistoryLimit),
   Flag.withDescription(
     `Maximum history rows to return, up to ${String(COMPOSITION_AUTOMATION_RUN_HISTORY_MAX_LIMIT)}.`,

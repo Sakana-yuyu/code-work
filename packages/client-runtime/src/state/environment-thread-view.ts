@@ -2,7 +2,7 @@ import type { EnvironmentId, ThreadId } from "@codework/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import * as Crypto from "effect/Crypto";
 import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 
 import { EnvironmentRegistry } from "../connection/registry.ts";
 import { EnvironmentCacheStore } from "../platform/persistence.ts";

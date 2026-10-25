@@ -10,7 +10,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 
 import {
   AVAILABLE_CONNECTION_STATE,
@@ -49,7 +49,7 @@ const QUERY_ENVIRONMENT = new PrimaryConnectionTarget({
 
 const QUERY_RPC_SESSION = {} as RpcSession.RpcSession;
 
-class TestQueryError extends Schema.TaggedErrorClass<TestQueryError>()("TestQueryError", {
+class TestQueryError extends Schema.TaggedError<TestQueryError>()("TestQueryError", {
   message: Schema.String,
 }) {}
 

@@ -8,7 +8,7 @@ import {
 } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fetchZCodeStartPlanBalance } from "./zcode/zcodeStartPlan.ts";
 

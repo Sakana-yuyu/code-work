@@ -5,7 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { LocalAccountId } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import {
   codexModelsFromPayload,

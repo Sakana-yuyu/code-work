@@ -412,7 +412,7 @@ export const SpecWorkflowErrorCode = Schema.Literals([
 ]);
 export type SpecWorkflowErrorCode = typeof SpecWorkflowErrorCode.Type;
 
-export class SpecWorkflowRpcError extends Schema.TaggedErrorClass<SpecWorkflowRpcError>()(
+export class SpecWorkflowRpcError extends Schema.TaggedError<SpecWorkflowRpcError>()(
   "SpecWorkflowRpcError",
   {
     code: SpecWorkflowErrorCode,

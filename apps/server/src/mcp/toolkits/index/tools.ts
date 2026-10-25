@@ -6,7 +6,7 @@ import {
   CodeIndexUnavailableError,
 } from "@codework/contracts";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/unstable/ai";
+import { Tool, Toolkit } from "effect/ai";
 
 import { CodeIndexError, CodeIndexRootMap } from "../../../codeIndex/CodeIndexService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";

@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-export class MulticaDaemonProtocolFailure extends Schema.TaggedErrorClass<MulticaDaemonProtocolFailure>()(
+export class MulticaDaemonProtocolFailure extends Schema.TaggedError<MulticaDaemonProtocolFailure>()(
   "MulticaDaemonProtocolFailure",
   {
     operation: Schema.String,

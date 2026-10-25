@@ -18,10 +18,9 @@ const activeConfigurations = new Map<
   }
 >();
 
-export class GrokHomeConflict extends Schema.TaggedErrorClass<GrokHomeConflict>()(
-  "GrokHomeConflict",
-  { home: Schema.String },
-) {
+export class GrokHomeConflict extends Schema.TaggedError<GrokHomeConflict>()("GrokHomeConflict", {
+  home: Schema.String,
+}) {
   override get message() {
     return "此 Grok 目录已由不兼容路由配置的实例使用，请为当前实例设置独立 GROK_HOME。";
   }

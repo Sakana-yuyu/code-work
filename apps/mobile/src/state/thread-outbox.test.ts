@@ -11,7 +11,7 @@ import {
   type ServerConfig,
   type OrchestrationThreadActivity,
 } from "@codework/contracts";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import {
   decodeQueuedThreadMessage,

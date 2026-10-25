@@ -56,7 +56,7 @@ export const ZCODE_START_PLAN_MODELS: ReadonlyArray<string> = [
   "GLM-5-Turbo",
 ];
 
-export class ZCodeCredentialError extends Schema.TaggedErrorClass<ZCodeCredentialError>()(
+export class ZCodeCredentialError extends Schema.TaggedError<ZCodeCredentialError>()(
   "ZCodeCredentialError",
   { detail: Schema.String },
 ) {

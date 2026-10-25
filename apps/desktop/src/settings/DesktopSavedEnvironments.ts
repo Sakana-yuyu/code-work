@@ -3,7 +3,7 @@ import { fromLenientJson } from "@codework/shared/schemaJson";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Base64 from "effect/encoding/Base64";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -84,7 +84,7 @@ const DesktopSavedEnvironmentSecretProtectionOperation = Schema.Literals([
   "decrypt-secret",
 ]);
 
-export class DesktopSavedEnvironmentsWriteError extends Schema.TaggedErrorClass<DesktopSavedEnvironmentsWriteError>()(
+export class DesktopSavedEnvironmentsWriteError extends Schema.TaggedError<DesktopSavedEnvironmentsWriteError>()(
   "DesktopSavedEnvironmentsWriteError",
   {
     operation: DesktopSavedEnvironmentsWriteOperation,
@@ -97,7 +97,7 @@ export class DesktopSavedEnvironmentsWriteError extends Schema.TaggedErrorClass<
   }
 }
 
-export class DesktopSavedEnvironmentsReadError extends Schema.TaggedErrorClass<DesktopSavedEnvironmentsReadError>()(
+export class DesktopSavedEnvironmentsReadError extends Schema.TaggedError<DesktopSavedEnvironmentsReadError>()(
   "DesktopSavedEnvironmentsReadError",
   {
     registryPath: Schema.String,
@@ -109,7 +109,7 @@ export class DesktopSavedEnvironmentsReadError extends Schema.TaggedErrorClass<D
   }
 }
 
-export class DesktopSavedEnvironmentsDocumentDecodeError extends Schema.TaggedErrorClass<DesktopSavedEnvironmentsDocumentDecodeError>()(
+export class DesktopSavedEnvironmentsDocumentDecodeError extends Schema.TaggedError<DesktopSavedEnvironmentsDocumentDecodeError>()(
   "DesktopSavedEnvironmentsDocumentDecodeError",
   {
     registryPath: Schema.String,
@@ -121,7 +121,7 @@ export class DesktopSavedEnvironmentsDocumentDecodeError extends Schema.TaggedEr
   }
 }
 
-export class DesktopSavedEnvironmentSecretDecodeError extends Schema.TaggedErrorClass<DesktopSavedEnvironmentSecretDecodeError>()(
+export class DesktopSavedEnvironmentSecretDecodeError extends Schema.TaggedError<DesktopSavedEnvironmentSecretDecodeError>()(
   "DesktopSavedEnvironmentSecretDecodeError",
   {
     environmentId: Schema.String,
@@ -135,7 +135,7 @@ export class DesktopSavedEnvironmentSecretDecodeError extends Schema.TaggedError
   }
 }
 
-export class DesktopSavedEnvironmentSecretProtectionError extends Schema.TaggedErrorClass<DesktopSavedEnvironmentSecretProtectionError>()(
+export class DesktopSavedEnvironmentSecretProtectionError extends Schema.TaggedError<DesktopSavedEnvironmentSecretProtectionError>()(
   "DesktopSavedEnvironmentSecretProtectionError",
   {
     operation: DesktopSavedEnvironmentSecretProtectionOperation,
@@ -352,7 +352,7 @@ function decodeSecretBytes(
   registryPath: string,
   encoded: string,
 ): Effect.Effect<Uint8Array, DesktopSavedEnvironmentSecretDecodeError> {
-  return Effect.fromResult(Encoding.decodeBase64(encoded)).pipe(
+  return Effect.fromResult(Base64.decode(encoded)).pipe(
     Effect.mapError(
       (cause) =>
         new DesktopSavedEnvironmentSecretDecodeError({
@@ -373,7 +373,7 @@ export const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
 
   const writeDocument = (document: SavedEnvironmentRegistryDocument) =>
-    crypto.randomUUIDv4.pipe(
+    crypto.randomUUIDv4().pipe(
       Effect.map((uuid) => uuid.replace(/-/g, "")),
       Effect.mapError(
         (cause) =>
@@ -495,7 +495,7 @@ export const make = Effect.gen(function* () {
         return false;
       }
 
-      const encryptedBearerToken = Encoding.encodeBase64(
+      const encryptedBearerToken = Base64.encode(
         yield* safeStorage.encryptString(secret).pipe(
           Effect.mapError(
             (cause) =>

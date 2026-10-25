@@ -2,7 +2,7 @@ import { TrimmedNonEmptyString } from "@codework/contracts";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import { Argument, Command } from "effect/unstable/cli";
+import { Argument, Command } from "effect/cli";
 
 import {
   agentIdArgument,
@@ -13,7 +13,7 @@ import {
 import { formatAgentSendResult } from "./agentControlSendOutput.ts";
 import { sendToAgent } from "./agentControlSendRpc.ts";
 
-const promptArgument = Argument.string("prompt").pipe(
+const promptArgument = Argument.String("prompt").pipe(
   Argument.withSchema(TrimmedNonEmptyString),
   Argument.withDescription("Prompt text to send to the idle agent."),
 );

@@ -3,7 +3,7 @@ import { relayClerkTokenOptions } from "@codework/shared/relayAuth";
 import { normalizeSecureRelayUrl } from "@codework/shared/relayUrl";
 import * as Schema from "effect/Schema";
 
-export class CloudPublicConfigMissingError extends Schema.TaggedErrorClass<CloudPublicConfigMissingError>()(
+export class CloudPublicConfigMissingError extends Schema.TaggedError<CloudPublicConfigMissingError>()(
   "CloudPublicConfigMissingError",
   {
     key: Schema.Literal("CODEWORK_CLERK_JWT_TEMPLATE"),

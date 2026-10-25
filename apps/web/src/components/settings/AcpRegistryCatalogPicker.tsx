@@ -7,7 +7,7 @@ import {
   squashAtomCommandFailure,
 } from "@codework/client-runtime/state/runtime";
 import { useAtomValue } from "@effect/atom-react";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { byokEnvironment } from "../../state/server";

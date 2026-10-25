@@ -22,7 +22,7 @@ import {
 } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import {
   createContext,
   use,

@@ -1,6 +1,6 @@
 import type { EnvironmentId } from "@codework/contracts";
 import * as Effect from "effect/Effect";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import { type ClientCacheKind, MobileDatabase } from "../persistence/mobile-database";
 import * as Runtime from "../lib/runtime";

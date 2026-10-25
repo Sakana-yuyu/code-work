@@ -9,9 +9,9 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { HttpClient } from "effect/unstable/http";
+import { HttpClient } from "effect/http";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcessSpawner } from "effect/process";
 
 import { writeFileStringAtomically } from "../../atomicWrite.ts";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";

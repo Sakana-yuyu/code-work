@@ -6,7 +6,7 @@ import {
 } from "@codework/client-runtime/state/runtime";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import {
   getCanonicalFirstLocalStorageItem,
   setLocalStorageItem,
@@ -20,7 +20,7 @@ import { useAtomCommand } from "./state/use-atom-command";
 const LEGACY_LAST_EDITOR_KEY = "codework:last-editor";
 const LAST_EDITOR_KEY = canonicalStorageKey(LEGACY_LAST_EDITOR_KEY);
 
-export class PreferredEditorEnvironmentRequiredError extends Schema.TaggedErrorClass<PreferredEditorEnvironmentRequiredError>()(
+export class PreferredEditorEnvironmentRequiredError extends Schema.TaggedError<PreferredEditorEnvironmentRequiredError>()(
   "PreferredEditorEnvironmentRequiredError",
   {
     targetPath: Schema.String,
@@ -31,7 +31,7 @@ export class PreferredEditorEnvironmentRequiredError extends Schema.TaggedErrorC
   }
 }
 
-export class PreferredEditorUnavailableError extends Schema.TaggedErrorClass<PreferredEditorUnavailableError>()(
+export class PreferredEditorUnavailableError extends Schema.TaggedError<PreferredEditorUnavailableError>()(
   "PreferredEditorUnavailableError",
   {
     environmentId: EnvironmentId,

@@ -8,7 +8,7 @@ import type {
   RelayClientEnvironmentRecord,
   RelayEnvironmentStatusResponse,
 } from "@codework/contracts/relay";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { useCallback, useEffect } from "react";
 
 import { runtimeContextLayer } from "../../lib/runtime";

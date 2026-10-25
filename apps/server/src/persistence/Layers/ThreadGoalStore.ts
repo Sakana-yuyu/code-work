@@ -6,10 +6,10 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
-import * as SqlSchema from "effect/unstable/sql/SqlSchema";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as SqlSchema from "effect/sql/SqlSchema";
 import * as Stream from "effect/Stream";
-import type { SqlError } from "effect/unstable/sql/SqlError";
+import type { SqlError } from "effect/sql/SqlError";
 
 import { toPersistenceDecodeError, toPersistenceSqlError } from "../Errors.ts";
 import {
@@ -169,10 +169,12 @@ export const ThreadGoalStoreLive = Layer.effect(
       decodeThreadGoalRow(row).pipe(Effect.mapError(toPersistenceDecodeError(operation)));
     const publish = (threadId: string, event: ThreadGoalEvent) =>
       PubSub.publish(changes, { threadId, event }).pipe(Effect.asVoid);
-    const randomGoalId = crypto.randomUUIDv4.pipe(
-      Effect.map(ThreadGoalId.make),
-      Effect.mapError(toPersistenceSqlError("ThreadGoalStore.randomUUID")),
-    );
+    const randomGoalId = crypto
+      .randomUUIDv4()
+      .pipe(
+        Effect.map(ThreadGoalId.make),
+        Effect.mapError(toPersistenceSqlError("ThreadGoalStore.randomUUID")),
+      );
 
     const set: ThreadGoalStoreShape["set"] = (input) =>
       withTransaction(

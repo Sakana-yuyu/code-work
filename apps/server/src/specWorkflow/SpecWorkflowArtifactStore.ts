@@ -25,7 +25,7 @@ export const SpecWorkflowArtifactStoreErrorCode = Schema.Literals([
 ]);
 export type SpecWorkflowArtifactStoreErrorCode = typeof SpecWorkflowArtifactStoreErrorCode.Type;
 
-export class SpecWorkflowArtifactStoreError extends Schema.TaggedErrorClass<SpecWorkflowArtifactStoreError>()(
+export class SpecWorkflowArtifactStoreError extends Schema.TaggedError<SpecWorkflowArtifactStoreError>()(
   "SpecWorkflowArtifactStoreError",
   {
     code: SpecWorkflowArtifactStoreErrorCode,

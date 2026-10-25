@@ -15,7 +15,7 @@ import * as Data from "effect/Data";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Base64Url from "effect/encoding/Base64Url";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -27,7 +27,7 @@ import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcessSpawner } from "effect/process";
 import { expect } from "vite-plus/test";
 
 import * as ProcessRunner from "../processRunner.ts";
@@ -237,8 +237,8 @@ const historyLogPath = (logsDir: string, threadId = "thread-1") =>
       join(
         logsDir,
         ".terminal-history-v2",
-        Encoding.encodeBase64Url(threadId),
-        `${Encoding.encodeBase64Url(DEFAULT_TERMINAL_ID)}.log`,
+        Base64Url.encode(threadId),
+        `${Base64Url.encode(DEFAULT_TERMINAL_ID)}.log`,
       ),
     ),
   );
@@ -253,8 +253,8 @@ const multiTerminalHistoryLogPath = (
       join(
         logsDir,
         ".terminal-history-v2",
-        Encoding.encodeBase64Url(threadId),
-        `${Encoding.encodeBase64Url(terminalId)}.log`,
+        Base64Url.encode(threadId),
+        `${Base64Url.encode(terminalId)}.log`,
       ),
     ),
   );
@@ -2100,7 +2100,7 @@ it.layer(
     Effect.gen(function* () {
       const { manager, logsDir } = yield* createManager();
       const path = yield* Path.Path;
-      const legacyPath = path.join(logsDir, `terminal_${Encoding.encodeBase64Url("thread-1")}.log`);
+      const legacyPath = path.join(logsDir, `terminal_${Base64Url.encode("thread-1")}.log`);
       const nextPath = yield* historyLogPath(logsDir);
       yield* writeFileString(legacyPath, "encoded-legacy-line\n");
 

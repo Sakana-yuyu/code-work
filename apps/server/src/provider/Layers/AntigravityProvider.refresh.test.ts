@@ -14,7 +14,7 @@ import * as Schema from "effect/Schema";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { makeCliProviderCatalog, type CliProviderCatalog } from "../CliProviderCatalog.ts";
 import { makeNativeProviderCatalog, type NativeProviderCatalog } from "../NativeProviderCatalog.ts";
 import { ProviderCatalogForceRefresh } from "../ProviderCatalogCache.ts";

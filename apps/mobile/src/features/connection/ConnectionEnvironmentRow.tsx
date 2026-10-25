@@ -3,7 +3,7 @@ import type { AtomCommandResult } from "@codework/client-runtime/state/runtime";
 import { resolveEnvironmentMachineKind, type EnvironmentId } from "@codework/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import * as Cause from "effect/Cause";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { useCallback, useMemo, useState } from "react";
 import { Alert, Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";

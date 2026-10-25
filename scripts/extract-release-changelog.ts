@@ -6,9 +6,9 @@ import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
-import { Command, Flag } from "effect/unstable/cli";
+import { Command, Flag } from "effect/cli";
 
-export class ReleaseChangelogReadError extends Schema.TaggedErrorClass<ReleaseChangelogReadError>()(
+export class ReleaseChangelogReadError extends Schema.TaggedError<ReleaseChangelogReadError>()(
   "ReleaseChangelogReadError",
   {
     filePath: Schema.String,
@@ -20,7 +20,7 @@ export class ReleaseChangelogReadError extends Schema.TaggedErrorClass<ReleaseCh
   }
 }
 
-export class ReleaseChangelogGitHubOutputConfigError extends Schema.TaggedErrorClass<ReleaseChangelogGitHubOutputConfigError>()(
+export class ReleaseChangelogGitHubOutputConfigError extends Schema.TaggedError<ReleaseChangelogGitHubOutputConfigError>()(
   "ReleaseChangelogGitHubOutputConfigError",
   {
     cause: Schema.Defect(),
@@ -31,7 +31,7 @@ export class ReleaseChangelogGitHubOutputConfigError extends Schema.TaggedErrorC
   }
 }
 
-export class ReleaseChangelogGitHubOutputWriteError extends Schema.TaggedErrorClass<ReleaseChangelogGitHubOutputWriteError>()(
+export class ReleaseChangelogGitHubOutputWriteError extends Schema.TaggedError<ReleaseChangelogGitHubOutputWriteError>()(
   "ReleaseChangelogGitHubOutputWriteError",
   {
     filePath: Schema.String,
@@ -76,7 +76,7 @@ export const writeReleaseChangelogOutput = Effect.fn("writeReleaseChangelogOutpu
   }
 
   const fs = yield* FileSystem.FileSystem;
-  const githubOutputPath = yield* Config.nonEmptyString("GITHUB_OUTPUT").pipe(
+  const githubOutputPath = yield* Config.NonEmptyString("GITHUB_OUTPUT").pipe(
     Effect.mapError((cause) => new ReleaseChangelogGitHubOutputConfigError({ cause })),
   );
   const entry = `body<<CHANGELOG_BODY_EOF\n${body}\nCHANGELOG_BODY_EOF\n`;
@@ -93,14 +93,14 @@ export const writeReleaseChangelogOutput = Effect.fn("writeReleaseChangelogOutpu
 const command = Command.make(
   "extract-release-changelog",
   {
-    version: Flag.string("version").pipe(
+    version: Flag.String("version").pipe(
       Flag.withDescription("Release version (without the leading v) whose section to extract."),
     ),
-    changelog: Flag.string("changelog").pipe(
+    changelog: Flag.String("changelog").pipe(
       Flag.withDescription("Path to CHANGELOG.md."),
       Flag.withDefault("CHANGELOG.md"),
     ),
-    githubOutput: Flag.boolean("github-output").pipe(
+    githubOutput: Flag.Boolean("github-output").pipe(
       Flag.withDescription("Write the section to GITHUB_OUTPUT instead of stdout."),
       Flag.withDefault(false),
     ),

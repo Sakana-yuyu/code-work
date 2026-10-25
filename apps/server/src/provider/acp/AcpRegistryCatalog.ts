@@ -7,7 +7,7 @@ import type {
 import { HostProcessArchitecture, HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { collectUint8StreamText } from "../../stream/collectUint8StreamText.ts";
 import bundledRegistry from "./registry-snapshot.json" with { type: "json" };

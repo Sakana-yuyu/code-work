@@ -4,7 +4,7 @@ import * as Net from "@codework/shared/Net";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { expect } from "vite-plus/test";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import * as ProcessRunner from "../processRunner.ts";
 import * as PortScanner from "./PortScanner.ts";

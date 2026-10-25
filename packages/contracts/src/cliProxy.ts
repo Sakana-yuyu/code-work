@@ -324,7 +324,7 @@ export const mergeCliProxyResult = (
   };
 };
 
-export class CliProxyError extends Schema.TaggedErrorClass<CliProxyError>()("CliProxyError", {
+export class CliProxyError extends Schema.TaggedError<CliProxyError>()("CliProxyError", {
   code: Schema.Literals(["invalid_config", "busy", "upstream_error"]),
   detail: Schema.String,
 }) {

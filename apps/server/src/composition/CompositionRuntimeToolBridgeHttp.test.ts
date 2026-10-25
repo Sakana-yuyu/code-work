@@ -3,13 +3,8 @@ import { AuthOrchestrationOperateScope } from "@codework/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import {
-  HttpBody,
-  HttpClient,
-  HttpRouter,
-  HttpServer,
-  HttpServerResponse,
-} from "effect/unstable/http";
+import { HttpBody, HttpClient, HttpRouter, HttpServer, HttpServerResponse } from "effect/http";
+import * as NetAddress from "effect/net/NetAddress";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as CompositionRuntimeToolBridge from "./CompositionRuntimeToolBridge.ts";
@@ -94,7 +89,7 @@ describe("CompositionRuntimeToolBridge HTTP", () => {
         yield* Layer.build(served);
 
         const server = yield* HttpServer.HttpServer;
-        const address = server.address as HttpServer.TcpAddress;
+        const address = server.address as NetAddress.InetAddressV4;
         const httpClient = yield* HttpClient.HttpClient;
         const client = makeCompositionRuntimeToolBridgeClient({
           baseUrl: `http://127.0.0.1:${address.port}`,

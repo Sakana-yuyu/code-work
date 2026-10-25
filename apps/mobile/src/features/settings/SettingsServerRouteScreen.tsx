@@ -11,7 +11,7 @@ import {
 } from "@codework/contracts";
 import type { ServerUpdateState } from "@codework/client-runtime/state/server";
 import { RESPONSE_STREAMING_MODES, resolveResponseStreamingMode } from "@codework/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Alert, Platform, Pressable, ScrollView, Switch, View } from "react-native";

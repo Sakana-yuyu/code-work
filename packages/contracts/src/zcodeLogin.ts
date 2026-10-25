@@ -70,7 +70,7 @@ export type ZCodeLoginStatusResult = typeof ZCodeLoginStatusResult.Type;
 export const ZCodeLoginResult = Schema.Union([ZCodeLoginStartResult, ZCodeLoginStatusResult]);
 export type ZCodeLoginResult = typeof ZCodeLoginResult.Type;
 
-export class ZCodeLoginContractError extends Schema.TaggedErrorClass<ZCodeLoginContractError>()(
+export class ZCodeLoginContractError extends Schema.TaggedError<ZCodeLoginContractError>()(
   "ZCodeLoginContractError",
   { detail: Schema.String },
 ) {

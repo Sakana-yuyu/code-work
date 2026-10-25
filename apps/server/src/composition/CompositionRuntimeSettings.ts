@@ -92,7 +92,7 @@ export type CompositionRuntimeSettings = {
   readonly logWarning?: (message: string, cause?: unknown) => Effect.Effect<void>;
 };
 
-export class CompositionRuntimeSettingsError extends Schema.TaggedErrorClass<CompositionRuntimeSettingsError>()(
+export class CompositionRuntimeSettingsError extends Schema.TaggedError<CompositionRuntimeSettingsError>()(
   "CompositionRuntimeSettingsError",
   { detail: Schema.String },
 ) {

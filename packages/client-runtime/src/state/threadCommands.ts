@@ -1,5 +1,5 @@
 import * as Crypto from "effect/Crypto";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { WS_METHODS } from "@codework/contracts";
 
 import {

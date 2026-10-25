@@ -66,7 +66,7 @@ export class CompositionTaskRuntimeProjectionService extends Context.Service<
   CompositionTaskRuntimeProjectionServiceShape
 >()("codework/composition/CompositionTaskRuntimeProjectionService") {}
 
-export class CompositionTaskRuntimeWaitError extends Schema.TaggedErrorClass<CompositionTaskRuntimeWaitError>()(
+export class CompositionTaskRuntimeWaitError extends Schema.TaggedError<CompositionTaskRuntimeWaitError>()(
   "CompositionTaskRuntimeWaitError",
   {
     taskId: Schema.String,

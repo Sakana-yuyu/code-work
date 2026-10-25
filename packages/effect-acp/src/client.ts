@@ -5,10 +5,10 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as RpcClient from "effect/unstable/rpc/RpcClient";
-import * as RpcMessage from "effect/unstable/rpc/RpcMessage";
-import * as RpcServer from "effect/unstable/rpc/RpcServer";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import * as RpcClient from "effect/rpc/RpcClient";
+import * as RpcMessage from "effect/rpc/RpcMessage";
+import * as RpcServer from "effect/rpc/RpcServer";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as AcpError from "./errors.ts";
 import * as AcpProtocol from "./protocol.ts";

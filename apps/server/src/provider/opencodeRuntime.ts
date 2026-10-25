@@ -27,7 +27,7 @@ import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { isWindowsCommandNotFound } from "../processRunner.ts";
 import * as ManagedProcessRegistry from "../process/ManagedProcessRegistry.ts";

@@ -74,7 +74,7 @@ import {
 } from "../restartContinuation.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
-class ThreadGoalBudgetExhaustedError extends Schema.TaggedErrorClass<ThreadGoalBudgetExhaustedError>()(
+class ThreadGoalBudgetExhaustedError extends Schema.TaggedError<ThreadGoalBudgetExhaustedError>()(
   "ThreadGoalBudgetExhaustedError",
   {},
 ) {
@@ -461,10 +461,10 @@ const make = Effect.gen(function* () {
   const textGeneration = yield* TextGeneration;
   const serverSettingsService = yield* ServerSettingsService;
   const serverCommandId = (tag: string) =>
-    crypto.randomUUIDv4.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
+    crypto.randomUUIDv4().pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
   const specWorkflowCapabilityStore = yield* Effect.serviceOption(SpecWorkflowCapabilityStore);
   const specWorkflowService = yield* Effect.serviceOption(SpecWorkflowService);
-  const serverEventId = () => crypto.randomUUIDv4.pipe(Effect.map(EventId.make));
+  const serverEventId = () => crypto.randomUUIDv4().pipe(Effect.map(EventId.make));
   const handledTurnStartKeys = yield* Cache.make<string, true>({
     capacity: HANDLED_TURN_START_KEY_MAX,
     timeToLive: HANDLED_TURN_START_KEY_TTL,

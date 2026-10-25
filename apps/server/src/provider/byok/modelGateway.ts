@@ -24,6 +24,7 @@ import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as ByteSize from "effect/ByteSize";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -35,7 +36,7 @@ import {
   HttpServerRequest,
   HttpServerResponse,
   Multipart,
-} from "effect/unstable/http";
+} from "effect/http";
 
 import {
   ByokSettings,
@@ -1800,7 +1801,7 @@ const managementProvider = (value: unknown): LocalAccountProvider | undefined =>
 const managementError = (status: number, message: string) =>
   HttpServerResponse.jsonUnsafe({ error: { message, type: "invalid_request_error" } }, { status });
 
-class CliProxyManagementError extends Schema.TaggedErrorClass<CliProxyManagementError>()(
+class CliProxyManagementError extends Schema.TaggedError<CliProxyManagementError>()(
   "CliProxyManagementError",
   { message: Schema.String },
 ) {}
@@ -1857,8 +1858,8 @@ const readCliProxyManagementBody = (
   return Stream.runCollect(request.multipartStream).pipe(
     // CPA 把 JSON 凭据作为文件上传；Effect 默认会把 application/json 当普通字段。
     Effect.provideService(Multipart.FieldMimeTypes, []),
-    Effect.provideService(Multipart.MaxFileSize, 2 * 1024 * 1024),
-    Effect.provideService(Multipart.MaxFieldSize, 64 * 1024),
+    Effect.provideService(Multipart.MaxFileSize, ByteSize.mebibytes(2)),
+    Effect.provideService(Multipart.MaxFieldSize, ByteSize.kibibytes(64)),
     Effect.flatMap((parts) =>
       Effect.gen(function* () {
         const fields: Record<string, string> = {};

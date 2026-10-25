@@ -20,7 +20,7 @@ export type CompositionTaskRecoveryInput = {
   readonly independentVerifierId?: string;
 };
 
-export class CompositionTaskInputStoreError extends Schema.TaggedErrorClass<CompositionTaskInputStoreError>()(
+export class CompositionTaskInputStoreError extends Schema.TaggedError<CompositionTaskInputStoreError>()(
   "CompositionTaskInputStoreError",
   {
     operation: Schema.String,

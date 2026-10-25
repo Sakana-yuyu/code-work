@@ -11,7 +11,7 @@ import {
 } from "@codework/contracts";
 import type { QueuedThreadMessage } from "./thread-outbox-model";
 import * as Cause from "effect/Cause";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 
 const harness = vi.hoisted(() => ({
   effects: [] as Array<() => unknown>,

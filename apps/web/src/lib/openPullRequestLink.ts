@@ -19,7 +19,7 @@ import { useProjects, useServerConfigs } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { t } from "~/i18n/runtime";
 
-export class PullRequestLinkOpenError extends Schema.TaggedErrorClass<PullRequestLinkOpenError>()(
+export class PullRequestLinkOpenError extends Schema.TaggedError<PullRequestLinkOpenError>()(
   "PullRequestLinkOpenError",
   {
     targetOrigin: Schema.NullOr(Schema.String),

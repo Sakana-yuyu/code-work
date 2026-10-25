@@ -5,8 +5,8 @@ import { EnvironmentId, PreviewTabId, ProviderInstanceId, ThreadId } from "@code
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-import { McpProtocol, McpSchema, McpServer } from "effect/unstable/ai";
-import { HttpBody, HttpClient, HttpRouter, HttpServerResponse } from "effect/unstable/http";
+import { McpProtocol, McpSchema, McpServer } from "effect/ai";
+import { HttpBody, HttpClient, HttpRouter, HttpServerResponse } from "effect/http";
 
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
@@ -28,6 +28,8 @@ const invocation = {
 const client = McpSchema.McpServerClient.of({
   clientId: 1,
   protocolVersion: "2025-06-18",
+  clientCapabilities: {},
+  clientInfo: { name: "mcp-test", version: "1.0.0" },
   initializePayload: {
     protocolVersion: "2025-06-18",
     capabilities: {},
@@ -35,7 +37,17 @@ const client = McpSchema.McpServerClient.of({
   },
   getClient: Effect.die("unused"),
 });
+// Seed the per-request invocation context that 4.0.6 now threads into the
+// toolkit layer requirements; the callTool sites provide the real value.
+const McpInvocationContextSeedLive = Layer.succeed(
+  McpInvocationContext.McpInvocationContext,
+  // The seed doubles as the real invocation: 4.0.6 runs tool handlers in the
+  // server runtime fiber, so per-call provideService does not reach them.
+  invocation as never,
+);
+
 const TestLayer = McpHttpServer.PreviewToolkitRegistrationLive.pipe(
+  Layer.provide(McpInvocationContextSeedLive),
   Layer.provideMerge(McpServer.McpServer.layer),
   Layer.provideMerge(PreviewAutomationBroker.layer.pipe(Layer.provide(NodeServices.layer))),
 );
@@ -106,6 +118,7 @@ it.effect("terminates HTTP MCP sessions with DELETE", () =>
         version: "1.0.0",
         path: "/mcp",
         protocols: [McpProtocol.v2025_06_18],
+        allowSessionTermination: true,
       });
       yield* HttpRouter.serve(serverLayer, {
         disableListenLog: true,

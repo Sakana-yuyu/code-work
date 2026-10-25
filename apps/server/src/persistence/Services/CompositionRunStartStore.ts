@@ -95,7 +95,7 @@ export const CompositionRunStartStoreErrorCode = Schema.Literals([
 ]);
 export type CompositionRunStartStoreErrorCode = typeof CompositionRunStartStoreErrorCode.Type;
 
-export class CompositionRunStartStoreDomainError extends Schema.TaggedErrorClass<CompositionRunStartStoreDomainError>()(
+export class CompositionRunStartStoreDomainError extends Schema.TaggedError<CompositionRunStartStoreDomainError>()(
   "CompositionRunStartStoreDomainError",
   {
     code: CompositionRunStartStoreErrorCode,

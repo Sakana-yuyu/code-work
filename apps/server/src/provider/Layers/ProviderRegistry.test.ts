@@ -29,8 +29,8 @@ import {
   type ServerSettings as ContractServerSettings,
 } from "@codework/contracts";
 import * as PlatformError from "effect/PlatformError";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { HttpClient, HttpClientResponse } from "effect/http";
+import { ChildProcessSpawner } from "effect/process";
 import { deepMerge } from "@codework/shared/Struct";
 import { createModelCapabilities } from "@codework/shared/model";
 import { applyServerSettingsPatch } from "@codework/shared/serverSettings";

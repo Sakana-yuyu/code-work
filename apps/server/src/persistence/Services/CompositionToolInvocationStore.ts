@@ -61,7 +61,7 @@ export const CompositionToolInvocationStoreErrorCode = Schema.Literals([
 export type CompositionToolInvocationStoreErrorCode =
   typeof CompositionToolInvocationStoreErrorCode.Type;
 
-export class CompositionToolInvocationStoreDomainError extends Schema.TaggedErrorClass<CompositionToolInvocationStoreDomainError>()(
+export class CompositionToolInvocationStoreDomainError extends Schema.TaggedError<CompositionToolInvocationStoreDomainError>()(
   "CompositionToolInvocationStoreDomainError",
   {
     code: CompositionToolInvocationStoreErrorCode,

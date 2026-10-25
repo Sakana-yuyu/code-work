@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { DEFAULT_LANGUAGE_PREFERENCE } from "@codework/contracts";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { Fragment, type ReactNode, useLayoutEffect, useSyncExternalStore } from "react";
 
 import { mobilePreferencesAtom } from "../state/preferences";

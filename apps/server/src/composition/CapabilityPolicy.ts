@@ -29,7 +29,7 @@ export type CapabilityPolicyInput = typeof CapabilityPolicyInput.Type & {
   readonly runtimeMode?: RuntimeMode;
 };
 
-export class CapabilityNotGrantedError extends Schema.TaggedErrorClass<CapabilityNotGrantedError>()(
+export class CapabilityNotGrantedError extends Schema.TaggedError<CapabilityNotGrantedError>()(
   "CapabilityNotGrantedError",
   { capabilityId: Schema.String },
 ) {
@@ -38,7 +38,7 @@ export class CapabilityNotGrantedError extends Schema.TaggedErrorClass<Capabilit
   }
 }
 
-export class CapabilityPolicyInvalidError extends Schema.TaggedErrorClass<CapabilityPolicyInvalidError>()(
+export class CapabilityPolicyInvalidError extends Schema.TaggedError<CapabilityPolicyInvalidError>()(
   "CapabilityPolicyInvalidError",
   { reason: Schema.String },
 ) {
@@ -47,7 +47,7 @@ export class CapabilityPolicyInvalidError extends Schema.TaggedErrorClass<Capabi
   }
 }
 
-export class ApprovalRequestNotFoundError extends Schema.TaggedErrorClass<ApprovalRequestNotFoundError>()(
+export class ApprovalRequestNotFoundError extends Schema.TaggedError<ApprovalRequestNotFoundError>()(
   "ApprovalRequestNotFoundError",
   { approvalRequestId: Schema.String },
 ) {

@@ -7,7 +7,7 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 export const TrimmedString = Schema.String.pipe(
   Schema.decodeTo(
     Schema.String,
-    SchemaTransformation.transformOrFail({
+    SchemaTransformation.transformEffect({
       decode: (value) => Effect.succeed(value.trim()),
       encode: (value) => Effect.succeed(value.trim()),
     }),
@@ -225,10 +225,12 @@ export type ForwardCompatibleUnionArray<
 >;
 
 /**
- * Construct a branded identifier. Enforces non-empty trimmed strings
+ * Construct a branded identifier. Enforces non-empty trimmed strings.
+ * Call sites pass literal keys only — upstream `Schema.brand` rejects generic
+ * key parameters it cannot prove are a single literal, hence the narrowing cast.
  */
 const makeEntityId = <Brand extends string>(brand: Brand) => {
-  return TrimmedNonEmptyString.pipe(Schema.brand(brand));
+  return TrimmedNonEmptyString.pipe(Schema.brand(brand as never));
 };
 
 export const ThreadId = makeEntityId("ThreadId");

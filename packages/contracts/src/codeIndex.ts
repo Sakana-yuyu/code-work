@@ -93,7 +93,7 @@ export type CodeIndexFileSymbolsToolResult = typeof CodeIndexFileSymbolsToolResu
  * 索引工具的统一失败：能力未授予、线程没有所属项目、索引未开启或为空结果。
  * 一个类型便于 agent 判断「该换个方式找符号」而不是重试。
  */
-export class CodeIndexUnavailableError extends Schema.TaggedErrorClass<CodeIndexUnavailableError>()(
+export class CodeIndexUnavailableError extends Schema.TaggedError<CodeIndexUnavailableError>()(
   "CodeIndexUnavailableError",
   {
     reason: Schema.String,

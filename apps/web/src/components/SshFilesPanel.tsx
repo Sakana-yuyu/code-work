@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import type { EnvironmentId, SshServerFileEntry, SshServerId } from "@codework/contracts";
-import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
+import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Cause from "effect/Cause";
 import { useEffect, useMemo, useRef, useState } from "react";
 

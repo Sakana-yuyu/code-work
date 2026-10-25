@@ -4,7 +4,7 @@ import type { EnvironmentId } from "@codework/contracts";
 import type { ServerConfig } from "@codework/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { useCallback, useMemo } from "react";
 import { Alert } from "react-native";
 

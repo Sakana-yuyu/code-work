@@ -9,7 +9,7 @@ import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcessSpawner } from "effect/process";
 import { createModelSelection } from "@codework/shared/model";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import { expect } from "vite-plus/test";

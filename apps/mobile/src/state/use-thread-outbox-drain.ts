@@ -13,7 +13,7 @@ import {
 } from "@codework/contracts";
 import { buildTemporaryWorktreeBranchName } from "@codework/shared/git";
 import * as Cause from "effect/Cause";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { scopedThreadKey } from "../lib/scopedEntities";

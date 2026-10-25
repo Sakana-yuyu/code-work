@@ -19,7 +19,7 @@ import {
   type IdeSessionDraft,
   type IdeSessionHeaderDraft,
 } from "@codework/shared/ideSessionSettings";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Alert, Platform, Pressable, RefreshControl, ScrollView, Switch, View } from "react-native";

@@ -8,13 +8,13 @@ import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as String from "effect/String";
-import { Command, Flag } from "effect/unstable/cli";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { Command, Flag } from "effect/cli";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 const ReleaseChannel = Schema.Literals(["stable", "nightly"]);
 type ReleaseChannel = typeof ReleaseChannel.Type;
 
-export class InvalidReleaseTagError extends Schema.TaggedErrorClass<InvalidReleaseTagError>()(
+export class InvalidReleaseTagError extends Schema.TaggedError<InvalidReleaseTagError>()(
   "InvalidReleaseTagError",
   {
     channel: ReleaseChannel,
@@ -34,7 +34,7 @@ const releaseTagListProcessContext = {
   cwd: Schema.String,
 };
 
-export class ReleaseTagListProcessError extends Schema.TaggedErrorClass<ReleaseTagListProcessError>()(
+export class ReleaseTagListProcessError extends Schema.TaggedError<ReleaseTagListProcessError>()(
   "ReleaseTagListProcessError",
   {
     ...releaseTagListProcessContext,
@@ -47,7 +47,7 @@ export class ReleaseTagListProcessError extends Schema.TaggedErrorClass<ReleaseT
   }
 }
 
-export class ReleaseTagListProcessExitError extends Schema.TaggedErrorClass<ReleaseTagListProcessExitError>()(
+export class ReleaseTagListProcessExitError extends Schema.TaggedError<ReleaseTagListProcessExitError>()(
   "ReleaseTagListProcessExitError",
   {
     ...releaseTagListProcessContext,
@@ -61,7 +61,7 @@ export class ReleaseTagListProcessExitError extends Schema.TaggedErrorClass<Rele
   }
 }
 
-export class PreviousReleaseTagGitHubOutputConfigError extends Schema.TaggedErrorClass<PreviousReleaseTagGitHubOutputConfigError>()(
+export class PreviousReleaseTagGitHubOutputConfigError extends Schema.TaggedError<PreviousReleaseTagGitHubOutputConfigError>()(
   "PreviousReleaseTagGitHubOutputConfigError",
   {
     cause: Schema.Defect(),
@@ -72,7 +72,7 @@ export class PreviousReleaseTagGitHubOutputConfigError extends Schema.TaggedErro
   }
 }
 
-export class PreviousReleaseTagGitHubOutputAppendError extends Schema.TaggedErrorClass<PreviousReleaseTagGitHubOutputAppendError>()(
+export class PreviousReleaseTagGitHubOutputAppendError extends Schema.TaggedError<PreviousReleaseTagGitHubOutputAppendError>()(
   "PreviousReleaseTagGitHubOutputAppendError",
   {
     outputPath: Schema.String,
@@ -313,7 +313,7 @@ export const writePreviousReleaseTagOutput = Effect.fn("writePreviousReleaseTagO
 
   if (writeGithubOutput) {
     const fs = yield* FileSystem.FileSystem;
-    const githubOutputPath = yield* Config.nonEmptyString("GITHUB_OUTPUT").pipe(
+    const githubOutputPath = yield* Config.NonEmptyString("GITHUB_OUTPUT").pipe(
       Effect.mapError(
         (cause) =>
           new PreviousReleaseTagGitHubOutputConfigError({
@@ -339,13 +339,13 @@ export const writePreviousReleaseTagOutput = Effect.fn("writePreviousReleaseTagO
 const command = Command.make(
   "resolve-previous-release-tag",
   {
-    channel: Flag.choice("channel", ReleaseChannel.literals).pipe(
+    channel: Flag.Literals("channel", ReleaseChannel.literals).pipe(
       Flag.withDescription("Release channel whose previous tag should be resolved."),
     ),
-    currentTag: Flag.string("current-tag").pipe(
+    currentTag: Flag.String("current-tag").pipe(
       Flag.withDescription("Current release tag to compare against."),
     ),
-    githubOutput: Flag.boolean("github-output").pipe(
+    githubOutput: Flag.Boolean("github-output").pipe(
       Flag.withDescription("Write values to GITHUB_OUTPUT instead of stdout."),
       Flag.withDefault(false),
     ),

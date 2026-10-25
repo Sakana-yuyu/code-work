@@ -16,7 +16,7 @@ export const CapabilityRegistryScope = Schema.Struct({
 });
 export type CapabilityRegistryScope = typeof CapabilityRegistryScope.Type;
 
-export class CapabilityScopeNotFoundError extends Schema.TaggedErrorClass<CapabilityScopeNotFoundError>()(
+export class CapabilityScopeNotFoundError extends Schema.TaggedError<CapabilityScopeNotFoundError>()(
   "CapabilityScopeNotFoundError",
   {
     scope: Schema.String,
@@ -28,7 +28,7 @@ export class CapabilityScopeNotFoundError extends Schema.TaggedErrorClass<Capabi
   }
 }
 
-export class CapabilityRegistryUnavailableError extends Schema.TaggedErrorClass<CapabilityRegistryUnavailableError>()(
+export class CapabilityRegistryUnavailableError extends Schema.TaggedError<CapabilityRegistryUnavailableError>()(
   "CapabilityRegistryUnavailableError",
   {
     reason: Schema.String,
@@ -39,7 +39,7 @@ export class CapabilityRegistryUnavailableError extends Schema.TaggedErrorClass<
   }
 }
 
-export class CapabilityNotAvailableError extends Schema.TaggedErrorClass<CapabilityNotAvailableError>()(
+export class CapabilityNotAvailableError extends Schema.TaggedError<CapabilityNotAvailableError>()(
   "CapabilityNotAvailableError",
   {
     scope: Schema.String,

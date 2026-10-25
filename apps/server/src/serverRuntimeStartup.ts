@@ -67,7 +67,7 @@ import {
   issueHeadlessServeAccessInfo,
 } from "./startupAccess.ts";
 
-export class ServerRuntimeStartupError extends Schema.TaggedErrorClass<ServerRuntimeStartupError>()(
+export class ServerRuntimeStartupError extends Schema.TaggedError<ServerRuntimeStartupError>()(
   "ServerRuntimeStartupError",
   {
     mode: ServerConfig.RuntimeMode,
@@ -205,7 +205,7 @@ export const resolveWelcomeBase = Effect.gen(function* () {
 
 export const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
-  const randomUUID = crypto.randomUUIDv4;
+  const randomUUID = crypto.randomUUIDv4();
   const serverConfig = yield* ServerConfig.ServerConfig;
   const projectionReadModelQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
@@ -675,7 +675,7 @@ export const reconcileProviderSessions = Effect.gen(function* () {
             const reconciledAt = DateTime.formatIso(yield* DateTime.now);
             yield* orchestrationEngine.dispatch({
               type: "thread.session.set",
-              commandId: CommandId.make(yield* crypto.randomUUIDv4),
+              commandId: CommandId.make(yield* crypto.randomUUIDv4()),
               threadId: thread.id,
               session: {
                 ...session,

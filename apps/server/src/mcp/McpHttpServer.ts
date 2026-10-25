@@ -6,8 +6,8 @@ import * as Option from "effect/Option";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import type * as Types from "effect/Types";
-import { McpProtocol, McpSchema, McpServer, Tool } from "effect/unstable/ai";
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import { McpProtocol, McpSchema, McpServer, Tool } from "effect/ai";
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as McpInvocationContext from "./McpInvocationContext.ts";
@@ -239,11 +239,22 @@ const McpTransportLive = McpServer.layerHttp({
   version: packageJson.version,
   path: "/mcp",
   protocols: [McpProtocol.v2025_06_18],
+  // Keep MCP clients able to terminate sessions over HTTP (upstream gates DELETE behind this flag).
+  allowSessionTermination: true,
 }).pipe(Layer.provide(McpAuthMiddlewareLive));
+
+// effect 4.0.6 threads tool-handler services into the toolkit layer's
+// requirements channel. McpInvocationContext is provided per request by the
+// auth middleware, so seed the layer with a placeholder to satisfy the type;
+// the per-request provideService in makeMcpAuthMiddleware always overrides it.
+const McpInvocationContextSeedLive = Layer.succeed(
+  McpInvocationContext.McpInvocationContext,
+  null as never,
+);
 
 export const layer = Layer.mergeAll(
   PreviewToolkitRegistrationLive,
   CanvasToolkitRegistrationLive,
   ImagegenToolkitRegistrationLive,
   IndexToolkitRegistrationLive,
-).pipe(Layer.provideMerge(McpTransportLive));
+).pipe(Layer.provide(McpInvocationContextSeedLive), Layer.provideMerge(McpTransportLive));

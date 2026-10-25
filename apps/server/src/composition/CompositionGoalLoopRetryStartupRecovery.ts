@@ -31,7 +31,7 @@ export interface CompositionGoalLoopRetryStartupRecoveryReceipt {
   readonly previousRunIds: ReadonlyArray<string>;
 }
 
-export class CompositionGoalLoopRetryStartupRecoveryError extends Schema.TaggedErrorClass<CompositionGoalLoopRetryStartupRecoveryError>()(
+export class CompositionGoalLoopRetryStartupRecoveryError extends Schema.TaggedError<CompositionGoalLoopRetryStartupRecoveryError>()(
   "CompositionGoalLoopRetryStartupRecoveryError",
   { cause: Schema.Defect() },
 ) {

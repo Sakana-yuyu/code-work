@@ -22,7 +22,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { Argument, Command, Flag } from "effect/unstable/cli";
+import { Argument, Command, Flag } from "effect/cli";
 
 import {
   type ControlClientOpen,
@@ -340,29 +340,29 @@ export function formatWorkspaceScriptLogs(
   return output.endsWith("\n") ? output.slice(0, -1) : output;
 }
 
-const serverFlag = Flag.string("server").pipe(
+const serverFlag = Flag.String("server").pipe(
   Flag.withDescription("Code Work server URL or pairing link."),
   Flag.withDefault("http://127.0.0.1:3773"),
 );
 
-const accessTokenFlag = Flag.string("access-token").pipe(
+const accessTokenFlag = Flag.String("access-token").pipe(
   Flag.withDescription("Scoped bearer access token. Prefer a short-lived token."),
   Flag.optional,
 );
 
-const projectFlag = Flag.string("project").pipe(
+const projectFlag = Flag.String("project").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Only list workspace script runs owned by this project id."),
   Flag.optional,
 );
 
-const threadFlag = Flag.string("thread").pipe(
+const threadFlag = Flag.String("thread").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Only list workspace script runs for this thread id."),
   Flag.optional,
 );
 
-const statusFlag = Flag.string("status").pipe(
+const statusFlag = Flag.String("status").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription(
     "Comma-separated statuses: starting, running, stopping, stopped, exited, failed.",
@@ -370,50 +370,50 @@ const statusFlag = Flag.string("status").pipe(
   Flag.optional,
 );
 
-const jsonFlag = Flag.boolean("json").pipe(
+const jsonFlag = Flag.Boolean("json").pipe(
   Flag.withDescription("Emit JSON instead of human-readable output."),
   Flag.withDefault(false),
 );
 
-const workspaceScriptRunIdArgument = Argument.string("run-id").pipe(
+const workspaceScriptRunIdArgument = Argument.String("run-id").pipe(
   Argument.withSchema(TrimmedNonEmptyString),
   Argument.withDescription("Workspace script run id."),
 );
 
-const workspaceScriptIdArgument = Argument.string("script-id").pipe(
+const workspaceScriptIdArgument = Argument.String("script-id").pipe(
   Argument.withSchema(TrimmedNonEmptyString),
   Argument.withDescription("Workspace script id declared by the project."),
 );
 
-const requiredProjectFlag = Flag.string("project").pipe(
+const requiredProjectFlag = Flag.String("project").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Project id that owns the script."),
 );
 
-const requiredThreadFlag = Flag.string("thread").pipe(
+const requiredThreadFlag = Flag.String("thread").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Thread id that owns the supervised terminal."),
 );
 
-const worktreePathFlag = Flag.string("worktree-path").pipe(
+const worktreePathFlag = Flag.String("worktree-path").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Optional worktree path used as the script working directory."),
   Flag.optional,
 );
 
-const compositionTaskIdFlag = Flag.string("composition-task-id").pipe(
+const compositionTaskIdFlag = Flag.String("composition-task-id").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Optional Composition task id; requires --composition-run-id."),
   Flag.optional,
 );
 
-const compositionRunIdFlag = Flag.string("composition-run-id").pipe(
+const compositionRunIdFlag = Flag.String("composition-run-id").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Optional Composition run id; requires --composition-task-id."),
   Flag.optional,
 );
 
-const operationIdFlag = Flag.string("operation-id").pipe(
+const operationIdFlag = Flag.String("operation-id").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription(
     "Stable idempotency key. Generated and printed before dispatch when omitted.",
@@ -421,7 +421,7 @@ const operationIdFlag = Flag.string("operation-id").pipe(
   Flag.optional,
 );
 
-const expectedRevisionFlag = Flag.integer("expected-revision").pipe(
+const expectedRevisionFlag = Flag.Int("expected-revision").pipe(
   Flag.withSchema(PositiveInt),
   Flag.withDescription(
     "Current run revision required for optimistic concurrency; reuse it when replaying the same operation id.",

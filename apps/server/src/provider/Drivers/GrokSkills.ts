@@ -10,7 +10,7 @@ import type { GrokSettings, ServerProviderSkill } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { resolveSpawnCommand } from "@codework/shared/shell";
 import { HostProcessEnvironment, HostProcessWorkingDirectory } from "@codework/shared/hostProcess";
 

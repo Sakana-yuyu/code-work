@@ -11,7 +11,7 @@ import * as PtyAdapter from "./PtyAdapter.ts";
 import * as PtyExitObservationReaper from "./PtyExitObservationReaper.ts";
 import * as PtyProcessTermination from "./PtyProcessTermination.ts";
 
-export class NodePtyModuleLoadError extends Schema.TaggedErrorClass<NodePtyModuleLoadError>()(
+export class NodePtyModuleLoadError extends Schema.TaggedError<NodePtyModuleLoadError>()(
   "NodePtyModuleLoadError",
   {
     platform: Schema.String,

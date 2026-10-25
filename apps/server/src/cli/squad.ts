@@ -23,7 +23,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { Argument, Command, Flag } from "effect/unstable/cli";
+import { Argument, Command, Flag } from "effect/cli";
 
 import {
   type ControlClientOpen,
@@ -374,31 +374,31 @@ export function formatSquadExecutionResult(
   ].join("\n");
 }
 
-const serverFlag = Flag.string("server").pipe(
+const serverFlag = Flag.String("server").pipe(
   Flag.withDescription("Code Work server URL or pairing link."),
   Flag.withDefault("http://127.0.0.1:3773"),
 );
 
-const accessTokenFlag = Flag.string("access-token").pipe(
+const accessTokenFlag = Flag.String("access-token").pipe(
   Flag.withDescription("Scoped bearer access token. Prefer a short-lived token."),
   Flag.optional,
 );
 
-const includeArchivedFlag = Flag.boolean("include-archived").pipe(
+const includeArchivedFlag = Flag.Boolean("include-archived").pipe(
   Flag.withDescription("Include archived squads."),
   Flag.withDefault(false),
 );
 
-const jsonFlag = Flag.boolean("json").pipe(
+const jsonFlag = Flag.Boolean("json").pipe(
   Flag.withDescription("Emit JSON instead of human-readable output."),
   Flag.withDefault(false),
 );
 
-const squadIdArgument = Argument.string("squad-id").pipe(
+const squadIdArgument = Argument.String("squad-id").pipe(
   Argument.withDescription("Composition squad id."),
 );
 
-const executionIdFlag = Flag.string("execution-id").pipe(
+const executionIdFlag = Flag.String("execution-id").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription(
     "Stable idempotency key. Generated and printed before dispatch when omitted.",
@@ -406,61 +406,61 @@ const executionIdFlag = Flag.string("execution-id").pipe(
   Flag.optional,
 );
 
-const revisionFlag = Flag.integer("revision").pipe(
+const revisionFlag = Flag.Int("revision").pipe(
   Flag.withSchema(PositiveInt),
   Flag.withDescription("Immutable Squad revision to execute."),
 );
 
-const projectFlag = Flag.string("project").pipe(
+const projectFlag = Flag.String("project").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Project id that owns the execution."),
 );
 
-const threadIdFlag = Flag.string("thread-id").pipe(
+const threadIdFlag = Flag.String("thread-id").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Optional thread id associated with the execution."),
   Flag.optional,
 );
 
-const goalFlag = Flag.string("goal").pipe(
+const goalFlag = Flag.String("goal").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Goal for the Squad leader and members."),
 );
 
-const workspaceRootFlag = Flag.string("workspace-root").pipe(
+const workspaceRootFlag = Flag.String("workspace-root").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Workspace root available to the Squad."),
   Flag.withDefault(process.cwd()),
 );
 
-const workspaceRootDigestFlag = Flag.string("workspace-root-digest").pipe(
+const workspaceRootDigestFlag = Flag.String("workspace-root-digest").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Optional stable workspace identity digest."),
   Flag.optional,
 );
 
-const planFileFlag = Flag.string("plan-file").pipe(
+const planFileFlag = Flag.String("plan-file").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("Optional JSON file containing explicit Squad plan nodes."),
   Flag.optional,
 );
 
-const newSquadIdFlag = Flag.string("id").pipe(
+const newSquadIdFlag = Flag.String("id").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("New composition squad id."),
 );
 
-const squadNameFlag = Flag.string("name").pipe(
+const squadNameFlag = Flag.String("name").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("New composition squad name."),
 );
 
-const expectedRevisionFlag = Flag.integer("expected-revision").pipe(
+const expectedRevisionFlag = Flag.Int("expected-revision").pipe(
   Flag.withSchema(PositiveInt),
   Flag.withDescription("Current revision required for optimistic concurrency."),
 );
 
-const configFileFlag = Flag.string("config").pipe(
+const configFileFlag = Flag.String("config").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("JSON file validated against the Code Work Squad contract."),
 );

@@ -4,7 +4,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@codework/client-runtime/state/runtime";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Alert, Platform, Pressable, ScrollView, View } from "react-native";

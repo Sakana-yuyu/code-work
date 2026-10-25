@@ -4,13 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import {
-  HttpBody,
-  HttpClient,
-  HttpClientError,
-  HttpClientResponse,
-  HttpRouter,
-} from "effect/unstable/http";
+import { HttpBody, HttpClient, HttpClientError, HttpClientResponse, HttpRouter } from "effect/http";
 
 import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@codework/contracts";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";

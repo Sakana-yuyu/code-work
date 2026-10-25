@@ -35,7 +35,7 @@ export type CompositionAgentServiceInput = {
   readonly signal?: AbortSignal | undefined;
 };
 
-export class CompositionAgentServiceError extends Schema.TaggedErrorClass<CompositionAgentServiceError>()(
+export class CompositionAgentServiceError extends Schema.TaggedError<CompositionAgentServiceError>()(
   "CompositionAgentServiceError",
   {
     code: Schema.String,

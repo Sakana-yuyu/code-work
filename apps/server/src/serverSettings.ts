@@ -47,7 +47,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as ServerConfig from "./config.ts";
 import { type DeepPartial, deepMerge } from "@codework/shared/Struct";
 import { fromJsonStringPretty, fromLenientJson } from "@codework/shared/schemaJson";

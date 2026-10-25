@@ -29,7 +29,7 @@ export const CompositionAutomationStoreErrorCode = Schema.Literals([
 ]);
 export type CompositionAutomationStoreErrorCode = typeof CompositionAutomationStoreErrorCode.Type;
 
-export class CompositionAutomationStoreDomainError extends Schema.TaggedErrorClass<CompositionAutomationStoreDomainError>()(
+export class CompositionAutomationStoreDomainError extends Schema.TaggedError<CompositionAutomationStoreDomainError>()(
   "CompositionAutomationStoreDomainError",
   {
     code: CompositionAutomationStoreErrorCode,

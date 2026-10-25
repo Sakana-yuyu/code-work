@@ -30,7 +30,11 @@ export function parseCodeworkProjectFile(contents: string): CodeworkProjectFile 
  * editors get LSP support via a `$schema` reference.
  */
 export function buildCodeworkProjectFileJsonSchema(): Record<string, unknown> {
-  const document = Schema.toJsonSchemaDocument(CodeworkProjectFile);
+  // Keep the published t3.json closed to unmodeled keys as before (4.0.6
+  // replaced the additionalProperties option with onExcessProperty).
+  const document = Schema.toJsonSchemaDocument(CodeworkProjectFile, {
+    onExcessProperty: "error",
+  });
   const jsonSchema: Record<string, unknown> = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     $id: CODEWORK_PROJECT_FILE_SCHEMA_URL,

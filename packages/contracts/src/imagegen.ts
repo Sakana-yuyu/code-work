@@ -49,7 +49,7 @@ export const IMAGE_GENERATE_FAILURE_REASONS = [
   "write_failed",
 ] as const;
 
-export class ImageGenerateError extends Schema.TaggedErrorClass<ImageGenerateError>()(
+export class ImageGenerateError extends Schema.TaggedError<ImageGenerateError>()(
   "ImageGenerateError",
   {
     reason: Schema.Literals(IMAGE_GENERATE_FAILURE_REASONS),

@@ -72,7 +72,7 @@ export const SupplierAdminErrorCode = Schema.Literals([
 export type SupplierAdminErrorCode = typeof SupplierAdminErrorCode.Type;
 
 /** Supplier 管理操作失败的稳定传输形状；detail 只含定位信息，不含凭据值。 */
-export class SupplierAdminRpcError extends Schema.TaggedErrorClass<SupplierAdminRpcError>()(
+export class SupplierAdminRpcError extends Schema.TaggedError<SupplierAdminRpcError>()(
   "SupplierAdminRpcError",
   {
     code: SupplierAdminErrorCode,

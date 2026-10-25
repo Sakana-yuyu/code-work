@@ -4,12 +4,12 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 /** Largest context one app may keep for the agent, in UTF-8 bytes. */
 export const MCP_APP_MODEL_CONTEXT_MAX_BYTES = 16 * 1024;
 
-export class McpAppModelContextError extends Schema.TaggedErrorClass<McpAppModelContextError>()(
+export class McpAppModelContextError extends Schema.TaggedError<McpAppModelContextError>()(
   "McpAppModelContextError",
   { cause: Schema.optional(Schema.Defect()) },
 ) {}

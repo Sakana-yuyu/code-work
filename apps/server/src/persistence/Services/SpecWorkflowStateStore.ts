@@ -15,7 +15,7 @@ export const SpecWorkflowStateStoreErrorCode = Schema.Literals([
 ]);
 export type SpecWorkflowStateStoreErrorCode = typeof SpecWorkflowStateStoreErrorCode.Type;
 
-export class SpecWorkflowStateStoreDomainError extends Schema.TaggedErrorClass<SpecWorkflowStateStoreDomainError>()(
+export class SpecWorkflowStateStoreDomainError extends Schema.TaggedError<SpecWorkflowStateStoreDomainError>()(
   "SpecWorkflowStateStoreDomainError",
   {
     code: SpecWorkflowStateStoreErrorCode,

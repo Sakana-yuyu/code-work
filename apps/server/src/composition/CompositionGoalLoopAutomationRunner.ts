@@ -50,7 +50,7 @@ import {
   type ThreadGoalStoreShape,
 } from "../persistence/Services/ThreadGoalStore.ts";
 
-export class CompositionGoalLoopAutomationRunnerError extends Schema.TaggedErrorClass<CompositionGoalLoopAutomationRunnerError>()(
+export class CompositionGoalLoopAutomationRunnerError extends Schema.TaggedError<CompositionGoalLoopAutomationRunnerError>()(
   "CompositionGoalLoopAutomationRunnerError",
   {
     code: Schema.String,

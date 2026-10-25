@@ -20,7 +20,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as Schema from "effect/Schema";
 
 import {
@@ -143,7 +143,7 @@ const statusVariant = (
 const statusLabel = (status: CompositionTaskStatus): string => t(STATUS_KEYS[status]);
 
 const promptDigest = (prompt: string): string =>
-  `sha256:${Encoding.encodeHex(sha256(new TextEncoder().encode(prompt)))}`;
+  `sha256:${Hex.encode(sha256(new TextEncoder().encode(prompt)))}`;
 
 const makeChildDraft = (index: number, driverId: string): ChildDraft => ({
   nodeId: `child-${index + 1}`,

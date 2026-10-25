@@ -8,7 +8,7 @@ import * as Stream from "effect/Stream";
 
 import type { CompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
 
-export class CompositionRuntimeAdapterAlreadyRegisteredError extends Schema.TaggedErrorClass<CompositionRuntimeAdapterAlreadyRegisteredError>()(
+export class CompositionRuntimeAdapterAlreadyRegisteredError extends Schema.TaggedError<CompositionRuntimeAdapterAlreadyRegisteredError>()(
   "CompositionRuntimeAdapterAlreadyRegisteredError",
   { runtimeId: Schema.String },
 ) {
@@ -17,7 +17,7 @@ export class CompositionRuntimeAdapterAlreadyRegisteredError extends Schema.Tagg
   }
 }
 
-export class CompositionRuntimeAdapterInvalidError extends Schema.TaggedErrorClass<CompositionRuntimeAdapterInvalidError>()(
+export class CompositionRuntimeAdapterInvalidError extends Schema.TaggedError<CompositionRuntimeAdapterInvalidError>()(
   "CompositionRuntimeAdapterInvalidError",
   { detail: Schema.String },
 ) {

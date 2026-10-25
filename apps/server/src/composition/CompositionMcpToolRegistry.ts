@@ -69,7 +69,7 @@ export type CompositionMcpToolDescriptor = {
   readonly capabilityDescriptor: CompositionCapabilityDescriptor;
 };
 
-export class CompositionMcpToolRegistrationError extends Schema.TaggedErrorClass<CompositionMcpToolRegistrationError>()(
+export class CompositionMcpToolRegistrationError extends Schema.TaggedError<CompositionMcpToolRegistrationError>()(
   "CompositionMcpToolRegistrationError",
   { code: Schema.String, detail: Schema.String },
 ) {
@@ -78,7 +78,7 @@ export class CompositionMcpToolRegistrationError extends Schema.TaggedErrorClass
   }
 }
 
-export class CompositionMcpToolTrustError extends Schema.TaggedErrorClass<CompositionMcpToolTrustError>()(
+export class CompositionMcpToolTrustError extends Schema.TaggedError<CompositionMcpToolTrustError>()(
   "CompositionMcpToolTrustError",
   { canonicalToolName: Schema.String, code: Schema.String },
 ) {
@@ -87,7 +87,7 @@ export class CompositionMcpToolTrustError extends Schema.TaggedErrorClass<Compos
   }
 }
 
-export class CompositionMcpToolFailure extends Schema.TaggedErrorClass<CompositionMcpToolFailure>()(
+export class CompositionMcpToolFailure extends Schema.TaggedError<CompositionMcpToolFailure>()(
   "CompositionMcpToolFailure",
   { canonicalToolName: Schema.String, code: Schema.String, detail: Schema.String },
 ) {

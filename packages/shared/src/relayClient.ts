@@ -8,15 +8,16 @@ import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Base64Url from "effect/encoding/Base64Url";
+import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Semaphore from "effect/Semaphore";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { HostProcessArchitecture, HostProcessPlatform } from "./hostProcess.ts";
 
 export const CLOUDFLARED_VERSION = "2026.5.2";
@@ -103,7 +104,7 @@ const INSTALL_LOCK_RETRY_DELAY = "100 millis";
 const INSTALL_LOCK_STALE_MS = 5 * 60 * 1_000;
 
 const trimmedString = (name: string) =>
-  Config.string(name).pipe(
+  Config.String(name).pipe(
     Config.option,
     Config.map(
       Option.flatMap((value) => {
@@ -321,7 +322,7 @@ export const makeCloudflaredRelayClient = Effect.fn("cloudflared.make")(function
           }),
       ),
     );
-    if (Encoding.encodeHex(checksum) !== asset.sha256) {
+    if (Hex.encode(checksum) !== asset.sha256) {
       return yield* new RelayClientInstallError({
         reason: "invalid_checksum",
         message: "Downloaded relay client checksum did not match the pinned release.",
@@ -430,7 +431,7 @@ export const makeCloudflaredRelayClient = Effect.fn("cloudflared.make")(function
         wrapInstallFailure("validation_failed", "The downloaded relay client binary did not run."),
       );
 
-      const stagedPath = `${managedPath}.${yield* crypto.randomUUIDv4}.tmp`;
+      const stagedPath = `${managedPath}.${yield* crypto.randomUUIDv4()}.tmp`;
       yield* report("activating");
       yield* fileSystem
         .rename(executablePath, stagedPath)

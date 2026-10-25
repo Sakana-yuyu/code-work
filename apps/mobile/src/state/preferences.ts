@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 
 import { MobilePreferencesStore, type Preferences } from "../persistence/mobile-preferences";
 import * as Runtime from "../lib/runtime";

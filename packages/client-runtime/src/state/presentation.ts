@@ -1,7 +1,7 @@
 import type { EnvironmentId, EnvironmentMachineKind, ServerConfig } from "@codework/contracts";
 import { resolveEnvironmentMachineKind } from "@codework/contracts";
 import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 
 import { AVAILABLE_CONNECTION_STATE, type SupervisorConnectionState } from "../connection/model.ts";
 import {

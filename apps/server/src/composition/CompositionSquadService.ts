@@ -66,7 +66,7 @@ export type CompositionSquadServiceErrorCode =
   | "squad_validation_failed"
   | "squad_persistence_failed";
 
-export class CompositionSquadServiceError extends Schema.TaggedErrorClass<CompositionSquadServiceError>()(
+export class CompositionSquadServiceError extends Schema.TaggedError<CompositionSquadServiceError>()(
   "CompositionSquadServiceError",
   {
     code: Schema.String,

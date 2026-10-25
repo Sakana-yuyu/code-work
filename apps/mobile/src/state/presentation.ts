@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentPresentation } from "@codework/client-runtime/connection";
 import { createEnvironmentPresentationAtoms } from "@codework/client-runtime/state/presentation";
 import type { EnvironmentId } from "@codework/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import { environmentCatalog } from "../connection/catalog";
 import { serverEnvironment } from "./server";

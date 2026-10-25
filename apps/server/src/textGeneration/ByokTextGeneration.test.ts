@@ -3,7 +3,7 @@ import { ByokSettings, ProviderInstanceId } from "@codework/contracts";
 import { createModelSelection } from "@codework/shared/model";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { HttpBody, HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { HttpBody, HttpClient, HttpClientResponse } from "effect/http";
 import { makeByokTextGeneration } from "./ByokTextGeneration.ts";
 
 const encodeJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));

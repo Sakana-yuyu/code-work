@@ -98,8 +98,8 @@ import { getCodeGraphIndexProgress, setCodeGraphProgress } from "./codeGraph/cod
 import type { CodeGraphProjectIndexStatus } from "@codework/contracts";
 import { resolveServerBackgroundActivitySettings } from "@codework/shared/backgroundActivitySettings";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
-import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
-import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
+import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/http";
+import { RpcSerialization, RpcServer } from "effect/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
@@ -1087,11 +1087,13 @@ const makeWsRpcLayer = (
               message: cause instanceof Error ? cause.message : fallbackMessage,
               cause,
             });
-      const randomUUID = crypto.randomUUIDv4.pipe(
-        Effect.mapError((cause) =>
-          toDispatchCommandError(cause, "Failed to generate orchestration command identifier."),
-        ),
-      );
+      const randomUUID = crypto
+        .randomUUIDv4()
+        .pipe(
+          Effect.mapError((cause) =>
+            toDispatchCommandError(cause, "Failed to generate orchestration command identifier."),
+          ),
+        );
       const serverEventId = randomUUID.pipe(Effect.map(EventId.make));
       const serverCommandId = (tag: string) =>
         randomUUID.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));

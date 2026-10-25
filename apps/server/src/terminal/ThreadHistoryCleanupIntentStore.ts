@@ -1,5 +1,5 @@
 import * as Cause from "effect/Cause";
-import * as Encoding from "effect/Encoding";
+import * as Base64Url from "effect/encoding/Base64Url";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
@@ -26,7 +26,7 @@ export const ThreadHistoryCleanupIntent = Schema.Struct({
 });
 export type ThreadHistoryCleanupIntent = typeof ThreadHistoryCleanupIntent.Type;
 
-export class ThreadHistoryCleanupIntentStoreError extends Schema.TaggedErrorClass<ThreadHistoryCleanupIntentStoreError>()(
+export class ThreadHistoryCleanupIntentStoreError extends Schema.TaggedError<ThreadHistoryCleanupIntentStoreError>()(
   "ThreadHistoryCleanupIntentStoreError",
   {
     operation: Schema.Literals(["read", "write", "remove"]),
@@ -42,7 +42,7 @@ const encodeThreadHistoryCleanupIntent = Schema.encodeUnknownEffect(
   Schema.fromJsonString(ThreadHistoryCleanupIntent),
 );
 
-const safeThreadId = (threadId: string) => `terminal_${Encoding.encodeBase64Url(threadId)}`;
+const safeThreadId = (threadId: string) => `terminal_${Base64Url.encode(threadId)}`;
 
 export interface ThreadHistoryCleanupIntentStore {
   readonly intentsDir: string;

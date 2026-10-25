@@ -4,7 +4,7 @@ import { parsePersistedServerObservabilitySettings } from "@codework/shared/serv
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -22,7 +22,7 @@ import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
 import * as DesktopWslServerTree from "../wsl/DesktopWslServerTree.ts";
 import { t } from "../i18n.js";
 
-export class DesktopBackendObservabilitySettingsReadError extends Schema.TaggedErrorClass<DesktopBackendObservabilitySettingsReadError>()(
+export class DesktopBackendObservabilitySettingsReadError extends Schema.TaggedError<DesktopBackendObservabilitySettingsReadError>()(
   "DesktopBackendObservabilitySettingsReadError",
   {
     settingsPath: Schema.String,
@@ -631,7 +631,7 @@ export const make = Effect.gen(function* () {
       onNone: () =>
         crypto.randomBytes(24).pipe(
           Effect.map((bytes) => {
-            const token = Encoding.encodeHex(bytes);
+            const token = Hex.encode(bytes);
             return [token, Option.some(token)] as const;
           }),
         ),

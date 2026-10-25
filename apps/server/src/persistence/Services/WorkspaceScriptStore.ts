@@ -15,7 +15,7 @@ export const WorkspaceScriptStoreErrorCode = Schema.Literals([
 ]);
 export type WorkspaceScriptStoreErrorCode = typeof WorkspaceScriptStoreErrorCode.Type;
 
-export class WorkspaceScriptStoreDomainError extends Schema.TaggedErrorClass<WorkspaceScriptStoreDomainError>()(
+export class WorkspaceScriptStoreDomainError extends Schema.TaggedError<WorkspaceScriptStoreDomainError>()(
   "WorkspaceScriptStoreDomainError",
   {
     code: WorkspaceScriptStoreErrorCode,

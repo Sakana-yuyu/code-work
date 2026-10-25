@@ -21,7 +21,7 @@ import {
 } from "@codework/contracts";
 import { resolvePreviewViewport } from "@codework/shared/previewViewport";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import {
   applyPreviewServerSnapshot,

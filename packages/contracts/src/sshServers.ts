@@ -139,7 +139,7 @@ export const SshDeleteFileInput = Schema.Struct({
 });
 export type SshDeleteFileInput = typeof SshDeleteFileInput.Type;
 
-export class SshServerNotFoundError extends Schema.TaggedErrorClass<SshServerNotFoundError>()(
+export class SshServerNotFoundError extends Schema.TaggedError<SshServerNotFoundError>()(
   "SshServerNotFoundError",
   {
     serverId: SshServerId,
@@ -152,7 +152,7 @@ export class SshServerNotFoundError extends Schema.TaggedErrorClass<SshServerNot
   }
 }
 
-export class SshHostKeyMismatchError extends Schema.TaggedErrorClass<SshHostKeyMismatchError>()(
+export class SshHostKeyMismatchError extends Schema.TaggedError<SshHostKeyMismatchError>()(
   "SshHostKeyMismatchError",
   {
     hostname: TrimmedNonEmptyString,
@@ -165,7 +165,7 @@ export class SshHostKeyMismatchError extends Schema.TaggedErrorClass<SshHostKeyM
   }
 }
 
-export class SshConnectionError extends Schema.TaggedErrorClass<SshConnectionError>()(
+export class SshConnectionError extends Schema.TaggedError<SshConnectionError>()(
   "SshConnectionError",
   {
     serverId: Schema.optional(SshServerId),
@@ -177,7 +177,7 @@ export class SshConnectionError extends Schema.TaggedErrorClass<SshConnectionErr
   }
 }
 
-export class SshFileError extends Schema.TaggedErrorClass<SshFileError>()("SshFileError", {
+export class SshFileError extends Schema.TaggedError<SshFileError>()("SshFileError", {
   path: TrimmedString,
   reason: Schema.Literals([
     "not-found",

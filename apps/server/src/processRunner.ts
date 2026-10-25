@@ -7,8 +7,8 @@ import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as ChildProcess from "effect/unstable/process/ChildProcess";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import { resolveSpawnCommand } from "@codework/shared/shell";
 import {
@@ -64,7 +64,7 @@ const formatProcessInvocation = (input: {
     : `'${input.command}' in '${executionCwd}'`;
 };
 
-export class ProcessSpawnError extends Schema.TaggedErrorClass<ProcessSpawnError>()(
+export class ProcessSpawnError extends Schema.TaggedError<ProcessSpawnError>()(
   "ProcessSpawnError",
   {
     ...ProcessInvocationFields,
@@ -79,7 +79,7 @@ export class ProcessSpawnError extends Schema.TaggedErrorClass<ProcessSpawnError
   }
 }
 
-export class ProcessStdinError extends Schema.TaggedErrorClass<ProcessStdinError>()(
+export class ProcessStdinError extends Schema.TaggedError<ProcessStdinError>()(
   "ProcessStdinError",
   {
     ...ProcessInvocationFields,
@@ -97,7 +97,7 @@ const isEpipeCause = (value: unknown): boolean =>
   value instanceof Error &&
   (("code" in value && value.code === "EPIPE") || isEpipeCause(value.cause));
 
-export class ProcessOutputLimitError extends Schema.TaggedErrorClass<ProcessOutputLimitError>()(
+export class ProcessOutputLimitError extends Schema.TaggedError<ProcessOutputLimitError>()(
   "ProcessOutputLimitError",
   {
     ...ProcessInvocationFields,
@@ -111,20 +111,17 @@ export class ProcessOutputLimitError extends Schema.TaggedErrorClass<ProcessOutp
   }
 }
 
-export class ProcessReadError extends Schema.TaggedErrorClass<ProcessReadError>()(
-  "ProcessReadError",
-  {
-    ...ProcessInvocationFields,
-    stream: Schema.Literals(["stdout", "stderr", "exitCode"]),
-    cause: Schema.Defect(),
-  },
-) {
+export class ProcessReadError extends Schema.TaggedError<ProcessReadError>()("ProcessReadError", {
+  ...ProcessInvocationFields,
+  stream: Schema.Literals(["stdout", "stderr", "exitCode"]),
+  cause: Schema.Defect(),
+}) {
   override get message(): string {
     return `Failed to read ${this.stream} for process ${formatProcessInvocation(this)}`;
   }
 }
 
-export class ProcessTimeoutError extends Schema.TaggedErrorClass<ProcessTimeoutError>()(
+export class ProcessTimeoutError extends Schema.TaggedError<ProcessTimeoutError>()(
   "ProcessTimeoutError",
   {
     ...ProcessInvocationFields,

@@ -43,7 +43,7 @@ import {
   type CompositionTaskRuntimeProjectionServiceShape,
 } from "./CompositionTaskRuntimeProjectionService.ts";
 
-export class CompositionTaskGraphExecutionError extends Schema.TaggedErrorClass<CompositionTaskGraphExecutionError>()(
+export class CompositionTaskGraphExecutionError extends Schema.TaggedError<CompositionTaskGraphExecutionError>()(
   "CompositionTaskGraphExecutionError",
   {
     code: Schema.String,

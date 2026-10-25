@@ -21,7 +21,7 @@ import {
 } from "../provider/Services/ProviderInstanceRegistry.ts";
 import type { ProviderCompositionModelDescriptor } from "../provider/ProviderDriver.ts";
 
-export class CompositionSquadModelBindingError extends Schema.TaggedErrorClass<CompositionSquadModelBindingError>()(
+export class CompositionSquadModelBindingError extends Schema.TaggedError<CompositionSquadModelBindingError>()(
   "CompositionSquadModelBindingError",
   {
     code: Schema.String,

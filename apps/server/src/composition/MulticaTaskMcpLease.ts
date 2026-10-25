@@ -31,7 +31,7 @@ export type MulticaTaskMcpLease = MulticaTaskMcpLeaseRequest & {
   };
 };
 
-export class MulticaTaskMcpLeaseError extends Schema.TaggedErrorClass<MulticaTaskMcpLeaseError>()(
+export class MulticaTaskMcpLeaseError extends Schema.TaggedError<MulticaTaskMcpLeaseError>()(
   "MulticaTaskMcpLeaseError",
   { code: Schema.String, detail: Schema.String },
 ) {

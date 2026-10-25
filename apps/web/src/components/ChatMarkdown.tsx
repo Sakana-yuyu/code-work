@@ -27,7 +27,7 @@ import {
 import { classifyMarkdownImageSource } from "@codework/client-runtime/markdown-images";
 import { withoutChatEmojiInTree } from "@codework/shared/chatPresentation";
 import * as Cause from "effect/Cause";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import React, {
   Children,
   Suspense,

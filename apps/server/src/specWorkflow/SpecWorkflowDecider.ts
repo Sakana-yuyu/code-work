@@ -16,7 +16,7 @@ export const SpecWorkflowTransitionErrorCode = Schema.Literals([
 ]);
 export type SpecWorkflowTransitionErrorCode = typeof SpecWorkflowTransitionErrorCode.Type;
 
-export class SpecWorkflowTransitionError extends Schema.TaggedErrorClass<SpecWorkflowTransitionError>()(
+export class SpecWorkflowTransitionError extends Schema.TaggedError<SpecWorkflowTransitionError>()(
   "SpecWorkflowTransitionError",
   {
     code: SpecWorkflowTransitionErrorCode,

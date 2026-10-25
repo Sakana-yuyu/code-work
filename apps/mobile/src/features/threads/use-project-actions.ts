@@ -11,7 +11,7 @@ import {
 } from "@codework/contracts";
 import { buildTemporaryWorktreeBranchName } from "@codework/shared/git";
 import * as Cause from "effect/Cause";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 
 import { threadEnvironment } from "../../state/threads";
 import type { DraftComposerAttachment } from "../../lib/composerImages";

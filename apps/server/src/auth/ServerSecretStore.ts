@@ -17,7 +17,7 @@ const secretStoreErrorContext = {
   cause: Schema.Defect(),
 };
 
-export class SecretStoreSecureError extends Schema.TaggedErrorClass<SecretStoreSecureError>()(
+export class SecretStoreSecureError extends Schema.TaggedError<SecretStoreSecureError>()(
   "SecretStoreSecureError",
   {
     ...secretStoreErrorContext,
@@ -28,7 +28,7 @@ export class SecretStoreSecureError extends Schema.TaggedErrorClass<SecretStoreS
   }
 }
 
-export class SecretStoreReadError extends Schema.TaggedErrorClass<SecretStoreReadError>()(
+export class SecretStoreReadError extends Schema.TaggedError<SecretStoreReadError>()(
   "SecretStoreReadError",
   {
     ...secretStoreErrorContext,
@@ -39,7 +39,7 @@ export class SecretStoreReadError extends Schema.TaggedErrorClass<SecretStoreRea
   }
 }
 
-export class SecretStoreTemporaryPathError extends Schema.TaggedErrorClass<SecretStoreTemporaryPathError>()(
+export class SecretStoreTemporaryPathError extends Schema.TaggedError<SecretStoreTemporaryPathError>()(
   "SecretStoreTemporaryPathError",
   {
     ...secretStoreErrorContext,
@@ -50,7 +50,7 @@ export class SecretStoreTemporaryPathError extends Schema.TaggedErrorClass<Secre
   }
 }
 
-export class SecretStorePersistError extends Schema.TaggedErrorClass<SecretStorePersistError>()(
+export class SecretStorePersistError extends Schema.TaggedError<SecretStorePersistError>()(
   "SecretStorePersistError",
   {
     ...secretStoreErrorContext,
@@ -61,7 +61,7 @@ export class SecretStorePersistError extends Schema.TaggedErrorClass<SecretStore
   }
 }
 
-export class SecretStoreRandomGenerationError extends Schema.TaggedErrorClass<SecretStoreRandomGenerationError>()(
+export class SecretStoreRandomGenerationError extends Schema.TaggedError<SecretStoreRandomGenerationError>()(
   "SecretStoreRandomGenerationError",
   {
     ...secretStoreErrorContext,
@@ -72,7 +72,7 @@ export class SecretStoreRandomGenerationError extends Schema.TaggedErrorClass<Se
   }
 }
 
-export class SecretStoreConcurrentReadError extends Schema.TaggedErrorClass<SecretStoreConcurrentReadError>()(
+export class SecretStoreConcurrentReadError extends Schema.TaggedError<SecretStoreConcurrentReadError>()(
   "SecretStoreConcurrentReadError",
   {
     resource: Schema.String,
@@ -83,7 +83,7 @@ export class SecretStoreConcurrentReadError extends Schema.TaggedErrorClass<Secr
   }
 }
 
-export class SecretStoreRemoveError extends Schema.TaggedErrorClass<SecretStoreRemoveError>()(
+export class SecretStoreRemoveError extends Schema.TaggedError<SecretStoreRemoveError>()(
   "SecretStoreRemoveError",
   {
     ...secretStoreErrorContext,
@@ -94,7 +94,7 @@ export class SecretStoreRemoveError extends Schema.TaggedErrorClass<SecretStoreR
   }
 }
 
-export class SecretStoreDecodeError extends Schema.TaggedErrorClass<SecretStoreDecodeError>()(
+export class SecretStoreDecodeError extends Schema.TaggedError<SecretStoreDecodeError>()(
   "SecretStoreDecodeError",
   {
     ...secretStoreErrorContext,
@@ -105,7 +105,7 @@ export class SecretStoreDecodeError extends Schema.TaggedErrorClass<SecretStoreD
   }
 }
 
-export class SecretStoreEncodeError extends Schema.TaggedErrorClass<SecretStoreEncodeError>()(
+export class SecretStoreEncodeError extends Schema.TaggedError<SecretStoreEncodeError>()(
   "SecretStoreEncodeError",
   {
     ...secretStoreErrorContext,
@@ -216,7 +216,7 @@ export const make = Effect.gen(function* () {
 
   const set: ServerSecretStore["Service"]["set"] = (name, value) => {
     const secretPath = resolveSecretPath(name);
-    return crypto.randomUUIDv4.pipe(
+    return crypto.randomUUIDv4().pipe(
       Effect.mapError(
         (cause) =>
           new SecretStoreTemporaryPathError({

@@ -5,7 +5,7 @@ import * as Scope from "effect/Scope";
 
 import * as PtyProcessTermination from "./PtyProcessTermination.ts";
 
-export class PtyExitObservationOperationError extends Schema.TaggedErrorClass<PtyExitObservationOperationError>()(
+export class PtyExitObservationOperationError extends Schema.TaggedError<PtyExitObservationOperationError>()(
   "PtyExitObservationOperationError",
   {
     adapter: Schema.String,
@@ -15,7 +15,7 @@ export class PtyExitObservationOperationError extends Schema.TaggedErrorClass<Pt
   },
 ) {}
 
-export class PtyExitObservationRetainedError extends Schema.TaggedErrorClass<PtyExitObservationRetainedError>()(
+export class PtyExitObservationRetainedError extends Schema.TaggedError<PtyExitObservationRetainedError>()(
   "PtyExitObservationRetainedError",
   {
     adapter: Schema.String,

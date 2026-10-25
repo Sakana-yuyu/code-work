@@ -92,7 +92,7 @@ import {
 } from "@codework/client-runtime/state/runtime";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { terminalDisplayLabel } from "../terminal/displayLabel";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";

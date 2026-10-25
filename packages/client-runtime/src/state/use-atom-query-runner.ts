@@ -1,6 +1,6 @@
 import { RegistryContext } from "@effect/atom-react";
 import { executeAtomQuery, type AtomCommandOptions, type AtomCommandResult } from "./runtime.ts";
-import { AsyncResult, type Atom } from "effect/unstable/reactivity";
+import { AsyncResult, type Atom } from "effect/reactivity";
 import { useCallback, useContext } from "react";
 
 export function useAtomQueryRunner<T, A, E>(

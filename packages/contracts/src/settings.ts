@@ -445,7 +445,7 @@ const makeBinaryPathSetting = (fallback: string) =>
   TrimmedString.pipe(
     Schema.decodeTo(
       Schema.String,
-      SchemaTransformation.transformOrFail({
+      SchemaTransformation.transformEffect({
         decode: (value) => Effect.succeed(value || fallback),
         encode: (value) => Effect.succeed(value),
       }),
@@ -1692,7 +1692,7 @@ export const ServerSettingsOperation = Schema.Literals([
 ]);
 export type ServerSettingsOperation = typeof ServerSettingsOperation.Type;
 
-export class ServerSettingsError extends Schema.TaggedErrorClass<ServerSettingsError>()(
+export class ServerSettingsError extends Schema.TaggedError<ServerSettingsError>()(
   "ServerSettingsError",
   {
     settingsPath: Schema.String,
@@ -1714,7 +1714,7 @@ export class ServerSettingsError extends Schema.TaggedErrorClass<ServerSettingsE
 }
 
 /** Multica 并发写入的稳定冲突结果，不包含设置内容或凭据。 */
-export class ServerSettingsConflictError extends Schema.TaggedErrorClass<ServerSettingsConflictError>()(
+export class ServerSettingsConflictError extends Schema.TaggedError<ServerSettingsConflictError>()(
   "ServerSettingsConflictError",
   {
     providerInstanceId: Schema.String,

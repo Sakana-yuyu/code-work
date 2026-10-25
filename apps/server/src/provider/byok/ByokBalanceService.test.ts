@@ -3,7 +3,7 @@ import { DEFAULT_SERVER_SETTINGS, ProviderDriverKind } from "@codework/contracts
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import * as ServerSettings from "../../serverSettings.ts";
 import { make } from "./ByokBalanceService.ts";

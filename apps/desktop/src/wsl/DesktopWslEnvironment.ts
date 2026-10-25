@@ -7,7 +7,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { buildRemoteNodeEnvScript } from "@codework/ssh/tunnel";
 import { satisfiesSemverRange } from "@codework/shared/semver";
@@ -45,7 +45,7 @@ export type EnsureWslNodePtyResult =
       readonly retryLimit?: number;
     };
 
-export class DesktopWslDistroListError extends Schema.TaggedErrorClass<DesktopWslDistroListError>()(
+export class DesktopWslDistroListError extends Schema.TaggedError<DesktopWslDistroListError>()(
   "DesktopWslDistroListError",
   { reason: Schema.String },
 ) {
@@ -796,7 +796,7 @@ export const layerTest = (stub: DesktopWslEnvironmentTestStub = {}) => {
     DesktopWslEnvironment,
     DesktopWslEnvironment.of({
       isAvailable: Effect.succeed(stub.isAvailable ?? false),
-      listDistros: probeDistros.pipe(Effect.orElseSucceed(() => [])),
+      listDistros: Effect.catch(probeDistros, () => Effect.succeed([] as readonly WslDistro[])),
       probeDistros,
       preWarm: () => Effect.void,
       windowsToWslPath: (distro, windowsPath) =>

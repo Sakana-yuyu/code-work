@@ -50,7 +50,7 @@ const CODE_INDEX_FLUSH_QUIET_MS = 300;
 /** MCP queries older than this trigger an mtime reconcile before answering. */
 const CODE_INDEX_RECONCILE_MIN_INTERVAL_MS = 10 * 60_000;
 
-export class CodeIndexError extends Schema.TaggedErrorClass<CodeIndexError>()("CodeIndexError", {
+export class CodeIndexError extends Schema.TaggedError<CodeIndexError>()("CodeIndexError", {
   root: Schema.String,
   operation: Schema.String,
   reason: Schema.String,

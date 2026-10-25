@@ -22,7 +22,7 @@ export type CompositionRuntimeMcpBinding = Omit<CompositionRuntimeMcpBindingRequ
   readonly capabilityHandshakeId: string;
 };
 
-export class CompositionRuntimeMcpBindingError extends Schema.TaggedErrorClass<CompositionRuntimeMcpBindingError>()(
+export class CompositionRuntimeMcpBindingError extends Schema.TaggedError<CompositionRuntimeMcpBindingError>()(
   "CompositionRuntimeMcpBindingError",
   {
     code: Schema.Literals(["invalid_binding", "credential_in_use"]),
@@ -123,7 +123,7 @@ const makeWithOptions = Effect.fn("CompositionRuntimeMcpSessionRegistry.make")(f
     }
 
     const tokenHash = yield* hashToken(rawToken);
-    const nextHandshakeId = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+    const nextHandshakeId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
     const revocation = yield* Deferred.make<void>();
     return yield* SynchronizedRef.modifyEffect(state, ({ records }) => {
       const current = pruneExpired(records, timestamp);

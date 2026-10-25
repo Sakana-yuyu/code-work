@@ -10,7 +10,7 @@ import {
   type PreviewSessionSnapshot,
   type PreviewViewportSetting,
 } from "@codework/contracts";
-import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
+import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Option from "effect/Option";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";

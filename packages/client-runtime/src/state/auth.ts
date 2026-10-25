@@ -6,7 +6,7 @@ import type {
 } from "@codework/contracts";
 import { isUnknownUnionMember, WS_METHODS } from "@codework/contracts";
 import * as Stream from "effect/Stream";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { subscribe } from "../rpc/client.ts";

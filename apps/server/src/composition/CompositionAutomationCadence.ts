@@ -13,7 +13,7 @@ export const CompositionAutomationCadenceErrorCode = Schema.Literals([
 export type CompositionAutomationCadenceErrorCode =
   typeof CompositionAutomationCadenceErrorCode.Type;
 
-export class CompositionAutomationCadenceError extends Schema.TaggedErrorClass<CompositionAutomationCadenceError>()(
+export class CompositionAutomationCadenceError extends Schema.TaggedError<CompositionAutomationCadenceError>()(
   "CompositionAutomationCadenceError",
   {
     code: CompositionAutomationCadenceErrorCode,

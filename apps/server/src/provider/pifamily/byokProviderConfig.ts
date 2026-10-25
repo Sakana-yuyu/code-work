@@ -235,7 +235,7 @@ export function buildPifamilyModelsJson(input: {
   return { providers };
 }
 
-export class PifamilyConfigWriteError extends Schema.TaggedErrorClass<PifamilyConfigWriteError>()(
+export class PifamilyConfigWriteError extends Schema.TaggedError<PifamilyConfigWriteError>()(
   "PifamilyConfigWriteError",
   { agentDir: Schema.String, detail: Schema.String },
 ) {

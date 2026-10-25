@@ -15,7 +15,7 @@ import type * as PtyProcessTermination from "./PtyProcessTermination.ts";
 /**
  * PtySpawnError - Error type for PTY spawn failures.
  */
-export class PtySpawnError extends Schema.TaggedErrorClass<PtySpawnError>()("PtySpawnError", {
+export class PtySpawnError extends Schema.TaggedError<PtySpawnError>()("PtySpawnError", {
   adapter: Schema.String,
   shell: Schema.optional(Schema.String),
   attemptedShells: Schema.optional(Schema.Array(Schema.String)),

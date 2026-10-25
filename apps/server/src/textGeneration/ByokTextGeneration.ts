@@ -12,7 +12,7 @@
  */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { HttpClient } from "effect/unstable/http";
+import { HttpClient } from "effect/http";
 
 import { TextGenerationError, type ByokSettings, type ModelSelection } from "@codework/contracts";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@codework/shared/git";

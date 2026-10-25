@@ -13,10 +13,10 @@ import {
   HttpServer,
   HttpServerRequest,
   HttpServerResponse,
-} from "effect/unstable/http";
+} from "effect/http";
 import { Codeoss } from "./Codeoss.ts";
 import { CodeossRuntime } from "./codeossRuntime.ts";
-import { routeLayer } from "./codeossHttp.ts";
+import { pumpSocket, routeLayer } from "./codeossHttp.ts";
 import { SessionStore, UnknownWebSocketSessionError } from "../auth/SessionStore.ts";
 
 describe("Code-OSS 代理", () => {
@@ -32,8 +32,7 @@ describe("Code-OSS 代理", () => {
             upstreamCalls++;
             if (request.headers.upgrade === "websocket") {
               const socket = yield* request.upgrade;
-              const write = yield* socket.writer;
-              yield* socket.runRaw(write);
+              yield* pumpSocket(socket, socket);
               return HttpServerResponse.empty();
             }
             expect(request.headers.authorization).toBeUndefined();
@@ -59,7 +58,7 @@ describe("Code-OSS 代理", () => {
           ),
         );
         const upstreamAddress = Context.get(upstreamContext, HttpServer.HttpServer).address;
-        if (upstreamAddress._tag !== "TcpAddress") throw new Error("需要 TCP 测试服务");
+        if (upstreamAddress._tag === "UnixPathAddress") throw new Error("需要 TCP 测试服务");
         const capability = "a".repeat(64);
         const runtime = new CodeossRuntime("unused-test-runtime", "win32", "x64");
         runtime.sessions.set("session", {
@@ -98,7 +97,7 @@ describe("Code-OSS 代理", () => {
           ),
         );
         const proxyAddress = Context.get(proxyContext, HttpServer.HttpServer).address;
-        if (proxyAddress._tag !== "TcpAddress") throw new Error("需要 TCP 测试服务");
+        if (proxyAddress._tag === "UnixPathAddress") throw new Error("需要 TCP 测试服务");
         const origin = `http://127.0.0.1:${proxyAddress.port}`;
         const base = `${origin}/api/ide/${capability}`;
         yield* Effect.promise(async () => {

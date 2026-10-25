@@ -265,7 +265,7 @@ export type ToolBrokerResult = CompositionToolResult & {
   readonly approvalRequestId?: string;
 };
 
-export class ToolNotRegisteredError extends Schema.TaggedErrorClass<ToolNotRegisteredError>()(
+export class ToolNotRegisteredError extends Schema.TaggedError<ToolNotRegisteredError>()(
   "ToolNotRegisteredError",
   { canonicalToolName: Schema.String },
 ) {
@@ -274,7 +274,7 @@ export class ToolNotRegisteredError extends Schema.TaggedErrorClass<ToolNotRegis
   }
 }
 
-export class ToolArgumentsInvalidError extends Schema.TaggedErrorClass<ToolArgumentsInvalidError>()(
+export class ToolArgumentsInvalidError extends Schema.TaggedError<ToolArgumentsInvalidError>()(
   "ToolArgumentsInvalidError",
   { canonicalToolName: Schema.String },
 ) {
@@ -283,7 +283,7 @@ export class ToolArgumentsInvalidError extends Schema.TaggedErrorClass<ToolArgum
   }
 }
 
-export class ToolScopeMissingError extends Schema.TaggedErrorClass<ToolScopeMissingError>()(
+export class ToolScopeMissingError extends Schema.TaggedError<ToolScopeMissingError>()(
   "ToolScopeMissingError",
   { canonicalToolName: Schema.String },
 ) {
@@ -292,7 +292,7 @@ export class ToolScopeMissingError extends Schema.TaggedErrorClass<ToolScopeMiss
   }
 }
 
-export class WebSearchInvocationError extends Schema.TaggedErrorClass<WebSearchInvocationError>()(
+export class WebSearchInvocationError extends Schema.TaggedError<WebSearchInvocationError>()(
   "WebSearchInvocationError",
   { cause: Schema.Defect() },
 ) {

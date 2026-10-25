@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 // Provider-native goals (Codex/Claude `/goal`) keep their authoritative state
 // provider-side; the flag marks mirrored rows so Code Work's own goal loop

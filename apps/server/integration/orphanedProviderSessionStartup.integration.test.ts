@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NetAddress from "effect/net/NetAddress";
 import {
   CommandId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -18,8 +19,8 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
-import { HttpServer } from "effect/unstable/http";
+import * as SqlClient from "effect/sql/SqlClient";
+import { HttpServer } from "effect/http";
 
 import * as EnvironmentAuth from "../src/auth/EnvironmentAuth.ts";
 import * as ServiceLauncherClient from "../src/cloud/serviceLauncherClient.ts";
@@ -133,7 +134,7 @@ const makeStartupDependencies = (
     Layer.succeed(
       HttpServer.HttpServer,
       HttpServer.HttpServer.of({
-        address: { _tag: "TcpAddress", hostname: "127.0.0.1", port: 3773 },
+        address: NetAddress.inetAddressFromStringUnsafe("127.0.0.1:3773"),
         serve: (() => Effect.void) as HttpServer.HttpServer["Service"]["serve"],
       }),
     ),

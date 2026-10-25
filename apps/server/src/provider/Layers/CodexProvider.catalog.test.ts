@@ -16,7 +16,7 @@ import * as Scope from "effect/Scope";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { TestClock } from "effect/testing";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type * as CodexSchema from "effect-codex-app-server/schema";
 
 import { makeCliProviderCatalog } from "../CliProviderCatalog.ts";

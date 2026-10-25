@@ -22,7 +22,7 @@ export interface CliProviderCatalogData {
   readonly catalogMessage?: string;
 }
 
-export class CliProviderCatalogError extends Schema.TaggedErrorClass<CliProviderCatalogError>()(
+export class CliProviderCatalogError extends Schema.TaggedError<CliProviderCatalogError>()(
   "CliProviderCatalogError",
   { cause: Schema.Defect() },
 ) {}

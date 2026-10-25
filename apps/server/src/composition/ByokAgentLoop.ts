@@ -59,7 +59,7 @@ export type ByokAgentModelUsage = {
   readonly durationMs?: number;
 };
 
-export class ByokAgentModelError extends Schema.TaggedErrorClass<ByokAgentModelError>()(
+export class ByokAgentModelError extends Schema.TaggedError<ByokAgentModelError>()(
   "ByokAgentModelError",
   {
     code: Schema.String,
@@ -82,7 +82,7 @@ export interface ByokAgentModelDriver {
   }) => Stream.Stream<ByokAgentModelEvent, ByokAgentModelError>;
 }
 
-export class ByokAgentLoopTerminalEventMissingError extends Schema.TaggedErrorClass<ByokAgentLoopTerminalEventMissingError>()(
+export class ByokAgentLoopTerminalEventMissingError extends Schema.TaggedError<ByokAgentLoopTerminalEventMissingError>()(
   "ByokAgentLoopTerminalEventMissingError",
   {},
 ) {
@@ -98,7 +98,7 @@ export type ByokAgentTextCheckpoint = {
   readonly cumulativeUtf8Bytes: number;
 };
 
-export class ByokAgentLoopCheckpointError extends Schema.TaggedErrorClass<ByokAgentLoopCheckpointError>()(
+export class ByokAgentLoopCheckpointError extends Schema.TaggedError<ByokAgentLoopCheckpointError>()(
   "ByokAgentLoopCheckpointError",
   {
     code: Schema.String,

@@ -13,7 +13,7 @@ import type {
   EnvironmentId,
 } from "@codework/contracts";
 import * as Option from "effect/Option";
-import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { useCallback, useMemo } from "react";
 
 import { mergeByokDashboards, type MergedByokPlans } from "@codework/shared/byokBalanceMerge";

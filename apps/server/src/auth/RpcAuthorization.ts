@@ -28,7 +28,7 @@ import {
   WsRpcGroup,
 } from "@codework/contracts";
 import * as Schema from "effect/Schema";
-import type * as RpcGroup from "effect/unstable/rpc/RpcGroup";
+import type * as RpcGroup from "effect/rpc/RpcGroup";
 
 type WsRpcMethod = RpcGroup.Rpcs<typeof WsRpcGroup>["_tag"];
 

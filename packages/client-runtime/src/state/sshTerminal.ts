@@ -9,7 +9,7 @@ import {
 } from "@codework/contracts";
 import { WS_METHODS } from "@codework/contracts";
 import * as Stream from "effect/Stream";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { subscribe, type EnvironmentRpcInput } from "../rpc/client.ts";
@@ -112,7 +112,7 @@ export function createSshTerminalEnvironmentAtoms<R, E>(
       label: "environment-data:ssh-terminal:attach",
       subscribe: (input: EnvironmentRpcInput<typeof WS_METHODS.sshTerminalAttach>) =>
         subscribe(WS_METHODS.sshTerminalAttach, input).pipe(
-          Stream.scan(EMPTY_SSH_TERMINAL_BUFFER_STATE, applySshTerminalAttachStreamEvent),
+          Stream.scan(() => EMPTY_SSH_TERMINAL_BUFFER_STATE, applySshTerminalAttachStreamEvent),
         ),
     }),
     open: createEnvironmentRpcCommand(runtime, {

@@ -9,7 +9,7 @@ import type {
   EnvironmentId,
 } from "@codework/contracts";
 import { sha256 } from "@noble/hashes/sha2";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import { Platform, Pressable, RefreshControl, ScrollView, Switch, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -62,7 +62,7 @@ const STATUS_KEYS: Readonly<Record<CompositionTaskStatus, string>> = {
 };
 
 const promptDigest = (prompt: string): string =>
-  `sha256:${Encoding.encodeHex(sha256(new TextEncoder().encode(prompt)))}`;
+  `sha256:${Hex.encode(sha256(new TextEncoder().encode(prompt)))}`;
 
 const makeChildDraft = (index: number, driverId: string): ChildDraft => ({
   nodeId: `child-${index + 1}`,

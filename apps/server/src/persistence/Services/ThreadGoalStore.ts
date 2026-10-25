@@ -23,7 +23,7 @@ export const ThreadGoalStoreErrorCode = Schema.Literals([
 ]);
 export type ThreadGoalStoreErrorCode = typeof ThreadGoalStoreErrorCode.Type;
 
-export class ThreadGoalStoreDomainError extends Schema.TaggedErrorClass<ThreadGoalStoreDomainError>()(
+export class ThreadGoalStoreDomainError extends Schema.TaggedError<ThreadGoalStoreDomainError>()(
   "ThreadGoalStoreDomainError",
   {
     code: ThreadGoalStoreErrorCode,

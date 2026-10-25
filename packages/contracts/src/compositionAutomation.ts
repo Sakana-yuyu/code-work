@@ -465,7 +465,7 @@ export const CompositionAutomationRunListResult = Schema.Struct({
 });
 export type CompositionAutomationRunListResult = typeof CompositionAutomationRunListResult.Type;
 
-export class CompositionAutomationRpcError extends Schema.TaggedErrorClass<CompositionAutomationRpcError>()(
+export class CompositionAutomationRpcError extends Schema.TaggedError<CompositionAutomationRpcError>()(
   "CompositionAutomationRpcError",
   {
     code: TrimmedNonEmptyString,

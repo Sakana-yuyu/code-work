@@ -11,7 +11,7 @@
  */
 import { useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import {
   DEFAULT_SERVER_SETTINGS,
   type EnvironmentId,

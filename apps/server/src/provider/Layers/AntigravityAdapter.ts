@@ -18,8 +18,8 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as PlatformError from "effect/PlatformError";
-import * as ChildProcess from "effect/unstable/process/ChildProcess";
-import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
+import * as ChildProcess from "effect/process/ChildProcess";
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../../config.ts";
 import * as ManagedProcessRegistry from "../../process/ManagedProcessRegistry.ts";
@@ -129,7 +129,7 @@ export function makeAntigravityAdapter(
     const sessions = new Map<ThreadId, SessionContext>();
     const events = yield* Queue.unbounded<ProviderRuntimeEvent>();
     const now = () => Effect.map(DateTime.now, DateTime.formatIso);
-    const uuid = () => crypto.randomUUIDv4.pipe(Effect.map(EventId.make));
+    const uuid = () => crypto.randomUUIDv4().pipe(Effect.map(EventId.make));
     const publishRuntimeEvent = makeTerminalSafeRuntimeEmitter((items) =>
       Queue.offerAll(events, items).pipe(Effect.asVoid),
     );
@@ -232,8 +232,8 @@ export function makeAntigravityAdapter(
         args,
         options: options?.environment ? { env: options.environment } : undefined,
       });
-      const turnId = TurnId.make(yield* crypto.randomUUIDv4);
-      const itemId = RuntimeItemId.make(yield* crypto.randomUUIDv4);
+      const turnId = TurnId.make(yield* crypto.randomUUIDv4());
+      const itemId = RuntimeItemId.make(yield* crypto.randomUUIDv4());
       context.interrupted = false;
       yield* emit({
         type: "turn.started",

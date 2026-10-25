@@ -5,14 +5,14 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Base64Url from "effect/encoding/Base64Url";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Terminal from "effect/Terminal";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import * as CliTokenManager from "./CliTokenManager.ts";
 import type { OutOfBandOAuthPromptInput } from "./CliTokenManager.ts";
@@ -36,10 +36,8 @@ const TestIdTokenPayloadJson = Schema.fromJsonString(Schema.Struct({ email: Sche
 const encodeTestIdTokenHeader = Schema.encodeSync(TestIdTokenHeaderJson);
 const encodeTestIdTokenPayload = Schema.encodeSync(TestIdTokenPayloadJson);
 const idTokenWithEmail = (() => {
-  const header = Encoding.encodeBase64Url(encodeTestIdTokenHeader({ alg: "none" }));
-  const payload = Encoding.encodeBase64Url(
-    encodeTestIdTokenPayload({ email: "theo@example.test" }),
-  );
+  const header = Base64Url.encode(encodeTestIdTokenHeader({ alg: "none" }));
+  const payload = Base64Url.encode(encodeTestIdTokenPayload({ email: "theo@example.test" }));
   return `${header}.${payload}.`;
 })();
 
@@ -88,10 +86,9 @@ const provideTestEnv = Effect.provide(
 
 const isAuthorizationError = Schema.is(CliTokenManager.CloudCliAuthorizationError);
 
-class PromptRejectedError extends Schema.TaggedErrorClass<PromptRejectedError>()(
-  "PromptRejectedError",
-  { message: Schema.String },
-) {}
+class PromptRejectedError extends Schema.TaggedError<PromptRejectedError>()("PromptRejectedError", {
+  message: Schema.String,
+}) {}
 
 it("formats loopback authorization with a headless-host fallback", () => {
   assert.equal(
@@ -204,7 +201,7 @@ it.layer(NodeServices.layer)("CliTokenManager.outOfBandOAuthLogin", (it) => {
       assert.isNotNull(verifier);
       const crypto = yield* Crypto.Crypto;
       const digest = yield* crypto.digest("SHA-256", new TextEncoder().encode(verifier!));
-      assert.equal(Encoding.encodeBase64Url(digest), request!.challenge);
+      assert.equal(Base64Url.encode(digest), request!.challenge);
     }),
   );
 
@@ -231,7 +228,7 @@ it.layer(NodeServices.layer)("CliTokenManager.outOfBandOAuthLogin", (it) => {
   it.effect("ignores an id_token whose claims are not valid JSON", () =>
     Effect.gen(function* () {
       const requests: Array<RecordedTokenRequest> = [];
-      const malformedIdToken = `header.${Encoding.encodeBase64Url("not-json")}.signature`;
+      const malformedIdToken = `header.${Base64Url.encode("not-json")}.signature`;
 
       const { identity } = yield* CliTokenManager.outOfBandOAuthLogin(
         ({ authorizeUrl }: OutOfBandOAuthPromptInput) => {

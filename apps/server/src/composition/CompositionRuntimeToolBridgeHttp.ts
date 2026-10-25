@@ -14,7 +14,7 @@ import {
   HttpServerRequest,
   HttpServerResponse,
   HttpServerRespondable,
-} from "effect/unstable/http";
+} from "effect/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import {
@@ -29,7 +29,7 @@ export const COMPOSITION_RUNTIME_TOOL_INVOKE_PATH = "/api/composition/runtime/to
 export const COMPOSITION_RUNTIME_TOOL_CANCEL_PATH = "/api/composition/runtime/tools/cancel";
 export const COMPOSITION_RUNTIME_TOOL_BRIDGE_PROTOCOL = "t3-composition-runtime/1" as const;
 
-class CompositionRuntimeToolBridgeHttpError extends Schema.TaggedErrorClass<CompositionRuntimeToolBridgeHttpError>()(
+class CompositionRuntimeToolBridgeHttpError extends Schema.TaggedError<CompositionRuntimeToolBridgeHttpError>()(
   "CompositionRuntimeToolBridgeHttpError",
   { code: Schema.String },
 ) {}

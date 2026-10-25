@@ -146,8 +146,8 @@ export const SERVER_NOTIFICATION_METHODS = {
   "item/agentMessage/delta": "item/agentMessage/delta",
   "item/plan/delta": "item/plan/delta",
   "command/exec/outputDelta": "command/exec/outputDelta",
-  "process/outputDelta": "process/outputDelta",
-  "process/exited": "process/exited",
+  "effect/process/outputDelta": "effect/process/outputDelta",
+  "effect/process/exited": "effect/process/exited",
   "item/commandExecution/outputDelta": "item/commandExecution/outputDelta",
   "item/commandExecution/terminalInteraction": "item/commandExecution/terminalInteraction",
   "item/fileChange/outputDelta": "item/fileChange/outputDelta",
@@ -446,8 +446,8 @@ export interface ServerNotificationParamsByMethod {
   readonly "item/agentMessage/delta": CodexSchema.V2AgentMessageDeltaNotification;
   readonly "item/plan/delta": CodexSchema.V2PlanDeltaNotification;
   readonly "command/exec/outputDelta": CodexSchema.V2CommandExecOutputDeltaNotification;
-  readonly "process/outputDelta": CodexSchema.V2ProcessOutputDeltaNotification;
-  readonly "process/exited": CodexSchema.V2ProcessExitedNotification;
+  readonly "effect/process/outputDelta": CodexSchema.V2ProcessOutputDeltaNotification;
+  readonly "effect/process/exited": CodexSchema.V2ProcessExitedNotification;
   readonly "item/commandExecution/outputDelta": CodexSchema.V2CommandExecutionOutputDeltaNotification;
   readonly "item/commandExecution/terminalInteraction": CodexSchema.V2TerminalInteractionNotification;
   readonly "item/fileChange/outputDelta": CodexSchema.V2FileChangeOutputDeltaNotification;
@@ -743,8 +743,8 @@ export const SERVER_NOTIFICATION_PARAMS = {
   "item/agentMessage/delta": CodexSchema.V2AgentMessageDeltaNotification,
   "item/plan/delta": CodexSchema.V2PlanDeltaNotification,
   "command/exec/outputDelta": CodexSchema.V2CommandExecOutputDeltaNotification,
-  "process/outputDelta": CodexSchema.V2ProcessOutputDeltaNotification,
-  "process/exited": CodexSchema.V2ProcessExitedNotification,
+  "effect/process/outputDelta": CodexSchema.V2ProcessOutputDeltaNotification,
+  "effect/process/exited": CodexSchema.V2ProcessExitedNotification,
   "item/commandExecution/outputDelta": CodexSchema.V2CommandExecutionOutputDeltaNotification,
   "item/commandExecution/terminalInteraction": CodexSchema.V2TerminalInteractionNotification,
   "item/fileChange/outputDelta": CodexSchema.V2FileChangeOutputDeltaNotification,

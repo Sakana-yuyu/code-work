@@ -12,7 +12,7 @@ import {
   COMPOSITION_RUNTIME_TOOL_INVOKE_PATH,
 } from "./CompositionRuntimeToolBridgeHttp.ts";
 
-export class CompositionRuntimeToolBridgeProtocolFailure extends Schema.TaggedErrorClass<CompositionRuntimeToolBridgeProtocolFailure>()(
+export class CompositionRuntimeToolBridgeProtocolFailure extends Schema.TaggedError<CompositionRuntimeToolBridgeProtocolFailure>()(
   "CompositionRuntimeToolBridgeProtocolFailure",
   {
     operation: Schema.String,

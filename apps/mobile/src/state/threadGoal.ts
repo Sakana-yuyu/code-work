@@ -8,7 +8,7 @@ import type {
 } from "@codework/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { useCallback } from "react";
 
 import { createEnvironmentThreadGoalAtoms } from "@codework/client-runtime/state/thread-goal";

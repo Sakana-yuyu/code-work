@@ -103,7 +103,7 @@ export const waitForAgent = (
         threadId: ThreadId.make(options.agentId),
         requestCompletionMarker: true,
       }).pipe(
-        Stream.scan(initialAgentStreamState, reduceAgentStreamState),
+        Stream.scan(() => initialAgentStreamState, reduceAgentStreamState),
         Stream.mapEffect((state) => {
           if (isAgentWaitComplete(state) && state.thread !== null) {
             return Effect.succeed(Option.some(toAgentStatusSnapshot(state.thread)));

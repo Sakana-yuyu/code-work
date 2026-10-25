@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import { TestClock } from "effect/testing";
-import { FetchHttpClient, HttpClient } from "effect/unstable/http";
+import { FetchHttpClient, HttpClient } from "effect/http";
 
 import { make, type ByokCatalogTarget } from "./ByokCatalog.ts";
 import { fetchHttpClientLayer, withByokCatalogSignal } from "./ByokHttpClient.ts";

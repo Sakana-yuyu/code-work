@@ -110,7 +110,7 @@ export const ThreadGoalErrorCode = Schema.Literals([
 ]);
 export type ThreadGoalErrorCode = typeof ThreadGoalErrorCode.Type;
 
-export class ThreadGoalRpcError extends Schema.TaggedErrorClass<ThreadGoalRpcError>()(
+export class ThreadGoalRpcError extends Schema.TaggedError<ThreadGoalRpcError>()(
   "ThreadGoalRpcError",
   {
     code: ThreadGoalErrorCode,

@@ -172,7 +172,7 @@ export function buildZCodeProviderConfig(input: {
   };
 }
 
-export class ZCodeConfigWriteError extends Schema.TaggedErrorClass<ZCodeConfigWriteError>()(
+export class ZCodeConfigWriteError extends Schema.TaggedError<ZCodeConfigWriteError>()(
   "ZCodeConfigWriteError",
   { dataDir: Schema.String, detail: Schema.String },
 ) {

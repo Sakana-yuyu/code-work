@@ -1129,9 +1129,9 @@ const make = Effect.gen(function* () {
     CompositionAgentDriverRegistryService,
   );
   const providerCommandId = (event: ProviderRuntimeEvent, tag: string) =>
-    crypto.randomUUIDv4.pipe(
-      Effect.map((uuid) => CommandId.make(`provider:${event.eventId}:${tag}:${uuid}`)),
-    );
+    crypto
+      .randomUUIDv4()
+      .pipe(Effect.map((uuid) => CommandId.make(`provider:${event.eventId}:${tag}:${uuid}`)));
 
   const turnMessageIdsByTurnKey = yield* Cache.make<string, Set<MessageId>>({
     capacity: TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY,
@@ -2315,7 +2315,7 @@ const make = Effect.gen(function* () {
         return;
       }
 
-      const commandUuid = yield* crypto.randomUUIDv4;
+      const commandUuid = yield* crypto.randomUUIDv4();
       yield* orchestrationEngine.dispatch({
         type: "thread.proposed-plan.upsert",
         commandId: CommandId.make(

@@ -177,7 +177,17 @@ export const formatSchemaError = (cause: Cause.Cause<Schema.SchemaError>) => {
  */
 const decodeJsonString = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
 
-const parseLenientJsonGetter = SchemaGetter.onSome((input: string) => {
+const parseLenientJsonGetter = SchemaGetter.transformOptionalEffect(
+  (input: Option.Option<string>) =>
+    Option.isSome(input)
+      ? decodeJsonString(stripJsoncComments(input.value)).pipe(
+          Effect.map(Option.some),
+          Effect.mapError((error) => error.issue),
+        )
+      : Effect.succeed(Option.none()),
+);
+
+function stripJsoncComments(input: string) {
   // Strip single-line comments - alternation preserves quoted strings.
   let stripped = input.replace(
     /("(?:[^"\\]|\\.)*")|\/\/[^\n]*/g,
@@ -199,11 +209,8 @@ const parseLenientJsonGetter = SchemaGetter.onSome((input: string) => {
       stringLiteral ? match : (bracket ?? ""),
   );
 
-  return decodeJsonString(stripped).pipe(
-    Effect.map(Option.some),
-    Effect.mapError((error) => error.issue),
-  );
-});
+  return stripped;
+}
 
 /**
  * Schema transformation: lenient JSONC string ↔ unknown.
@@ -217,7 +224,8 @@ export const fromLenientJsonString = new SchemaTransformation.Transformation(
   SchemaGetter.stringifyJson(),
 );
 
-export const prettyJsonString = SchemaGetter.parseJson<string>().compose(
+export const prettyJsonString = SchemaGetter.compose(
+  SchemaGetter.parseJson<string>(),
   SchemaGetter.stringifyJson({ space: 2 }),
 );
 

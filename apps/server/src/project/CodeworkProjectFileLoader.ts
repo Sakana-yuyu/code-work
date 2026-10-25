@@ -21,7 +21,7 @@ import { CodeworkProjectFileFromJson } from "@codework/shared/codeworkProjectFil
 
 const decodeCodeworkProjectFileJson = Schema.decodeEffect(CodeworkProjectFileFromJson);
 
-export class CodeworkProjectFileLoadError extends Schema.TaggedErrorClass<CodeworkProjectFileLoadError>()(
+export class CodeworkProjectFileLoadError extends Schema.TaggedError<CodeworkProjectFileLoadError>()(
   "CodeworkProjectFileLoadError",
   {
     operation: Schema.Literals(["read", "decode"]),

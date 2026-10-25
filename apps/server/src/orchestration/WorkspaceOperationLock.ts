@@ -7,7 +7,7 @@ import * as Schema from "effect/Schema";
 import * as Deferred from "effect/Deferred";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 
-export class WorkspaceBusyError extends Schema.TaggedErrorClass<WorkspaceBusyError>()(
+export class WorkspaceBusyError extends Schema.TaggedError<WorkspaceBusyError>()(
   "WorkspaceBusyError",
   {
     cwd: Schema.String,

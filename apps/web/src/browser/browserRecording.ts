@@ -5,14 +5,14 @@ import type {
 } from "@codework/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import { previewBridge } from "~/components/preview/previewBridge";
 import { t } from "~/i18n/runtime";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useBrowserSurfaceStore } from "./browserSurfaceStore";
 
-export class BrowserRecordingUnavailableError extends Schema.TaggedErrorClass<BrowserRecordingUnavailableError>()(
+export class BrowserRecordingUnavailableError extends Schema.TaggedError<BrowserRecordingUnavailableError>()(
   "BrowserRecordingUnavailableError",
   {
     tabId: Schema.String,
@@ -23,7 +23,7 @@ export class BrowserRecordingUnavailableError extends Schema.TaggedErrorClass<Br
   }
 }
 
-export class BrowserRecordingConflictError extends Schema.TaggedErrorClass<BrowserRecordingConflictError>()(
+export class BrowserRecordingConflictError extends Schema.TaggedError<BrowserRecordingConflictError>()(
   "BrowserRecordingConflictError",
   {
     requestedTabId: Schema.String,
@@ -38,7 +38,7 @@ export class BrowserRecordingConflictError extends Schema.TaggedErrorClass<Brows
   }
 }
 
-export class BrowserRecordingCanvasUnavailableError extends Schema.TaggedErrorClass<BrowserRecordingCanvasUnavailableError>()(
+export class BrowserRecordingCanvasUnavailableError extends Schema.TaggedError<BrowserRecordingCanvasUnavailableError>()(
   "BrowserRecordingCanvasUnavailableError",
   {
     tabId: Schema.String,
@@ -55,7 +55,7 @@ export class BrowserRecordingCanvasUnavailableError extends Schema.TaggedErrorCl
   }
 }
 
-export class BrowserRecordingOperationError extends Schema.TaggedErrorClass<BrowserRecordingOperationError>()(
+export class BrowserRecordingOperationError extends Schema.TaggedError<BrowserRecordingOperationError>()(
   "BrowserRecordingOperationError",
   {
     operation: Schema.Literals([

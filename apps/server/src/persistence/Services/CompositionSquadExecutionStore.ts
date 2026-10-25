@@ -23,7 +23,7 @@ export const CompositionSquadExecutionStoreErrorCode = Schema.Literals([
 export type CompositionSquadExecutionStoreErrorCode =
   typeof CompositionSquadExecutionStoreErrorCode.Type;
 
-export class CompositionSquadExecutionStoreDomainError extends Schema.TaggedErrorClass<CompositionSquadExecutionStoreDomainError>()(
+export class CompositionSquadExecutionStoreDomainError extends Schema.TaggedError<CompositionSquadExecutionStoreDomainError>()(
   "CompositionSquadExecutionStoreDomainError",
   {
     code: CompositionSquadExecutionStoreErrorCode,

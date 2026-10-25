@@ -1,6 +1,6 @@
 import { type TerminalSummary, WS_METHODS } from "@codework/contracts";
 import * as Stream from "effect/Stream";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import {
   createAtomCommandScheduler,
@@ -41,7 +41,7 @@ export function createTerminalEnvironmentAtoms<R, E>(
       label: "environment-data:terminal:attach",
       subscribe: (input: EnvironmentRpcInput<typeof WS_METHODS.terminalAttach>) =>
         subscribe(WS_METHODS.terminalAttach, input).pipe(
-          Stream.scan(EMPTY_TERMINAL_BUFFER_STATE, applyTerminalAttachStreamEvent),
+          Stream.scan(() => EMPTY_TERMINAL_BUFFER_STATE, applyTerminalAttachStreamEvent),
         ),
     }),
     events: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
@@ -52,7 +52,7 @@ export function createTerminalEnvironmentAtoms<R, E>(
       label: "environment-data:terminal:metadata",
       subscribe: (_input: null) =>
         subscribe(WS_METHODS.subscribeTerminalMetadata, {}).pipe(
-          Stream.scan([] as ReadonlyArray<TerminalSummary>, applyTerminalMetadataStreamEvent),
+          Stream.scan(() => [] as ReadonlyArray<TerminalSummary>, applyTerminalMetadataStreamEvent),
         ),
     }),
     open: createEnvironmentRpcCommand(runtime, {

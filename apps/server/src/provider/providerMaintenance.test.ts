@@ -8,7 +8,7 @@ import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@co
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import { HttpClient } from "effect/unstable/http";
+import { HttpClient } from "effect/http";
 import {
   createProviderVersionAdvisory,
   enrichProviderSnapshotWithVersionAdvisory,
@@ -24,7 +24,7 @@ import {
 const driver = (value: string) => ProviderDriverKind.make(value);
 const makeTempDir = (name: string) =>
   Crypto.Crypto.pipe(
-    Effect.flatMap((crypto) => crypto.randomUUIDv4),
+    Effect.flatMap((crypto) => crypto.randomUUIDv4()),
     Effect.map((id) => NodePath.join(NodeOS.tmpdir(), `${name}-${id}`)),
   );
 const isNativeTestCommandPath =

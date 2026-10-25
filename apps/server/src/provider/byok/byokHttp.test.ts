@@ -5,7 +5,7 @@ import * as NodeHttp from "node:http";
 import type * as NodeNet from "node:net";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import { fetchByokCatalog } from "./byokHttp.ts";
 

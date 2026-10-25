@@ -1,6 +1,6 @@
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 const WORKSPACE_IMAGE_IDLE_TTL_MS = 30 * 60_000;
 

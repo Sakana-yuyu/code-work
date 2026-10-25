@@ -77,7 +77,7 @@ export const completeProcessExitHandling = (state: PtyProcessExitState): void =>
 export const awaitProcessExitHandling = (state: PtyProcessExitState) =>
   Deferred.await(state.handled);
 
-export class PtyProcessSignalError extends Schema.TaggedErrorClass<PtyProcessSignalError>()(
+export class PtyProcessSignalError extends Schema.TaggedError<PtyProcessSignalError>()(
   "PtyProcessSignalError",
   {
     cause: Schema.Defect(),
@@ -90,7 +90,7 @@ export class PtyProcessSignalError extends Schema.TaggedErrorClass<PtyProcessSig
   }
 }
 
-export class PtyProcessExitTimeoutError extends Schema.TaggedErrorClass<PtyProcessExitTimeoutError>()(
+export class PtyProcessExitTimeoutError extends Schema.TaggedError<PtyProcessExitTimeoutError>()(
   "PtyProcessExitTimeoutError",
   {
     phase: Schema.Literals(["platform-default", "forced"]),
@@ -103,7 +103,7 @@ export class PtyProcessExitTimeoutError extends Schema.TaggedErrorClass<PtyProce
   }
 }
 
-export class PtyProcessIdentityChangedError extends Schema.TaggedErrorClass<PtyProcessIdentityChangedError>()(
+export class PtyProcessIdentityChangedError extends Schema.TaggedError<PtyProcessIdentityChangedError>()(
   "PtyProcessIdentityChangedError",
   {
     phase: Schema.Literals(["initial", "force"]),

@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import Mime from "@effect/platform-node/Mime";
+import * as ByteSize from "effect/ByteSize";
+import * as Mime from "effect/http/Mime";
 import * as NodeFSP from "node:fs/promises";
 import {
   AuthOrchestrationOperateScope,
@@ -24,9 +25,9 @@ import {
   HttpServerResponse,
   HttpServerRequest,
   HttpServerRespondable,
-} from "effect/unstable/http";
-import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
-import { OtlpTracer } from "effect/unstable/observability";
+} from "effect/http";
+import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
+import { OtlpTracer } from "effect/observability";
 
 import * as ServerConfig from "./config.ts";
 import { ASSET_ROUTE_PREFIX, resolveAsset } from "./assets/AssetAccess.ts";
@@ -302,7 +303,7 @@ export const attachmentUploadRouteLayer = HttpRouter.add(
     }
 
     const body = yield* request.arrayBuffer.pipe(
-      Effect.provideService(HttpServerRequest.MaxBodySize, FileSystem.Size(claims.sizeBytes)),
+      Effect.provideService(HttpServerRequest.MaxBodySize, ByteSize.bytes(claims.sizeBytes)),
       Effect.orElseSucceed(() => null),
     );
     if (body === null) {
@@ -395,7 +396,7 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       });
     }
 
-    const contentType = Mime.getType(filePath) ?? "application/octet-stream";
+    const contentType = Option.getOrElse(Mime.getType(filePath), () => "application/octet-stream");
     const data = yield* fileSystem.readFile(filePath).pipe(Effect.orElseSucceed(() => null));
     if (!data) {
       return HttpServerResponse.text("Internal Server Error", { status: 500 });

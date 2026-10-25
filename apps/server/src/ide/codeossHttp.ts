@@ -9,8 +9,26 @@ import {
   HttpRouter,
   HttpServerRequest,
   HttpServerResponse,
-} from "effect/unstable/http";
-import * as Socket from "effect/unstable/socket/Socket";
+} from "effect/http";
+import * as Socket from "effect/socket/Socket";
+import * as Scope from "effect/Scope";
+
+// effect 4.0.6 removed Socket.runRaw; relay chunks between two live sockets by hand.
+export const pumpSocket = (
+  from: Socket.Socket,
+  to: Socket.Socket,
+): Effect.Effect<void, Socket.SocketError, Scope.Scope> =>
+  Effect.gen(function* () {
+    const reader = yield* from.reader;
+    const writer = yield* to.writer;
+    while (true) {
+      const chunks = yield* Effect.catch(reader.pull, () => Effect.succeed(null));
+      if (chunks === null) return;
+      for (const chunk of chunks) {
+        yield* writer.write(chunk);
+      }
+    }
+  });
 
 import { SessionStore } from "../auth/SessionStore.ts";
 import { Codeoss } from "./Codeoss.ts";
@@ -46,9 +64,7 @@ export const route = Effect.gen(function* () {
     url.searchParams.set("skipWebSocketFrames", "false");
     const upstream = yield* Socket.makeWebSocket(url.toString());
     const downstream = yield* request.upgrade;
-    const writeUpstream = yield* upstream.writer;
-    const writeDownstream = yield* downstream.writer;
-    yield* Effect.raceFirst(upstream.runRaw(writeDownstream), downstream.runRaw(writeUpstream));
+    yield* Effect.raceFirst(pumpSocket(upstream, downstream), pumpSocket(downstream, upstream));
     return HttpServerResponse.empty();
   }
   const client = yield* HttpClient.HttpClient;

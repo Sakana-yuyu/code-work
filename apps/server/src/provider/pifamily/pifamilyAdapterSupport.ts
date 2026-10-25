@@ -19,8 +19,8 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as FileSystem from "effect/FileSystem";
-import * as ChildProcess from "effect/unstable/process/ChildProcess";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import {
   type ApprovalRequestId,
@@ -44,7 +44,7 @@ import { JsonlRpcProcessError } from "./jsonlRpcProcess.ts";
 import { resolvePromptSpawnCommand } from "../promptArgv.ts";
 
 /** spawn 闭包的标签化错误（避免裸 Error 混入失败通道）。 */
-export class PifamilySpawnError extends Schema.TaggedErrorClass<PifamilySpawnError>()(
+export class PifamilySpawnError extends Schema.TaggedError<PifamilySpawnError>()(
   "PifamilySpawnError",
   { detail: Schema.String },
 ) {
@@ -152,7 +152,7 @@ export interface JsonlRpcProcessLike {
 export interface PifamilySessionContext {
   readonly threadId: ThreadId;
   session: ProviderSession;
-  readonly sessionScope: Scope.Scope;
+  readonly sessionScope: Scope.Closeable;
   readonly process: JsonlRpcProcessLike;
   model: { readonly provider: string; readonly adapterId: string };
   turns: ReadonlyArray<{ readonly id: TurnId; readonly items: ReadonlyArray<unknown> }>;
@@ -556,4 +556,4 @@ export const spawnPifamilyProcess = (input: {
 
 /** 生成 UUID 的公共入口（orDie：UUID 失败不可恢复）。 */
 export const pifamilyRandomUUID = (crypto: Crypto.Crypto): Effect.Effect<string> =>
-  crypto.randomUUIDv4.pipe(Effect.orDie);
+  crypto.randomUUIDv4().pipe(Effect.orDie);

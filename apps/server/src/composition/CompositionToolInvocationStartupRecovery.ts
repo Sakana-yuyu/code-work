@@ -13,7 +13,7 @@ import {
 export const TOOL_INVOCATION_RESTART_OUTCOME_CODE =
   "process_restarted_result_indeterminate" as const;
 
-export class CompositionToolInvocationStartupRecoveryError extends Schema.TaggedErrorClass<CompositionToolInvocationStartupRecoveryError>()(
+export class CompositionToolInvocationStartupRecoveryError extends Schema.TaggedError<CompositionToolInvocationStartupRecoveryError>()(
   "CompositionToolInvocationStartupRecoveryError",
   { cause: Schema.Defect() },
 ) {

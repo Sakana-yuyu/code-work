@@ -42,7 +42,7 @@ import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Base64Url from "effect/encoding/Base64Url";
 import * as Equal from "effect/Equal";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
@@ -106,7 +106,7 @@ const TERMINAL_ENV_BLOCKLIST = new Set(["PORT", "ELECTRON_RENDERER_PORT", "ELECT
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const MAX_TERMINAL_LABEL_LENGTH = 128;
 
-class TerminalSubprocessCheckError extends Schema.TaggedErrorClass<TerminalSubprocessCheckError>()(
+class TerminalSubprocessCheckError extends Schema.TaggedError<TerminalSubprocessCheckError>()(
   "TerminalSubprocessCheckError",
   {
     cause: Schema.optional(Schema.Defect()),
@@ -128,7 +128,7 @@ class TerminalSubprocessCheckError extends Schema.TaggedErrorClass<TerminalSubpr
   }
 }
 
-class TerminalProcessListenerRegistrationError extends Schema.TaggedErrorClass<TerminalProcessListenerRegistrationError>()(
+class TerminalProcessListenerRegistrationError extends Schema.TaggedError<TerminalProcessListenerRegistrationError>()(
   "TerminalProcessListenerRegistrationError",
   {
     cause: Schema.Defect(),
@@ -143,7 +143,7 @@ class TerminalProcessListenerRegistrationError extends Schema.TaggedErrorClass<T
   }
 }
 
-class TerminalProcessListenerUnregistrationError extends Schema.TaggedErrorClass<TerminalProcessListenerUnregistrationError>()(
+class TerminalProcessListenerUnregistrationError extends Schema.TaggedError<TerminalProcessListenerUnregistrationError>()(
   "TerminalProcessListenerUnregistrationError",
   {
     cause: Schema.Defect(),
@@ -158,7 +158,7 @@ class TerminalProcessListenerUnregistrationError extends Schema.TaggedErrorClass
   }
 }
 
-export class TerminalWindowsProcessTreeTerminationError extends Schema.TaggedErrorClass<TerminalWindowsProcessTreeTerminationError>()(
+export class TerminalWindowsProcessTreeTerminationError extends Schema.TaggedError<TerminalWindowsProcessTreeTerminationError>()(
   "TerminalWindowsProcessTreeTerminationError",
   {
     cause: Schema.optional(Schema.Defect()),
@@ -1229,11 +1229,11 @@ function legacySafeThreadId(threadId: string): string {
 }
 
 function toSafeThreadId(threadId: string): string {
-  return `terminal_${Encoding.encodeBase64Url(threadId)}`;
+  return `terminal_${Base64Url.encode(threadId)}`;
 }
 
 function toSafeTerminalId(terminalId: string): string {
-  return Encoding.encodeBase64Url(terminalId);
+  return Base64Url.encode(terminalId);
 }
 
 function toSessionKey(threadId: string, terminalId: string): string {
@@ -1484,7 +1484,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   const historyRoot = path.join(logsDir, TERMINAL_HISTORY_LAYOUT_DIRECTORY);
   const historyThreadDirectory = (threadId: string) =>
-    path.join(historyRoot, Encoding.encodeBase64Url(threadId));
+    path.join(historyRoot, Base64Url.encode(threadId));
   const historyPath = (threadId: string, terminalId: string) =>
     path.join(historyThreadDirectory(threadId), `${toSafeTerminalId(terminalId)}.log`);
 
@@ -1505,7 +1505,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     legacySafeThreadId(threadId) === threadId && !threadId.includes("_");
 
   const canOwnEncodedLegacyHistory = (threadId: string, terminalId: string) =>
-    terminalId === DEFAULT_TERMINAL_ID && !Encoding.encodeBase64Url(threadId).includes("_");
+    terminalId === DEFAULT_TERMINAL_ID && !Base64Url.encode(threadId).includes("_");
 
   const readManagerState = SynchronizedRef.get(managerStateRef);
 

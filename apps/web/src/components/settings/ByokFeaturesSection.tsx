@@ -22,7 +22,7 @@ import type {
 import { byokEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { t } from "~/i18n";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";

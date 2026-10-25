@@ -30,7 +30,7 @@ export const CompositionSquadExecutionServiceErrorCode = Schema.Literals([
 export type CompositionSquadExecutionServiceErrorCode =
   typeof CompositionSquadExecutionServiceErrorCode.Type;
 
-export class CompositionSquadExecutionServiceError extends Schema.TaggedErrorClass<CompositionSquadExecutionServiceError>()(
+export class CompositionSquadExecutionServiceError extends Schema.TaggedError<CompositionSquadExecutionServiceError>()(
   "CompositionSquadExecutionServiceError",
   {
     code: CompositionSquadExecutionServiceErrorCode,

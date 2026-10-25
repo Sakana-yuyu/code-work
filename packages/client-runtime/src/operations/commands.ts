@@ -66,7 +66,7 @@ function commandId(input: { readonly commandId?: CommandId }) {
       return input.commandId;
     }
     const crypto = yield* Crypto.Crypto;
-    return yield* crypto.randomUUIDv4.pipe(Effect.orDie, Effect.map(CommandId.make));
+    return yield* crypto.randomUUIDv4().pipe(Effect.orDie, Effect.map(CommandId.make));
   });
 }
 

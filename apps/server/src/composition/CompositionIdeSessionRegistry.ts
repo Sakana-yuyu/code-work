@@ -43,7 +43,7 @@ export type CompositionIdeInvocation = {
   readonly arguments: unknown;
 };
 
-export class CompositionIdeAdapterFailure extends Schema.TaggedErrorClass<CompositionIdeAdapterFailure>()(
+export class CompositionIdeAdapterFailure extends Schema.TaggedError<CompositionIdeAdapterFailure>()(
   "CompositionIdeAdapterFailure",
   {
     sessionId: Schema.String,
@@ -56,7 +56,7 @@ export class CompositionIdeAdapterFailure extends Schema.TaggedErrorClass<Compos
   }
 }
 
-export class CompositionIdeSessionAlreadyRegisteredError extends Schema.TaggedErrorClass<CompositionIdeSessionAlreadyRegisteredError>()(
+export class CompositionIdeSessionAlreadyRegisteredError extends Schema.TaggedError<CompositionIdeSessionAlreadyRegisteredError>()(
   "CompositionIdeSessionAlreadyRegisteredError",
   { sessionId: Schema.String },
 ) {
@@ -65,7 +65,7 @@ export class CompositionIdeSessionAlreadyRegisteredError extends Schema.TaggedEr
   }
 }
 
-export class CompositionIdeSessionInvalidError extends Schema.TaggedErrorClass<CompositionIdeSessionInvalidError>()(
+export class CompositionIdeSessionInvalidError extends Schema.TaggedError<CompositionIdeSessionInvalidError>()(
   "CompositionIdeSessionInvalidError",
   { detail: Schema.String },
 ) {
@@ -74,7 +74,7 @@ export class CompositionIdeSessionInvalidError extends Schema.TaggedErrorClass<C
   }
 }
 
-export class CompositionIdeSessionFailure extends Schema.TaggedErrorClass<CompositionIdeSessionFailure>()(
+export class CompositionIdeSessionFailure extends Schema.TaggedError<CompositionIdeSessionFailure>()(
   "CompositionIdeSessionFailure",
   {
     sessionId: Schema.String,

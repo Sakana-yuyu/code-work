@@ -10,7 +10,7 @@ import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { TestClock } from "effect/testing";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import { ProviderCatalogForceRefresh } from "../ProviderCatalogCache.ts";
 import { ByokCatalog, byokCatalogTargetFromAdapter, make } from "../byok/ByokCatalog.ts";

@@ -58,7 +58,7 @@ export type CompositionMcpRuntimeClient = {
 export type CompositionMcpRuntimeServerStatus = ContractCompositionMcpRuntimeServerStatus;
 export type CompositionMcpRuntimeServerState = ContractCompositionMcpRuntimeServerState;
 
-export class CompositionMcpRuntimeError extends Schema.TaggedErrorClass<CompositionMcpRuntimeError>()(
+export class CompositionMcpRuntimeError extends Schema.TaggedError<CompositionMcpRuntimeError>()(
   "CompositionMcpRuntimeError",
   { serverId: Schema.String, code: Schema.String, detail: Schema.String },
 ) {

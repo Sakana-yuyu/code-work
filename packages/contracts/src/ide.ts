@@ -33,6 +33,6 @@ export const IdeCodeSelection = Schema.Struct({
 });
 export type IdeCodeSelection = typeof IdeCodeSelection.Type;
 
-export class IdeError extends Schema.TaggedErrorClass<IdeError>()("IdeError", {
+export class IdeError extends Schema.TaggedError<IdeError>()("IdeError", {
   message: Schema.String,
 }) {}

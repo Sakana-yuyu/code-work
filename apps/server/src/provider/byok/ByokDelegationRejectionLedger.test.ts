@@ -8,7 +8,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import { make, resolveScheduler } from "./ByokDelegationService.ts";
 import * as ServerSettings from "../../serverSettings.ts";

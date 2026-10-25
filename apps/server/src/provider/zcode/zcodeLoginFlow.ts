@@ -22,7 +22,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest } from "effect/http";
 
 import {
   encryptZCodeValue,
@@ -41,7 +41,7 @@ const HTTP_REQUEST_TIMEOUT_MS = 30_000;
 const OAUTH_SUCCESS_CODES: ReadonlySet<number> = new Set([0]);
 const BIZ_SUCCESS_CODES: ReadonlySet<number> = new Set([0, 200]);
 
-export class ZCodeLoginError extends Schema.TaggedErrorClass<ZCodeLoginError>()("ZCodeLoginError", {
+export class ZCodeLoginError extends Schema.TaggedError<ZCodeLoginError>()("ZCodeLoginError", {
   detail: Schema.String,
 }) {
   override get message(): string {

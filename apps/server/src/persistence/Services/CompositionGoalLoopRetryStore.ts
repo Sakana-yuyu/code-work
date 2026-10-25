@@ -29,7 +29,7 @@ export const CompositionGoalLoopRetryStoreErrorCode = Schema.Literals([
 export type CompositionGoalLoopRetryStoreErrorCode =
   typeof CompositionGoalLoopRetryStoreErrorCode.Type;
 
-export class CompositionGoalLoopRetryStoreDomainError extends Schema.TaggedErrorClass<CompositionGoalLoopRetryStoreDomainError>()(
+export class CompositionGoalLoopRetryStoreDomainError extends Schema.TaggedError<CompositionGoalLoopRetryStoreDomainError>()(
   "CompositionGoalLoopRetryStoreDomainError",
   {
     code: CompositionGoalLoopRetryStoreErrorCode,

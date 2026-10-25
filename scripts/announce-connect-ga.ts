@@ -8,13 +8,8 @@ import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { Command, Flag } from "effect/unstable/cli";
-import {
-  FetchHttpClient,
-  HttpClient,
-  HttpClientRequest,
-  HttpClientResponse,
-} from "effect/unstable/http";
+import { Command, Flag } from "effect/cli";
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 const CLERK_API_URL = "https://api.clerk.com/v1";
 const PAGE_SIZE = 500;
@@ -30,14 +25,14 @@ const ClerkWaitlistResponse = Schema.Struct({
   total_count: Schema.Int,
 });
 const PositiveInteger = Schema.Int.check(Schema.isGreaterThan(0));
-const ClerkSecretKey = Config.string("CLERK_SECRET_KEY");
+const ClerkSecretKey = Config.String("CLERK_SECRET_KEY");
 
 export interface ConnectGaOptions {
   readonly invite: boolean;
   readonly limit: number | undefined;
 }
 
-export class ConnectGaRequestError extends Schema.TaggedErrorClass<ConnectGaRequestError>()(
+export class ConnectGaRequestError extends Schema.TaggedError<ConnectGaRequestError>()(
   "ConnectGaRequestError",
   {
     operation: Schema.String,
@@ -49,7 +44,7 @@ export class ConnectGaRequestError extends Schema.TaggedErrorClass<ConnectGaRequ
   }
 }
 
-export class ConnectGaResponseError extends Schema.TaggedErrorClass<ConnectGaResponseError>()(
+export class ConnectGaResponseError extends Schema.TaggedError<ConnectGaResponseError>()(
   "ConnectGaResponseError",
   {
     operation: Schema.String,
@@ -189,13 +184,13 @@ export const announceConnectGa = Effect.fn("announceConnectGa")(function* (
 export const announceConnectGaCommand = Command.make(
   "announce-connect-ga",
   {
-    invite: Flag.boolean("invite").pipe(
+    invite: Flag.Boolean("invite").pipe(
       Flag.withDefault(false),
       Flag.withDescription(
         "Invite pending entries through Clerk. Without this flag, only print a dry-run list.",
       ),
     ),
-    limit: Flag.integer("limit").pipe(
+    limit: Flag.Int("limit").pipe(
       Flag.withSchema(PositiveInteger),
       Flag.optional,
       Flag.withDescription("Process at most this many pending waitlist entries."),

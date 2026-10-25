@@ -18,7 +18,7 @@ import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest } from "effect/http";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import type { ServerSettingsService } from "../serverSettings.ts";
 import { localPoolUsageStore } from "./LocalPoolUsage.ts";
@@ -40,7 +40,7 @@ const decodeProvider = (value: string): LocalAccountProvider | undefined =>
 
 const decodeByokAdapter = Schema.decodeUnknownSync(ByokModelAdapter);
 
-export class LocalAccountError extends Schema.TaggedErrorClass<LocalAccountError>()(
+export class LocalAccountError extends Schema.TaggedError<LocalAccountError>()(
   "LocalAccountError",
   { detail: Schema.String },
 ) {

@@ -56,7 +56,7 @@ export const COMPOSITION_RUN_START_RECEIPT_ID_MAX_LENGTH = 1_024;
 const OUTCOME_CODE_FALLBACK = "agent_driver_failure";
 const OUTCOME_DETAIL_FALLBACK = "Agent Driver 未提供可持久化的错误详情。";
 
-export class CompositionRunStartReceiptError extends Schema.TaggedErrorClass<CompositionRunStartReceiptError>()(
+export class CompositionRunStartReceiptError extends Schema.TaggedError<CompositionRunStartReceiptError>()(
   "CompositionRunStartReceiptError",
   {
     code: Schema.String,

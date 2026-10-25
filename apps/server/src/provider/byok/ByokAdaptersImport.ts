@@ -238,7 +238,7 @@ export const make = Effect.gen(function* () {
         })),
       };
     }).pipe(
-      Effect.orElseSucceed<ByokAdaptersImportResult>(() => ({
+      Effect.orElseSucceed(() => ({
         imported: 0,
         skipped: 0,
         skippedReasons: ["settings_read_failed"],

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { makeCompositionCapabilityRegistry } from "./CapabilityRegistry.ts";
 import {

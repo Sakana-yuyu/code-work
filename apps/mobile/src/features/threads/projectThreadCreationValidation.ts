@@ -3,7 +3,7 @@ import * as Schema from "effect/Schema";
 
 import { t } from "../../i18n/runtime";
 
-export class ProjectThreadTaskRequiredError extends Schema.TaggedErrorClass<ProjectThreadTaskRequiredError>()(
+export class ProjectThreadTaskRequiredError extends Schema.TaggedError<ProjectThreadTaskRequiredError>()(
   "ProjectThreadTaskRequiredError",
   {
     environmentId: EnvironmentId,
@@ -16,7 +16,7 @@ export class ProjectThreadTaskRequiredError extends Schema.TaggedErrorClass<Proj
   }
 }
 
-export class ProjectThreadBaseBranchRequiredError extends Schema.TaggedErrorClass<ProjectThreadBaseBranchRequiredError>()(
+export class ProjectThreadBaseBranchRequiredError extends Schema.TaggedError<ProjectThreadBaseBranchRequiredError>()(
   "ProjectThreadBaseBranchRequiredError",
   {
     environmentId: EnvironmentId,

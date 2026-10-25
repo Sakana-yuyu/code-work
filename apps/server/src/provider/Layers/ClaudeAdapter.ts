@@ -1834,7 +1834,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-  const randomUUIDv4 = crypto.randomUUIDv4.pipe(
+  const randomUUIDv4 = crypto.randomUUIDv4().pipe(
     Effect.mapError(
       (cause) =>
         new ProviderAdapterRequestError({

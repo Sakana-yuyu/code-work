@@ -28,7 +28,7 @@ vi.mock("@codework/client-runtime/state/attachments", async (importOriginal) => 
 }));
 
 vi.mock("../rpc/atomRegistry", async () => {
-  const { AsyncResult } = await import("effect/unstable/reactivity");
+  const { AsyncResult } = await import("effect/reactivity");
   return {
     appAtomRegistry: {
       get: () => AsyncResult.success({ phase: "connected" }),

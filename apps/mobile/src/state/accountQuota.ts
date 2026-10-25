@@ -7,7 +7,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { AccountQuotaResult, EnvironmentId } from "@codework/contracts";
 import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { useCallback, useMemo } from "react";
 
 import {

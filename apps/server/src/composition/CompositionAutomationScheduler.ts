@@ -25,7 +25,7 @@ export interface CompositionAutomationRunExecutionInput {
   readonly run: CompositionAutomationRun;
 }
 
-export class CompositionAutomationRunExecutorError extends Schema.TaggedErrorClass<CompositionAutomationRunExecutorError>()(
+export class CompositionAutomationRunExecutorError extends Schema.TaggedError<CompositionAutomationRunExecutorError>()(
   "CompositionAutomationRunExecutorError",
   {
     code: Schema.String,
@@ -68,7 +68,7 @@ export interface CompositionAutomationSchedulerBatchResult {
   readonly outcomes: ReadonlyArray<CompositionAutomationSchedulerOutcome>;
 }
 
-export class CompositionAutomationSchedulerError extends Schema.TaggedErrorClass<CompositionAutomationSchedulerError>()(
+export class CompositionAutomationSchedulerError extends Schema.TaggedError<CompositionAutomationSchedulerError>()(
   "CompositionAutomationSchedulerError",
   {
     code: Schema.String,

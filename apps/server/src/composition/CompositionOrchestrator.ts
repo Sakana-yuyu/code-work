@@ -65,7 +65,7 @@ import type {
   CompositionRunStartRecoveryPlan,
 } from "./CompositionRunStartRecoveryPolicy.ts";
 
-export class CompositionTaskDependencyMissingError extends Schema.TaggedErrorClass<CompositionTaskDependencyMissingError>()(
+export class CompositionTaskDependencyMissingError extends Schema.TaggedError<CompositionTaskDependencyMissingError>()(
   "CompositionTaskDependencyMissingError",
   {
     taskId: Schema.String,
@@ -77,7 +77,7 @@ export class CompositionTaskDependencyMissingError extends Schema.TaggedErrorCla
   }
 }
 
-export class CompositionTaskDependencyCycleError extends Schema.TaggedErrorClass<CompositionTaskDependencyCycleError>()(
+export class CompositionTaskDependencyCycleError extends Schema.TaggedError<CompositionTaskDependencyCycleError>()(
   "CompositionTaskDependencyCycleError",
   {
     taskId: Schema.String,
@@ -89,7 +89,7 @@ export class CompositionTaskDependencyCycleError extends Schema.TaggedErrorClass
   }
 }
 
-export class CompositionTaskAlreadyExistsError extends Schema.TaggedErrorClass<CompositionTaskAlreadyExistsError>()(
+export class CompositionTaskAlreadyExistsError extends Schema.TaggedError<CompositionTaskAlreadyExistsError>()(
   "CompositionTaskAlreadyExistsError",
   {
     taskId: Schema.String,
@@ -100,7 +100,7 @@ export class CompositionTaskAlreadyExistsError extends Schema.TaggedErrorClass<C
   }
 }
 
-export class CompositionSquadNotFoundError extends Schema.TaggedErrorClass<CompositionSquadNotFoundError>()(
+export class CompositionSquadNotFoundError extends Schema.TaggedError<CompositionSquadNotFoundError>()(
   "CompositionSquadNotFoundError",
   {
     squadId: Schema.String,
@@ -111,7 +111,7 @@ export class CompositionSquadNotFoundError extends Schema.TaggedErrorClass<Compo
   }
 }
 
-export class CompositionTaskNotFoundError extends Schema.TaggedErrorClass<CompositionTaskNotFoundError>()(
+export class CompositionTaskNotFoundError extends Schema.TaggedError<CompositionTaskNotFoundError>()(
   "CompositionTaskNotFoundError",
   {
     taskId: Schema.String,
@@ -123,7 +123,7 @@ export class CompositionTaskNotFoundError extends Schema.TaggedErrorClass<Compos
   }
 }
 
-export class CompositionTaskNotInReviewError extends Schema.TaggedErrorClass<CompositionTaskNotInReviewError>()(
+export class CompositionTaskNotInReviewError extends Schema.TaggedError<CompositionTaskNotInReviewError>()(
   "CompositionTaskNotInReviewError",
   {
     taskId: Schema.String,
@@ -136,7 +136,7 @@ export class CompositionTaskNotInReviewError extends Schema.TaggedErrorClass<Com
   }
 }
 
-export class CompositionTaskRetryInvalidError extends Schema.TaggedErrorClass<CompositionTaskRetryInvalidError>()(
+export class CompositionTaskRetryInvalidError extends Schema.TaggedError<CompositionTaskRetryInvalidError>()(
   "CompositionTaskRetryInvalidError",
   {
     taskId: Schema.String,
@@ -149,7 +149,7 @@ export class CompositionTaskRetryInvalidError extends Schema.TaggedErrorClass<Co
   }
 }
 
-export class CompositionTaskResumeInvalidError extends Schema.TaggedErrorClass<CompositionTaskResumeInvalidError>()(
+export class CompositionTaskResumeInvalidError extends Schema.TaggedError<CompositionTaskResumeInvalidError>()(
   "CompositionTaskResumeInvalidError",
   {
     taskId: Schema.String,
@@ -162,7 +162,7 @@ export class CompositionTaskResumeInvalidError extends Schema.TaggedErrorClass<C
   }
 }
 
-export class CompositionAgentDriverFailure extends Schema.TaggedErrorClass<CompositionAgentDriverFailure>()(
+export class CompositionAgentDriverFailure extends Schema.TaggedError<CompositionAgentDriverFailure>()(
   "CompositionAgentDriverFailure",
   {
     code: Schema.String,

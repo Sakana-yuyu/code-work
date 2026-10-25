@@ -18,7 +18,7 @@ const CONNECT_READY_TIMEOUT_MS = 15_000;
 const KEEPALIVE_INTERVAL_MS = 15_000;
 const EXEC_OUTPUT_CAP_BYTES = 256 * 1024;
 
-export class SshConnectFailure extends Schema.TaggedErrorClass<SshConnectFailure>()(
+export class SshConnectFailure extends Schema.TaggedError<SshConnectFailure>()(
   "SshConnectFailure",
   {
     kind: Schema.Literals(["connect", "auth", "timeout", "host-key-mismatch"]),
@@ -32,7 +32,7 @@ export class SshConnectFailure extends Schema.TaggedErrorClass<SshConnectFailure
   }
 }
 
-export class SshChannelFailure extends Schema.TaggedErrorClass<SshChannelFailure>()(
+export class SshChannelFailure extends Schema.TaggedError<SshChannelFailure>()(
   "SshChannelFailure",
   {
     kind: Schema.Literals(["exec", "shell", "sftp", "timeout", "aborted", "closed"]),

@@ -78,7 +78,7 @@ export interface CompositionSquadExecutionResult {
   readonly graph: CompositionTaskGraphExecutionResult;
 }
 
-export class CompositionSquadRunnerError extends Schema.TaggedErrorClass<CompositionSquadRunnerError>()(
+export class CompositionSquadRunnerError extends Schema.TaggedError<CompositionSquadRunnerError>()(
   "CompositionSquadRunnerError",
   {
     code: Schema.String,

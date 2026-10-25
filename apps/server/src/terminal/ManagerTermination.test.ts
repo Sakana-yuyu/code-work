@@ -5,7 +5,7 @@ import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Base64Url from "effect/encoding/Base64Url";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -16,7 +16,7 @@ import * as PlatformError from "effect/PlatformError";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { expect } from "vite-plus/test";
 
 import type * as PortScanner from "../preview/PortScanner.ts";
@@ -1825,10 +1825,7 @@ it.layer(
       const path = yield* Path.Path;
       const logsDir = yield* createSharedLogsDir();
       yield* fileSystem.makeDirectory(logsDir, { recursive: true });
-      const otherThreadHistory = path.join(
-        logsDir,
-        `terminal_${Encoding.encodeBase64Url("ab?")}.log`,
-      );
+      const otherThreadHistory = path.join(logsDir, `terminal_${Base64Url.encode("ab?")}.log`);
       yield* fileSystem.writeFileString(otherThreadHistory, "other-thread-history\n");
       const fixture = yield* createManager(new FakePtyAdapter(), { logsDir });
 

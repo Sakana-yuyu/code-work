@@ -7,7 +7,7 @@ import {
   type AtomCommandResult,
 } from "@codework/client-runtime/state/runtime";
 import { scopeProjectRef } from "@codework/client-runtime/environment";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import {
   deriveProjectGroupingOverrideKey,
   selectProjectGroupingSettings,

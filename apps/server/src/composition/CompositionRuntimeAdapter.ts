@@ -18,7 +18,7 @@ import type {
   CompositionRunStartRecoveryPolicy,
 } from "./CompositionRunStartLifecycle.ts";
 
-export class CompositionRuntimeAdapterFailure extends Schema.TaggedErrorClass<CompositionRuntimeAdapterFailure>()(
+export class CompositionRuntimeAdapterFailure extends Schema.TaggedError<CompositionRuntimeAdapterFailure>()(
   "CompositionRuntimeAdapterFailure",
   {
     runtimeId: Schema.String,

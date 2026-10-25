@@ -27,7 +27,7 @@ export interface ResolvedCompositionAutomationExecutionContext {
   readonly threadId?: string;
 }
 
-export class CompositionAutomationExecutionContextError extends Schema.TaggedErrorClass<CompositionAutomationExecutionContextError>()(
+export class CompositionAutomationExecutionContextError extends Schema.TaggedError<CompositionAutomationExecutionContextError>()(
   "CompositionAutomationExecutionContextError",
   {
     code: Schema.String,

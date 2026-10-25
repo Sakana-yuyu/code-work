@@ -19,7 +19,7 @@ type CompositionSquadReviewDocument = typeof CompositionSquadReviewDocument.Type
 
 export type CompositionSquadReviewDecision = Omit<CompositionSquadReviewDocument, "schemaVersion">;
 
-export class CompositionSquadReviewError extends Schema.TaggedErrorClass<CompositionSquadReviewError>()(
+export class CompositionSquadReviewError extends Schema.TaggedError<CompositionSquadReviewError>()(
   "CompositionSquadReviewError",
   {
     code: Schema.String,

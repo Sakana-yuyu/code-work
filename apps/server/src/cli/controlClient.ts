@@ -20,7 +20,7 @@ import { AuthStandardClientScopes } from "@codework/contracts";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Socket from "effect/unstable/socket/Socket";
+import * as Socket from "effect/socket/Socket";
 
 export interface ControlConnectionOptions {
   readonly serverUrl: string;
@@ -98,8 +98,11 @@ export function parseControlServerUrl(serverUrl: string): ParsedControlServerUrl
 
 const nodeWebSocketConstructorLayer = Layer.succeed(
   Socket.WebSocketConstructor,
-  (url, protocols) =>
-    new NodeSocket.NodeWS.WebSocket(url, protocols) as unknown as globalThis.WebSocket,
+  (url, options) =>
+    new NodeSocket.NodeWS.WebSocket(
+      url,
+      options as string | string[] | undefined,
+    ) as unknown as globalThis.WebSocket,
 );
 
 const controlRpcSessionLayer = rpcSessionLayer.pipe(Layer.provide(nodeWebSocketConstructorLayer));

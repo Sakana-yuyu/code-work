@@ -14,9 +14,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
-import * as SqlSchema from "effect/unstable/sql/SqlSchema";
-import type { SqlError } from "effect/unstable/sql/SqlError";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as SqlSchema from "effect/sql/SqlSchema";
+import type { SqlError } from "effect/sql/SqlError";
 
 import { toPersistenceSqlError } from "../Errors.ts";
 import {
@@ -34,7 +34,7 @@ const encodeCompositionTaskRunModelSnapshot = Schema.encodeSync(
   CompositionTaskRunModelSnapshotJson,
 );
 
-class CompositionSquadRevisionWriteError extends Schema.TaggedErrorClass<CompositionSquadRevisionWriteError>()(
+class CompositionSquadRevisionWriteError extends Schema.TaggedError<CompositionSquadRevisionWriteError>()(
   "CompositionSquadRevisionWriteError",
   { detail: Schema.String },
 ) {}

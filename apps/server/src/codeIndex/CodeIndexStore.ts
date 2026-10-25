@@ -11,7 +11,7 @@ import * as Schema from "effect/Schema";
 
 import { ServerConfig } from "../config.ts";
 
-export class CodeIndexStoreError extends Schema.TaggedErrorClass<CodeIndexStoreError>()(
+export class CodeIndexStoreError extends Schema.TaggedError<CodeIndexStoreError>()(
   "CodeIndexStoreError",
   {
     operation: Schema.String,

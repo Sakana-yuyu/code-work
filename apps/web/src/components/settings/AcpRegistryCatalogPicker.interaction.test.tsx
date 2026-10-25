@@ -1,5 +1,5 @@
 import { EnvironmentId, type AcpRegistryCatalogEntry } from "@codework/contracts";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import * as Cause from "effect/Cause";
 import type { ComponentProps } from "react";
 import { beforeEach, expect, it, vi } from "vite-plus/test";

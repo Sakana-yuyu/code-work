@@ -31,7 +31,7 @@ export const CompositionToolInvocationCoordinatorErrorCode = Schema.Literals([
 export type CompositionToolInvocationCoordinatorErrorCode =
   typeof CompositionToolInvocationCoordinatorErrorCode.Type;
 
-export class CompositionToolInvocationCoordinatorError extends Schema.TaggedErrorClass<CompositionToolInvocationCoordinatorError>()(
+export class CompositionToolInvocationCoordinatorError extends Schema.TaggedError<CompositionToolInvocationCoordinatorError>()(
   "CompositionToolInvocationCoordinatorError",
   {
     code: CompositionToolInvocationCoordinatorErrorCode,

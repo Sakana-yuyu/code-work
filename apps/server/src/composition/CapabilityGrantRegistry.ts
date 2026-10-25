@@ -9,15 +9,15 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
-import * as SqlSchema from "effect/unstable/sql/SqlSchema";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as SqlSchema from "effect/sql/SqlSchema";
 import * as NodeCrypto from "node:crypto";
 
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 
 const DEFAULT_GRANT_TTL_MS = 15 * 60 * 1000;
 
-export class CapabilityGrantInvalidError extends Schema.TaggedErrorClass<CapabilityGrantInvalidError>()(
+export class CapabilityGrantInvalidError extends Schema.TaggedError<CapabilityGrantInvalidError>()(
   "CapabilityGrantInvalidError",
   { reason: Schema.String },
 ) {
@@ -26,7 +26,7 @@ export class CapabilityGrantInvalidError extends Schema.TaggedErrorClass<Capabil
   }
 }
 
-export class CapabilityGrantNotFoundError extends Schema.TaggedErrorClass<CapabilityGrantNotFoundError>()(
+export class CapabilityGrantNotFoundError extends Schema.TaggedError<CapabilityGrantNotFoundError>()(
   "CapabilityGrantNotFoundError",
   { grantId: Schema.String },
 ) {
@@ -35,7 +35,7 @@ export class CapabilityGrantNotFoundError extends Schema.TaggedErrorClass<Capabi
   }
 }
 
-export class CapabilityGrantScopeMismatchError extends Schema.TaggedErrorClass<CapabilityGrantScopeMismatchError>()(
+export class CapabilityGrantScopeMismatchError extends Schema.TaggedError<CapabilityGrantScopeMismatchError>()(
   "CapabilityGrantScopeMismatchError",
   { grantId: Schema.String },
 ) {
@@ -44,7 +44,7 @@ export class CapabilityGrantScopeMismatchError extends Schema.TaggedErrorClass<C
   }
 }
 
-export class CapabilityGrantExpiredError extends Schema.TaggedErrorClass<CapabilityGrantExpiredError>()(
+export class CapabilityGrantExpiredError extends Schema.TaggedError<CapabilityGrantExpiredError>()(
   "CapabilityGrantExpiredError",
   { grantId: Schema.String },
 ) {
@@ -53,7 +53,7 @@ export class CapabilityGrantExpiredError extends Schema.TaggedErrorClass<Capabil
   }
 }
 
-export class CapabilityGrantRevokedError extends Schema.TaggedErrorClass<CapabilityGrantRevokedError>()(
+export class CapabilityGrantRevokedError extends Schema.TaggedError<CapabilityGrantRevokedError>()(
   "CapabilityGrantRevokedError",
   { grantId: Schema.String },
 ) {
@@ -62,7 +62,7 @@ export class CapabilityGrantRevokedError extends Schema.TaggedErrorClass<Capabil
   }
 }
 
-export class CapabilityGrantPersistenceError extends Schema.TaggedErrorClass<CapabilityGrantPersistenceError>()(
+export class CapabilityGrantPersistenceError extends Schema.TaggedError<CapabilityGrantPersistenceError>()(
   "CapabilityGrantPersistenceError",
   {
     operation: Schema.String,

@@ -8,7 +8,7 @@ import type {
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-export class CompositionProbeFailure extends Schema.TaggedErrorClass<CompositionProbeFailure>()(
+export class CompositionProbeFailure extends Schema.TaggedError<CompositionProbeFailure>()(
   "CompositionProbeFailure",
   {
     adapter: Schema.String,

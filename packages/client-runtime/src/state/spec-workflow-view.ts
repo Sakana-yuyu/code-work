@@ -10,7 +10,7 @@ import {
   type SpecWorkflowStateEventWire,
 } from "@codework/contracts";
 import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { useCallback, useState } from "react";
 
 import { EnvironmentRegistry } from "../connection/registry.ts";

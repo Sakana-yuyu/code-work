@@ -58,7 +58,7 @@ import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { HttpClient } from "effect/unstable/http";
+import { HttpClient } from "effect/http";
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
@@ -461,7 +461,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       }),
     );
 
-    const randomUUIDv4 = crypto.randomUUIDv4.pipe(
+    const randomUUIDv4 = crypto.randomUUIDv4().pipe(
       Effect.mapError(
         (cause) =>
           new ProviderAdapterRequestError({

@@ -39,7 +39,7 @@ const DesktopClientSettingsWriteOperation = Schema.Literals([
   "replace-settings-file",
 ]);
 
-export class DesktopClientSettingsWriteError extends Schema.TaggedErrorClass<DesktopClientSettingsWriteError>()(
+export class DesktopClientSettingsWriteError extends Schema.TaggedError<DesktopClientSettingsWriteError>()(
   "DesktopClientSettingsWriteError",
   {
     operation: DesktopClientSettingsWriteOperation,
@@ -157,7 +157,7 @@ export const make = Effect.gen(function* () {
       Effect.withSpan("desktop.clientSettings.get"),
     ),
     set: (settings) =>
-      crypto.randomUUIDv4.pipe(
+      crypto.randomUUIDv4().pipe(
         Effect.map((uuid) => uuid.replace(/-/g, "")),
         Effect.mapError(
           (cause) =>

@@ -239,7 +239,7 @@ export const WorkspaceScriptLogsResult = Schema.Struct({
 });
 export type WorkspaceScriptLogsResult = typeof WorkspaceScriptLogsResult.Type;
 
-export class WorkspaceScriptRpcError extends Schema.TaggedErrorClass<WorkspaceScriptRpcError>()(
+export class WorkspaceScriptRpcError extends Schema.TaggedError<WorkspaceScriptRpcError>()(
   "WorkspaceScriptRpcError",
   {
     code: TrimmedNonEmptyString,

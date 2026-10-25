@@ -55,7 +55,7 @@ export type ManagedProcessRecord = typeof ManagedProcessRecord.Type;
 
 const ManagedProcessRecordJson = Schema.fromJsonString(ManagedProcessRecord);
 
-export class ManagedProcessError extends Schema.TaggedErrorClass<ManagedProcessError>()(
+export class ManagedProcessError extends Schema.TaggedError<ManagedProcessError>()(
   "ManagedProcessError",
   {
     operation: Schema.String,

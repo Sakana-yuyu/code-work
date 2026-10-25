@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it, vi } from "vite-plus/test";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { EnvironmentId } from "@codework/contracts";
 import type { AcpRegistryCatalogResult } from "@codework/contracts";
 import { t } from "~/i18n";

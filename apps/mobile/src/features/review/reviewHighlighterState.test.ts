@@ -1,5 +1,5 @@
 import { assert, beforeEach, it } from "vite-plus/test";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import {
   createReviewHighlighterManager,

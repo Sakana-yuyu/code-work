@@ -18,7 +18,7 @@ import type {
   ServerConfig,
 } from "@codework/contracts";
 import type { EnvironmentId, ThreadId } from "@codework/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentProjects } from "./projects";

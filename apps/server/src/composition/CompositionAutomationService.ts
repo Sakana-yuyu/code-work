@@ -51,7 +51,7 @@ export type CompositionAutomationServiceErrorCode =
   | "automation_run_retry_pending"
   | "automation_persistence_failed";
 
-export class CompositionAutomationServiceError extends Schema.TaggedErrorClass<CompositionAutomationServiceError>()(
+export class CompositionAutomationServiceError extends Schema.TaggedError<CompositionAutomationServiceError>()(
   "CompositionAutomationServiceError",
   {
     code: Schema.String,

@@ -72,7 +72,7 @@ export const AcpRegistryBinaryInstallErrorCode = Schema.Literals([
 ]);
 export type AcpRegistryBinaryInstallErrorCode = typeof AcpRegistryBinaryInstallErrorCode.Type;
 
-export class AcpRegistryBinaryInstallError extends Schema.TaggedErrorClass<AcpRegistryBinaryInstallError>()(
+export class AcpRegistryBinaryInstallError extends Schema.TaggedError<AcpRegistryBinaryInstallError>()(
   "AcpRegistryBinaryInstallError",
   {
     code: AcpRegistryBinaryInstallErrorCode,

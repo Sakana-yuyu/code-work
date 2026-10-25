@@ -15,7 +15,7 @@ interface NativeCatalogInput<E, R> {
 }
 
 /** 配置准备的预期错误可共享；调用方在边界恢复自己的领域错误与实例身份。 */
-export class NativeProviderCatalogError extends Schema.TaggedErrorClass<NativeProviderCatalogError>()(
+export class NativeProviderCatalogError extends Schema.TaggedError<NativeProviderCatalogError>()(
   "NativeProviderCatalogError",
   { cause: Schema.Defect() },
 ) {}

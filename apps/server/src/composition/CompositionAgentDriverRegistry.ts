@@ -8,7 +8,7 @@ import type { CompositionAgentDriverProfile, ProviderRuntimeEvent } from "@codew
 
 import type { CompositionAgentDriver } from "./CompositionOrchestrator.ts";
 
-export class CompositionAgentDriverAlreadyRegisteredError extends Schema.TaggedErrorClass<CompositionAgentDriverAlreadyRegisteredError>()(
+export class CompositionAgentDriverAlreadyRegisteredError extends Schema.TaggedError<CompositionAgentDriverAlreadyRegisteredError>()(
   "CompositionAgentDriverAlreadyRegisteredError",
   { agentId: Schema.String },
 ) {
@@ -17,7 +17,7 @@ export class CompositionAgentDriverAlreadyRegisteredError extends Schema.TaggedE
   }
 }
 
-export class CompositionAgentDriverInvalidError extends Schema.TaggedErrorClass<CompositionAgentDriverInvalidError>()(
+export class CompositionAgentDriverInvalidError extends Schema.TaggedError<CompositionAgentDriverInvalidError>()(
   "CompositionAgentDriverInvalidError",
   { detail: Schema.String },
 ) {

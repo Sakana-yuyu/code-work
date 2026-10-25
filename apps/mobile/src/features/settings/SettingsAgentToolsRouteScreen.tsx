@@ -11,7 +11,7 @@ import {
   type ServerSettingsPatch,
   type WebSearchEngine,
 } from "@codework/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Platform, Pressable, ScrollView, Switch, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

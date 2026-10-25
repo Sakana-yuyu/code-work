@@ -156,7 +156,7 @@ function withEventBase(
 > {
   return Crypto.Crypto.pipe(
     Effect.flatMap((crypto) =>
-      crypto.randomUUIDv4.pipe(
+      crypto.randomUUIDv4().pipe(
         Effect.map((eventId) => ({
           eventId: EventId.make(eventId),
           aggregateKind: input.aggregateKind,

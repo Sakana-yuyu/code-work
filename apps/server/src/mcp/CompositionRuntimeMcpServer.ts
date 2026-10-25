@@ -4,8 +4,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type * as Types from "effect/Types";
-import { McpProtocol, McpServer, Tool, Toolkit } from "effect/unstable/ai";
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import { McpProtocol, McpServer, Tool, Toolkit } from "effect/ai";
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as CompositionRuntimeToolBridge from "../composition/CompositionRuntimeToolBridge.ts";
@@ -185,8 +185,20 @@ const McpTransportLive = McpServer.layerHttp({
   version: packageJson.version,
   path: COMPOSITION_RUNTIME_MCP_PATH,
   protocols: [McpProtocol.v2025_06_18],
+  // Keep MCP clients able to terminate sessions over HTTP (upstream gates DELETE behind this flag).
+  allowSessionTermination: true,
 }).pipe(Layer.provide(RuntimeMcpAuthMiddlewareLive));
 
+// effect 4.0.6 threads tool-handler services into the toolkit layer's
+// requirements channel. CompositionRuntimeMcpInvocationContext is provided per
+// request by the runtime auth middleware, so seed the layer with a placeholder
+// to satisfy the type; the per-request provideService always overrides it.
+const CompositionRuntimeInvocationSeedLive = Layer.succeed(
+  CompositionRuntimeMcpInvocationContext,
+  null as never,
+);
+
 export const layer = CompositionRuntimeToolkitRegistrationLive.pipe(
+  Layer.provide(CompositionRuntimeInvocationSeedLive),
   Layer.provideMerge(McpTransportLive),
 );

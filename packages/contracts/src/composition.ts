@@ -89,7 +89,7 @@ export const CompositionAgentLoopRunResult = Schema.Struct({
 });
 export type CompositionAgentLoopRunResult = typeof CompositionAgentLoopRunResult.Type;
 
-export class CompositionAgentLoopRunError extends Schema.TaggedErrorClass<CompositionAgentLoopRunError>()(
+export class CompositionAgentLoopRunError extends Schema.TaggedError<CompositionAgentLoopRunError>()(
   "CompositionAgentLoopRunError",
   {
     code: TrimmedNonEmptyString,
@@ -359,7 +359,7 @@ export const CompositionTaskRun = Schema.Struct({
 export type CompositionTaskRun = typeof CompositionTaskRun.Type;
 
 /** Task RPC 失败的稳定传输形状；服务端内部错误不会直接泄漏到客户端。 */
-export class CompositionTaskRpcError extends Schema.TaggedErrorClass<CompositionTaskRpcError>()(
+export class CompositionTaskRpcError extends Schema.TaggedError<CompositionTaskRpcError>()(
   "CompositionTaskRpcError",
   {
     code: TrimmedNonEmptyString,
@@ -1654,7 +1654,7 @@ export const CompositionSquadExecutionResult = Schema.Struct({
 export type CompositionSquadExecutionResult = typeof CompositionSquadExecutionResult.Type;
 
 /** Squad 生命周期和执行错误的稳定传输形状，不向客户端泄漏内部异常。 */
-export class CompositionSquadRpcError extends Schema.TaggedErrorClass<CompositionSquadRpcError>()(
+export class CompositionSquadRpcError extends Schema.TaggedError<CompositionSquadRpcError>()(
   "CompositionSquadRpcError",
   {
     code: TrimmedNonEmptyString,

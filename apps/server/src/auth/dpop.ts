@@ -2,9 +2,9 @@ import { verifyDpopProof } from "@codework/shared/dpop";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Base64Url from "effect/encoding/Base64Url";
 import * as Option from "effect/Option";
-import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import {
   ServerAuthDpopReplayKeyCalculationError,
@@ -58,7 +58,7 @@ export const verifyRequestDpopProof = (input: {
       Effect.flatMap((crypto) =>
         crypto.digest("SHA-256", new TextEncoder().encode(`${result.thumbprint}:${result.jti}`)),
       ),
-      Effect.map(Encoding.encodeBase64Url),
+      Effect.map(Base64Url.encode),
       Effect.mapError(
         (cause) =>
           new ServerAuthDpopReplayKeyCalculationError({

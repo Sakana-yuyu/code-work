@@ -12,7 +12,7 @@ import {
   HttpClientResponse,
   HttpServerRequest,
   type HttpClientRequest,
-} from "effect/unstable/http";
+} from "effect/http";
 
 import { EnvironmentId } from "@codework/contracts";
 import { RelayClientTracer } from "@codework/shared/relayTracing";
