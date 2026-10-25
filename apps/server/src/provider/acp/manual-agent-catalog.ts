@@ -7,6 +7,21 @@ const MANUAL_AGENTS: ReadonlyArray<
   }
 > = [
   {
+    id: "reasonix",
+    name: "Reasonix CLI",
+    version: null,
+    description:
+      "先安装 reasonix-cli 并用 reasonix setup 配置 provider（reasonix.toml）。`reasonix acp` 以 stdio 提供 Agent Client Protocol；模型与凭据沿用 CLI 自身配置，不经过 Code Work BYOK 网关。针对 reasonix-cli v1.35.0 核对（2026-10-26，`--help` 实测存在 acp/--acp 子命令）。",
+    command: "reasonix acp",
+    availability: "manual",
+    platforms: ["win32", "darwin", "linux"],
+    setup: {
+      documentationUrl: "https://github.com/esengine/DeepSeek-Reasonix/tree/main-v2",
+      installationUrl: "https://github.com/esengine/DeepSeek-Reasonix/releases",
+      verifiedAt: "2026-10-26",
+    },
+  },
+  {
     id: "codewhale",
     name: "CodeWhale",
     version: null,

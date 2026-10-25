@@ -3,7 +3,7 @@ import { HostProcessArchitecture, HostProcessPlatform } from "@codework/shared/h
 import { ProviderInstanceId } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 import {
   getAcpRegistryCatalog,
@@ -314,13 +314,14 @@ describe("ACP registry catalog", () => {
     expect(ampArm?.binaryDistribution).toBeUndefined();
   });
 
-  it("五个手工入口有官方来源和平台限制，现有同 ID 优先且不复制专用驱动", () => {
+  it("六个手工入口有官方来源和平台限制，现有同 ID 优先且不复制专用驱动", () => {
     const manual = withManualAcpCatalog([], "win32", "x64");
     expect(manual.map((entry) => [entry.id, entry.command])).toEqual([
       ["codewhale", "codewhale serve --acp"],
       ["gjc", "gjc acp"],
       ["hermes", "hermes acp"],
       ["kiro", "kiro-cli acp"],
+      ["reasonix", "reasonix acp"],
       ["traecli", "traecli acp serve"],
     ]);
     for (const entry of manual) {
@@ -328,7 +329,7 @@ describe("ACP registry catalog", () => {
       expect(entry.version).toBeNull();
       expect(entry.setup?.installationUrl).toMatch(/^https:\/\//);
       expect(entry.setup?.documentationUrl).toMatch(/^https:\/\//);
-      expect(entry.setup?.verifiedAt).toBe("2026-09-30");
+      expect(entry.setup?.verifiedAt).toMatch(/^2026-(09-30|10-26)$/);
     }
     expect(manual.find((entry) => entry.id === "gjc")?.environment).toEqual([
       { name: "GJC_ACP_PERMISSION_MODE", value: "prompt", sensitive: false },
@@ -337,7 +338,7 @@ describe("ACP registry catalog", () => {
     expect(manual.find((entry) => entry.id === "gjc")?.authMethodId).toBe("agent");
     const current = { ...manual[0]!, command: "npx -y codewhale@1.0.0", version: "1.0.0" };
     const merged = withManualAcpCatalog([current], "win32", "x64");
-    expect(merged).toHaveLength(5);
+    expect(merged).toHaveLength(6);
     expect(merged.find((entry) => entry.id === "codewhale")).toBe(current);
     expect(
       withManualAcpCatalog([], "win32", "arm64").find((entry) => entry.id === "gjc"),
@@ -356,8 +357,8 @@ describe("ACP registry catalog", () => {
       "win32",
       "x64",
     );
-    expect(full).toHaveLength(46);
-    expect(new Set(full.map((entry) => entry.id)).size).toBe(46);
+    expect(full).toHaveLength(47);
+    expect(new Set(full.map((entry) => entry.id)).size).toBe(47);
     expect(full.filter((entry) => entry.id === "cursor")).toHaveLength(1);
     expect(full.filter((entry) => entry.id === "kimi")).toHaveLength(1);
     expect(full.some((entry) => entry.id === "grok")).toBe(false);
