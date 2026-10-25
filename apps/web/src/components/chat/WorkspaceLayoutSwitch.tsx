@@ -6,6 +6,14 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
+// The workbench bundle is the single heaviest lazy chunk in the app. Hovering
+// the IDE toggle is the strongest intent signal we get before the click, so
+// the chunk download starts then instead of after it.
+let workbenchChunkPrefetch: Promise<unknown> | null = null;
+function prefetchWorkbenchChunk() {
+  workbenchChunkPrefetch ??= import("../ide/vscode/VscodeWorkbench").catch(() => {});
+}
+
 /**
  * The chat ⇄ IDE layout switch. It lives in the page header and, duplicated,
  * in the right-panel sheet's tab bar: the open sheet covers the header's
@@ -15,6 +23,9 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 export function WorkspaceLayoutSwitch(props: {
   value: "chat" | "ide";
   onChange: (mode: "chat" | "ide") => void;
+  /** Fired once per mount on the first IDE-toggle hover/focus; the host uses
+   * it to start warming the REH session before the click lands. */
+  onIdeIntent?: () => void;
   className?: string;
 }) {
   const ideAvailable = useIdeViewportAvailable();
@@ -50,6 +61,22 @@ export function WorkspaceLayoutSwitch(props: {
                 aria-pressed={props.value === value}
                 disabled={value === "ide" && !ideAvailable}
                 onClick={() => props.onChange(value)}
+                onPointerEnter={
+                  value === "ide"
+                    ? () => {
+                        prefetchWorkbenchChunk();
+                        props.onIdeIntent?.();
+                      }
+                    : undefined
+                }
+                onFocus={
+                  value === "ide"
+                    ? () => {
+                        prefetchWorkbenchChunk();
+                        props.onIdeIntent?.();
+                      }
+                    : undefined
+                }
               >
                 <Icon
                   className={cn(

@@ -59,6 +59,20 @@ describe("Code-OSS 集成边界", () => {
     await runtime.dispose();
   });
 
+  it("prewarm 只预热安装管线且不创建会话", async () => {
+    const runtime = new CodeossRuntime(
+      NodePath.join(NodeOS.tmpdir(), "unused-codeoss-prewarm"),
+      "win32",
+      "x64",
+    );
+    // 重复调用与首次调用都不得抛出、不得留下任何会话或进程。
+    runtime.prewarm();
+    runtime.prewarm();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(runtime.sessions.size).toBe(0);
+    await runtime.dispose();
+  });
+
   it("支持的平台均有固定校验值，未验证平台明确拒绝", () => {
     for (const [platform, arch] of [
       ["win32", "x64"],

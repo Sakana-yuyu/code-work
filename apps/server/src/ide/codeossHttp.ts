@@ -14,6 +14,9 @@ import * as Socket from "effect/socket/Socket";
 import * as Scope from "effect/Scope";
 
 // effect 4.0.6 removed Socket.runRaw; relay chunks between two live sockets by hand.
+// `pull` returns a batch and `writeAll` submits it in one go — one round trip
+// per batch instead of one per chunk keeps terminal streams and file transfers
+// off the per-yield path.
 export const pumpSocket = (
   from: Socket.Socket,
   to: Socket.Socket,
@@ -24,9 +27,7 @@ export const pumpSocket = (
     while (true) {
       const chunks = yield* Effect.catch(reader.pull, () => Effect.succeed(null));
       if (chunks === null) return;
-      for (const chunk of chunks) {
-        yield* writer.write(chunk);
-      }
+      yield* writer.writeAll(chunks);
     }
   });
 

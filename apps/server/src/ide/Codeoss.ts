@@ -47,6 +47,9 @@ export const layer = Layer.effect(
       ),
       Effect.forkScoped,
     );
+    // Start fetching the Code-OSS runtime in the background so the first
+    // `ide.open` does not pay the download/verify cost.
+    runtime.prewarm();
     return {
       runtime,
       open: (sessionId, input) =>
@@ -62,6 +65,7 @@ export const layer = Layer.effect(
             () => new IdeError({ message: "无法打开 IDE，请检查项目目录和环境连接。" }),
           ),
         ),
+      prewarm: () => Effect.sync(() => runtime.prewarm()),
     };
   }),
 );

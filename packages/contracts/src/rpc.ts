@@ -455,6 +455,7 @@ export const WS_METHODS = {
   filesystemBrowse: "filesystem.browse",
   assetsCreateUrl: "assets.createUrl",
   ideOpen: "ide.open",
+  idePrewarm: "ide.prewarm",
   attachmentsCreateUploadUrl: "attachments.createUploadUrl",
   attachmentsDelete: "attachments.delete",
 
@@ -1689,6 +1690,12 @@ export const WsIdeOpenRpc = Rpc.make(WS_METHODS.ideOpen, {
   error: Schema.Union([IdeError, EnvironmentAuthorizationError]),
 });
 
+export const WsIdePrewarmRpc = Rpc.make(WS_METHODS.idePrewarm, {
+  payload: Schema.Struct({}),
+  success: Schema.Void,
+  error: Schema.Never,
+});
+
 export const WsAttachmentsCreateUploadUrlRpc = Rpc.make(WS_METHODS.attachmentsCreateUploadUrl, {
   payload: AttachmentCreateUploadUrlInput,
   success: AttachmentCreateUploadUrlResult,
@@ -2378,6 +2385,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsFilesystemBrowseRpc,
   WsAssetsCreateUrlRpc,
   WsIdeOpenRpc,
+  WsIdePrewarmRpc,
   WsAttachmentsCreateUploadUrlRpc,
   WsAttachmentsDeleteRpc,
   WsProviderUploadFeedbackRpc,

@@ -24,6 +24,7 @@ import {
   type ThreadId,
   type TurnId,
   type KeybindingCommand,
+  WS_METHODS,
   OrchestrationThreadActivity,
   ProviderInteractionMode,
   ProviderDriverKind,
@@ -35,6 +36,8 @@ import {
 import { type EnvironmentConnectionPresentation } from "@codework/client-runtime/connection";
 import { type StartThreadTurnInput } from "@codework/client-runtime/operations";
 import { wasBootstrapThreadDeleted } from "@codework/client-runtime/errors";
+import { createEnvironmentRpcCommand } from "@codework/client-runtime/state/runtime";
+import { connectionAtomRuntime } from "../connection/runtime";
 import {
   changeRequestAutoSettles,
   effectiveSettled,
@@ -312,7 +315,7 @@ import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
 import { WorkspaceLayout } from "./WorkspaceLayout";
-import { useWorkspaceLayout } from "../workspaceLayout";
+import { useWorkspaceLayout, useWorkspaceLayoutPreference } from "../workspaceLayout";
 import { sendCodeossCommand } from "./ide/codeossCommands";
 import { nextFileCommentId } from "./files/fileCommentAnnotations";
 import { openCommandPalette } from "../commandPaletteBus";
@@ -560,6 +563,16 @@ const PreviewPanel = lazy(() =>
 );
 const DiffPanel = lazy(() => import("./DiffPanel"));
 const FilePreviewPanel = lazy(() => import("./files/FilePreviewPanel"));
+const prewarmIdeCommand = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "ide.prewarm",
+  tag: WS_METHODS.idePrewarm,
+});
+
+const startIdeSessionCommand = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "ide.open",
+  tag: WS_METHODS.ideOpen,
+});
+
 const IdeWorkbench = lazy(async () => {
   await loadWorkbenchLanguage();
   return import("./ide/vscode/VscodeWorkbench");
@@ -1573,6 +1586,7 @@ function ChatViewContent(props: ChatViewProps) {
   const compactPanelViewport = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const [workspaceElement, setWorkspaceElement] = useState<HTMLDivElement | null>(null);
   const workspaceLayout = useWorkspaceLayout(workspaceElement);
+  const [preferredLayout] = useWorkspaceLayoutPreference();
   // IDE 布局没有右侧面板的网格槽位（工作台占满主区）：Agents/Diff/预览等
   // 面板一律走覆盖层 sheet，否则这些入口在工作台模式下是死点击。
   const shouldUseRightPanelSheet = compactPanelViewport || workspaceLayout.mode === "ide";
@@ -1959,6 +1973,21 @@ function ChatViewContent(props: ChatViewProps) {
     [activeThread?.environmentId, activeThread?.projectId],
   );
   const activeProject = useProject(activeProjectRef);
+  // Warm the Code-OSS runtime download once the session has a project: the
+  // workbench bundle prefetch on the layout switch covers the client side,
+  // this covers the server's first-open install wait. Only IDE users pay the
+  // prefetch; the RPC is idempotent and installs nothing beyond the runtime
+  // pipeline. Idempotent server-side.
+  const prewarmIde = useAtomCommand(prewarmIdeCommand, { reportFailure: false });
+  const startIdeSession = useAtomCommand(startIdeSessionCommand, { reportFailure: false });
+  const ideLayoutPreferred = preferredLayout === "ide" || workspaceLayout.mode === "ide";
+  useEffect(() => {
+    if (activeProject === null || !ideLayoutPreferred) return;
+    const timer = setTimeout(() => {
+      void prewarmIde({ environmentId: activeProject.environmentId, input: {} });
+    }, 3_000);
+    return () => clearTimeout(timer);
+  }, [activeProject?.environmentId, ideLayoutPreferred, prewarmIde]);
   // The overrides map outranks the record field; a stored null stays null.
   const activeProjectModelSelection = useMemo(
     () => resolveProjectModelSelection(settings, activeProject?.id ?? null, activeProject),
@@ -3296,6 +3325,20 @@ function ChatViewContent(props: ChatViewProps) {
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
+
+  // Hovering the IDE toggle is the click's herald: kick ide.open so the
+  // server spawns the REH during the pointer travel instead of after it.
+  // The call is idempotent server-side (same auth session reuses the REH).
+  const ideSessionStartedRef = useRef(false);
+  const handleIdeIntent = useCallback(() => {
+    if (ideSessionStartedRef.current) return;
+    if (activeProject === null || activeWorkspaceRoot === undefined) return;
+    ideSessionStartedRef.current = true;
+    void startIdeSession({
+      environmentId: activeProject.environmentId,
+      input: { cwd: activeWorkspaceRoot, retry: false },
+    });
+  }, [activeProject?.environmentId, activeWorkspaceRoot, startIdeSession]);
   // Canvases live as project files under `.codework/canvases/`, but the
   // in-memory surfaces are per-thread and die with the page. Merge the
   // project-wide on-disk listing in so the recent sidebar matches canvases
@@ -8532,6 +8575,7 @@ function ChatViewContent(props: ChatViewProps) {
                     <WorkspaceLayoutSwitch
                       value={isIdeLayout ? "ide" : "chat"}
                       onChange={workspaceLayout.setMode}
+                      onIdeIntent={handleIdeIntent}
                     />
                     {panelToggleControls}
                   </div>

@@ -135,6 +135,10 @@ export default function VscodeWorkbench(props: {
     if (!props.enabled || !baseUrl) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
+    // The server flips to ready the moment its REH prints the listen line; the
+    // client only learns on its next poll. Poll fast for the first few
+    // seconds (where REH startup actually lands), then settle to a slow cadence.
+    let pollCount = 0;
     async function connect(retry: boolean) {
       const result = await open({
         environmentId: props.environmentId,
@@ -149,7 +153,8 @@ export default function VscodeWorkbench(props: {
       if (result.value.phase === "ready" && result.value.connection) {
         setIdeConnection(result.value.connection);
       } else if (result.value.phase !== "error") {
-        timer = setTimeout(() => void connect(false), 1500);
+        pollCount += 1;
+        timer = setTimeout(() => void connect(false), pollCount <= 6 ? 300 : 1500);
       }
     }
     void connect(attempt > 0);
