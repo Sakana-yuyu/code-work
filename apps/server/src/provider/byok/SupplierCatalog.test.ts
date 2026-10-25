@@ -37,7 +37,7 @@ describe("SupplierCatalog", () => {
   });
 
   it("includes core suppliers and the complete source catalog", () => {
-    expect(SUPPLIER_TEMPLATES).toHaveLength(75);
+    expect(SUPPLIER_TEMPLATES).toHaveLength(141);
     expect(SUPPLIER_TEMPLATES.slice(0, 3).map(({ id }) => id)).toEqual([
       "custom",
       "openai",
