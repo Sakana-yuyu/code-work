@@ -1,6 +1,6 @@
 {
   "_comment": "模型上下文目录（与 cursor-byok internal/modelcontext/models.json 保持同步，仅保留 Code Work 用到的字段：上下文窗口、最大输出、视觉能力）。first-match-wins：pattern 按数组顺序匹配，越靠前优先级越高。pattern 经 normalizeModelID 处理后再匹配（小写、去 models/ 前缀、空格/下划线转连字符）。",
-  "_source": "cursor-byok models.json + 本仓库 deepseek 补充 + 2026-09 官方发布核对（Fable/Mythos 5.1、GPT-6 Astra、Gemini 3.8 Flash、DeepSeek V4.1-Flash、Grok 4.6、Qwen3.8-Max）；2026-09-20 按 api-docs.deepseek.com 当前阵容复核：deepseek-flash=V4.1-Flash（1M/384K/视觉）、deepseek-v4-pro GA=1M/384K、V4 系列 384K 输出、deepseek-v4-flash 已并入 V4.1-Flash；2026-10-09 按 platform.claude.com 官方核对：Opus 5.5（09-22）/Sonnet 5.5（09-28）/Haiku 5.5（10-07）均为 1M/128K、补 Opus 5（1M/128K）、Kimi K3 上下文按 platform.kimi.com 修正为 1M/131072；同日按 platform.minimax.cn / platform.stepfun.com 官方文档核对：补 MiniMax M3.1-Flash-Preview（1M/原生多模态）、M3 修正为视觉 true、M2.7 系窗口修正为 204800、补阶跃 Step 5 Preview（1M/视觉）与 step-5-preview-free（200K/32K）、Step 3.7 Flash（256K/视觉）、Step 3.5 Flash（256K/纯文本）",
+  "_source": "cursor-byok models.json + 本仓库 deepseek 补充 + 2026-09 官方发布核对（Fable/Mythos 5.1、GPT-6 Astra、Gemini 3.8 Flash、DeepSeek V4.1-Flash、Grok 4.6、Qwen3.8-Max）；2026-09-20 按 api-docs.deepseek.com 当前阵容复核：deepseek-flash=V4.1-Flash（1M/384K/视觉）、deepseek-v4-pro GA=1M/384K、V4 系列 384K 输出、deepseek-v4-flash 已并入 V4.1-Flash；2026-10-09 按 platform.claude.com 官方核对：Opus 5.5（09-22）/Sonnet 5.5（09-28）/Haiku 5.5（10-07）均为 1M/128K、补 Opus 5（1M/128K）、Kimi K3 上下文按 platform.kimi.com 修正为 1M/131072；同日按 platform.minimax.cn / platform.stepfun.com 官方文档核对：补 MiniMax M3.1-Flash-Preview（1M/原生多模态）、M3 修正为视觉 true、M2.7 系窗口修正为 204800、补阶跃 Step 5 Preview（1M/视觉）与 step-5-preview-free（200K/32K）、Step 3.7 Flash（256K/视觉）、Step 3.5 Flash（256K/纯文本）；2026-10-25 合并 cursor-byok v1.0.14 增补（grok-4.7/-fast、gpt-6.1-sol、gpt-6-luna、GPT-5.6 输出修正为 128K、gemini 3.7/3.6/3.5-flash(-lite)、claude-haiku-4.5、composer-2.5、qwen3.8-flash、GLM 4.x-Flash 全家、minimax-m3.1 裸名、doubao-seed-2.1、grok-4.5 兼容 cursor- 渠道命名）",
   "rules": [
     {
       "pattern": "^gpt-?6(?:-|$)",
@@ -94,6 +94,155 @@
       "supportsVision": true
     },
     {
+      "pattern": "^gpt-?6[.-]?1-sol(?:-|$)",
+      "displayName": "GPT-6.1 Sol",
+      "contextWindowTokens": 272000,
+      "maxOutputTokens": 128000,
+      "supportsVision": true,
+      "reasoningEfforts": ["none", "low", "medium", "high", "xhigh", "max"]
+    },
+    {
+      "pattern": "^claude-?haiku-?4[.-]?5(?:-|$)",
+      "displayName": "Claude Haiku 4.5",
+      "contextWindowTokens": 200000,
+      "maxOutputTokens": 64000,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^gemini-3[.-]?7-flash",
+      "displayName": "Gemini 3.7 Flash",
+      "contextWindowTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "supportsVision": true,
+      "reasoningEfforts": ["low", "medium", "high"]
+    },
+    {
+      "pattern": "^gemini-3[.-]?6-flash",
+      "displayName": "Gemini 3.6 Flash",
+      "contextWindowTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^gemini-3[.-]?5-flash-lite",
+      "displayName": "Gemini 3.5 Flash-Lite",
+      "contextWindowTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^gemini-3[.-]?5-flash",
+      "displayName": "Gemini 3.5 Flash",
+      "contextWindowTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^grok-?4[.-]?7-fast(?:-|$)",
+      "displayName": "Grok 4.7 Fast",
+      "contextWindowTokens": 500000,
+      "maxOutputTokens": 32768,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^grok-?4[.-]?7(?:-|$)",
+      "displayName": "Grok 4.7",
+      "contextWindowTokens": 500000,
+      "maxOutputTokens": 32768,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^composer-?2[.-]?5(?:-|$)",
+      "displayName": "Composer 2.5",
+      "contextWindowTokens": 200000,
+      "maxOutputTokens": 32000,
+      "supportsVision": false
+    },
+    {
+      "pattern": "^qwen-?3[.-]?8-flash(?:-|$)",
+      "displayName": "Qwen3.8-Flash",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 131072,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^glm-?4[.-]?7-flash(?:-|$)",
+      "displayName": "GLM-4.7-Flash",
+      "contextWindowTokens": 200000,
+      "maxOutputTokens": 128000,
+      "supportsVision": false
+    },
+    {
+      "pattern": "^glm-?4[.-]?6v-flash(?:-|$)",
+      "displayName": "GLM-4.6V-Flash",
+      "contextWindowTokens": 128000,
+      "maxOutputTokens": 32000,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^glm-?4[.-]?5-flash(?:-|$)",
+      "displayName": "GLM-4.5-Flash",
+      "contextWindowTokens": 128000,
+      "maxOutputTokens": 98304,
+      "supportsVision": false
+    },
+    {
+      "pattern": "^glm-?4[.-]?1v-thinking-flashx(?:-|$)",
+      "displayName": "GLM-4.1V-Thinking-FlashX",
+      "contextWindowTokens": 65536,
+      "maxOutputTokens": 16384,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^glm-?4[.-]?1v-thinking-flash(?:-|$)",
+      "displayName": "GLM-4.1V-Thinking-Flash",
+      "contextWindowTokens": 65536,
+      "maxOutputTokens": 16384,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^glm-?4-flashx-250414(?:-|$)",
+      "displayName": "GLM-4-FlashX-250414",
+      "contextWindowTokens": 128000,
+      "maxOutputTokens": 16384,
+      "supportsVision": false
+    },
+    {
+      "pattern": "^glm-?4-flash-250414(?:-|$)",
+      "displayName": "GLM-4-Flash-250414",
+      "contextWindowTokens": 128000,
+      "maxOutputTokens": 16384,
+      "supportsVision": false
+    },
+    {
+      "pattern": "^glm-?4-long(?:-|$)",
+      "displayName": "GLM-4-Long",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 4096,
+      "supportsVision": false
+    },
+    {
+      "pattern": "^glm-?4v-flash(?:-|$)",
+      "displayName": "GLM-4V-Flash",
+      "contextWindowTokens": 16384,
+      "maxOutputTokens": 1024,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^(?:minimax-?)?m3[.-]?1(?:-|$)",
+      "displayName": "MiniMax-M3.1-Flash",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 16384,
+      "supportsVision": true
+    },
+    {
+      "pattern": "^doubao-?seed-?2[.-]?1(?:-|$)",
+      "displayName": "Doubao Seed 2.1 Pro",
+      "contextWindowTokens": 1000000,
+      "maxOutputTokens": 32768,
+      "supportsVision": true
+    },
+    {
       "pattern": "^deepseek-(?:chat|reasoner)(?:-|$)",
       "displayName": "DeepSeek V4 兼容别名",
       "contextWindowTokens": 1000000,
@@ -160,7 +309,7 @@
       "pattern": "^gpt-?5[.-]?6-(?:luna|sol|terra)(?:-|$)",
       "displayName": "GPT-5.6 (Codex)",
       "contextWindowTokens": 272000,
-      "maxOutputTokens": 32768,
+      "maxOutputTokens": 128000,
       "supportsVision": true,
       "reasoningEfforts": ["none", "low", "medium", "high", "xhigh"]
     },
@@ -251,7 +400,7 @@
       "supportsVision": true
     },
     {
-      "pattern": "^grok-?4[.-]?5(?:-|$)",
+      "pattern": "^(?:cursor-)?grok-?4[.-]?5(?:-|$)",
       "displayName": "Grok 4.5",
       "contextWindowTokens": 500000,
       "maxOutputTokens": 32768,

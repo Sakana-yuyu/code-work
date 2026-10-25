@@ -104,7 +104,7 @@ export interface ByokToolDescriptor {
 }
 
 /** One failed BYOK engine request (transport, non-2xx, or malformed SSE). */
-export class ByokEngineError extends Schema.TaggedErrorClass<ByokEngineError>()("ByokEngineError", {
+export class ByokEngineError extends Schema.TaggedError<ByokEngineError>()("ByokEngineError", {
   url: Schema.String,
   reason: Schema.Literals([
     "authentication_error",
@@ -279,6 +279,7 @@ const isContextOverflowDetail = (detail: string): boolean => {
     normalized.includes("exceeds the context window") ||
     normalized.includes("exceeds context window") ||
     normalized.includes("prompt is too long") ||
+    normalized.includes("model_context_window_exceeded") ||
     (normalized.includes("input token count") &&
       (normalized.includes("exceeds the maximum") || normalized.includes("exceeds maximum")))
   );
