@@ -201,6 +201,19 @@ const handlePrompt = async (frame) => {
 
   if (env.MOCK_OMP_STALL === "1") return;
 
+  if (env.MOCK_OMP_LATE_REJECT === "1") {
+    // OMP 18.3 迟到拒绝（COMPAT ompLatePromptRejection）：ack 之后以第二条
+    // 失败 response 帧收敛，适配器需把它转成 prompt_result 错误而非丢弃。
+    emit({
+      type: "response",
+      command: "prompt",
+      id: frame.id,
+      success: false,
+      error: "Model has no API key",
+    });
+    return;
+  }
+
   const segments = [];
   segments.push(await runHostToolScenario());
   segments.push(await runApprovalScenario());

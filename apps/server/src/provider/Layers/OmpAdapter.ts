@@ -326,6 +326,22 @@ export const makeOmpAdapter = (config: OmpAgentSettings, options: OmpAdapterOpti
         return;
       }
 
+      if (event.type === "prompt_result") {
+        // OMP 18.3+/Paseo 上游同步：prompt 被 ack 后拒绝（如模型无 API key）时
+        // 以 prompt_result(status:"error") 收敛，这里把回合落成失败而非挂起。
+        if (
+          event.status === "error" &&
+          ctx.turn !== null &&
+          !ctx.turn.settled &&
+          !ctx.turn.interrupting
+        ) {
+          yield* terminal.failTurn(
+            `OhMyPi prompt rejected: ${event.error?.message ?? "unknown error"}`,
+          );
+        }
+        return;
+      }
+
       switch (event.type) {
         case "agent_start":
         case "turn_start": {

@@ -18,8 +18,8 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as ChildProcess from "effect/unstable/process/ChildProcess";
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 
@@ -31,7 +31,7 @@ export const JSONL_RPC_NO_TIMEOUT: null = null;
 
 const STDERR_RING_BYTES = 8192;
 
-export class JsonlRpcProcessError extends Schema.TaggedErrorClass<JsonlRpcProcessError>()(
+export class JsonlRpcProcessError extends Schema.TaggedError<JsonlRpcProcessError>()(
   "JsonlRpcProcessError",
   {
     diagnosticName: Schema.String,
@@ -52,10 +52,23 @@ export interface JsonlRpcProcessExit {
 interface JsonlRpcResponseFrame {
   readonly type: "response";
   readonly id?: string;
+  readonly command?: string;
   readonly success?: boolean;
   readonly data?: unknown;
   readonly error?: string;
 }
+
+/**
+ * OMP 18.3（COMPAT ompLatePromptRejection，随 Paseo 上游同步）会在 ack 之后
+ * 才把被拒绝的 prompt 以第二条失败 response 帧回报；更新版本改用
+ * prompt_result(status:"error")。两条路径都转换成同一个 prompt_result 事件，
+ * 让适配器可以把回合收敛为失败而不是挂到看门狗。
+ */
+const isLatePromptRejection = (frame: JsonlRpcResponseFrame): boolean =>
+  frame.success === false &&
+  frame.command === "prompt" &&
+  typeof frame.id === "string" &&
+  typeof frame.error === "string";
 
 function isResponseFrame(frame: unknown): frame is JsonlRpcResponseFrame {
   return (
@@ -167,7 +180,19 @@ export const makeJsonlRpcProcess = Effect.fn("pifamily.makeJsonlRpcProcess")(fun
       const id = typeof frame.id === "string" ? frame.id : null;
       if (id === null) return;
       const deferred = pending.get(id);
-      if (deferred === undefined) return;
+      if (deferred === undefined) {
+        // 已 ack 的 prompt 事后被拒（OMP 18.3）：转换成 prompt_result 错误事件，
+        // 不让它无声消失。
+        if (isLatePromptRejection(frame)) {
+          yield* Queue.offer(events, {
+            type: "prompt_result",
+            id: frame.id,
+            status: "error",
+            error: { message: frame.error ?? "prompt rejected" },
+          });
+        }
+        return;
+      }
       pending.delete(id);
       if (frame.success === false) {
         yield* Deferred.fail(

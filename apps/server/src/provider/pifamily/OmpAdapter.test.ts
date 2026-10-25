@@ -422,6 +422,26 @@ describe("makeOmpAdapter", () => {
     ),
   );
 
+  it.effect("late prompt rejection (OMP 18.3) fails the turn instead of hanging", () =>
+    runWithOmpAdapter({ MOCK_OMP_LATE_REJECT: "1" }, ({ adapter, recorder }) =>
+      Effect.gen(function* () {
+        const threadId = ThreadId.make("omp-late-reject");
+        yield* adapter.startSession({ threadId, runtimeMode: "full-access" });
+        yield* adapter.sendTurn({ threadId, input: "work" });
+
+        // OMP 18.3 在 ack 后以第二条失败 response 回报拒绝；适配器需把它收敛为
+        // turn.completed(state:"failed")，而不是等看门狗。
+        const settled = yield* recorder.waitFor((event) => event.type === "turn.completed");
+        expect(settled.payload).toMatchObject({
+          state: "failed",
+          errorMessage: expect.stringContaining("Model has no API key"),
+        });
+        assertAllEventsDecode(recorder.events);
+        yield* adapter.stopSession(threadId);
+      }),
+    ),
+  );
+
   it.effect("interruptTurn emits turn.aborted", () =>
     runWithOmpAdapter({ MOCK_OMP_STALL: "1" }, ({ adapter, recorder }) =>
       Effect.gen(function* () {

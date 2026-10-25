@@ -245,7 +245,14 @@ export type PiRuntimeEvent =
   | PiAgentSessionEvent
   | PiExtensionUiRequestEvent
   | { readonly type: "command_output"; readonly text?: string }
-  | { readonly type: "prompt_result"; readonly id?: string; readonly agentInvoked?: boolean }
+  | {
+      readonly type: "prompt_result";
+      readonly id?: string;
+      readonly agentInvoked?: boolean;
+      /** OMP 18.3+ / Paseo 上游同步：被拒 prompt 的收敛终态。 */
+      readonly status?: "error";
+      readonly error?: { readonly message: string };
+    }
   | { readonly type: "process_exit"; readonly error: string };
 
 export type PiExtensionUiResponse = {
