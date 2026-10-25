@@ -1003,7 +1003,10 @@ const startSshTunnel = Effect.fn("ssh/tunnel.startSshTunnel")(function* (input: 
   const sshCommand = yield* resolveSshCommand;
   const tunnelCommand = [sshCommand, ...args];
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const scope = yield* Scope.make();
+  // 调用方以 provideService(Scope.Scope, entryScope) 注入每隧道作用域（Scope.make
+  // 创建、可关闭），隧道子进程注册在其中，断开时由 closeEntry 关闭。4.0.6 起
+  // Scope.close 要求 Closeable，服务类型不含该品牌，按唯一调用点窄化。
+  const scope = (yield* Scope.Scope) as Scope.Closeable;
   yield* Effect.logDebug("ssh.tunnel.spawn.start", {
     ...sshTargetLogFields(input.resolvedTarget),
     command: tunnelCommand,
