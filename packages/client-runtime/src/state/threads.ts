@@ -831,6 +831,9 @@ export function createEnvironmentThreadStateAtoms<R, E>(
         let active = true;
         get.addFinalizer(() => {
           active = false;
+          // effect 4.0.6 起 registry 拆卸期间访问节点会抛错；整体拆除时所有
+          // 缓存一并消亡，无需再释放归属。
+          if ((registry as { readonly disposed?: boolean }).disposed === true) return;
           const retained = registry.get(retainedAtom);
           if (retained.owner === owner) registry.set(retainedAtom, { ...retained, owner: null });
         });

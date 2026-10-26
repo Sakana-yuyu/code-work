@@ -21,6 +21,7 @@ import {
 } from "../connection/model.ts";
 
 const SOCKET_OPEN_TIMEOUT = "15 seconds";
+const RPC_PING_TIMEOUT = "15 seconds";
 
 export interface RpcSession {
   readonly client: WsRpcProtocolClient;
@@ -100,6 +101,10 @@ export const make = Effect.gen(function* () {
       RpcClient.makeProtocolSocket({
         retryTransientErrors: false,
         retryPolicy: Schedule.recurs(0),
+        // effect 4.0.6 的 ping 超时改为「距最近一条服务端帧的时长、逐 tick 检查」，
+        // 默认值（=pingInterval）只容忍一个丢 pong 窗口；按 3 倍间隔保持既有
+        // 「连续两个窗口无响应才判死」的会话策略。
+        pingTimeout: RPC_PING_TIMEOUT,
       }),
     ).pipe(
       Layer.provide(
