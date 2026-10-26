@@ -32,7 +32,10 @@ export function resolveCatalogDependencies(
       }
 
       const catalogKey = spec.slice("catalog:".length).trim();
-      const lookupKey = catalogKey.length > 0 ? catalogKey : name;
+      // 带作用域的 override 键（如 "@effect/vitest>vite-plus"）不是目录名；
+      // pnpm 的语义是按最后一个 ">" 之后的包名查目录。
+      const packageName = name.includes(">") ? name.slice(name.lastIndexOf(">") + 1) : name;
+      const lookupKey = catalogKey.length > 0 ? catalogKey : packageName;
       const resolved = catalog[lookupKey];
 
       if (typeof resolved !== "string" || resolved.length === 0) {
