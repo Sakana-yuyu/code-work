@@ -437,7 +437,9 @@ describe("relay request tracing", () => {
           Effect.provideService(HttpServerRequest.HttpServerRequest, request),
         );
 
-        expect(spans.map((span) => span.name)).toEqual(["http.server POST", "relay.test.endpoint"]);
+        // effect 4.0.6 起 tracer 中间件的默认 span 名是裸方法名（SpanNameGenerator
+        // 默认值），不再带 http.server 前缀。
+        expect(spans.map((span) => span.name)).toEqual(["POST", "relay.test.endpoint"]);
         expect(spans[0]?.kind).toBe("server");
         expect(spans[0]?.attributes.get("url.path")).toBe("/v1/mobile/devices");
         expect(spans[0]?.attributes.get("http.response.status_code")).toBe(204);
