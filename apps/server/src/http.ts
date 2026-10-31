@@ -381,8 +381,12 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       }
     }
 
-    const fileInfo = yield* fileSystem.stat(filePath).pipe(Effect.orElseSucceed(() => null));
-    if (!fileInfo || fileInfo.type !== "File") {
+    // 前端产物在打包后位于 server.asar 内：effect 的 FileSystem.stat 固定带 { bigint: true }，
+    // Electron 的 asar 补丁对此返回 number 字段，转换失败后每个文件都会被回退成 index.html。
+    const fileInfo = yield* Effect.tryPromise(() => NodeFSP.stat(filePath)).pipe(
+      Effect.orElseSucceed(() => null),
+    );
+    if (!fileInfo || !fileInfo.isFile()) {
       const indexPath = path.resolve(staticRoot, "index.html");
       const indexData = yield* fileSystem
         .readFile(indexPath)
