@@ -98,8 +98,6 @@ type ScopeCheck =
       readonly errorCode: string;
     };
 
-type ValidatedScope = Extract<ScopeCheck, { readonly ok: true }>;
-
 /** 两个分支都由本次调用持有，返回前确认败方中断，不留下迟到工具副作用。 */
 const raceOwnedTools = <A>(left: Effect.Effect<A>, right: Effect.Effect<A>) =>
   Effect.acquireUseRelease(

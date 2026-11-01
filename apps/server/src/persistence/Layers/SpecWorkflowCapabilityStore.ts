@@ -1,5 +1,4 @@
 import {
-  NonNegativeInt,
   SpecWorkflowCapability,
   SpecWorkflowEvent,
   SpecWorkflowFlag,

@@ -2,7 +2,6 @@ import { DEFAULT_SERVER_SETTINGS } from "@codework/contracts";
 import type {
   EnvironmentId,
   ModelSelection,
-  ProviderInstanceId,
   ProviderOptionDescriptor,
   ProviderOptionSelection,
   RuntimeMode,

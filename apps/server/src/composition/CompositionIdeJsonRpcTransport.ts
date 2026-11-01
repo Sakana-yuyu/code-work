@@ -9,7 +9,6 @@ import * as Stream from "effect/Stream";
 import {
   CompositionIdeAdapterFailure,
   type CompositionIdeAdapter,
-  type CompositionIdeCapabilityHandshakeRequest,
   type CompositionIdeCapabilityHandshakeResult,
   type CompositionIdeInvocation,
 } from "./CompositionIdeSessionRegistry.ts";

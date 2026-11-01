@@ -63,7 +63,6 @@ import { WorkspaceOperationLock } from "../WorkspaceOperationLock.ts";
 import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
 import {
   evaluateRestartContinuationEligibility,
-  isRestartDeadProviderSession,
   ORPHANED_PROVIDER_SESSION_ERROR,
   readRestartContinuationIntent,
   RESTART_CONTINUATION_PAYLOAD_KEY,

@@ -1,11 +1,7 @@
 import { ClientSettingsSchema, type ClientSettings } from "@codework/contracts";
 import * as Schema from "effect/Schema";
 
-import {
-  LocalStorageOperationError,
-  getLocalStorageItem,
-  setLocalStorageItem,
-} from "./hooks/useLocalStorage";
+import { LocalStorageOperationError, setLocalStorageItem } from "./hooks/useLocalStorage";
 import { canonicalStorageKey, readAndMigrateStorageValue } from "./persistenceStorage";
 
 export const LEGACY_CLIENT_SETTINGS_STORAGE_KEY = "t3code:client-settings:v1";

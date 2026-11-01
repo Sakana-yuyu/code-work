@@ -54,13 +54,6 @@ const joinText = (content: unknown): string =>
     .filter((text) => text.length > 0)
     .join("");
 
-interface TranslatedMessage {
-  readonly role: "system" | "user" | "assistant" | "tool";
-  readonly content: string | null;
-  readonly toolCalls?: readonly UnknownRecord[];
-  readonly toolCallId?: string;
-}
-
 const imageRef = (block: UnknownRecord): string => {
   const source = isRecord(block.source) ? block.source : {};
   if (source.type === "base64" && typeof source.data === "string") {

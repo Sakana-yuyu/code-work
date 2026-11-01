@@ -542,8 +542,6 @@ const ConversationUsagePill = memo(function ConversationUsagePill({
   const totalText = `${formatContextWindowTokens(totalTokens)} ${t("tok")}`;
   const cacheHitPercent =
     cacheHitRate === null ? null : `${cacheHitRate.toFixed(1).replace(/\.0$/, "")}%`;
-  const formatTokenValue = (tokens: number | null) =>
-    tokens === null ? "—" : formatContextWindowTokens(tokens);
   return (
     <Popover>
       <PopoverTrigger

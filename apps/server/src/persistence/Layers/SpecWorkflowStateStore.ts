@@ -30,7 +30,6 @@ const SpecWorkflowStateEventRowSchema = Schema.Struct({
   stateJson: Schema.String,
   createdAtUnixMs: Schema.Number,
 });
-type SpecWorkflowStateEventRow = typeof SpecWorkflowStateEventRowSchema.Type;
 
 const ThreadIdRequest = Schema.Struct({ threadId: Schema.String });
 const EmptyRequest = Schema.Struct({});
@@ -255,7 +254,7 @@ export const SpecWorkflowStateStoreLive = Layer.effect(
           return { state: nextState, publish: true };
         }),
       ).pipe(
-        Effect.tap(({ state, publish: shouldPublish }) =>
+        Effect.tap(({ publish: shouldPublish }) =>
           shouldPublish ? publish(input.threadId, input.event) : Effect.void,
         ),
         Effect.map(({ state }) => state),

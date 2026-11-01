@@ -867,8 +867,6 @@ export function providerGoalFromCodex(goal: {
   };
 }
 
-const providerGoalsEqual = Schema.toEquivalence(Schema.NullOr(ProviderThreadGoal));
-
 function describeCodexGoal(goal: ProviderThreadGoal): string {
   return `Goal ${goal.status}: ${goal.objective}`;
 }

@@ -12,7 +12,6 @@ import {
   LaptopIcon,
   PencilIcon,
   PlusIcon,
-  RefreshCwIcon,
   ShieldCheckIcon,
   Trash2Icon,
   XIcon,

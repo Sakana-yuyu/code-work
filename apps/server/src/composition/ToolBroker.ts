@@ -15,7 +15,6 @@ import {
   PreviewAutomationWaitForInput,
   PositiveInt,
   ProjectReadFileResult,
-  ProjectWriteFileResult,
   ReviewDiffPreviewInput,
   SshError,
   TerminalOpenInput,
@@ -39,7 +38,6 @@ import * as Schema from "effect/Schema";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ProcessRunner from "../processRunner.ts";
-import * as CodeGraphIndex from "../codeGraph/codeGraphIndex.ts";
 import * as PreviewAutomationBroker from "../mcp/PreviewAutomationBroker.ts";
 import { normalizePreviewOpenInput } from "../mcp/toolkits/preview/handlers.ts";
 import * as ByokDelegationService from "../provider/byok/ByokDelegationService.ts";

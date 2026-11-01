@@ -1,9 +1,8 @@
 import { scopeProjectRef } from "@codework/client-runtime/environment";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { LinkIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { openCommandPalette } from "../commandPaletteBus";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { GettingStartedState } from "../components/GettingStartedState";
 import { Button } from "../components/ui/button";

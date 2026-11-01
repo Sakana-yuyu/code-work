@@ -10,9 +10,6 @@ const trimNonEmptyOption = (value: string): Option.Option<string> => {
 const trimmedString = (name: string) =>
   Config.String(name).pipe(Config.option, Config.map(Option.flatMap(trimNonEmptyOption)));
 
-const optionalBoolean = (name: string) =>
-  Config.Boolean(name).pipe(Config.option, Config.map(Option.getOrElse(() => false)));
-
 const commaSeparatedStrings = (name: string) =>
   trimmedString(name).pipe(
     Config.map(
