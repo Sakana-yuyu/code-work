@@ -7,6 +7,12 @@
 
 更早的历史版本见 [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases)。
 
+## 1.0.34
+
+### 修复
+
+- 修复桌面安装包内读取内置文件信息时失败的问题：内置 ZCode 运行时释放、资源检查等依赖文件信息的功能在安装版中恢复正常。
+
 ## 1.0.33
 
 ### 改进
