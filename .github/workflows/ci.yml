@@ -47,6 +47,9 @@ jobs:
           vp fmt --check
           vp lint --quiet
 
+      - name: Check UI i18n
+        run: node scripts/check-ui-i18n.mjs
+
       - name: Typecheck
         run: vpr typecheck
 
