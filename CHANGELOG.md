@@ -7,6 +7,12 @@
 
 更早的历史版本见 [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases)。
 
+## 1.0.35
+
+### 改进
+
+- 内部代码清理：移除服务端、网页、桌面与手机端中已不再使用的导入与声明，功能行为不变。
+
 ## 1.0.34
 
 ### 修复
