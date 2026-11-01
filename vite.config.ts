@@ -18,6 +18,9 @@ export default defineConfig({
     },
     exclude: [
       "**/.repos/**",
+      // .t3 是 worktree 运行态目录：catalog-*/worktrees/* 里是仓库旧快照，
+      // 收进来会让 `vp test run <file>` 跑出同名但来自过期快照的结果。
+      "**/.t3/**",
       "**/node_modules/**",
       "**/dist/**",
       "**/dist-electron/**",

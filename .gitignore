@@ -51,3 +51,6 @@ release-local/
 .vite-plus/
 .gradle/
 .t3-*/
+# 本地排查脚本与验收录屏；PR 证据应上传 GitHub，不留在工作区。
+.scratch/
+/ide-mode-switch.webm
