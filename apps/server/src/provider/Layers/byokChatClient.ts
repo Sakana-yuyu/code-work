@@ -1112,6 +1112,9 @@ const eventsFromSsePayload = (
   ];
 };
 
+/** 工具调用参数解码器；流式热路径上每个工具调用都会用到，只编译一次。 */
+const decodeToolArgumentsJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
+
 const sseDataPrefix = "data:";
 
 /** 等待外部 AbortSignal，并在调用方中断时移除监听器。 */
@@ -1446,7 +1449,7 @@ export const streamChat = (
               toEngineError(new Error("Anthropic tool call ended without an id or function name.")),
             );
           }
-          const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(
+          const decoded = decodeToolArgumentsJson(
             event.argumentsText.length === 0 ? "{}" : event.argumentsText,
           );
           return Option.isNone(decoded)
@@ -1560,9 +1563,7 @@ export const streamChat = (
             toEngineError(new Error("OpenAI tool call ended without an id or function name.")),
           );
         }
-        const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(
-          event.argumentsText,
-        );
+        const decoded = decodeToolArgumentsJson(event.argumentsText);
         return Option.isNone(decoded)
           ? Effect.fail(toEngineError(new Error("OpenAI tool call arguments are not valid JSON.")))
           : Effect.succeed({
