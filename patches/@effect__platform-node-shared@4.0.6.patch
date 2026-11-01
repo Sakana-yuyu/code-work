@@ -11,6 +11,21 @@ index 47285c035b3060e737f2c1beef66dcb70e39da84..fa48046bd323827e5e3be907f4e1d248
      handle.on("error", error => {
        resume(Effect.fail(toPlatformError("spawn", error, command)));
      });
+diff --git a/dist/NodeFileSystem.js b/dist/NodeFileSystem.js
+index b90bb4e8aa8e0537dc1d3542fd9a5d8690853f9e..9be736f3ae7ee32df8232442443bd7d3af3c8b9e 100644
+--- a/dist/NodeFileSystem.js
++++ b/dist/NodeFileSystem.js
+@@ -42,7 +42,9 @@ const bigintToNumber = (value, field) => {
+ const bigintToNumberOption = value => Option.flatMap(Option.fromNullishOr(value), BI.toNumber);
+ // Node fills bigint stats from a BigInt64Array, so unsigned 64-bit values such
+ // as dev_t and ino_t at or above 2^63 are reported as negative.
+-const toUint64 = value => BigInt.asUintN(64, value);
++// Electron's asar-patched fs ignores { bigint: true } and returns numbers, so
++// accept both instead of throwing on every stat inside an asar archive.
++const toUint64 = value => BigInt.asUintN(64, typeof value === "bigint" ? value : BigInt(Math.trunc(value ?? 0)));
+ const toUint64Option = value => Option.map(Option.fromNullishOr(value), toUint64);
+ // fs.write ignores bigint positions.
+ const positionToNumber = (position, method) => Effect.try({
 diff --git a/src/NodeChildProcessSpawner.ts b/src/NodeChildProcessSpawner.ts
 index ed9449024be94e28b88119fdef4f42ad370c1c7a..aaff8dfa242158abff98cec914a65338df9daaa2 100644
 --- a/src/NodeChildProcessSpawner.ts
@@ -24,3 +39,22 @@ index ed9449024be94e28b88119fdef4f42ad370c1c7a..aaff8dfa242158abff98cec914a65338
        )
        handle.on("error", (error) => {
          resume(Effect.fail(toPlatformError("spawn", error, command)))
+diff --git a/src/NodeFileSystem.ts b/src/NodeFileSystem.ts
+index b757a13220a8895ab0ef073c41ab65b76b5c9c6a..899db864b29a6bd15af2393784f932670d30c482 100644
+--- a/src/NodeFileSystem.ts
++++ b/src/NodeFileSystem.ts
+@@ -48,9 +48,12 @@ const bigintToNumberOption = (value: bigint | undefined): Option.Option<number>
+ 
+ // Node fills bigint stats from a BigInt64Array, so unsigned 64-bit values such
+ // as dev_t and ino_t at or above 2^63 are reported as negative.
+-const toUint64 = (value: bigint): bigint => BigInt.asUintN(64, value)
++// Electron's asar-patched fs ignores { bigint: true } and returns numbers, so
++// accept both instead of throwing on every stat inside an asar archive.
++const toUint64 = (value: bigint | number | undefined): bigint =>
++  BigInt.asUintN(64, typeof value === "bigint" ? value : BigInt(Math.trunc(value ?? 0)))
+ 
+-const toUint64Option = (value: bigint | undefined): Option.Option<bigint> =>
++const toUint64Option = (value: bigint | number | undefined): Option.Option<bigint> =>
+   Option.map(Option.fromNullishOr(value), toUint64)
+ 
+ // fs.write ignores bigint positions.
