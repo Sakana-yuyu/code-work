@@ -131,7 +131,7 @@ export const makeCompositionRuntimeToolBridgeClient = (
             method: "POST",
             url: `${baseUrl}${path}`,
             headers: {
-              ...(options.headers ?? {}),
+              ...options.headers,
               accept: "application/json",
               "content-type": "application/json",
               "idempotency-key": idempotencyKey,
@@ -197,7 +197,7 @@ export const makeCompositionRuntimeToolBridgeFetchTransport = (
         try: async () => {
           const response = await fetchImpl(input.url || baseUrl, {
             method: input.method,
-            headers: { ...(options.headers ?? {}), ...input.headers },
+            headers: { ...options.headers, ...input.headers },
             body: encodeUnknownJson(input.body),
             signal: AbortSignal.timeout(timeoutMs),
           });

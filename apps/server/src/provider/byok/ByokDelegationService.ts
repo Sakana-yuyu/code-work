@@ -624,9 +624,10 @@ const runExecutorWithFailover = async (
       const result = await runExecutorCandidate(request, context, candidate, config);
       registry.recordSuccess(candidate);
       attempts.push({ executorId: candidate.id, status: "completed" });
-      executorAttemptsByKey.set(String(request.metadata?.[ATTEMPT_KEY_METADATA] ?? ""), [
-        ...attempts.slice(-MAX_EXECUTOR_ATTEMPT_ROWS),
-      ]);
+      executorAttemptsByKey.set(
+        String(request.metadata?.[ATTEMPT_KEY_METADATA] ?? ""),
+        attempts.slice(-MAX_EXECUTOR_ATTEMPT_ROWS),
+      );
       return result;
     } catch (error) {
       lastError = error;
@@ -645,9 +646,10 @@ const runExecutorWithFailover = async (
       throw error;
     }
   }
-  executorAttemptsByKey.set(String(request.metadata?.[ATTEMPT_KEY_METADATA] ?? ""), [
-    ...attempts.slice(-MAX_EXECUTOR_ATTEMPT_ROWS),
-  ]);
+  executorAttemptsByKey.set(
+    String(request.metadata?.[ATTEMPT_KEY_METADATA] ?? ""),
+    attempts.slice(-MAX_EXECUTOR_ATTEMPT_ROWS),
+  );
   if (lastError instanceof Error) throw lastError;
   throw new Error(`No eligible delegation executor for instance "${instanceId}".`);
 };
