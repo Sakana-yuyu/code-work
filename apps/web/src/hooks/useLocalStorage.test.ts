@@ -1,6 +1,8 @@
 import * as Schema from "effect/Schema";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { getLocalStorageItem as getLocalStorageItemImportedEarly } from "./useLocalStorage";
+
 function createStorage(overrides: Partial<Storage> = {}): Storage {
   const store = new Map<string, string>();
   return {
@@ -117,5 +119,17 @@ describe("local storage errors", () => {
         cause,
       });
     }
+  });
+});
+
+describe("storage resolution", () => {
+  it("写入调用时才解析 localStorage，导入之后替换的 storage 也生效", () => {
+    vi.stubGlobal("window", {
+      localStorage: createStorage({ getItem: () => JSON.stringify("late") }),
+    });
+
+    // 模块在本文件加载时就已经求值；旧实现会在那一刻绑定 storage，
+    // 于是这里拿到的是空的内存兜底而不是刚替换的替身。
+    expect(getLocalStorageItemImportedEarly("late-key", Schema.String)).toBe("late");
   });
 });

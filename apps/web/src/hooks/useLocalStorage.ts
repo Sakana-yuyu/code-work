@@ -15,26 +15,41 @@ export class LocalStorageOperationError extends Schema.TaggedError<LocalStorageO
   }
 }
 
-const isomorphicLocalStorage: Storage =
-  typeof window !== "undefined"
-    ? window.localStorage
-    : (function () {
-        const store = new Map<string, string>();
-        return {
-          clear: () => store.clear(),
-          getItem: (_) => store.get(_) ?? null,
-          key: (_) => Record.keys(store).at(_) ?? null,
-          get length() {
-            return store.size;
-          },
-          removeItem: (_) => store.delete(_),
-          setItem: (_, value) => store.set(_, value),
-        };
-      })();
+function createMemoryStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    clear: () => store.clear(),
+    getItem: (key) => store.get(key) ?? null,
+    key: (index) => Record.keys(store).at(index) ?? null,
+    get length() {
+      return store.size;
+    },
+    removeItem: (key) => {
+      store.delete(key);
+    },
+    setItem: (key, value) => {
+      store.set(key, value);
+    },
+  };
+}
+
+let memoryStorage: Storage | undefined;
+
+/**
+ * 存储按调用解析，而不是在模块初始化时绑定一次：测试替身、SSR 以及
+ * 晚加载的 polyfill 都能生效，模块导入顺序也不再决定写入哪个 storage。
+ */
+const getStorage = (): Storage => {
+  if (typeof window !== "undefined" && window.localStorage != null) {
+    return window.localStorage;
+  }
+  memoryStorage ??= createMemoryStorage();
+  return memoryStorage;
+};
 
 const read = (key: string) => {
   try {
-    return isomorphicLocalStorage.getItem(key);
+    return getStorage().getItem(key);
   } catch (cause) {
     throw new LocalStorageOperationError({ operation: "read", storageKey: key, cause });
   }
@@ -42,7 +57,7 @@ const read = (key: string) => {
 
 const writeRaw = (key: string, value: string) => {
   try {
-    isomorphicLocalStorage.setItem(key, value);
+    getStorage().setItem(key, value);
   } catch (cause) {
     throw new LocalStorageOperationError({ operation: "write", storageKey: key, cause });
   }
@@ -50,7 +65,7 @@ const writeRaw = (key: string, value: string) => {
 
 const removeRawBestEffort = (key: string) => {
   try {
-    isomorphicLocalStorage.removeItem(key);
+    getStorage().removeItem(key);
   } catch {
     // Legacy cleanup must not invalidate a successful canonical write.
   }
@@ -121,7 +136,7 @@ export const setLocalStorageItem = <T, E>(key: string, value: T, schema: Schema.
 
 export const removeLocalStorageItem = (key: string) => {
   try {
-    isomorphicLocalStorage.removeItem(key);
+    getStorage().removeItem(key);
   } catch (cause) {
     throw new LocalStorageOperationError({ operation: "remove", storageKey: key, cause });
   }
@@ -153,7 +168,6 @@ export function useLocalStorage<T, E>(
   options?: { readonly legacyKey?: string },
 ): [T, (value: T | ((val: T) => T)) => void] {
   const legacyKey = options?.legacyKey;
-  const readKey = legacyKey === undefined ? key : `${key}\u0000${legacyKey}`;
   const getSnapshot = useCallback(() => {
     try {
       return legacyKey === undefined
