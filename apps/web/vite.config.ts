@@ -75,6 +75,7 @@ const unitTestProject = {
   test: {
     name: "unit",
     include: ["src/**/*.test.{ts,tsx}"],
+    setupFiles: ["./src/test/setupI18n.ts"],
     // The web runtime suite exercises auth bootstrap, saved environments,
     // and websocket subscription lifecycles. Under the full monorepo test
     // run, those async tests can exceed Vitest's default 5s budget.

@@ -1,19 +1,15 @@
 import type { LanguagePreference } from "@codework/contracts/settings";
 
 import { readBrowserClientSettings } from "../clientPersistenceStorage";
+import { CATALOGS } from "./catalogs";
+import type { AppLanguage } from "./catalogs";
 import { zhCN as legacyZhCN } from "./zh-CN";
-import { en as enCatalog, zhCN as zhCNCatalog } from "./messages";
-import { ja as jaCatalog } from "./ja";
 
-export type AppLanguage = Exclude<LanguagePreference, "system">;
+export type { AppLanguage } from "./catalogs";
+export { CATALOGS } from "./catalogs";
+
 export type TranslateParams = {
   readonly [name: string]: string | number | undefined;
-};
-
-export const CATALOGS: Record<AppLanguage, Record<string, string>> = {
-  "zh-CN": zhCNCatalog,
-  en: enCatalog,
-  ja: jaCatalog,
 };
 
 export const LEGACY_DICTIONARIES: Record<AppLanguage, Record<string, string>> = {

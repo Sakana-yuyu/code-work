@@ -17,6 +17,8 @@ import {
 } from "./lib/windowControlsOverlay";
 import { AppRoot } from "./AppRoot";
 import { clerkAppearance } from "./components/clerk/clerkAppearance";
+import { loadLanguageCatalog } from "./i18n/catalogs";
+import { getCurrentLanguage } from "./i18n/runtime";
 
 // Electron loads the app from a file-backed shell, so hash history avoids path resolution issues.
 const history = isElectron ? createHashHistory() : createBrowserHistory();
@@ -29,6 +31,10 @@ if (isElectron) {
 }
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
+
+// 非默认语言的词表按需加载；在挂载前发起，让请求与 React 启动并行，
+// 避免日文用户先看到一帧英文界面。
+void loadLanguageCatalog(getCurrentLanguage());
 
 const app = <AppRoot router={router} />;
 

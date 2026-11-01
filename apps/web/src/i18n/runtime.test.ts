@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { en, zhCN } from "./messages";
+import {
+  CATALOGS,
+  getCatalogVersion,
+  loadLanguageCatalog,
+  registerLanguageCatalog,
+  subscribeCatalog,
+} from "./catalogs";
 import { setCurrentLanguage, t } from "./runtime";
 
 afterEach(() => setCurrentLanguage("zh-CN"));
@@ -139,5 +146,40 @@ describe("web i18n runtime", () => {
     }
     expect(zhCN["gettingStarted.addProvider"]).toBe("添加供应商");
     expect(en["facilitiesGuide.emptyHint"]).toContain("tour");
+  });
+});
+
+describe("按需加载词表", () => {
+  it("词表未到达时逐条回落到英文，而不是把 key 显示给用户", () => {
+    const key = "session.cannotSwitchProvidersWhileRunning";
+    const saved = CATALOGS.ja[key];
+    delete CATALOGS.ja[key];
+    setCurrentLanguage("ja");
+    try {
+      expect(t(key)).toBe(CATALOGS.en[key]);
+    } finally {
+      CATALOGS.ja[key] = saved ?? "";
+    }
+  });
+
+  it("登记词表会通知订阅者并递增版本，供 React 重挂载", () => {
+    let notified = 0;
+    const unsubscribe = subscribeCatalog(() => {
+      notified += 1;
+    });
+    const before = getCatalogVersion();
+    try {
+      registerLanguageCatalog("ja", {});
+      expect(getCatalogVersion()).toBe(before + 1);
+      expect(notified).toBe(1);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("已登记的语言不会再发起一次 chunk 请求", async () => {
+    const before = getCatalogVersion();
+    await loadLanguageCatalog("ja");
+    expect(getCatalogVersion()).toBe(before);
   });
 });

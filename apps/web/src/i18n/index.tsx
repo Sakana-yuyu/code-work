@@ -18,8 +18,9 @@
  * components using `t()` pick up the new language without subscribing
  * individually.
  */
-import { Fragment, type ReactNode, useSyncExternalStore } from "react";
+import { Fragment, type ReactNode, useEffect, useSyncExternalStore } from "react";
 import { useClientSettings } from "~/hooks/useSettings";
+import { getCatalogVersion, loadLanguageCatalog, subscribeCatalog } from "./catalogs";
 import {
   getCurrentLanguage,
   RESOLVED_LANGUAGE_FALLBACK,
@@ -46,6 +47,14 @@ export function useResolvedLanguage(): AppLanguage {
 }
 
 /**
+ * 词表版本：按需加载完成后递增，用来重挂载读取 `t()` 的子树。
+ * 与语言订阅分开，避免每次加载都把语言变更通知再发一遍。
+ */
+function useCatalogVersion(): number {
+  return useSyncExternalStore(subscribeCatalog, getCatalogVersion, getCatalogVersion);
+}
+
+/**
  * React hook form. Re-renders the caller when the resolved language changes
  * and returns the same `t` function.
  */
@@ -56,12 +65,14 @@ export function useI18n(): { readonly t: typeof t; readonly language: AppLanguag
 
 /**
  * Reads the persisted language preference and keeps the module-level locale in
- * sync. Remounts its subtree when the resolved language changes so components
- * that call `t()` directly re-render with fresh translations.
+ * sync. Remounts its subtree when the resolved language changes — or when a
+ * lazily loaded catalog arrives — so components that call `t()` directly
+ * re-render with fresh translations.
  */
 export function I18nProvider({ children }: { children: ReactNode }) {
   const preference = useClientSettings((settings) => settings.language);
   const resolved = resolveLanguage(preference);
+  const catalogVersion = useCatalogVersion();
 
   // Keep the module-level locale in sync for non-reactive `t()` callers. The
   // assignment is idempotent and emits no notifications, so it is safe during
@@ -69,5 +80,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   // site re-renders with the new language.
   setCurrentLanguage(resolved, false);
 
-  return <Fragment key={resolved}>{children}</Fragment>;
+  // 日文词表不再静态进入口；这里补一次按需加载，加载期间 `t()` 回落到英文。
+  useEffect(() => {
+    void loadLanguageCatalog(resolved);
+  }, [resolved]);
+
+  return <Fragment key={`${resolved}:${catalogVersion}`}>{children}</Fragment>;
 }
