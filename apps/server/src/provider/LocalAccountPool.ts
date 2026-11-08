@@ -21,6 +21,7 @@ import * as Semaphore from "effect/Semaphore";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import type { ServerSettingsService } from "../serverSettings.ts";
+import { localAccountQuotaForPick } from "./LocalAccountQuota.ts";
 import { localPoolUsageStore } from "./LocalPoolUsage.ts";
 import {
   decryptZCodeCredentialRecord,
@@ -234,13 +235,13 @@ export const peekLocalAccountSessionBinding = (
     ? undefined
     : sessionAffinity.get(sessionAffinityKey(provider, sessionKey));
 
-export const pickLocalAccount = (
+/** provider/启用/模型三者匹配的基础候选；冷却与否由调用方自行叠加。 */
+const localPoolBaseCandidates = (
   settings: ServerSettings,
   provider: LocalAccountProvider,
   candidateIds?: readonly string[],
   model?: string,
-  sessionKey?: string,
-): LocalAccount | undefined => {
+): readonly LocalAccount[] => {
   const pool = settings.localAccountPool ?? {
     accounts: {},
     strategy: "round-robin" as const,
@@ -252,13 +253,24 @@ export const pickLocalAccount = (
       : candidateIds
           .map((id) => pool.accounts[id as LocalAccountId])
           .filter((account): account is LocalAccount => account !== undefined);
-  const now = Date.now();
-  const all = source.filter(
+  return source.filter(
     (account) =>
       account.provider === provider &&
       account.enabled &&
-      (model === undefined || account.models.length === 0 || account.models.includes(model)) &&
-      (localPoolUsageStore.cooldownUntilUnixMs(String(account.id)) ?? 0) <= now,
+      (model === undefined || account.models.length === 0 || account.models.includes(model)),
+  );
+};
+
+export const pickLocalAccount = (
+  settings: ServerSettings,
+  provider: LocalAccountProvider,
+  candidateIds?: readonly string[],
+  model?: string,
+  sessionKey?: string,
+): LocalAccount | undefined => {
+  const now = Date.now();
+  const all = localPoolBaseCandidates(settings, provider, candidateIds, model).filter(
+    (account) => (localPoolUsageStore.cooldownUntilUnixMs(String(account.id)) ?? 0) <= now,
   );
   if (all.length === 0) return undefined;
   const boundAccountId = peekLocalAccountSessionBinding(provider, sessionKey);
@@ -266,11 +278,80 @@ export const pickLocalAccount = (
     const bound = all.find((account) => String(account.id) === boundAccountId);
     if (bound !== undefined) return bound;
   }
-  const picked = pickLocalAccountFromEligible(pool.strategy, provider, all);
+  const picked = pickLocalAccountFromEligible(
+    settings.localAccountPool?.strategy ?? "round-robin",
+    provider,
+    all,
+  );
   if (picked !== undefined && sessionKey !== undefined && sessionKey.length > 0) {
     bindLocalAccountSession(provider, sessionKey, String(picked.id));
   }
   return picked;
+};
+
+/** usage 策略：累计用量（token 优先、请求数兜底）最少的账号先用，长期保持均衡。 */
+const pickUsageAccount = (all: readonly LocalAccount[]): LocalAccount | undefined => {
+  const usageOf = new Map(localPoolUsageStore.list().map((entry) => [entry.id, entry]));
+  const stat = (account: LocalAccount): { tokens: number; requests: number } => {
+    const entry = usageOf.get(String(account.id));
+    return {
+      tokens: entry === undefined ? 0 : entry.inputTokens + entry.outputTokens,
+      requests: entry?.requests ?? 0,
+    };
+  };
+  return all
+    .slice()
+    .sort((left, right) => {
+      const leftStat = stat(left);
+      const rightStat = stat(right);
+      return (
+        leftStat.tokens - rightStat.tokens ||
+        leftStat.requests - rightStat.requests ||
+        String(left.id).localeCompare(String(right.id))
+      );
+    })
+    .at(0);
+};
+
+/**
+ * smart 策略（对齐 magpie）：仍有配额的账号里选最快重置的，减少重置时
+ * 浪费的量。已触顶（percent ≥ 100）的账号排到最后——池子全触顶时仍然
+ * 按重置时间尝试，配额快照可能过期，试一次好过直接 503。整个池子没有
+ * 可用快照（刚导入/后台未刷新/平台无额度接口）时退化为轮询。
+ */
+const pickSmartAccount = (
+  provider: LocalAccountProvider,
+  all: readonly LocalAccount[],
+): LocalAccount | undefined => {
+  const now = Date.now();
+  const graded = all.map((account) => {
+    const quota = localAccountQuotaForPick(String(account.id), now);
+    return quota === undefined
+      ? {
+          account,
+          exhausted: 0,
+          resetsAtMs: Number.POSITIVE_INFINITY,
+          hasData: false,
+        }
+      : {
+          account,
+          exhausted: quota.percent >= 100 ? 1 : 0,
+          resetsAtMs: quota.resetsAtMs ?? Number.POSITIVE_INFINITY,
+          hasData: true,
+        };
+  });
+  if (!graded.some((entry) => entry.hasData)) {
+    return pickLocalAccountFromEligible("round-robin", provider, all);
+  }
+  return graded
+    .slice()
+    .sort(
+      (left, right) =>
+        left.exhausted - right.exhausted ||
+        (left.resetsAtMs === right.resetsAtMs ? 0 : left.resetsAtMs - right.resetsAtMs) ||
+        String(left.account.id).localeCompare(String(right.account.id)),
+    )
+    .at(0)?.account;
 };
 
 const pickLocalAccountFromEligible = (
@@ -279,6 +360,8 @@ const pickLocalAccountFromEligible = (
   all: readonly LocalAccount[],
 ): LocalAccount | undefined => {
   if (strategy === "fill-first") return all[0];
+  if (strategy === "usage") return pickUsageAccount(all);
+  if (strategy === "smart") return pickSmartAccount(provider, all);
   // ponytail: 以账号子集隔离轮询游标，避免不同 CLI 池共享偏移；账号数量较少，排序扫描成本可忽略。
   // weighted-round-robin 把账号按权重展开成重复槽位后轮询，权重越大分到的调用越多；
   // 权重缺省或小于 1 时按 1 处理，避免权重 0 造成账号不可见。
@@ -298,6 +381,28 @@ const pickLocalAccountFromEligible = (
   const offset = cursor.get(cursorKey) ?? 0;
   cursor.set(cursorKey, (offset + 1) % slots.length);
   return slots[offset % slots.length];
+};
+
+/**
+ * 全池冷却等待用：候选里 enabled 且模型匹配的账号中，最近一个冷却截止的
+ * 倒计时（毫秒）。有立即可用的账号返回 0；没有任何 enabled 且模型匹配的
+ * 账号返回 undefined——那是配置或模型不匹配问题，等冷却也救不了，调用方
+ * 应立即报错而不是等待。
+ */
+export const soonestLocalPoolCooldownMs = (
+  settings: ServerSettings,
+  provider: LocalAccountProvider,
+  candidateIds?: readonly string[],
+  model?: string,
+): number | undefined => {
+  const now = Date.now();
+  let soonest: number | undefined;
+  for (const account of localPoolBaseCandidates(settings, provider, candidateIds, model)) {
+    const until = localPoolUsageStore.cooldownUntilUnixMs(String(account.id)) ?? 0;
+    if (until <= now) return 0;
+    soonest = soonest === undefined ? until : Math.min(soonest, until);
+  }
+  return soonest === undefined ? undefined : soonest - now;
 };
 
 /** 上游限流/鉴权失败只冷却当前账号，避免把整个账号池判死。 */

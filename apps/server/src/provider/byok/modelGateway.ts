@@ -44,6 +44,7 @@ import {
   resolveProviderInstanceEnabled,
   type ByokModelAdapter,
   type ByokSettings as ByokSettingsType,
+  type LocalAccountId,
   type ServerProvider,
   type ServerProviderModel,
   type ServerSettings,
@@ -78,7 +79,9 @@ import {
   removeLocalAccount,
   setLocalAccountEnabled,
   setLocalAccountPoolStrategy,
+  soonestLocalPoolCooldownMs,
 } from "../LocalAccountPool.ts";
+import { extendLocalAccountCooldownFromQuota } from "../LocalAccountQuota.ts";
 import { matchLocalGatewayKey, readLocalGatewayKeys } from "../LocalGatewayKey.ts";
 import {
   ZCODE_PLAN_GATEWAY_ANTHROPIC_BASE,
@@ -657,6 +660,18 @@ export const LOCAL_GATEWAY_MAX_ATTEMPTS = 4;
 const RELAY_GATEWAY_RETRY_BASE_MS = 500;
 const RELAY_GATEWAY_RETRY_AFTER_MAX_MS = 5_000;
 const LOCAL_GATEWAY_RETRY_AFTER_MAX_MS = 24 * 60 * 60 * 1_000;
+/**
+ * 全池都在冷却时的预检等待上限：≤30s 就等最近的重置点（magpie 语义是
+ * 尽量不让 agent 看到错误），超过则立即 503 并附上恢复时间——CLI 客户端
+ * 自己的请求超时远大于 30s，等待是安全的；整窗耗尽的池子（小时级）不占
+ * 着请求白等。
+ */
+const LOCAL_POOL_WAIT_CAP_MS = 30_000;
+
+const localPoolRecoveryClock = (epochMs: number): string => {
+  const date = DateTime.toDate(DateTime.makeUnsafe(epochMs));
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+};
 
 const relayGatewayRetryDelay = (
   attempt: number,
@@ -799,6 +814,26 @@ export const trackLocalGatewayStream = <E>(
       }),
     ),
   );
+
+/**
+ * 429 无 Retry-After 时的精确冷却入口：按账号 id 找到池记录并后台核实
+ * 重置点（有 24h 上限）。独立导出以便离线测试——正常路径由 handler fork。
+ */
+export const localPool429CooldownRefresh = (
+  settings: ServerSettings,
+  accountId: string,
+  secretStore: ServerSecretStore["Service"],
+  httpClient: HttpClient.HttpClient,
+): Effect.Effect<void> => {
+  const account = settings.localAccountPool.accounts[accountId as LocalAccountId];
+  return account === undefined
+    ? Effect.void
+    : extendLocalAccountCooldownFromQuota(account, LOCAL_GATEWAY_RETRY_AFTER_MAX_MS, {
+        secretStore,
+        httpClient,
+        ensureCredential: ensureLocalAccountCredential,
+      });
+};
 
 const nonEmptyCredentialField = (
   credential: Record<string, unknown> | undefined,
@@ -1424,6 +1459,21 @@ const gatewayHandler = (
             sessionKey,
           );
     let localAccount = nextLocalAccount();
+    // 全池都在冷却（但存在 enabled 且模型匹配的账号）时，等最近的重置点
+    // 再挑一次——只等有界的短冷却，长窗耗尽仍立即报错并附恢复时间。
+    if (localAccount === undefined && localProvider !== undefined) {
+      const waitMs = soonestLocalPoolCooldownMs(
+        settings,
+        localProvider,
+        adapter.localAccountIds,
+        // 体验套餐通道的可用性由 JWT 决定，不受账号声明模型限制。
+        adapter.localChannel === "zcode-start" ? undefined : adapter.modelId,
+      );
+      if (waitMs !== undefined && waitMs > 0 && waitMs <= LOCAL_POOL_WAIT_CAP_MS) {
+        yield* Effect.sleep(Duration.millis(waitMs));
+        localAccount = nextLocalAccount();
+      }
+    }
     // 账号池按失败账号去重后换号；中转通道无号可换，改为对上游 5xx 与
     // 传输失败做有界重试。两种路径都只在响应流交付给 CLI 之前重放请求。
     const maxAttempts =
@@ -1435,12 +1485,26 @@ const gatewayHandler = (
       if (adapter.localProvider !== undefined) {
         const account = localAccount;
         if (account === undefined) {
+          // 等待上限内救不回来才把错误交给客户端；候选里还有 enabled 且
+          // 模型匹配的账号时附上最近恢复时间，方便上层决定是否重试。
+          const poolProvider = adapter.localProvider;
+          const waitMs = soonestLocalPoolCooldownMs(
+            settings,
+            poolProvider,
+            adapter.localAccountIds,
+            adapter.localChannel === "zcode-start" ? undefined : adapter.modelId,
+          );
+          const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
+          const recovery =
+            waitMs !== undefined && waitMs > 0
+              ? `所有账号冷却中，预计 ${localPoolRecoveryClock(nowMs + waitMs)} 恢复。`
+              : "";
           return errorResponse(
             protocol,
             anthropicError(
               503,
               "overloaded_error",
-              `本地 ${adapter.localProvider} 账号池暂无可用账号。`,
+              `本地 ${poolProvider} 账号池暂无可用账号。${recovery}`,
             ),
           );
         }
@@ -1662,6 +1726,14 @@ const gatewayHandler = (
               )
             : undefined;
         markLocalAccountFailure(localAccountId, upstream.status, retryAfterMs);
+        // 429 且上游没给 Retry-After 时，向账号自己的额度接口核实重置点，
+        // 把默认 60s 冷却升级为真实窗口重置时间（有 24h 上限）。
+        // fire-and-forget：本请求的换号路径不等查询结果，新冷却只影响后续选号。
+        if (upstream.status === 429 && retryAfterMs === undefined) {
+          yield* Effect.forkDetach(
+            localPool429CooldownRefresh(settings, localAccountId, secretStore, httpClient),
+          );
+        }
         if (upstream.status >= 400) {
           localPoolUsageStore.recordRequest(localAccountId, adapter.localProvider ?? "", false);
         }

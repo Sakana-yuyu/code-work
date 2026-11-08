@@ -1,11 +1,14 @@
 // @effect-diagnostics nodeBuiltinImport:off - 使用真实 TCP 上游验证网络转发。
+// @effect-diagnostics globalDate:off - 冷却与重置断言对照墙上时间。
+// @effect-diagnostics globalDateInEffect:off - 冷却与重置断言在 Effect 内对照墙上时间。
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeHttp from "node:http";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import { FetchHttpClient, HttpRouter } from "effect/http";
+import { FetchHttpClient, HttpClient, HttpRouter } from "effect/http";
 
 import {
   DEFAULT_SERVER_SETTINGS,
@@ -16,6 +19,10 @@ import {
 } from "@codework/contracts";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { localPoolUsageStore } from "../LocalPoolUsage.ts";
+import {
+  rememberLocalAccountQuota,
+  resetLocalAccountQuotaCacheForTest,
+} from "../LocalAccountQuota.ts";
 import { layerTest } from "../../serverSettings.ts";
 
 import {
@@ -32,6 +39,7 @@ import {
   joinOpenAITarget,
   isRetryableLocalGatewayStatus,
   isRetryableRelayGatewayStatus,
+  localPool429CooldownRefresh,
   mergeGrokManagedConfig,
   openCodeGatewayConfigContent,
   pickGatewayAdapter,
@@ -607,6 +615,171 @@ describe("local gateway failover", () => {
     expect([500, 502, 503].every(isRetryableRelayGatewayStatus)).toBe(true);
     expect([200, 400, 401, 403, 404, 429].some(isRetryableRelayGatewayStatus)).toBe(false);
   });
+});
+
+describe("全池冷却与 429 精确冷却", () => {
+  const unused = () => Effect.die("不应调用此密钥操作");
+  const unusedHttpClient = HttpClient.make(() => Effect.die("不应发起 HTTP"));
+  const gatewayToken = Buffer.alloc(32, 1).toString("hex");
+  const credentialBytes = (value: unknown) => Buffer.from(JSON.stringify(value));
+  // zcode-start 通道在凭据缺体验套餐 JWT 时于网关内 502，不触网；用它
+  // 驱动"选号之后的阶段"，断言不依赖任何真实上游。
+  const zcodePoolSettings = {
+    ...DEFAULT_SERVER_SETTINGS,
+    providerInstances: { pool: { driver: "byok", enabled: true, config: {} } },
+    localAccountPool: {
+      accounts: {
+        z1: {
+          id: "z1",
+          provider: "zcode",
+          displayName: "Z1",
+          credentialRef: "z1-ref",
+          enabled: true,
+          models: ["GLM-5.2"],
+        },
+        z2: {
+          id: "z2",
+          provider: "zcode",
+          displayName: "Z2",
+          credentialRef: "z2-ref",
+          enabled: true,
+          models: ["GLM-5.2"],
+        },
+      },
+      strategy: "round-robin",
+      providerInstances: { pool: ["z1", "z2"] },
+    },
+  } as unknown as ServerSettings;
+  const makeHandler = (credentials: Record<string, unknown>) =>
+    HttpRouter.toWebHandler(
+      byokGatewayRouteLayer.pipe(
+        Layer.provideMerge(
+          Layer.mergeAll(
+            FetchHttpClient.layer,
+            layerTest({ ...DEFAULT_SERVER_SETTINGS, ...zcodePoolSettings }),
+            Layer.succeed(ServerSecretStore, {
+              get: (name: string) =>
+                Effect.succeed(
+                  credentials[name] === undefined
+                    ? Option.none()
+                    : Option.some(credentialBytes(credentials[name])),
+                ),
+              set: unused,
+              create: unused,
+              remove: unused,
+              getOrCreateRandom: () => Effect.succeed(Buffer.alloc(32, 1)),
+            }),
+          ),
+        ),
+      ),
+      { disableLogger: true },
+    );
+  const post = (
+    gateway: { readonly handler: (request: Request) => Promise<Response> },
+    model: string,
+  ) =>
+    gateway.handler(
+      new Request("http://localhost/byok-gw/anthropic/v1/messages", {
+        method: "POST",
+        headers: { authorization: `Bearer ${gatewayToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ model, stream: true, messages: [] }),
+      }),
+    );
+
+  it.effect("全池短冷却时有界等待后重挑成功，请求越过选号阶段", () =>
+    Effect.gen(function* () {
+      localPoolUsageStore.resetForTest();
+      const gateway = makeHandler({
+        "z1-ref": { api_key: "k1" },
+        "z2-ref": { api_key: "k2" },
+      });
+      try {
+        localPoolUsageStore.setCooldown("z1", Date.now() + 200);
+        localPoolUsageStore.setCooldown("z2", Date.now() + 200);
+        const response = yield* Effect.promise(() =>
+          post(gateway, "local:pool:zcode-start:GLM-5.2"),
+        );
+        const body = (yield* Effect.promise(() => response.json())) as {
+          error: { message: string };
+        };
+        // 不等待会落在"暂无可用账号"503；502 体验套餐消息说明等待后选号
+        // 成功、流程走到了凭据阶段。
+        expect(response.status).toBe(502);
+        expect(body.error.message).toContain("体验套餐");
+      } finally {
+        yield* Effect.promise(() => gateway.dispose());
+        localPoolUsageStore.resetForTest();
+      }
+    }),
+  );
+
+  it.effect("全池长冷却时立即 503 并附最近恢复时间", () =>
+    Effect.gen(function* () {
+      localPoolUsageStore.resetForTest();
+      const gateway = makeHandler({});
+      try {
+        localPoolUsageStore.setCooldown("z1", Date.now() + 60_000);
+        localPoolUsageStore.setCooldown("z2", Date.now() + 10 * 60_000);
+        const response = yield* Effect.promise(() =>
+          post(gateway, "local:pool:zcode-start:GLM-5.2"),
+        );
+        const body = (yield* Effect.promise(() => response.json())) as {
+          error: { type: string; message: string };
+        };
+        expect(response.status).toBe(503);
+        expect(body.error.type).toBe("overloaded_error");
+        expect(body.error.message).toContain("预计");
+        expect(body.error.message).toContain("恢复");
+      } finally {
+        yield* Effect.promise(() => gateway.dispose());
+        localPoolUsageStore.resetForTest();
+      }
+    }),
+  );
+
+  it.effect("429 无 Retry-After 时按快照触顶窗口的重置点延长冷却", () =>
+    Effect.gen(function* () {
+      localPoolUsageStore.resetForTest();
+      resetLocalAccountQuotaCacheForTest();
+      try {
+        const resetsAt = Date.now() + 2 * 60 * 60 * 1_000;
+        rememberLocalAccountQuota("z1", {
+          windows: [
+            { label: "限时额度", percent: 100, resetsAt: new Date(resetsAt).toISOString() },
+          ],
+        });
+        // 快照新鲜时整条链路不读凭据也不触网；任何一步触网都会 die。
+        yield* localPool429CooldownRefresh(
+          zcodePoolSettings,
+          "z1",
+          unused as never,
+          unusedHttpClient,
+        );
+        expect(localPoolUsageStore.cooldownUntilUnixMs("z1")).toBe(resetsAt);
+        // 未触顶的窗口不延长冷却；账号不在池里时整格空转。
+        rememberLocalAccountQuota("z2", {
+          windows: [{ label: "限时额度", percent: 50, resetsAt: new Date(resetsAt).toISOString() }],
+        });
+        localPoolUsageStore.setCooldown("z2", Date.now() + 60_000);
+        yield* localPool429CooldownRefresh(
+          zcodePoolSettings,
+          "z2",
+          unused as never,
+          unusedHttpClient,
+        );
+        expect(localPoolUsageStore.cooldownUntilUnixMs("z2")).toBeGreaterThan(Date.now() + 55_000);
+        yield* localPool429CooldownRefresh(
+          zcodePoolSettings,
+          "missing",
+          unused as never,
+          unusedHttpClient,
+        );
+      } finally {
+        localPoolUsageStore.resetForTest();
+        resetLocalAccountQuotaCacheForTest();
+      }
+    }),
+  );
 });
 
 describe("injection builders", () => {

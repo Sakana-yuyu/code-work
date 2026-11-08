@@ -47,12 +47,17 @@ export type LocalAccountSummary = typeof LocalAccountSummary.Type;
 
 /**
  * round-robin 轮询全部账号；fill-first 固定先用第一个可用账号；
- * weighted-round-robin 按 weight 比例扩展开来轮询，权重越大分到的调用越多。
+ * weighted-round-robin 按 weight 比例扩展开来轮询，权重越大分到的调用越多；
+ * usage 把调用分给累计用量最少的账号（长期均衡）；
+ * smart 在仍有配额的账号里选最快重置的（减少重置时浪费的量），依赖账号
+ * 额度接口可查（Claude/ZCode/Codex OAuth/xAI OAuth），查不到的账号退化为轮询。
  */
 export const LocalAccountPoolStrategy = Schema.Literals([
   "round-robin",
   "fill-first",
   "weighted-round-robin",
+  "usage",
+  "smart",
 ]);
 export type LocalAccountPoolStrategy = typeof LocalAccountPoolStrategy.Type;
 

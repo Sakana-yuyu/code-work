@@ -54,6 +54,7 @@ import {
   fetchLocalAccountSubscription,
   type AccountSubscriptionView,
 } from "./localAccountUsage.ts";
+import { refreshLocalPoolQuotas, type LocalAccountQuotaDeps } from "./LocalAccountQuota.ts";
 import { fetchLocalAccountModels } from "./localAccountModels.ts";
 import {
   localPoolUsageStore,
@@ -1140,6 +1141,49 @@ export const layer = Layer.effect(
           const snapshot = localPoolUsageStore.takeDirtySnapshot();
           return snapshot === undefined ? Effect.void : persistUsage(snapshot);
         }),
+      ),
+    );
+    // smart 策略的配额快照后台刷新：启动先刷一轮，之后每 5 分钟重读设置，
+    // 仅在策略仍是 smart 时拉账号额度接口（其他策略不消费快照，不打 API）。
+    const quotaDeps: LocalAccountQuotaDeps = {
+      secretStore: secrets,
+      httpClient,
+      ensureCredential: ensureLocalAccountCredential,
+    };
+    yield* Effect.forkScoped(
+      Effect.forever(
+        Effect.flatMap(Effect.sleep("5 minutes"), () =>
+          settings.getSettings.pipe(
+            Effect.flatMap((current) =>
+              current.localAccountPool.strategy === "smart"
+                ? refreshLocalPoolQuotas(current, quotaDeps).pipe(
+                    Effect.catchCause((cause) =>
+                      Effect.logWarning("Failed to refresh local pool quota snapshots", { cause }),
+                    ),
+                  )
+                : Effect.void,
+            ),
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Failed to read settings for local pool quota refresh", { cause }),
+            ),
+          ),
+        ),
+      ),
+    );
+    yield* Effect.forkScoped(
+      settings.getSettings.pipe(
+        Effect.flatMap((current) =>
+          current.localAccountPool.strategy === "smart"
+            ? refreshLocalPoolQuotas(current, quotaDeps).pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("Failed to refresh local pool quota snapshots", { cause }),
+                ),
+              )
+            : Effect.void,
+        ),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Failed to read settings for local pool quota refresh", { cause }),
+        ),
       ),
     );
     yield* Effect.addFinalizer(() =>

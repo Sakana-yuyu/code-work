@@ -54,6 +54,8 @@ export interface LocalPoolUsageStore {
   readonly hydrate: (state: LocalPoolUsageState) => void;
   /** 有未落盘的变更时返回快照并清脏标记；否则返回 undefined。 */
   readonly takeDirtySnapshot: () => LocalPoolUsageState | undefined;
+  /** 测试隔离用：清空全部账号统计。 */
+  readonly resetForTest: () => void;
 }
 
 export const parseLocalPoolUsageState = (text: string): LocalPoolUsageState | undefined => {
@@ -192,6 +194,10 @@ export const createLocalPoolUsageStore = (): LocalPoolUsageStore => {
         version: 1,
         accounts: Object.fromEntries(accounts.entries()),
       };
+    },
+    resetForTest: () => {
+      accounts.clear();
+      dirty = false;
     },
   };
 };

@@ -7,6 +7,10 @@ import {
   parseLocalPoolUsageState,
 } from "./LocalPoolUsage.ts";
 import {
+  rememberLocalAccountQuota,
+  resetLocalAccountQuotaCacheForTest,
+} from "./LocalAccountQuota.ts";
+import {
   credentialAuthKind,
   credentialToken,
   cursorCredentialEnvironment,
@@ -17,10 +21,13 @@ import {
   peekLocalAccountSessionBinding,
   pickLocalAccount,
   refreshLocalPoolInstanceAdapters,
+  soonestLocalPoolCooldownMs,
 } from "./LocalAccountPool.ts";
 
 const id = (value: string) => value as never;
-const settings = (strategy: "round-robin" | "fill-first"): ServerSettings =>
+const settings = (
+  strategy: "round-robin" | "fill-first" | "weighted-round-robin" | "usage" | "smart",
+): ServerSettings =>
   ({
     localAccountPool: {
       strategy,
@@ -420,6 +427,106 @@ describe("LocalAccountPool", () => {
       expect(localPoolUsageStore.cooldownUntilUnixMs("a")).toBe(firstCooldown);
     } finally {
       localPoolUsageStore.setCooldown("a", null);
+    }
+  });
+
+  it("usage 策略把调用分给累计用量最少的账号", () => {
+    localPoolUsageStore.resetForTest();
+    try {
+      const value = settings("usage");
+      expect(pickLocalAccount(value, "codex")?.id).toBe("a");
+      localPoolUsageStore.recordTokens("a", 5_000, 1_000);
+      localPoolUsageStore.recordRequest("a", "codex", true);
+      expect(pickLocalAccount(value, "codex")?.id).toBe("b");
+      // b 用量反超后回到 token 更少的账号。
+      localPoolUsageStore.recordTokens("b", 7_000, 0);
+      expect(pickLocalAccount(value, "codex")?.id).toBe("a");
+    } finally {
+      localPoolUsageStore.resetForTest();
+    }
+  });
+
+  it("smart 策略在仍有配额的账号里选最快重置的，触顶账号排最后", () => {
+    localPoolUsageStore.resetForTest();
+    resetLocalAccountQuotaCacheForTest();
+    try {
+      const value = settings("smart");
+      const now = Date.now();
+      const soon = new Date(now + 10 * 60 * 1_000).toISOString();
+      const later = new Date(now + 60 * 60 * 1_000).toISOString();
+      rememberLocalAccountQuota("a", {
+        windows: [{ label: "5 小时", percent: 90, resetsAt: later }],
+      });
+      rememberLocalAccountQuota("b", {
+        windows: [{ label: "5 小时", percent: 95, resetsAt: soon }],
+      });
+      // b 已用更多但重置更早：smart 按"减少重置浪费"选 b，而非剩余更多的 a。
+      expect(pickLocalAccount(value, "codex")?.id).toBe("b");
+      // a 触顶后即使重置更早也排到最后。
+      rememberLocalAccountQuota("a", {
+        windows: [{ label: "5 小时", percent: 100, resetsAt: soon }],
+      });
+      expect(pickLocalAccount(value, "codex")?.id).toBe("b");
+    } finally {
+      resetLocalAccountQuotaCacheForTest();
+      localPoolUsageStore.resetForTest();
+    }
+  });
+
+  it("smart 策略在没有任何配额快照时退化为轮询，会话亲和不受策略影响", () => {
+    localPoolUsageStore.resetForTest();
+    resetLocalAccountQuotaCacheForTest();
+    try {
+      const value = settings("smart");
+      // 轮询游标是跨用例共享的模块状态，这里只断言两个账号都被轮到。
+      const picks = [pickLocalAccount(value, "codex")?.id, pickLocalAccount(value, "codex")?.id];
+      expect(new Set(picks).size).toBe(2);
+      const bound = pickLocalAccount(value, "codex", undefined, undefined, "sess-smart")!;
+      expect(pickLocalAccount(value, "codex", undefined, undefined, "sess-smart")?.id).toBe(
+        String(bound.id),
+      );
+    } finally {
+      resetLocalAccountQuotaCacheForTest();
+      localPoolUsageStore.resetForTest();
+    }
+  });
+
+  it("soonestLocalPoolCooldownMs 返回最近冷却倒计时；无冷却返回 0，无候选返回 undefined", () => {
+    localPoolUsageStore.resetForTest();
+    try {
+      const value = settings("round-robin");
+      expect(soonestLocalPoolCooldownMs(value, "codex")).toBe(0);
+      markLocalAccountFailure("a", 429, 45_000);
+      markLocalAccountFailure("b", 429, 90_000);
+      const waitMs = soonestLocalPoolCooldownMs(value, "codex");
+      expect(waitMs).toBeGreaterThan(40_000);
+      expect(waitMs!).toBeLessThanOrEqual(45_000);
+      // 候选限定到 b 时只看 b 的冷却。
+      const waitB = soonestLocalPoolCooldownMs(value, "codex", ["b"]);
+      expect(waitB).toBeGreaterThan(85_000);
+      // 没有任何 enabled 且模型匹配的候选：等待也无济于事。空模型列表
+      // 语义是"不限模型"，所以这里要用显式声明模型的账号来构造无候选。
+      expect(soonestLocalPoolCooldownMs(value, "codex", ["missing"])).toBeUndefined();
+      const scoped = {
+        ...value,
+        localAccountPool: {
+          ...value.localAccountPool,
+          accounts: Object.fromEntries(
+            Object.entries(value.localAccountPool.accounts).map(([key, account]) => [
+              key,
+              { ...account, models: ["gpt-a"] },
+            ]),
+          ),
+        },
+      } as ServerSettings;
+      expect(
+        soonestLocalPoolCooldownMs(scoped, "codex", undefined, "no-such-model"),
+      ).toBeUndefined();
+      expect(soonestLocalPoolCooldownMs(scoped, "codex", undefined, "gpt-a")).toBeGreaterThan(0);
+    } finally {
+      localPoolUsageStore.setCooldown("a", null);
+      localPoolUsageStore.setCooldown("b", null);
+      localPoolUsageStore.resetForTest();
     }
   });
 });
