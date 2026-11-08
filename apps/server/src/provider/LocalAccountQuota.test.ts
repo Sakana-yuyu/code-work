@@ -1,5 +1,6 @@
 // @effect-diagnostics globalDate:off - 快照 TTL 与冷却断言对照墙上时间。
-import { describe, expect, it } from "vite-plus/test";
+// @effect-diagnostics globalDateInEffect:off - 冷却与重置断言在 Effect 内对照墙上时间。
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import type { LocalAccount } from "@codework/contracts";
@@ -123,76 +124,77 @@ describe("LocalAccountQuota", () => {
     expect(localAccountQuotaExhaustedResetMs("b", now)).toBeUndefined();
   });
 
-  it("refreshLocalAccountQuota 在 TTL 内去重，锁外不重复拉账号接口", async () => {
-    resetLocalAccountQuotaCacheForTest();
-    localPoolUsageStore.resetForTest();
-    const deps = depsWithViews();
-    const first = await Effect.runPromise(
-      refreshLocalAccountQuota(account("a"), deps).pipe(
-        Effect.flatMap(() => refreshLocalAccountQuota(account("a"), deps)),
-      ),
-    );
-    expect(first.windows).toHaveLength(1);
-    expect(first.error).toBeUndefined();
-    expect(deps.fetches).toEqual(["a"]);
-  });
-
-  it("extendLocalAccountCooldownFromQuota 把冷却延到触顶窗口的重置点，且只延长不缩短", async () => {
-    resetLocalAccountQuotaCacheForTest();
-    localPoolUsageStore.resetForTest();
-    try {
-      const resets = Date.now() + 2 * 60 * 60 * 1_000;
-      rememberLocalAccountQuota(
-        "a",
-        view([{ label: "5 小时", percent: 100, resetsAt: new Date(resets).toISOString() }]),
-      );
+  it.effect("refreshLocalAccountQuota 在 TTL 内去重，锁外不重复拉账号接口", () =>
+    Effect.gen(function* () {
+      resetLocalAccountQuotaCacheForTest();
+      localPoolUsageStore.resetForTest();
       const deps = depsWithViews();
-      await Effect.runPromise(
-        extendLocalAccountCooldownFromQuota(account("a"), 24 * 60 * 60 * 1_000, deps),
+      const first = yield* refreshLocalAccountQuota(account("a"), deps).pipe(
+        Effect.flatMap(() => refreshLocalAccountQuota(account("a"), deps)),
       );
-      expect(localPoolUsageStore.cooldownUntilUnixMs("a")).toBe(resets);
-      // 已有更长冷却时不缩短；重置点超过 cap 时被钳制。
-      localPoolUsageStore.setCooldown("a", Date.now() + 3 * 60 * 60 * 1_000);
-      await Effect.runPromise(
-        extendLocalAccountCooldownFromQuota(account("a"), 24 * 60 * 60 * 1_000, deps),
-      );
-      expect(localPoolUsageStore.cooldownUntilUnixMs("a")).toBeGreaterThan(resets);
-      const capped = Date.now() + 30 * 1_000;
-      rememberLocalAccountQuota(
-        "b",
-        view([
-          {
-            label: "5 小时",
-            percent: 100,
-            resetsAt: new Date(Date.now() + 10 * 60 * 60 * 1_000).toISOString(),
-          },
-        ]),
-      );
-      await Effect.runPromise(extendLocalAccountCooldownFromQuota(account("b"), 30 * 1_000, deps));
-      expect(localPoolUsageStore.cooldownUntilUnixMs("b") ?? 0).toBeLessThanOrEqual(capped + 5_000);
-    } finally {
-      localPoolUsageStore.setCooldown("a", null);
-      localPoolUsageStore.setCooldown("b", null);
-    }
-  });
+      expect(first.windows).toHaveLength(1);
+      expect(first.error).toBeUndefined();
+      expect(deps.fetches).toEqual(["a"]);
+    }),
+  );
 
-  it("refreshLocalPoolQuotas 跳过禁用账号并统计成功数", async () => {
-    resetLocalAccountQuotaCacheForTest();
-    localPoolUsageStore.resetForTest();
-    const deps = depsWithViews(["b"]);
-    const settings = {
-      localAccountPool: {
-        strategy: "smart",
-        accounts: {
-          a: account("a"),
-          b: account("b"),
-          off: { ...account("off"), enabled: false },
+  it.effect("extendLocalAccountCooldownFromQuota 把冷却延到触顶窗口的重置点，且只延长不缩短", () =>
+    Effect.gen(function* () {
+      resetLocalAccountQuotaCacheForTest();
+      localPoolUsageStore.resetForTest();
+      try {
+        const resets = Date.now() + 2 * 60 * 60 * 1_000;
+        rememberLocalAccountQuota(
+          "a",
+          view([{ label: "5 小时", percent: 100, resetsAt: new Date(resets).toISOString() }]),
+        );
+        const deps = depsWithViews();
+        yield* extendLocalAccountCooldownFromQuota(account("a"), 24 * 60 * 60 * 1_000, deps);
+        expect(localPoolUsageStore.cooldownUntilUnixMs("a")).toBe(resets);
+        // 已有更长冷却时不缩短；重置点超过 cap 时被钳制。
+        localPoolUsageStore.setCooldown("a", Date.now() + 3 * 60 * 60 * 1_000);
+        yield* extendLocalAccountCooldownFromQuota(account("a"), 24 * 60 * 60 * 1_000, deps);
+        expect(localPoolUsageStore.cooldownUntilUnixMs("a")).toBeGreaterThan(resets);
+        rememberLocalAccountQuota(
+          "b",
+          view([
+            {
+              label: "5 小时",
+              percent: 100,
+              resetsAt: new Date(Date.now() + 10 * 60 * 60 * 1_000).toISOString(),
+            },
+          ]),
+        );
+        yield* extendLocalAccountCooldownFromQuota(account("b"), 30 * 1_000, deps);
+        expect(localPoolUsageStore.cooldownUntilUnixMs("b") ?? 0).toBeLessThanOrEqual(
+          Date.now() + 35_000,
+        );
+      } finally {
+        localPoolUsageStore.setCooldown("a", null);
+        localPoolUsageStore.setCooldown("b", null);
+      }
+    }),
+  );
+
+  it.effect("refreshLocalPoolQuotas 跳过禁用账号并统计成功数", () =>
+    Effect.gen(function* () {
+      resetLocalAccountQuotaCacheForTest();
+      localPoolUsageStore.resetForTest();
+      const deps = depsWithViews(["b"]);
+      const settings = {
+        localAccountPool: {
+          strategy: "smart",
+          accounts: {
+            a: account("a"),
+            b: account("b"),
+            off: { ...account("off"), enabled: false },
+          },
+          providerInstances: {},
         },
-        providerInstances: {},
-      },
-    } as never;
-    const refreshed = await Effect.runPromise(refreshLocalPoolQuotas(settings, deps));
-    expect(refreshed).toBe(1);
-    expect(deps.fetches).toEqual(["a"]);
-  });
+      } as never;
+      const refreshed = yield* refreshLocalPoolQuotas(settings, deps);
+      expect(refreshed).toBe(1);
+      expect(deps.fetches).toEqual(["a"]);
+    }),
+  );
 });

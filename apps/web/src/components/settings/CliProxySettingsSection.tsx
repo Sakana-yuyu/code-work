@@ -896,7 +896,6 @@ export function CliProxySettingsSection({
               className="bg-transparent font-medium outline-none"
               value={localStrategy}
               disabled={disabled}
-              title={t("cliProxy.smartHint")}
               onChange={(event) => {
                 const next = event.target.value as LocalAccountPoolStrategy;
                 void run({ action: "setLocalAccountPoolStrategy", strategy: next });
@@ -1420,7 +1419,6 @@ export function CliProxySettingsSection({
                 className="h-8 rounded-md border border-input bg-background px-2"
                 value={strategy}
                 disabled={disabled}
-                title={t("cliProxy.smartHint")}
                 onChange={(event) => setStrategy(event.target.value as LocalAccountPoolStrategy)}
               >
                 <option value="round-robin">{t("cliProxy.roundRobin")}</option>
@@ -1429,6 +1427,9 @@ export function CliProxySettingsSection({
                 <option value="usage">{t("cliProxy.usageLeastUsed")}</option>
                 <option value="smart">{t("cliProxy.smart")}</option>
               </select>
+              <span className="text-xs font-normal text-muted-foreground">
+                {t("cliProxy.smartHint")}
+              </span>
             </label>
             <div className="flex items-end gap-2">
               <Button
