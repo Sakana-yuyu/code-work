@@ -102,6 +102,10 @@ export const ja: Record<string, string> = {
   "cliProxy.roundRobin": "ラウンドロビン",
   "cliProxy.fillFirst": "現在のアカウントを優先",
   "cliProxy.weightedRoundRobin": "重み付きラウンドロビン",
+  "cliProxy.usageLeastUsed": "最少使用を優先",
+  "cliProxy.smart": "割り当て優先（最速リセット）",
+  "cliProxy.smartHint":
+    "残り枠のあるアカウントのうち、最も早くリセットされるものを優先します。アカウントの使用量 API（Claude/Codex OAuth、ZCode、Grok OAuth）が必要で、取得できないアカウントはラウンドロビンにフォールバックします。",
   "Maximum agent turns": "最大エージェントターン数",
   "Model to use when the primary model is unavailable. It must be accessible with this provider's credentials. Leave empty to use Claude's default.":
     "メインモデルが利用できないときに使用するモデル。このプロバイダーの資格情報でアクセスできる必要があります。空欄では Claude のデフォルトを使用します。",

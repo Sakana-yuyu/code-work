@@ -381,16 +381,22 @@ export function CliProxySettingsSection({
           ))}
           <Field label={t("localAccountPool.strategy")}>
             <View className="flex-row flex-wrap gap-2">
-              {(["round-robin", "fill-first", "weighted-round-robin"] as const).map((value) => (
+              {(
+                ["round-robin", "fill-first", "weighted-round-robin", "usage", "smart"] as const
+              ).map((value) => (
                 <Action
                   key={value}
-                  label={t(
+                  label={
                     value === "round-robin"
-                      ? "cliProxy.roundRobin"
+                      ? t("cliProxy.roundRobin")
                       : value === "fill-first"
-                        ? "cliProxy.fillFirst"
-                        : "cliProxy.weightedRoundRobin",
-                  )}
+                        ? t("cliProxy.fillFirst")
+                        : value === "weighted-round-robin"
+                          ? t("cliProxy.weightedRoundRobin")
+                          : value === "usage"
+                            ? t("cliProxy.usageLeastUsed")
+                            : t("cliProxy.smart")
+                  }
                   selected={localStrategy === value}
                   disabled={disabled}
                   onPress={() => {

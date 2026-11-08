@@ -103,6 +103,10 @@ export const en: Record<string, string> = {
   "cliProxy.roundRobin": "Round robin",
   "cliProxy.fillFirst": "Fill first",
   "cliProxy.weightedRoundRobin": "Weighted round robin",
+  "cliProxy.usageLeastUsed": "Least used first",
+  "cliProxy.smart": "Quota-aware (soonest reset)",
+  "cliProxy.smartHint":
+    "Picks the account whose quota window resets soonest among those with quota left; needs the account's usage API (Claude/Codex OAuth, ZCode, Grok OAuth). Accounts without quota data fall back to round robin.",
   // ── Supplier registry (read-only projection) ──────────────────────
   "supplierRegistry.title": "Supplier registry",
   "supplierRegistry.description":
@@ -6805,6 +6809,10 @@ export const zhCN: Record<string, string> = {
   "cliProxy.roundRobin": "轮询账号",
   "cliProxy.fillFirst": "优先用满当前账号",
   "cliProxy.weightedRoundRobin": "按权重轮询",
+  "cliProxy.usageLeastUsed": "最少用量优先",
+  "cliProxy.smart": "配额感知（最快重置优先）",
+  "cliProxy.smartHint":
+    "在仍有配额的账号里选最快重置的，减少重置时浪费的量；依赖账号额度接口（Claude/Codex OAuth、ZCode、Grok OAuth）。查不到配额的账号退化为轮询。",
   // ── Supplier 注册表（只读投影） ──────────────────────────────────
   "supplierRegistry.title": "Supplier 注册表",
   "supplierRegistry.description": "只读查看每个 Provider 实例的账号绑定及其派生的 Agent 档案。",
