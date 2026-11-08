@@ -42,6 +42,16 @@ inventory.
 
 转发请求时，网关会把内部渠道 ID 替换为渠道配置的上游模型名。Codex 使用 Responses API；普通 OpenAI 中转的 `/responses` 返回 404、405 或 501 时，网关会将可表达的请求改发 `/chat/completions`，再把回复转回 Responses。带服务端存储会话状态或不支持的工具类型会明确报错。Codex 的会话、健康检查和辅助生成使用同一网关配置。各供应商 OAuth 账号仍由各自 CLI 管理，不共享或转换登录凭据。
 
+### 本地官方账号池的调度策略
+
+绑定本地官方账号池的实例在 **设置 → 调度策略** 里选择多账号间的分配方式：
+
+- **轮询账号 / 优先用满当前账号 / 按权重轮询**：按顺序、固定或按权重分配调用。
+- **最少用量优先**：每次调用分给累计用量（token 数）最少的账号，长期保持各账号均衡。
+- **配额感知（最快重置优先）**：在仍有配额的账号里选最快重置的，减少重置时浪费的量。该策略依赖账号额度接口（Claude / Codex OAuth、ZCode、Grok OAuth）；查不到配额的账号退化为轮询，后台每 5 分钟刷新一次配额快照。
+
+所有策略共用两层保护：同一会话尽量停在同一账号（上游提示缓存绑定账号，绑定账号不可用时自动换绑）；账号收到 401/403/429/5xx 时进入冷却，429 优先按上游 `Retry-After`，没有时向账号额度接口核实窗口重置点（最长 24 小时），查不到才回退固定 60 秒。整池都在冷却时，30 秒内的短冷却会在网关内等待最近的重置点再重试；超过 30 秒立即返回 503 并附上预计恢复时间。
+
 A routed Grok instance lists openai-protocol adapters. The Grok CLI has no base-url environment
 variable, so routing manages a marker-wrapped block of `[model."…"]` tables inside the user's
 `~/.grok/config.toml` (`# >>> codework-byok >>>` … `# <<< codework-byok <<<`): one table per
