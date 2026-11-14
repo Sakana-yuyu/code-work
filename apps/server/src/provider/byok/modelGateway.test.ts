@@ -694,8 +694,8 @@ describe("全池冷却与 429 精确冷却", () => {
         "z2-ref": { api_key: "k2" },
       });
       try {
-        localPoolUsageStore.setCooldown("z1", Date.now() + 200);
-        localPoolUsageStore.setCooldown("z2", Date.now() + 200);
+        localPoolUsageStore.setCooldown("z1", Date.now() + 2_000);
+        localPoolUsageStore.setCooldown("z2", Date.now() + 2_000);
         const response = yield* Effect.promise(() =>
           post(gateway, "local:pool:zcode-start:GLM-5.2"),
         );
@@ -703,9 +703,14 @@ describe("全池冷却与 429 精确冷却", () => {
           error: { message: string };
         };
         // 不等待会落在"暂无可用账号"503；502 体验套餐消息说明等待后选号
-        // 成功、流程走到了凭据阶段。
+        // 成功、流程走到了凭据阶段。失败时打印错误体与冷却快照，用于区分
+        // "冷却被延长"（预计恢复文案）与"候选消失"（裸 503）两种落点。
+        const snapshot = JSON.stringify(localPoolUsageStore.list());
+        expect(
+          body.error.message,
+          `status=${response.status} body=${JSON.stringify(body)} store=${snapshot}`,
+        ).toContain("体验套餐");
         expect(response.status).toBe(502);
-        expect(body.error.message).toContain("体验套餐");
       } finally {
         yield* Effect.promise(() => gateway.dispose());
         localPoolUsageStore.resetForTest();
