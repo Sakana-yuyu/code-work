@@ -705,10 +705,13 @@ describe("全池冷却与 429 精确冷却", () => {
         // 不等待会落在"暂无可用账号"503；502 体验套餐消息说明等待后选号
         // 成功、流程走到了凭据阶段。失败时打印错误体与冷却快照，用于区分
         // "冷却被延长"（预计恢复文案）与"候选消失"（裸 503）两种落点。
+        // @effect-diagnostics-next-line preferSchemaOverJson:off - 断言失败信息需要原始 JSON 文本。
         const snapshot = JSON.stringify(localPoolUsageStore.list());
+        // @effect-diagnostics-next-line preferSchemaOverJson:off - 断言失败信息需要原始 JSON 文本。
+        const bodyJson = JSON.stringify(body);
         expect(
           body.error.message,
-          `status=${response.status} body=${JSON.stringify(body)} store=${snapshot}`,
+          `status=${response.status} body=${bodyJson} store=${snapshot}`,
         ).toContain("体验套餐");
         expect(response.status).toBe(502);
       } finally {
